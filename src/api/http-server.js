@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
+import { PersistenceConflictError } from "../storage/index.js";
 
 class HttpError extends Error {
   constructor(status, code, message, details) {
@@ -89,6 +90,12 @@ function errorResponse(error, id) {
       body: { error: { code: "INVALID_REQUEST", message: error.message, requestId: id } },
     };
   }
+  if (error instanceof PersistenceConflictError) {
+    return {
+      status: 409,
+      body: { error: { code: "PERSISTENCE_CONFLICT", message: error.message, requestId: id } },
+    };
+  }
   return {
     status: 500,
     body: { error: { code: "INTERNAL_ERROR", message: "An internal error occurred", requestId: id } },
@@ -132,6 +139,35 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         const chain = await application.getCurrentTraceChain(projectId, chainId);
         if (!chain) throw new HttpError(404, "TRACE_CHAIN_NOT_FOUND", "Trace chain was not found");
         sendJson(response, 200, chain, id);
+        return;
+      }
+
+      const governanceAppendMatch = /^\/v1\/projects\/([^/]+)\/(features|claim-scopes|claims|decisions)$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && governanceAppendMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(governanceAppendMatch[1]);
+        const resource = governanceAppendMatch[2];
+        const input = await readJson(request, maxBodyBytes);
+        const operations = {
+          features: "appendFeatureVersion",
+          "claim-scopes": "appendClaimScope",
+          claims: "appendClaim",
+          decisions: "appendDecision",
+        };
+        const created = await application[operations[resource]](projectId, input);
+        sendJson(response, 201, created, id);
+        return;
+      }
+
+      const featureBaselineMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/baseline$/.exec(url.pathname);
+      if (request.method === "GET" && featureBaselineMatch) {
+        const projectId = decodePathSegment(featureBaselineMatch[1]);
+        const featureId = decodePathSegment(featureBaselineMatch[2]);
+        const baseline = await application.getFeatureBaseline(projectId, featureId);
+        if (!baseline) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, baseline, id);
         return;
       }
 

@@ -24,6 +24,15 @@ async function startServer(t, options = {}) {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
+async function postJson(url, body) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return { response, body: await response.json() };
+}
+
 test("health endpoint returns a request correlation ID", async (t) => {
   const baseUrl = await startServer(t);
   const response = await fetch(`${baseUrl}/health`, {
@@ -132,4 +141,89 @@ test("payload limits and missing trace chains are explicit", async (t) => {
   const missing = await fetch(`${baseUrl}/v1/projects/PROJECT-001/trace-chains/UNKNOWN`);
   assert.equal(missing.status, 404);
   assert.equal((await missing.json()).error.code, "TRACE_CHAIN_NOT_FOUND");
+});
+
+test("feature governance appends decisions without overwriting the claim", async (t) => {
+  const baseUrl = await startServer(t);
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
+
+  const feature = await postJson(`${projectUrl}/features`, {
+    id: "FEATURE-001",
+    version: 1,
+    name: "Submit order",
+    businessDomain: "orders",
+  });
+  assert.equal(feature.response.status, 201);
+
+  const scope = await postJson(`${projectUrl}/claim-scopes`, {
+    id: "SCOPE-001",
+    version: 1,
+    scope: { actor: "normal-user", orderType: "standard" },
+  });
+  assert.equal(scope.response.status, 201);
+
+  const claimInput = {
+    id: "CLAIM-001",
+    version: 1,
+    featureId: "FEATURE-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "A normal user may submit only a DRAFT order.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+    provenance: { source: "business-owner" },
+  };
+  const claim = await postJson(`${projectUrl}/claims`, claimInput);
+  assert.equal(claim.response.status, 201);
+
+  const confirmed = await postJson(`${projectUrl}/decisions`, {
+    id: "DECISION-001",
+    claimId: "CLAIM-001",
+    claimVersion: 1,
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+    type: "CONFIRMED",
+    actorId: "USER-001",
+    actorRole: "business-owner",
+  });
+  assert.equal(confirmed.response.status, 201);
+
+  const exception = await postJson(`${projectUrl}/decisions`, {
+    id: "DECISION-002",
+    claimId: "CLAIM-001",
+    claimVersion: 1,
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+    type: "EXCEPTION_RECORDED",
+    content: "Administrators may force submission during recovery.",
+    actorId: "USER-002",
+    actorRole: "business-owner",
+  });
+  assert.equal(exception.response.status, 201);
+
+  const baselineResponse = await fetch(`${projectUrl}/features/FEATURE-001/baseline`);
+  const baseline = await baselineResponse.json();
+  assert.equal(baselineResponse.status, 200);
+  assert.equal(baseline.claims[0].claim.statement, claimInput.statement);
+  assert.equal(baseline.claims[0].decisionHistory.length, 2);
+  assert.equal(baseline.claims[0].latestDecision.type, "EXCEPTION_RECORDED");
+});
+
+test("governance reference conflicts return 409", async (t) => {
+  const baseUrl = await startServer(t);
+  const result = await postJson(`${baseUrl}/v1/projects/PROJECT-001/claims`, {
+    id: "CLAIM-ORPHAN",
+    version: 1,
+    featureId: "FEATURE-MISSING",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "Orphan claim",
+    sourceType: "HUMAN",
+    evidenceSupport: "NONE",
+    scopeId: "SCOPE-MISSING",
+    scopeVersion: 1,
+  });
+
+  assert.equal(result.response.status, 409);
+  assert.equal(result.body.error.code, "PERSISTENCE_CONFLICT");
 });

@@ -98,6 +98,79 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/v1/projects/{projectId}/features": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendFeatureVersion",
+        "requestBody": { "$ref": "#/components/requestBodies/FeatureVersion" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/FeatureVersionCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/claim-scopes": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendClaimScope",
+        "requestBody": { "$ref": "#/components/requestBodies/ClaimScope" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ClaimScopeCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/claims": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendClaim",
+        "requestBody": { "$ref": "#/components/requestBodies/Claim" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ClaimCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decisions": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendDecision",
+        "requestBody": { "$ref": "#/components/requestBodies/Decision" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DecisionCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/baseline": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getFeatureBaseline",
+        "responses": {
+          "200": {
+            "description": "Latest feature version with current claim versions and decision history",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./governance.schema.json#/$defs/FeatureBaseline" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
     }
   },
   "components": {
@@ -123,6 +196,22 @@
             "schema": { "$ref": "./trace-chain-evaluation-input.schema.json" }
           }
         }
+      },
+      "FeatureVersion": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
+      },
+      "ClaimScope": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/ClaimScope" } } }
+      },
+      "Claim": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Claim" } } }
+      },
+      "Decision": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
       }
     },
     "schemas": {
@@ -161,6 +250,26 @@
       "UnsupportedMediaType": {
         "description": "Content-Type is not application/json",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "The append conflicts with immutable history or a required reference",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "FeatureVersionCreated": {
+        "description": "Feature version appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
+      },
+      "ClaimScopeCreated": {
+        "description": "Claim scope version appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/ClaimScope" } } }
+      },
+      "ClaimCreated": {
+        "description": "Claim version appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Claim" } } }
+      },
+      "DecisionCreated": {
+        "description": "Decision appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
       }
     }
   }

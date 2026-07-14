@@ -40,4 +40,22 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/trace-chains/{chainId}"].get.operationId,
     "getCurrentTraceChain",
   );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/claims"].post.operationId,
+    "appendClaim",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/baseline"].get.operationId,
+    "getFeatureBaseline",
+  );
+});
+
+test("governance contract defines immutable version fields", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/governance.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.ok(contract.$defs.FeatureVersion.required.includes("version"));
+  assert.ok(contract.$defs.Claim.required.includes("scopeVersion"));
+  assert.ok(contract.$defs.Decision.required.includes("claimVersion"));
 });

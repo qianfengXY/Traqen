@@ -33,7 +33,15 @@ The minimal API slice adds:
 - an OpenAPI 3.1 contract;
 - a development server backed by an in-memory append-only store.
 
-It intentionally has no web framework, database driver, LLM, or scanner dependency yet. Those integrations will be added around this kernel after the first platform and scanner technology choices are confirmed.
+The governance slice adds:
+
+- append-only Feature, ClaimScope, Claim, and human Decision records;
+- write endpoints for building a governed business baseline;
+- a Feature baseline query that keeps the original claim, full decision history, latest decision, and related trace chains together;
+- database enforcement that a decision cannot replace its Claim's bound scope or cross the project's tenant boundary;
+- stable conflict responses when immutable IDs or governed references collide.
+
+The development server remains intentionally unauthenticated and in-memory. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
 
 ## Run
 
@@ -55,4 +63,3 @@ node src/cli/evaluate-trace-chain.js path/to/input.json
 ```
 
 The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md).
-1

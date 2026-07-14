@@ -7,6 +7,22 @@ export const ClaimType = enumValues([
   "QUALITY_EXPECTATION",
 ]);
 
+export const ClaimSourceType = enumValues([
+  "AI_CANDIDATE",
+  "HUMAN",
+  "FORMAL_AUTHORITY",
+  "DETERMINISTIC_DERIVATION",
+]);
+
+export const DecisionType = enumValues([
+  "CONFIRMED",
+  "REJECTED",
+  "EXCEPTION_RECORDED",
+  "INSUFFICIENT_EVIDENCE",
+  "DEFERRED",
+  "DEPRECATED",
+]);
+
 export const AuthorityStatus = enumValues([
   "UNREVIEWED",
   "CONFIRMED",

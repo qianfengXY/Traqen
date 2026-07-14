@@ -10,4 +10,24 @@ export class TraceabilityStore {
   async getCurrentTraceChain(_projectId, _chainId) {
     throw new Error("getCurrentTraceChain must be implemented");
   }
+
+  async appendFeatureVersion(_projectId, _feature) {
+    throw new Error("appendFeatureVersion must be implemented");
+  }
+
+  async appendClaimScope(_projectId, _scope) {
+    throw new Error("appendClaimScope must be implemented");
+  }
+
+  async appendClaim(_projectId, _claim) {
+    throw new Error("appendClaim must be implemented");
+  }
+
+  async appendDecision(_projectId, _decision) {
+    throw new Error("appendDecision must be implemented");
+  }
+
+  async getFeatureBaseline(_projectId, _featureId) {
+    throw new Error("getFeatureBaseline must be implemented");
+  }
 }

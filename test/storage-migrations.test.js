@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { PGlite } from "@electric-sql/pglite";
 
+import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { evaluateTraceChain } from "../src/domain/index.js";
 import { applyMigrations } from "../src/storage/postgres/migrations.js";
 import { PostgresTraceabilityStore } from "../src/storage/postgres/postgres-traceability-store.js";
@@ -14,7 +15,7 @@ const migrationsDirectory = fileURLToPath(new URL("../db/migrations", import.met
 async function migratedDatabase() {
   const database = await PGlite.create();
   const applied = await applyMigrations(database, migrationsDirectory);
-  assert.deepEqual(applied, ["0001_core_traceability"]);
+  assert.deepEqual(applied, ["0001_core_traceability", "0002_governance_integrity"]);
   return database;
 }
 
@@ -357,4 +358,152 @@ test("PostgreSQL store is idempotent for identical manifests and rejects ID coll
     store.appendSnapshotManifest("PROJECT-001", tampered),
     /conflicts with an existing immutable record/,
   );
+});
+
+test("PostgreSQL store persists a governed feature baseline without mutating claims", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: () => new Date("2026-07-14T05:00:00.000Z"),
+  });
+
+  await application.appendFeatureVersion("PROJECT-001", {
+    id: "FEATURE-GOV-001",
+    version: 1,
+    name: "Submit order",
+    businessDomain: "orders",
+  });
+  await application.appendClaimScope("PROJECT-001", {
+    id: "SCOPE-GOV-001",
+    version: 1,
+    scope: { actor: "normal-user" },
+  });
+  const originalStatement = "A normal user may submit only a DRAFT order.";
+  await application.appendClaim("PROJECT-001", {
+    id: "CLAIM-GOV-001",
+    version: 1,
+    featureId: "FEATURE-GOV-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: originalStatement,
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-GOV-001",
+    scopeVersion: 1,
+  });
+  await application.appendDecision("PROJECT-001", {
+    id: "DECISION-GOV-001",
+    claimId: "CLAIM-GOV-001",
+    claimVersion: 1,
+    scopeId: "SCOPE-GOV-001",
+    scopeVersion: 1,
+    type: "CONFIRMED",
+    actorId: "USER-001",
+    actorRole: "business-owner",
+  });
+  await application.appendDecision("PROJECT-001", {
+    id: "DECISION-GOV-002",
+    claimId: "CLAIM-GOV-001",
+    claimVersion: 1,
+    scopeId: "SCOPE-GOV-001",
+    scopeVersion: 1,
+    type: "EXCEPTION_RECORDED",
+    content: "Administrators may force submission during recovery.",
+    actorId: "USER-001",
+    actorRole: "business-owner",
+  });
+
+  const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-GOV-001");
+  assert.equal(baseline.feature.name, "Submit order");
+  assert.equal(baseline.claims[0].claim.statement, originalStatement);
+  assert.equal(baseline.claims[0].decisionHistory.length, 2);
+  assert.equal(baseline.claims[0].latestDecision.type, "EXCEPTION_RECORDED");
+
+  const claimRows = await database.query(
+    "SELECT statement FROM claim WHERE project_id = $1 AND id = $2",
+    ["PROJECT-001", "CLAIM-GOV-001"],
+  );
+  assert.deepEqual(claimRows.rows, [{ statement: originalStatement }]);
+});
+
+test("PostgreSQL rejects decisions that escape the claim scope or project tenant", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: () => new Date("2026-07-14T05:00:00.000Z"),
+  });
+
+  await application.appendFeatureVersion("PROJECT-001", {
+    id: "FEATURE-GOV-001",
+    version: 1,
+    name: "Submit order",
+  });
+  await application.appendClaimScope("PROJECT-001", {
+    id: "SCOPE-BOUND",
+    version: 1,
+    scope: { actor: "normal-user" },
+  });
+  await application.appendClaimScope("PROJECT-001", {
+    id: "SCOPE-ESCAPED",
+    version: 1,
+    scope: { actor: "administrator" },
+  });
+  await application.appendClaim("PROJECT-001", {
+    id: "CLAIM-GOV-001",
+    version: 1,
+    featureId: "FEATURE-GOV-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "A normal user may submit only a DRAFT order.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-BOUND",
+    scopeVersion: 1,
+  });
+
+  await assert.rejects(
+    application.appendDecision("PROJECT-001", {
+      id: "DECISION-WRONG-SCOPE",
+      claimId: "CLAIM-GOV-001",
+      claimVersion: 1,
+      scopeId: "SCOPE-ESCAPED",
+      scopeVersion: 1,
+      type: "CONFIRMED",
+      actorId: "USER-001",
+      actorRole: "business-owner",
+    }),
+    (error) => error.name === "PersistenceConflictError",
+  );
+
+  await database.query("INSERT INTO organization (id, name) VALUES ($1, $2)", ["ORG-002", "Other org"]);
+  await database.query(
+    "INSERT INTO tenant (id, organization_id, name) VALUES ($1, $2, $3)",
+    ["TENANT-002", "ORG-002", "Other tenant"],
+  );
+  await database.query(
+    "INSERT INTO principal (id, tenant_id, principal_type, display_name) VALUES ($1, $2, $3, $4)",
+    ["USER-OTHER", "TENANT-002", "USER", "Other tenant owner"],
+  );
+
+  await assert.rejects(
+    application.appendDecision("PROJECT-001", {
+      id: "DECISION-WRONG-TENANT",
+      claimId: "CLAIM-GOV-001",
+      claimVersion: 1,
+      scopeId: "SCOPE-BOUND",
+      scopeVersion: 1,
+      type: "CONFIRMED",
+      actorId: "USER-OTHER",
+      actorRole: "business-owner",
+    }),
+    (error) => error.name === "PersistenceConflictError",
+  );
+
+  const decisions = await database.query(
+    "SELECT id FROM human_decision WHERE project_id = $1 ORDER BY append_sequence",
+    ["PROJECT-001"],
+  );
+  assert.deepEqual(decisions.rows, []);
 });

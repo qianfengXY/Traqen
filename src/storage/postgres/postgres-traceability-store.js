@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { canonicalJson, deepFreeze } from "../../domain/index.js";
 import { TraceabilityStore } from "../traceability-store.js";
+import { PersistenceConflictError } from "../errors.js";
 
 const componentTypes = Object.freeze({
   source: "SOURCE",
@@ -17,6 +18,10 @@ function requireId(value, fieldName) {
   return value;
 }
 
+function isoOrNull(value) {
+  return value === null || value === undefined ? null : new Date(value).toISOString();
+}
+
 function manifestContentHash(manifest) {
   return createHash("sha256")
     .update(
@@ -29,6 +34,14 @@ function manifestContentHash(manifest) {
       }),
     )
     .digest("hex");
+}
+
+function normalizePersistenceError(error) {
+  if (error instanceof PersistenceConflictError) return error;
+  if (typeof error?.code === "string" && error.code.startsWith("23")) {
+    return new PersistenceConflictError("Persistence constraints rejected the append operation", { cause: error });
+  }
+  return error;
 }
 
 export class PostgresTraceabilityStore extends TraceabilityStore {
@@ -50,7 +63,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       return result;
     } catch (error) {
       await this.#database.exec("ROLLBACK");
-      throw error;
+      throw normalizePersistenceError(error);
     }
   }
 
@@ -81,7 +94,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
           componentRow.digest !== component.digest ||
           canonicalJson(componentRow.payload) !== canonicalJson(component)
         ) {
-          throw new Error(`Snapshot component ${component.id} conflicts with an existing immutable record`);
+          throw new PersistenceConflictError(`Snapshot component ${component.id} conflicts with an existing immutable record`);
         }
       }
 
@@ -124,7 +137,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       );
       const row = stored.rows[0];
       if (!row || row.content_hash !== manifestContentHash(manifest) || row.complete !== manifest.complete) {
-        throw new Error(`Snapshot manifest ${manifest.id} conflicts with an existing immutable record`);
+        throw new PersistenceConflictError(`Snapshot manifest ${manifest.id} conflicts with an existing immutable record`);
       }
       return manifest.id;
     });
@@ -237,6 +250,298 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
           }),
         ),
       computedAt: new Date(row.computed_at).toISOString(),
+    });
+  }
+
+  async appendFeatureVersion(projectId, feature) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO feature (project_id, id) VALUES ($1, $2)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [projectId, feature.id],
+      );
+      await this.#database.query(
+        `INSERT INTO feature_version (
+           project_id, feature_id, version, name, business_domain, description, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (project_id, feature_id, version) DO NOTHING`,
+        [
+          projectId,
+          feature.id,
+          feature.version,
+          feature.name,
+          feature.businessDomain,
+          feature.description,
+          feature.createdAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT name, business_domain, description
+         FROM feature_version
+         WHERE project_id = $1 AND feature_id = $2 AND version = $3`,
+        [projectId, feature.id, feature.version],
+      );
+      const row = stored.rows[0];
+      if (
+        !row ||
+        row.name !== feature.name ||
+        row.business_domain !== feature.businessDomain ||
+        row.description !== feature.description
+      ) {
+        throw new PersistenceConflictError(`Feature ${feature.id} version ${feature.version} conflicts with an existing record`);
+      }
+      return feature;
+    });
+  }
+
+  async appendClaimScope(projectId, scope) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO claim_scope (
+           project_id, id, version, scope, effective_from, effective_to, created_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+         ON CONFLICT (project_id, id, version) DO NOTHING`,
+        [
+          projectId,
+          scope.id,
+          scope.version,
+          JSON.stringify(scope.scope),
+          scope.effectiveFrom,
+          scope.effectiveTo,
+          scope.createdAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT scope, effective_from, effective_to
+         FROM claim_scope
+         WHERE project_id = $1 AND id = $2 AND version = $3`,
+        [projectId, scope.id, scope.version],
+      );
+      const row = stored.rows[0];
+      if (
+        !row ||
+        canonicalJson(row.scope) !== canonicalJson(scope.scope) ||
+        isoOrNull(row.effective_from) !== scope.effectiveFrom ||
+        isoOrNull(row.effective_to) !== scope.effectiveTo
+      ) {
+        throw new PersistenceConflictError(`ClaimScope ${scope.id} version ${scope.version} conflicts with an existing record`);
+      }
+      return scope;
+    });
+  }
+
+  async appendClaim(projectId, claim) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO claim (
+           project_id, id, version, feature_id, claim_type, statement, source_type,
+           evidence_support, scope_id, scope_version, provenance, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
+         ON CONFLICT (project_id, id, version) DO NOTHING`,
+        [
+          projectId,
+          claim.id,
+          claim.version,
+          claim.featureId,
+          claim.type,
+          claim.statement,
+          claim.sourceType,
+          claim.evidenceSupport,
+          claim.scopeId,
+          claim.scopeVersion,
+          JSON.stringify(claim.provenance),
+          claim.createdAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT feature_id, claim_type, statement, source_type, evidence_support,
+                scope_id, scope_version, provenance
+         FROM claim
+         WHERE project_id = $1 AND id = $2 AND version = $3`,
+        [projectId, claim.id, claim.version],
+      );
+      const row = stored.rows[0];
+      if (
+        !row ||
+        row.feature_id !== claim.featureId ||
+        row.claim_type !== claim.type ||
+        row.statement !== claim.statement ||
+        row.source_type !== claim.sourceType ||
+        row.evidence_support !== claim.evidenceSupport ||
+        row.scope_id !== claim.scopeId ||
+        row.scope_version !== claim.scopeVersion ||
+        canonicalJson(row.provenance) !== canonicalJson(claim.provenance)
+      ) {
+        throw new PersistenceConflictError(`Claim ${claim.id} version ${claim.version} conflicts with an existing record`);
+      }
+      return claim;
+    });
+  }
+
+  async appendDecision(projectId, decision) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO human_decision (
+           project_id, id, claim_id, claim_version, scope_id, scope_version,
+           decision_type, content, actor_id, actor_role, evidence_refs, valid_until, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [
+          projectId,
+          decision.id,
+          decision.claimId,
+          decision.claimVersion,
+          decision.scopeId,
+          decision.scopeVersion,
+          decision.type,
+          decision.content,
+          decision.actorId,
+          decision.actorRole,
+          JSON.stringify(decision.evidenceRefs),
+          decision.validUntil,
+          decision.createdAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT claim_id, claim_version, scope_id, scope_version, decision_type,
+                content, actor_id, actor_role, evidence_refs, valid_until
+         FROM human_decision
+         WHERE project_id = $1 AND id = $2`,
+        [projectId, decision.id],
+      );
+      const row = stored.rows[0];
+      if (
+        !row ||
+        row.claim_id !== decision.claimId ||
+        row.claim_version !== decision.claimVersion ||
+        row.scope_id !== decision.scopeId ||
+        row.scope_version !== decision.scopeVersion ||
+        row.decision_type !== decision.type ||
+        row.content !== decision.content ||
+        row.actor_id !== decision.actorId ||
+        row.actor_role !== decision.actorRole ||
+        canonicalJson(row.evidence_refs) !== canonicalJson(decision.evidenceRefs) ||
+        isoOrNull(row.valid_until) !== decision.validUntil
+      ) {
+        throw new PersistenceConflictError(`Decision ${decision.id} conflicts with an existing record`);
+      }
+      return decision;
+    });
+  }
+
+  async getFeatureBaseline(projectId, featureId) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    const featureResult = await this.#database.query(
+      `SELECT feature_id, version, name, business_domain, description, created_at
+       FROM feature_version
+       WHERE project_id = $1 AND feature_id = $2
+       ORDER BY version DESC
+       LIMIT 1`,
+      [projectId, featureId],
+    );
+    const featureRow = featureResult.rows[0];
+    if (!featureRow) return null;
+
+    const claimResult = await this.#database.query(
+      `SELECT DISTINCT ON (c.id)
+         c.id, c.version, c.feature_id, c.claim_type, c.statement, c.source_type,
+         c.evidence_support, c.scope_id, c.scope_version, c.provenance, c.created_at,
+         s.scope, s.effective_from, s.effective_to, s.created_at AS scope_created_at
+       FROM claim c
+       JOIN claim_scope s
+         ON s.project_id = c.project_id AND s.id = c.scope_id AND s.version = c.scope_version
+       WHERE c.project_id = $1 AND c.feature_id = $2
+       ORDER BY c.id, c.version DESC`,
+      [projectId, featureId],
+    );
+    const decisionResult = await this.#database.query(
+      `SELECT d.*
+       FROM human_decision d
+       JOIN claim c
+         ON c.project_id = d.project_id AND c.id = d.claim_id AND c.version = d.claim_version
+       WHERE d.project_id = $1 AND c.feature_id = $2
+       ORDER BY d.claim_id, d.claim_version, d.append_sequence`,
+      [projectId, featureId],
+    );
+    const chainResult = await this.#database.query(
+      `SELECT * FROM trace_chain_current
+       WHERE project_id = $1 AND feature_id = $2
+       ORDER BY computed_at DESC`,
+      [projectId, featureId],
+    );
+
+    const decisionsByClaim = new Map();
+    for (const row of decisionResult.rows) {
+      const decisionKey = `${row.claim_id}\u0000${row.claim_version}`;
+      const history = decisionsByClaim.get(decisionKey) ?? [];
+      history.push({
+        id: row.id,
+        claimId: row.claim_id,
+        claimVersion: row.claim_version,
+        scopeId: row.scope_id,
+        scopeVersion: row.scope_version,
+        type: row.decision_type,
+        content: row.content,
+        actorId: row.actor_id,
+        actorRole: row.actor_role,
+        evidenceRefs: row.evidence_refs,
+        validUntil: isoOrNull(row.valid_until),
+        createdAt: new Date(row.created_at).toISOString(),
+      });
+      decisionsByClaim.set(decisionKey, history);
+    }
+
+    return deepFreeze({
+      feature: {
+        id: featureRow.feature_id,
+        version: featureRow.version,
+        name: featureRow.name,
+        businessDomain: featureRow.business_domain,
+        description: featureRow.description,
+        createdAt: new Date(featureRow.created_at).toISOString(),
+      },
+      claims: claimResult.rows.map((row) => {
+        const decisionHistory = decisionsByClaim.get(`${row.id}\u0000${row.version}`) ?? [];
+        return {
+          claim: {
+            id: row.id,
+            version: row.version,
+            featureId: row.feature_id,
+            type: row.claim_type,
+            statement: row.statement,
+            sourceType: row.source_type,
+            evidenceSupport: row.evidence_support,
+            scopeId: row.scope_id,
+            scopeVersion: row.scope_version,
+            provenance: row.provenance,
+            createdAt: new Date(row.created_at).toISOString(),
+          },
+          scope: {
+            id: row.scope_id,
+            version: row.scope_version,
+            scope: row.scope,
+            effectiveFrom: isoOrNull(row.effective_from),
+            effectiveTo: isoOrNull(row.effective_to),
+            createdAt: new Date(row.scope_created_at).toISOString(),
+          },
+          decisionHistory,
+          latestDecision: decisionHistory.at(-1) ?? null,
+        };
+      }),
+      traceChains: chainResult.rows.map((row) => ({
+        id: row.chain_id,
+        revision: Number(row.revision),
+        claimId: row.claim_id,
+        claimVersion: row.claim_version,
+        complete: row.complete,
+        dimensions: row.dimensions,
+        computedAt: new Date(row.computed_at).toISOString(),
+      })),
     });
   }
 }
