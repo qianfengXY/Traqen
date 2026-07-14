@@ -2,6 +2,7 @@ import { deepFreeze } from "./canonical-json.js";
 import {
   ClaimSourceType,
   ClaimType,
+  ConstraintOperator,
   DecisionType,
   EvidenceSupport,
   assertEnum,
@@ -20,6 +21,20 @@ function requireObject(value, fieldName) {
     throw new TypeError(`${fieldName} must be an object`);
   }
   return structuredClone(value);
+}
+
+function normalizeConstraint(value, fieldName) {
+  if (value === undefined || value === null) return null;
+  const constraint = requireObject(value, fieldName);
+  if (Object.keys(constraint).some((field) => !["dimension", "operator", "value"].includes(field))) {
+    throw new TypeError(`${fieldName} contains an unsupported field`);
+  }
+  if (!("value" in constraint)) throw new TypeError(`${fieldName}.value is required`);
+  return {
+    dimension: requireNonEmptyString(constraint.dimension, `${fieldName}.dimension`),
+    operator: assertEnum(ConstraintOperator, constraint.operator, `${fieldName}.operator`),
+    value: structuredClone(constraint.value),
+  };
 }
 
 export function createFeatureVersion(input, clock = () => new Date()) {
@@ -60,6 +75,7 @@ export function createClaim(input, clock = () => new Date()) {
     statement: requireNonEmptyString(input?.statement, "claim.statement"),
     sourceType: assertEnum(ClaimSourceType, input?.sourceType, "claim.sourceType"),
     evidenceSupport: assertEnum(EvidenceSupport, input?.evidenceSupport, "claim.evidenceSupport"),
+    constraint: normalizeConstraint(input?.constraint, "claim.constraint"),
     scopeId: requireNonEmptyString(input?.scopeId, "claim.scopeId"),
     scopeVersion: requirePositiveInteger(input?.scopeVersion, "claim.scopeVersion"),
     provenance: requireObject(input?.provenance ?? {}, "claim.provenance"),
@@ -73,17 +89,25 @@ export function createDecision(input, clock = () => new Date()) {
   if (input?.evidenceRefs !== undefined && !Array.isArray(input.evidenceRefs)) {
     throw new TypeError("decision.evidenceRefs must be an array");
   }
+  const evidenceRefs = [...new Set((input?.evidenceRefs ?? []).map((item, index) =>
+    requireNonEmptyString(item, `decision.evidenceRefs[${index}]`),
+  ))];
+  const type = assertEnum(DecisionType, input?.type, "decision.type");
+  const content = optionalString(input?.content, "decision.content");
+  if (type === DecisionType.EXCEPTION_RECORDED && !content) {
+    throw new TypeError("decision.content is required for EXCEPTION_RECORDED");
+  }
   return deepFreeze({
     id: requireNonEmptyString(input?.id, "decision.id"),
     claimId: requireNonEmptyString(input?.claimId, "decision.claimId"),
     claimVersion: requirePositiveInteger(input?.claimVersion, "decision.claimVersion"),
     scopeId: requireNonEmptyString(input?.scopeId, "decision.scopeId"),
     scopeVersion: requirePositiveInteger(input?.scopeVersion, "decision.scopeVersion"),
-    type: assertEnum(DecisionType, input?.type, "decision.type"),
-    content: optionalString(input?.content, "decision.content"),
+    type,
+    content,
     actorId: requireNonEmptyString(input?.actorId, "decision.actorId"),
     actorRole: requireNonEmptyString(input?.actorRole, "decision.actorRole"),
-    evidenceRefs: [...new Set(input?.evidenceRefs ?? [])],
+    evidenceRefs,
     validUntil,
     createdAt: input?.createdAt ?? clock().toISOString(),
   });

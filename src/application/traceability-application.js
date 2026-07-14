@@ -1,9 +1,15 @@
 import {
   createClaim,
   createClaimScope,
+  createChangeSet,
   createDecision,
   createExecutionEvidenceBundle,
   createFactBundle,
+  createImplementationConformance,
+  createImplementationContinuity,
+  createImplementationMapping,
+  createImpactAssessment,
+  createReverseCandidateReview,
   createReverseInputPackage,
   createReverseSkillManifest,
   createReverseSkillRegistration,
@@ -16,12 +22,22 @@ import {
   verifyExecutionEvidenceAttestation,
   verifyFactBundleAttestation,
   verifyReverseSkillManifestAttestation,
+  assessImplementationConformance,
+  compareFactGraphs,
+  CandidateReviewOutcome,
+  canonicalJson,
+  ConformanceStatus,
+  contentId,
+  deepFreeze,
+  EvidenceSupport,
   FactNodeType,
   FactPredicate,
   assertEnum,
 } from "../domain/index.js";
 import {
   PersistenceConflictError,
+  ReviewAuthenticationError,
+  ReviewAuthorizationError,
   RunnerAttestationError,
   ScannerAttestationError,
   SkillAttestationError,
@@ -34,8 +50,74 @@ function requireId(value, fieldName) {
   return value;
 }
 
+function assertOnlyFields(value, allowedFields, fieldName) {
+  for (const field of Object.keys(value)) {
+    if (!allowedFields.includes(field)) throw new TypeError(`${fieldName}.${field} is not supported`);
+  }
+}
+
 function currentReference(value, currentId) {
   return value === undefined || value === "__CURRENT__" ? currentId : value;
+}
+
+function authorityFromDecision(decision) {
+  const mapping = {
+    CONFIRMED: "CONFIRMED",
+    EXCEPTION_RECORDED: "EXCEPTION_RECORDED",
+    REJECTED: "REJECTED",
+    DEPRECATED: "DEPRECATED",
+    INSUFFICIENT_EVIDENCE: "UNREVIEWED",
+    DEFERRED: "UNREVIEWED",
+  };
+  return decision ? mapping[decision.type] ?? "UNREVIEWED" : "UNREVIEWED";
+}
+
+function implementationFromFacts(facts) {
+  const mapping = {
+    ENDPOINT: "endpoints",
+    CODE_SYMBOL: "codeSymbols",
+    DATA_OBJECT: "dataObjects",
+    CONFIGURATION: "configurations",
+    EXTERNAL_DEPENDENCY: "dependencies",
+  };
+  const result = {
+    endpoints: [],
+    codeSymbols: [],
+    dataObjects: [],
+    configurations: [],
+    dependencies: [],
+  };
+  for (const node of facts.nodes) {
+    const collection = mapping[node.type];
+    if (collection) result[collection].push(node);
+  }
+  return result;
+}
+
+function graphEntityIndexes(graph) {
+  const byFactId = new Map();
+  const byStableProducer = new Map();
+  for (const node of graph.nodes) {
+    const stableProducer = canonicalJson({
+      entityType: "NODE",
+      stableId: node.id,
+      extractorId: node.extractor?.id ?? null,
+    });
+    byFactId.set(node.factId, stableProducer);
+    byStableProducer.set(stableProducer, { factId: node.factId, entity: node });
+  }
+  for (const edge of graph.edges) {
+    const stableProducer = canonicalJson({
+      entityType: "EDGE",
+      subjectId: edge.subjectId,
+      predicate: edge.predicate,
+      objectId: edge.objectId,
+      extractorId: edge.extractor?.id ?? null,
+    });
+    byFactId.set(edge.id, stableProducer);
+    byStableProducer.set(stableProducer, { factId: edge.id, entity: edge });
+  }
+  return { byFactId, byStableProducer };
 }
 
 export class TraceabilityApplication {
@@ -47,6 +129,8 @@ export class TraceabilityApplication {
   #installedSkillResolver;
   #skillPolicyResolver;
   #reverseOrchestrator;
+  #reviewerResolver;
+  #reviewPolicyResolver;
 
   constructor({
     store,
@@ -57,6 +141,8 @@ export class TraceabilityApplication {
     installedSkillResolver = () => null,
     skillPolicyResolver = () => ({}),
     reverseOrchestrator = null,
+    reviewerResolver = () => null,
+    reviewPolicyResolver = () => ({ allowedRoles: [], allowedOutcomes: [] }),
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -64,6 +150,8 @@ export class TraceabilityApplication {
     if (typeof publisherKeyResolver !== "function") throw new TypeError("publisherKeyResolver must be a function");
     if (typeof installedSkillResolver !== "function") throw new TypeError("installedSkillResolver must be a function");
     if (typeof skillPolicyResolver !== "function") throw new TypeError("skillPolicyResolver must be a function");
+    if (typeof reviewerResolver !== "function") throw new TypeError("reviewerResolver must be a function");
+    if (typeof reviewPolicyResolver !== "function") throw new TypeError("reviewPolicyResolver must be a function");
     this.#store = store;
     this.#clock = clock;
     this.#runnerKeyResolver = runnerKeyResolver;
@@ -72,6 +160,8 @@ export class TraceabilityApplication {
     this.#installedSkillResolver = installedSkillResolver;
     this.#skillPolicyResolver = skillPolicyResolver;
     this.#reverseOrchestrator = reverseOrchestrator;
+    this.#reviewerResolver = reviewerResolver;
+    this.#reviewPolicyResolver = reviewPolicyResolver;
   }
 
   prepareEvaluation(input) {
@@ -137,9 +227,26 @@ export class TraceabilityApplication {
     return claim;
   }
 
-  async appendDecision(projectId, input) {
+  async appendDecision(projectId, input, requestContext = {}) {
     requireId(projectId, "projectId");
-    const decision = createDecision(input, this.#clock);
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("decision input must be an object");
+    }
+    for (const serverField of ["actorId", "actorRole", "createdAt"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`decision.${serverField} is assigned by the server`);
+    }
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const policy = (await this.#reviewPolicyResolver(projectId, { reviewer, decisionInput: input })) ?? {};
+    if (!Array.isArray(policy.allowedRoles) || !policy.allowedRoles.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot decide Claims in this project`);
+    }
+    if (!Array.isArray(policy.allowedDecisionTypes) || !policy.allowedDecisionTypes.includes(input.type)) {
+      throw new ReviewAuthorizationError(`Decision ${input.type} is not allowed by the review policy`);
+    }
+    const decision = createDecision({ ...input, actorId, actorRole }, this.#clock);
     await this.#store.appendDecision(projectId, decision);
     return decision;
   }
@@ -367,5 +474,587 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(runId, "runId");
     return this.#store.getReverseRun(projectId, runId);
+  }
+
+  async reviewReverseCandidate(projectId, runId, candidateId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    requireId(candidateId, "candidateId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("candidate review input must be an object");
+    }
+    assertOnlyFields(
+      input,
+      ["id", "outcome", "rationale", "candidateFeatureId", "acknowledgedConflictIds", "target", "normative"],
+      "candidateReview",
+    );
+    for (const serverField of ["actorId", "actorRole", "reviewedAt", "projectId", "runId", "candidateId"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`${serverField} is assigned by the server or route`);
+    }
+    const outcome = input.outcome;
+    if (!Object.hasOwn(CandidateReviewOutcome, outcome)) {
+      throw new TypeError(`candidateReview.outcome must be one of: ${Object.keys(CandidateReviewOutcome).join(", ")}`);
+    }
+
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+
+    const run = await this.#store.getReverseRun(projectId, runId);
+    if (!run) throw new PersistenceConflictError(`ReverseRun ${runId} does not exist in project ${projectId}`);
+    if (run.status !== "WAITING_REVIEW" || !run.mergedOutput) {
+      throw new PersistenceConflictError("Only a successful ReverseRun waiting for review can be baselined");
+    }
+    const candidate = run.mergedOutput.candidateClaims.find((item) => item.id === candidateId);
+    if (!candidate) throw new PersistenceConflictError(`Candidate Claim ${candidateId} does not exist in ReverseRun ${runId}`);
+
+    const policy = (await this.#reviewPolicyResolver(projectId, { reviewer, run, candidate })) ?? {};
+    if (!Array.isArray(policy.allowedRoles) || !policy.allowedRoles.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot review reverse candidates in this project`);
+    }
+    if (!Array.isArray(policy.allowedOutcomes) || !policy.allowedOutcomes.includes(input.outcome)) {
+      throw new ReviewAuthorizationError(`Outcome ${input.outcome} is not allowed by the review policy`);
+    }
+
+    const acknowledgedConflictIds = input.acknowledgedConflictIds ?? [];
+    if (!Array.isArray(acknowledgedConflictIds) || new Set(acknowledgedConflictIds).size !== acknowledgedConflictIds.length) {
+      throw new TypeError("acknowledgedConflictIds must be an array without duplicates");
+    }
+    const relatedConflicts = run.mergedOutput.conflicts.filter((conflict) => conflict.candidateIds.includes(candidateId));
+    const relatedConflictIds = new Set(relatedConflicts.map((conflict) => conflict.id));
+    if (acknowledgedConflictIds.some((id) => !relatedConflictIds.has(id))) {
+      throw new TypeError("acknowledgedConflictIds contains a conflict unrelated to the candidate");
+    }
+    if (outcome === CandidateReviewOutcome.CONFIRMED && relatedConflicts.length > 0) {
+      throw new PersistenceConflictError("A conflicted candidate cannot be confirmed until the conflict is resolved or recorded as an exception");
+    }
+    if (
+      outcome === CandidateReviewOutcome.EXCEPTION_RECORDED &&
+      relatedConflicts.some((conflict) => !acknowledgedConflictIds.includes(conflict.id))
+    ) {
+      throw new TypeError("Every related conflict must be explicitly acknowledged for EXCEPTION_RECORDED");
+    }
+
+    const requestFingerprint = contentId("CANDIDATE-REVIEW-REQUEST", {
+      projectId,
+      runId,
+      candidateId,
+      actorId,
+      actorRole,
+      input,
+    });
+    const existingReview = await this.#store.getReverseCandidateReview(projectId, runId, candidateId);
+    if (existingReview) {
+      if (
+        existingReview.review.id === input.id &&
+        existingReview.review.requestFingerprint === requestFingerprint
+      ) {
+        return existingReview;
+      }
+      throw new PersistenceConflictError(`Candidate ${candidateId} already has an immutable review`);
+    }
+
+    const baselining = [CandidateReviewOutcome.CONFIRMED, CandidateReviewOutcome.EXCEPTION_RECORDED].includes(outcome);
+    if (!baselining) {
+      if (input.target !== undefined || input.normative !== undefined || input.candidateFeatureId !== undefined) {
+        throw new TypeError(`${outcome} review must not create a normative baseline`);
+      }
+      const review = createReverseCandidateReview({
+        id: input.id,
+        requestFingerprint,
+        runId,
+        candidateId,
+        outcome,
+        rationale: input.rationale,
+        actorId,
+        actorRole,
+        acknowledgedConflictIds,
+        baselineRefs: null,
+      }, this.#clock);
+      return this.#store.appendReverseCandidateReview(projectId, {
+        review,
+        feature: null,
+        scope: null,
+        claim: null,
+        decision: null,
+        implementationMapping: null,
+        conformance: null,
+      });
+    }
+
+    const target = input.target;
+    const normative = input.normative;
+    if (!target || typeof target !== "object" || Array.isArray(target)) throw new TypeError("target is required");
+    if (!normative || typeof normative !== "object" || Array.isArray(normative)) throw new TypeError("normative is required");
+    assertOnlyFields(
+      target,
+      [
+        "featureMode", "featureId", "claimId", "scopeId", "decisionId",
+        "featureName", "businessDomain", "featureDescription", "associationRationale",
+      ],
+      "target",
+    );
+    assertOnlyFields(
+      normative,
+      [
+        "statement", "constraint", "scope", "effectiveFrom", "effectiveTo",
+        "authorityEvidenceRefs", "decisionContent", "validUntil",
+      ],
+      "normative",
+    );
+    const featureMode = target.featureMode;
+    if (!["CREATE", "EXISTING"].includes(featureMode)) throw new TypeError("target.featureMode must be CREATE or EXISTING");
+    const featureId = requireId(target.featureId, "target.featureId");
+    const existingBaseline = await this.#store.getFeatureBaseline(projectId, featureId);
+    let feature = null;
+    let selectedFeature;
+    if (featureMode === "CREATE") {
+      if (existingBaseline) throw new PersistenceConflictError(`Feature ${featureId} already exists`);
+      const candidateFeatureId = requireId(input.candidateFeatureId, "candidateFeatureId");
+      const candidateFeature = run.mergedOutput.candidateFeatures.find((item) => item.id === candidateFeatureId);
+      if (!candidateFeature) throw new PersistenceConflictError(`Candidate Feature ${candidateFeatureId} does not exist in ReverseRun ${runId}`);
+      if (candidateFeature.externalKey !== candidate.subjectKey && !target.associationRationale) {
+        throw new TypeError("target.associationRationale is required when Feature and Claim candidate keys differ");
+      }
+      feature = createFeatureVersion({
+        id: featureId,
+        version: 1,
+        name: target.featureName ?? candidateFeature.name,
+        businessDomain: target.businessDomain,
+        description: target.featureDescription ?? candidateFeature.descriptions[0] ?? null,
+      }, this.#clock);
+      selectedFeature = feature;
+    } else {
+      if (!existingBaseline) throw new PersistenceConflictError(`Feature ${featureId} does not exist`);
+      if (!target.associationRationale) {
+        throw new TypeError(
+          "target.associationRationale is required when attaching a reverse candidate to an existing Feature",
+        );
+      }
+      if (input.candidateFeatureId !== undefined) {
+        const candidateFeatureId = requireId(input.candidateFeatureId, "candidateFeatureId");
+        if (!run.mergedOutput.candidateFeatures.some((item) => item.id === candidateFeatureId)) {
+          throw new PersistenceConflictError(`Candidate Feature ${candidateFeatureId} does not exist in ReverseRun ${runId}`);
+        }
+      }
+      selectedFeature = existingBaseline.feature;
+    }
+
+    if (!normative.constraint || typeof normative.constraint !== "object" || Array.isArray(normative.constraint)) {
+      throw new TypeError("normative.constraint is required for deterministic conformance assessment");
+    }
+    const scope = createClaimScope({
+      id: target.scopeId,
+      version: 1,
+      scope: normative.scope,
+      effectiveFrom: normative.effectiveFrom,
+      effectiveTo: normative.effectiveTo,
+    }, this.#clock);
+    const evidenceSupport = relatedConflicts.length > 0
+      ? EvidenceSupport.CONTRADICTED
+      : candidate.sources.length > 1
+        ? EvidenceSupport.MULTI_SOURCE
+        : EvidenceSupport.SINGLE_SOURCE;
+    const factIds = [...new Set(candidate.evidence.map((item) => item.factId))];
+    const claim = createClaim({
+      id: target.claimId,
+      version: 1,
+      featureId,
+      type: "NORMATIVE_REQUIREMENT",
+      statement: normative.statement,
+      sourceType: "HUMAN",
+      evidenceSupport,
+      constraint: normative.constraint,
+      scopeId: scope.id,
+      scopeVersion: scope.version,
+      provenance: {
+        kind: "REVERSE_CANDIDATE_HUMAN_BASELINE",
+        reverseRunId: runId,
+        candidateId,
+        candidateFeatureId: input.candidateFeatureId ?? null,
+        candidateFeatureAssociationRationale: target.associationRationale ?? null,
+        candidateStatements: candidate.statements,
+        candidateConstraint: candidate.constraint,
+        candidateSources: candidate.sources,
+        factEvidence: candidate.evidence,
+      },
+    }, this.#clock);
+    const authorityEvidenceRefs = normative.authorityEvidenceRefs ?? [];
+    if (!Array.isArray(authorityEvidenceRefs)) throw new TypeError("normative.authorityEvidenceRefs must be an array");
+    const decision = createDecision({
+      id: target.decisionId,
+      claimId: claim.id,
+      claimVersion: claim.version,
+      scopeId: scope.id,
+      scopeVersion: scope.version,
+      type: outcome,
+      content: normative.decisionContent,
+      actorId,
+      actorRole,
+      evidenceRefs: [...factIds, ...authorityEvidenceRefs],
+      validUntil: normative.validUntil,
+    }, this.#clock);
+    const implementationMapping = createImplementationMapping({
+      claimId: claim.id,
+      claimVersion: claim.version,
+      scopeId: scope.id,
+      scopeVersion: scope.version,
+      snapshotManifestId: run.snapshotManifestId,
+      sourceComponentId: run.sourceComponentId,
+      sourceRunId: runId,
+      sourceCandidateId: candidateId,
+      factRefs: candidate.evidence,
+    }, this.#clock);
+    const conformanceStatus = relatedConflicts.length > 0
+      ? ConformanceStatus.CONFLICTED
+      : assessImplementationConformance(claim.constraint, candidate.constraint);
+    const conformance = createImplementationConformance({
+      claimId: claim.id,
+      claimVersion: claim.version,
+      scopeId: scope.id,
+      scopeVersion: scope.version,
+      snapshotManifestId: run.snapshotManifestId,
+      mappingId: implementationMapping.id,
+      status: conformanceStatus,
+      evidenceRefs: factIds,
+      analysisMethod: {
+        type: "DETERMINISTIC_CONSTRAINT_COMPARISON",
+        version: "1.0.0",
+        reverseRunId: runId,
+        candidateId,
+      },
+    }, this.#clock);
+    const review = createReverseCandidateReview({
+      id: input.id,
+      requestFingerprint,
+      runId,
+      candidateId,
+      outcome,
+      rationale: input.rationale,
+      actorId,
+      actorRole,
+      acknowledgedConflictIds,
+      baselineRefs: {
+        featureId,
+        featureVersion: selectedFeature.version,
+        scopeId: scope.id,
+        scopeVersion: scope.version,
+        claimId: claim.id,
+        claimVersion: claim.version,
+        decisionId: decision.id,
+        implementationMappingId: implementationMapping.id,
+        conformanceId: conformance.id,
+      },
+    }, this.#clock);
+    return this.#store.appendReverseCandidateReview(projectId, {
+      review,
+      feature,
+      scope,
+      claim,
+      decision,
+      implementationMapping,
+      conformance,
+    });
+  }
+
+  async listReverseCandidateReviews(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    return this.#store.listReverseCandidateReviews(projectId, runId);
+  }
+
+  async getFeatureTraceability(projectId, featureId, snapshotManifestId, { persist = false } = {}) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    requireId(snapshotManifestId, "snapshotManifestId");
+    const [baseline, snapshotManifest] = await Promise.all([
+      this.#store.getFeatureBaseline(projectId, featureId),
+      this.#store.getSnapshotManifest(projectId, snapshotManifestId),
+    ]);
+    if (!baseline) return null;
+    if (!snapshotManifest) {
+      throw new PersistenceConflictError(`SnapshotManifest ${snapshotManifestId} does not exist in project ${projectId}`);
+    }
+
+    const claimViews = [];
+    const persisted = [];
+    for (const claimRecord of baseline.claims) {
+      const { claim, scope, latestDecision } = claimRecord;
+      const mappings = baseline.implementationMappings
+        .filter((mapping) => mapping.claimId === claim.id && mapping.claimVersion === claim.version)
+        .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+      const currentMapping = mappings.find(
+        (mapping) => mapping.snapshotManifestId === snapshotManifestId && mapping.status === "ACTIVE",
+      ) ?? null;
+      const displayMapping = currentMapping ?? mappings.at(-1) ?? null;
+      const factIds = displayMapping ? displayMapping.factRefs.map((ref) => ref.factId) : [];
+      const facts = await this.#store.getFactGraphByReferences(
+        projectId,
+        displayMapping?.snapshotManifestId ?? snapshotManifestId,
+        factIds,
+      );
+      const implementation = implementationFromFacts(facts);
+      const conformances = baseline.conformances
+        .filter((item) => item.claimId === claim.id && item.claimVersion === claim.version)
+        .sort((left, right) => left.computedAt.localeCompare(right.computedAt));
+      const currentConformance = conformances.filter((item) => item.snapshotManifestId === snapshotManifestId).at(-1) ?? null;
+      const latestConformance = currentConformance ?? conformances.at(-1) ?? null;
+      const testSpecs = baseline.testSpecs
+        .filter((testSpec) => testSpec.verifiesClaims.some(
+          (reference) => reference.id === claim.id && reference.version === claim.version,
+        ))
+        .sort((left, right) => Number(right.approved) - Number(left.approved) || right.version - left.version || left.id.localeCompare(right.id));
+      const selectedTestSpec = testSpecs[0] ?? null;
+      const execution = selectedTestSpec
+        ? baseline.testExecutions.find(
+            (item) => item.testSpecId === selectedTestSpec.id && item.testSpecVersion === selectedTestSpec.version,
+          ) ?? null
+        : null;
+      const evidenceBundle = execution
+        ? await this.#store.getExecutionEvidence(projectId, execution.id)
+        : null;
+      const relatedReview = baseline.candidateReviews.find(
+        (item) => item.review.baselineRefs?.claimId === claim.id && item.review.baselineRefs?.claimVersion === claim.version,
+      ) ?? null;
+      const conflictIds = new Set(relatedReview?.review.acknowledgedConflictIds ?? []);
+      if (latestConformance?.status === ConformanceStatus.CONFLICTED && conflictIds.size === 0) {
+        conflictIds.add(contentId("CONFORMANCE-CONFLICT", {
+          claimId: claim.id,
+          claimVersion: claim.version,
+          snapshotManifestId,
+        }));
+      }
+      const conflicts = [...conflictIds].map((id) => ({
+        id,
+        type: "IMPLEMENTATION_EVIDENCE_CONFLICT",
+        status: "OPEN",
+        reason: "The implementation evidence or reverse candidates remain conflicted for this scope.",
+      }));
+      const evaluationInput = {
+        feature: baseline.feature,
+        claim: {
+          ...claim,
+          authorityStatus: authorityFromDecision(latestDecision),
+        },
+        decision: latestDecision,
+        scope,
+        snapshotManifest,
+        implementation,
+        implementationStatus: currentMapping ? "ACTIVE" : mappings.length > 0 ? "STALE" : "UNMAPPED",
+        conformance: latestConformance,
+        testSpec: selectedTestSpec,
+        execution,
+        evidence: evidenceBundle?.evidence ?? [],
+        conflicts,
+      };
+      const traceChain = evaluateTraceChain(evaluationInput, this.#clock);
+      if (persist) {
+        persisted.push(await this.#store.appendTraceChainRevision(projectId, traceChain, {
+          scopeVersion: scope.version,
+        }));
+      }
+      claimViews.push({
+        claim,
+        scope,
+        decisionHistory: claimRecord.decisionHistory,
+        latestDecision,
+        authorityStatus: authorityFromDecision(latestDecision),
+        implementationMappings: mappings,
+        selectedImplementationMapping: displayMapping,
+        facts,
+        conformance: latestConformance,
+        testSpecs,
+        selectedTestSpec,
+        execution,
+        evidence: evidenceBundle?.evidence ?? [],
+        traceChain,
+      });
+    }
+    const traceChains = claimViews.map((item) => item.traceChain);
+    return deepFreeze({
+      feature: baseline.feature,
+      snapshotManifest,
+      claims: claimViews,
+      dimensions: {
+        authority: claimViews.map((item) => ({ claimId: item.claim.id, status: item.traceChain.dimensions.authority })),
+        conformance: claimViews.map((item) => ({ claimId: item.claim.id, status: item.traceChain.dimensions.conformance })),
+        verification: claimViews.map((item) => ({ claimId: item.claim.id, status: item.traceChain.dimensions.verification })),
+        freshness: claimViews.map((item) => ({ claimId: item.claim.id, status: item.traceChain.dimensions.freshness })),
+        conflict: claimViews.map((item) => ({ claimId: item.claim.id, status: item.traceChain.dimensions.conflict })),
+      },
+      traceChains,
+      gaps: traceChains.flatMap((chain) => chain.gaps.map((gap) => ({ chainId: chain.id, ...gap }))),
+      persisted,
+      computedAt: this.#clock().toISOString(),
+    });
+  }
+
+  async recomputeFeatureTraceChains(projectId, featureId, snapshotManifestId) {
+    return this.getFeatureTraceability(projectId, featureId, snapshotManifestId, { persist: true });
+  }
+
+  async compareAndPersistSnapshots(projectId, input) {
+    requireId(projectId, "projectId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("change-set comparison input must be an object");
+    }
+    assertOnlyFields(input, ["id", "fromSnapshotManifestId", "toSnapshotManifestId"], "changeSet");
+    const changeSetId = requireId(input.id, "changeSet.id");
+    const fromSnapshotManifestId = requireId(input.fromSnapshotManifestId, "fromSnapshotManifestId");
+    const toSnapshotManifestId = requireId(input.toSnapshotManifestId, "toSnapshotManifestId");
+    if (fromSnapshotManifestId === toSnapshotManifestId) {
+      throw new TypeError("fromSnapshotManifestId and toSnapshotManifestId must differ");
+    }
+    const existing = await this.#store.getChangeImpact(projectId, changeSetId);
+    if (existing) {
+      if (
+        existing.changeSet.fromSnapshotManifestId === fromSnapshotManifestId &&
+        existing.changeSet.toSnapshotManifestId === toSnapshotManifestId
+      ) {
+        return existing;
+      }
+      throw new PersistenceConflictError(`ChangeSet ${changeSetId} already compares a different Snapshot pair`);
+    }
+    const [fromManifest, toManifest, fromGraph, toGraph, mappings] = await Promise.all([
+      this.#store.getSnapshotManifest(projectId, fromSnapshotManifestId),
+      this.#store.getSnapshotManifest(projectId, toSnapshotManifestId),
+      this.#store.getSnapshotFactGraph(projectId, fromSnapshotManifestId),
+      this.#store.getSnapshotFactGraph(projectId, toSnapshotManifestId),
+      this.#store.listImplementationMappings(projectId),
+    ]);
+    if (!fromManifest || !toManifest) {
+      throw new PersistenceConflictError("Both Snapshot Manifests must exist in the project");
+    }
+    const changes = compareFactGraphs(fromGraph, toGraph);
+    const warnings = [];
+    if (!fromGraph.complete) warnings.push("FROM_FACT_GRAPH_INCOMPLETE");
+    if (!toGraph.complete) warnings.push("TO_FACT_GRAPH_INCOMPLETE");
+    const changeSet = createChangeSet({
+      id: changeSetId,
+      fromSnapshotManifestId,
+      toSnapshotManifestId,
+      complete: fromManifest.complete && toManifest.complete && fromGraph.complete && toGraph.complete,
+      warnings,
+      changes,
+    }, this.#clock);
+
+    const artifactByFactRef = new Map([
+      ...fromGraph.nodes.map((node) => [node.factId, node.source?.artifact ?? null]),
+      ...fromGraph.edges.map((edge) => [edge.id, edge.source?.artifact ?? null]),
+    ]);
+    const changedBeforeRefs = new Map(
+      changes.filter((change) => change.beforeFactId).map((change) => [change.beforeFactId, change]),
+    );
+    const addedByArtifact = new Map();
+    for (const change of changes.filter((item) => item.kind === "ADDED" && item.artifact)) {
+      const current = addedByArtifact.get(change.artifact) ?? [];
+      current.push(change);
+      addedByArtifact.set(change.artifact, current);
+    }
+    const baselineCache = new Map();
+    const affectedMappings = [];
+    const continuityPackages = [];
+    const fromIndexes = graphEntityIndexes(fromGraph);
+    const toIndexes = graphEntityIndexes(toGraph);
+    for (const mapping of mappings.filter(
+      (item) => item.snapshotManifestId === fromSnapshotManifestId && item.status === "ACTIVE",
+    )) {
+      const directChanges = mapping.factRefs.map((ref) => changedBeforeRefs.get(ref.factId)).filter(Boolean);
+      const mappedArtifacts = new Set(mapping.factRefs.map((ref) => artifactByFactRef.get(ref.factId)).filter(Boolean));
+      const conservativeAdditions = [...mappedArtifacts].flatMap((artifact) => addedByArtifact.get(artifact) ?? []);
+      const relevant = [...new Map([...directChanges, ...conservativeAdditions].map((change) => [change.id, change])).values()];
+      let baseline = baselineCache.get(mapping.featureId);
+      if (!baseline) {
+        baseline = await this.#store.getFeatureBaseline(projectId, mapping.featureId);
+        baselineCache.set(mapping.featureId, baseline);
+      }
+      const testSpecIds = (baseline?.testSpecs ?? [])
+        .filter((testSpec) => testSpec.verifiesClaims.some(
+          (claimRef) => claimRef.id === mapping.claimId && claimRef.version === mapping.claimVersion,
+        ))
+        .map((testSpec) => testSpec.id);
+      if (relevant.length > 0) {
+        affectedMappings.push({
+          ...mapping,
+          changeIds: relevant.map((change) => change.id),
+          testSpecIds,
+        });
+        continue;
+      }
+
+      const priorConformance = (baseline?.conformances ?? [])
+        .filter((item) => item.mappingId === mapping.id && item.snapshotManifestId === fromSnapshotManifestId)
+        .sort((left, right) => left.computedAt.localeCompare(right.computedAt))
+        .at(-1) ?? null;
+      const rebindings = mapping.factRefs.map((ref) => {
+        const stableProducer = fromIndexes.byFactId.get(ref.factId);
+        const current = stableProducer ? toIndexes.byStableProducer.get(stableProducer) : null;
+        return current
+          ? { fromFactId: ref.factId, toFactId: current.factId, relation: ref.relation }
+          : null;
+      });
+      if (!priorConformance || rebindings.some((item) => item === null)) continue;
+      const implementationMapping = createImplementationMapping({
+        claimId: mapping.claimId,
+        claimVersion: mapping.claimVersion,
+        scopeId: mapping.scopeId,
+        scopeVersion: mapping.scopeVersion,
+        snapshotManifestId: toSnapshotManifestId,
+        sourceComponentId: toManifest.components.source.id,
+        sourceRunId: mapping.sourceRunId,
+        sourceCandidateId: mapping.sourceCandidateId,
+        factRefs: rebindings.map((item) => ({ factId: item.toFactId, relation: item.relation })),
+      }, this.#clock);
+      const conformance = createImplementationConformance({
+        claimId: mapping.claimId,
+        claimVersion: mapping.claimVersion,
+        scopeId: mapping.scopeId,
+        scopeVersion: mapping.scopeVersion,
+        snapshotManifestId: toSnapshotManifestId,
+        mappingId: implementationMapping.id,
+        status: priorConformance.status,
+        evidenceRefs: rebindings.map((item) => item.toFactId),
+        analysisMethod: {
+          type: "SEMANTIC_FACT_CONTINUITY",
+          version: "1.0.0",
+          changeSetId,
+          derivedFromMappingId: mapping.id,
+          derivedFromConformanceId: priorConformance.id,
+        },
+      }, this.#clock);
+      const continuity = createImplementationContinuity({
+        changeSetId,
+        featureId: mapping.featureId,
+        claimId: mapping.claimId,
+        claimVersion: mapping.claimVersion,
+        scopeId: mapping.scopeId,
+        scopeVersion: mapping.scopeVersion,
+        fromSnapshotManifestId,
+        toSnapshotManifestId,
+        fromMappingId: mapping.id,
+        toMappingId: implementationMapping.id,
+        fromConformanceId: priorConformance.id,
+        toConformanceId: conformance.id,
+        factRefRebindings: rebindings,
+      });
+      continuityPackages.push({ continuity, implementationMapping, conformance });
+    }
+    const impact = createImpactAssessment({
+      changeSet,
+      affectedMappings,
+      continuities: continuityPackages.map((item) => item.continuity),
+    }, this.#clock);
+    return this.#store.appendChangeImpact(projectId, {
+      changeSet,
+      impact,
+      continuities: continuityPackages,
+    });
+  }
+
+  async getChangeImpact(projectId, changeSetId) {
+    requireId(projectId, "projectId");
+    requireId(changeSetId, "changeSetId");
+    return this.#store.getChangeImpact(projectId, changeSetId);
   }
 }

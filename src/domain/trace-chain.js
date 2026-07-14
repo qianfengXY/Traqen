@@ -57,6 +57,108 @@ function implementationMapped(implementation) {
   );
 }
 
+function traceNode(type, value, fallbackId) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return {
+      type,
+      id: value.id ?? value.factId ?? value.naturalKey ?? fallbackId,
+      version: value.version ?? null,
+    };
+  }
+  return { type, id: value === undefined || value === null ? fallbackId : String(value), version: null };
+}
+
+function createSegments(input, chainId, identity, conformance, executionIsCurrent) {
+  const segments = [];
+  const append = (from, relation, to, provenance, status = "ACTIVE") => {
+    segments.push(Object.freeze({
+      id: contentId("TRACE-SEGMENT", { chainId, from, relation, to }),
+      from,
+      relation,
+      to,
+      provenance,
+      status,
+    }));
+  };
+  const feature = traceNode("FEATURE", input.feature, identity.featureId);
+  const claim = traceNode("CLAIM", input.claim, identity.claimId);
+  append(feature, "HAS_RULE", claim, "GOVERNED_BASELINE");
+  if (input.decision?.id) {
+    append(
+      claim,
+      "CONFIRMED_BY",
+      traceNode("DECISION", input.decision, input.decision.id),
+      "AUTHORIZED_HUMAN_DECISION",
+      [AuthorityStatus.CONFIRMED, AuthorityStatus.EXCEPTION_RECORDED].includes(input.claim.authorityStatus)
+        ? "ACTIVE"
+        : "PENDING",
+    );
+  }
+  if (input.scope?.id) {
+    append(claim, "APPLIES_IN", traceNode("CLAIM_SCOPE", input.scope, identity.scopeId), "GOVERNED_BASELINE");
+  }
+  if (input.conformance) {
+    const conformanceNode = traceNode(
+      "IMPLEMENTATION_CONFORMANCE",
+      input.conformance,
+      contentId("CONFORMANCE-REF", {
+        claimId: identity.claimId,
+        claimVersion: identity.claimVersion,
+        snapshotManifestId: identity.snapshotManifestId,
+      }),
+    );
+    append(
+      claim,
+      "ASSESSED_BY",
+      conformanceNode,
+      input.conformance.analysisMethod?.type ?? "CONFORMANCE_ASSESSMENT",
+      conformance === ConformanceStatus.STALE ? "STALE" : "ACTIVE",
+    );
+    if (conformance === ConformanceStatus.CONFORMS) {
+      append(conformanceNode, "CONFORMS_TO", claim, "DETERMINISTIC_CONFORMANCE", "ACTIVE");
+    } else if ([ConformanceStatus.DEVIATES, ConformanceStatus.PARTIAL].includes(conformance)) {
+      append(conformanceNode, "DEVIATES_FROM", claim, "DETERMINISTIC_CONFORMANCE", "ACTIVE");
+    }
+  }
+  const implementationRelations = {
+    endpoints: ["ENDPOINT", "EXPOSED_BY"],
+    codeSymbols: ["CODE_SYMBOL", "IMPLEMENTED_BY"],
+    dataObjects: ["DATA_OBJECT", "USES_DATA"],
+    configurations: ["CONFIGURATION", "CONTROLLED_BY"],
+    dependencies: ["EXTERNAL_DEPENDENCY", "DEPENDS_ON"],
+  };
+  for (const [collection, [type, relation]] of Object.entries(implementationRelations)) {
+    for (const [index, item] of (input.implementation?.[collection] ?? []).entries()) {
+      append(
+        claim,
+        relation,
+        traceNode(type, item, `${type}-${index + 1}`),
+        item?.extractor ? "DETERMINISTIC_FACT" : "IMPLEMENTATION_MAPPING",
+        input.implementationStatus === "STALE" ? "STALE" : "ACTIVE",
+      );
+    }
+  }
+  if (input.testSpec?.id) {
+    const testSpec = traceNode("TEST_SPEC", input.testSpec, input.testSpec.id);
+    append(claim, "VERIFIED_BY", testSpec, "APPROVED_TEST_SPEC", input.testSpec.approved ? "ACTIVE" : "PENDING");
+    if (input.execution?.id) {
+      const execution = traceNode("TEST_EXECUTION", input.execution, input.execution.id);
+      append(testSpec, "EXECUTED_AS", execution, "ATTESTED_RUNNER", executionIsCurrent ? "ACTIVE" : "STALE");
+      for (const [index, evidence] of (input.evidence ?? []).entries()) {
+        if (evidence.executionId !== input.execution.id) continue;
+        append(
+          execution,
+          "PROVED_BY",
+          traceNode("EVIDENCE", evidence, `EVIDENCE-${index + 1}`),
+          evidence.integrity === IntegrityStatus.VERIFIED ? "VERIFIED_EVIDENCE" : "UNVERIFIED_EVIDENCE",
+          evidence.freshness === EvidenceFreshness.STALE ? "STALE" : "ACTIVE",
+        );
+      }
+    }
+  }
+  return Object.freeze(segments);
+}
+
 function addConformanceGaps(input, currentIdentity, gaps) {
   const status = input.conformance?.status ?? ConformanceStatus.UNKNOWN;
   assertEnum(ConformanceStatus, status, "conformance.status");
@@ -227,6 +329,7 @@ export function evaluateTraceChain(input, clock = () => new Date()) {
     gaps.push(gap(TraceGapType.UNRESOLVED_CONFLICT, "The trace chain contains unresolved conflicts."));
   }
 
+  const uniqueGaps = [...new Map(gaps.map((item) => [item.type, item])).values()];
   const dimensions = Object.freeze({
     authority,
     evidenceSupport: assertEnum(
@@ -247,9 +350,23 @@ export function evaluateTraceChain(input, clock = () => new Date()) {
     snapshotManifestId: input.snapshotManifest?.id ?? null,
     deploymentId: input.snapshotManifest?.components?.deployment?.id ?? null,
   };
+  const chainId = contentId("TRACE-CHAIN", identity);
+  const segments = createSegments(input, chainId, identity, conformance, executionIsCurrent);
+  const conflicts = Object.freeze(
+    (input.conflicts ?? []).map((conflict, index) => Object.freeze(
+      typeof conflict === "string"
+        ? { id: conflict, type: "UNSPECIFIED", status: "OPEN", reason: null }
+        : {
+            id: conflict.id ?? contentId("TRACE-CONFLICT", { chainId, index, conflict }),
+            type: conflict.type ?? "UNSPECIFIED",
+            status: conflict.status ?? "OPEN",
+            reason: conflict.reason ?? null,
+          },
+    )),
+  );
 
   return Object.freeze({
-    id: contentId("TRACE-CHAIN", identity),
+    id: chainId,
     ...identity,
     dimensions,
     stages: Object.freeze([
@@ -261,8 +378,10 @@ export function evaluateTraceChain(input, clock = () => new Date()) {
       { name: "EXECUTION", status: verification },
       { name: "EVIDENCE", status: freshness },
     ]),
-    complete: !gaps.some((item) => item.severity === GapSeverity.BLOCKING),
-    gaps: Object.freeze(gaps),
+    segments,
+    conflicts,
+    complete: !uniqueGaps.some((item) => item.severity === GapSeverity.BLOCKING),
+    gaps: Object.freeze(uniqueGaps),
     computedAt: clock().toISOString(),
   });
 }

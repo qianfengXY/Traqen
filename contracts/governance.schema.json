@@ -45,6 +45,21 @@
         "statement": { "type": "string", "minLength": 1 },
         "sourceType": { "enum": ["AI_CANDIDATE", "HUMAN", "FORMAL_AUTHORITY", "DETERMINISTIC_DERIVATION"] },
         "evidenceSupport": { "enum": ["NONE", "SINGLE_SOURCE", "MULTI_SOURCE", "CONTRADICTED", "INCOMPLETE"] },
+        "constraint": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["dimension", "operator", "value"],
+              "properties": {
+                "dimension": { "type": "string", "minLength": 1 },
+                "operator": { "enum": ["EQUALS", "NOT_EQUALS", "IN", "NOT_IN", "ALLOWS", "FORBIDS", "REQUIRES"] },
+                "value": true
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
         "scopeId": { "type": "string", "minLength": 1 },
         "scopeVersion": { "type": "integer", "minimum": 1 },
         "provenance": { "type": "object" },
@@ -76,9 +91,30 @@
       },
       "additionalProperties": false
     },
+    "DecisionRequest": {
+      "type": "object",
+      "required": ["id", "claimId", "claimVersion", "scopeId", "scopeVersion", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "type": {
+          "enum": ["CONFIRMED", "REJECTED", "EXCEPTION_RECORDED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"]
+        },
+        "content": { "type": ["string", "null"] },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
     "FeatureBaseline": {
       "type": "object",
-      "required": ["feature", "claims", "testSpecs", "testExecutions", "traceChains"],
+      "required": [
+        "feature", "claims", "testSpecs", "testExecutions", "traceChains",
+        "implementationMappings", "conformances", "candidateReviews"
+      ],
       "properties": {
         "feature": { "$ref": "#/$defs/FeatureVersion" },
         "claims": {
@@ -103,7 +139,19 @@
           "type": "array",
           "items": { "$ref": "./execution-evidence.schema.json#/$defs/TestExecutionSummary" }
         },
-        "traceChains": { "type": "array", "items": { "type": "object" } }
+        "traceChains": { "type": "array", "items": { "type": "object" } },
+        "implementationMappings": {
+          "type": "array",
+          "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" }
+        },
+        "conformances": {
+          "type": "array",
+          "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationConformance" }
+        },
+        "candidateReviews": {
+          "type": "array",
+          "items": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+        }
       },
       "additionalProperties": false
     }

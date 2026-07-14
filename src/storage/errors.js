@@ -25,3 +25,17 @@ export class SkillAttestationError extends Error {
     this.name = "SkillAttestationError";
   }
 }
+
+export class ReviewAuthenticationError extends Error {
+  constructor(message = "A trusted reviewer identity is required") {
+    super(message);
+    this.name = "ReviewAuthenticationError";
+  }
+}
+
+export class ReviewAuthorizationError extends Error {
+  constructor(message = "The reviewer is not authorized for this decision") {
+    super(message);
+    this.name = "ReviewAuthorizationError";
+  }
+}

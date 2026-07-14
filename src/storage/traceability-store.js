@@ -3,6 +3,10 @@ export class TraceabilityStore {
     throw new Error("appendSnapshotManifest must be implemented");
   }
 
+  async getSnapshotManifest(_projectId, _snapshotManifestId) {
+    throw new Error("getSnapshotManifest must be implemented");
+  }
+
   async appendTraceChainRevision(_projectId, _chain, _options = {}) {
     throw new Error("appendTraceChainRevision must be implemented");
   }
@@ -59,6 +63,18 @@ export class TraceabilityStore {
     throw new Error("getFactBundles must be implemented");
   }
 
+  async getFactGraphByReferences(_projectId, _snapshotManifestId, _factRefs) {
+    throw new Error("getFactGraphByReferences must be implemented");
+  }
+
+  async getSnapshotFactGraph(_projectId, _snapshotManifestId, _maxNodes = 100000) {
+    throw new Error("getSnapshotFactGraph must be implemented");
+  }
+
+  async listImplementationMappings(_projectId) {
+    throw new Error("listImplementationMappings must be implemented");
+  }
+
   async appendReverseSkillRegistration(_registration) {
     throw new Error("appendReverseSkillRegistration must be implemented");
   }
@@ -77,5 +93,25 @@ export class TraceabilityStore {
 
   async getReverseRun(_projectId, _runId) {
     throw new Error("getReverseRun must be implemented");
+  }
+
+  async appendReverseCandidateReview(_projectId, _reviewPackage) {
+    throw new Error("appendReverseCandidateReview must be implemented");
+  }
+
+  async getReverseCandidateReview(_projectId, _runId, _candidateId) {
+    throw new Error("getReverseCandidateReview must be implemented");
+  }
+
+  async listReverseCandidateReviews(_projectId, _runId) {
+    throw new Error("listReverseCandidateReviews must be implemented");
+  }
+
+  async appendChangeImpact(_projectId, _changeImpact) {
+    throw new Error("appendChangeImpact must be implemented");
+  }
+
+  async getChangeImpact(_projectId, _changeSetId) {
+    throw new Error("getChangeImpact must be implemented");
   }
 }

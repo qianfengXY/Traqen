@@ -47,6 +47,25 @@
       },
       "additionalProperties": true
     },
+    "decision": {
+      "type": ["object", "null"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "CONFIRMED",
+            "REJECTED",
+            "EXCEPTION_RECORDED",
+            "INSUFFICIENT_EVIDENCE",
+            "DEFERRED",
+            "DEPRECATED"
+          ]
+        },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
     "scope": {
       "type": "object",
       "required": ["id"],

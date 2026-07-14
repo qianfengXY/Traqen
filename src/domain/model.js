@@ -127,6 +127,16 @@ export const ConstraintOperator = enumValues([
   "REQUIRES",
 ]);
 
+export const CandidateReviewOutcome = enumValues([
+  "CONFIRMED",
+  "EXCEPTION_RECORDED",
+  "REJECTED",
+  "INSUFFICIENT_EVIDENCE",
+  "DEFERRED",
+]);
+
+export const ImplementationMappingStatus = enumValues(["ACTIVE", "STALE"]);
+
 export const AuthorityStatus = enumValues([
   "UNREVIEWED",
   "CONFIRMED",

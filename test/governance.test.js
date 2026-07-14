@@ -25,6 +25,7 @@ test("governance factories create immutable versioned records", () => {
       statement: "A normal user may submit only a DRAFT order.",
       sourceType: "HUMAN",
       evidenceSupport: "MULTI_SOURCE",
+      constraint: { dimension: "requiredState", operator: "EQUALS", value: "DRAFT" },
       scopeId: scope.id,
       scopeVersion: scope.version,
     },
@@ -35,6 +36,7 @@ test("governance factories create immutable versioned records", () => {
   assert.equal(Object.isFrozen(scope.scope), true);
   assert.equal(Object.isFrozen(claim.provenance), true);
   assert.equal(claim.createdAt, "2026-07-14T05:00:00.000Z");
+  assert.deepEqual(claim.constraint, { dimension: "requiredState", operator: "EQUALS", value: "DRAFT" });
 });
 
 test("decision creation deduplicates evidence references without changing the claim", () => {

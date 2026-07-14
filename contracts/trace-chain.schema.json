@@ -13,6 +13,8 @@
     "deploymentId",
     "dimensions",
     "stages",
+    "segments",
+    "conflicts",
     "complete",
     "gaps",
     "computedAt"
@@ -71,6 +73,36 @@
         "additionalProperties": false
       }
     },
+    "segments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "from", "relation", "to", "provenance", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "from": { "$ref": "#/$defs/NodeRef" },
+          "relation": { "type": "string", "minLength": 1 },
+          "to": { "$ref": "#/$defs/NodeRef" },
+          "provenance": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["ACTIVE", "PENDING", "STALE"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "status", "reason"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 },
+          "reason": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    },
     "complete": { "type": "boolean" },
     "gaps": {
       "type": "array",
@@ -112,5 +144,17 @@
     },
     "computedAt": { "type": "string", "format": "date-time" }
   },
-  "additionalProperties": false
+  "additionalProperties": false,
+  "$defs": {
+    "NodeRef": {
+      "type": "object",
+      "required": ["type", "id", "version"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": ["integer", "string", "null"] }
+      },
+      "additionalProperties": false
+    }
+  }
 }

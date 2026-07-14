@@ -6,7 +6,7 @@ The implementation follows one non-negotiable product vision:
 
 > For every governed high-value feature, show an explainable chain from confirmed business intent to evidence produced against the actual deployment, and expose every missing, stale, conflicting, or failed link.
 
-## Current implementation slice
+## Implemented foundation
 
 The first executable slice is the framework-neutral domain kernel. It provides:
 
@@ -92,7 +92,18 @@ The Reverse Skill Framework slice adds:
 - append-only PostgreSQL run events, per-Skill attempts, raw and normalized outputs, conflicts, and open questions;
 - APIs for Skill registration/listing and synchronous bounded Reverse Runs.
 
-The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
+The governed Feature-traceability slice adds:
+
+- authenticated, policy-checked, statement-level candidate review with `CONFIRMED`, `EXCEPTION_RECORDED`, `REJECTED`, `INSUFFICIENT_EVIDENCE`, and `DEFERRED` outcomes;
+- atomic conversion of an approved implementation candidate into a distinct human-authored normative Claim, bound Scope, append-only Decision, exact Fact mapping, and deterministic conformance result;
+- explicit protection against client-supplied reviewer identity, candidate restatement, unrelated conflict acknowledgement, cross-Scope decisions, and direct promotion of Skill output into business truth;
+- a server-derived Feature traceability view whose authority, conformance, verification, freshness, and conflict dimensions remain independent;
+- ordered trace segments covering Feature, Claim, Decision, Scope, conformance, implementation Facts, TestSpec, execution, and Evidence, with explicit `TraceGap` records instead of a composite green score;
+- immutable Snapshot-to-Snapshot `ChangeSet`, impact, invalidation, and semantic-continuity records with affected Feature/Claim/TestSpec selection, Scope, reasons, and recommended actions;
+- deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
+- append-only PostgreSQL migrations through `0007_change_impact`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
+
+The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision and candidate-review routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
 
 ## Run
 
@@ -106,7 +117,7 @@ npm run scan:self
 npm run api:dev
 ```
 
-The development API binds to `127.0.0.1:3000` by default. It is intentionally unauthenticated and must not be exposed outside a local development environment.
+The development API binds to `127.0.0.1:3000` by default. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
 
 Evaluate another trace-chain input:
 
@@ -125,6 +136,8 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
 
-Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions for the later human-governance flow.
+Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions until the separate authorized review flow records an outcome.
+
+Review one candidate with `POST /v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews`, then read its governed baseline and server-derived proof chain from `GET /v1/projects/{projectId}/features/{featureId}/baseline` and `GET /v1/projects/{projectId}/features/{featureId}/traceability?snapshotManifestId=...`. Compare two manifests with `POST /v1/projects/{projectId}/change-sets`; the immutable impact record is available at `GET /v1/projects/{projectId}/change-sets/{changeSetId}/impact`.
 
 The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md).

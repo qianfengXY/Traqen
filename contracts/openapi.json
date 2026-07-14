@@ -3,7 +3,7 @@
   "info": {
     "title": "Traqen Traceability API",
     "version": "0.1.0",
-    "description": "API for deterministic fact ingestion, controlled Reverse Skill runs, trace-chain evaluation, append-only business governance, TestSpec validation, and attested execution Evidence ingestion. The development server is intentionally unauthenticated."
+    "description": "API for deterministic fact ingestion, controlled Reverse Skill runs, authorized statement-level governance, server-derived Feature traceability, layered Snapshot impact, TestSpec validation, and attested execution Evidence ingestion. The local development server is not a production authentication boundary; Decision and candidate-review operations fail closed without configured reviewer identity."
   },
   "paths": {
     "/health": {
@@ -143,6 +143,8 @@
         "responses": {
           "201": { "$ref": "#/components/responses/DecisionCreated" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
           "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
@@ -168,6 +170,85 @@
               }
             }
           },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/traceability": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "snapshotManifestId",
+          "in": "query",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getFeatureTraceability",
+        "responses": {
+          "200": { "$ref": "#/components/responses/FeatureTraceability" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "recomputeFeatureTraceChains",
+        "requestBody": { "$ref": "#/components/requestBodies/TraceChainRecompute" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/FeatureTraceability" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/change-sets": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "compareSnapshotManifests",
+        "requestBody": { "$ref": "#/components/requestBodies/ChangeSetComparison" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ChangeImpact" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/change-sets/{changeSetId}/impact": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "changeSetId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getChangeImpact",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ChangeImpact" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -352,6 +433,42 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/reviews": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "get": {
+        "operationId": "listReverseCandidateReviews",
+        "responses": {
+          "200": { "$ref": "#/components/responses/CandidateReviewList" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" },
+        {
+          "name": "candidateId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "reviewReverseCandidate",
+        "requestBody": { "$ref": "#/components/requestBodies/CandidateReview" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/CandidateReviewed" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
     }
   },
   "components": {
@@ -416,7 +533,7 @@
       },
       "Decision": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/DecisionRequest" } } }
       },
       "TestSpec": {
         "required": true,
@@ -444,6 +561,33 @@
         "required": true,
         "content": {
           "application/json": { "schema": { "$ref": "./reverse-run.schema.json" } }
+        }
+      },
+      "CandidateReview": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./candidate-review.schema.json" } }
+        }
+      },
+      "TraceChainRecompute": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["snapshotManifestId"],
+              "properties": { "snapshotManifestId": { "type": "string", "minLength": 1 } },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "ChangeSetComparison": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./change-impact.schema.json#/$defs/ChangeSetRequest" }
+          }
         }
       }
     },
@@ -498,6 +642,14 @@
       },
       "SkillUnauthorized": {
         "description": "Skill publisher attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ReviewerUnauthenticated": {
+        "description": "A trusted reviewer identity could not be established",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ReviewerForbidden": {
+        "description": "The reviewer role or outcome is not allowed by project policy",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "FeatureVersionCreated": {
@@ -569,6 +721,48 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./reverse-run.schema.json#/$defs/ReverseRun" }
+          }
+        }
+      },
+      "CandidateReviewed": {
+        "description": "Append-only candidate review and any atomically created baseline records",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+          }
+        }
+      },
+      "CandidateReviewList": {
+        "description": "Append-only statement-level reviews for a ReverseRun",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["reviews"],
+              "properties": {
+                "reviews": {
+                  "type": "array",
+                  "items": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "FeatureTraceability": {
+        "description": "Server-derived Feature view with independent dimensions, Fact mappings, proof chains, and explicit gaps",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./feature-traceability.schema.json" }
+          }
+        }
+      },
+      "ChangeImpact": {
+        "description": "Immutable Snapshot comparison with deterministic implementation invalidations and preserved business truth",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./change-impact.schema.json" }
           }
         }
       }

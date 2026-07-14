@@ -23,6 +23,8 @@ test("trace-chain output contract stays aligned with domain gap types", async ()
 
   assert.equal(contract.title, "TraceChain");
   assert.deepEqual([...contractGapTypes].sort(), Object.keys(TraceGapType).sort());
+  assert.ok(contract.required.includes("segments"));
+  assert.ok(contract.required.includes("conflicts"));
 });
 
 test("OpenAPI contract exposes the implemented trace-chain routes", async () => {
@@ -47,6 +49,22 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(
     contract.paths["/v1/projects/{projectId}/features/{featureId}/baseline"].get.operationId,
     "getFeatureBaseline",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/traceability"].get.operationId,
+    "getFeatureTraceability",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute"].post.operationId,
+    "recomputeFeatureTraceChains",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/change-sets"].post.operationId,
+    "compareSnapshotManifests",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/change-sets/{changeSetId}/impact"].get.operationId,
+    "getChangeImpact",
   );
   assert.equal(
     contract.paths["/v1/projects/{projectId}/test-specs"].post.operationId,
@@ -75,6 +93,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(
     contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}"].get.operationId,
     "getReverseRun",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews"].post.operationId,
+    "reviewReverseCandidate",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}/reviews"].get.operationId,
+    "listReverseCandidateReviews",
   );
 });
 
@@ -118,8 +144,55 @@ test("governance contract defines immutable version fields", async () => {
   assert.ok(contract.$defs.FeatureVersion.required.includes("version"));
   assert.ok(contract.$defs.Claim.required.includes("scopeVersion"));
   assert.ok(contract.$defs.Decision.required.includes("claimVersion"));
+  assert.equal(contract.$defs.DecisionRequest.properties.actorId, undefined);
   assert.ok(contract.$defs.FeatureBaseline.required.includes("testSpecs"));
   assert.ok(contract.$defs.FeatureBaseline.required.includes("testExecutions"));
+  assert.ok(contract.$defs.FeatureBaseline.required.includes("implementationMappings"));
+  assert.ok(contract.$defs.FeatureBaseline.required.includes("conformances"));
+  assert.ok(contract.$defs.Claim.properties.constraint);
+});
+
+test("candidate review contract keeps reviewer identity server-side and baseline creation explicit", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/candidate-review.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "ReverseCandidateReviewRequest");
+  assert.equal(contract.properties.actorId, undefined);
+  assert.ok(contract.required.includes("outcome"));
+  assert.ok(contract.$defs.NormativeDecision.required.includes("constraint"));
+  assert.ok(contract.$defs.ReviewPackage.required.includes("implementationMapping"));
+  assert.ok(contract.$defs.ImplementationConformance.required.includes("snapshotManifestId"));
+});
+
+test("Feature traceability contract exposes independent dimensions, ordered chains, and gaps", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/feature-traceability.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "FeatureTraceability");
+  assert.ok(contract.required.includes("dimensions"));
+  assert.ok(contract.required.includes("traceChains"));
+  assert.ok(contract.required.includes("gaps"));
+  assert.ok(contract.$defs.ClaimTraceability.required.includes("facts"));
+  assert.ok(contract.$defs.ClaimTraceability.required.includes("traceChain"));
+});
+
+test("change-impact contract separates invalidated derived layers from preserved business truth", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/change-impact.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "ChangeImpact");
+  assert.ok(contract.$defs.ChangeSet.required.includes("changes"));
+  assert.ok(contract.$defs.ImpactAssessment.required.includes("invalidations"));
+  assert.ok(contract.$defs.Invalidation.required.includes("layers"));
+  assert.ok(contract.$defs.Invalidation.required.includes("preserves"));
+  assert.ok(contract.$defs.Invalidation.required.includes("scopeId"));
+  assert.ok(contract.$defs.Invalidation.required.includes("recommendedActions"));
+  assert.ok(contract.required.includes("continuities"));
+  assert.ok(contract.$defs.ImpactAssessment.required.includes("continuedFeatureIds"));
+  assert.ok(contract.$defs.ImplementationContinuity.required.includes("factRefRebindings"));
 });
 
 test("TestSpec contract exposes traceability and execution-policy boundaries", async () => {

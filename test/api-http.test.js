@@ -28,6 +28,8 @@ async function startServer(t, options = {}) {
     installedSkillResolver,
     skillPolicyResolver,
     reverseOrchestrator,
+    reviewerResolver,
+    reviewPolicyResolver,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -40,6 +42,8 @@ async function startServer(t, options = {}) {
     installedSkillResolver,
     skillPolicyResolver,
     reverseOrchestrator,
+    reviewerResolver,
+    reviewPolicyResolver,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -50,10 +54,10 @@ async function startServer(t, options = {}) {
   return `http://127.0.0.1:${server.address().port}`;
 }
 
-async function postJson(url, body) {
+async function postJson(url, body, headers = {}) {
   const response = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: JSON.stringify(body),
   });
   return { response, body: await response.json() };
@@ -170,7 +174,16 @@ test("payload limits and missing trace chains are explicit", async (t) => {
 });
 
 test("feature governance appends decisions without overwriting the claim", async (t) => {
-  const baseUrl = await startServer(t);
+  const baseUrl = await startServer(t, {
+    reviewerResolver: (_projectId, context) =>
+      context.authorization === "Bearer governance-reviewer"
+        ? { actorId: "USER-001", actorRole: "business-owner" }
+        : null,
+    reviewPolicyResolver: () => ({
+      allowedRoles: ["business-owner"],
+      allowedDecisionTypes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"],
+    }),
+  });
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
 
   const feature = await postJson(`${projectUrl}/features`, {
@@ -203,7 +216,7 @@ test("feature governance appends decisions without overwriting the claim", async
   const claim = await postJson(`${projectUrl}/claims`, claimInput);
   assert.equal(claim.response.status, 201);
 
-  const confirmed = await postJson(`${projectUrl}/decisions`, {
+  const spoofedActor = await postJson(`${projectUrl}/decisions`, {
     id: "DECISION-001",
     claimId: "CLAIM-001",
     claimVersion: 1,
@@ -212,8 +225,20 @@ test("feature governance appends decisions without overwriting the claim", async
     type: "CONFIRMED",
     actorId: "USER-001",
     actorRole: "business-owner",
-  });
+  }, { authorization: "Bearer governance-reviewer" });
+  assert.equal(spoofedActor.response.status, 400);
+  assert.match(spoofedActor.body.error.message, /assigned by the server/);
+
+  const confirmed = await postJson(`${projectUrl}/decisions`, {
+    id: "DECISION-001",
+    claimId: "CLAIM-001",
+    claimVersion: 1,
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+    type: "CONFIRMED",
+  }, { authorization: "Bearer governance-reviewer" });
   assert.equal(confirmed.response.status, 201);
+  assert.equal(confirmed.body.actorId, "USER-001");
 
   const exception = await postJson(`${projectUrl}/decisions`, {
     id: "DECISION-002",
@@ -223,9 +248,7 @@ test("feature governance appends decisions without overwriting the claim", async
     scopeVersion: 1,
     type: "EXCEPTION_RECORDED",
     content: "Administrators may force submission during recovery.",
-    actorId: "USER-002",
-    actorRole: "business-owner",
-  });
+  }, { authorization: "Bearer governance-reviewer" });
   assert.equal(exception.response.status, 201);
 
   const baselineResponse = await fetch(`${projectUrl}/features/FEATURE-001/baseline`);
@@ -564,6 +587,14 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
       adapters: referenceSkills.map(({ adapter }) => adapter),
       clock: fixedClock,
     }),
+    reviewerResolver: (_projectId, context) =>
+      context.authorization === "Bearer reviewer-token"
+        ? { actorId: "USER-001", actorRole: "business-owner" }
+        : null,
+    reviewPolicyResolver: () => ({
+      allowedRoles: ["business-owner"],
+      allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
+    }),
   });
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
   const traceInput = await exampleInput();
@@ -691,4 +722,232 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   const queried = await fetch(`${projectUrl}/reverse-runs/REVERSE-RUN-API-001`);
   assert.equal(queried.status, 200);
   assert.deepEqual(await queried.json(), executed.body);
+
+  const candidate = executed.body.mergedOutput.candidateClaims.find((item) => item.subjectKey.startsWith("endpoint:"));
+  const candidateFeature = executed.body.mergedOutput.candidateFeatures.find(
+    (item) => item.externalKey === candidate.subjectKey,
+  );
+  const reviewInput = {
+    id: "REVIEW-API-001",
+    outcome: "CONFIRMED",
+    rationale: "The product owner confirms endpoint availability for the standard order flow.",
+    candidateFeatureId: candidateFeature.id,
+    target: {
+      featureMode: "CREATE",
+      featureId: "FEATURE-REVIEW-API-001",
+      claimId: "CLAIM-REVIEW-API-001",
+      scopeId: "SCOPE-REVIEW-API-001",
+      decisionId: "DECISION-REVIEW-API-001",
+    },
+    normative: {
+      statement: "The submit-order capability must expose its submission endpoint.",
+      constraint: { dimension: "endpointExposed", operator: "EQUALS", value: true },
+      scope: { actor: "normal-user", orderType: "standard" },
+    },
+  };
+  const reviewUrl = `${projectUrl}/reverse-runs/${executed.body.id}/candidates/${candidate.id}/reviews`;
+  const unauthenticated = await postJson(reviewUrl, reviewInput);
+  assert.equal(unauthenticated.response.status, 401);
+  assert.equal(unauthenticated.body.error.code, "REVIEWER_AUTHENTICATION_REQUIRED");
+
+  const reviewed = await postJson(reviewUrl, reviewInput, { authorization: "Bearer reviewer-token" });
+  assert.equal(reviewed.response.status, 201);
+  assert.equal(reviewed.body.review.actorId, "USER-001");
+  assert.equal(reviewed.body.claim.type, "NORMATIVE_REQUIREMENT");
+  assert.equal(reviewed.body.conformance.status, "CONFORMS");
+
+  const reviewsResponse = await fetch(`${projectUrl}/reverse-runs/${executed.body.id}/reviews`);
+  assert.equal(reviewsResponse.status, 200);
+  assert.equal((await reviewsResponse.json()).reviews.length, 1);
+  const baselineResponse = await fetch(`${projectUrl}/features/FEATURE-REVIEW-API-001/baseline`);
+  const baseline = await baselineResponse.json();
+  assert.equal(baselineResponse.status, 200);
+  assert.equal(baseline.claims[0].latestDecision.type, "CONFIRMED");
+  assert.equal(baseline.implementationMappings[0].sourceCandidateId, candidate.id);
+
+  const traceabilityResponse = await fetch(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/traceability?snapshotManifestId=${snapshotManifestId}`,
+  );
+  const traceability = await traceabilityResponse.json();
+  assert.equal(traceabilityResponse.status, 200);
+  assert.equal(traceability.dimensions.authority[0].status, "CONFIRMED");
+  assert.equal(traceability.dimensions.conformance[0].status, "CONFORMS");
+  assert.equal(traceability.dimensions.verification[0].status, "NOT_RUN");
+  assert.ok(traceability.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  assert.equal(traceability.claims[0].facts.nodes[0].type, "ENDPOINT");
+  assert.ok(traceability.traceChains[0].segments.some((segment) => segment.relation === "IMPLEMENTED_BY" || segment.relation === "EXPOSED_BY"));
+  assert.ok(traceability.traceChains[0].segments.some((segment) => segment.relation === "CONFIRMED_BY"));
+  assert.ok(traceability.traceChains[0].segments.some((segment) => segment.relation === "CONFORMS_TO"));
+
+  const recomputed = await postJson(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/trace-chains/recompute`,
+    { snapshotManifestId },
+  );
+  assert.equal(recomputed.response.status, 201);
+  assert.equal(recomputed.body.persisted[0].revision, 1);
+  const storedChain = await fetch(`${projectUrl}/trace-chains/${recomputed.body.traceChains[0].id}`);
+  const storedChainBody = await storedChain.json();
+  assert.equal(storedChain.status, 200);
+  assert.deepEqual(storedChainBody.segments, recomputed.body.traceChains[0].segments);
+
+  const continuedTraceInput = structuredClone(traceInput);
+  continuedTraceInput.snapshotManifest.source = {
+    id: "SOURCE-REVIEW-API-CONTINUED",
+    digest: "sha256:source-review-api-continued",
+  };
+  continuedTraceInput.snapshotManifest.build = {
+    id: "BUILD-REVIEW-API-CONTINUED",
+    digest: "sha256:build-review-api-continued",
+  };
+  continuedTraceInput.snapshotManifest.deployment = {
+    id: "DEPLOY-REVIEW-API-CONTINUED",
+    digest: "sha256:deployment-review-api-continued",
+  };
+  continuedTraceInput.snapshotManifest.runtime = {
+    id: "RUNTIME-REVIEW-API-CONTINUED",
+    digest: "sha256:runtime-review-api-continued",
+  };
+  continuedTraceInput.snapshotManifest.observedFrom = "2026-07-14T04:05:00.000Z";
+  continuedTraceInput.snapshotManifest.observedTo = "2026-07-14T04:09:00.000Z";
+  continuedTraceInput.execution.deploymentId = continuedTraceInput.snapshotManifest.deployment.id;
+  const continuedTrace = await postJson(`${projectUrl}/trace-chains`, continuedTraceInput);
+  assert.equal(continuedTrace.response.status, 201);
+  const continuedSnapshotManifestId = continuedTrace.body.chain.snapshotManifestId;
+  const continuedBundle = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId: continuedSnapshotManifestId,
+    sourceComponentId: continuedTraceInput.snapshotManifest.source.id,
+    sourceDigest: `sha256:${"d".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T04:09:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [{
+      type: "ENDPOINT",
+      naturalKey: "http:POST /orders/{id}/submit",
+      name: "POST /orders/{id}/submit",
+      attributes: { method: "POST", path: "/orders/{id}/submit" },
+      source,
+    }],
+    edges: [],
+  });
+  assert.equal(
+    (await postJson(`${projectUrl}/fact-scans`, signFactBundle(continuedBundle, scannerSecret))).response.status,
+    201,
+  );
+  const continued = await postJson(`${projectUrl}/change-sets`, {
+    id: "CHANGESET-CONTINUITY-API-001",
+    fromSnapshotManifestId: snapshotManifestId,
+    toSnapshotManifestId: continuedSnapshotManifestId,
+  });
+  assert.equal(continued.response.status, 201);
+  assert.deepEqual(continued.body.impact.invalidations, []);
+  assert.equal(continued.body.continuities.length, 1);
+  assert.deepEqual(continued.body.impact.continuedFeatureIds, ["FEATURE-REVIEW-API-001"]);
+  const continuedTraceabilityResponse = await fetch(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/traceability?snapshotManifestId=${continuedSnapshotManifestId}`,
+  );
+  const continuedTraceability = await continuedTraceabilityResponse.json();
+  assert.equal(continuedTraceability.dimensions.conformance[0].status, "CONFORMS");
+  assert.equal(
+    continuedTraceability.claims[0].selectedImplementationMapping.snapshotManifestId,
+    continuedSnapshotManifestId,
+  );
+  assert.ok(continuedTraceability.traceChains[0].segments.some(
+    (segment) => ["IMPLEMENTED_BY", "EXPOSED_BY"].includes(segment.relation) && segment.status === "ACTIVE",
+  ));
+
+  const nextTraceInput = structuredClone(continuedTraceInput);
+  nextTraceInput.snapshotManifest.source = {
+    id: "SOURCE-REVIEW-API-002",
+    digest: "sha256:source-review-api-002",
+  };
+  nextTraceInput.snapshotManifest.build = {
+    id: "BUILD-REVIEW-API-002",
+    digest: "sha256:build-review-api-002",
+  };
+  nextTraceInput.snapshotManifest.deployment = {
+    id: "DEPLOY-REVIEW-API-002",
+    digest: "sha256:deployment-review-api-002",
+  };
+  nextTraceInput.snapshotManifest.runtime = {
+    id: "RUNTIME-REVIEW-API-002",
+    digest: "sha256:runtime-review-api-002",
+  };
+  nextTraceInput.snapshotManifest.observedFrom = "2026-07-14T04:10:00.000Z";
+  nextTraceInput.snapshotManifest.observedTo = "2026-07-14T04:15:00.000Z";
+  nextTraceInput.execution.deploymentId = nextTraceInput.snapshotManifest.deployment.id;
+  const nextTrace = await postJson(`${projectUrl}/trace-chains`, nextTraceInput);
+  assert.equal(nextTrace.response.status, 201);
+  const nextSnapshotManifestId = nextTrace.body.chain.snapshotManifestId;
+  assert.notEqual(nextSnapshotManifestId, snapshotManifestId);
+
+  const nextSource = {
+    ...source,
+    contentHash: `sha256:${"e".repeat(64)}`,
+  };
+  const nextBundle = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId: nextSnapshotManifestId,
+    sourceComponentId: nextTraceInput.snapshotManifest.source.id,
+    sourceDigest: `sha256:${"f".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T04:15:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [{
+      type: "ENDPOINT",
+      naturalKey: "http:POST /orders/{id}/submit",
+      name: "POST /orders/{id}/submit",
+      attributes: { method: "POST", path: "/orders/{id}/submit", handlerVersion: 2 },
+      source: nextSource,
+    }],
+    edges: [],
+  });
+  assert.equal(
+    (await postJson(`${projectUrl}/fact-scans`, signFactBundle(nextBundle, scannerSecret))).response.status,
+    201,
+  );
+
+  const comparisonInput = {
+    id: "CHANGESET-REVIEW-API-001",
+    fromSnapshotManifestId: continuedSnapshotManifestId,
+    toSnapshotManifestId: nextSnapshotManifestId,
+  };
+  const compared = await postJson(`${projectUrl}/change-sets`, comparisonInput);
+  assert.equal(compared.response.status, 201);
+  assert.equal(compared.body.changeSet.complete, true);
+  assert.ok(compared.body.changeSet.changes.some((change) => change.kind === "MODIFIED"));
+  assert.deepEqual(compared.body.impact.affectedFeatureIds, ["FEATURE-REVIEW-API-001"]);
+  assert.deepEqual(compared.body.impact.affectedClaimRefs, [{ id: "CLAIM-REVIEW-API-001", version: 1 }]);
+  assert.ok(compared.body.impact.invalidations[0].layers.includes("CONFORMANCE"));
+  assert.ok(compared.body.impact.invalidations[0].layers.includes("VERIFICATION"));
+  assert.ok(compared.body.impact.invalidations[0].preserves.includes("NORMATIVE_CLAIM"));
+  assert.ok(compared.body.impact.invalidations[0].preserves.includes("BUSINESS_DECISION"));
+
+  const storedImpactResponse = await fetch(
+    `${projectUrl}/change-sets/${comparisonInput.id}/impact`,
+  );
+  assert.equal(storedImpactResponse.status, 200);
+  assert.deepEqual(await storedImpactResponse.json(), compared.body);
+  const repeatedComparison = await postJson(`${projectUrl}/change-sets`, comparisonInput);
+  assert.equal(repeatedComparison.response.status, 201);
+  assert.deepEqual(repeatedComparison.body, compared.body);
+
+  const nextTraceabilityResponse = await fetch(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/traceability?snapshotManifestId=${nextSnapshotManifestId}`,
+  );
+  const nextTraceability = await nextTraceabilityResponse.json();
+  assert.equal(nextTraceabilityResponse.status, 200);
+  assert.equal(nextTraceability.dimensions.authority[0].status, "CONFIRMED");
+  assert.equal(nextTraceability.dimensions.conformance[0].status, "STALE");
+  assert.equal(
+    nextTraceability.claims[0].selectedImplementationMapping.snapshotManifestId,
+    continuedSnapshotManifestId,
+  );
+  assert.ok(nextTraceability.traceChains[0].segments.some(
+    (segment) => ["IMPLEMENTED_BY", "EXPOSED_BY"].includes(segment.relation) && segment.status === "STALE",
+  ));
+  assert.ok(nextTraceability.gaps.some((gap) => gap.type === "CONFORMANCE_STALE"));
+  assert.ok(!nextTraceability.gaps.some((gap) => gap.type === "MISSING_AUTHORITY"));
 });

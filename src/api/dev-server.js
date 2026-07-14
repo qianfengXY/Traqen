@@ -17,6 +17,9 @@ const scannerId = process.env.SCANNER_ID ?? null;
 const scannerSharedSecret = process.env.SCANNER_SHARED_SECRET ?? null;
 const skillPublisher = process.env.SKILL_PUBLISHER ?? null;
 const skillPublisherSharedSecret = process.env.SKILL_PUBLISHER_SHARED_SECRET ?? null;
+const reviewerId = process.env.REVIEWER_ID ?? null;
+const reviewerRole = process.env.REVIEWER_ROLE ?? "business-owner";
+const reviewerBearerToken = process.env.REVIEWER_BEARER_TOKEN ?? null;
 const referenceSkills = createReferenceSkillSet();
 const installedSkills = new Map(
   referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
@@ -42,6 +45,16 @@ const application = new TraceabilityApplication({
   }),
   reverseOrchestrator: new ReverseSkillOrchestrator({
     adapters: referenceSkills.map(({ adapter }) => adapter),
+  }),
+  reviewerResolver: (_projectId, context) => {
+    if (!reviewerId) return null;
+    if (reviewerBearerToken && context.authorization !== `Bearer ${reviewerBearerToken}`) return null;
+    return { actorId: reviewerId, actorRole: reviewerRole };
+  },
+  reviewPolicyResolver: () => ({
+    allowedRoles: [reviewerRole],
+    allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
+    allowedDecisionTypes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"],
   }),
 });
 const server = createTraceabilityHttpServer({ application });

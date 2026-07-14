@@ -8,6 +8,7 @@ import { TraceabilityApplication } from "../src/application/traceability-applica
 import {
   createExecutionEvidenceBundle,
   createFactBundle,
+  createSnapshotManifest,
   evaluateTraceChain,
   signExecutionEvidenceBundle,
   signFactBundle,
@@ -29,6 +30,8 @@ async function migratedDatabase() {
     "0003_runner_attestation",
     "0004_fact_graph",
     "0005_reverse_skill_framework",
+    "0006_candidate_review_baseline",
+    "0007_change_impact",
   ]);
   return database;
 }
@@ -386,9 +389,15 @@ test("PostgreSQL store persists a governed feature baseline without mutating cla
   const database = await migratedDatabase();
   t.after(() => database.close());
   await insertProjectFoundation(database);
+  const store = new PostgresTraceabilityStore(database);
   const application = new TraceabilityApplication({
-    store: new PostgresTraceabilityStore(database),
+    store,
     clock: () => new Date("2026-07-14T05:00:00.000Z"),
+    reviewerResolver: () => ({ actorId: "USER-001", actorRole: "business-owner" }),
+    reviewPolicyResolver: () => ({
+      allowedRoles: ["business-owner"],
+      allowedDecisionTypes: ["CONFIRMED", "EXCEPTION_RECORDED"],
+    }),
   });
 
   await application.appendFeatureVersion("PROJECT-001", {
@@ -421,8 +430,6 @@ test("PostgreSQL store persists a governed feature baseline without mutating cla
     scopeId: "SCOPE-GOV-001",
     scopeVersion: 1,
     type: "CONFIRMED",
-    actorId: "USER-001",
-    actorRole: "business-owner",
   });
   await application.appendDecision("PROJECT-001", {
     id: "DECISION-GOV-002",
@@ -432,8 +439,6 @@ test("PostgreSQL store persists a governed feature baseline without mutating cla
     scopeVersion: 1,
     type: "EXCEPTION_RECORDED",
     content: "Administrators may force submission during recovery.",
-    actorId: "USER-001",
-    actorRole: "business-owner",
   });
 
   const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-GOV-001");
@@ -453,9 +458,15 @@ test("PostgreSQL rejects decisions that escape the claim scope or project tenant
   const database = await migratedDatabase();
   t.after(() => database.close());
   await insertProjectFoundation(database);
+  let reviewer = { actorId: "USER-001", actorRole: "business-owner" };
   const application = new TraceabilityApplication({
     store: new PostgresTraceabilityStore(database),
     clock: () => new Date("2026-07-14T05:00:00.000Z"),
+    reviewerResolver: () => reviewer,
+    reviewPolicyResolver: () => ({
+      allowedRoles: ["business-owner"],
+      allowedDecisionTypes: ["CONFIRMED"],
+    }),
   });
 
   await application.appendFeatureVersion("PROJECT-001", {
@@ -493,8 +504,6 @@ test("PostgreSQL rejects decisions that escape the claim scope or project tenant
       scopeId: "SCOPE-ESCAPED",
       scopeVersion: 1,
       type: "CONFIRMED",
-      actorId: "USER-001",
-      actorRole: "business-owner",
     }),
     (error) => error.name === "PersistenceConflictError",
   );
@@ -509,6 +518,7 @@ test("PostgreSQL rejects decisions that escape the claim scope or project tenant
     ["USER-OTHER", "TENANT-002", "USER", "Other tenant owner"],
   );
 
+  reviewer = { actorId: "USER-OTHER", actorRole: "business-owner" };
   await assert.rejects(
     application.appendDecision("PROJECT-001", {
       id: "DECISION-WRONG-TENANT",
@@ -517,8 +527,6 @@ test("PostgreSQL rejects decisions that escape the claim scope or project tenant
       scopeId: "SCOPE-BOUND",
       scopeVersion: 1,
       type: "CONFIRMED",
-      actorId: "USER-OTHER",
-      actorRole: "business-owner",
     }),
     (error) => error.name === "PersistenceConflictError",
   );
@@ -885,8 +893,9 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
   const installed = new Map(
     referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
   );
+  const store = new PostgresTraceabilityStore(database);
   const application = new TraceabilityApplication({
-    store: new PostgresTraceabilityStore(database),
+    store,
     clock: () => new Date(applicationNow),
     scannerKeyResolver: (scannerId) => (scannerId === "SCANNER-001" ? scannerSecret : null),
     publisherKeyResolver: (publisher) => (publisher === "TRAQEN" ? publisherSecret : null),
@@ -900,6 +909,11 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
     reverseOrchestrator: new ReverseSkillOrchestrator({
       adapters: referenceSkills.map(({ adapter }) => adapter),
       clock: () => new Date("2026-07-14T10:00:00.000Z"),
+    }),
+    reviewerResolver: () => ({ actorId: "USER-001", actorRole: "business-owner" }),
+    reviewPolicyResolver: () => ({
+      allowedRoles: ["business-owner"],
+      allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
     }),
   });
   const source = {
@@ -962,6 +976,191 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
     ["PROJECT-001", run.id],
   );
   assert.deepEqual(eventRows.rows.map((row) => row.status), run.statusHistory.map((event) => event.status));
+
+  const candidate = run.mergedOutput.candidateClaims.find((item) => item.subjectKey.startsWith("endpoint:"));
+  const candidateFeature = run.mergedOutput.candidateFeatures.find((item) => item.externalKey === candidate.subjectKey);
+  const reviewed = await application.reviewReverseCandidate("PROJECT-001", run.id, candidate.id, {
+    id: "REVIEW-DB-001",
+    outcome: "CONFIRMED",
+    rationale: "The business owner confirms endpoint availability for the standard order flow.",
+    candidateFeatureId: candidateFeature.id,
+    target: {
+      featureMode: "CREATE",
+      featureId: "FEATURE-REVIEW-DB-001",
+      claimId: "CLAIM-REVIEW-DB-001",
+      scopeId: "SCOPE-REVIEW-DB-001",
+      decisionId: "DECISION-REVIEW-DB-001",
+    },
+    normative: {
+      statement: "The submit-order capability must expose its submission endpoint.",
+      constraint: { dimension: "endpointExposed", operator: "EQUALS", value: true },
+      scope: { actor: "normal-user", orderType: "standard" },
+      authorityEvidenceRefs: ["AUTHORITY-PRODUCT-001"],
+    },
+  });
+  assert.equal(reviewed.claim.type, "NORMATIVE_REQUIREMENT");
+  assert.equal(reviewed.conformance.status, "CONFORMS");
+  assert.deepEqual(
+    await application.reviewReverseCandidate("PROJECT-001", run.id, candidate.id, {
+      id: "REVIEW-DB-001",
+      outcome: "CONFIRMED",
+      rationale: "The business owner confirms endpoint availability for the standard order flow.",
+      candidateFeatureId: candidateFeature.id,
+      target: {
+        featureMode: "CREATE",
+        featureId: "FEATURE-REVIEW-DB-001",
+        claimId: "CLAIM-REVIEW-DB-001",
+        scopeId: "SCOPE-REVIEW-DB-001",
+        decisionId: "DECISION-REVIEW-DB-001",
+      },
+      normative: {
+        statement: "The submit-order capability must expose its submission endpoint.",
+        constraint: { dimension: "endpointExposed", operator: "EQUALS", value: true },
+        scope: { actor: "normal-user", orderType: "standard" },
+        authorityEvidenceRefs: ["AUTHORITY-PRODUCT-001"],
+      },
+    }),
+    reviewed,
+  );
+  const reviewRows = await database.query(
+    `SELECT outcome, actor_id FROM reverse_candidate_review WHERE project_id = $1 AND run_id = $2`,
+    ["PROJECT-001", run.id],
+  );
+  assert.deepEqual(reviewRows.rows, [{ outcome: "CONFIRMED", actor_id: "USER-001" }]);
+  const mappingRows = await database.query(
+    `SELECT mapping_status, source_candidate_id FROM implementation_mapping WHERE project_id = $1`,
+    ["PROJECT-001"],
+  );
+  assert.deepEqual(mappingRows.rows, [{ mapping_status: "ACTIVE", source_candidate_id: candidate.id }]);
+  const traceability = await application.getFeatureTraceability(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    "SNAPSHOT-MANIFEST-001",
+  );
+  assert.equal(traceability.claims[0].facts.nodes[0].type, "ENDPOINT");
+  assert.equal(traceability.dimensions.authority[0].status, "CONFIRMED");
+  assert.equal(traceability.dimensions.conformance[0].status, "CONFORMS");
+  assert.ok(traceability.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  const recomputed = await application.recomputeFeatureTraceChains(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    "SNAPSHOT-MANIFEST-001",
+  );
+  const currentChain = await application.getCurrentTraceChain(
+    "PROJECT-001",
+    recomputed.traceChains[0].id,
+  );
+  assert.deepEqual(currentChain.segments, recomputed.traceChains[0].segments);
+  assert.deepEqual(currentChain.conflicts, []);
+
+  const continuedManifest = createSnapshotManifest({
+    source: { id: "SOURCE-CONTINUED", digest: "sha256:source-continued" },
+    build: { id: "BUILD-CONTINUED", digest: "sha256:build-continued" },
+    deployment: { id: "DEPLOY-CONTINUED", digest: "sha256:deployment-continued" },
+    runtime: { id: "RUNTIME-CONTINUED", digest: "sha256:runtime-continued" },
+    observedFrom: "2026-07-14T10:02:00.000Z",
+    observedTo: "2026-07-14T10:04:00.000Z",
+    failedSources: [],
+  }, () => new Date("2026-07-14T10:04:00.000Z"));
+  await store.appendSnapshotManifest("PROJECT-001", continuedManifest);
+  const continuedBundle = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId: continuedManifest.id,
+    sourceComponentId: continuedManifest.components.source.id,
+    sourceDigest: `sha256:${"f".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T10:04:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [{
+      type: "ENDPOINT",
+      naturalKey: "http:POST /orders/{id}/submit",
+      name: "POST /orders/{id}/submit",
+      attributes: { method: "POST", path: "/orders/{id}/submit" },
+      source,
+    }],
+    edges: [],
+  });
+  await application.ingestFactBundle("PROJECT-001", signFactBundle(continuedBundle, scannerSecret));
+  const continuityImpact = await application.compareAndPersistSnapshots("PROJECT-001", {
+    id: "CHANGESET-CONTINUITY-DB-001",
+    fromSnapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    toSnapshotManifestId: continuedManifest.id,
+  });
+  assert.deepEqual(continuityImpact.impact.invalidations, []);
+  assert.equal(continuityImpact.continuities.length, 1);
+  const continuityRows = await database.query(
+    `SELECT from_mapping_id, to_mapping_id
+     FROM implementation_continuity_event
+     WHERE project_id = $1 AND change_set_id = $2`,
+    ["PROJECT-001", "CHANGESET-CONTINUITY-DB-001"],
+  );
+  assert.equal(continuityRows.rows.length, 1);
+  const continuedTraceability = await application.getFeatureTraceability(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    continuedManifest.id,
+  );
+  assert.equal(continuedTraceability.dimensions.conformance[0].status, "CONFORMS");
+
+  const nextManifest = createSnapshotManifest({
+    source: { id: "SOURCE-002", digest: "sha256:source-002" },
+    build: { id: "BUILD-002", digest: "sha256:build-002" },
+    deployment: { id: "DEPLOY-002", digest: "sha256:deployment-002" },
+    runtime: { id: "RUNTIME-002", digest: "sha256:runtime-002" },
+    observedFrom: "2026-07-14T10:05:00.000Z",
+    observedTo: "2026-07-14T10:10:00.000Z",
+    failedSources: [],
+  }, () => new Date("2026-07-14T10:10:00.000Z"));
+  await store.appendSnapshotManifest("PROJECT-001", nextManifest);
+  const nextBundle = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId: nextManifest.id,
+    sourceComponentId: nextManifest.components.source.id,
+    sourceDigest: `sha256:${"1".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T10:10:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [{
+      type: "ENDPOINT",
+      naturalKey: "http:POST /orders/{id}/submit",
+      name: "POST /orders/{id}/submit",
+      attributes: { method: "POST", path: "/orders/{id}/submit", handlerVersion: 2 },
+      source: { ...source, contentHash: `sha256:${"2".repeat(64)}` },
+    }],
+    edges: [],
+  });
+  await application.ingestFactBundle("PROJECT-001", signFactBundle(nextBundle, scannerSecret));
+  const changeImpact = await application.compareAndPersistSnapshots("PROJECT-001", {
+    id: "CHANGESET-DB-001",
+    fromSnapshotManifestId: continuedManifest.id,
+    toSnapshotManifestId: nextManifest.id,
+  });
+  assert.deepEqual(changeImpact.impact.affectedFeatureIds, ["FEATURE-REVIEW-DB-001"]);
+  assert.ok(changeImpact.impact.invalidations[0].layers.includes("CONFORMANCE"));
+  assert.ok(changeImpact.impact.invalidations[0].preserves.includes("NORMATIVE_CLAIM"));
+  assert.deepEqual(
+    await application.getChangeImpact("PROJECT-001", "CHANGESET-DB-001"),
+    changeImpact,
+  );
+  const impactRows = await database.query(
+    `SELECT invalidated_layers, preserved_layers
+     FROM trace_invalidation_event
+     WHERE project_id = $1 AND change_set_id = $2`,
+    ["PROJECT-001", "CHANGESET-DB-001"],
+  );
+  assert.equal(impactRows.rows.length, 1);
+  assert.ok(impactRows.rows[0].invalidated_layers.includes("TRACE_CHAIN"));
+  assert.ok(impactRows.rows[0].preserved_layers.includes("BUSINESS_DECISION"));
+  await assert.rejects(
+    database.query("DELETE FROM change_set WHERE project_id = $1", ["PROJECT-001"]),
+    /append-only; UPDATE and DELETE are forbidden/,
+  );
+  await assert.rejects(
+    database.query("DELETE FROM reverse_candidate_review WHERE project_id = $1", ["PROJECT-001"]),
+    /append-only; UPDATE and DELETE are forbidden/,
+  );
 
   applicationNow = "2026-07-14T10:01:00.000Z";
   await application.registerReverseSkill({

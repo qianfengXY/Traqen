@@ -200,6 +200,48 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async getSnapshotManifest(projectId, snapshotManifestId) {
+    requireId(projectId, "projectId");
+    requireId(snapshotManifestId, "snapshotManifestId");
+    const manifestResult = await this.#database.query(
+      `SELECT * FROM snapshot_manifest WHERE project_id = $1 AND id = $2`,
+      [projectId, snapshotManifestId],
+    );
+    const row = manifestResult.rows[0];
+    if (!row) return null;
+    const componentResult = await this.#database.query(
+      `SELECT smc.component_type, sc.id AS component_id, sc.digest, sc.payload
+       FROM snapshot_manifest_component smc
+       JOIN snapshot_component sc
+         ON sc.project_id = smc.project_id
+        AND sc.id = smc.component_id
+        AND sc.component_type = smc.component_type
+       WHERE smc.project_id = $1 AND smc.manifest_id = $2`,
+      [projectId, snapshotManifestId],
+    );
+    const components = {};
+    for (const componentRow of componentResult.rows) {
+      const name = Object.entries(componentTypes).find(([, type]) => type === componentRow.component_type)?.[0];
+      if (name) {
+        components[name] = {
+          ...componentRow.payload,
+          id: componentRow.component_id,
+          digest: componentRow.digest,
+        };
+      }
+    }
+    return deepFreeze({
+      id: row.id,
+      components,
+      failedSources: row.failed_sources,
+      observedFrom: new Date(row.observed_from).toISOString(),
+      observedTo: new Date(row.observed_to).toISOString(),
+      complete: row.complete,
+      missingComponents: row.missing_components,
+      createdAt: new Date(row.created_at).toISOString(),
+    });
+  }
+
   async appendTraceChainRevision(projectId, chain, options = {}) {
     requireId(projectId, "projectId");
     requireId(chain?.id, "chain.id");
@@ -222,8 +264,11 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         `INSERT INTO trace_chain_revision (
            project_id, chain_id, revision, feature_id, claim_id, claim_version,
            scope_id, scope_version, snapshot_manifest_id, deployment_component_id,
-           dimensions, stages, complete, computed_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13, $14)`,
+           dimensions, stages, segments, conflicts, complete, computed_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+           $11::jsonb, $12::jsonb, $13::jsonb, $14::jsonb, $15, $16
+         )`,
         [
           projectId,
           chain.id,
@@ -237,6 +282,8 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
           chain.deploymentId,
           JSON.stringify(chain.dimensions),
           JSON.stringify(chain.stages),
+          JSON.stringify(chain.segments),
+          JSON.stringify(chain.conflicts),
           chain.complete,
           chain.computedAt,
         ],
@@ -297,6 +344,8 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       deploymentId: row.deployment_component_id,
       dimensions: row.dimensions,
       stages: row.stages,
+      segments: row.segments,
+      conflicts: row.conflicts,
       complete: row.complete,
       gaps: gapResult.rows.map((gapRow) =>
           ({
@@ -395,8 +444,8 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       await this.#database.query(
         `INSERT INTO claim (
            project_id, id, version, feature_id, claim_type, statement, source_type,
-           evidence_support, scope_id, scope_version, provenance, created_at
-         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)
+           evidence_support, scope_id, scope_version, provenance, constraint_payload, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13)
          ON CONFLICT (project_id, id, version) DO NOTHING`,
         [
           projectId,
@@ -410,12 +459,13 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
           claim.scopeId,
           claim.scopeVersion,
           JSON.stringify(claim.provenance),
+          claim.constraint === null ? null : JSON.stringify(claim.constraint),
           claim.createdAt,
         ],
       );
       const stored = await this.#database.query(
         `SELECT feature_id, claim_type, statement, source_type, evidence_support,
-                scope_id, scope_version, provenance
+                scope_id, scope_version, provenance, constraint_payload
          FROM claim
          WHERE project_id = $1 AND id = $2 AND version = $3`,
         [projectId, claim.id, claim.version],
@@ -430,7 +480,8 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         row.evidence_support !== claim.evidenceSupport ||
         row.scope_id !== claim.scopeId ||
         row.scope_version !== claim.scopeVersion ||
-        canonicalJson(row.provenance) !== canonicalJson(claim.provenance)
+        canonicalJson(row.provenance) !== canonicalJson(claim.provenance) ||
+        canonicalJson(row.constraint_payload) !== canonicalJson(claim.constraint)
       ) {
         throw new PersistenceConflictError(`Claim ${claim.id} version ${claim.version} conflicts with an existing record`);
       }
@@ -507,7 +558,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     const claimResult = await this.#database.query(
       `SELECT DISTINCT ON (c.id)
          c.id, c.version, c.feature_id, c.claim_type, c.statement, c.source_type,
-         c.evidence_support, c.scope_id, c.scope_version, c.provenance, c.created_at,
+         c.evidence_support, c.scope_id, c.scope_version, c.provenance, c.constraint_payload, c.created_at,
          s.scope, s.effective_from, s.effective_to, s.created_at AS scope_created_at
        FROM claim c
        JOIN claim_scope s
@@ -581,6 +632,35 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
        ORDER BY te.test_spec_id, te.finished_at DESC, te.id`,
       [projectId, featureId],
     );
+    const mappingResult = await this.#database.query(
+      `SELECT im.*
+       FROM implementation_mapping im
+       JOIN claim c
+         ON c.project_id = im.project_id
+        AND c.id = im.claim_id
+        AND c.version = im.claim_version
+       WHERE im.project_id = $1 AND c.feature_id = $2
+       ORDER BY im.created_at, im.id`,
+      [projectId, featureId],
+    );
+    const conformanceResult = await this.#database.query(
+      `SELECT ic.*
+       FROM implementation_conformance ic
+       JOIN claim c
+         ON c.project_id = ic.project_id
+        AND c.id = ic.claim_id
+        AND c.version = ic.claim_version
+       WHERE ic.project_id = $1 AND c.feature_id = $2
+       ORDER BY ic.computed_at, ic.id`,
+      [projectId, featureId],
+    );
+    const candidateReviewResult = await this.#database.query(
+      `SELECT review_payload
+       FROM reverse_candidate_review
+       WHERE project_id = $1 AND feature_id = $2
+       ORDER BY reviewed_at, id`,
+      [projectId, featureId],
+    );
 
     const decisionsByClaim = new Map();
     for (const row of decisionResult.rows) {
@@ -623,6 +703,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
             statement: row.statement,
             sourceType: row.source_type,
             evidenceSupport: row.evidence_support,
+            constraint: row.constraint_payload,
             scopeId: row.scope_id,
             scopeVersion: row.scope_version,
             provenance: row.provenance,
@@ -661,6 +742,34 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         dimensions: row.dimensions,
         computedAt: new Date(row.computed_at).toISOString(),
       })),
+      implementationMappings: mappingResult.rows.map((row) => ({
+        id: row.id,
+        claimId: row.claim_id,
+        claimVersion: row.claim_version,
+        scopeId: row.scope_id,
+        scopeVersion: row.scope_version,
+        snapshotManifestId: row.snapshot_manifest_id,
+        sourceComponentId: row.source_component_id,
+        sourceRunId: row.source_run_id,
+        sourceCandidateId: row.source_candidate_id,
+        status: row.mapping_status,
+        factRefs: row.fact_refs,
+        createdAt: new Date(row.created_at).toISOString(),
+      })),
+      conformances: conformanceResult.rows.map((row) => ({
+        id: row.id,
+        claimId: row.claim_id,
+        claimVersion: row.claim_version,
+        scopeId: row.scope_id,
+        scopeVersion: row.scope_version,
+        snapshotManifestId: row.snapshot_manifest_id,
+        mappingId: row.mapping_id,
+        status: row.status,
+        evidenceRefs: row.evidence_refs,
+        analysisMethod: row.analysis_method,
+        computedAt: new Date(row.computed_at).toISOString(),
+      })),
+      candidateReviews: candidateReviewResult.rows.map((row) => row.review_payload),
     });
   }
 
@@ -1173,6 +1282,126 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     }));
   }
 
+  async getFactGraphByReferences(projectId, snapshotManifestId, factRefs) {
+    requireId(projectId, "projectId");
+    requireId(snapshotManifestId, "snapshotManifestId");
+    if (!Array.isArray(factRefs)) throw new TypeError("factRefs must be an array");
+    if (factRefs.length === 0) return deepFreeze({ nodes: [], edges: [], missingFactRefs: [] });
+    const requested = [...new Set(factRefs.map((factId, index) => requireId(factId, `factRefs[${index}]`)))];
+    const nodeResult = await this.#database.query(
+      `SELECT bundle_id, fact_id, node_id, payload
+       FROM fact_node
+       WHERE project_id = $1 AND snapshot_manifest_id = $2 AND fact_id = ANY($3::text[])
+       ORDER BY bundle_id, fact_id`,
+      [projectId, snapshotManifestId, requested],
+    );
+    const edgeResult = await this.#database.query(
+      `SELECT bundle_id, id, subject_node_id, object_node_id, payload
+       FROM fact_edge
+       WHERE project_id = $1 AND snapshot_manifest_id = $2 AND id = ANY($3::text[])
+       ORDER BY bundle_id, id`,
+      [projectId, snapshotManifestId, requested],
+    );
+    const endpointNodeIds = [...new Set(edgeResult.rows.flatMap((edge) => [edge.subject_node_id, edge.object_node_id]))];
+    const bundleIds = [...new Set(edgeResult.rows.map((edge) => edge.bundle_id))];
+    const endpointResult = endpointNodeIds.length === 0
+      ? { rows: [] }
+      : await this.#database.query(
+          `SELECT bundle_id, fact_id, node_id, payload
+           FROM fact_node
+           WHERE project_id = $1
+             AND snapshot_manifest_id = $2
+             AND bundle_id = ANY($3::text[])
+             AND node_id = ANY($4::text[])
+           ORDER BY bundle_id, fact_id`,
+          [projectId, snapshotManifestId, bundleIds, endpointNodeIds],
+        );
+    const nodes = [...new Map(
+      [...nodeResult.rows, ...endpointResult.rows].map((node) => [
+        `${node.bundle_id}\u0000${node.node_id}`,
+        { ...node.payload, bundleId: node.bundle_id },
+      ]),
+    ).values()];
+    const edges = edgeResult.rows.map((edge) => ({ ...edge.payload, bundleId: edge.bundle_id }));
+    const found = new Set([...nodeResult.rows.map((node) => node.fact_id), ...edgeResult.rows.map((edge) => edge.id)]);
+    return deepFreeze({
+      nodes,
+      edges,
+      missingFactRefs: requested.filter((factId) => !found.has(factId)),
+    });
+  }
+
+  async getSnapshotFactGraph(projectId, snapshotManifestId, maxNodes = 100_000) {
+    requireId(projectId, "projectId");
+    requireId(snapshotManifestId, "snapshotManifestId");
+    if (!Number.isSafeInteger(maxNodes) || maxNodes < 1 || maxNodes > 100_000) {
+      throw new TypeError("maxNodes must be an integer between 1 and 100000");
+    }
+    const bundleResult = await this.#database.query(
+      `SELECT DISTINCT ON (source_component_id, extractor_id) id, complete
+       FROM fact_bundle
+       WHERE project_id = $1 AND snapshot_manifest_id = $2
+       ORDER BY source_component_id, extractor_id, observed_at DESC, id DESC`,
+      [projectId, snapshotManifestId],
+    );
+    const bundleIds = bundleResult.rows.map((row) => row.id);
+    if (bundleIds.length === 0) {
+      return deepFreeze({ nodes: [], edges: [], complete: false, bundleIds: [] });
+    }
+    const nodeResult = await this.#database.query(
+      `SELECT bundle_id, payload
+       FROM fact_node
+       WHERE project_id = $1 AND bundle_id = ANY($2::text[])
+       ORDER BY bundle_id, natural_key
+       LIMIT $3`,
+      [projectId, bundleIds, maxNodes + 1],
+    );
+    if (nodeResult.rows.length > maxNodes) throw new RangeError("Snapshot Fact graph exceeds maxNodes");
+    const edgeResult = await this.#database.query(
+      `SELECT bundle_id, payload
+       FROM fact_edge
+       WHERE project_id = $1 AND bundle_id = ANY($2::text[])
+       ORDER BY bundle_id, id`,
+      [projectId, bundleIds],
+    );
+    return deepFreeze({
+      nodes: nodeResult.rows.map((row) => ({ ...row.payload, bundleId: row.bundle_id })),
+      edges: edgeResult.rows.map((row) => ({ ...row.payload, bundleId: row.bundle_id })),
+      complete: bundleResult.rows.every((row) => row.complete),
+      bundleIds,
+    });
+  }
+
+  async listImplementationMappings(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT im.*, c.feature_id
+       FROM implementation_mapping im
+       JOIN claim c
+         ON c.project_id = im.project_id
+        AND c.id = im.claim_id
+        AND c.version = im.claim_version
+       WHERE im.project_id = $1
+       ORDER BY im.created_at, im.id`,
+      [projectId],
+    );
+    return deepFreeze(result.rows.map((row) => ({
+      id: row.id,
+      featureId: row.feature_id,
+      claimId: row.claim_id,
+      claimVersion: row.claim_version,
+      scopeId: row.scope_id,
+      scopeVersion: row.scope_version,
+      snapshotManifestId: row.snapshot_manifest_id,
+      sourceComponentId: row.source_component_id,
+      sourceRunId: row.source_run_id,
+      sourceCandidateId: row.source_candidate_id,
+      status: row.mapping_status,
+      factRefs: row.fact_refs,
+      createdAt: new Date(row.created_at).toISOString(),
+    })));
+  }
+
   async appendReverseSkillRegistration(registration) {
     const manifest = registration.manifest;
     return this.#transaction(async () => {
@@ -1331,5 +1560,404 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       [projectId, runId],
     );
     return result.rows[0] ? deepFreeze(result.rows[0].run_payload) : null;
+  }
+
+  async appendReverseCandidateReview(projectId, reviewPackage) {
+    requireId(projectId, "projectId");
+    const { review, feature, scope, claim, decision, implementationMapping, conformance } = reviewPackage;
+    requireId(review?.id, "review.id");
+    return this.#transaction(async () => {
+      const existing = await this.#database.query(
+        `SELECT review_payload
+         FROM reverse_candidate_review
+         WHERE project_id = $1 AND run_id = $2 AND candidate_id = $3`,
+        [projectId, review.runId, review.candidateId],
+      );
+      if (existing.rows[0]) {
+        if (canonicalJson(existing.rows[0].review_payload) !== canonicalJson(reviewPackage)) {
+          throw new PersistenceConflictError(`Candidate ${review.candidateId} already has a different immutable review`);
+        }
+        return deepFreeze(existing.rows[0].review_payload);
+      }
+
+      if (review.baselineRefs !== null) {
+        if (feature) {
+          await this.#database.query(
+            `INSERT INTO feature (project_id, id) VALUES ($1, $2)`,
+            [projectId, feature.id],
+          );
+          await this.#database.query(
+            `INSERT INTO feature_version (
+               project_id, feature_id, version, name, business_domain, description, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              projectId,
+              feature.id,
+              feature.version,
+              feature.name,
+              feature.businessDomain,
+              feature.description,
+              feature.createdAt,
+            ],
+          );
+        } else {
+          const featureExists = await this.#database.query(
+            `SELECT 1 FROM feature WHERE project_id = $1 AND id = $2`,
+            [projectId, claim.featureId],
+          );
+          if (!featureExists.rows[0]) throw new PersistenceConflictError(`Feature ${claim.featureId} does not exist`);
+        }
+        await this.#database.query(
+          `INSERT INTO claim_scope (
+             project_id, id, version, scope, effective_from, effective_to, created_at
+           ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)`,
+          [
+            projectId,
+            scope.id,
+            scope.version,
+            JSON.stringify(scope.scope),
+            scope.effectiveFrom,
+            scope.effectiveTo,
+            scope.createdAt,
+          ],
+        );
+        await this.#database.query(
+          `INSERT INTO claim (
+             project_id, id, version, feature_id, claim_type, statement, source_type,
+             evidence_support, scope_id, scope_version, provenance, constraint_payload, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13)`,
+          [
+            projectId,
+            claim.id,
+            claim.version,
+            claim.featureId,
+            claim.type,
+            claim.statement,
+            claim.sourceType,
+            claim.evidenceSupport,
+            claim.scopeId,
+            claim.scopeVersion,
+            JSON.stringify(claim.provenance),
+            JSON.stringify(claim.constraint),
+            claim.createdAt,
+          ],
+        );
+        await this.#database.query(
+          `INSERT INTO human_decision (
+             project_id, id, claim_id, claim_version, scope_id, scope_version,
+             decision_type, content, actor_id, actor_role, evidence_refs, valid_until, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)`,
+          [
+            projectId,
+            decision.id,
+            decision.claimId,
+            decision.claimVersion,
+            decision.scopeId,
+            decision.scopeVersion,
+            decision.type,
+            decision.content,
+            decision.actorId,
+            decision.actorRole,
+            JSON.stringify(decision.evidenceRefs),
+            decision.validUntil,
+            decision.createdAt,
+          ],
+        );
+        await this.#database.query(
+          `INSERT INTO implementation_mapping (
+             project_id, id, claim_id, claim_version, scope_id, scope_version,
+             snapshot_manifest_id, source_component_id, source_run_id, source_candidate_id,
+             mapping_status, fact_refs, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)`,
+          [
+            projectId,
+            implementationMapping.id,
+            implementationMapping.claimId,
+            implementationMapping.claimVersion,
+            implementationMapping.scopeId,
+            implementationMapping.scopeVersion,
+            implementationMapping.snapshotManifestId,
+            implementationMapping.sourceComponentId,
+            implementationMapping.sourceRunId,
+            implementationMapping.sourceCandidateId,
+            implementationMapping.status,
+            JSON.stringify(implementationMapping.factRefs),
+            implementationMapping.createdAt,
+          ],
+        );
+        await this.#database.query(
+          `INSERT INTO implementation_conformance (
+             project_id, id, claim_id, claim_version, scope_id, scope_version,
+             snapshot_manifest_id, status, evidence_refs, analysis_method, computed_at, mapping_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12)`,
+          [
+            projectId,
+            conformance.id,
+            conformance.claimId,
+            conformance.claimVersion,
+            conformance.scopeId,
+            conformance.scopeVersion,
+            conformance.snapshotManifestId,
+            conformance.status,
+            JSON.stringify(conformance.evidenceRefs),
+            JSON.stringify(conformance.analysisMethod),
+            conformance.computedAt,
+            conformance.mappingId,
+          ],
+        );
+      }
+
+      await this.#database.query(
+        `INSERT INTO reverse_candidate_review (
+           project_id, id, request_fingerprint, run_id, candidate_id, candidate_type, outcome,
+           rationale, actor_id, actor_role, acknowledged_conflict_ids,
+           feature_id, claim_id, claim_version, decision_id,
+           implementation_mapping_id, conformance_id, review_payload, reviewed_at
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb,
+           $12, $13, $14, $15, $16, $17, $18::jsonb, $19
+         )`,
+        [
+          projectId,
+          review.id,
+          review.requestFingerprint,
+          review.runId,
+          review.candidateId,
+          review.candidateType,
+          review.outcome,
+          review.rationale,
+          review.actorId,
+          review.actorRole,
+          JSON.stringify(review.acknowledgedConflictIds),
+          review.baselineRefs?.featureId ?? null,
+          review.baselineRefs?.claimId ?? null,
+          review.baselineRefs?.claimVersion ?? null,
+          review.baselineRefs?.decisionId ?? null,
+          review.baselineRefs?.implementationMappingId ?? null,
+          review.baselineRefs?.conformanceId ?? null,
+          JSON.stringify(reviewPackage),
+          review.reviewedAt,
+        ],
+      );
+      return deepFreeze(structuredClone(reviewPackage));
+    });
+  }
+
+  async getReverseCandidateReview(projectId, runId, candidateId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    requireId(candidateId, "candidateId");
+    const result = await this.#database.query(
+      `SELECT review_payload
+       FROM reverse_candidate_review
+       WHERE project_id = $1 AND run_id = $2 AND candidate_id = $3`,
+      [projectId, runId, candidateId],
+    );
+    return result.rows[0] ? deepFreeze(result.rows[0].review_payload) : null;
+  }
+
+  async listReverseCandidateReviews(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    const result = await this.#database.query(
+      `SELECT review_payload
+       FROM reverse_candidate_review
+       WHERE project_id = $1 AND run_id = $2
+       ORDER BY reviewed_at, id`,
+      [projectId, runId],
+    );
+    return deepFreeze(result.rows.map((row) => row.review_payload));
+  }
+
+  async appendChangeImpact(projectId, changeImpact) {
+    requireId(projectId, "projectId");
+    const changeSet = changeImpact?.changeSet;
+    const impact = changeImpact?.impact;
+    requireId(changeSet?.id, "changeImpact.changeSet.id");
+    requireId(impact?.id, "changeImpact.impact.id");
+    if (impact.changeSetId !== changeSet.id) {
+      throw new TypeError("changeImpact.impact.changeSetId must match changeImpact.changeSet.id");
+    }
+
+    return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `${projectId}:change-set:${changeSet.id}`,
+      ]);
+      const existing = await this.#database.query(
+        `SELECT ia.change_impact_payload
+         FROM change_set cs
+         JOIN impact_assessment ia
+           ON ia.project_id = cs.project_id
+          AND ia.change_set_id = cs.id
+         WHERE cs.project_id = $1 AND cs.id = $2`,
+        [projectId, changeSet.id],
+      );
+      if (existing.rows[0]) {
+        const stored = existing.rows[0].change_impact_payload;
+        if (canonicalJson(stored) !== canonicalJson(changeImpact)) {
+          throw new PersistenceConflictError(
+            `ChangeSet ${changeSet.id} conflicts with an existing immutable record`,
+          );
+        }
+        return deepFreeze(stored);
+      }
+
+      for (const item of changeImpact.continuities ?? []) {
+        const { implementationMapping, conformance } = item;
+        await this.#database.query(
+          `INSERT INTO implementation_mapping (
+             project_id, id, claim_id, claim_version, scope_id, scope_version,
+             snapshot_manifest_id, source_component_id, source_run_id, source_candidate_id,
+             mapping_status, fact_refs, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)`,
+          [
+            projectId,
+            implementationMapping.id,
+            implementationMapping.claimId,
+            implementationMapping.claimVersion,
+            implementationMapping.scopeId,
+            implementationMapping.scopeVersion,
+            implementationMapping.snapshotManifestId,
+            implementationMapping.sourceComponentId,
+            implementationMapping.sourceRunId,
+            implementationMapping.sourceCandidateId,
+            implementationMapping.status,
+            JSON.stringify(implementationMapping.factRefs),
+            implementationMapping.createdAt,
+          ],
+        );
+        await this.#database.query(
+          `INSERT INTO implementation_conformance (
+             project_id, id, claim_id, claim_version, scope_id, scope_version,
+             snapshot_manifest_id, status, evidence_refs, analysis_method, computed_at, mapping_id
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12)`,
+          [
+            projectId,
+            conformance.id,
+            conformance.claimId,
+            conformance.claimVersion,
+            conformance.scopeId,
+            conformance.scopeVersion,
+            conformance.snapshotManifestId,
+            conformance.status,
+            JSON.stringify(conformance.evidenceRefs),
+            JSON.stringify(conformance.analysisMethod),
+            conformance.computedAt,
+            conformance.mappingId,
+          ],
+        );
+      }
+
+      await this.#database.query(
+        `INSERT INTO change_set (
+           project_id, id, from_snapshot_manifest_id, to_snapshot_manifest_id,
+           complete, warnings, changes, change_set_payload, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)`,
+        [
+          projectId,
+          changeSet.id,
+          changeSet.fromSnapshotManifestId,
+          changeSet.toSnapshotManifestId,
+          changeSet.complete,
+          JSON.stringify(changeSet.warnings),
+          JSON.stringify(changeSet.changes),
+          JSON.stringify(changeSet),
+          changeSet.createdAt,
+        ],
+      );
+      await this.#database.query(
+        `INSERT INTO impact_assessment (
+           project_id, id, change_set_id, impact_payload, change_impact_payload, created_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)`,
+        [
+          projectId,
+          impact.id,
+          impact.changeSetId,
+          JSON.stringify(impact),
+          JSON.stringify(changeImpact),
+          impact.createdAt,
+        ],
+      );
+      for (const invalidation of impact.invalidations) {
+        await this.#database.query(
+          `INSERT INTO trace_invalidation_event (
+             project_id, id, change_set_id, feature_id, claim_id, claim_version, scope_id, scope_version,
+             mapping_id, test_spec_ids, change_ids, invalidated_layers,
+             preserved_layers, recommended_actions, reason, occurred_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb,
+             $12::jsonb, $13::jsonb, $14::jsonb, $15, $16
+           )`,
+          [
+            projectId,
+            invalidation.id,
+            changeSet.id,
+            invalidation.featureId,
+            invalidation.claimId,
+            invalidation.claimVersion,
+            invalidation.scopeId,
+            invalidation.scopeVersion,
+            invalidation.mappingId,
+            JSON.stringify(invalidation.testSpecIds),
+            JSON.stringify(invalidation.changeIds),
+            JSON.stringify(invalidation.layers),
+            JSON.stringify(invalidation.preserves),
+            JSON.stringify(invalidation.recommendedActions),
+            invalidation.reason,
+            impact.createdAt,
+          ],
+        );
+      }
+      for (const item of changeImpact.continuities ?? []) {
+        const continuity = item.continuity;
+        await this.#database.query(
+          `INSERT INTO implementation_continuity_event (
+             project_id, id, change_set_id, feature_id, claim_id, claim_version,
+             scope_id, scope_version, from_snapshot_manifest_id, to_snapshot_manifest_id,
+             from_mapping_id, to_mapping_id, from_conformance_id, to_conformance_id,
+             fact_ref_rebindings, reason, occurred_at
+           ) VALUES (
+             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+             $11, $12, $13, $14, $15::jsonb, $16, $17
+           )`,
+          [
+            projectId,
+            continuity.id,
+            changeSet.id,
+            continuity.featureId,
+            continuity.claimId,
+            continuity.claimVersion,
+            continuity.scopeId,
+            continuity.scopeVersion,
+            continuity.fromSnapshotManifestId,
+            continuity.toSnapshotManifestId,
+            continuity.fromMappingId,
+            continuity.toMappingId,
+            continuity.fromConformanceId,
+            continuity.toConformanceId,
+            JSON.stringify(continuity.factRefRebindings),
+            continuity.reason,
+            impact.createdAt,
+          ],
+        );
+      }
+      return deepFreeze(structuredClone(changeImpact));
+    });
+  }
+
+  async getChangeImpact(projectId, changeSetId) {
+    requireId(projectId, "projectId");
+    requireId(changeSetId, "changeSetId");
+    const result = await this.#database.query(
+      `SELECT ia.change_impact_payload
+       FROM change_set cs
+       JOIN impact_assessment ia
+         ON ia.project_id = cs.project_id
+        AND ia.change_set_id = cs.id
+       WHERE cs.project_id = $1 AND cs.id = $2`,
+      [projectId, changeSetId],
+    );
+    if (!result.rows[0]) return null;
+    return deepFreeze(result.rows[0].change_impact_payload);
   }
 }

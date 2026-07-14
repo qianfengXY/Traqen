@@ -2,6 +2,8 @@ import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
 import {
   PersistenceConflictError,
+  ReviewAuthenticationError,
+  ReviewAuthorizationError,
   RunnerAttestationError,
   ScannerAttestationError,
   SkillAttestationError,
@@ -143,6 +145,18 @@ function errorResponse(error, id) {
       body: { error: { code: "SKILL_ATTESTATION_INVALID", message: error.message, requestId: id } },
     };
   }
+  if (error instanceof ReviewAuthenticationError) {
+    return {
+      status: 401,
+      body: { error: { code: "REVIEWER_AUTHENTICATION_REQUIRED", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof ReviewAuthorizationError) {
+    return {
+      status: 403,
+      body: { error: { code: "REVIEWER_NOT_AUTHORIZED", message: error.message, requestId: id } },
+    };
+  }
   return {
     status: 500,
     body: { error: { code: "INTERNAL_ERROR", message: "An internal error occurred", requestId: id } },
@@ -203,7 +217,10 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
           claims: "appendClaim",
           decisions: "appendDecision",
         };
-        const created = await application[operations[resource]](projectId, input);
+        const created = await application[operations[resource]](projectId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        });
         sendJson(response, 201, created, id);
         return;
       }
@@ -215,6 +232,58 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         const baseline = await application.getFeatureBaseline(projectId, featureId);
         if (!baseline) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, baseline, id);
+        return;
+      }
+
+      const featureTraceabilityMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/traceability$/.exec(
+        url.pathname,
+      );
+      if (request.method === "GET" && featureTraceabilityMatch) {
+        const projectId = decodePathSegment(featureTraceabilityMatch[1]);
+        const featureId = decodePathSegment(featureTraceabilityMatch[2]);
+        const snapshotManifestId = url.searchParams.get("snapshotManifestId");
+        if (!snapshotManifestId) throw new HttpError(400, "SNAPSHOT_REQUIRED", "snapshotManifestId is required");
+        const traceability = await application.getFeatureTraceability(projectId, featureId, snapshotManifestId);
+        if (!traceability) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, traceability, id);
+        return;
+      }
+
+      const featureRecomputeMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/trace-chains\/recompute$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && featureRecomputeMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(featureRecomputeMatch[1]);
+        const featureId = decodePathSegment(featureRecomputeMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        const traceability = await application.recomputeFeatureTraceChains(
+          projectId,
+          featureId,
+          input.snapshotManifestId,
+        );
+        if (!traceability) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 201, traceability, id);
+        return;
+      }
+
+      const changeSetCollectionMatch = /^\/v1\/projects\/([^/]+)\/change-sets$/.exec(url.pathname);
+      if (request.method === "POST" && changeSetCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(changeSetCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const changeImpact = await application.compareAndPersistSnapshots(projectId, input);
+        sendJson(response, 201, changeImpact, id);
+        return;
+      }
+
+      const changeImpactMatch = /^\/v1\/projects\/([^/]+)\/change-sets\/([^/]+)\/impact$/.exec(url.pathname);
+      if (request.method === "GET" && changeImpactMatch) {
+        const projectId = decodePathSegment(changeImpactMatch[1]);
+        const changeSetId = decodePathSegment(changeImpactMatch[2]);
+        const changeImpact = await application.getChangeImpact(projectId, changeSetId);
+        if (!changeImpact) throw new HttpError(404, "CHANGE_SET_NOT_FOUND", "ChangeSet was not found");
+        sendJson(response, 200, changeImpact, id);
         return;
       }
 
@@ -334,6 +403,38 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         const run = await application.getReverseRun(projectId, runId);
         if (!run) throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run was not found");
         sendJson(response, 200, run, id);
+        return;
+      }
+
+      const reverseRunReviewsMatch = /^\/v1\/projects\/([^/]+)\/reverse-runs\/([^/]+)\/reviews$/.exec(
+        url.pathname,
+      );
+      if (request.method === "GET" && reverseRunReviewsMatch) {
+        const projectId = decodePathSegment(reverseRunReviewsMatch[1]);
+        const runId = decodePathSegment(reverseRunReviewsMatch[2]);
+        if (!(await application.getReverseRun(projectId, runId))) {
+          throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run was not found");
+        }
+        sendJson(response, 200, {
+          reviews: await application.listReverseCandidateReviews(projectId, runId),
+        }, id);
+        return;
+      }
+
+      const candidateReviewMatch = /^\/v1\/projects\/([^/]+)\/reverse-runs\/([^/]+)\/candidates\/([^/]+)\/reviews$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && candidateReviewMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(candidateReviewMatch[1]);
+        const runId = decodePathSegment(candidateReviewMatch[2]);
+        const candidateId = decodePathSegment(candidateReviewMatch[3]);
+        const input = await readJson(request, maxBodyBytes);
+        const reviewed = await application.reviewReverseCandidate(projectId, runId, candidateId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        });
+        sendJson(response, 201, reviewed, id);
         return;
       }
 
