@@ -53,6 +53,28 @@ export const EvidenceType = enumValues([
   "OTHER",
 ]);
 
+export const FactNodeType = enumValues([
+  "ARTIFACT",
+  "MODULE",
+  "CODE_SYMBOL",
+  "ENDPOINT",
+  "DATA_OBJECT",
+  "CONFIGURATION",
+  "EXTERNAL_DEPENDENCY",
+  "TEST_ASSET",
+]);
+
+export const FactPredicate = enumValues([
+  "CONTAINS",
+  "IMPLEMENTED_BY",
+  "CALLS",
+  "READS",
+  "WRITES",
+  "CONTROLLED_BY",
+  "DEPENDS_ON",
+  "EXERCISES",
+]);
+
 export const AuthorityStatus = enumValues([
   "UNREVIEWED",
   "CONFIRMED",

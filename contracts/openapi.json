@@ -256,6 +256,41 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/v1/projects/{projectId}/fact-scans": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "ingestFactBundle",
+        "requestBody": { "$ref": "#/components/requestBodies/FactBundle" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/FactBundleStored" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ScannerUnauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/facts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "snapshotManifestId", "in": "query", "schema": { "type": "string" } },
+        { "name": "type", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+        { "name": "predicate", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+        { "name": "q", "in": "query", "schema": { "type": "string", "maxLength": 256 } },
+        { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+      ],
+      "get": {
+        "operationId": "queryFacts",
+        "responses": {
+          "200": {
+            "description": "Matching facts plus their one-hop graph neighbors",
+            "content": { "application/json": { "schema": { "$ref": "./fact-bundle.schema.json#/$defs/FactGraph" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
     }
   },
   "components": {
@@ -325,6 +360,12 @@
         "content": {
           "application/json": { "schema": { "$ref": "./execution-evidence.schema.json" } }
         }
+      },
+      "FactBundle": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./fact-bundle.schema.json" } }
+        }
       }
     },
     "schemas": {
@@ -372,6 +413,10 @@
         "description": "Runner attestation is missing, unknown, or invalid",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
+      "ScannerUnauthorized": {
+        "description": "Scanner attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
       "FeatureVersionCreated": {
         "description": "Feature version appended",
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
@@ -417,6 +462,14 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./execution-evidence.schema.json#/$defs/StoredExecutionEvidence" }
+          }
+        }
+      },
+      "FactBundleStored": {
+        "description": "Attested immutable fact bundle appended",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./fact-bundle.schema.json#/$defs/StoredFactBundle" }
           }
         }
       }

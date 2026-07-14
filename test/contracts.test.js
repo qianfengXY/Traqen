@@ -64,6 +64,25 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/test-executions/{executionId}/evidence"].get.operationId,
     "getExecutionEvidence",
   );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/fact-scans"].post.operationId,
+    "ingestFactBundle",
+  );
+  assert.equal(contract.paths["/v1/projects/{projectId}/facts"].get.operationId, "queryFacts");
+});
+
+test("FactBundle contract keeps facts locatable, snapshot-bound, and scanner-attested", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/fact-bundle.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "FactBundle");
+  assert.ok(contract.required.includes("snapshotManifestId"));
+  assert.ok(contract.required.includes("sourceComponentId"));
+  assert.ok(contract.required.includes("attestation"));
+  assert.deepEqual(contract.$defs.SourceLocation.required, ["artifact", "startLine", "endLine", "contentHash"]);
+  assert.ok(contract.$defs.FactNode.properties.type.enum.includes("ENDPOINT"));
+  assert.ok(contract.$defs.FactEdge.properties.predicate.enum.includes("IMPLEMENTED_BY"));
 });
 
 test("governance contract defines immutable version fields", async () => {

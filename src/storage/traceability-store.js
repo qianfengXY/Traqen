@@ -46,4 +46,12 @@ export class TraceabilityStore {
   async getExecutionEvidence(_projectId, _executionId) {
     throw new Error("getExecutionEvidence must be implemented");
   }
+
+  async appendFactBundle(_projectId, _bundle) {
+    throw new Error("appendFactBundle must be implemented");
+  }
+
+  async queryFacts(_projectId, _filters = {}) {
+    throw new Error("queryFacts must be implemented");
+  }
 }

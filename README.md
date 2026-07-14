@@ -70,7 +70,17 @@ The controlled Runner slice adds:
 - deterministic row-count and field assertions, followed by signed Evidence Bundle generation;
 - distinct product assertion failures and Runner/executor errors.
 
-The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise Runner identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
+The deterministic fact-foundation slice adds:
+
+- a language-neutral, immutable `FactNode`/`FactEdge`/`FactBundle` contract with stable entity IDs and snapshot-specific fact IDs;
+- a bounded JavaScript/Node scanner for modules, symbols, Express-style routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
+- source artifact, line range, and SHA-256 location data on every fact and relation;
+- explicit incomplete results for parser failures, oversized files, unsupported source languages, and unsupported OpenAPI formats;
+- HMAC-SHA256 Scanner attestation and exact Snapshot Manifest binding before ingestion;
+- append-only memory and PostgreSQL storage plus a filtered one-hop fact graph API;
+- a self-scan command and a checked-in scanner validation report.
+
+The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise Runner/Scanner identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Production authentication, runtime PostgreSQL wiring, additional language scanners, OpenAPI YAML extraction, and LLM-assisted extraction are not part of this slice.
 
 ## Run
 
@@ -80,6 +90,7 @@ Requires Node.js 20 or newer.
 npm test
 npm run test:storage
 npm run example
+npm run scan:self
 npm run api:dev
 ```
 
@@ -90,5 +101,16 @@ Evaluate another trace-chain input:
 ```bash
 node src/cli/evaluate-trace-chain.js path/to/input.json
 ```
+
+Emit a complete signed Fact Bundle for ingestion:
+
+```bash
+SCANNER_ID=javascript-node-scanner \
+SCANNER_SHARED_SECRET=local-development-secret \
+node src/cli/scan-facts.js --root . --project PROJECT-001 \
+  --snapshot SNAPSHOT-MANIFEST-001 --source-component SOURCE-SNAPSHOT-001
+```
+
+The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
 
 The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md).

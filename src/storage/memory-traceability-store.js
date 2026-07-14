@@ -27,6 +27,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #executions = new Map();
   #evidence = new Map();
   #evidenceHashes = new Map();
+  #factBundles = new Map();
 
   async appendSnapshotManifest(projectId, manifest) {
     const storageKey = key(projectId, manifest.id);
@@ -306,5 +307,103 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       )
       .map(([, item]) => item);
     return deepFreeze({ ...record, evidence });
+  }
+
+  async appendFactBundle(projectId, bundle) {
+    if (!this.#manifests.has(key(projectId, bundle.snapshotManifestId))) {
+      throw new PersistenceConflictError(
+        `Snapshot manifest ${bundle.snapshotManifestId} does not exist in project ${projectId}`,
+      );
+    }
+    const manifest = this.#manifests.get(key(projectId, bundle.snapshotManifestId));
+    if (manifest.components?.source?.id !== bundle.sourceComponentId) {
+      throw new PersistenceConflictError(
+        "FactBundle source component must belong to the referenced snapshot manifest",
+      );
+    }
+    const storageKey = key(projectId, bundle.id);
+    const existing = this.#factBundles.get(storageKey);
+    if (existing && canonicalJson(existing) !== canonicalJson(bundle)) {
+      throw new PersistenceConflictError(`FactBundle ${bundle.id} conflicts with an existing immutable record`);
+    }
+    if (!existing) this.#factBundles.set(storageKey, deepFreeze(structuredClone(bundle)));
+    return deepFreeze({
+      bundleId: bundle.id,
+      snapshotManifestId: bundle.snapshotManifestId,
+      sourceComponentId: bundle.sourceComponentId,
+      nodeCount: bundle.nodes.length,
+      edgeCount: bundle.edges.length,
+      complete: bundle.complete,
+    });
+  }
+
+  async queryFacts(projectId, filters = {}) {
+    const observedBundles = [...this.#factBundles.entries()]
+      .filter(
+        ([storageKey, bundle]) =>
+          storageKey.startsWith(`${projectId}\u0000`) &&
+          (!filters.snapshotManifestId || bundle.snapshotManifestId === filters.snapshotManifestId),
+      )
+      .map(([, bundle]) => bundle)
+      .sort((left, right) => Date.parse(right.observedAt) - Date.parse(left.observedAt));
+    const latestBundles = new Map();
+    for (const bundle of observedBundles) {
+      const identity = `${bundle.snapshotManifestId}\u0000${bundle.sourceComponentId}\u0000${bundle.extractor.id}`;
+      if (!latestBundles.has(identity)) latestBundles.set(identity, bundle);
+    }
+    const bundles = [...latestBundles.values()];
+    const allNodes = bundles.flatMap((bundle) =>
+      bundle.nodes.map((node) => ({ ...node, bundleId: bundle.id })),
+    );
+    const query = filters.query?.toLowerCase() ?? null;
+    const matching = allNodes
+      .filter((node) => !filters.types?.length || filters.types.includes(node.type))
+      .filter(
+        (node) =>
+          !query ||
+          node.name.toLowerCase().includes(query) ||
+          node.naturalKey.toLowerCase().includes(query) ||
+          node.source.artifact.toLowerCase().includes(query),
+      )
+      .sort((left, right) => left.naturalKey.localeCompare(right.naturalKey));
+    const limit = filters.limit ?? 100;
+    const truncated = matching.length > limit;
+    const matchedNodes = matching.slice(0, limit);
+    const matchedKeys = new Set(matchedNodes.map((node) => `${node.bundleId}\u0000${node.id}`));
+    const edgeLimit = Math.min(limit * 8, 4_000);
+    const matchingEdges = bundles
+      .flatMap((bundle) => bundle.edges.map((edge) => ({ ...edge, bundleId: bundle.id })))
+      .filter((edge) => !filters.predicates?.length || filters.predicates.includes(edge.predicate))
+      .filter(
+        (edge) =>
+          matchedKeys.has(`${edge.bundleId}\u0000${edge.subjectId}`) ||
+          matchedKeys.has(`${edge.bundleId}\u0000${edge.objectId}`),
+      );
+    const edges = matchingEdges.slice(0, edgeLimit);
+    const graphKeys = new Set(matchedKeys);
+    for (const edge of edges) {
+      graphKeys.add(`${edge.bundleId}\u0000${edge.subjectId}`);
+      graphKeys.add(`${edge.bundleId}\u0000${edge.objectId}`);
+    }
+    const nodes = allNodes.filter((node) => graphKeys.has(`${node.bundleId}\u0000${node.id}`));
+
+    return deepFreeze({
+      bundles: bundles.map((bundle) => ({
+        id: bundle.id,
+        snapshotManifestId: bundle.snapshotManifestId,
+        sourceComponentId: bundle.sourceComponentId,
+        sourceDigest: bundle.sourceDigest,
+        extractor: bundle.extractor,
+        observedAt: bundle.observedAt,
+        complete: bundle.complete,
+        diagnostics: bundle.diagnostics,
+        attestation: bundle.attestation,
+      })),
+      matchedNodeIds: matchedNodes.map((node) => node.id),
+      nodes,
+      edges,
+      truncated,
+      edgesTruncated: matchingEdges.length > edgeLimit,
+    });
   }
 }

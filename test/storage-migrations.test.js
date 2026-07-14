@@ -7,8 +7,10 @@ import { PGlite } from "@electric-sql/pglite";
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import {
   createExecutionEvidenceBundle,
+  createFactBundle,
   evaluateTraceChain,
   signExecutionEvidenceBundle,
+  signFactBundle,
 } from "../src/domain/index.js";
 import { applyMigrations } from "../src/storage/postgres/migrations.js";
 import { PostgresTraceabilityStore } from "../src/storage/postgres/postgres-traceability-store.js";
@@ -23,6 +25,7 @@ async function migratedDatabase() {
     "0001_core_traceability",
     "0002_governance_integrity",
     "0003_runner_attestation",
+    "0004_fact_graph",
   ]);
   return database;
 }
@@ -231,6 +234,9 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "trace_chain_revision",
     "trace_gap",
     "audit_event",
+    "fact_bundle",
+    "fact_node",
+    "fact_edge",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }
@@ -770,4 +776,91 @@ test("PostgreSQL atomically persists attested execution evidence for the exact d
     ["PROJECT-001"],
   );
   assert.deepEqual(evidenceRows.rows, [{ id: "EVIDENCE-ATTESTED-001" }]);
+});
+
+test("PostgreSQL persists signed fact graphs as immutable snapshot evidence", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await insertSnapshot(database);
+  const scannerSecret = "scanner-shared-secret";
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    scannerKeyResolver: (scannerId) => (scannerId === "SCANNER-001" ? scannerSecret : null),
+  });
+  const source = {
+    artifact: "src/orders.js",
+    startLine: 2,
+    endLine: 7,
+    contentHash: `sha256:${"c".repeat(64)}`,
+  };
+  const seed = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    sourceComponentId: "SOURCE-001",
+    sourceDigest: `sha256:${"d".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T07:00:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [
+      { type: "CODE_SYMBOL", naturalKey: "javascript:src/orders.js:getOrder", name: "getOrder", attributes: {}, source },
+      { type: "DATA_OBJECT", naturalKey: "table:orders", name: "orders", attributes: { kind: "table" }, source },
+    ],
+    edges: [],
+  });
+  const getOrder = seed.nodes.find((node) => node.name === "getOrder");
+  const orders = seed.nodes.find((node) => node.name === "orders");
+  const bundle = createFactBundle({
+    ...seed,
+    nodes: seed.nodes,
+    edges: [{ subjectId: getOrder.id, predicate: "READS", objectId: orders.id, attributes: {}, source }],
+  });
+  const signed = signFactBundle(bundle, scannerSecret);
+
+  const stored = await application.ingestFactBundle("PROJECT-001", signed);
+  assert.deepEqual(stored, {
+    bundleId: bundle.id,
+    snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    sourceComponentId: "SOURCE-001",
+    nodeCount: 2,
+    edgeCount: 1,
+    complete: true,
+  });
+  assert.deepEqual(await application.ingestFactBundle("PROJECT-001", signed), stored);
+
+  const wrongSourceBundle = createFactBundle({
+    ...bundle,
+    sourceComponentId: "BUILD-001",
+    observedAt: "2026-07-14T07:01:00.000Z",
+    nodes: bundle.nodes.map((node) => ({
+      ...node,
+      observedAt: "2026-07-14T07:01:00.000Z",
+      validFrom: "2026-07-14T07:01:00.000Z",
+    })),
+    edges: bundle.edges.map((edge) => ({ ...edge, observedAt: "2026-07-14T07:01:00.000Z" })),
+  });
+  await assert.rejects(
+    application.ingestFactBundle("PROJECT-001", signFactBundle(wrongSourceBundle, scannerSecret)),
+    /source component|Persistence constraints rejected/,
+  );
+
+  const graph = await application.queryFacts("PROJECT-001", {
+    snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    types: ["CODE_SYMBOL"],
+    predicates: ["READS"],
+    query: "getOrder",
+  });
+  assert.deepEqual(graph.matchedNodeIds, [getOrder.id]);
+  assert.equal(graph.nodes.length, 2);
+  assert.equal(graph.edges[0].predicate, "READS");
+
+  await assert.rejects(
+    database.query("UPDATE fact_node SET name = 'tampered' WHERE project_id = $1", ["PROJECT-001"]),
+    /append-only; UPDATE and DELETE are forbidden/,
+  );
+  await assert.rejects(
+    database.query("DELETE FROM fact_bundle WHERE project_id = $1", ["PROJECT-001"]),
+    /append-only; UPDATE and DELETE are forbidden/,
+  );
 });

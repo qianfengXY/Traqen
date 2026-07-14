@@ -12,10 +12,14 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 
 const runnerId = process.env.RUNNER_ID ?? null;
 const runnerSharedSecret = process.env.RUNNER_SHARED_SECRET ?? null;
+const scannerId = process.env.SCANNER_ID ?? null;
+const scannerSharedSecret = process.env.SCANNER_SHARED_SECRET ?? null;
 const application = new TraceabilityApplication({
   store: new MemoryTraceabilityStore(),
   runnerKeyResolver: (candidateRunnerId) =>
     runnerId && runnerSharedSecret && candidateRunnerId === runnerId ? runnerSharedSecret : null,
+  scannerKeyResolver: (candidateScannerId) =>
+    scannerId && scannerSharedSecret && candidateScannerId === scannerId ? scannerSharedSecret : null,
 });
 const server = createTraceabilityHttpServer({ application });
 

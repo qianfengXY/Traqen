@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { PersistenceConflictError, RunnerAttestationError } from "../storage/index.js";
+import { PersistenceConflictError, RunnerAttestationError, ScannerAttestationError } from "../storage/index.js";
 
 class HttpError extends Error {
   constructor(status, code, message, details) {
@@ -86,6 +86,21 @@ function optionalVersion(url) {
   return version;
 }
 
+function repeatedEnumFilter(url, name) {
+  return url.searchParams
+    .getAll(name)
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function optionalLimit(url) {
+  const value = url.searchParams.get("limit");
+  if (value === null) return undefined;
+  if (!/^[1-9]\d*$/.test(value)) throw new RangeError("limit must be an integer between 1 and 500");
+  return Number(value);
+}
+
 function errorResponse(error, id) {
   if (error instanceof HttpError) {
     return {
@@ -109,6 +124,12 @@ function errorResponse(error, id) {
     return {
       status: 401,
       body: { error: { code: "RUNNER_ATTESTATION_INVALID", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof ScannerAttestationError) {
+    return {
+      status: 401,
+      body: { error: { code: "SCANNER_ATTESTATION_INVALID", message: error.message, requestId: id } },
     };
   }
   return {
@@ -247,6 +268,30 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         const bundle = await application.getExecutionEvidence(projectId, executionId);
         if (!bundle) throw new HttpError(404, "TEST_EXECUTION_NOT_FOUND", "TestExecution was not found");
         sendJson(response, 200, bundle, id);
+        return;
+      }
+
+      const factScanCollectionMatch = /^\/v1\/projects\/([^/]+)\/fact-scans$/.exec(url.pathname);
+      if (request.method === "POST" && factScanCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(factScanCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const stored = await application.ingestFactBundle(projectId, input);
+        sendJson(response, 201, stored, id);
+        return;
+      }
+
+      const factsCollectionMatch = /^\/v1\/projects\/([^/]+)\/facts$/.exec(url.pathname);
+      if (request.method === "GET" && factsCollectionMatch) {
+        const projectId = decodePathSegment(factsCollectionMatch[1]);
+        const graph = await application.queryFacts(projectId, {
+          snapshotManifestId: url.searchParams.get("snapshotManifestId"),
+          types: repeatedEnumFilter(url, "type"),
+          predicates: repeatedEnumFilter(url, "predicate"),
+          query: url.searchParams.get("q"),
+          limit: optionalLimit(url),
+        });
+        sendJson(response, 200, graph, id);
         return;
       }
 

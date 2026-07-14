@@ -11,3 +11,10 @@ export class RunnerAttestationError extends Error {
     this.name = "RunnerAttestationError";
   }
 }
+
+export class ScannerAttestationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "ScannerAttestationError";
+  }
+}

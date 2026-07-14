@@ -4,7 +4,12 @@ import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
-import { createExecutionEvidenceBundle, signExecutionEvidenceBundle } from "../src/domain/index.js";
+import {
+  createExecutionEvidenceBundle,
+  createFactBundle,
+  signExecutionEvidenceBundle,
+  signFactBundle,
+} from "../src/domain/index.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
 
 const fixedClock = () => new Date("2026-07-14T04:00:00.000Z");
@@ -14,9 +19,14 @@ async function exampleInput() {
 }
 
 async function startServer(t, options = {}) {
-  const { runnerKeyResolver, ...serverOptions } = options;
+  const { runnerKeyResolver, scannerKeyResolver, ...serverOptions } = options;
   const store = new MemoryTraceabilityStore();
-  const application = new TraceabilityApplication({ store, clock: fixedClock, runnerKeyResolver });
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    runnerKeyResolver,
+    scannerKeyResolver,
+  });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -463,4 +473,57 @@ test("attested execution evidence is verified, persisted, and queryable", async 
   const crossProject = await postJson(`${projectUrl}/test-executions`, crossProjectSignature);
   assert.equal(crossProject.response.status, 401);
   assert.equal(crossProject.body.error.code, "RUNNER_ATTESTATION_INVALID");
+});
+
+test("attested fact scans are snapshot-bound and queryable as a one-hop graph", async (t) => {
+  const scannerSecret = "scanner-shared-secret";
+  const baseUrl = await startServer(t, {
+    scannerKeyResolver: (scannerId) => (scannerId === "SCANNER-001" ? scannerSecret : null),
+  });
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
+  const persistedTrace = await postJson(`${projectUrl}/trace-chains`, await exampleInput());
+  const snapshotManifestId = persistedTrace.body.chain.snapshotManifestId;
+  const source = {
+    artifact: "src/server.js",
+    startLine: 1,
+    endLine: 4,
+    contentHash: `sha256:${"a".repeat(64)}`,
+  };
+  const unsigned = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId,
+    sourceComponentId: (await exampleInput()).snapshotManifest.source.id,
+    sourceDigest: `sha256:${"b".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T04:00:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [
+      { type: "ARTIFACT", naturalKey: "artifact:src/server.js", name: "src/server.js", attributes: {}, source },
+      { type: "ENDPOINT", naturalKey: "http:GET /orders", name: "GET /orders", attributes: { method: "GET", path: "/orders" }, source },
+    ],
+    edges: [],
+  });
+  const artifact = unsigned.nodes.find((node) => node.type === "ARTIFACT");
+  const endpoint = unsigned.nodes.find((node) => node.type === "ENDPOINT");
+  const withEdge = createFactBundle({
+    ...unsigned,
+    nodes: unsigned.nodes,
+    edges: [{ subjectId: artifact.id, predicate: "CONTAINS", objectId: endpoint.id, attributes: {}, source }],
+  });
+  const signed = signFactBundle(withEdge, scannerSecret);
+
+  const rejected = await postJson(`${projectUrl}/fact-scans`, signFactBundle(withEdge, "wrong-secret"));
+  assert.equal(rejected.response.status, 401);
+  assert.equal(rejected.body.error.code, "SCANNER_ATTESTATION_INVALID");
+
+  const ingested = await postJson(`${projectUrl}/fact-scans`, signed);
+  assert.equal(ingested.response.status, 201);
+  assert.equal(ingested.body.nodeCount, 2);
+  const queried = await fetch(`${projectUrl}/facts?snapshotManifestId=${snapshotManifestId}&type=ENDPOINT&q=orders`);
+  const graph = await queried.json();
+  assert.equal(queried.status, 200);
+  assert.deepEqual(graph.matchedNodeIds, [endpoint.id]);
+  assert.equal(graph.nodes.length, 2);
+  assert.equal(graph.edges[0].predicate, "CONTAINS");
 });

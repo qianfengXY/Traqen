@@ -11,9 +11,14 @@
     "test:storage": "node --test test/storage-migrations.test.js",
     "test:runner": "node --test test/runner.test.js",
     "api:dev": "node src/api/dev-server.js",
-    "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json"
+    "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json",
+    "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.4"
+  },
+  "dependencies": {
+    "acorn": "^8.15.0",
+    "acorn-walk": "^8.3.4"
   }
 }

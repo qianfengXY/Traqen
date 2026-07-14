@@ -854,4 +854,255 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       attestation: row.runner_attestation,
     });
   }
+
+  async appendFactBundle(projectId, bundle) {
+    requireId(projectId, "projectId");
+    requireId(bundle?.id, "bundle.id");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO fact_bundle (
+           project_id, id, snapshot_manifest_id, source_component_id, source_digest, extractor_id,
+           extractor_version, observed_at, complete, diagnostics, scanner_attestation
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [
+          projectId,
+          bundle.id,
+          bundle.snapshotManifestId,
+          bundle.sourceComponentId,
+          bundle.sourceDigest,
+          bundle.extractor.id,
+          bundle.extractor.version,
+          bundle.observedAt,
+          bundle.complete,
+          JSON.stringify(bundle.diagnostics),
+          JSON.stringify(bundle.attestation),
+        ],
+      );
+      const storedBundle = await this.#database.query(
+        `SELECT * FROM fact_bundle WHERE project_id = $1 AND id = $2`,
+        [projectId, bundle.id],
+      );
+      const row = storedBundle.rows[0];
+      if (
+        !row ||
+        row.snapshot_manifest_id !== bundle.snapshotManifestId ||
+        row.source_component_id !== bundle.sourceComponentId ||
+        row.source_digest !== bundle.sourceDigest ||
+        row.extractor_id !== bundle.extractor.id ||
+        row.extractor_version !== bundle.extractor.version ||
+        new Date(row.observed_at).toISOString() !== bundle.observedAt ||
+        row.complete !== bundle.complete ||
+        canonicalJson(row.diagnostics) !== canonicalJson(bundle.diagnostics) ||
+        canonicalJson(row.scanner_attestation) !== canonicalJson(bundle.attestation)
+      ) {
+        throw new PersistenceConflictError(`FactBundle ${bundle.id} conflicts with an existing immutable record`);
+      }
+
+      for (const node of bundle.nodes) {
+        await this.#database.query(
+          `INSERT INTO fact_node (
+             project_id, bundle_id, fact_id, node_id, snapshot_manifest_id, node_type,
+             natural_key, name, source_artifact, start_line, end_line, content_hash, payload
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb)
+           ON CONFLICT (project_id, bundle_id, fact_id) DO NOTHING`,
+          [
+            projectId,
+            bundle.id,
+            node.factId,
+            node.id,
+            node.snapshotManifestId,
+            node.type,
+            node.naturalKey,
+            node.name,
+            node.source.artifact,
+            node.source.startLine,
+            node.source.endLine,
+            node.source.contentHash,
+            JSON.stringify(node),
+          ],
+        );
+        const storedNode = await this.#database.query(
+          `SELECT payload FROM fact_node
+           WHERE project_id = $1 AND bundle_id = $2 AND fact_id = $3`,
+          [projectId, bundle.id, node.factId],
+        );
+        if (!storedNode.rows[0] || canonicalJson(storedNode.rows[0].payload) !== canonicalJson(node)) {
+          throw new PersistenceConflictError(`Fact ${node.factId} conflicts with an existing immutable record`);
+        }
+      }
+
+      for (const edge of bundle.edges) {
+        await this.#database.query(
+          `INSERT INTO fact_edge (
+             project_id, bundle_id, id, snapshot_manifest_id, subject_node_id, predicate,
+             object_node_id, source_artifact, start_line, end_line, content_hash, payload
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb)
+           ON CONFLICT (project_id, bundle_id, id) DO NOTHING`,
+          [
+            projectId,
+            bundle.id,
+            edge.id,
+            edge.snapshotManifestId,
+            edge.subjectId,
+            edge.predicate,
+            edge.objectId,
+            edge.source.artifact,
+            edge.source.startLine,
+            edge.source.endLine,
+            edge.source.contentHash,
+            JSON.stringify(edge),
+          ],
+        );
+        const storedEdge = await this.#database.query(
+          `SELECT payload FROM fact_edge
+           WHERE project_id = $1 AND bundle_id = $2 AND id = $3`,
+          [projectId, bundle.id, edge.id],
+        );
+        if (!storedEdge.rows[0] || canonicalJson(storedEdge.rows[0].payload) !== canonicalJson(edge)) {
+          throw new PersistenceConflictError(`FactEdge ${edge.id} conflicts with an existing immutable record`);
+        }
+      }
+
+      return deepFreeze({
+        bundleId: bundle.id,
+        snapshotManifestId: bundle.snapshotManifestId,
+        sourceComponentId: bundle.sourceComponentId,
+        nodeCount: bundle.nodes.length,
+        edgeCount: bundle.edges.length,
+        complete: bundle.complete,
+      });
+    });
+  }
+
+  async queryFacts(projectId, filters = {}) {
+    requireId(projectId, "projectId");
+    const limit = filters.limit ?? 100;
+    const bundleParameters = [projectId];
+    let bundleSnapshotPredicate = "";
+    if (filters.snapshotManifestId) {
+      bundleParameters.push(filters.snapshotManifestId);
+      bundleSnapshotPredicate = `AND snapshot_manifest_id = $${bundleParameters.length}`;
+    }
+    const bundleResult = await this.#database.query(
+      `SELECT DISTINCT ON (snapshot_manifest_id, source_component_id, extractor_id) * FROM fact_bundle
+       WHERE project_id = $1 ${bundleSnapshotPredicate}
+       ORDER BY snapshot_manifest_id, source_component_id, extractor_id, observed_at DESC, id DESC`,
+      bundleParameters,
+    );
+
+    const currentBundleIds = bundleResult.rows.map((row) => row.id);
+    if (currentBundleIds.length === 0) {
+      return deepFreeze({
+        bundles: [],
+        matchedNodeIds: [],
+        nodes: [],
+        edges: [],
+        truncated: false,
+        edgesTruncated: false,
+      });
+    }
+
+    const nodeParameters = [projectId, currentBundleIds];
+    const nodePredicates = ["project_id = $1", "bundle_id = ANY($2::text[])"];
+    if (filters.snapshotManifestId) {
+      nodeParameters.push(filters.snapshotManifestId);
+      nodePredicates.push(`snapshot_manifest_id = $${nodeParameters.length}`);
+    }
+    if (filters.types?.length) {
+      nodeParameters.push(filters.types);
+      nodePredicates.push(`node_type = ANY($${nodeParameters.length}::text[])`);
+    }
+    if (filters.query) {
+      nodeParameters.push(`%${filters.query.toLowerCase()}%`);
+      nodePredicates.push(
+        `(lower(name) LIKE $${nodeParameters.length} OR lower(natural_key) LIKE $${nodeParameters.length} OR lower(source_artifact) LIKE $${nodeParameters.length})`,
+      );
+    }
+    nodeParameters.push(limit + 1);
+    const nodeResult = await this.#database.query(
+      `SELECT bundle_id, node_id, payload FROM fact_node
+       WHERE ${nodePredicates.join(" AND ")}
+       ORDER BY natural_key, bundle_id
+       LIMIT $${nodeParameters.length}`,
+      nodeParameters,
+    );
+    const truncated = nodeResult.rows.length > limit;
+    const matchedRows = nodeResult.rows.slice(0, limit);
+    if (matchedRows.length === 0) {
+      return deepFreeze({
+        bundles: bundleResult.rows.map((bundleRow) => ({
+          id: bundleRow.id,
+          snapshotManifestId: bundleRow.snapshot_manifest_id,
+          sourceComponentId: bundleRow.source_component_id,
+          sourceDigest: bundleRow.source_digest,
+          extractor: { id: bundleRow.extractor_id, version: bundleRow.extractor_version },
+          observedAt: new Date(bundleRow.observed_at).toISOString(),
+          complete: bundleRow.complete,
+          diagnostics: bundleRow.diagnostics,
+          attestation: bundleRow.scanner_attestation,
+        })),
+        matchedNodeIds: [],
+        nodes: [],
+        edges: [],
+        truncated: false,
+        edgesTruncated: false,
+      });
+    }
+
+    const bundleIds = [...new Set(matchedRows.map((row) => row.bundle_id))];
+    const nodeIds = [...new Set(matchedRows.map((row) => row.node_id))];
+    const edgeParameters = [projectId, bundleIds, nodeIds];
+    const edgePredicates = [
+      "project_id = $1",
+      "bundle_id = ANY($2::text[])",
+      "(subject_node_id = ANY($3::text[]) OR object_node_id = ANY($3::text[]))",
+    ];
+    if (filters.predicates?.length) {
+      edgeParameters.push(filters.predicates);
+      edgePredicates.push(`predicate = ANY($${edgeParameters.length}::text[])`);
+    }
+    const edgeLimit = Math.min(limit * 8, 4_000);
+    edgeParameters.push(edgeLimit + 1);
+    const edgeResult = await this.#database.query(
+      `SELECT bundle_id, subject_node_id, object_node_id, payload FROM fact_edge
+       WHERE ${edgePredicates.join(" AND ")}
+       ORDER BY bundle_id, predicate, id
+       LIMIT $${edgeParameters.length}`,
+      edgeParameters,
+    );
+    const edgesTruncated = edgeResult.rows.length > edgeLimit;
+    const edgeRows = edgeResult.rows.slice(0, edgeLimit);
+    const graphNodeIds = [...new Set([
+      ...nodeIds,
+      ...edgeRows.flatMap((row) => [row.subject_node_id, row.object_node_id]),
+    ])];
+    const graphNodeResult = await this.#database.query(
+      `SELECT bundle_id, node_id, payload FROM fact_node
+       WHERE project_id = $1
+         AND bundle_id = ANY($2::text[])
+         AND node_id = ANY($3::text[])
+       ORDER BY natural_key, bundle_id`,
+      [projectId, bundleIds, graphNodeIds],
+    );
+
+    return deepFreeze({
+      bundles: bundleResult.rows.map((bundleRow) => ({
+        id: bundleRow.id,
+        snapshotManifestId: bundleRow.snapshot_manifest_id,
+        sourceComponentId: bundleRow.source_component_id,
+        sourceDigest: bundleRow.source_digest,
+        extractor: { id: bundleRow.extractor_id, version: bundleRow.extractor_version },
+        observedAt: new Date(bundleRow.observed_at).toISOString(),
+        complete: bundleRow.complete,
+        diagnostics: bundleRow.diagnostics,
+        attestation: bundleRow.scanner_attestation,
+      })),
+      matchedNodeIds: matchedRows.map((row) => row.node_id),
+      nodes: graphNodeResult.rows.map((nodeRow) => ({ ...nodeRow.payload, bundleId: nodeRow.bundle_id })),
+      edges: edgeRows.map((edgeRow) => ({ ...edgeRow.payload, bundleId: edgeRow.bundle_id })),
+      truncated,
+      edgesTruncated,
+    });
+  }
 }
