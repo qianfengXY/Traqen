@@ -20,6 +20,9 @@ const skillPublisherSharedSecret = process.env.SKILL_PUBLISHER_SHARED_SECRET ?? 
 const reviewerId = process.env.REVIEWER_ID ?? null;
 const reviewerRole = process.env.REVIEWER_ROLE ?? "business-owner";
 const reviewerBearerToken = process.env.REVIEWER_BEARER_TOKEN ?? null;
+const implementationReviewerId = process.env.IMPLEMENTATION_REVIEWER_ID ?? null;
+const implementationReviewerRole = process.env.IMPLEMENTATION_REVIEWER_ROLE ?? "developer";
+const implementationReviewerBearerToken = process.env.IMPLEMENTATION_REVIEWER_BEARER_TOKEN ?? null;
 const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "http://localhost:3000")
   .split(",")
   .map((value) => value.trim())
@@ -55,6 +58,15 @@ const application = new TraceabilityApplication({
     if (reviewerBearerToken && context.authorization !== `Bearer ${reviewerBearerToken}`) return null;
     return { actorId: reviewerId, actorRole: reviewerRole };
   },
+  implementationReviewerResolver: (_projectId, context) => {
+    if (!implementationReviewerId) return null;
+    if (
+      implementationReviewerBearerToken &&
+      context.authorization !== `Bearer ${implementationReviewerBearerToken}`
+    ) return null;
+    return { actorId: implementationReviewerId, actorRole: implementationReviewerRole };
+  },
+  implementationPolicyResolver: () => ({ allowedRoles: [implementationReviewerRole] }),
   reviewPolicyResolver: () => ({
     allowedRoles: [reviewerRole],
     allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],

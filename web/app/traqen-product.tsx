@@ -492,6 +492,14 @@ function ImpactView({ apiBase, projectId }: { apiBase: string; projectId: string
   const [result, setResult] = useState<ImpactResult | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [repairFeatureId, setRepairFeatureId] = useState("FEATURE-ORDER-SUBMIT-001");
+  const [repairClaimId, setRepairClaimId] = useState("CLAIM-ORDER-STATUS-001");
+  const [repairRunId, setRepairRunId] = useState("");
+  const [repairCandidateId, setRepairCandidateId] = useState("");
+  const [repairAnalysisId, setRepairAnalysisId] = useState("IMPLEMENTATION-REANALYSIS-UI-001");
+  const [repairRationale, setRepairRationale] = useState("开发负责人确认新 Snapshot 的实现候选仍满足既有规范性 Claim。");
+  const [repairToken, setRepairToken] = useState("");
+  const [repairMessage, setRepairMessage] = useState("");
 
   async function compareSnapshots() {
     setLoading(true);
@@ -505,10 +513,44 @@ function ImpactView({ apiBase, projectId }: { apiBase: string; projectId: string
       });
       const body = await response.json() as Record<string, unknown>;
       if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
-      setResult(body as unknown as ImpactResult);
+      const impactResult = body as unknown as ImpactResult;
+      setResult(impactResult);
+      setRepairFeatureId(impactResult.impact.affectedFeatureIds[0] ?? repairFeatureId);
+      setRepairClaimId(impactResult.impact.affectedClaimRefs[0]?.id ?? repairClaimId);
       setMessage("已加载服务端持久化的 Snapshot 历史比较与分层失效结果。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Snapshot 比较失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function reanalyzeAffectedImplementation() {
+    if (!repairRunId.trim() || !repairCandidateId.trim() || !repairToken.trim()) {
+      setRepairMessage("需要新 Snapshot 的 Reverse Run、Candidate 与实现审核凭据。");
+      return;
+    }
+    setLoading(true);
+    setRepairMessage("");
+    try {
+      const base = apiBase.replace(/\/$/, "");
+      const response = await fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(repairFeatureId)}/claims/${encodeURIComponent(repairClaimId)}/implementation-reanalyses`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${repairToken}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          id: repairAnalysisId,
+          sourceRunId: repairRunId,
+          sourceCandidateId: repairCandidateId,
+          rationale: repairRationale,
+        }),
+      });
+      const body = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
+      const conformance = body.conformance as { status?: string; snapshotManifestId?: string } | undefined;
+      setRepairMessage(`服务端已重建当前实现映射：${conformance?.status ?? "RECORDED"} · ${conformance?.snapshotManifestId ?? toSnapshot}`);
+      setRepairToken("");
+    } catch (error) {
+      setRepairMessage(error instanceof Error ? error.message : "实现重分析失败");
     } finally {
       setLoading(false);
     }
@@ -524,7 +566,7 @@ function ImpactView({ apiBase, projectId }: { apiBase: string; projectId: string
     <section className="panel review-loader"><div className="panel-head"><div><h2>历史版本比较</h2><p>由服务端比较两个不可变 Snapshot Manifest，并持久化可审计 ChangeSet。</p></div><span className={`mode-badge ${result ? "live" : ""}`}>{result ? "LIVE IMPACT" : "DEMO IMPACT"}</span></div><div className="inline-form impact-form"><div className="field"><label htmlFor="change-set">ChangeSet ID</label><input id="change-set" value={changeSetId} onChange={(event) => setChangeSetId(event.target.value)} /></div><div className="field"><label htmlFor="from-snapshot">From Snapshot</label><input id="from-snapshot" value={fromSnapshot} onChange={(event) => setFromSnapshot(event.target.value)} /></div><div className="field"><label htmlFor="to-snapshot">To Snapshot</label><input id="to-snapshot" value={toSnapshot} onChange={(event) => setToSnapshot(event.target.value)} /></div><button className="button primary" disabled={loading} onClick={compareSnapshots}>{loading ? "比较中…" : "比较并记录影响"}</button></div>{message && <div className="inline-message">{message}</div>}</section>
     <div className="impact-grid">
       <section className="panel"><div className="panel-head"><div><h2>Snapshot 变更影响</h2><p>{result?.changeSet.fromSnapshotManifestId ?? fromSnapshot} → {result?.changeSet.toSnapshotManifestId ?? toSnapshot}</p></div><span className="mode-badge">{changes.length} FACT CHANGES</span></div><div className="impact-summary"><div className="metric"><strong>{affectedFeatures.length}</strong><span>受影响 Feature</span></div><div className="metric"><strong>{affectedClaims.length}</strong><span>受影响 Claim</span></div><div className="metric"><strong>{affectedTests.length}</strong><span>需重跑 TestSpec</span></div></div><div className="candidate">{changes.slice(0, 8).map((change) => <div className="impact-row" key={change.id}><b>{change.kind} · {change.changeType} · {change.artifact ?? change.id}</b><p>该差异来自服务端 Fact Graph 比较；缺失或不完整扫描会保留 warning，不能伪装成完整影响结论。</p></div>)}{invalidations.map((item) => <div className="impact-row" key={item.id}><b>{item.featureId} · 分层失效</b><p>{item.reason}</p><p>{item.layers.map((layer) => <span className="preserved invalidated" key={layer}>{layer} → STALE</span>)}</p><p>{item.preserves.map((layer) => <span className="preserved" key={layer}>{layer}</span>)}</p></div>)}{result && result.changeSet.warnings.length > 0 && <div className="impact-row"><b>比较警告</b><p>{result.changeSet.warnings.join(" · ")}</p></div>}</div></section>
-      <section className="panel impact-card"><p className="eyebrow">Repair queue</p><h2>断链修复顺序</h2>{[...new Set(invalidations.flatMap((item) => item.recommendedActions))].map((action, index) => <div className="impact-row" key={action}><b>{index + 1} · {action}</b><p>按服务端给出的推荐动作修复受影响 segment；Claim、Decision 与历史 Evidence 不因代码变化自动删除。</p></div>)}{result && result.impact.continuedFeatureIds.length > 0 && <div className="impact-row"><b>无需失效的连续 Feature</b><p>{result.impact.continuedFeatureIds.join(" · ")}</p></div>}</section>
+      <section className="panel impact-card"><p className="eyebrow">Repair queue</p><h2>断链修复顺序</h2>{[...new Set(invalidations.flatMap((item) => item.recommendedActions))].map((action, index) => <div className="impact-row" key={action}><b>{index + 1} · {action}</b><p>按服务端给出的推荐动作修复受影响 segment；Claim、Decision 与历史 Evidence 不因代码变化自动删除。</p></div>)}{result && result.impact.continuedFeatureIds.length > 0 && <div className="impact-row"><b>无需失效的连续 Feature</b><p>{result.impact.continuedFeatureIds.join(" · ")}</p></div>}<div className="repair-form"><p className="eyebrow">Authorized implementation repair</p><h2>重建当前实现映射</h2><p>先对新 Snapshot 执行 Reverse Run，再由开发/架构角色把候选 Fact 重新关联到既有 Claim；不会创建或改写业务 Decision。</p><div className="review-fields"><div className="field"><label htmlFor="repair-feature">Feature ID</label><input id="repair-feature" value={repairFeatureId} onChange={(event) => setRepairFeatureId(event.target.value)} /></div><div className="field"><label htmlFor="repair-claim">Claim ID</label><input id="repair-claim" value={repairClaimId} onChange={(event) => setRepairClaimId(event.target.value)} /></div><div className="field"><label htmlFor="repair-run">Reverse Run ID</label><input id="repair-run" value={repairRunId} onChange={(event) => setRepairRunId(event.target.value)} /></div><div className="field"><label htmlFor="repair-candidate">Candidate ID</label><input id="repair-candidate" value={repairCandidateId} onChange={(event) => setRepairCandidateId(event.target.value)} /></div><div className="field full"><label htmlFor="repair-analysis">Analysis ID</label><input id="repair-analysis" value={repairAnalysisId} onChange={(event) => setRepairAnalysisId(event.target.value)} /></div><div className="field full"><label htmlFor="repair-rationale">重分析理由</label><textarea id="repair-rationale" value={repairRationale} onChange={(event) => setRepairRationale(event.target.value)} /></div><div className="field full"><label htmlFor="repair-token">Implementation reviewer bearer token（成功后清空）</label><input id="repair-token" type="password" autoComplete="off" value={repairToken} onChange={(event) => setRepairToken(event.target.value)} /></div></div><button className="button primary repair-button" disabled={loading} onClick={reanalyzeAffectedImplementation}>提交实现重分析</button>{repairMessage && <div className="review-notice">{repairMessage}</div>}</div></section>
     </div>
   </>;
 }

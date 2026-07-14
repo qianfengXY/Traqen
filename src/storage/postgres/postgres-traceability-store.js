@@ -1402,6 +1402,127 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     })));
   }
 
+  async appendImplementationAnalysis(projectId, analysisPackage) {
+    requireId(projectId, "projectId");
+    const { implementationMapping, conformance } = analysisPackage;
+    return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
+        `${projectId}:implementation-analysis:${implementationMapping.id}`,
+      ]);
+      const existing = await this.#database.query(
+        `SELECT im.*, ic.id AS conformance_id, ic.status AS conformance_status,
+                ic.evidence_refs, ic.analysis_method, ic.computed_at
+         FROM implementation_mapping im
+         LEFT JOIN implementation_conformance ic
+           ON ic.project_id = im.project_id AND ic.mapping_id = im.id
+         WHERE im.project_id = $1 AND im.id = $2`,
+        [projectId, implementationMapping.id],
+      );
+      if (existing.rows[0]) {
+        const row = existing.rows[0];
+        const storedMapping = {
+          id: row.id,
+          claimId: row.claim_id,
+          claimVersion: row.claim_version,
+          scopeId: row.scope_id,
+          scopeVersion: row.scope_version,
+          snapshotManifestId: row.snapshot_manifest_id,
+          sourceComponentId: row.source_component_id,
+          sourceRunId: row.source_run_id,
+          sourceCandidateId: row.source_candidate_id,
+          status: row.mapping_status,
+          factRefs: row.fact_refs,
+          createdAt: new Date(row.created_at).toISOString(),
+        };
+        const storedConformance = row.conformance_id ? {
+          id: row.conformance_id,
+          claimId: row.claim_id,
+          claimVersion: row.claim_version,
+          scopeId: row.scope_id,
+          scopeVersion: row.scope_version,
+          snapshotManifestId: row.snapshot_manifest_id,
+          mappingId: row.id,
+          status: row.conformance_status,
+          evidenceRefs: row.evidence_refs,
+          analysisMethod: row.analysis_method,
+          computedAt: new Date(row.computed_at).toISOString(),
+        } : null;
+        if (
+          storedConformance &&
+          canonicalJson(storedMapping) === canonicalJson(implementationMapping) &&
+          canonicalJson(storedConformance) === canonicalJson(conformance)
+        ) {
+          return deepFreeze({ implementationMapping: storedMapping, conformance: storedConformance });
+        }
+        throw new PersistenceConflictError(
+          `Implementation analysis ${implementationMapping.id} conflicts with an existing record`,
+        );
+      }
+
+      const runResult = await this.#database.query(
+        `SELECT run_payload
+         FROM reverse_run
+         WHERE project_id = $1 AND id = $2`,
+        [projectId, implementationMapping.sourceRunId],
+      );
+      const run = runResult.rows[0]?.run_payload;
+      if (
+        !run ||
+        run.snapshotManifestId !== implementationMapping.snapshotManifestId ||
+        run.sourceComponentId !== implementationMapping.sourceComponentId ||
+        !run.mergedOutput?.candidateClaims?.some((item) => item.id === implementationMapping.sourceCandidateId)
+      ) {
+        throw new PersistenceConflictError(
+          "Implementation analysis must reference a candidate from the target Snapshot ReverseRun",
+        );
+      }
+
+      await this.#database.query(
+        `INSERT INTO implementation_mapping (
+           project_id, id, claim_id, claim_version, scope_id, scope_version,
+           snapshot_manifest_id, source_component_id, source_run_id, source_candidate_id,
+           mapping_status, fact_refs, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13)`,
+        [
+          projectId,
+          implementationMapping.id,
+          implementationMapping.claimId,
+          implementationMapping.claimVersion,
+          implementationMapping.scopeId,
+          implementationMapping.scopeVersion,
+          implementationMapping.snapshotManifestId,
+          implementationMapping.sourceComponentId,
+          implementationMapping.sourceRunId,
+          implementationMapping.sourceCandidateId,
+          implementationMapping.status,
+          JSON.stringify(implementationMapping.factRefs),
+          implementationMapping.createdAt,
+        ],
+      );
+      await this.#database.query(
+        `INSERT INTO implementation_conformance (
+           project_id, id, claim_id, claim_version, scope_id, scope_version,
+           snapshot_manifest_id, status, evidence_refs, analysis_method, computed_at, mapping_id
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12)`,
+        [
+          projectId,
+          conformance.id,
+          conformance.claimId,
+          conformance.claimVersion,
+          conformance.scopeId,
+          conformance.scopeVersion,
+          conformance.snapshotManifestId,
+          conformance.status,
+          JSON.stringify(conformance.evidenceRefs),
+          JSON.stringify(conformance.analysisMethod),
+          conformance.computedAt,
+          conformance.mappingId,
+        ],
+      );
+      return deepFreeze(structuredClone({ implementationMapping, conformance }));
+    });
+  }
+
   async appendReverseSkillRegistration(registration) {
     const manifest = registration.manifest;
     return this.#transaction(async () => {

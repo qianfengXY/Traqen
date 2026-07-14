@@ -30,6 +30,8 @@ async function startServer(t, options = {}) {
     reverseOrchestrator,
     reviewerResolver,
     reviewPolicyResolver,
+    implementationReviewerResolver,
+    implementationPolicyResolver,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -44,6 +46,8 @@ async function startServer(t, options = {}) {
     reverseOrchestrator,
     reviewerResolver,
     reviewPolicyResolver,
+    implementationReviewerResolver,
+    implementationPolicyResolver,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -658,6 +662,16 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
       allowedTestSpecApproverRoles: ["business-owner"],
     }),
+    implementationReviewerResolver: (_projectId, context) => {
+      if (context.authorization === "Bearer implementation-token") {
+        return { actorId: "DEV-001", actorRole: "developer" };
+      }
+      if (context.authorization === "Bearer reviewer-token") {
+        return { actorId: "USER-001", actorRole: "business-owner" };
+      }
+      return null;
+    },
+    implementationPolicyResolver: () => ({ allowedRoles: ["developer"] }),
   });
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
   const traceInput = await exampleInput();
@@ -1081,4 +1095,51 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   ));
   assert.ok(nextTraceability.gaps.some((gap) => gap.type === "CONFORMANCE_STALE"));
   assert.ok(!nextTraceability.gaps.some((gap) => gap.type === "MISSING_AUTHORITY"));
+
+  const nextReverseRun = await postJson(`${baseUrl}/v1/reverse-runs`, {
+    id: "REVERSE-RUN-REANALYSIS-API-001",
+    projectId: "PROJECT-001",
+    snapshotManifestId: nextSnapshotManifestId,
+    sourceComponentId: nextTraceInput.snapshotManifest.source.id,
+    factBundleIds: [nextBundle.id],
+    skills: referenceSkills.map(({ adapter }) => ({ id: adapter.id, version: adapter.version })),
+    taskScope: { nodeTypes: ["ENDPOINT"] },
+  });
+  assert.equal(nextReverseRun.response.status, 201);
+  const nextCandidate = nextReverseRun.body.mergedOutput.candidateClaims.find(
+    (item) => item.subjectKey.startsWith("endpoint:"),
+  );
+  const reanalysisInput = {
+    id: "IMPLEMENTATION-REANALYSIS-API-001",
+    sourceRunId: nextReverseRun.body.id,
+    sourceCandidateId: nextCandidate.id,
+    rationale: "The developer confirms the current Snapshot endpoint mapping after the changed handler was reviewed.",
+  };
+  const reanalysisUrl = `${projectUrl}/features/FEATURE-REVIEW-API-001/claims/CLAIM-REVIEW-API-001/implementation-reanalyses`;
+  assert.equal((await postJson(reanalysisUrl, reanalysisInput)).response.status, 401);
+  assert.equal(
+    (await postJson(reanalysisUrl, reanalysisInput, { authorization: "Bearer reviewer-token" })).response.status,
+    403,
+  );
+  const reanalyzed = await postJson(reanalysisUrl, reanalysisInput, {
+    authorization: "Bearer implementation-token",
+  });
+  assert.equal(reanalyzed.response.status, 201);
+  assert.equal(reanalyzed.body.conformance.status, "CONFORMS");
+  assert.equal(reanalyzed.body.conformance.analysisMethod.actorId, "DEV-001");
+  const repeatedReanalysis = await postJson(reanalysisUrl, reanalysisInput, {
+    authorization: "Bearer implementation-token",
+  });
+  assert.equal(repeatedReanalysis.response.status, 201);
+  assert.deepEqual(repeatedReanalysis.body, reanalyzed.body);
+
+  const repairedResponse = await fetch(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/traceability?snapshotManifestId=${nextSnapshotManifestId}`,
+  );
+  const repaired = await repairedResponse.json();
+  assert.equal(repairedResponse.status, 200);
+  assert.equal(repaired.dimensions.authority[0].status, "CONFIRMED");
+  assert.equal(repaired.dimensions.conformance[0].status, "CONFORMS");
+  assert.equal(repaired.claims[0].selectedImplementationMapping.snapshotManifestId, nextSnapshotManifestId);
+  assert.ok(!repaired.gaps.some((gap) => gap.type === "CONFORMANCE_STALE"));
 });

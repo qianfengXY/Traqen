@@ -915,6 +915,8 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
       allowedRoles: ["business-owner"],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
     }),
+    implementationReviewerResolver: () => ({ actorId: "DEV-DB-001", actorRole: "developer" }),
+    implementationPolicyResolver: () => ({ allowedRoles: ["developer"] }),
   });
   const source = {
     artifact: "src/orders.js",
@@ -1153,6 +1155,55 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
   assert.equal(impactRows.rows.length, 1);
   assert.ok(impactRows.rows[0].invalidated_layers.includes("TRACE_CHAIN"));
   assert.ok(impactRows.rows[0].preserved_layers.includes("BUSINESS_DECISION"));
+
+  const nextRun = await application.executeReverseRun({
+    id: "REVERSE-RUN-REANALYSIS-DB-001",
+    projectId: "PROJECT-001",
+    snapshotManifestId: nextManifest.id,
+    sourceComponentId: nextManifest.components.source.id,
+    factBundleIds: [nextBundle.id],
+    skills: referenceSkills.map(({ adapter }) => ({ id: adapter.id, version: adapter.version })),
+    taskScope: { nodeTypes: ["ENDPOINT"] },
+  });
+  const nextCandidate = nextRun.mergedOutput.candidateClaims.find((item) => item.subjectKey.startsWith("endpoint:"));
+  const reanalysisInput = {
+    id: "IMPLEMENTATION-REANALYSIS-DB-001",
+    sourceRunId: nextRun.id,
+    sourceCandidateId: nextCandidate.id,
+    rationale: "The developer reviewed the changed endpoint and re-established its governed implementation mapping.",
+  };
+  const reanalyzed = await application.reanalyzeImplementation(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    "CLAIM-REVIEW-DB-001",
+    reanalysisInput,
+  );
+  assert.equal(reanalyzed.conformance.status, "CONFORMS");
+  assert.equal(reanalyzed.conformance.analysisMethod.actorId, "DEV-DB-001");
+  assert.deepEqual(
+    await application.reanalyzeImplementation(
+      "PROJECT-001",
+      "FEATURE-REVIEW-DB-001",
+      "CLAIM-REVIEW-DB-001",
+      reanalysisInput,
+    ),
+    reanalyzed,
+  );
+  const repairedTraceability = await application.getFeatureTraceability(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    nextManifest.id,
+  );
+  assert.equal(repairedTraceability.dimensions.authority[0].status, "CONFIRMED");
+  assert.equal(repairedTraceability.dimensions.conformance[0].status, "CONFORMS");
+  assert.ok(!repairedTraceability.gaps.some((gap) => gap.type === "CONFORMANCE_STALE"));
+  const reanalysisRows = await database.query(
+    `SELECT analysis_method->>'analysisId' AS analysis_id
+     FROM implementation_conformance
+     WHERE project_id = $1 AND snapshot_manifest_id = $2`,
+    ["PROJECT-001", nextManifest.id],
+  );
+  assert.deepEqual(reanalysisRows.rows, [{ analysis_id: "IMPLEMENTATION-REANALYSIS-DB-001" }]);
   await assert.rejects(
     database.query("DELETE FROM change_set WHERE project_id = $1", ["PROJECT-001"]),
     /append-only; UPDATE and DELETE are forbidden/,

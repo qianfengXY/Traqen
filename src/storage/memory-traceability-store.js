@@ -516,6 +516,84 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     );
   }
 
+  async appendImplementationAnalysis(projectId, analysisPackage) {
+    const { implementationMapping, conformance } = analysisPackage;
+    const mappingKey = key(projectId, implementationMapping.id);
+    const conformanceKey = key(projectId, conformance.id);
+    const existingMapping = this.#implementationMappings.get(mappingKey);
+    const existingConformance = this.#conformances.get(conformanceKey);
+    if (existingMapping || existingConformance) {
+      if (
+        existingMapping &&
+        existingConformance &&
+        canonicalJson(existingMapping) === canonicalJson(implementationMapping) &&
+        canonicalJson(existingConformance) === canonicalJson(conformance)
+      ) {
+        return deepFreeze({ implementationMapping: existingMapping, conformance: existingConformance });
+      }
+      throw new PersistenceConflictError(`Implementation analysis ${implementationMapping.id} conflicts with an existing record`);
+    }
+    const claim = this.#claims.get(
+      key(projectId, `${implementationMapping.claimId}\u0000${implementationMapping.claimVersion}`),
+    );
+    if (
+      !claim ||
+      claim.scopeId !== implementationMapping.scopeId ||
+      claim.scopeVersion !== implementationMapping.scopeVersion
+    ) {
+      throw new PersistenceConflictError("Implementation analysis must preserve an existing governed Claim and Scope");
+    }
+    const manifest = this.#manifests.get(key(projectId, implementationMapping.snapshotManifestId));
+    if (!manifest) {
+      throw new PersistenceConflictError(
+        `Snapshot manifest ${implementationMapping.snapshotManifestId} does not exist in project ${projectId}`,
+      );
+    }
+    if (manifest.components?.source?.id !== implementationMapping.sourceComponentId) {
+      throw new PersistenceConflictError("Implementation analysis source must belong to the target Snapshot Manifest");
+    }
+    const run = this.#reverseRuns.get(key(projectId, implementationMapping.sourceRunId));
+    if (
+      !run ||
+      run.snapshotManifestId !== implementationMapping.snapshotManifestId ||
+      run.sourceComponentId !== implementationMapping.sourceComponentId ||
+      !run.mergedOutput?.candidateClaims.some((item) => item.id === implementationMapping.sourceCandidateId)
+    ) {
+      throw new PersistenceConflictError("Implementation analysis must reference a candidate from the target Snapshot ReverseRun");
+    }
+    const targetFactIds = new Set(
+      [...this.#factBundles.entries()]
+        .filter(
+          ([storageKey, bundle]) =>
+            storageKey.startsWith(`${projectId}\u0000`) &&
+            bundle.snapshotManifestId === implementationMapping.snapshotManifestId,
+        )
+        .flatMap(([, bundle]) => [
+          ...bundle.nodes.map((node) => node.factId),
+          ...bundle.edges.map((edge) => edge.id),
+        ]),
+    );
+    if (implementationMapping.factRefs.some((reference) => !targetFactIds.has(reference.factId))) {
+      throw new PersistenceConflictError("Implementation analysis Fact references must belong to the target Snapshot Manifest");
+    }
+    if (
+      conformance.mappingId !== implementationMapping.id ||
+      conformance.claimId !== implementationMapping.claimId ||
+      conformance.claimVersion !== implementationMapping.claimVersion ||
+      conformance.scopeId !== implementationMapping.scopeId ||
+      conformance.scopeVersion !== implementationMapping.scopeVersion ||
+      conformance.snapshotManifestId !== implementationMapping.snapshotManifestId
+    ) {
+      throw new PersistenceConflictError("Implementation analysis mapping and conformance references are inconsistent");
+    }
+    this.#implementationMappings.set(mappingKey, deepFreeze(structuredClone(implementationMapping)));
+    this.#conformances.set(conformanceKey, deepFreeze(structuredClone(conformance)));
+    return deepFreeze({
+      implementationMapping: this.#implementationMappings.get(mappingKey),
+      conformance: this.#conformances.get(conformanceKey),
+    });
+  }
+
   async appendReverseSkillRegistration(registration) {
     const storageKey = registration.id;
     const existing = this.#reverseSkills.get(storageKey);

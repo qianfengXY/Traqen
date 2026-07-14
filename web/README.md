@@ -11,6 +11,7 @@ The default screen is an explicitly labelled synthetic demonstration of the orde
 - Visible TraceGap ownership and reasons that prevent a feature from being shown as complete.
 - Statement-level review that loads a real Reverse Run candidate and submits an authenticated, server-validated Decision without accepting client-supplied reviewer identity.
 - Historical Snapshot comparison backed by the immutable ChangeSet API, including preserved normative truth, invalidated derived layers, and a repair queue.
+- Authorized implementation repair that links a new-Snapshot Reverse Candidate back to the existing Claim and restores only the implementation-conformance segment.
 
 ## Local development
 

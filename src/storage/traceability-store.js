@@ -75,6 +75,10 @@ export class TraceabilityStore {
     throw new Error("listImplementationMappings must be implemented");
   }
 
+  async appendImplementationAnalysis(_projectId, _analysisPackage) {
+    throw new Error("appendImplementationAnalysis must be implemented");
+  }
+
   async appendReverseSkillRegistration(_registration) {
     throw new Error("appendReverseSkillRegistration must be implemented");
   }

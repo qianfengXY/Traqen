@@ -59,6 +59,12 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "recomputeFeatureTraceChains",
   );
   assert.equal(
+    contract.paths[
+      "/v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses"
+    ].post.operationId,
+    "reanalyzeFeatureImplementation",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/change-sets"].post.operationId,
     "compareSnapshotManifests",
   );
@@ -203,6 +209,20 @@ test("change-impact contract separates invalidated derived layers from preserved
   assert.ok(contract.required.includes("continuities"));
   assert.ok(contract.$defs.ImpactAssessment.required.includes("continuedFeatureIds"));
   assert.ok(contract.$defs.ImplementationContinuity.required.includes("factRefRebindings"));
+});
+
+test("implementation reanalysis contract keeps actor identity server-side and reuses governed records", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/implementation-reanalysis.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "ImplementationReanalysisPackage");
+  assert.deepEqual(contract.$defs.ImplementationReanalysisRequest.required, [
+    "id", "sourceRunId", "sourceCandidateId", "rationale",
+  ]);
+  assert.equal(contract.$defs.ImplementationReanalysisRequest.properties.actorId, undefined);
+  assert.match(contract.properties.implementationMapping.$ref, /ImplementationMapping/);
+  assert.match(contract.properties.conformance.$ref, /ImplementationConformance/);
 });
 
 test("TestSpec contract exposes traceability and execution-policy boundaries", async () => {

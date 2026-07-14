@@ -221,6 +221,34 @@
         }
       }
     },
+    "/v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "claimId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "reanalyzeFeatureImplementation",
+        "requestBody": { "$ref": "#/components/requestBodies/ImplementationReanalysis" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ImplementationReanalyzed" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/change-sets": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
@@ -640,6 +668,14 @@
           "application/json": { "schema": { "$ref": "./candidate-review.schema.json" } }
         }
       },
+      "ImplementationReanalysis": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./implementation-reanalysis.schema.json#/$defs/ImplementationReanalysisRequest" }
+          }
+        }
+      },
       "TraceChainRecompute": {
         "required": true,
         "content": {
@@ -808,6 +844,14 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+          }
+        }
+      },
+      "ImplementationReanalyzed": {
+        "description": "Authorized reanalysis binds an existing normative Claim to current Snapshot Facts without replacing its Decision",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./implementation-reanalysis.schema.json" }
           }
         }
       },

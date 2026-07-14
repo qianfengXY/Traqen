@@ -132,6 +132,8 @@ export class TraceabilityApplication {
   #reverseOrchestrator;
   #reviewerResolver;
   #reviewPolicyResolver;
+  #implementationReviewerResolver;
+  #implementationPolicyResolver;
 
   constructor({
     store,
@@ -144,6 +146,8 @@ export class TraceabilityApplication {
     reverseOrchestrator = null,
     reviewerResolver = () => null,
     reviewPolicyResolver = () => ({ allowedRoles: [], allowedOutcomes: [] }),
+    implementationReviewerResolver = () => null,
+    implementationPolicyResolver = () => ({ allowedRoles: [] }),
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -153,6 +157,12 @@ export class TraceabilityApplication {
     if (typeof skillPolicyResolver !== "function") throw new TypeError("skillPolicyResolver must be a function");
     if (typeof reviewerResolver !== "function") throw new TypeError("reviewerResolver must be a function");
     if (typeof reviewPolicyResolver !== "function") throw new TypeError("reviewPolicyResolver must be a function");
+    if (typeof implementationReviewerResolver !== "function") {
+      throw new TypeError("implementationReviewerResolver must be a function");
+    }
+    if (typeof implementationPolicyResolver !== "function") {
+      throw new TypeError("implementationPolicyResolver must be a function");
+    }
     this.#store = store;
     this.#clock = clock;
     this.#runnerKeyResolver = runnerKeyResolver;
@@ -163,6 +173,8 @@ export class TraceabilityApplication {
     this.#reverseOrchestrator = reverseOrchestrator;
     this.#reviewerResolver = reviewerResolver;
     this.#reviewPolicyResolver = reviewPolicyResolver;
+    this.#implementationReviewerResolver = implementationReviewerResolver;
+    this.#implementationPolicyResolver = implementationPolicyResolver;
   }
 
   prepareEvaluation(input) {
@@ -953,6 +965,135 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(runId, "runId");
     return this.#store.listReverseCandidateReviews(projectId, runId);
+  }
+
+  async reanalyzeImplementation(projectId, featureId, claimId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    requireId(claimId, "claimId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("implementation reanalysis input must be an object");
+    }
+    assertOnlyFields(
+      input,
+      ["id", "sourceRunId", "sourceCandidateId", "rationale", "acknowledgedConflictIds"],
+      "implementationReanalysis",
+    );
+    for (const serverField of ["actorId", "actorRole", "analyzedAt", "projectId", "featureId", "claimId"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`${serverField} is assigned by the server or route`);
+    }
+    const analysisId = requireId(input.id, "implementationReanalysis.id");
+    const sourceRunId = requireId(input.sourceRunId, "implementationReanalysis.sourceRunId");
+    const sourceCandidateId = requireId(input.sourceCandidateId, "implementationReanalysis.sourceCandidateId");
+    const rationale = requireId(input.rationale, "implementationReanalysis.rationale");
+    const acknowledgedConflictIds = input.acknowledgedConflictIds ?? [];
+    if (
+      !Array.isArray(acknowledgedConflictIds) ||
+      acknowledgedConflictIds.some((id) => typeof id !== "string" || id.trim() === "") ||
+      new Set(acknowledgedConflictIds).size !== acknowledgedConflictIds.length
+    ) {
+      throw new TypeError("acknowledgedConflictIds must be an array of unique non-empty strings");
+    }
+
+    const reviewer = await this.#implementationReviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError("A trusted implementation reviewer identity is required");
+    const actorId = requireId(reviewer.actorId, "implementationReviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "implementationReviewer.actorRole");
+    const policy = (await this.#implementationPolicyResolver(projectId, { reviewer, featureId, claimId })) ?? {};
+    if (!Array.isArray(policy.allowedRoles) || !policy.allowedRoles.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot approve implementation reanalysis in this project`);
+    }
+
+    const baseline = await this.#store.getFeatureBaseline(projectId, featureId);
+    if (!baseline) throw new PersistenceConflictError(`Feature ${featureId} does not exist in project ${projectId}`);
+    const governed = baseline.claims.find((item) => item.claim.id === claimId);
+    if (!governed) throw new PersistenceConflictError(`Claim ${claimId} does not belong to Feature ${featureId}`);
+    if (!["CONFIRMED", "EXCEPTION_RECORDED"].includes(governed.latestDecision?.type)) {
+      throw new PersistenceConflictError("Implementation reanalysis requires a currently authorized normative Claim");
+    }
+
+    const run = await this.#store.getReverseRun(projectId, sourceRunId);
+    if (!run) throw new PersistenceConflictError(`ReverseRun ${sourceRunId} does not exist in project ${projectId}`);
+    if (run.status !== "WAITING_REVIEW" || !run.mergedOutput) {
+      throw new PersistenceConflictError("Implementation reanalysis requires a successful ReverseRun waiting for review");
+    }
+    const candidate = run.mergedOutput.candidateClaims.find((item) => item.id === sourceCandidateId);
+    if (!candidate) {
+      throw new PersistenceConflictError(`Candidate Claim ${sourceCandidateId} does not exist in ReverseRun ${sourceRunId}`);
+    }
+    const relatedConflicts = run.mergedOutput.conflicts.filter((conflict) =>
+      conflict.candidateIds.includes(sourceCandidateId),
+    );
+    const relatedConflictIds = new Set(relatedConflicts.map((conflict) => conflict.id));
+    if (acknowledgedConflictIds.some((id) => !relatedConflictIds.has(id))) {
+      throw new TypeError("acknowledgedConflictIds contains a conflict unrelated to the candidate");
+    }
+    if (relatedConflicts.some((conflict) => !acknowledgedConflictIds.includes(conflict.id))) {
+      throw new TypeError("Every related conflict must be explicitly acknowledged for implementation reanalysis");
+    }
+
+    const requestFingerprint = contentId("IMPLEMENTATION-REANALYSIS-REQUEST", {
+      projectId,
+      featureId,
+      claimId: governed.claim.id,
+      claimVersion: governed.claim.version,
+      actorId,
+      actorRole,
+      input,
+    });
+    const implementationMapping = createImplementationMapping({
+      claimId: governed.claim.id,
+      claimVersion: governed.claim.version,
+      scopeId: governed.claim.scopeId,
+      scopeVersion: governed.claim.scopeVersion,
+      snapshotManifestId: run.snapshotManifestId,
+      sourceComponentId: run.sourceComponentId,
+      sourceRunId,
+      sourceCandidateId,
+      factRefs: candidate.evidence,
+    }, this.#clock);
+    const factIds = [...new Set(candidate.evidence.map((item) => item.factId))];
+    const conformance = createImplementationConformance({
+      claimId: governed.claim.id,
+      claimVersion: governed.claim.version,
+      scopeId: governed.claim.scopeId,
+      scopeVersion: governed.claim.scopeVersion,
+      snapshotManifestId: run.snapshotManifestId,
+      mappingId: implementationMapping.id,
+      status: relatedConflicts.length > 0
+        ? ConformanceStatus.CONFLICTED
+        : assessImplementationConformance(governed.claim.constraint, candidate.constraint),
+      evidenceRefs: factIds,
+      analysisMethod: {
+        type: "AUTHORIZED_REVERSE_REANALYSIS",
+        version: "1.0.0",
+        analysisId,
+        requestFingerprint,
+        sourceRunId,
+        sourceCandidateId,
+        actorId,
+        actorRole,
+        rationale,
+        acknowledgedConflictIds,
+      },
+    }, this.#clock);
+
+    const existingMapping = baseline.implementationMappings.find((item) => item.id === implementationMapping.id);
+    const existingConformance = baseline.conformances.find((item) => item.id === conformance.id);
+    if (existingMapping || existingConformance) {
+      if (
+        existingMapping &&
+        existingConformance &&
+        existingConformance.analysisMethod?.analysisId === analysisId &&
+        existingConformance.analysisMethod?.requestFingerprint === requestFingerprint
+      ) {
+        return deepFreeze({ implementationMapping: existingMapping, conformance: existingConformance });
+      }
+      throw new PersistenceConflictError(
+        `Implementation mapping ${implementationMapping.id} already has a different immutable analysis`,
+      );
+    }
+    return this.#store.appendImplementationAnalysis(projectId, { implementationMapping, conformance });
   }
 
   async getFeatureTraceability(projectId, featureId, snapshotManifestId, { persist = false } = {}) {

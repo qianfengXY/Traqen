@@ -286,6 +286,23 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const implementationReanalysisMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/claims\/([^/]+)\/implementation-reanalyses$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && implementationReanalysisMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(implementationReanalysisMatch[1]);
+        const featureId = decodePathSegment(implementationReanalysisMatch[2]);
+        const claimId = decodePathSegment(implementationReanalysisMatch[3]);
+        const input = await readJson(request, maxBodyBytes);
+        const analysis = await application.reanalyzeImplementation(projectId, featureId, claimId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        });
+        sendJson(response, 201, analysis, id);
+        return;
+      }
+
       const featureRecomputeMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/trace-chains\/recompute$/.exec(
         url.pathname,
       );
