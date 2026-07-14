@@ -43,10 +43,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /\/traceability\?snapshotManifestId=/);
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
+  assert.match(product, /implementation-reanalyses/);
   assert.match(product, /服务端派生/);
   assert.match(product, /演示模式不会写入业务基线/);
   assert.match(product, /成功后清空/);
   assert.match(product, /历史版本比较/);
+  assert.match(product, /重建当前实现映射/);
   assert.match(layout, /Traqen · 可追溯质量工作台/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   const hostingConfig = JSON.parse(hosting);

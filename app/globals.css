@@ -177,6 +177,9 @@ button { color: inherit; }
 .impact-row p { margin: 5px 0 0; }
 .preserved { display: inline-flex; margin: 5px 5px 0 0; padding: 5px 7px; border-radius: 999px; background: var(--mint); color: #2f684f; font-family: var(--font-geist-mono); font-size: 8px; }
 .invalidated { background: #f8e5bd; color: #795e28; }
+.repair-form { margin-top: 18px; padding-top: 18px; border-top: 2px solid var(--line); }
+.repair-form .review-fields { grid-template-columns: 1fr; }
+.repair-button { width: 100%; margin-top: 10px; }
 
 @media (max-width: 1040px) {
   .dimension-grid { grid-template-columns: repeat(3, 1fr); }
