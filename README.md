@@ -60,7 +60,17 @@ The trusted execution-ingestion slice adds:
 - rejection of forged status, modified Evidence, unredacted sensitive values, wrong deployments, and cross-project signatures;
 - latest execution summaries in the Feature baseline and an on-demand full Evidence endpoint.
 
-The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise Runner identity and mTLS boundary. This slice ingests trusted execution results but does not yet dispatch arbitrary remote requests. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
+The controlled Runner slice adds:
+
+- signed Runner tasks with a maximum five-minute validity window, replay-resistant nonces, local policy hashes, target Runner binding, and an injectable nonce registry;
+- explicit target and route allowlists, response-size limits, timeouts, and redirect blocking;
+- local-only `secretRef` resolution with recursive request, response, row, assertion, and error redaction;
+- a SAFE_READ HTTP executor for GET/HEAD plus status, response-header, and JSON-path assertions;
+- a read-only database executor that accepts only trusted query-catalog references, never TestSpec SQL;
+- deterministic row-count and field assertions, followed by signed Evidence Bundle generation;
+- distinct product assertion failures and Runner/executor errors.
+
+The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise Runner identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
 
 ## Run
 

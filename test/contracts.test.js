@@ -108,3 +108,16 @@ test("execution Evidence contract binds results to Runner, TestSpec, manifest, a
   assert.equal(contract.$defs.RunnerAttestation.properties.algorithm.const, "HMAC-SHA256");
   assert.ok(contract.$defs.StoredExecutionEvidence.allOf[1].properties.evidence.items.allOf[1].required.includes("integrity"));
 });
+
+test("Runner task contract requires replay protection, policy binding, and a target Runner", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/runner-task.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "RunnerTask");
+  assert.ok(contract.required.includes("nonce"));
+  assert.ok(contract.required.includes("policyHash"));
+  assert.ok(contract.required.includes("runnerId"));
+  assert.ok(contract.required.includes("expiresAt"));
+  assert.equal(contract.$defs.TaskAttestation.properties.algorithm.const, "HMAC-SHA256");
+});

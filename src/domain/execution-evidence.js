@@ -276,6 +276,7 @@ export function createExecutionEvidenceBundle(input, clock = () => new Date()) {
 
 export function executionBundleSigningPayload(projectId, bundle) {
   return canonicalJson({
+    kind: "EXECUTION_EVIDENCE_BUNDLE",
     projectId: requireNonEmptyString(projectId, "projectId"),
     execution: bundle.execution,
     evidence: bundle.evidence,
