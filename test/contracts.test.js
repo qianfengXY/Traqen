@@ -34,6 +34,13 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
 
   assert.equal(contract.openapi, "3.1.0");
   assert.equal(contract.paths["/health"].get.operationId, "getHealth");
+  assert.equal(contract.paths["/v1/projects"].post.operationId, "createProject");
+  assert.equal(contract.paths["/v1/projects/{projectId}"].get.operationId, "getProject");
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/snapshots"].post.operationId,
+    "registerSnapshot",
+  );
+  assert.equal(contract.components.securitySchemes.ApiToken.name, "x-traqen-api-token");
   assert.equal(
     contract.paths["/v1/trace-chains/evaluate"].post.operationId,
     "evaluateTraceChain",
@@ -273,6 +280,8 @@ test("execution Evidence contract binds results to Runner, TestSpec, manifest, a
   assert.ok(contract.$defs.TestExecution.required.includes("runner"));
   assert.ok(contract.$defs.Attempt.required.includes("setup"));
   assert.ok(contract.$defs.Attempt.required.includes("cleanup"));
+  assert.ok(contract.$defs.EvidenceManifest.required.includes("snapshotComponents"));
+  assert.equal(contract.$defs.SnapshotComponent.properties.digest.pattern, "^sha256:[a-f0-9]{64}$");
   assert.equal(contract.$defs.RunnerAttestation.properties.algorithm.const, "HMAC-SHA256");
   assert.ok(contract.$defs.StoredExecutionEvidence.allOf[1].properties.evidence.items.allOf[1].required.includes("integrity"));
 });
@@ -283,6 +292,7 @@ test("Runner task contract requires replay protection, policy binding, and a tar
   );
 
   assert.equal(contract.title, "RunnerTask");
+  assert.equal(contract.$defs.SnapshotComponent.properties.digest.pattern, "^sha256:[a-f0-9]{64}$");
   assert.ok(contract.required.includes("nonce"));
   assert.ok(contract.required.includes("policyHash"));
   assert.ok(contract.required.includes("runnerId"));

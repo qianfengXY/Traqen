@@ -138,6 +138,38 @@ test("executable validation rejects raw SQL, missing step links, and method-leve
     /Raw SQL is forbidden/,
   );
 
+  const rawTestCommand = validateTestSpec(testSpecInput({
+    environment: { target: "sit", operationLevel: "SAFE_READ" },
+    preconditions: [],
+    variables: {},
+    steps: [{
+      id: "existing",
+      executor: "EXISTING_TEST",
+      testRef: "reference-smoke",
+      command: "/bin/sh",
+      args: ["-c", "rm -rf /"],
+    }],
+    assertions: [{
+      id: "exit-code",
+      type: "EXISTING_TEST_EXIT_CODE",
+      stepId: "existing",
+      expected: 0,
+    }],
+    cleanup: null,
+  }), fixedClock);
+  assert.ok(rawTestCommand.violations.some((item) => item.code === "RAW_TEST_COMMAND_FORBIDDEN"));
+  assert.throws(
+    () => assertTestSpecSafeToStore(createTestSpec(testSpecInput({
+      environment: { target: "sit", operationLevel: "SAFE_READ" },
+      preconditions: [],
+      variables: {},
+      steps: [{ id: "existing", executor: "EXISTING_TEST", testRef: "reference-smoke", command: "/bin/sh" }],
+      assertions: [{ id: "exit-code", type: "EXISTING_TEST_EXIT_CODE", stepId: "existing", expected: 0 }],
+      cleanup: null,
+    }), fixedClock)),
+    /cannot supply command/,
+  );
+
   const missingStep = validateTestSpec(
     testSpecInput({
       assertions: [{ id: "status", type: "HTTP_STATUS", stepId: "unknown", expected: 200 }],

@@ -10,10 +10,11 @@ function evidence(node, relation = "SUPPORTS") {
   return [{ factId: node.factId, relation }];
 }
 
-function endpointArtifacts(inputPackage, wording) {
+function endpointArtifacts(inputPackage, wording, { includeTestDesign = false } = {}) {
   const endpoints = inputPackage.facts.nodes.filter((node) => node.type === "ENDPOINT").slice(0, 100);
   const candidateFeatures = [];
   const candidateClaims = [];
+  const candidateTestSpecs = [];
   const openQuestions = [];
   for (const endpoint of endpoints) {
     const method = endpoint.attributes.method ?? endpoint.name.split(" ")[0];
@@ -38,6 +39,22 @@ function endpointArtifacts(inputPackage, wording) {
       scope: {},
       evidence: evidence(endpoint),
     });
+    if (includeTestDesign) {
+      candidateTestSpecs.push({
+        localId: `test-${suffix}`,
+        name: `Verify ${method} ${endpointPath}`,
+        featureKey: `endpoint:${method} ${endpointPath}`,
+        verifiesCandidateClaimIds: [`claim-${suffix}`],
+        specification: {
+          intent: `Exercise ${method} ${endpointPath} and verify its business outcome with deterministic assertions.`,
+          suggestedOperationLevel: ["GET", "HEAD"].includes(method) ? "SAFE_READ" : "CONTROLLED_WRITE",
+          suggestedSteps: [{ executor: "HTTP", method, path: endpointPath }],
+          requiredAssertions: ["HTTP_STATUS", "BUSINESS_OUTCOME"],
+          requiresHumanReview: true,
+        },
+        evidence: evidence(endpoint),
+      });
+    }
     openQuestions.push({
       localId: `question-${suffix}`,
       question: `Which authorized business outcome and actors govern ${method} ${endpointPath}?`,
@@ -45,7 +62,7 @@ function endpointArtifacts(inputPackage, wording) {
       evidence: evidence(endpoint, "CONTEXT"),
     });
   }
-  return { candidateFeatures, candidateClaims, openQuestions };
+  return { candidateFeatures, candidateClaims, candidateTestSpecs, openQuestions };
 }
 
 function fallbackQuestion(inputPackage, prefix) {
@@ -72,9 +89,9 @@ export function createSpeconeReferenceAdapter() {
     artifactDigest: artifactDigest(id, version),
     promptVersion: "deterministic-v1",
     async execute(inputPackage) {
-      const artifacts = endpointArtifacts(inputPackage, "Specone");
+      const artifacts = endpointArtifacts(inputPackage, "Specone", { includeTestDesign: true });
       if (artifacts.candidateFeatures.length === 0) return fallbackQuestion(inputPackage, "Specone reference adapter");
-      return { ...artifacts, candidateTestSpecs: [], warnings: [] };
+      return { ...artifacts, warnings: [] };
     },
   });
 }
@@ -118,12 +135,12 @@ export function createGsdReferenceAdapter() {
         });
       }
       if (artifacts.candidateFeatures.length === 0) return fallbackQuestion(inputPackage, "GSD reference adapter");
-      return { ...artifacts, candidateTestSpecs: [], warnings: [] };
+      return { ...artifacts, warnings: [] };
     },
   });
 }
 
-function manifestFor(adapter, name) {
+function manifestFor(adapter, name, { testDesign = false } = {}) {
   return {
     apiVersion: "quality.traqen/v1alpha1",
     kind: "ReverseSkill",
@@ -134,12 +151,22 @@ function manifestFor(adapter, name) {
       publisher: "TRAQEN",
       artifactDigest: adapter.artifactDigest,
     },
-    capabilities: ["ARCHITECTURE_REVERSE", "FEATURE_DISCOVERY", "BUSINESS_RULE_MINING"],
+    capabilities: [
+      "ARCHITECTURE_REVERSE",
+      "FEATURE_DISCOVERY",
+      "BUSINESS_RULE_MINING",
+      ...(testDesign ? ["TEST_DESIGN"] : []),
+    ],
     compatibility: { languages: ["javascript"], frameworks: ["express", "node-http"], factSchema: ">=0.1 <0.2" },
     inputs: { required: ["PROJECT_SNAPSHOT", "CODE_FACT_BUNDLE"], optional: [] },
     outputs: {
       schema: "reverse-artifact-bundle/v1alpha1",
-      types: ["CANDIDATE_FEATURE", "CANDIDATE_CLAIM", "OPEN_QUESTION"],
+      types: [
+        "CANDIDATE_FEATURE",
+        "CANDIDATE_CLAIM",
+        ...(testDesign ? ["CANDIDATE_TEST_SPEC"] : []),
+        "OPEN_QUESTION",
+      ],
     },
     permissions: { filesystem: "NONE", database: "NONE", network: "NONE", shell: "NONE", secrets: "NONE" },
     model: { required: false, allowedProfiles: [], contextStrategy: "FACT_PACKAGE_ONLY" },
@@ -151,7 +178,7 @@ export function createReferenceSkillSet() {
   const specone = createSpeconeReferenceAdapter();
   const gsd = createGsdReferenceAdapter();
   return deepFreeze([
-    { manifest: manifestFor(specone, "Specone Reference Adapter"), adapter: specone },
+    { manifest: manifestFor(specone, "Specone Reference Adapter", { testDesign: true }), adapter: specone },
     { manifest: manifestFor(gsd, "GSD Reference Adapter"), adapter: gsd },
   ]);
 }

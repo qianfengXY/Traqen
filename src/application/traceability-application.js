@@ -9,6 +9,7 @@ import {
   createImplementationContinuity,
   createImplementationMapping,
   createImpactAssessment,
+  createProjectFoundation,
   createReverseCandidateReview,
   createReverseInputPackage,
   createReverseSkillManifest,
@@ -175,6 +176,23 @@ export class TraceabilityApplication {
     this.#reviewPolicyResolver = reviewPolicyResolver;
     this.#implementationReviewerResolver = implementationReviewerResolver;
     this.#implementationPolicyResolver = implementationPolicyResolver;
+  }
+
+  async createProject(input) {
+    const foundation = createProjectFoundation(input);
+    return this.#store.appendProjectFoundation(foundation);
+  }
+
+  async getProject(projectId) {
+    requireId(projectId, "projectId");
+    return this.#store.getProjectFoundation(projectId);
+  }
+
+  async registerSnapshot(projectId, input) {
+    requireId(projectId, "projectId");
+    const manifest = createSnapshotManifest(input, this.#clock);
+    await this.#store.appendSnapshotManifest(projectId, manifest);
+    return manifest;
   }
 
   prepareEvaluation(input) {
@@ -514,6 +532,34 @@ export class TraceabilityApplication {
       throw new PersistenceConflictError("TestSpec is not eligible for execution under the current policy");
     }
 
+    const snapshotManifest = await this.#store.getSnapshotManifest(
+      projectId,
+      normalized.execution.snapshotManifestId,
+    );
+    if (!snapshotManifest) {
+      throw new PersistenceConflictError(
+        `Snapshot manifest ${normalized.execution.snapshotManifestId} does not exist in project ${projectId}`,
+      );
+    }
+    const expectedComponents = canonicalJson(Object.fromEntries(
+      ["source", "build", "deployment", "runtime"].map((componentName) => [
+        componentName,
+        {
+          id: snapshotManifest.components[componentName].id,
+          digest: snapshotManifest.components[componentName].digest,
+        },
+      ]),
+    ));
+    if (
+      normalized.evidence.some(
+        (item) => canonicalJson(item.manifest.snapshotComponents) !== expectedComponents,
+      )
+    ) {
+      throw new PersistenceConflictError(
+        "Evidence Snapshot components must exactly match the referenced manifest",
+      );
+    }
+
     await this.#store.appendExecutionEvidenceBundle(projectId, attestedBundle);
     return this.#store.getExecutionEvidence(projectId, normalized.execution.id);
   }
@@ -538,6 +584,20 @@ export class TraceabilityApplication {
       !verifyFactBundleAttestation(attestedBundle, scannerSecret)
     ) {
       throw new ScannerAttestationError("Scanner attestation is missing, unknown, or invalid");
+    }
+    const snapshotManifest = await this.#store.getSnapshotManifest(projectId, normalized.snapshotManifestId);
+    if (!snapshotManifest) {
+      throw new PersistenceConflictError(
+        `Snapshot manifest ${normalized.snapshotManifestId} does not exist in project ${projectId}`,
+      );
+    }
+    if (
+      snapshotManifest.components?.source?.id !== normalized.sourceComponentId ||
+      snapshotManifest.components?.source?.digest !== normalized.sourceDigest
+    ) {
+      throw new PersistenceConflictError(
+        "FactBundle source ID and digest must exactly match the referenced Snapshot component",
+      );
     }
     return this.#store.appendFactBundle(projectId, attestedBundle);
   }

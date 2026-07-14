@@ -15,7 +15,30 @@ function requireString(value, fieldName) {
   return value;
 }
 
-function bindingManifest(execution, runner) {
+const snapshotComponentNames = ["source", "build", "deployment", "runtime"];
+const collectableEvidenceTypes = new Set(["LOG", "TRACE", "COVERAGE", "SCREENSHOT", "OTHER"]);
+
+function assertSnapshotBinding(snapshotManifest, targetPolicy) {
+  const binding = targetPolicy.snapshotBinding;
+  if (!binding || typeof binding !== "object" || Array.isArray(binding)) {
+    throw new RunnerPolicyError("Target policy must bind the locally observed Snapshot components");
+  }
+  for (const componentName of snapshotComponentNames) {
+    const expected = binding[componentName];
+    const actual = snapshotManifest.components?.[componentName];
+    if (
+      !expected ||
+      expected.id !== actual?.id ||
+      expected.digest !== actual?.digest
+    ) {
+      throw new RunnerPolicyError(
+        `Task ${componentName} component does not match the Runner's locally observed target`,
+      );
+    }
+  }
+}
+
+function bindingManifest(execution, runner, snapshotManifest) {
   return {
     executionId: execution.id,
     testSpecId: execution.testSpecId,
@@ -24,6 +47,7 @@ function bindingManifest(execution, runner) {
     deploymentId: execution.deploymentId,
     runnerId: runner.id,
     runnerVersion: runner.version,
+    snapshotComponents: structuredClone(snapshotManifest.components),
   };
 }
 
@@ -45,6 +69,7 @@ export class ControlledRunner {
   #secretResolver;
   #executors;
   #fixtureLifecycle;
+  #evidenceCollectors;
   #clock;
   #usedNonces;
 
@@ -55,6 +80,7 @@ export class ControlledRunner {
     secretResolver,
     executors,
     fixtureLifecycle = null,
+    evidenceCollectors = {},
     nonceRegistry = new Set(),
     clock = () => new Date(),
   }) {
@@ -79,6 +105,10 @@ export class ControlledRunner {
       throw new TypeError("fixtureLifecycle must provide createSession(testSpec, context)");
     }
     this.#fixtureLifecycle = fixtureLifecycle;
+    if (evidenceCollectors === null || typeof evidenceCollectors !== "object") {
+      throw new TypeError("evidenceCollectors must be an object");
+    }
+    this.#evidenceCollectors = new Map(Object.entries(evidenceCollectors));
     this.#usedNonces = nonceRegistry;
     this.#clock = clock;
   }
@@ -123,6 +153,7 @@ export class ControlledRunner {
     if (!snapshotManifest?.complete) throw new RunnerPolicyError("Runner requires a complete snapshot manifest");
     const deploymentId = snapshotManifest.components?.deployment?.id;
     if (!deploymentId) throw new RunnerPolicyError("Snapshot manifest has no deployment component");
+    assertSnapshotBinding(snapshotManifest, targetPolicy);
     if (!(targetPolicy.allowedOperationLevels ?? []).includes(testSpec.environment.operationLevel)) {
       throw new RunnerPolicyError(
         `Operation level ${testSpec.environment.operationLevel} is not allowed for target ${testSpec.environment.target}`,
@@ -277,7 +308,7 @@ export class ControlledRunner {
         },
       ],
     };
-    const commonBinding = bindingManifest(execution, this.#runner);
+    const commonBinding = bindingManifest(execution, this.#runner, snapshotManifest);
     const evidence = [];
     for (const stepResult of stepResults) {
       const redactions = [...executionRedactions];
@@ -299,6 +330,65 @@ export class ControlledRunner {
         manifest,
         createdAt: finishedAt,
       });
+    }
+    const collectorDeclarations = targetPolicy.evidenceCollectors ?? [];
+    if (!Array.isArray(collectorDeclarations)) {
+      throw new RunnerPolicyError("Target policy evidenceCollectors must be an array");
+    }
+    for (const declaration of collectorDeclarations) {
+      const collectorId = requireString(declaration?.id, "evidence collector id");
+      const allowedTypes = declaration.types;
+      if (!Array.isArray(allowedTypes) || allowedTypes.length === 0) {
+        throw new RunnerPolicyError(`Evidence collector ${collectorId} must declare at least one type`);
+      }
+      if (allowedTypes.some((type) => !collectableEvidenceTypes.has(type))) {
+        throw new RunnerPolicyError(`Evidence collector ${collectorId} declares an unsupported type`);
+      }
+      const collector = this.#evidenceCollectors.get(collectorId);
+      if (typeof collector?.collect !== "function") {
+        throw new RunnerPolicyError(`Evidence collector ${collectorId} is unavailable on this Runner`);
+      }
+      const collected = await collector.collect({
+        projectId,
+        execution: structuredClone(execution),
+        testSpec: structuredClone(testSpec),
+        snapshotManifest: structuredClone(snapshotManifest),
+        stepResults: structuredClone(stepResults),
+      });
+      if (!Array.isArray(collected)) {
+        throw new RunnerExecutionError(`Evidence collector ${collectorId} returned no evidence array`);
+      }
+      for (const item of collected) {
+        const itemId = requireString(item?.id, `evidence collector ${collectorId} item id`);
+        if (!allowedTypes.includes(item?.type)) {
+          throw new RunnerPolicyError(
+            `Evidence collector ${collectorId} returned undeclared type ${item?.type ?? "UNKNOWN"}`,
+          );
+        }
+        if (item.payload === null || typeof item.payload !== "object" || Array.isArray(item.payload)) {
+          throw new RunnerExecutionError(`Evidence collector ${collectorId} item ${itemId} has no payload object`);
+        }
+        const redactions = [...executionRedactions];
+        const manifest = redactValue(
+          {
+            ...commonBinding,
+            collectorId,
+            payload: structuredClone(item.payload),
+            redactions: [],
+          },
+          secretValues,
+          "",
+          redactions,
+        );
+        manifest.redactions = uniqueRedactions(redactions);
+        evidence.push({
+          id: `EVIDENCE-${executionId}-${collectorId}-${itemId}`,
+          type: item.type,
+          freshness: item.freshness ?? "FRESH",
+          manifest,
+          createdAt: finishedAt,
+        });
+      }
     }
     if (testSpec.environment.operationLevel === "CONTROLLED_WRITE") {
       evidence.push({

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createOrderPlatformEnvironment } from "../src/environment.js";
 import { OrderService } from "../src/order-service.js";
-import { startOrderPlatform } from "../src/server.js";
+import { describeOrderPlatformArtifact, startOrderPlatform } from "../src/server.js";
 
 async function request(baseUrl, orderId, overrides = {}) {
   return fetch(`${baseUrl}/orders/${orderId}/submit`, {
@@ -17,6 +17,9 @@ test("reference order platform enforces state, role, idempotency, database write
   const environment = await createOrderPlatformEnvironment();
   const platform = await startOrderPlatform(environment);
   t.after(async () => { await platform.close(); await environment.close(); });
+  assert.deepEqual(platform.artifact, await describeOrderPlatformArtifact());
+  assert.match(platform.artifact.digest, /^sha256:[a-f0-9]{64}$/);
+  assert.match(environment.runtime.digest, /^sha256:[a-f0-9]{64}$/);
   await environment.database.query("INSERT INTO orders (id, status) VALUES ($1, 'DRAFT')", ["ORDER-001"]);
   await environment.database.query("INSERT INTO orders (id, status) VALUES ($1, 'DRAFT')", ["ORDER-002"]);
 
@@ -25,7 +28,11 @@ test("reference order platform enforces state, role, idempotency, database write
 
   const submitted = await request(platform.baseUrl, "ORDER-001");
   assert.equal(submitted.status, 200);
-  assert.equal((await submitted.json()).status, "SUBMITTED");
+  const submittedBody = await submitted.json();
+  assert.equal(submittedBody.status, "SUBMITTED");
+  const telemetry = environment.telemetry.snapshot(submittedBody.traceId);
+  assert.deepEqual(telemetry.logs.map((item) => item.event), ["ORDER_SUBMIT_RECEIVED", "ORDER_SUBMIT_COMPLETED"]);
+  assert.deepEqual(telemetry.traces.map((item) => item.operation), ["submitOrder"]);
   assert.equal((await environment.database.query("SELECT status FROM orders WHERE id = $1", ["ORDER-001"])).rows[0].status, "SUBMITTED");
   assert.equal(environment.inventory.activeReservations().length, 1);
 

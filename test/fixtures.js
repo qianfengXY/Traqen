@@ -5,10 +5,10 @@ const fixedClock = () => new Date("2026-07-14T02:00:00.000Z");
 export function completeInput() {
   const snapshotManifest = createSnapshotManifest(
     {
-      source: { id: "SOURCE-001", digest: "sha256:source" },
-      build: { id: "BUILD-001", digest: "sha256:build" },
-      deployment: { id: "DEPLOY-001", digest: "sha256:deployment" },
-      runtime: { id: "RUNTIME-001", digest: "sha256:runtime" },
+      source: { id: "SOURCE-001", digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      build: { id: "BUILD-001", digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      deployment: { id: "DEPLOY-001", digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+      runtime: { id: "RUNTIME-001", digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
       failedSources: [],
       observedFrom: "2026-07-14T01:00:00.000Z",
       observedTo: "2026-07-14T01:05:00.000Z",

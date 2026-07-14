@@ -28,10 +28,12 @@ The PostgreSQL storage slice adds:
 The minimal API slice adds:
 
 - framework-neutral application services;
+- API-only organization, tenant, project, principal, and Snapshot bootstrap without direct database setup;
 - HTTP endpoints for evaluating, appending, and querying trace chains;
 - a stable error envelope, request correlation IDs, JSON media checks, and body limits;
 - an OpenAPI 3.1 contract;
-- a development server backed by an in-memory append-only store.
+- a development server backed by an in-memory append-only store;
+- a PostgreSQL production process with checksum-protected automatic migrations, global API-token authentication, TLS policy, and graceful shutdown.
 
 The governance slice adds:
 
@@ -69,10 +71,13 @@ The controlled Runner slice adds:
 - local-only `secretRef` resolution with recursive request, response, row, assertion, and error redaction;
 - a SAFE_READ HTTP executor for GET/HEAD plus an explicitly allowlisted CONTROLLED_WRITE executor for bounded POST/PUT/PATCH requests;
 - a read-only database executor that accepts only trusted query-catalog references, never TestSpec SQL, while preserving the executed normalized catalog SQL in signed Evidence;
+- an existing-test executor that accepts only a trusted local `testRef` catalog entry, runs without a shell or task-supplied environment, bounds output and time, and preserves exit code/stdout/stderr for deterministic assertions;
 - trusted target-local Seed and cleanup handlers selected through a signed fixture catalog, with setup/cleanup results preserved separately;
+- trusted target-local LOG, TRACE, COVERAGE, SCREENSHOT, or OTHER collectors selected by signed policy declarations, with redaction and Snapshot binding;
 - deterministic row-count and field assertions, followed by signed Evidence Bundle generation;
 - guaranteed cleanup after setup, step, or assertion failure, plus isolation and compensation metadata when cleanup fails;
-- distinct product assertion failures and Runner/executor errors.
+- distinct product failure, execution error, insufficient Evidence, skipped, and cancelled states;
+- exact Source, Build, Deployment, and Runtime component identity/digest matching between the signed task, stored Snapshot Manifest, running target, and every Evidence manifest.
 
 The deterministic fact-foundation slice adds:
 
@@ -80,7 +85,8 @@ The deterministic fact-foundation slice adds:
 - a bounded JavaScript/Node scanner for modules, symbols, Express-style routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
 - source artifact, line range, and SHA-256 location data on every fact and relation;
 - explicit incomplete results for parser failures, oversized files, unsupported source languages, and unsupported OpenAPI formats;
-- HMAC-SHA256 Scanner attestation and exact Snapshot Manifest binding before ingestion;
+- a deterministic source fingerprint API used as the Source Snapshot digest;
+- HMAC-SHA256 Scanner attestation plus exact Snapshot Manifest, Source component ID, and Source component digest binding before ingestion;
 - append-only memory and PostgreSQL storage plus a filtered one-hop fact graph API;
 - a self-scan command and a checked-in scanner validation report.
 
@@ -90,6 +96,7 @@ The Reverse Skill Framework slice adds:
 - append-only `ALLOWED`/`OBSERVE`/`BLOCKED` supply-chain registration events bound to an installed adapter artifact digest;
 - controlled, reproducibly hashed and server-size-bounded Fact input packages whose task scopes cannot escape the selected Snapshot Manifest and Source Snapshot;
 - two replaceable built-in Specone- and GSD-compatible reference adapters that emit only candidate implementation knowledge from deterministic facts;
+- a generic TEST_DESIGN capability that proposes human-review-required TestSpec candidates from endpoint Facts without approving or executing them;
 - timeout, retry, cancellation-signal, sensitive-output, undeclared-output, incomplete-fact, publisher, model, and policy checks;
 - canonical structured candidate output with mandatory fact provenance and separately preserved raw output;
 - exact deterministic deduplication that preserves every source, plus scope-aware explicit conflicts and open questions instead of majority voting;
@@ -105,6 +112,7 @@ The governed Feature-traceability slice adds:
 - ordered trace segments covering Feature, Claim, Decision, Scope, conformance, implementation Facts, TestSpec, execution, and Evidence, with explicit `TraceGap` records instead of a composite green score;
 - immutable Snapshot-to-Snapshot `ChangeSet`, impact, invalidation, and semantic-continuity records with affected Feature/Claim/TestSpec selection, Scope, reasons, and recommended actions;
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
+- a no-Shell Git Diff analyzer that accepts only full commit hashes, preserves add/delete/modify/rename paths, and deterministically correlates changed artifacts with Snapshot Fact changes;
 - an authenticated implementation-reanalysis workflow that binds a reviewed current-Snapshot Reverse Candidate back to the existing normative Claim, records reviewer provenance in immutable conformance analysis, and closes the stale implementation segment without creating a replacement business Decision;
 - append-only PostgreSQL migrations through `0007_change_impact`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
@@ -115,16 +123,18 @@ The product-interface slice adds:
 - an ordered Claim, Scope, Decision, implementation/data/config, TestSpec, assertion, execution, and Evidence chain with node provenance;
 - explicit TraceGap ownership, an authenticated statement-level human review flow, and API-backed Snapshot history comparison with change-impact repair guidance;
 - an explicitly labelled synthetic demonstration plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
+- an API token field kept only in page memory and sent through `x-traqen-api-token`, leaving reviewer Authorization credentials independent;
 - an explicit CORS origin allowlist for connecting the browser product to a Traqen API.
 
 The built-in reference-pilot slice adds:
 
 - a runnable synthetic order platform with a real HTTP endpoint, PostgreSQL-compatible state, configuration, role and state guards, idempotency, an inventory dependency, transaction rollback, and same-order concurrency serialization;
 - one command that scans the reference source, runs both replaceable Reverse Skills, performs an authorized statement review, generates and approves a controlled-write TestSpec, executes API plus database assertions, stores signed Evidence, and proves a complete trace chain;
+- Source digests computed by the generic Scanner, Deployment/Build digests computed over the actual runnable module files, Runtime digests computed from the effective schema/config/inventory context, and LOG/TRACE telemetry collected from the running target;
 - a real source modification in an isolated copy, Snapshot comparison, affected-Feature invalidation, explicit stale gaps, authorized implementation reanalysis, regression execution on the new deployment, and restoration of a complete chain;
 - reuse of the unchanged approved TestSpec across Snapshots: its `sourceSnapshotId` remains generation provenance, while the signed Runner task and Evidence bind the actual execution Snapshot and deployment.
 
-The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision, candidate-review, and TestSpec-approval routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Implementation reanalysis separately fails closed unless `IMPLEMENTATION_REVIEWER_ID` is configured, defaults to the `developer` role, and may be protected with `IMPLEMENTATION_REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation level and route, names a trusted fixture protocol, permits its cleanup strategy, and the Runner has the matching local handler. DELETE, destructive execution, external side effects, TestSpec SQL, arbitrary fixture code, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
+The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision, candidate-review, and TestSpec-approval routes additionally fail closed unless `REVIEWER_ID` is configured, and may use a distinct `REVIEWER_BEARER_TOKEN`; implementation reanalysis has the equivalent `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
 
 ## Run
 
@@ -139,9 +149,12 @@ npm run example
 npm run pilot:order-submit
 npm run scan:self
 npm run api:dev
+npm run api:serve
 ```
 
 The development API binds to `127.0.0.1:3000` by default. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
+
+The production API binds to `0.0.0.0:3000` by default and requires `DATABASE_URL` plus `API_BEARER_TOKEN`. `POSTGRES_SSL` is `require` by default and also accepts `no-verify` or `disable` for explicitly controlled environments. `CORS_ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist. On startup the process connects through the pinned `pg` client, verifies and applies pending migrations, then serves the PostgreSQL-backed application. Create the initial boundary through `POST /v1/projects`, register immutable execution context through `POST /v1/projects/{projectId}/snapshots`, and send the API token through `Authorization: Bearer ...` or `x-traqen-api-token`.
 
 Evaluate another trace-chain input:
 
@@ -168,4 +181,4 @@ Review one candidate with `POST /v1/projects/{projectId}/reverse-runs/{runId}/ca
 
 After a changed implementation is analyzed in a new Reverse Run, an authorized developer or architect can repair the stale implementation segment with `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses`. This creates a new Snapshot-bound mapping and conformance record for the existing Claim and Scope; it never edits or replaces the normative Decision.
 
-The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md).
+The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md). The current repository acceptance result and the explicit external-pilot boundary are recorded in [docs/implementation/mvp-acceptance-audit-2026-07-14.md](docs/implementation/mvp-acceptance-audit-2026-07-14.md); production startup and bootstrap are covered by [docs/implementation/production-runtime-validation-2026-07-14.md](docs/implementation/production-runtime-validation-2026-07-14.md).

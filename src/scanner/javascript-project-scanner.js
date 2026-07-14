@@ -5,7 +5,7 @@ import path from "node:path";
 import { parse } from "acorn";
 import { ancestor, simple } from "acorn-walk";
 
-import { canonicalJson, createFactBundle, stableFactNodeId } from "../domain/index.js";
+import { canonicalJson, createFactBundle, deepFreeze, stableFactNodeId } from "../domain/index.js";
 
 const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".cache"]);
 const supportedExtensions = new Set([".js", ".mjs", ".cjs", ".json", ".sql", ".yaml", ".yml", ".properties"]);
@@ -129,6 +129,21 @@ export class JavaScriptProjectScanner {
     this.#extractor = Object.freeze({ ...extractor });
     this.#clock = clock;
     this.#limits = { maxFiles, maxFileBytes, maxTotalBytes };
+  }
+
+  async fingerprint({ rootPath }) {
+    const resolvedRoot = path.resolve(rootPath);
+    const collected = await collectFiles(resolvedRoot, this.#limits);
+    const fileRecords = [];
+    for (const file of collected.files) {
+      const content = await readFile(file.absolutePath, "utf8");
+      fileRecords.push({ path: file.relativePath, contentHash: digest(content) });
+    }
+    return deepFreeze({
+      sourceDigest: digest(canonicalJson(fileRecords.sort((left, right) => left.path.localeCompare(right.path)))),
+      fileCount: fileRecords.length,
+      diagnostics: collected.diagnostics,
+    });
   }
 
   async scan({ projectId, snapshotManifestId, sourceComponentId, rootPath }) {

@@ -17,6 +17,7 @@ function recordIdentity(record) {
 }
 
 export class MemoryTraceabilityStore extends TraceabilityStore {
+  #projects = new Map();
   #manifests = new Map();
   #chains = new Map();
   #features = new Map();
@@ -37,6 +38,19 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #implementationMappings = new Map();
   #conformances = new Map();
   #changeImpacts = new Map();
+
+  async appendProjectFoundation(foundation) {
+    const existing = this.#projects.get(foundation.project.id);
+    if (existing && canonicalJson(existing) !== canonicalJson(foundation)) {
+      throw new PersistenceConflictError(`Project ${foundation.project.id} conflicts with an existing record`);
+    }
+    if (!existing) this.#projects.set(foundation.project.id, deepFreeze(structuredClone(foundation)));
+    return this.#projects.get(foundation.project.id);
+  }
+
+  async getProjectFoundation(projectId) {
+    return this.#projects.get(projectId) ?? null;
+  }
 
   async appendSnapshotManifest(projectId, manifest) {
     const storageKey = key(projectId, manifest.id);
@@ -356,9 +370,12 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       );
     }
     const manifest = this.#manifests.get(key(projectId, bundle.snapshotManifestId));
-    if (manifest.components?.source?.id !== bundle.sourceComponentId) {
+    if (
+      manifest.components?.source?.id !== bundle.sourceComponentId ||
+      manifest.components?.source?.digest !== bundle.sourceDigest
+    ) {
       throw new PersistenceConflictError(
-        "FactBundle source component must belong to the referenced snapshot manifest",
+        "FactBundle source component ID and digest must match the referenced snapshot manifest",
       );
     }
     const storageKey = key(projectId, bundle.id);

@@ -19,19 +19,19 @@
   "snapshotManifest": {
     "source": {
       "id": "SOURCE-ea259bf",
-      "digest": "sha256:source"
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "build": {
       "id": "BUILD-20260714-01",
-      "digest": "sha256:build"
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     },
     "deployment": {
       "id": "DEPLOY-20260714-01",
-      "digest": "sha256:deployment"
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     },
     "runtime": {
       "id": "RUNTIME-SIT-20260714-01",
-      "digest": "sha256:runtime"
+      "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
     },
     "observedFrom": "2026-07-14T01:00:00.000Z",
     "observedTo": "2026-07-14T01:05:00.000Z",

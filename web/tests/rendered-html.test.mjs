@@ -49,6 +49,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /成功后清空/);
   assert.match(product, /历史版本比较/);
   assert.match(product, /重建当前实现映射/);
+  assert.match(product, /x-traqen-api-token/);
+  assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(layout, /Traqen · 可追溯质量工作台/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   const hostingConfig = JSON.parse(hosting);

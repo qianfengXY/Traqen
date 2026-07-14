@@ -10,6 +10,12 @@ import {
 } from "../src/domain/index.js";
 
 const fixedClock = () => new Date("2026-07-14T06:10:00.000Z");
+const snapshotComponents = {
+  source: { id: "SOURCE-001", digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+  build: { id: "BUILD-001", digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  deployment: { id: "DEPLOY-001", digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+  runtime: { id: "RUNTIME-001", digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+};
 
 function executionInput(overrides = {}) {
   return {
@@ -50,6 +56,7 @@ function assertionEvidence(execution, overrides = {}) {
       deploymentId: execution.deploymentId,
       runnerId: execution.runner.id,
       runnerVersion: execution.runner.version,
+      snapshotComponents,
       assertionResults: execution.attempts.flatMap((attempt) => attempt.assertionResults),
       redactions: [],
       ...overrides,
@@ -89,6 +96,16 @@ test("a failed retry remains visible and prevents a final PASS from overwriting 
   retry.attempts[0].assertionResults[0].status = "FAIL";
 
   assert.equal(createTestExecution(retry).status, "FAIL");
+});
+
+test("execution semantics keep error, insufficient evidence, skip, and cancellation distinct", () => {
+  const error = executionInput();
+  error.attempts[0].phaseStatus = "ERROR";
+  error.attempts[0].assertionResults[0].status = "ERROR";
+  assert.equal(createTestExecution(error).status, "ERROR");
+  assert.equal(createTestExecution(executionInput({ attempts: [] })).status, "INCONCLUSIVE");
+  assert.equal(createTestExecution(executionInput({ completionReason: "SKIPPED", attempts: [] })).status, "SKIPPED");
+  assert.equal(createTestExecution(executionInput({ completionReason: "CANCELLED", attempts: [] })).status, "CANCELLED");
 });
 
 test("evidence hashes are reproducible and runner attestations detect tampering", () => {
@@ -162,7 +179,7 @@ test("evidence rejects unredacted sensitive values and wrong deployment bindings
         },
         fixedClock,
       ),
-    /deploymentId must match/,
+    /deployment.*must match/,
   );
   const executionWithSecret = executionInput();
   executionWithSecret.attempts[0].stepResults[0].Authorization = "Bearer raw-token";

@@ -124,6 +124,74 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     }
   }
 
+  async appendProjectFoundation(foundation) {
+    return this.#transaction(async () => {
+      await this.#database.query(
+        "INSERT INTO organization (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+        [foundation.organization.id, foundation.organization.name],
+      );
+      await this.#database.query(
+        `INSERT INTO tenant (id, organization_id, name)
+         VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING`,
+        [foundation.tenant.id, foundation.organization.id, foundation.tenant.name],
+      );
+      await this.#database.query(
+        `INSERT INTO project (id, tenant_id, name, status)
+         VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+        [foundation.project.id, foundation.tenant.id, foundation.project.name, foundation.project.status],
+      );
+      for (const principal of foundation.principals) {
+        await this.#database.query(
+          `INSERT INTO principal (id, tenant_id, principal_type, display_name)
+           VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING`,
+          [principal.id, foundation.tenant.id, principal.type, principal.displayName],
+        );
+      }
+      const stored = await this.getProjectFoundation(foundation.project.id);
+      if (!stored || canonicalJson(stored) !== canonicalJson(foundation)) {
+        throw new PersistenceConflictError(`Project ${foundation.project.id} conflicts with an existing record`);
+      }
+      return stored;
+    });
+  }
+
+  async getProjectFoundation(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT
+         o.id AS organization_id, o.name AS organization_name,
+         t.id AS tenant_id, t.name AS tenant_name,
+         p.id AS project_id, p.name AS project_name, p.status AS project_status
+       FROM project p
+       JOIN tenant t ON t.id = p.tenant_id
+       JOIN organization o ON o.id = t.organization_id
+       WHERE p.id = $1`,
+      [projectId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    const principalResult = await this.#database.query(
+      `SELECT id, principal_type, display_name
+       FROM principal WHERE tenant_id = $1 ORDER BY id`,
+      [row.tenant_id],
+    );
+    return deepFreeze({
+      organization: { id: row.organization_id, name: row.organization_name },
+      tenant: { id: row.tenant_id, name: row.tenant_name, organizationId: row.organization_id },
+      project: {
+        id: row.project_id,
+        name: row.project_name,
+        tenantId: row.tenant_id,
+        status: row.project_status,
+      },
+      principals: principalResult.rows.map((principal) => ({
+        id: principal.id,
+        type: principal.principal_type,
+        displayName: principal.display_name,
+      })),
+    });
+  }
+
   async appendSnapshotManifest(projectId, manifest) {
     requireId(projectId, "projectId");
     requireId(manifest?.id, "manifest.id");

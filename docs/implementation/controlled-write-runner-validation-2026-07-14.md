@@ -25,6 +25,13 @@ confirmed Claim and exact Endpoint Fact
 - Request and response sizes are bounded. JSON bodies are serialized by the executor and Evidence is recursively redacted.
 - Endpoint placeholders such as `/orders/{id}/submit` must be explicitly bound during TestSpec generation. The binding is part of the immutable generation fingerprint.
 - Database verification accepts only a trusted `queryRef`. The query catalog must mark it `safeRead`, and the executor still rejects multi-statement, commented, or mutating SQL. Evidence preserves the normalized catalog SQL, query reference, redacted parameters, and returned rows so the database check can be independently audited without permitting TestSpec-authored SQL.
+- Existing tests accept only a `testRef`. The signed target policy resolves it to a locally trusted absolute executable, working directory, bounded arguments and timeout; task/TestSpec command, shell, environment, and working-directory fields are rejected. Exit code, bounded stdout, and bounded stderr are preserved for assertions without giving the task a command-execution primitive.
+
+## Snapshot and telemetry binding
+
+The signed task carries the exact Source, Build, Deployment, and Runtime component IDs and SHA-256 digests from the stored Snapshot Manifest. The Runner rejects policy/task drift and refuses to execute when the target reports a different component. Every Evidence manifest repeats the four-component binding, and ingestion verifies each identity against the stored manifest rather than trusting a Git label or deployment name.
+
+Trusted local collectors may add `LOG`, `TRACE`, `COVERAGE`, `SCREENSHOT`, or `OTHER` Evidence only when their declaration is present in the signed target policy. Collector payloads are recursively redacted, size-bounded with the rest of the bundle, signed by the Runner, and tied to the same Snapshot components. The reference pilot collects structured order logs and traces from the actual running server.
 
 ## Fixture lifecycle
 
@@ -38,10 +45,9 @@ The integration test uses a real local HTTP server and PGlite database. The fixt
 
 ## Verification
 
-- `npm test`: 119 tests passed in the current repository regression suite.
-- Tests cover generated path binding and database assertions, signed policy drift, route-level operation grants, request bounds, secret-in-URL rejection, raw-SQL storage rejection, real API/database execution, setup and cleanup evidence, cleanup compensation, HMAC verification, and full trace-chain completion.
+- Tests cover generated path binding and database assertions, exact four-component target matching, signed policy drift, route-level operation grants, request bounds, secret-in-URL rejection, raw-SQL/storage-command rejection, real API/database/existing-test execution, LOG/TRACE collection, setup and cleanup Evidence, cleanup compensation, HMAC verification, all terminal execution states, and full trace-chain completion.
 - OpenAPI and all JSON Schema contracts parse successfully; the execution contract now records setup and cleanup as independent phases.
 
 ## Remaining boundary
 
-This is an in-process MVP Runner protocol, not a production workload identity or remote lease implementation. Enterprise mTLS enrollment, durable task leases, crash recovery between write and cleanup, out-of-process executor isolation, and operator-facing compensation queues remain production-hardening work; the current code records the necessary nonce, policy hash, compensation reference, and immutable Evidence boundaries without pretending those external systems already exist.
+This is an in-process MVP Runner protocol, not a production workload identity or remote lease implementation. Enterprise mTLS enrollment, durable task leases, crash recovery between write and cleanup, out-of-process executor isolation, and operator-facing compensation queues remain production-hardening work; the current code records the necessary nonce, policy hash, Snapshot binding, compensation reference, and immutable Evidence boundaries without pretending those external systems already exist.

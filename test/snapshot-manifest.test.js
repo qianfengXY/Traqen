@@ -5,10 +5,10 @@ import { createSnapshotManifest } from "../src/domain/index.js";
 import { fixedClock } from "./fixtures.js";
 
 const baseInput = {
-  source: { id: "SOURCE-001", digest: "sha256:source" },
-  build: { id: "BUILD-001", digest: "sha256:build" },
-  deployment: { id: "DEPLOY-001", digest: "sha256:deployment" },
-  runtime: { id: "RUNTIME-001", digest: "sha256:runtime" },
+  source: { id: "SOURCE-001", digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+  build: { id: "BUILD-001", digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  deployment: { id: "DEPLOY-001", digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+  runtime: { id: "RUNTIME-001", digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
   failedSources: [],
   observedFrom: "2026-07-14T01:00:00.000Z",
   observedTo: "2026-07-14T01:05:00.000Z",
@@ -19,12 +19,12 @@ test("snapshot manifest ID is deterministic across object key order", () => {
   const second = createSnapshotManifest(
     {
       observedTo: baseInput.observedTo,
-      runtime: { digest: "sha256:runtime", id: "RUNTIME-001" },
-      deployment: { digest: "sha256:deployment", id: "DEPLOY-001" },
+      runtime: { digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", id: "RUNTIME-001" },
+      deployment: { digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", id: "DEPLOY-001" },
       observedFrom: baseInput.observedFrom,
-      build: { digest: "sha256:build", id: "BUILD-001" },
+      build: { digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", id: "BUILD-001" },
       failedSources: [],
-      source: { digest: "sha256:source", id: "SOURCE-001" },
+      source: { digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", id: "SOURCE-001" },
     },
     fixedClock,
   );
@@ -69,4 +69,13 @@ test("snapshot manifest and nested components are immutable", () => {
   assert.throws(() => {
     manifest.components.source.id = "SOURCE-TAMPERED";
   }, TypeError);
+});
+
+test("a normalized Snapshot manifest can be safely re-registered", () => {
+  const original = createSnapshotManifest(baseInput, fixedClock);
+  const normalized = createSnapshotManifest(original, fixedClock);
+
+  assert.equal(normalized.complete, true);
+  assert.equal(normalized.id, original.id);
+  assert.deepEqual(normalized.components, original.components);
 });

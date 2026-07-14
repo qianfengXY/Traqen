@@ -78,6 +78,51 @@ test("health endpoint returns a request correlation ID", async (t) => {
   assert.deepEqual(await response.json(), { status: "ok" });
 });
 
+test("production API authentication protects every non-health route", async (t) => {
+  const baseUrl = await startServer(t, { apiBearerToken: "project-api-token" });
+  const health = await fetch(`${baseUrl}/health`);
+  assert.equal(health.status, 200);
+
+  const unauthorized = await fetch(`${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/baseline`);
+  assert.equal(unauthorized.status, 401);
+  assert.equal((await unauthorized.json()).error.code, "API_AUTHENTICATION_REQUIRED");
+
+  const authorized = await fetch(`${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/baseline`, {
+    headers: { authorization: "Bearer project-api-token" },
+  });
+  assert.equal(authorized.status, 404);
+});
+
+test("project and Snapshot bootstrap require no direct database setup", async (t) => {
+  const baseUrl = await startServer(t, { apiBearerToken: "project-api-token" });
+  const apiHeaders = { "x-traqen-api-token": "project-api-token" };
+  const created = await postJson(`${baseUrl}/v1/projects`, {
+    organization: { id: "ORG-BOOTSTRAP", name: "Bootstrap organization" },
+    tenant: { id: "TENANT-BOOTSTRAP", name: "Bootstrap tenant" },
+    project: { id: "PROJECT-BOOTSTRAP", name: "Bootstrap project" },
+    principals: [
+      { id: "OWNER-BOOTSTRAP", type: "USER", displayName: "Business owner" },
+      { id: "RUNNER-BOOTSTRAP", type: "RUNNER", displayName: "Project Runner" },
+    ],
+  }, apiHeaders);
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.project.id, "PROJECT-BOOTSTRAP");
+  assert.equal(created.body.principals.length, 2);
+
+  const snapshotInput = (await exampleInput()).snapshotManifest;
+  const snapshot = await postJson(
+    `${baseUrl}/v1/projects/PROJECT-BOOTSTRAP/snapshots`,
+    snapshotInput,
+    apiHeaders,
+  );
+  assert.equal(snapshot.response.status, 201);
+  assert.equal(snapshot.body.complete, true);
+
+  const fetched = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP`, { headers: apiHeaders });
+  assert.equal(fetched.status, 200);
+  assert.equal((await fetched.json()).tenant.id, "TENANT-BOOTSTRAP");
+});
+
 test("browser product origins are explicit and preflight never grants an unknown origin", async (t) => {
   await assert.rejects(startServer(t, { corsAllowedOrigins: ["*"] }), /explicit origin/);
   await assert.rejects(startServer(t, { corsAllowedOrigins: ["https://traqen.example/path"] }), /scheme, host, and port/);
@@ -129,7 +174,7 @@ test("API recomputes the snapshot manifest instead of trusting client status", a
   input.snapshotManifest = {
     id: "SPOOFED-MANIFEST",
     components: {
-      deployment: { id: "SPOOFED-DEPLOYMENT", digest: "sha256:spoofed" }
+      deployment: { id: "SPOOFED-DEPLOYMENT", digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" }
     },
     complete: true
   };
@@ -546,6 +591,12 @@ test("attested execution evidence is verified, persisted, and queryable", async 
       deploymentId: execution.deploymentId,
       runnerId: execution.runner.id,
       runnerVersion: execution.runner.version,
+      snapshotComponents: {
+        source: manifest.source,
+        build: manifest.build,
+        deployment: manifest.deployment,
+        runtime: manifest.runtime,
+      },
       assertionResults: execution.attempts[0].assertionResults,
       redactions: [],
     },
@@ -596,7 +647,7 @@ test("attested fact scans are snapshot-bound and queryable as a one-hop graph", 
     projectId: "PROJECT-001",
     snapshotManifestId,
     sourceComponentId: (await exampleInput()).snapshotManifest.source.id,
-    sourceDigest: `sha256:${"b".repeat(64)}`,
+    sourceDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     extractor: { id: "SCANNER-001", version: "1.0.0" },
     observedAt: "2026-07-14T04:00:00.000Z",
     complete: true,
@@ -619,6 +670,17 @@ test("attested fact scans are snapshot-bound and queryable as a one-hop graph", 
   const rejected = await postJson(`${projectUrl}/fact-scans`, signFactBundle(withEdge, "wrong-secret"));
   assert.equal(rejected.response.status, 401);
   assert.equal(rejected.body.error.code, "SCANNER_ATTESTATION_INVALID");
+
+  const wrongDigestBundle = createFactBundle({
+    ...withEdge,
+    sourceDigest: `sha256:${"9".repeat(64)}`,
+  });
+  const wrongDigest = await postJson(
+    `${projectUrl}/fact-scans`,
+    signFactBundle(wrongDigestBundle, scannerSecret),
+  );
+  assert.equal(wrongDigest.response.status, 409);
+  assert.equal(wrongDigest.body.error.code, "PERSISTENCE_CONFLICT");
 
   const ingested = await postJson(`${projectUrl}/fact-scans`, signed);
   assert.equal(ingested.response.status, 201);
@@ -687,7 +749,7 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
     projectId: "PROJECT-001",
     snapshotManifestId,
     sourceComponentId: traceInput.snapshotManifest.source.id,
-    sourceDigest: `sha256:${"d".repeat(64)}`,
+    sourceDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     extractor: { id: "SCANNER-001", version: "1.0.0" },
     observedAt: "2026-07-14T03:55:00.000Z",
     complete: true,
@@ -938,19 +1000,19 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   const continuedTraceInput = structuredClone(traceInput);
   continuedTraceInput.snapshotManifest.source = {
     id: "SOURCE-REVIEW-API-CONTINUED",
-    digest: "sha256:source-review-api-continued",
+    digest: `sha256:${"f".repeat(64)}`,
   };
   continuedTraceInput.snapshotManifest.build = {
     id: "BUILD-REVIEW-API-CONTINUED",
-    digest: "sha256:build-review-api-continued",
+    digest: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   };
   continuedTraceInput.snapshotManifest.deployment = {
     id: "DEPLOY-REVIEW-API-CONTINUED",
-    digest: "sha256:deployment-review-api-continued",
+    digest: "sha256:6666666666666666666666666666666666666666666666666666666666666666",
   };
   continuedTraceInput.snapshotManifest.runtime = {
     id: "RUNTIME-REVIEW-API-CONTINUED",
-    digest: "sha256:runtime-review-api-continued",
+    digest: "sha256:7777777777777777777777777777777777777777777777777777777777777777",
   };
   continuedTraceInput.snapshotManifest.observedFrom = "2026-07-14T04:05:00.000Z";
   continuedTraceInput.snapshotManifest.observedTo = "2026-07-14T04:09:00.000Z";
@@ -962,7 +1024,7 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
     projectId: "PROJECT-001",
     snapshotManifestId: continuedSnapshotManifestId,
     sourceComponentId: continuedTraceInput.snapshotManifest.source.id,
-    sourceDigest: `sha256:${"d".repeat(64)}`,
+    sourceDigest: continuedTraceInput.snapshotManifest.source.digest,
     extractor: { id: "SCANNER-001", version: "1.0.0" },
     observedAt: "2026-07-14T04:09:00.000Z",
     complete: true,
@@ -1005,19 +1067,19 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   const nextTraceInput = structuredClone(continuedTraceInput);
   nextTraceInput.snapshotManifest.source = {
     id: "SOURCE-REVIEW-API-002",
-    digest: "sha256:source-review-api-002",
+    digest: `sha256:${"1".repeat(64)}`,
   };
   nextTraceInput.snapshotManifest.build = {
     id: "BUILD-REVIEW-API-002",
-    digest: "sha256:build-review-api-002",
+    digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222",
   };
   nextTraceInput.snapshotManifest.deployment = {
     id: "DEPLOY-REVIEW-API-002",
-    digest: "sha256:deployment-review-api-002",
+    digest: "sha256:3333333333333333333333333333333333333333333333333333333333333333",
   };
   nextTraceInput.snapshotManifest.runtime = {
     id: "RUNTIME-REVIEW-API-002",
-    digest: "sha256:runtime-review-api-002",
+    digest: "sha256:4444444444444444444444444444444444444444444444444444444444444444",
   };
   nextTraceInput.snapshotManifest.observedFrom = "2026-07-14T04:10:00.000Z";
   nextTraceInput.snapshotManifest.observedTo = "2026-07-14T04:15:00.000Z";
@@ -1035,7 +1097,7 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
     projectId: "PROJECT-001",
     snapshotManifestId: nextSnapshotManifestId,
     sourceComponentId: nextTraceInput.snapshotManifest.source.id,
-    sourceDigest: `sha256:${"f".repeat(64)}`,
+    sourceDigest: nextTraceInput.snapshotManifest.source.digest,
     extractor: { id: "SCANNER-001", version: "1.0.0" },
     observedAt: "2026-07-14T04:15:00.000Z",
     complete: true,

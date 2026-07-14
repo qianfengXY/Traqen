@@ -91,6 +91,10 @@ test("scanner produces locatable code, API, SQL, config, dependency, and test fa
   const testAssetId = bundle.nodes.find((node) => node.type === "TEST_ASSET")?.id;
   assert.ok(bundle.edges.some((edge) => edge.subjectId === testAssetId && edge.predicate === "EXERCISES" && edge.objectId === symbolId("getOrder")));
 
+  const fingerprint = await scanner.fingerprint({ rootPath });
+  assert.equal(fingerprint.sourceDigest, bundle.sourceDigest);
+  assert.equal(fingerprint.fileCount, 6);
+
   const repeated = await scanner.scan({
     projectId: "PROJECT-001",
     snapshotManifestId: "SNAPSHOT-001",

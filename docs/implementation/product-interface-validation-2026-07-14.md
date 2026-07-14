@@ -11,7 +11,7 @@ The north-star question remains: **why can the selected Feature be trusted on th
 The responsive React workbench in `web/` provides three connected surfaces:
 
 1. **Feature traceability** — an ordered Claim → Scope → Decision → implementation/data/config → TestSpec → assertion → execution → Evidence chain, per-node provenance, independent trust dimensions, explicit TraceGap ownership, and a human-readable explanation of why the deployment can or cannot currently be trusted.
-2. **Statement review** — a Reverse Run and Candidate can be loaded from the API. A reviewer must explicitly supply the normative statement, Scope, target IDs, rationale, and acknowledged conflicts. A formal decision is sent to the authenticated candidate-review endpoint. Reviewer identity and role are never accepted from the browser; the bearer token is held only in component memory and cleared after success.
+2. **Statement review** — a Reverse Run and Candidate can be loaded from the API. A reviewer must explicitly supply the normative statement, Scope, target IDs, rationale, and acknowledged conflicts. A formal decision is sent to the authenticated candidate-review endpoint. Reviewer identity and role are never accepted from the browser; its reviewer bearer token is held only in component memory and cleared after success.
 3. **Change impact** — two immutable Snapshot Manifest IDs are compared through the ChangeSet endpoint. The UI shows changed Facts, affected Features/Claims/TestSpecs, invalidated derived layers, preserved normative truth and history, semantic continuities, warnings, and the server-recommended repair order.
 
 ## Truth boundary
@@ -22,11 +22,11 @@ The browser does not infer a green status from partial data. Live completeness, 
 
 ## Browser-to-API boundary
 
-The local API now accepts an explicit `CORS_ALLOWED_ORIGINS` allowlist. Wildcards, origins containing paths, and credential-bearing origins are rejected during server construction. Unknown origins receive no access grant; permitted origins receive only the methods and headers needed by the product. The default remains local development only.
+The API accepts an explicit `CORS_ALLOWED_ORIGINS` allowlist. Wildcards, origins containing paths, and credential-bearing origins are rejected during server construction. Unknown origins receive no access grant; permitted origins receive only the methods and headers needed by the product. The connection panel keeps the global production API token only in page memory and sends it in `x-traqen-api-token`, so review routes can independently reserve `Authorization` for the reviewer or implementation-reviewer credential.
 
 ## Scenarios validated
 
-- A complete current-deployment chain displays all required stages and verified HTTP, database, assertion, and lifecycle Evidence.
+- A complete current-deployment chain displays all required stages and verified HTTP, database, assertion, lifecycle, LOG, and TRACE Evidence.
 - A semantically changed implementation preserves the normative Claim, Scope, Decision, and historical Evidence while marking only implementation-derived and verification segments stale.
 - The changed scenario explains why the new deployment cannot yet be trusted and assigns each gap to a repair role.
 - Demo decisions remain non-persistent.
@@ -35,10 +35,6 @@ The local API now accepts an explicit `CORS_ALLOWED_ORIGINS` allowlist. Wildcard
 
 ## Verification
 
-- Root regression: 113 tests passed.
-- Product build and rendered-HTML suite: 2 tests passed.
-- Product ESLint: passed.
-- Product dependency audit: 0 vulnerabilities.
-- Self-scan: 1,057 locatable nodes and 2,858 edges. The bundle is intentionally marked incomplete because the current MVP Scanner declares JavaScript rather than TypeScript/TSX semantic support; the Scanner reports that limitation instead of presenting false completeness.
+The product build, rendered-HTML tests, lint, and dependency audit are run as part of final acceptance. The rendered-HTML suite explicitly checks the API token field/header and the complete traceability chain shell.
 
 The TypeScript/TSX diagnostic is consistent with the design constraint that the MVP proves one primary backend language and framework first. It is not treated as evidence that the UI source has been semantically scanned.

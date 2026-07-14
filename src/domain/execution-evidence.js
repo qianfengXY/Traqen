@@ -16,6 +16,7 @@ import {
 
 const sensitiveField =
   /(?:authorization|api[_-]?key|token|password|secret|certificate|private[_-]?key|credential|cookie)/i;
+const snapshotComponentNames = ["source", "build", "deployment", "runtime"];
 
 function requireObject(value, fieldName) {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -29,6 +30,32 @@ function requireArray(value, fieldName, { nonEmpty = false } = {}) {
     throw new TypeError(`${fieldName} must be ${nonEmpty ? "a non-empty array" : "an array"}`);
   }
   return value;
+}
+
+function normalizeSnapshotComponents(value) {
+  const input = requireObject(value, "evidence.manifest.snapshotComponents");
+  const components = {};
+  for (const componentName of snapshotComponentNames) {
+    const component = requireObject(
+      input[componentName],
+      `evidence.manifest.snapshotComponents.${componentName}`,
+    );
+    const digest = requireNonEmptyString(
+      component.digest,
+      `evidence.manifest.snapshotComponents.${componentName}.digest`,
+    );
+    if (!/^sha256:[a-f0-9]{64}$/.test(digest)) {
+      throw new TypeError(`evidence.manifest.snapshotComponents.${componentName}.digest must be a SHA-256 digest`);
+    }
+    components[componentName] = {
+      id: requireNonEmptyString(
+        component.id,
+        `evidence.manifest.snapshotComponents.${componentName}.id`,
+      ),
+      digest,
+    };
+  }
+  return components;
 }
 
 function optionalString(value, fieldName) {
@@ -223,6 +250,10 @@ export function evidenceContentHash(manifest) {
 function createEvidence(input, execution, clock) {
   const manifest = requireObject(input?.manifest, "evidence.manifest");
   const evidenceType = assertEnum(EvidenceType, input?.type, "evidence.type");
+  manifest.snapshotComponents = normalizeSnapshotComponents(manifest.snapshotComponents);
+  if (manifest.snapshotComponents.deployment.id !== execution.deploymentId) {
+    throw new TypeError("evidence.manifest deployment component must match the execution");
+  }
   const redactions = requireArray(manifest.redactions, "evidence.manifest.redactions");
   manifest.redactions = redactions;
   assertSensitiveValuesRedacted(manifest, "evidence.manifest");

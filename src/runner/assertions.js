@@ -68,6 +68,11 @@ export function evaluateAssertion(assertion, stepResults) {
       if (!field) throw new RunnerPolicyError("DATABASE_FIELD requires a field");
       return result(assertion.id, step.rows[rowIndex]?.[field], assertion.expected);
     }
+    case "EXISTING_TEST_EXIT_CODE":
+      if (step.executor !== "EXISTING_TEST") {
+        throw new RunnerPolicyError("EXISTING_TEST_EXIT_CODE requires an EXISTING_TEST step");
+      }
+      return result(assertion.id, step.exitCode, assertion.expected);
     default:
       throw new RunnerPolicyError(`Unsupported assertion type ${assertion.type}`);
   }

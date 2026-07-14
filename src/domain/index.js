@@ -10,4 +10,5 @@ export * from "./review.js";
 export * from "./change-impact.js";
 export * from "./model.js";
 export * from "./snapshot-manifest.js";
+export * from "./project.js";
 export * from "./trace-chain.js";

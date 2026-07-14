@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 
+import { execFile as execFileCallback } from "node:child_process";
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { TraceabilityApplication } from "../application/traceability-application.js";
@@ -19,11 +21,18 @@ import {
   runnerPolicyHash,
   signRunnerTask,
 } from "../runner/index.js";
-import { JavaScriptProjectScanner } from "../scanner/index.js";
+import {
+  GitDiffAnalyzer,
+  JavaScriptProjectScanner,
+  correlateGitDiffWithFactChanges,
+} from "../scanner/index.js";
 import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
 import { MemoryTraceabilityStore } from "../storage/index.js";
 import { createOrderPlatformEnvironment } from "../../examples/order-platform/src/environment.js";
-import { startOrderPlatform } from "../../examples/order-platform/src/server.js";
+import {
+  describeOrderPlatformArtifact,
+  startOrderPlatform,
+} from "../../examples/order-platform/src/server.js";
 
 const projectId = "ORDER-PILOT";
 const featureId = "FEATURE-ORDER-SUBMIT";
@@ -32,18 +41,23 @@ const scannerSecret = "order-pilot-scanner-secret";
 const publisherSecret = "order-pilot-publisher-secret";
 const runnerSecret = "order-pilot-runner-secret";
 const referenceRoot = fileURLToPath(new URL("../../examples/order-platform", import.meta.url));
+const execFile = promisify(execFileCallback);
 let currentTime = Date.parse("2026-07-14T08:00:00.000Z");
 const clock = () => new Date(currentTime);
 const advance = (milliseconds) => { currentTime += milliseconds; };
 
-function snapshot(label) {
+function digestSuffix(digest) {
+  return digest.replace(/^sha256:/, "").slice(0, 16).toUpperCase();
+}
+
+function snapshot({ sourceDigest, artifact, runtime }) {
   const observedTo = new Date(currentTime).toISOString();
   const observedFrom = new Date(currentTime - 60_000).toISOString();
   return createSnapshotManifest({
-    source: { id: `SOURCE-ORDER-${label}`, digest: `sha256:source-order-${label.toLowerCase()}` },
-    build: { id: `BUILD-ORDER-${label}`, digest: `sha256:build-order-${label.toLowerCase()}` },
-    deployment: { id: `DEPLOY-ORDER-${label}`, digest: `sha256:deployment-order-${label.toLowerCase()}` },
-    runtime: { id: `RUNTIME-ORDER-${label}`, digest: `sha256:runtime-order-${label.toLowerCase()}` },
+    source: { id: `SOURCE-ORDER-${digestSuffix(sourceDigest)}`, digest: sourceDigest },
+    build: { id: `BUILD-${artifact.id}`, digest: artifact.digest },
+    deployment: { id: `DEPLOY-${artifact.id}`, digest: artifact.digest },
+    runtime,
     observedFrom,
     observedTo,
     failedSources: [],
@@ -128,7 +142,13 @@ async function main() {
       });
     }
 
-    const firstSnapshot = snapshot("V1");
+    const firstFingerprint = await scanner.fingerprint({ rootPath: referenceRoot });
+    const firstArtifact = await describeOrderPlatformArtifact();
+    const firstSnapshot = snapshot({
+      sourceDigest: firstFingerprint.sourceDigest,
+      artifact: firstArtifact,
+      runtime: environment.runtime,
+    });
     await store.appendSnapshotManifest(projectId, firstSnapshot);
     const firstBundle = await scanner.scan({
       projectId,
@@ -187,6 +207,7 @@ async function main() {
         "x-actor-id": "PILOT-CUSTOMER-001",
         "x-actor-role": "customer",
         "idempotency-key": "PILOT-${seed.orderId}",
+        "x-trace-id": "TRACE-${seed.orderId}",
       },
       body: {},
       databaseVerification: {
@@ -209,8 +230,13 @@ async function main() {
     });
 
     platform = await startOrderPlatform({ ...environment, clock });
+    if (platform.artifact.digest !== firstSnapshot.components.deployment.digest) {
+      throw new Error("The running first deployment does not match its Snapshot artifact digest");
+    }
     let targetPolicy = {
       baseUrl: platform.baseUrl,
+      snapshotBinding: firstSnapshot.components,
+      evidenceCollectors: [{ id: "order-telemetry", types: ["LOG", "TRACE"] }],
       allowedOperationLevels: ["CONTROLLED_WRITE"],
       maxRequestBytes: 4096,
       httpAllowlist: [{
@@ -239,6 +265,7 @@ async function main() {
       handlerResolver: async (seedRef) => seedRef === "draft-order" ? {
         async setup(seed) {
           const orderId = seed.parameters.orderId;
+          environment.telemetry.clear();
           await environment.database.query("DELETE FROM order_submission_idempotency WHERE order_id = $1", [orderId]);
           await environment.database.query("DELETE FROM orders WHERE id = $1", [orderId]);
           await environment.database.query("INSERT INTO orders (id, status) VALUES ($1, 'DRAFT')", [orderId]);
@@ -264,6 +291,20 @@ async function main() {
         DATABASE: new DatabaseExecutor({ databaseResolver: async () => environment.database }),
       },
       fixtureLifecycle,
+      evidenceCollectors: {
+        "order-telemetry": {
+          async collect() {
+            const observed = environment.telemetry.snapshot();
+            if (observed.logs.length === 0 || observed.traces.length === 0) {
+              throw new Error("The reference deployment produced incomplete telemetry");
+            }
+            return [
+              { id: "ORDER-LOGS", type: "LOG", payload: { records: observed.logs } },
+              { id: "ORDER-TRACES", type: "TRACE", payload: { spans: observed.traces } },
+            ];
+          },
+        },
+      },
       clock,
     });
     const firstEvidence = await runner.runAndSubmit(
@@ -284,13 +325,49 @@ async function main() {
 
     advance(10 * 60_000);
     await cp(referenceRoot, changedRoot, { recursive: true });
+    const runGit = (args) => execFile("git", args, {
+      cwd: changedRoot,
+      encoding: "utf8",
+      timeout: 30_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    await runGit(["init", "--quiet"]);
+    await runGit(["add", "--all"]);
+    await runGit([
+      "-c", "user.name=Traqen Reference Pilot",
+      "-c", "user.email=pilot@traqen.invalid",
+      "commit", "--quiet", "-m", "reference deployment v1",
+    ]);
+    const fromCommit = (await runGit(["rev-parse", "HEAD"])).stdout.trim();
     const changedServerPath = path.join(changedRoot, "src/server.js");
     const changedSource = (await readFile(changedServerPath, "utf8")).replace(
       "ORDER_SUBMISSION_V1",
       "ORDER_SUBMISSION_V2",
     );
     await writeFile(changedServerPath, changedSource, "utf8");
-    const secondSnapshot = snapshot("V2");
+    await runGit(["add", "--all"]);
+    await runGit([
+      "-c", "user.name=Traqen Reference Pilot",
+      "-c", "user.email=pilot@traqen.invalid",
+      "commit", "--quiet", "-m", "reference deployment v2",
+    ]);
+    const toCommit = (await runGit(["rev-parse", "HEAD"])).stdout.trim();
+    const gitDiff = await new GitDiffAnalyzer().analyze({
+      rootPath: changedRoot,
+      fromCommit,
+      toCommit,
+    });
+    const changedModule = await import(`${pathToFileURL(changedServerPath).href}?snapshot=artifact-${currentTime}`);
+    const secondFingerprint = await scanner.fingerprint({ rootPath: changedRoot });
+    const secondArtifact = await changedModule.describeOrderPlatformArtifact();
+    const secondSnapshot = snapshot({
+      sourceDigest: secondFingerprint.sourceDigest,
+      artifact: secondArtifact,
+      runtime: environment.runtime,
+    });
+    if (secondSnapshot.components.deployment.digest === firstSnapshot.components.deployment.digest) {
+      throw new Error("The changed deployment did not produce a different artifact digest");
+    }
     await store.appendSnapshotManifest(projectId, secondSnapshot);
     const secondBundle = await scanner.scan({
       projectId,
@@ -305,6 +382,10 @@ async function main() {
       fromSnapshotManifestId: firstSnapshot.id,
       toSnapshotManifestId: secondSnapshot.id,
     });
+    const gitCorrelation = correlateGitDiffWithFactChanges(gitDiff, impact.changeSet.changes);
+    if (gitCorrelation.factChangeIds.length === 0) {
+      throw new Error("Git Diff did not correlate the changed source artifact to any Fact change");
+    }
     const staleTraceability = await application.getFeatureTraceability(projectId, featureId, secondSnapshot.id);
     if (!staleTraceability.gaps.some((gap) => gap.type === "CONFORMANCE_STALE")) {
       throw new Error("The changed reference Snapshot did not expose its implementation gap");
@@ -335,9 +416,15 @@ async function main() {
     }
 
     await platform.close();
-    const changedModule = await import(`${pathToFileURL(changedServerPath).href}?snapshot=${secondSnapshot.id}`);
     platform = await changedModule.startOrderPlatform({ ...environment, clock });
-    targetPolicy = { ...targetPolicy, baseUrl: platform.baseUrl };
+    if (platform.artifact.digest !== secondSnapshot.components.deployment.digest) {
+      throw new Error("The running second deployment does not match its Snapshot artifact digest");
+    }
+    targetPolicy = {
+      ...targetPolicy,
+      baseUrl: platform.baseUrl,
+      snapshotBinding: secondSnapshot.components,
+    };
     const secondEvidence = await runner.runAndSubmit(
       runnerTask({
         executionId: "EXECUTION-ORDER-V2",
@@ -363,13 +450,20 @@ async function main() {
         factEdges: firstBundle.edges.length,
         reverseSkills: firstRun.skillRuns.length,
         candidateSources: firstCandidate.sources.length,
+        candidateTestSpecs: firstRun.mergedOutput.candidateTestSpecs.length,
         testSpec: `${approvedTestSpec.id}@${approvedTestSpec.version}`,
         execution: firstEvidence.execution.status,
+        deploymentArtifactDigest: firstSnapshot.components.deployment.digest,
+        evidenceTypes: [...new Set(firstEvidence.evidence.map((item) => item.type))].sort(),
         traceComplete: featureComplete(firstTraceability),
       },
       change: {
         id: impact.changeSet.id,
         factChanges: impact.changeSet.changes.length,
+        deploymentArtifactChanged:
+          firstSnapshot.components.deployment.digest !== secondSnapshot.components.deployment.digest,
+        gitDiffArtifacts: gitDiff.changedArtifacts,
+        gitCorrelatedFactChanges: gitCorrelation.factChangeIds.length,
         affectedFeatures: impact.impact.affectedFeatureIds,
         staleGapTypes: staleTraceability.gaps.map((gap) => gap.type),
         preservedAuthority: staleTraceability.dimensions.authority[0]?.status,

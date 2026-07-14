@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import {
   PersistenceConflictError,
   ReviewAuthenticationError,
@@ -182,18 +182,32 @@ function applyCors(request, response, allowedOrigins) {
   if (typeof origin !== "string" || !allowedOrigins.has(origin)) return false;
   response.setHeader("access-control-allow-origin", origin);
   response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
-  response.setHeader("access-control-allow-headers", "authorization, content-type, x-request-id");
+  response.setHeader(
+    "access-control-allow-headers",
+    "authorization, content-type, x-request-id, x-traqen-api-token",
+  );
   response.setHeader("access-control-expose-headers", "x-request-id");
   response.setHeader("vary", "Origin");
   return true;
+}
+
+function bearerAuthorized(header, token) {
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return false;
+  const actual = Buffer.from(header.slice("Bearer ".length));
+  const expected = Buffer.from(token);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
 export function createTraceabilityHttpHandler({
   application,
   maxBodyBytes = 1024 * 1024,
   corsAllowedOrigins = [],
+  apiBearerToken = null,
 }) {
   if (!application) throw new TypeError("application is required");
+  if (apiBearerToken !== null && (typeof apiBearerToken !== "string" || apiBearerToken === "")) {
+    throw new TypeError("apiBearerToken must be null or a non-empty string");
+  }
   const allowedOrigins = normalizeCorsOrigins(corsAllowedOrigins);
 
   return async function traceabilityHttpHandler(request, response) {
@@ -210,6 +224,41 @@ export function createTraceabilityHttpHandler({
 
       if (request.method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, { status: "ok" }, id);
+        return;
+      }
+
+      if (apiBearerToken !== null) {
+        const apiTokenHeader = request.headers["x-traqen-api-token"];
+        const apiAuthorized =
+          (typeof apiTokenHeader === "string" && bearerAuthorized(`Bearer ${apiTokenHeader}`, apiBearerToken)) ||
+          bearerAuthorized(request.headers.authorization, apiBearerToken);
+        if (!apiAuthorized) {
+          throw new HttpError(401, "API_AUTHENTICATION_REQUIRED", "A valid API bearer token is required");
+        }
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/projects") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.createProject(input), id);
+        return;
+      }
+
+      const projectMatch = /^\/v1\/projects\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && projectMatch) {
+        const projectId = decodePathSegment(projectMatch[1]);
+        const project = await application.getProject(projectId);
+        if (!project) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
+        sendJson(response, 200, project, id);
+        return;
+      }
+
+      const snapshotCollectionMatch = /^\/v1\/projects\/([^/]+)\/snapshots$/.exec(url.pathname);
+      if (request.method === "POST" && snapshotCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(snapshotCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.registerSnapshot(projectId, input), id);
         return;
       }
 

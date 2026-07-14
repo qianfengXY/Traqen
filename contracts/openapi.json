@@ -3,12 +3,17 @@
   "info": {
     "title": "Traqen Traceability API",
     "version": "0.1.0",
-    "description": "API for deterministic fact ingestion, controlled Reverse Skill runs, authorized statement-level governance, server-derived Feature traceability, layered Snapshot impact, TestSpec validation, and attested execution Evidence ingestion. The local development server is not a production authentication boundary; Decision and candidate-review operations fail closed without configured reviewer identity."
+    "description": "API for project and Snapshot bootstrap, deterministic fact ingestion, controlled Reverse Skill runs, authorized statement-level governance, server-derived Feature traceability, layered Snapshot impact, TestSpec validation, and attested execution Evidence ingestion. The production server requires an API token; Decision and candidate-review operations additionally fail closed without configured reviewer identity."
   },
+  "security": [
+    { "BearerAuth": [] },
+    { "ApiToken": [] }
+  ],
   "paths": {
     "/health": {
       "get": {
         "operationId": "getHealth",
+        "security": [],
         "responses": {
           "200": {
             "description": "API process is healthy",
@@ -23,6 +28,39 @@
               }
             }
           }
+        }
+      }
+    },
+    "/v1/projects": {
+      "post": {
+        "operationId": "createProject",
+        "requestBody": { "$ref": "#/components/requestBodies/ProjectBootstrap" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ProjectCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getProject",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProjectFound" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/snapshots": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "registerSnapshot",
+        "requestBody": { "$ref": "#/components/requestBodies/SnapshotRegistration" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/SnapshotRegistered" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
     },
@@ -545,6 +583,18 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Production API token. Reviewer routes can instead reserve Authorization for reviewer identity and send the API token through ApiToken."
+      },
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-traqen-api-token"
+      }
+    },
     "parameters": {
       "ProjectId": {
         "name": "projectId",
@@ -584,6 +634,20 @@
       }
     },
     "requestBodies": {
+      "ProjectBootstrap": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ProjectBootstrap" } }
+        }
+      },
+      "SnapshotRegistration": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" }
+          }
+        }
+      },
       "TraceChainEvaluation": {
         "required": true,
         "content": {
@@ -699,6 +763,103 @@
       }
     },
     "schemas": {
+      "NamedEntity": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "Principal": {
+        "type": "object",
+        "required": ["id", "type", "displayName"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": {
+            "type": "string",
+            "pattern": "^(?:[Uu][Ss][Ee][Rr]|[Ss][Ee][Rr][Vv][Ii][Cc][Ee]_[Aa][Cc][Cc][Oo][Uu][Nn][Tt]|[Rr][Uu][Nn][Nn][Ee][Rr])$"
+          },
+          "displayName": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "ProjectBootstrap": {
+        "type": "object",
+        "required": ["organization", "tenant", "project"],
+        "properties": {
+          "organization": { "$ref": "#/components/schemas/NamedEntity" },
+          "tenant": { "$ref": "#/components/schemas/NamedEntity" },
+          "project": { "$ref": "#/components/schemas/NamedEntity" },
+          "principals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Principal" }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectFoundation": {
+        "type": "object",
+        "required": ["organization", "tenant", "project", "principals"],
+        "properties": {
+          "organization": { "$ref": "#/components/schemas/NamedEntity" },
+          "tenant": {
+            "type": "object",
+            "required": ["id", "name", "organizationId"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "organizationId": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          },
+          "project": {
+            "type": "object",
+            "required": ["id", "name", "tenantId", "status"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "tenantId": { "type": "string", "minLength": 1 },
+              "status": { "const": "ACTIVE" }
+            },
+            "additionalProperties": false
+          },
+          "principals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Principal" }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SnapshotManifest": {
+        "type": "object",
+        "required": ["id", "components", "failedSources", "observedFrom", "observedTo", "complete", "missingComponents", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "components": {
+            "type": "object",
+            "properties": {
+              "source": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" },
+              "build": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" },
+              "deployment": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" },
+              "runtime": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" }
+            },
+            "additionalProperties": false
+          },
+          "failedSources": { "type": "array", "items": { "type": "string" } },
+          "observedFrom": { "type": "string", "format": "date-time" },
+          "observedTo": { "type": "string", "format": "date-time" },
+          "complete": { "type": "boolean" },
+          "missingComponents": {
+            "type": "array",
+            "items": { "enum": ["source", "build", "deployment", "runtime"] },
+            "uniqueItems": true
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
       "Error": {
         "type": "object",
         "required": ["error"],
@@ -719,6 +880,18 @@
       }
     },
     "responses": {
+      "ProjectCreated": {
+        "description": "Organization, tenant, project, and principals created idempotently",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectFoundation" } } }
+      },
+      "ProjectFound": {
+        "description": "Project foundation and tenant principals",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectFoundation" } } }
+      },
+      "SnapshotRegistered": {
+        "description": "Server-derived immutable Snapshot manifest registered for the project",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SnapshotManifest" } } }
+      },
       "BadRequest": {
         "description": "Invalid request",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }

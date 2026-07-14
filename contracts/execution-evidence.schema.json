@@ -15,6 +15,45 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "SnapshotComponent": {
+      "type": "object",
+      "required": ["id", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "SnapshotComponents": {
+      "type": "object",
+      "required": ["source", "build", "deployment", "runtime"],
+      "properties": {
+        "source": { "$ref": "#/$defs/SnapshotComponent" },
+        "build": { "$ref": "#/$defs/SnapshotComponent" },
+        "deployment": { "$ref": "#/$defs/SnapshotComponent" },
+        "runtime": { "$ref": "#/$defs/SnapshotComponent" }
+      },
+      "additionalProperties": false
+    },
+    "EvidenceManifest": {
+      "type": "object",
+      "required": [
+        "executionId", "testSpecId", "testSpecVersion", "snapshotManifestId",
+        "deploymentId", "runnerId", "runnerVersion", "snapshotComponents", "redactions"
+      ],
+      "properties": {
+        "executionId": { "type": "string", "minLength": 1 },
+        "testSpecId": { "type": "string", "minLength": 1 },
+        "testSpecVersion": { "type": "integer", "minimum": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "deploymentId": { "type": "string", "minLength": 1 },
+        "runnerId": { "type": "string", "minLength": 1 },
+        "runnerVersion": { "type": "string", "minLength": 1 },
+        "snapshotComponents": { "$ref": "#/$defs/SnapshotComponents" },
+        "redactions": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": true
+    },
     "Runner": {
       "type": "object",
       "required": ["id", "version"],
@@ -100,7 +139,7 @@
         "freshness": { "enum": ["FRESH", "EXPIRING", "STALE", "INCOMPLETE"] },
         "contentHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
         "storageUri": { "type": ["string", "null"] },
-        "manifest": { "type": "object" },
+        "manifest": { "$ref": "#/$defs/EvidenceManifest" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "additionalProperties": false

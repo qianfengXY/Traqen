@@ -136,6 +136,9 @@ test("two replaceable reference adapters produce one merged candidate with full 
   );
   assert.equal(endpointFeature.sources.length, 2);
   assert.equal(run.mergedOutput.candidateClaims.find((claim) => claim.subjectKey.startsWith("endpoint:")).sources.length, 2);
+  assert.ok(referenceSkills[0].manifest.capabilities.includes("TEST_DESIGN"));
+  assert.equal(run.mergedOutput.candidateTestSpecs.length, 1);
+  assert.equal(run.mergedOutput.candidateTestSpecs[0].specification.requiresHumanReview, true);
   assert.ok(run.mergedOutput.openQuestions.length > 0);
 });
 

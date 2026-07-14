@@ -1,4 +1,12 @@
 export class TraceabilityStore {
+  async appendProjectFoundation(_foundation) {
+    throw new Error("appendProjectFoundation must be implemented");
+  }
+
+  async getProjectFoundation(_projectId) {
+    throw new Error("getProjectFoundation must be implemented");
+  }
+
   async appendSnapshotManifest(_projectId, _manifest) {
     throw new Error("appendSnapshotManifest must be implemented");
   }

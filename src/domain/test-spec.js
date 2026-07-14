@@ -264,6 +264,28 @@ function executionProtocolViolations(testSpec) {
         );
       }
     }
+    if (step.executor === "EXISTING_TEST") {
+      for (const forbidden of ["command", "args", "cwd", "env", "environment"]) {
+        if (Object.hasOwn(step, forbidden)) {
+          violations.push(
+            violation(
+              "RAW_TEST_COMMAND_FORBIDDEN",
+              `/steps/${index}/${forbidden}`,
+              `EXISTING_TEST steps cannot supply ${forbidden}; use a trusted testRef`,
+            ),
+          );
+        }
+      }
+      if (typeof step.testRef !== "string" || step.testRef.trim() === "") {
+        violations.push(
+          violation(
+            "TEST_REF_REQUIRED",
+            `/steps/${index}/testRef`,
+            "EXISTING_TEST steps require a trusted testRef",
+          ),
+        );
+      }
+    }
     if (step.executor === "HTTP") {
       const method = typeof step.method === "string" ? step.method.toUpperCase() : "";
       if (
@@ -311,6 +333,7 @@ function executionProtocolViolations(testSpec) {
     JSON_PATH: "HTTP",
     DATABASE_ROW_COUNT: "DATABASE",
     DATABASE_FIELD: "DATABASE",
+    EXISTING_TEST_EXIT_CODE: "EXISTING_TEST",
   };
   for (const [index, assertion] of testSpec.assertions.entries()) {
     const requiredExecutor = assertionExecutors[assertion.type];
@@ -441,7 +464,11 @@ export function assertTestSpecSafeToStore(testSpec) {
   const rawSecretViolation = sensitiveValueViolations(testSpec)[0];
   if (rawSecretViolation) throw new TypeError(rawSecretViolation.message);
   const unsafeProtocolViolation = executionProtocolViolations(testSpec)
-    .find((item) => ["RAW_SQL_FORBIDDEN", "SENSITIVE_ASSERTION_FORBIDDEN"].includes(item.code));
+    .find((item) => [
+      "RAW_SQL_FORBIDDEN",
+      "RAW_TEST_COMMAND_FORBIDDEN",
+      "SENSITIVE_ASSERTION_FORBIDDEN",
+    ].includes(item.code));
   if (unsafeProtocolViolation) throw new TypeError(unsafeProtocolViolation.message);
   return testSpec;
 }

@@ -15,6 +15,7 @@
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
     "api:dev": "node src/api/dev-server.js",
+    "api:serve": "node src/api/production-server.js",
     "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json",
     "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary",
     "pilot:order-submit": "node src/cli/run-order-submit-pilot.js"
@@ -24,6 +25,7 @@
   },
   "dependencies": {
     "acorn": "^8.15.0",
-    "acorn-walk": "^8.3.4"
+    "acorn-walk": "^8.3.4",
+    "pg": "8.22.0"
   }
 }

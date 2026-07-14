@@ -15,10 +15,14 @@ test("built-in order pilot executes, invalidates, repairs, and re-proves one com
   const result = JSON.parse(stdout);
   assert.equal(result.firstSnapshot.reverseSkills, 2);
   assert.equal(result.firstSnapshot.candidateSources, 2);
+  assert.ok(result.firstSnapshot.candidateTestSpecs >= 1);
   assert.equal(result.firstSnapshot.execution, "PASS");
+  assert.match(result.firstSnapshot.deploymentArtifactDigest, /^sha256:[a-f0-9]{64}$/);
+  assert.deepEqual(result.firstSnapshot.evidenceTypes, ["ASSERTION", "DATABASE", "HTTP", "LOG", "OTHER", "TRACE"]);
   assert.equal(result.firstSnapshot.traceComplete, true);
   assert.deepEqual(result.change.affectedFeatures, ["FEATURE-ORDER-SUBMIT"]);
   assert.ok(result.change.staleGapTypes.includes("CONFORMANCE_STALE"));
+  assert.equal(result.change.deploymentArtifactChanged, true);
   assert.equal(result.change.preservedAuthority, "CONFIRMED");
   assert.equal(result.repair.conformance, "CONFORMS");
   assert.equal(result.repair.historicalEvidenceRejected, true);

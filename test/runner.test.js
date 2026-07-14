@@ -14,6 +14,7 @@ import {
 import {
   ControlledRunner,
   DatabaseExecutor,
+  ExistingTestExecutor,
   FixtureLifecycleExecutor,
   HttpExecutor,
   assertReadOnlySql,
@@ -27,10 +28,10 @@ const runnerSecret = "runner-shared-secret";
 function snapshotManifest() {
   return createSnapshotManifest(
     {
-      source: { id: "SOURCE-001", digest: "sha256:source" },
-      build: { id: "BUILD-001", digest: "sha256:build" },
-      deployment: { id: "DEPLOY-001", digest: "sha256:deployment" },
-      runtime: { id: "RUNTIME-001", digest: "sha256:runtime" },
+      source: { id: "SOURCE-001", digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+      build: { id: "BUILD-001", digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      deployment: { id: "DEPLOY-001", digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+      runtime: { id: "RUNTIME-001", digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
       observedFrom: "2026-07-14T05:00:00.000Z",
       observedTo: "2026-07-14T05:05:00.000Z",
     },
@@ -132,8 +133,10 @@ test("controlled Runner executes allowlisted HTTP and emits signed redacted Evid
   });
   const targetPolicy = {
     baseUrl,
+    snapshotBinding: snapshotManifest().components,
     allowedOperationLevels: ["SAFE_READ"],
     httpAllowlist: [{ method: "GET", pathPattern: "^/orders/[0-9]+$" }],
+    evidenceCollectors: [{ id: "local-observer", types: ["LOG", "TRACE"] }],
   };
   const runner = new ControlledRunner({
     runner: { id: "RUNNER-001", version: "1.0.0" },
@@ -142,6 +145,14 @@ test("controlled Runner executes allowlisted HTTP and emits signed redacted Evid
     secretResolver: async (secretRef) =>
       secretRef === "accounts/normal-user/token" ? "local-secret-token" : null,
     executors: { HTTP: new HttpExecutor() },
+    evidenceCollectors: {
+      "local-observer": {
+        collect: async () => [
+          { id: "REQUEST-LOG", type: "LOG", payload: { event: "ORDER_READ", observed: "local-secret-token" } },
+          { id: "REQUEST-TRACE", type: "TRACE", payload: { service: "orders", operation: "read" } },
+        ],
+      },
+    },
     clock: sequenceClock(),
   });
 
@@ -163,6 +174,8 @@ test("controlled Runner executes allowlisted HTTP and emits signed redacted Evid
   assert.doesNotMatch(JSON.stringify(bundle), /local-secret-token|server-secret/);
   assert.match(JSON.stringify(bundle), /\[REDACTED\]/);
   assert.ok(bundle.evidence.some((item) => item.type === "HTTP"));
+  assert.ok(bundle.evidence.some((item) => item.type === "LOG"));
+  assert.ok(bundle.evidence.some((item) => item.type === "TRACE"));
   assert.ok(bundle.evidence.some((item) => item.type === "ASSERTION"));
 
   const traceInput = completeInput();
@@ -192,6 +205,7 @@ test("database executor uses the trusted query catalog and deterministic asserti
     },
   };
   const targetPolicy = {
+    snapshotBinding: snapshotManifest().components,
     allowedOperationLevels: ["SAFE_READ"],
     databaseRef: "orders-readonly",
     queryCatalog: {
@@ -252,6 +266,57 @@ test("database executor uses the trusted query catalog and deterministic asserti
   assert.equal(databaseEvidence.manifest.stepResult.rows[0].status, "DRAFT");
 });
 
+test("existing test executor runs only a trusted catalog command and preserves its output", async () => {
+  const snapshot = snapshotManifest();
+  const targetPolicy = {
+    snapshotBinding: snapshot.components,
+    allowedOperationLevels: ["SAFE_READ"],
+    testCatalog: {
+      "reference-smoke": {
+        trusted: true,
+        allowedOperationLevels: ["SAFE_READ"],
+        command: process.execPath,
+        args: ["-e", "process.stdout.write('reference smoke passed')"],
+        cwd: process.cwd(),
+        timeoutMs: 5_000,
+      },
+    },
+  };
+  const runner = new ControlledRunner({
+    runner: { id: "RUNNER-001", version: "1.0.0" },
+    runnerSecret,
+    targetPolicyResolver: async () => targetPolicy,
+    secretResolver: async () => null,
+    executors: { EXISTING_TEST: new ExistingTestExecutor() },
+    clock: sequenceClock(),
+  });
+  const specification = testSpec({
+    id: "TEST-EXISTING-001",
+    variables: {},
+    steps: [{ id: "existing-smoke", executor: "EXISTING_TEST", testRef: "reference-smoke" }],
+    assertions: [{
+      id: "existing-exit-code",
+      type: "EXISTING_TEST_EXIT_CODE",
+      stepId: "existing-smoke",
+      expected: 0,
+    }],
+  });
+
+  const bundle = await runner.run(taskFor({
+    executionId: "EXEC-EXISTING-001",
+    specification,
+    snapshot,
+    policy: targetPolicy,
+  }));
+
+  assert.equal(bundle.execution.status, "PASS");
+  const result = bundle.execution.attempts[0].stepResults[0];
+  assert.equal(result.testRef, "reference-smoke");
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout, "reference smoke passed");
+  assert.equal(bundle.evidence.find((item) => item.type === "OTHER").manifest.stepResult.testRef, "reference-smoke");
+});
+
 test("controlled write seeds data, executes an allowlisted API, verifies the database, and always cleans up", async (t) => {
   const postgres = await PGlite.create();
   t.after(() => postgres.close());
@@ -274,6 +339,7 @@ test("controlled write seeds data, executes an allowlisted API, verifies the dat
   };
   const targetPolicy = {
     baseUrl,
+    snapshotBinding: snapshotManifest().components,
     allowedOperationLevels: ["CONTROLLED_WRITE"],
     maxRequestBytes: 4096,
     httpAllowlist: [{
@@ -429,13 +495,14 @@ test("controlled write seeds data, executes an allowlisted API, verifies the dat
   assert.equal(traceChain.dimensions.verification, "PASS");
 
   const laterSnapshot = createSnapshotManifest({
-    source: { id: "SOURCE-002", digest: "sha256:source-002" },
-    build: { id: "BUILD-002", digest: "sha256:build-002" },
-    deployment: { id: "DEPLOY-002", digest: "sha256:deployment-002" },
-    runtime: { id: "RUNTIME-002", digest: "sha256:runtime-002" },
+    source: { id: "SOURCE-002", digest: "sha256:1111111111111111111111111111111111111111111111111111111111111111" },
+    build: { id: "BUILD-002", digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+    deployment: { id: "DEPLOY-002", digest: "sha256:3333333333333333333333333333333333333333333333333333333333333333" },
+    runtime: { id: "RUNTIME-002", digest: "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
     observedFrom: "2026-07-14T05:40:00.000Z",
     observedTo: "2026-07-14T05:50:00.000Z",
   }, () => new Date("2026-07-14T05:51:00.000Z"));
+  targetPolicy.snapshotBinding = laterSnapshot.components;
   const regressionBundle = await runner.run(taskFor({
     executionId: "EXEC-WRITE-REGRESSION-002",
     specification,
@@ -451,6 +518,7 @@ test("controlled write seeds data, executes an allowlisted API, verifies the dat
 
 test("cleanup failure produces ERROR evidence and an explicit compensation reference", async () => {
   const targetPolicy = {
+    snapshotBinding: snapshotManifest().components,
     allowedOperationLevels: ["CONTROLLED_WRITE"],
     fixtureCatalog: {
       "draft-order": {
@@ -516,6 +584,7 @@ test("runner records assertion failure separately from execution errors", async 
   });
   const targetPolicy = {
     baseUrl,
+    snapshotBinding: snapshotManifest().components,
     allowedOperationLevels: ["SAFE_READ"],
     httpAllowlist: [{ method: "GET", pathPattern: "^/orders/[0-9]+$" }],
   };
@@ -617,6 +686,7 @@ test("unallowlisted targets and raw SQL are never executed", async () => {
 test("Runner rejects tampered, replayed, expired, and policy-drifted tasks before execution", async () => {
   const targetPolicy = {
     baseUrl: "http://127.0.0.1:3000",
+    snapshotBinding: snapshotManifest().components,
     allowedOperationLevels: ["SAFE_READ"],
     httpAllowlist: [{ method: "GET", pathPattern: "^/orders/[0-9]+$" }],
   };
@@ -690,5 +760,33 @@ test("Runner rejects tampered, replayed, expired, and policy-drifted tasks befor
     clock: sequenceClock(),
   });
   await assert.rejects(expiryRunner.run(expired), /validity window/);
+
+  const otherSnapshot = createSnapshotManifest({
+    source: { id: "SOURCE-OTHER", digest: "sha256:5555555555555555555555555555555555555555555555555555555555555555" },
+    build: { id: "BUILD-OTHER", digest: "sha256:6666666666666666666666666666666666666666666666666666666666666666" },
+    deployment: { id: "DEPLOY-OTHER", digest: "sha256:7777777777777777777777777777777777777777777777777777777777777777" },
+    runtime: { id: "RUNTIME-OTHER", digest: "sha256:8888888888888888888888888888888888888888888888888888888888888888" },
+    observedFrom: "2026-07-14T05:00:00.000Z",
+    observedTo: "2026-07-14T05:05:00.000Z",
+  }, () => new Date("2026-07-14T05:06:00.000Z"));
+  const wrongTargetTask = taskFor({
+    executionId: "EXEC-WRONG-TARGET",
+    specification,
+    snapshot: otherSnapshot,
+    policy: targetPolicy,
+    nonce: "NONCE-WRONG-TARGET",
+  });
+  const targetBoundRunner = new ControlledRunner({
+    runner: { id: "RUNNER-001", version: "1.0.0" },
+    runnerSecret,
+    targetPolicyResolver: async () => targetPolicy,
+    secretResolver: async () => "local-secret-token",
+    executors: { HTTP: executor },
+    clock: sequenceClock(),
+  });
+  await assert.rejects(
+    targetBoundRunner.run(wrongTargetTask),
+    /does not match the Runner's locally observed target/,
+  );
   assert.equal(calls, 1);
 });

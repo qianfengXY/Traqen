@@ -8,7 +8,10 @@ function validateComponent(component, fieldName) {
     throw new TypeError(`${fieldName} must be an object`);
   }
   requireNonEmptyString(component.id, `${fieldName}.id`);
-  requireNonEmptyString(component.digest, `${fieldName}.digest`);
+  const digest = requireNonEmptyString(component.digest, `${fieldName}.digest`);
+  if (!/^sha256:[a-f0-9]{64}$/.test(digest)) {
+    throw new TypeError(`${fieldName}.digest must be a SHA-256 digest`);
+  }
   return structuredClone(component);
 }
 
@@ -21,7 +24,7 @@ export function createSnapshotManifest(input, clock = () => new Date()) {
   const missingComponents = [];
 
   for (const componentName of requiredComponents) {
-    const component = input[componentName];
+    const component = input[componentName] ?? input.components?.[componentName];
     if (component === undefined || component === null) {
       missingComponents.push(componentName);
       continue;

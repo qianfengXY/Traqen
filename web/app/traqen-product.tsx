@@ -90,13 +90,15 @@ const completeScenario: Scenario = {
     { id: "TEST-ORDER-SUBMIT-001@2", kind: "TestSpec", title: "提交已 Seed 的草稿订单", meta: "CONTROLLED_WRITE", status: "ACTIVE", relation: "ASSERTED_BY", provenance: "独立批准的 TestSpec" },
     { id: "ASSERT-HTTP-DB", kind: "Assertions", title: "HTTP 200 · DB=SUBMITTED", meta: "2 deterministic checks", status: "ACTIVE", relation: "EXECUTED_AS", provenance: "Runner deterministic assertions" },
     { id: "EXEC-WRITE-001", kind: "Execution", title: "PASS · cleanup PASS", meta: "runner 1.1.0", status: "ACTIVE", relation: "PROVEN_BY", provenance: "Signed Runner task" },
-    { id: "EVIDENCE-BUNDLE-001", kind: "Evidence", title: "请求 · 响应 · SQL · 生命周期", meta: "HMAC verified", status: "ACTIVE", provenance: "Current deployment evidence" },
+    { id: "EVIDENCE-BUNDLE-001", kind: "Evidence", title: "请求 · 响应 · SQL · 日志 · Trace · 生命周期", meta: "HMAC verified", status: "ACTIVE", provenance: "Current deployment artifact evidence" },
   ],
   gaps: [],
   evidence: [
     { type: "HTTP", id: "EVIDENCE-EXEC-WRITE-001-invoke-endpoint", detail: "POST /orders/ORDER-001/submit → 200", state: "VERIFIED" },
     { type: "DATABASE", id: "EVIDENCE-EXEC-WRITE-001-verify-database", detail: "order_by_id → status=SUBMITTED", state: "VERIFIED" },
     { type: "ASSERTION", id: "EVIDENCE-EXEC-WRITE-001-ASSERTIONS", detail: "2 / 2 deterministic assertions", state: "VERIFIED" },
+    { type: "LOG", id: "EVIDENCE-EXEC-WRITE-001-ORDER-LOGS", detail: "ORDER_SUBMIT_RECEIVED → ORDER_SUBMIT_COMPLETED", state: "VERIFIED" },
+    { type: "TRACE", id: "EVIDENCE-EXEC-WRITE-001-ORDER-TRACES", detail: "order-platform.submitOrder · OK", state: "VERIFIED" },
     { type: "LIFECYCLE", id: "EVIDENCE-EXEC-WRITE-001-LIFECYCLE", detail: "Seed PASS · cleanup PASS", state: "VERIFIED" },
   ],
   reasons: [
@@ -140,6 +142,12 @@ function tone(value: string) {
   if (["CONFIRMED", "CONFORMS", "PASS", "FRESH", "NONE", "VERIFIED", "ACTIVE"].includes(value)) return "good";
   if (["STALE", "NOT_RUN", "EXPIRING", "PENDING", "INCOMPLETE"].includes(value)) return "warn";
   return "bad";
+}
+
+function apiHeaders(apiToken: string, headers: Record<string, string> = {}) {
+  return apiToken.trim()
+    ? { ...headers, "x-traqen-api-token": apiToken.trim() }
+    : headers;
 }
 
 function nodeLabel(type: string) {
@@ -221,6 +229,7 @@ export function TraqenProduct() {
   const [selectedId, setSelectedId] = useState(completeScenario.nodes[0].id);
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [apiBase, setApiBase] = useState("http://127.0.0.1:3100");
+  const [apiToken, setApiToken] = useState("");
   const [projectId, setProjectId] = useState("PROJECT-001");
   const [featureId, setFeatureId] = useState("FEATURE-ORDER-SUBMIT-001");
   const [snapshotId, setSnapshotId] = useState("SNAPSHOT-MANIFEST-001");
@@ -239,7 +248,7 @@ export function TraqenProduct() {
     try {
       const base = apiBase.replace(/\/$/, "");
       const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/traceability?snapshotManifestId=${encodeURIComponent(snapshotId)}`;
-      const response = await fetch(url, { headers: { accept: "application/json" } });
+      const response = await fetch(url, { headers: apiHeaders(apiToken, { accept: "application/json" }) });
       const body = await response.json() as Record<string, unknown>;
       if (!response.ok) {
         const error = body.error as { message?: string } | undefined;
@@ -290,14 +299,15 @@ export function TraqenProduct() {
               <div className="field"><label htmlFor="project-id">Project ID</label><input id="project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
               <div className="field"><label htmlFor="feature-id">Feature ID</label><input id="feature-id" value={featureId} onChange={(event) => setFeatureId(event.target.value)} /></div>
               <div className="field full"><label htmlFor="snapshot-id">Snapshot Manifest ID</label><input id="snapshot-id" value={snapshotId} onChange={(event) => setSnapshotId(event.target.value)} /></div>
+              <div className="field full"><label htmlFor="api-token">API token（仅保存在当前页面内存）</label><input id="api-token" type="password" autoComplete="off" value={apiToken} onChange={(event) => setApiToken(event.target.value)} /></div>
             </div>
             <div className="connection-actions"><button className="button primary" disabled={loading} onClick={loadTraceability}>{loading ? "加载中…" : "加载服务端追溯视图"}</button>{message && <span className={`form-message ${message.startsWith("已加载") ? "" : "error"}`}>{message}</span>}</div>
           </section>
         )}
 
         {view === "trace" && <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selected={selected} setSelectedId={setSelectedId} />}
-        {view === "review" && <ReviewView apiBase={apiBase} projectId={projectId} />}
-        {view === "impact" && <ImpactView apiBase={apiBase} projectId={projectId} />}
+        {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
+        {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
       </main>
     </div>
   );
@@ -358,7 +368,7 @@ function parseObject(value: string, field: string): Record<string, unknown> {
   return parsed as Record<string, unknown>;
 }
 
-function ReviewView({ apiBase, projectId }: { apiBase: string; projectId: string }) {
+function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToken: string; projectId: string }) {
   const [candidate, setCandidate] = useState<ReviewCandidate>(demoCandidate);
   const [liveCandidate, setLiveCandidate] = useState(false);
   const [runId, setRunId] = useState("");
@@ -388,7 +398,10 @@ function ReviewView({ apiBase, projectId }: { apiBase: string; projectId: string
     setMessage("");
     try {
       const base = apiBase.replace(/\/$/, "");
-      const response = await fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/reverse-runs/${encodeURIComponent(runId)}`);
+      const response = await fetch(
+        `${base}/v1/projects/${encodeURIComponent(projectId)}/reverse-runs/${encodeURIComponent(runId)}`,
+        { headers: apiHeaders(apiToken) },
+      );
       const body = await response.json() as Record<string, unknown>;
       if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
       const merged = body.mergedOutput as Record<string, unknown> | undefined;
@@ -460,7 +473,7 @@ function ReviewView({ apiBase, projectId }: { apiBase: string; projectId: string
       const base = apiBase.replace(/\/$/, "");
       const response = await fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/reverse-runs/${encodeURIComponent(runId)}/candidates/${encodeURIComponent(candidate.id)}/reviews`, {
         method: "POST",
-        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        headers: apiHeaders(apiToken, { authorization: `Bearer ${token}`, "content-type": "application/json" }),
         body: JSON.stringify(request),
       });
       const body = await response.json() as Record<string, unknown>;
@@ -485,7 +498,7 @@ function ReviewView({ apiBase, projectId }: { apiBase: string; projectId: string
   </>;
 }
 
-function ImpactView({ apiBase, projectId }: { apiBase: string; projectId: string }) {
+function ImpactView({ apiBase, apiToken, projectId }: { apiBase: string; apiToken: string; projectId: string }) {
   const [changeSetId, setChangeSetId] = useState("CHANGESET-UI-001");
   const [fromSnapshot, setFromSnapshot] = useState("SNAPSHOT-7D31E8");
   const [toSnapshot, setToSnapshot] = useState("SNAPSHOT-92A44C");
@@ -508,7 +521,7 @@ function ImpactView({ apiBase, projectId }: { apiBase: string; projectId: string
       const base = apiBase.replace(/\/$/, "");
       const response = await fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/change-sets`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: apiHeaders(apiToken, { "content-type": "application/json" }),
         body: JSON.stringify({ id: changeSetId, fromSnapshotManifestId: fromSnapshot, toSnapshotManifestId: toSnapshot }),
       });
       const body = await response.json() as Record<string, unknown>;
@@ -536,7 +549,7 @@ function ImpactView({ apiBase, projectId }: { apiBase: string; projectId: string
       const base = apiBase.replace(/\/$/, "");
       const response = await fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(repairFeatureId)}/claims/${encodeURIComponent(repairClaimId)}/implementation-reanalyses`, {
         method: "POST",
-        headers: { authorization: `Bearer ${repairToken}`, "content-type": "application/json" },
+        headers: apiHeaders(apiToken, { authorization: `Bearer ${repairToken}`, "content-type": "application/json" }),
         body: JSON.stringify({
           id: repairAnalysisId,
           sourceRunId: repairRunId,

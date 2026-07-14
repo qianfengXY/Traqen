@@ -54,10 +54,10 @@ async function insertProjectFoundation(database) {
 
 async function insertSnapshot(database) {
   const components = [
-    ["SOURCE-001", "SOURCE", "sha256:source"],
-    ["BUILD-001", "BUILD", "sha256:build"],
-    ["DEPLOY-001", "DEPLOYMENT", "sha256:deployment"],
-    ["RUNTIME-001", "RUNTIME", "sha256:runtime"],
+    ["SOURCE-001", "SOURCE", "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],
+    ["BUILD-001", "BUILD", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],
+    ["DEPLOY-001", "DEPLOYMENT", "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],
+    ["RUNTIME-001", "RUNTIME", "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],
   ];
   for (const [id, componentType, digest] of components) {
     await database.query(
@@ -253,6 +253,61 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
   }
 });
 
+test("application bootstraps a PostgreSQL project and Snapshot without manual SQL", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: fixedClock,
+  });
+
+  const project = await application.createProject({
+    organization: { id: "ORG-BOOTSTRAP", name: "Bootstrap organization" },
+    tenant: { id: "TENANT-BOOTSTRAP", name: "Bootstrap tenant" },
+    project: { id: "PROJECT-BOOTSTRAP", name: "Bootstrap project" },
+    principals: [
+      { id: "USER-BOOTSTRAP", type: "USER", displayName: "Business owner" },
+      { id: "RUNNER-BOOTSTRAP", type: "RUNNER", displayName: "Project Runner" },
+    ],
+  });
+  assert.equal(project.project.status, "ACTIVE");
+  assert.deepEqual(project.principals.map((principal) => principal.id), [
+    "RUNNER-BOOTSTRAP",
+    "USER-BOOTSTRAP",
+  ]);
+  assert.deepEqual(await application.getProject("PROJECT-BOOTSTRAP"), project);
+
+  const snapshot = await application.registerSnapshot(
+    "PROJECT-BOOTSTRAP",
+    completeInput().snapshotManifest,
+  );
+  assert.equal(snapshot.complete, true);
+  const stored = await database.query(
+    "SELECT complete FROM snapshot_manifest WHERE project_id = $1 AND id = $2",
+    ["PROJECT-BOOTSTRAP", snapshot.id],
+  );
+  assert.equal(stored.rows[0].complete, true);
+
+  assert.deepEqual(await application.createProject({
+    organization: { id: "ORG-BOOTSTRAP", name: "Bootstrap organization" },
+    tenant: { id: "TENANT-BOOTSTRAP", name: "Bootstrap tenant" },
+    project: { id: "PROJECT-BOOTSTRAP", name: "Bootstrap project" },
+    principals: [
+      { id: "RUNNER-BOOTSTRAP", type: "RUNNER", displayName: "Project Runner" },
+      { id: "USER-BOOTSTRAP", type: "USER", displayName: "Business owner" },
+    ],
+  }), project);
+  await assert.rejects(
+    application.createProject({
+      organization: { id: "ORG-BOOTSTRAP", name: "Changed organization" },
+      tenant: { id: "TENANT-BOOTSTRAP", name: "Bootstrap tenant" },
+      project: { id: "PROJECT-BOOTSTRAP", name: "Bootstrap project" },
+      principals: project.principals,
+    }),
+    /conflicts with an existing record/,
+  );
+});
+
 test("migration runner rejects an applied migration whose checksum changed", async (t) => {
   const database = await migratedDatabase();
   t.after(() => database.close());
@@ -376,7 +431,7 @@ test("PostgreSQL store is idempotent for identical manifests and rejects ID coll
     ...manifest,
     components: {
       ...manifest.components,
-      source: { ...manifest.components.source, digest: "sha256:tampered" },
+      source: { ...manifest.components.source, digest: "sha256:9999999999999999999999999999999999999999999999999999999999999999" },
     },
   };
   await assert.rejects(
@@ -738,6 +793,12 @@ test("PostgreSQL atomically persists attested execution evidence for the exact d
             deploymentId: execution.deploymentId,
             runnerId: execution.runner.id,
             runnerVersion: execution.runner.version,
+            snapshotComponents: {
+              source: { id: "SOURCE-001", digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+              build: { id: "BUILD-001", digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+              deployment: { id: "DEPLOY-001", digest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+              runtime: { id: "RUNTIME-001", digest: "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+            },
             assertionResults: execution.attempts[0].assertionResults,
             redactions: [],
           },
@@ -773,6 +834,10 @@ test("PostgreSQL atomically persists attested execution evidence for the exact d
             ...normalized.evidence[0].manifest,
             executionId: wrongDeploymentExecution.id,
             deploymentId: wrongDeploymentExecution.deploymentId,
+            snapshotComponents: {
+              ...normalized.evidence[0].manifest.snapshotComponents,
+              deployment: { id: "DEPLOY-OTHER", digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" },
+            },
           },
         },
       ],
@@ -784,7 +849,20 @@ test("PostgreSQL atomically persists attested execution evidence for the exact d
       "PROJECT-001",
       signExecutionEvidenceBundle("PROJECT-001", wrongDeployment, runnerSecret),
     ),
-    /Persistence constraints rejected|deployment/,
+    /Snapshot components must exactly match|Persistence constraints rejected|deployment/,
+  );
+
+  const wrongArtifactInput = structuredClone(normalized);
+  wrongArtifactInput.evidence[0].id = "EVIDENCE-WRONG-ARTIFACT";
+  wrongArtifactInput.evidence[0].manifest.snapshotComponents.deployment.digest = `sha256:${"9".repeat(64)}`;
+  delete wrongArtifactInput.evidence[0].contentHash;
+  const wrongArtifact = createExecutionEvidenceBundle(wrongArtifactInput, () => new Date("2026-07-14T06:10:00.000Z"));
+  await assert.rejects(
+    application.ingestExecutionEvidence(
+      "PROJECT-001",
+      signExecutionEvidenceBundle("PROJECT-001", wrongArtifact, runnerSecret),
+    ),
+    /Snapshot components must exactly match/,
   );
 
   const evidenceRows = await database.query(
@@ -814,7 +892,7 @@ test("PostgreSQL persists signed fact graphs as immutable snapshot evidence", as
     projectId: "PROJECT-001",
     snapshotManifestId: "SNAPSHOT-MANIFEST-001",
     sourceComponentId: "SOURCE-001",
-    sourceDigest: `sha256:${"d".repeat(64)}`,
+    sourceDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     extractor: { id: "SCANNER-001", version: "1.0.0" },
     observedAt: "2026-07-14T07:00:00.000Z",
     complete: true,
@@ -858,7 +936,7 @@ test("PostgreSQL persists signed fact graphs as immutable snapshot evidence", as
   });
   await assert.rejects(
     application.ingestFactBundle("PROJECT-001", signFactBundle(wrongSourceBundle, scannerSecret)),
-    /source component|Persistence constraints rejected/,
+    /source (?:component|ID)|Persistence constraints rejected/i,
   );
 
   const graph = await application.queryFacts("PROJECT-001", {
@@ -928,7 +1006,7 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
     projectId: "PROJECT-001",
     snapshotManifestId: "SNAPSHOT-MANIFEST-001",
     sourceComponentId: "SOURCE-001",
-    sourceDigest: `sha256:${"f".repeat(64)}`,
+    sourceDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     extractor: { id: "SCANNER-001", version: "1.0.0" },
     observedAt: "2026-07-14T09:55:00.000Z",
     complete: true,
@@ -1056,10 +1134,10 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
   assert.deepEqual(currentChain.conflicts, []);
 
   const continuedManifest = createSnapshotManifest({
-    source: { id: "SOURCE-CONTINUED", digest: "sha256:source-continued" },
-    build: { id: "BUILD-CONTINUED", digest: "sha256:build-continued" },
-    deployment: { id: "DEPLOY-CONTINUED", digest: "sha256:deployment-continued" },
-    runtime: { id: "RUNTIME-CONTINUED", digest: "sha256:runtime-continued" },
+    source: { id: "SOURCE-CONTINUED", digest: `sha256:${"f".repeat(64)}` },
+    build: { id: "BUILD-CONTINUED", digest: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+    deployment: { id: "DEPLOY-CONTINUED", digest: "sha256:6666666666666666666666666666666666666666666666666666666666666666" },
+    runtime: { id: "RUNTIME-CONTINUED", digest: "sha256:7777777777777777777777777777777777777777777777777777777777777777" },
     observedFrom: "2026-07-14T10:02:00.000Z",
     observedTo: "2026-07-14T10:04:00.000Z",
     failedSources: [],
@@ -1106,10 +1184,10 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
   assert.equal(continuedTraceability.dimensions.conformance[0].status, "CONFORMS");
 
   const nextManifest = createSnapshotManifest({
-    source: { id: "SOURCE-002", digest: "sha256:source-002" },
-    build: { id: "BUILD-002", digest: "sha256:build-002" },
-    deployment: { id: "DEPLOY-002", digest: "sha256:deployment-002" },
-    runtime: { id: "RUNTIME-002", digest: "sha256:runtime-002" },
+    source: { id: "SOURCE-002", digest: `sha256:${"1".repeat(64)}` },
+    build: { id: "BUILD-002", digest: "sha256:2222222222222222222222222222222222222222222222222222222222222222" },
+    deployment: { id: "DEPLOY-002", digest: "sha256:3333333333333333333333333333333333333333333333333333333333333333" },
+    runtime: { id: "RUNTIME-002", digest: "sha256:4444444444444444444444444444444444444444444444444444444444444444" },
     observedFrom: "2026-07-14T10:05:00.000Z",
     observedTo: "2026-07-14T10:10:00.000Z",
     failedSources: [],
