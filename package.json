@@ -1,0 +1,13 @@
+{
+  "name": "traqen",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json"
+  }
+}

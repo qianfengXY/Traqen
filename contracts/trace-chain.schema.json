@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/trace-chain-v1alpha1.json",
+  "title": "TraceChain",
+  "type": "object",
+  "required": [
+    "id",
+    "featureId",
+    "claimId",
+    "claimVersion",
+    "scopeId",
+    "snapshotManifestId",
+    "deploymentId",
+    "dimensions",
+    "stages",
+    "complete",
+    "gaps",
+    "computedAt"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^TRACE-CHAIN-" },
+    "featureId": { "type": "string", "minLength": 1 },
+    "claimId": { "type": "string", "minLength": 1 },
+    "claimVersion": { "type": "integer", "minimum": 1 },
+    "scopeId": { "type": ["string", "null"] },
+    "snapshotManifestId": { "type": ["string", "null"] },
+    "deploymentId": { "type": ["string", "null"] },
+    "dimensions": {
+      "type": "object",
+      "required": ["authority", "evidenceSupport", "conformance", "verification", "freshness", "conflict"],
+      "properties": {
+        "authority": {
+          "enum": ["UNREVIEWED", "CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "DEPRECATED"]
+        },
+        "evidenceSupport": {
+          "enum": ["NONE", "SINGLE_SOURCE", "MULTI_SOURCE", "CONTRADICTED", "INCOMPLETE"]
+        },
+        "conformance": {
+          "enum": ["UNKNOWN", "CONFORMS", "DEVIATES", "PARTIAL", "CONFLICTED", "STALE"]
+        },
+        "verification": {
+          "enum": ["NOT_RUN", "PASS", "FAIL", "ERROR", "INCONCLUSIVE", "SKIPPED", "CANCELLED"]
+        },
+        "freshness": { "enum": ["FRESH", "EXPIRING", "STALE", "INCOMPLETE"] },
+        "conflict": { "enum": ["NONE", "UNRESOLVED"] }
+      },
+      "additionalProperties": false
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 7,
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": {
+            "enum": [
+              "BUSINESS_INTENT",
+              "SCOPE",
+              "IMPLEMENTATION_CONFORMANCE",
+              "TECHNICAL_IMPLEMENTATION",
+              "TEST_SPEC",
+              "EXECUTION",
+              "EVIDENCE"
+            ]
+          },
+          "status": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "complete": { "type": "boolean" },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "severity", "ownerRole", "message"],
+        "properties": {
+          "type": {
+            "enum": [
+              "MISSING_NORMATIVE_CLAIM",
+              "MISSING_AUTHORITY",
+              "SCOPE_UNKNOWN",
+              "SNAPSHOT_INCOMPLETE",
+              "IMPLEMENTATION_UNMAPPED",
+              "CONFORMANCE_UNKNOWN",
+              "CONFORMANCE_STALE",
+              "IMPLEMENTATION_DEVIATES",
+              "UNRESOLVED_CONFLICT",
+              "NO_TEST_SPEC",
+              "TEST_SPEC_NOT_LINKED",
+              "TEST_SPEC_UNAPPROVED",
+              "NO_ASSERTION",
+              "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT",
+              "VERIFICATION_FAILED",
+              "EXECUTION_ERROR",
+              "VERIFICATION_INCONCLUSIVE",
+              "EVIDENCE_MISSING",
+              "EVIDENCE_UNVERIFIED",
+              "EVIDENCE_EXPIRING",
+              "EVIDENCE_STALE"
+            ]
+          },
+          "severity": { "enum": ["INFO", "WARNING", "BLOCKING"] },
+          "ownerRole": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "computedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}
