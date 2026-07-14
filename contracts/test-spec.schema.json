@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/test-spec-v1alpha1.json",
+  "title": "TestSpec",
+  "type": "object",
+  "required": [
+    "id", "version", "name", "risk", "approved", "approval", "featureId", "verifiesClaims",
+    "environment", "preconditions", "variables", "steps", "assertions", "cleanup", "policy"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "risk": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    "approved": { "type": "boolean" },
+    "approval": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/Approval" }
+      ]
+    },
+    "featureId": { "type": "string", "minLength": 1 },
+    "verifiesClaims": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/ClaimReference" }
+    },
+    "sourceSnapshotId": { "type": ["string", "null"] },
+    "environment": {
+      "type": "object",
+      "required": ["target", "operationLevel"],
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "operationLevel": {
+          "enum": ["SAFE_READ", "CONTROLLED_WRITE", "DESTRUCTIVE", "EXTERNAL_SIDE_EFFECT"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "preconditions": { "type": "array", "items": { "type": "object" } },
+    "variables": { "type": "object" },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Step" }
+    },
+    "assertions": { "type": "array", "items": { "$ref": "#/$defs/Assertion" } },
+    "cleanup": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "properties": { "strategy": { "type": "string", "minLength": 1 } },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "required": ["approvalRequired", "destructive", "externalSideEffect"],
+      "properties": {
+        "approvalRequired": { "type": "boolean" },
+        "destructive": { "type": "boolean" },
+        "externalSideEffect": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": { "properties": { "approved": { "const": true } } },
+      "then": { "properties": { "approval": { "$ref": "#/$defs/Approval" } } },
+      "else": { "properties": { "approval": { "type": "null" } } }
+    }
+  ],
+  "$defs": {
+    "Approval": {
+      "type": "object",
+      "required": ["actorId", "actorRole", "approvedAt"],
+      "properties": {
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 },
+        "approvedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ClaimReference": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "Step": {
+      "type": "object",
+      "required": ["id", "executor"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "executor": { "enum": ["HTTP", "DATABASE", "EXISTING_TEST"] }
+      },
+      "additionalProperties": true
+    },
+    "Assertion": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "ValidationResult": {
+      "type": "object",
+      "required": ["valid", "executable", "violations"],
+      "properties": {
+        "valid": { "type": "boolean" },
+        "executable": { "type": "boolean" },
+        "violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["code", "severity", "path", "message"],
+            "properties": {
+              "code": { "type": "string" },
+              "severity": { "enum": ["WARNING", "BLOCKING"] },
+              "path": { "type": "string" },
+              "message": { "type": "string" }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

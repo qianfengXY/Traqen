@@ -4,7 +4,10 @@ import {
   createDecision,
   createFeatureVersion,
   createSnapshotManifest,
+  createTestSpec,
   evaluateTraceChain,
+  assertTestSpecSafeToStore,
+  validateTestSpec as validateTestSpecProtocol,
 } from "../domain/index.js";
 
 function requireId(value, fieldName) {
@@ -102,5 +105,31 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
     return this.#store.getFeatureBaseline(projectId, featureId);
+  }
+
+  validateTestSpec(input) {
+    return validateTestSpecProtocol(input, this.#clock);
+  }
+
+  async appendTestSpec(projectId, input) {
+    requireId(projectId, "projectId");
+    const testSpec = assertTestSpecSafeToStore(createTestSpec(input, this.#clock));
+    await this.#store.appendTestSpec(projectId, testSpec);
+    return testSpec;
+  }
+
+  async getTestSpec(projectId, testSpecId, version = null) {
+    requireId(projectId, "projectId");
+    requireId(testSpecId, "testSpecId");
+    if (version !== null && (!Number.isSafeInteger(version) || version < 1)) {
+      throw new TypeError("version must be a positive integer");
+    }
+    return this.#store.getTestSpec(projectId, testSpecId, version);
+  }
+
+  async validateStoredTestSpec(projectId, testSpecId, version = null) {
+    const testSpec = await this.getTestSpec(projectId, testSpecId, version);
+    if (!testSpec) return null;
+    return this.validateTestSpec(testSpec);
   }
 }

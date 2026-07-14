@@ -77,6 +77,15 @@ function decodePathSegment(value) {
   }
 }
 
+function optionalVersion(url) {
+  const value = url.searchParams.get("version");
+  if (value === null) return null;
+  if (!/^[1-9]\d*$/.test(value)) throw new TypeError("version must be a positive integer");
+  const version = Number(value);
+  if (!Number.isSafeInteger(version)) throw new TypeError("version must be a positive integer");
+  return version;
+}
+
 function errorResponse(error, id) {
   if (error instanceof HttpError) {
     return {
@@ -168,6 +177,49 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         const baseline = await application.getFeatureBaseline(projectId, featureId);
         if (!baseline) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, baseline, id);
+        return;
+      }
+
+      const testSpecCollectionMatch = /^\/v1\/projects\/([^/]+)\/test-specs$/.exec(url.pathname);
+      if (request.method === "POST" && testSpecCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(testSpecCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const created = await application.appendTestSpec(projectId, input);
+        sendJson(response, 201, created, id);
+        return;
+      }
+
+      const candidateValidationMatch = /^\/v1\/projects\/([^/]+)\/test-specs\/validate$/.exec(url.pathname);
+      if (request.method === "POST" && candidateValidationMatch) {
+        requireJson(request);
+        decodePathSegment(candidateValidationMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 200, application.validateTestSpec(input), id);
+        return;
+      }
+
+      const storedTestSpecMatch = /^\/v1\/projects\/([^/]+)\/test-specs\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && storedTestSpecMatch) {
+        const projectId = decodePathSegment(storedTestSpecMatch[1]);
+        const testSpecId = decodePathSegment(storedTestSpecMatch[2]);
+        const testSpec = await application.getTestSpec(projectId, testSpecId, optionalVersion(url));
+        if (!testSpec) throw new HttpError(404, "TEST_SPEC_NOT_FOUND", "TestSpec was not found");
+        sendJson(response, 200, testSpec, id);
+        return;
+      }
+
+      const storedValidationMatch = /^\/v1\/projects\/([^/]+)\/test-specs\/([^/]+)\/validate$/.exec(url.pathname);
+      if (request.method === "POST" && storedValidationMatch) {
+        const projectId = decodePathSegment(storedValidationMatch[1]);
+        const testSpecId = decodePathSegment(storedValidationMatch[2]);
+        const validation = await application.validateStoredTestSpec(
+          projectId,
+          testSpecId,
+          optionalVersion(url),
+        );
+        if (!validation) throw new HttpError(404, "TEST_SPEC_NOT_FOUND", "TestSpec was not found");
+        sendJson(response, 200, validation, id);
         return;
       }
 

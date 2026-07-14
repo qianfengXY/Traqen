@@ -78,7 +78,7 @@
     },
     "FeatureBaseline": {
       "type": "object",
-      "required": ["feature", "claims", "traceChains"],
+      "required": ["feature", "claims", "testSpecs", "traceChains"],
       "properties": {
         "feature": { "$ref": "#/$defs/FeatureVersion" },
         "claims": {
@@ -94,6 +94,10 @@
             },
             "additionalProperties": false
           }
+        },
+        "testSpecs": {
+          "type": "array",
+          "items": { "$ref": "./test-spec.schema.json" }
         },
         "traceChains": { "type": "array", "items": { "type": "object" } }
       },

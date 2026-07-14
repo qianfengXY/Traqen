@@ -48,6 +48,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/features/{featureId}/baseline"].get.operationId,
     "getFeatureBaseline",
   );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/test-specs"].post.operationId,
+    "appendTestSpec",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/test-specs/{testSpecId}/validate"].post.operationId,
+    "validateStoredTestSpec",
+  );
 });
 
 test("governance contract defines immutable version fields", async () => {
@@ -58,4 +66,23 @@ test("governance contract defines immutable version fields", async () => {
   assert.ok(contract.$defs.FeatureVersion.required.includes("version"));
   assert.ok(contract.$defs.Claim.required.includes("scopeVersion"));
   assert.ok(contract.$defs.Decision.required.includes("claimVersion"));
+  assert.ok(contract.$defs.FeatureBaseline.required.includes("testSpecs"));
+});
+
+test("TestSpec contract exposes traceability and execution-policy boundaries", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/test-spec.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "TestSpec");
+  assert.ok(contract.required.includes("verifiesClaims"));
+  assert.ok(contract.required.includes("assertions"));
+  assert.ok(contract.required.includes("approval"));
+  assert.deepEqual(contract.properties.environment.properties.operationLevel.enum, [
+    "SAFE_READ",
+    "CONTROLLED_WRITE",
+    "DESTRUCTIVE",
+    "EXTERNAL_SIDE_EFFECT",
+  ]);
+  assert.ok(contract.$defs.ValidationResult.required.includes("executable"));
 });

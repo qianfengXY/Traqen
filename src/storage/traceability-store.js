@@ -30,4 +30,12 @@ export class TraceabilityStore {
   async getFeatureBaseline(_projectId, _featureId) {
     throw new Error("getFeatureBaseline must be implemented");
   }
+
+  async appendTestSpec(_projectId, _testSpec) {
+    throw new Error("appendTestSpec must be implemented");
+  }
+
+  async getTestSpec(_projectId, _testSpecId, _version = null) {
+    throw new Error("getTestSpec must be implemented");
+  }
 }

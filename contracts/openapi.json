@@ -3,7 +3,7 @@
   "info": {
     "title": "Traqen Traceability API",
     "version": "0.1.0",
-    "description": "Minimal API for deterministic trace-chain evaluation and persistence. Authentication is intentionally outside this first slice."
+    "description": "API for deterministic trace-chain evaluation, append-only business governance, and TestSpec validation. The development server is intentionally unauthenticated."
   },
   "paths": {
     "/health": {
@@ -161,13 +161,70 @@
         "operationId": "getFeatureBaseline",
         "responses": {
           "200": {
-            "description": "Latest feature version with current claim versions and decision history",
+            "description": "Latest feature version with current claims, decision history, linked TestSpecs, and trace chains",
             "content": {
               "application/json": {
                 "schema": { "$ref": "./governance.schema.json#/$defs/FeatureBaseline" }
               }
             }
           },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendTestSpec",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpec" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TestSpecCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/validate": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "validateTestSpecCandidate",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpec" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/TestSpecValidation" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/{testSpecId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TestSpecId" },
+        { "$ref": "#/components/parameters/Version" }
+      ],
+      "get": {
+        "operationId": "getTestSpec",
+        "responses": {
+          "200": { "$ref": "#/components/responses/TestSpecFound" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/{testSpecId}/validate": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TestSpecId" },
+        { "$ref": "#/components/parameters/Version" }
+      ],
+      "post": {
+        "operationId": "validateStoredTestSpec",
+        "responses": {
+          "200": { "$ref": "#/components/responses/TestSpecValidation" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -186,6 +243,18 @@
         "in": "path",
         "required": true,
         "schema": { "type": "string", "minLength": 1 }
+      },
+      "TestSpecId": {
+        "name": "testSpecId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "Version": {
+        "name": "version",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1 }
       }
     },
     "requestBodies": {
@@ -212,6 +281,10 @@
       "Decision": {
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
+      },
+      "TestSpec": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
       }
     },
     "schemas": {
@@ -270,6 +343,22 @@
       "DecisionCreated": {
         "description": "Decision appended",
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
+      },
+      "TestSpecCreated": {
+        "description": "TestSpec version appended",
+        "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+      },
+      "TestSpecFound": {
+        "description": "Requested or latest TestSpec version",
+        "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+      },
+      "TestSpecValidation": {
+        "description": "Deterministic structural and execution-policy validation",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec.schema.json#/$defs/ValidationResult" }
+          }
+        }
       }
     }
   }

@@ -23,6 +23,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #scopes = new Map();
   #claims = new Map();
   #decisions = new Map();
+  #testSpecs = new Map();
 
   async appendSnapshotManifest(projectId, manifest) {
     const storageKey = key(projectId, manifest.id);
@@ -150,6 +151,55 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       )
       .map(([, revisions]) => revisions.at(-1));
 
-    return deepFreeze({ feature: featureVersions[0], claims, traceChains });
+    const latestTestSpecs = new Map();
+    for (const [storageKey, testSpec] of this.#testSpecs.entries()) {
+      if (!storageKey.startsWith(`${projectId}\u0000`) || testSpec.featureId !== featureId) continue;
+      const current = latestTestSpecs.get(testSpec.id);
+      if (!current || testSpec.version > current.version) latestTestSpecs.set(testSpec.id, testSpec);
+    }
+
+    return deepFreeze({
+      feature: featureVersions[0],
+      claims,
+      testSpecs: [...latestTestSpecs.values()],
+      traceChains,
+    });
+  }
+
+  async appendTestSpec(projectId, testSpec) {
+    const featureExists = [...this.#features.entries()].some(
+      ([storageKey, feature]) => storageKey.startsWith(`${projectId}\u0000`) && feature.id === testSpec.featureId,
+    );
+    if (!featureExists) {
+      throw new PersistenceConflictError(`Feature ${testSpec.featureId} does not exist in project ${projectId}`);
+    }
+    for (const claimRef of testSpec.verifiesClaims) {
+      const claim = this.#claims.get(key(projectId, `${claimRef.id}\u0000${claimRef.version}`));
+      if (!claim || claim.featureId !== testSpec.featureId) {
+        throw new PersistenceConflictError(
+          `Claim ${claimRef.id} version ${claimRef.version} does not belong to Feature ${testSpec.featureId}`,
+        );
+      }
+    }
+    return this.#appendVersion(
+      this.#testSpecs,
+      key(projectId, `${testSpec.id}\u0000${testSpec.version}`),
+      testSpec,
+      `TestSpec ${testSpec.id} version ${testSpec.version}`,
+    );
+  }
+
+  async getTestSpec(projectId, testSpecId, version = null) {
+    if (version !== null) {
+      return this.#testSpecs.get(key(projectId, `${testSpecId}\u0000${version}`)) ?? null;
+    }
+    return (
+      [...this.#testSpecs.entries()]
+        .filter(([storageKey, testSpec]) =>
+          storageKey.startsWith(`${projectId}\u0000`) && testSpec.id === testSpecId,
+        )
+        .map(([, testSpec]) => testSpec)
+        .sort((left, right) => right.version - left.version)[0] ?? null
+    );
   }
 }

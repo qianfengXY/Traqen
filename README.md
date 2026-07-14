@@ -41,7 +41,17 @@ The governance slice adds:
 - database enforcement that a decision cannot replace its Claim's bound scope or cross the project's tenant boundary;
 - stable conflict responses when immutable IDs or governed references collide.
 
-The development server remains intentionally unauthenticated and in-memory. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
+The TestSpec validation slice adds:
+
+- an immutable, Feature- and Claim-linked TestSpec v1alpha1 protocol;
+- deterministic candidate and stored-spec validation endpoints;
+- separate structural validity and execution eligibility results;
+- approval provenance, tenant-bound approvers, and explicit operation safety levels;
+- storage rejection for literal secrets, tokens, credentials, and authorization values;
+- blocking policy gaps for missing assertions, missing approval, unsafe writes, and missing cleanup;
+- latest TestSpec versions in the Feature business baseline.
+
+The development server remains intentionally unauthenticated and in-memory. Validation decides whether a TestSpec is eligible for a future Runner; this slice does not execute requests or manufacture Evidence. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
 
 ## Run
 

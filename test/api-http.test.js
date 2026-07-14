@@ -227,3 +227,123 @@ test("governance reference conflicts return 409", async (t) => {
   assert.equal(result.response.status, 409);
   assert.equal(result.body.error.code, "PERSISTENCE_CONFLICT");
 });
+
+test("TestSpec API validates candidates and preserves immutable versions", async (t) => {
+  const baseUrl = await startServer(t);
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
+  await postJson(`${projectUrl}/features`, { id: "FEATURE-001", version: 1, name: "Submit order" });
+  await postJson(`${projectUrl}/claim-scopes`, {
+    id: "SCOPE-001",
+    version: 1,
+    scope: { actor: "normal-user" },
+  });
+  await postJson(`${projectUrl}/claims`, {
+    id: "CLAIM-001",
+    version: 1,
+    featureId: "FEATURE-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "A normal user may submit only a DRAFT order.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+  });
+
+  const firstVersion = {
+    id: "TEST-001",
+    version: 1,
+    name: "Submit a draft order",
+    risk: "HIGH",
+    approved: false,
+    featureId: "FEATURE-001",
+    verifiesClaims: [{ id: "CLAIM-001", version: 1 }],
+    environment: { target: "sit", operationLevel: "CONTROLLED_WRITE" },
+    variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
+    steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/1/submit" }],
+    assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
+    cleanup: { strategy: "SEED_RESET" },
+    policy: { approvalRequired: true },
+  };
+
+  const candidate = await postJson(`${projectUrl}/test-specs/validate`, {
+    ...firstVersion,
+    variables: { password: "plaintext" },
+  });
+  assert.equal(candidate.response.status, 200);
+  assert.equal(candidate.body.valid, false);
+  assert.equal(candidate.body.violations[0].code, "RAW_SECRET_FORBIDDEN");
+
+  const created = await postJson(`${projectUrl}/test-specs`, firstVersion);
+  assert.equal(created.response.status, 201);
+  const validation = await fetch(`${projectUrl}/test-specs/TEST-001/validate`, { method: "POST" });
+  const validationBody = await validation.json();
+  assert.equal(validation.status, 200);
+  assert.equal(validationBody.executable, false);
+  assert.equal(validationBody.violations[0].code, "APPROVAL_REQUIRED");
+
+  const secondVersion = await postJson(`${projectUrl}/test-specs`, {
+    ...firstVersion,
+    version: 2,
+    approved: true,
+    approval: {
+      actorId: "USER-001",
+      actorRole: "quality-owner",
+      approvedAt: "2026-07-14T03:59:00.000Z",
+    },
+  });
+  assert.equal(secondVersion.response.status, 201);
+
+  const latestResponse = await fetch(`${projectUrl}/test-specs/TEST-001`);
+  assert.equal(latestResponse.status, 200);
+  assert.equal((await latestResponse.json()).version, 2);
+  const firstResponse = await fetch(`${projectUrl}/test-specs/TEST-001?version=1`);
+  assert.equal(firstResponse.status, 200);
+  assert.equal((await firstResponse.json()).approved, false);
+  const invalidVersion = await fetch(`${projectUrl}/test-specs/TEST-001?version=0`);
+  assert.equal(invalidVersion.status, 400);
+  assert.equal((await invalidVersion.json()).error.code, "INVALID_REQUEST");
+
+  const baselineResponse = await fetch(`${projectUrl}/features/FEATURE-001/baseline`);
+  const baseline = await baselineResponse.json();
+  assert.equal(baseline.testSpecs.length, 1);
+  assert.equal(baseline.testSpecs[0].version, 2);
+});
+
+test("TestSpec storage rejects raw secrets and cross-feature claim links", async (t) => {
+  const baseUrl = await startServer(t);
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
+  await postJson(`${projectUrl}/features`, { id: "FEATURE-001", version: 1, name: "Submit order" });
+
+  const rawSecret = await postJson(`${projectUrl}/test-specs`, {
+    id: "TEST-UNSAFE",
+    version: 1,
+    name: "Unsafe test",
+    risk: "HIGH",
+    approved: false,
+    featureId: "FEATURE-001",
+    verifiesClaims: [{ id: "CLAIM-MISSING", version: 1 }],
+    environment: { target: "sit", operationLevel: "SAFE_READ" },
+    variables: { token: "plaintext" },
+    steps: [{ id: "read", executor: "HTTP" }],
+    assertions: [],
+    policy: {},
+  });
+  assert.equal(rawSecret.response.status, 400);
+  assert.equal(rawSecret.body.error.code, "INVALID_REQUEST");
+
+  const missingClaim = await postJson(`${projectUrl}/test-specs`, {
+    id: "TEST-ORPHAN",
+    version: 1,
+    name: "Orphan test",
+    risk: "LOW",
+    approved: false,
+    featureId: "FEATURE-001",
+    verifiesClaims: [{ id: "CLAIM-MISSING", version: 1 }],
+    environment: { target: "sit", operationLevel: "SAFE_READ" },
+    steps: [{ id: "read", executor: "HTTP" }],
+    assertions: [],
+    policy: {},
+  });
+  assert.equal(missingClaim.response.status, 409);
+  assert.equal(missingClaim.body.error.code, "PERSISTENCE_CONFLICT");
+});

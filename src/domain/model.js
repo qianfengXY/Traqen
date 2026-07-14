@@ -23,6 +23,19 @@ export const DecisionType = enumValues([
   "DEPRECATED",
 ]);
 
+export const TestRisk = enumValues(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+
+export const TestOperationLevel = enumValues([
+  "SAFE_READ",
+  "CONTROLLED_WRITE",
+  "DESTRUCTIVE",
+  "EXTERNAL_SIDE_EFFECT",
+]);
+
+export const TestExecutor = enumValues(["HTTP", "DATABASE", "EXISTING_TEST"]);
+
+export const TestSpecViolationSeverity = enumValues(["WARNING", "BLOCKING"]);
+
 export const AuthorityStatus = enumValues([
   "UNREVIEWED",
   "CONFIRMED",

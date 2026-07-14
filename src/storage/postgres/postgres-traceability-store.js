@@ -44,6 +44,23 @@ function normalizePersistenceError(error) {
   return error;
 }
 
+function testSpecPayload(testSpec) {
+  const { id: _id, version: _version, name: _name, approved: _approved, createdAt: _createdAt, ...payload } =
+    testSpec;
+  return payload;
+}
+
+function testSpecFromRow(row) {
+  return {
+    id: row.id,
+    version: row.version,
+    name: row.name,
+    approved: row.approved,
+    ...row.specification,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
 export class PostgresTraceabilityStore extends TraceabilityStore {
   #database;
 
@@ -474,6 +491,22 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
        ORDER BY computed_at DESC`,
       [projectId, featureId],
     );
+    const testSpecResult = await this.#database.query(
+      `SELECT DISTINCT ON (ts.id)
+         ts.id, ts.version, ts.name, ts.approved, ts.specification, ts.created_at
+       FROM test_spec ts
+       JOIN test_spec_claim tsc
+         ON tsc.project_id = ts.project_id
+        AND tsc.test_spec_id = ts.id
+        AND tsc.test_spec_version = ts.version
+       JOIN claim c
+         ON c.project_id = tsc.project_id
+        AND c.id = tsc.claim_id
+        AND c.version = tsc.claim_version
+       WHERE ts.project_id = $1 AND c.feature_id = $2
+       ORDER BY ts.id, ts.version DESC`,
+      [projectId, featureId],
+    );
 
     const decisionsByClaim = new Map();
     for (const row of decisionResult.rows) {
@@ -533,6 +566,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
           latestDecision: decisionHistory.at(-1) ?? null,
         };
       }),
+      testSpecs: testSpecResult.rows.map(testSpecFromRow),
       traceChains: chainResult.rows.map((row) => ({
         id: row.chain_id,
         revision: Number(row.revision),
@@ -543,5 +577,103 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         computedAt: new Date(row.computed_at).toISOString(),
       })),
     });
+  }
+
+  async appendTestSpec(projectId, testSpec) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      const featureResult = await this.#database.query(
+        "SELECT 1 FROM feature WHERE project_id = $1 AND id = $2",
+        [projectId, testSpec.featureId],
+      );
+      if (!featureResult.rows[0]) {
+        throw new PersistenceConflictError(`Feature ${testSpec.featureId} does not exist in project ${projectId}`);
+      }
+
+      if (testSpec.approval) {
+        const approverResult = await this.#database.query(
+          `SELECT 1
+           FROM principal actor
+           JOIN project governed_project ON governed_project.tenant_id = actor.tenant_id
+           WHERE actor.id = $1 AND governed_project.id = $2`,
+          [testSpec.approval.actorId, projectId],
+        );
+        if (!approverResult.rows[0]) {
+          throw new PersistenceConflictError("TestSpec approver must belong to the project tenant");
+        }
+      }
+
+      for (const claimRef of testSpec.verifiesClaims) {
+        const claimResult = await this.#database.query(
+          `SELECT feature_id FROM claim
+           WHERE project_id = $1 AND id = $2 AND version = $3`,
+          [projectId, claimRef.id, claimRef.version],
+        );
+        if (claimResult.rows[0]?.feature_id !== testSpec.featureId) {
+          throw new PersistenceConflictError(
+            `Claim ${claimRef.id} version ${claimRef.version} does not belong to Feature ${testSpec.featureId}`,
+          );
+        }
+      }
+
+      await this.#database.query(
+        `INSERT INTO test_spec (project_id, id, version, name, approved, specification, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+         ON CONFLICT (project_id, id, version) DO NOTHING`,
+        [
+          projectId,
+          testSpec.id,
+          testSpec.version,
+          testSpec.name,
+          testSpec.approved,
+          JSON.stringify(testSpecPayload(testSpec)),
+          testSpec.createdAt,
+        ],
+      );
+
+      const stored = await this.getTestSpec(projectId, testSpec.id, testSpec.version);
+      if (
+        !stored ||
+        canonicalJson(testSpecPayload(stored)) !== canonicalJson(testSpecPayload(testSpec)) ||
+        stored.name !== testSpec.name ||
+        stored.approved !== testSpec.approved
+      ) {
+        throw new PersistenceConflictError(
+          `TestSpec ${testSpec.id} version ${testSpec.version} conflicts with an existing record`,
+        );
+      }
+
+      for (const claimRef of testSpec.verifiesClaims) {
+        await this.#database.query(
+          `INSERT INTO test_spec_claim (
+             project_id, test_spec_id, test_spec_version, claim_id, claim_version
+           ) VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT DO NOTHING`,
+          [projectId, testSpec.id, testSpec.version, claimRef.id, claimRef.version],
+        );
+      }
+      return testSpec;
+    });
+  }
+
+  async getTestSpec(projectId, testSpecId, version = null) {
+    requireId(projectId, "projectId");
+    requireId(testSpecId, "testSpecId");
+    if (version !== null && (!Number.isSafeInteger(version) || version < 1)) {
+      throw new TypeError("version must be a positive integer");
+    }
+    const parameters = version === null ? [projectId, testSpecId] : [projectId, testSpecId, version];
+    const versionPredicate = version === null ? "" : "AND version = $3";
+    const result = await this.#database.query(
+      `SELECT id, version, name, approved, specification, created_at
+       FROM test_spec
+       WHERE project_id = $1 AND id = $2 ${versionPredicate}
+       ORDER BY version DESC
+       LIMIT 1`,
+      parameters,
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return deepFreeze(testSpecFromRow(row));
   }
 }

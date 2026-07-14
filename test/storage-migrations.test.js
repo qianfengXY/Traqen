@@ -507,3 +507,112 @@ test("PostgreSQL rejects decisions that escape the claim scope or project tenant
   );
   assert.deepEqual(decisions.rows, []);
 });
+
+test("PostgreSQL store preserves TestSpec versions and authoritative Claim links", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: () => new Date("2026-07-14T06:00:00.000Z"),
+  });
+
+  await application.appendFeatureVersion("PROJECT-001", {
+    id: "FEATURE-TEST-001",
+    version: 1,
+    name: "Submit order",
+  });
+  await application.appendClaimScope("PROJECT-001", {
+    id: "SCOPE-TEST-001",
+    version: 1,
+    scope: { actor: "normal-user" },
+  });
+  await application.appendClaim("PROJECT-001", {
+    id: "CLAIM-TEST-001",
+    version: 1,
+    featureId: "FEATURE-TEST-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "A normal user may submit only a DRAFT order.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-TEST-001",
+    scopeVersion: 1,
+  });
+
+  const firstVersion = {
+    id: "TEST-SPEC-001",
+    version: 1,
+    name: "Submit a draft order",
+    risk: "HIGH",
+    approved: false,
+    featureId: "FEATURE-TEST-001",
+    verifiesClaims: [{ id: "CLAIM-TEST-001", version: 1 }],
+    environment: { target: "sit", operationLevel: "CONTROLLED_WRITE" },
+    variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
+    steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/1/submit" }],
+    assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
+    cleanup: { strategy: "SEED_RESET" },
+    policy: { approvalRequired: true },
+  };
+  await application.appendTestSpec("PROJECT-001", firstVersion);
+  await application.appendTestSpec("PROJECT-001", {
+    ...firstVersion,
+    version: 2,
+    approved: true,
+    approval: {
+      actorId: "USER-001",
+      actorRole: "quality-owner",
+      approvedAt: "2026-07-14T05:59:00.000Z",
+    },
+  });
+
+  const latest = await application.getTestSpec("PROJECT-001", "TEST-SPEC-001");
+  const original = await application.getTestSpec("PROJECT-001", "TEST-SPEC-001", 1);
+  assert.equal(latest.version, 2);
+  assert.equal(latest.approved, true);
+  assert.equal(original.approved, false);
+  assert.equal((await application.validateStoredTestSpec("PROJECT-001", "TEST-SPEC-001")).executable, true);
+  const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-TEST-001");
+  assert.equal(baseline.testSpecs.length, 1);
+  assert.equal(baseline.testSpecs[0].version, 2);
+
+  const links = await database.query(
+    `SELECT test_spec_version, claim_id, claim_version
+     FROM test_spec_claim
+     WHERE project_id = $1 AND test_spec_id = $2
+     ORDER BY test_spec_version`,
+    ["PROJECT-001", "TEST-SPEC-001"],
+  );
+  assert.deepEqual(links.rows, [
+    { test_spec_version: 1, claim_id: "CLAIM-TEST-001", claim_version: 1 },
+    { test_spec_version: 2, claim_id: "CLAIM-TEST-001", claim_version: 1 },
+  ]);
+
+  await assert.rejects(
+    application.appendTestSpec("PROJECT-001", { ...firstVersion, version: 2, name: "Collision" }),
+    /conflicts with an existing record/,
+  );
+
+  await database.query("INSERT INTO organization (id, name) VALUES ($1, $2)", ["ORG-OTHER", "Other org"]);
+  await database.query(
+    "INSERT INTO tenant (id, organization_id, name) VALUES ($1, $2, $3)",
+    ["TENANT-OTHER", "ORG-OTHER", "Other tenant"],
+  );
+  await database.query(
+    "INSERT INTO principal (id, tenant_id, principal_type, display_name) VALUES ($1, $2, $3, $4)",
+    ["USER-OTHER-APPROVER", "TENANT-OTHER", "USER", "Other approver"],
+  );
+  await assert.rejects(
+    application.appendTestSpec("PROJECT-001", {
+      ...firstVersion,
+      version: 3,
+      approved: true,
+      approval: {
+        actorId: "USER-OTHER-APPROVER",
+        actorRole: "quality-owner",
+        approvedAt: "2026-07-14T05:59:00.000Z",
+      },
+    }),
+    /approver must belong to the project tenant/,
+  );
+});
