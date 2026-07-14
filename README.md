@@ -25,6 +25,14 @@ The PostgreSQL storage slice adds:
 - a storage port and PostgreSQL adapter for manifests and trace-chain revisions;
 - real PostgreSQL migration tests through an embedded development-only database.
 
+The minimal API slice adds:
+
+- framework-neutral application services;
+- HTTP endpoints for evaluating, appending, and querying trace chains;
+- a stable error envelope, request correlation IDs, JSON media checks, and body limits;
+- an OpenAPI 3.1 contract;
+- a development server backed by an in-memory append-only store.
+
 It intentionally has no web framework, database driver, LLM, or scanner dependency yet. Those integrations will be added around this kernel after the first platform and scanner technology choices are confirmed.
 
 ## Run
@@ -35,7 +43,10 @@ Requires Node.js 20 or newer.
 npm test
 npm run test:storage
 npm run example
+npm run api:dev
 ```
+
+The development API binds to `127.0.0.1:3000` by default. It is intentionally unauthenticated and must not be exposed outside a local development environment.
 
 Evaluate another trace-chain input:
 

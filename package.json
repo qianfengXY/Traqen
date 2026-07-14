@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "test:storage": "node --test test/storage-migrations.test.js",
+    "api:dev": "node src/api/dev-server.js",
     "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json"
   },
   "devDependencies": {

@@ -1,0 +1,167 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Traqen Traceability API",
+    "version": "0.1.0",
+    "description": "Minimal API for deterministic trace-chain evaluation and persistence. Authentication is intentionally outside this first slice."
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "API process is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": { "status": { "const": "ok" } },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/trace-chains/evaluate": {
+      "post": {
+        "operationId": "evaluateTraceChain",
+        "requestBody": { "$ref": "#/components/requestBodies/TraceChainEvaluation" },
+        "responses": {
+          "200": {
+            "description": "Deterministically evaluated trace chain",
+            "content": {
+              "application/json": { "schema": { "$ref": "./trace-chain.schema.json" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/trace-chains": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" }
+      ],
+      "post": {
+        "operationId": "evaluateAndPersistTraceChain",
+        "requestBody": { "$ref": "#/components/requestBodies/TraceChainEvaluation" },
+        "responses": {
+          "201": {
+            "description": "Trace chain revision appended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["chain", "persisted"],
+                  "properties": {
+                    "chain": { "$ref": "./trace-chain.schema.json" },
+                    "persisted": {
+                      "type": "object",
+                      "required": ["chainId", "revision"],
+                      "properties": {
+                        "chainId": { "type": "string" },
+                        "revision": { "type": "integer", "minimum": 1 }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/trace-chains/{chainId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ChainId" }
+      ],
+      "get": {
+        "operationId": "getCurrentTraceChain",
+        "responses": {
+          "200": {
+            "description": "Current trace-chain revision",
+            "content": {
+              "application/json": { "schema": { "$ref": "./trace-chain.schema.json" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "ProjectId": {
+        "name": "projectId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "ChainId": {
+        "name": "chainId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      }
+    },
+    "requestBodies": {
+      "TraceChainEvaluation": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./trace-chain-evaluation-input.schema.json" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "requestId"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "details": {}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "PayloadTooLarge": {
+        "description": "Request body exceeds the configured limit",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "Content-Type is not application/json",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    }
+  }
+}

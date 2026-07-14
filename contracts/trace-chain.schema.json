@@ -25,6 +25,8 @@
     "scopeId": { "type": ["string", "null"] },
     "snapshotManifestId": { "type": ["string", "null"] },
     "deploymentId": { "type": ["string", "null"] },
+    "revision": { "type": "integer", "minimum": 1 },
+    "scopeVersion": { "type": "integer", "minimum": 1 },
     "dimensions": {
       "type": "object",
       "required": ["authority", "evidenceSupport", "conformance", "verification", "freshness", "conflict"],

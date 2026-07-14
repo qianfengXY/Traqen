@@ -1,0 +1,135 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+import { TraceabilityApplication } from "../src/application/traceability-application.js";
+import { createTraceabilityHttpServer } from "../src/api/http-server.js";
+import { MemoryTraceabilityStore } from "../src/storage/index.js";
+
+const fixedClock = () => new Date("2026-07-14T04:00:00.000Z");
+
+async function exampleInput() {
+  return JSON.parse(await readFile(new URL("../examples/order-submit.json", import.meta.url), "utf8"));
+}
+
+async function startServer(t, options = {}) {
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({ store, clock: fixedClock });
+  const server = createTraceabilityHttpServer({ application, ...options });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+test("health endpoint returns a request correlation ID", async (t) => {
+  const baseUrl = await startServer(t);
+  const response = await fetch(`${baseUrl}/health`, {
+    headers: { "x-request-id": "request-health-001" },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-request-id"), "request-health-001");
+  assert.deepEqual(await response.json(), { status: "ok" });
+});
+
+test("evaluation endpoint returns the independent trace-chain dimensions", async (t) => {
+  const baseUrl = await startServer(t);
+  const response = await fetch(`${baseUrl}/v1/trace-chains/evaluate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(await exampleInput()),
+  });
+  const chain = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(chain.complete, true);
+  assert.equal(chain.dimensions.authority, "CONFIRMED");
+  assert.equal(chain.dimensions.conformance, "CONFORMS");
+  assert.equal(chain.dimensions.verification, "PASS");
+  assert.deepEqual(chain.gaps, []);
+});
+
+test("API recomputes the snapshot manifest instead of trusting client status", async (t) => {
+  const baseUrl = await startServer(t);
+  const input = await exampleInput();
+  input.snapshotManifest = {
+    id: "SPOOFED-MANIFEST",
+    components: {
+      deployment: { id: "SPOOFED-DEPLOYMENT", digest: "sha256:spoofed" }
+    },
+    complete: true
+  };
+
+  const response = await fetch(`${baseUrl}/v1/trace-chains/evaluate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error.code, "INVALID_REQUEST");
+  assert.match(body.error.message, /observedFrom/);
+});
+
+test("trace chain can be evaluated, appended, and queried", async (t) => {
+  const baseUrl = await startServer(t);
+  const persistResponse = await fetch(`${baseUrl}/v1/projects/PROJECT-001/trace-chains`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(await exampleInput()),
+  });
+  const persisted = await persistResponse.json();
+
+  assert.equal(persistResponse.status, 201);
+  assert.equal(persisted.persisted.revision, 1);
+
+  const currentResponse = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/trace-chains/${encodeURIComponent(persisted.chain.id)}`,
+  );
+  const current = await currentResponse.json();
+
+  assert.equal(currentResponse.status, 200);
+  assert.equal(current.id, persisted.chain.id);
+  assert.equal(current.revision, 1);
+  assert.equal(current.snapshotManifestId, persisted.chain.snapshotManifestId);
+});
+
+test("invalid JSON and media types use the stable error envelope", async (t) => {
+  const baseUrl = await startServer(t);
+  const invalidJson = await fetch(`${baseUrl}/v1/trace-chains/evaluate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{broken",
+  });
+  const invalidJsonBody = await invalidJson.json();
+  assert.equal(invalidJson.status, 400);
+  assert.equal(invalidJsonBody.error.code, "INVALID_JSON");
+  assert.equal(invalidJsonBody.error.requestId, invalidJson.headers.get("x-request-id"));
+
+  const unsupported = await fetch(`${baseUrl}/v1/trace-chains/evaluate`, {
+    method: "POST",
+    headers: { "content-type": "text/plain" },
+    body: "{}",
+  });
+  assert.equal(unsupported.status, 415);
+  assert.equal((await unsupported.json()).error.code, "UNSUPPORTED_MEDIA_TYPE");
+});
+
+test("payload limits and missing trace chains are explicit", async (t) => {
+  const baseUrl = await startServer(t, { maxBodyBytes: 32 });
+  const tooLarge = await fetch(`${baseUrl}/v1/trace-chains/evaluate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ value: "x".repeat(64) }),
+  });
+  assert.equal(tooLarge.status, 413);
+  assert.equal((await tooLarge.json()).error.code, "PAYLOAD_TOO_LARGE");
+
+  const missing = await fetch(`${baseUrl}/v1/projects/PROJECT-001/trace-chains/UNKNOWN`);
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error.code, "TRACE_CHAIN_NOT_FOUND");
+});

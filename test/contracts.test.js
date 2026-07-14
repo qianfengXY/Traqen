@@ -24,3 +24,20 @@ test("trace-chain output contract stays aligned with domain gap types", async ()
   assert.equal(contract.title, "TraceChain");
   assert.deepEqual([...contractGapTypes].sort(), Object.keys(TraceGapType).sort());
 });
+
+test("OpenAPI contract exposes the implemented trace-chain routes", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.openapi, "3.1.0");
+  assert.equal(contract.paths["/health"].get.operationId, "getHealth");
+  assert.equal(
+    contract.paths["/v1/trace-chains/evaluate"].post.operationId,
+    "evaluateTraceChain",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/trace-chains/{chainId}"].get.operationId,
+    "getCurrentTraceChain",
+  );
+});
