@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.local/contracts/test-spec-generation.schema.json",
+  "title": "TestSpecGenerationRequest",
+  "type": "object",
+  "required": ["id", "snapshotManifestId", "target", "expectedHttpStatus"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "endpointFactId": { "type": "string", "minLength": 1 },
+    "target": { "type": "string", "minLength": 1 },
+    "expectedHttpStatus": { "type": "integer", "minimum": 100, "maximum": 599 },
+    "name": { "type": "string", "minLength": 1 },
+    "risk": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+    "preconditions": { "type": "array", "items": { "type": "object" } },
+    "variables": { "type": "object" },
+    "headers": { "type": "object" },
+    "body": true,
+    "cleanup": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["strategy"],
+          "properties": { "strategy": { "type": "string", "minLength": 1 } },
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ManualDraftRequest": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "name",
+        "risk",
+        "approved",
+        "featureId",
+        "verifiesClaims",
+        "environment",
+        "steps"
+      ],
+      "properties": {
+        "id": { "$ref": "./test-spec.schema.json#/properties/id" },
+        "version": { "$ref": "./test-spec.schema.json#/properties/version" },
+        "name": { "$ref": "./test-spec.schema.json#/properties/name" },
+        "risk": { "$ref": "./test-spec.schema.json#/properties/risk" },
+        "approved": { "const": false },
+        "featureId": { "$ref": "./test-spec.schema.json#/properties/featureId" },
+        "verifiesClaims": { "$ref": "./test-spec.schema.json#/properties/verifiesClaims" },
+        "sourceSnapshotId": { "$ref": "./test-spec.schema.json#/properties/sourceSnapshotId" },
+        "environment": { "$ref": "./test-spec.schema.json#/properties/environment" },
+        "preconditions": { "$ref": "./test-spec.schema.json#/properties/preconditions" },
+        "variables": { "$ref": "./test-spec.schema.json#/properties/variables" },
+        "steps": { "$ref": "./test-spec.schema.json#/properties/steps" },
+        "assertions": { "$ref": "./test-spec.schema.json#/properties/assertions" },
+        "cleanup": { "$ref": "./test-spec.schema.json#/properties/cleanup" },
+        "policy": { "$ref": "./test-spec.schema.json#/properties/policy" }
+      },
+      "additionalProperties": false
+    },
+    "CandidateRequest": {
+      "oneOf": [
+        { "$ref": "#/$defs/ManualDraftRequest" },
+        { "$ref": "./test-spec.schema.json" }
+      ]
+    },
+    "ApprovalRequest": {
+      "type": "object",
+      "required": ["expectedVersion", "rationale"],
+      "properties": {
+        "expectedVersion": { "type": "integer", "minimum": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "GenerationResult": {
+      "type": "object",
+      "required": ["draft", "validation", "generation"],
+      "properties": {
+        "draft": { "$ref": "./test-spec.schema.json" },
+        "validation": { "$ref": "./test-spec.schema.json#/$defs/ValidationResult" },
+        "generation": {
+          "type": "object",
+          "required": ["requestFingerprint", "generator", "source"],
+          "properties": {
+            "requestFingerprint": { "type": "string", "minLength": 1 },
+            "generator": {
+              "type": "object",
+              "required": ["id", "version"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "version": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            },
+            "source": {
+              "type": "object",
+              "required": ["claimId", "claimVersion", "decisionId", "mappingId", "endpointFactId"],
+              "properties": {
+                "claimId": { "type": "string", "minLength": 1 },
+                "claimVersion": { "type": "integer", "minimum": 1 },
+                "decisionId": { "type": "string", "minLength": 1 },
+                "mappingId": { "type": "string", "minLength": 1 },
+                "endpointFactId": { "type": "string", "minLength": 1 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

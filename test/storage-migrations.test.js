@@ -545,6 +545,8 @@ test("PostgreSQL store preserves TestSpec versions and authoritative Claim links
   const application = new TraceabilityApplication({
     store: new PostgresTraceabilityStore(database),
     clock: () => new Date("2026-07-14T06:00:00.000Z"),
+    reviewerResolver: async () => ({ actorId: "USER-001", actorRole: "quality-owner" }),
+    reviewPolicyResolver: async () => ({ allowedTestSpecApproverRoles: ["quality-owner"] }),
   });
 
   await application.appendFeatureVersion("PROJECT-001", {
@@ -578,23 +580,21 @@ test("PostgreSQL store preserves TestSpec versions and authoritative Claim links
     featureId: "FEATURE-TEST-001",
     verifiesClaims: [{ id: "CLAIM-TEST-001", version: 1 }],
     environment: { target: "sit", operationLevel: "CONTROLLED_WRITE" },
+    preconditions: [{ type: "SEED", seedRef: "draft-order" }],
     variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
     steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/1/submit" }],
     assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
     cleanup: { strategy: "SEED_RESET" },
     policy: { approvalRequired: true },
   };
-  await application.appendTestSpec("PROJECT-001", firstVersion);
-  await application.appendTestSpec("PROJECT-001", {
-    ...firstVersion,
-    version: 2,
-    approved: true,
-    approval: {
-      actorId: "USER-001",
-      actorRole: "quality-owner",
-      approvedAt: "2026-07-14T05:59:00.000Z",
-    },
+  await application.appendTestSpecDraft("PROJECT-001", firstVersion);
+  const approved = await application.approveTestSpec("PROJECT-001", "TEST-SPEC-001", {
+    expectedVersion: 1,
+    rationale: "The isolated draft-order fixture and cleanup protocol are ready for execution.",
   });
+  assert.equal(approved.approval.actorId, "USER-001");
+  assert.equal(approved.approval.actorRole, "quality-owner");
+  assert.ok(approved.approval.requestFingerprint);
 
   const latest = await application.getTestSpec("PROJECT-001", "TEST-SPEC-001");
   const original = await application.getTestSpec("PROJECT-001", "TEST-SPEC-001", 1);

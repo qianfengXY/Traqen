@@ -44,11 +44,13 @@ The governance slice adds:
 The TestSpec validation slice adds:
 
 - an immutable, Feature- and Claim-linked TestSpec v1alpha1 protocol;
+- deterministic conversion of an authorized endpoint Claim and its exact mapped Endpoint Fact into an unapproved TestSpec draft with immutable origin provenance;
+- a separate authenticated, policy-checked approval workflow whose actor, role, time, rationale, and idempotency fingerprint are assigned by the server;
 - deterministic candidate and stored-spec validation endpoints;
 - separate structural validity and execution eligibility results;
 - approval provenance, tenant-bound approvers, and explicit operation safety levels;
 - storage rejection for literal secrets, tokens, credentials, and authorization values;
-- blocking policy gaps for missing assertions, missing approval, unsafe writes, and missing cleanup;
+- blocking policy gaps for missing assertions, missing approval, missing controlled-write Seed protocols, and missing cleanup;
 - latest TestSpec versions in the Feature business baseline.
 
 The trusted execution-ingestion slice adds:
@@ -103,7 +105,7 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - append-only PostgreSQL migrations through `0007_change_impact`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
-The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision and candidate-review routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
+The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision, candidate-review, and TestSpec-approval routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
 
 ## Run
 

@@ -3,6 +3,7 @@ import {
   TestExecutor,
   TestOperationLevel,
   TestRisk,
+  TestSpecOriginType,
   assertEnum,
   requireIsoTimestamp,
   requireNonEmptyString,
@@ -51,6 +52,60 @@ function normalizeApproval(value, approved) {
     actorId: requireNonEmptyString(approval.actorId, "testSpec.approval.actorId"),
     actorRole: requireNonEmptyString(approval.actorRole, "testSpec.approval.actorRole"),
     approvedAt,
+    rationale: optionalString(approval.rationale, "testSpec.approval.rationale"),
+    requestFingerprint: optionalString(
+      approval.requestFingerprint,
+      "testSpec.approval.requestFingerprint",
+    ),
+  };
+}
+
+function normalizeOrigin(value) {
+  if (value === undefined || value === null) {
+    return {
+      type: TestSpecOriginType.MANUAL,
+      claimRef: null,
+      decisionId: null,
+      mappingId: null,
+      factIds: [],
+      generator: null,
+      requestFingerprint: null,
+    };
+  }
+  const origin = requireObject(value, "testSpec.origin");
+  const type = assertEnum(TestSpecOriginType, origin.type, "testSpec.origin.type");
+  if (type === TestSpecOriginType.MANUAL) {
+    return {
+      type,
+      claimRef: null,
+      decisionId: null,
+      mappingId: null,
+      factIds: [],
+      generator: null,
+      requestFingerprint: optionalString(origin.requestFingerprint, "testSpec.origin.requestFingerprint"),
+    };
+  }
+  const claimRef = requireObject(origin.claimRef, "testSpec.origin.claimRef");
+  const generator = requireObject(origin.generator, "testSpec.origin.generator");
+  const factIds = requireArray(origin.factIds, "testSpec.origin.factIds", { nonEmpty: true })
+    .map((factId, index) => requireNonEmptyString(factId, `testSpec.origin.factIds[${index}]`));
+  return {
+    type,
+    claimRef: {
+      id: requireNonEmptyString(claimRef.id, "testSpec.origin.claimRef.id"),
+      version: requirePositiveInteger(claimRef.version, "testSpec.origin.claimRef.version"),
+    },
+    decisionId: requireNonEmptyString(origin.decisionId, "testSpec.origin.decisionId"),
+    mappingId: requireNonEmptyString(origin.mappingId, "testSpec.origin.mappingId"),
+    factIds: [...new Set(factIds)],
+    generator: {
+      id: requireNonEmptyString(generator.id, "testSpec.origin.generator.id"),
+      version: requireNonEmptyString(generator.version, "testSpec.origin.generator.version"),
+    },
+    requestFingerprint: requireNonEmptyString(
+      origin.requestFingerprint,
+      "testSpec.origin.requestFingerprint",
+    ),
   };
 }
 
@@ -113,6 +168,7 @@ export function createTestSpec(input, clock = () => new Date()) {
     approval,
     featureId: requireNonEmptyString(input?.featureId, "testSpec.featureId"),
     verifiesClaims: normalizeClaimRefs(input?.verifiesClaims),
+    origin: normalizeOrigin(input?.origin),
     sourceSnapshotId: optionalString(input?.sourceSnapshotId, "testSpec.sourceSnapshotId"),
     environment: {
       ...environment,
@@ -202,6 +258,22 @@ export function validateTestSpec(input, clock = () => new Date()) {
   }
   if (testSpec.policy.approvalRequired && !testSpec.approved) {
     violations.push(violation("APPROVAL_REQUIRED", "/approved", "TestSpec requires approval before execution"));
+  }
+  if (
+    testSpec.environment.operationLevel === "CONTROLLED_WRITE" &&
+    !testSpec.preconditions.some(
+      (item) =>
+        ["SEED", "SEED_API", "SEED_DATABASE"].includes(item.type) &&
+        (typeof item.seedRef === "string" || typeof item.strategy === "string"),
+    )
+  ) {
+    violations.push(
+      violation(
+        "SEED_REQUIRED",
+        "/preconditions",
+        "Controlled writes require an explicit server-recognized Seed protocol",
+      ),
+    );
   }
   if (testSpec.environment.operationLevel === "CONTROLLED_WRITE" && !testSpec.cleanup?.strategy) {
     violations.push(

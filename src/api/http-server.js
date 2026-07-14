@@ -292,8 +292,37 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         requireJson(request);
         const projectId = decodePathSegment(testSpecCollectionMatch[1]);
         const input = await readJson(request, maxBodyBytes);
-        const created = await application.appendTestSpec(projectId, input);
+        const created = await application.appendTestSpecDraft(projectId, input);
         sendJson(response, 201, created, id);
+        return;
+      }
+
+      const generatedTestSpecMatch =
+        /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/claims\/([^/]+)\/test-spec-drafts$/.exec(url.pathname);
+      if (request.method === "POST" && generatedTestSpecMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(generatedTestSpecMatch[1]);
+        const featureId = decodePathSegment(generatedTestSpecMatch[2]);
+        const claimId = decodePathSegment(generatedTestSpecMatch[3]);
+        const input = await readJson(request, maxBodyBytes);
+        const generated = await application.generateTestSpecDraft(projectId, featureId, claimId, input);
+        sendJson(response, 201, generated, id);
+        return;
+      }
+
+      const testSpecApprovalMatch = /^\/v1\/projects\/([^/]+)\/test-specs\/([^/]+)\/approvals$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && testSpecApprovalMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(testSpecApprovalMatch[1]);
+        const testSpecId = decodePathSegment(testSpecApprovalMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        const approved = await application.approveTestSpec(projectId, testSpecId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        });
+        sendJson(response, 201, approved, id);
         return;
       }
 

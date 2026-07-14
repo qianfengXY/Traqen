@@ -257,7 +257,7 @@
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
         "operationId": "appendTestSpec",
-        "requestBody": { "$ref": "#/components/requestBodies/TestSpec" },
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecDraft" },
         "responses": {
           "201": { "$ref": "#/components/responses/TestSpecCreated" },
           "400": { "$ref": "#/components/responses/BadRequest" },
@@ -267,11 +267,56 @@
         }
       }
     },
+    "/v1/projects/{projectId}/features/{featureId}/claims/{claimId}/test-spec-drafts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "claimId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "generateTestSpecDraft",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecGeneration" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TestSpecGenerated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/{testSpecId}/approvals": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TestSpecId" }
+      ],
+      "post": {
+        "operationId": "approveTestSpec",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecApproval" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TestSpecCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/test-specs/validate": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
         "operationId": "validateTestSpecCandidate",
-        "requestBody": { "$ref": "#/components/requestBodies/TestSpec" },
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecCandidate" },
         "responses": {
           "200": { "$ref": "#/components/responses/TestSpecValidation" },
           "400": { "$ref": "#/components/responses/BadRequest" },
@@ -535,9 +580,35 @@
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/DecisionRequest" } } }
       },
-      "TestSpec": {
+      "TestSpecDraft": {
         "required": true,
-        "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/ManualDraftRequest" }
+          }
+        }
+      },
+      "TestSpecCandidate": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/CandidateRequest" }
+          }
+        }
+      },
+      "TestSpecGeneration": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./test-spec-generation.schema.json" } }
+        }
+      },
+      "TestSpecApproval": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/ApprovalRequest" }
+          }
+        }
       },
       "ExecutionEvidenceBundle": {
         "required": true,
@@ -669,8 +740,16 @@
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
       },
       "TestSpecCreated": {
-        "description": "TestSpec version appended",
+        "description": "TestSpec draft or approved version appended",
         "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+      },
+      "TestSpecGenerated": {
+        "description": "Unapproved TestSpec draft deterministically converted from an authorized Claim and mapped Endpoint Fact",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/GenerationResult" }
+          }
+        }
       },
       "TestSpecFound": {
         "description": "Requested or latest TestSpec version",

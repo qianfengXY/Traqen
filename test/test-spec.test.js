@@ -21,6 +21,7 @@ function testSpecInput(overrides = {}) {
     verifiesClaims: [{ id: "CLAIM-ORDER-STATUS-001", version: 1 }],
     sourceSnapshotId: "SNAPSHOT-MANIFEST-001",
     environment: { target: "sit", operationLevel: "CONTROLLED_WRITE" },
+    preconditions: [{ type: "SEED", seedRef: "draft-order" }],
     variables: {
       orderId: "${seed.order.id}",
       accessToken: { secretRef: "accounts/normal-user/token" },
@@ -52,7 +53,7 @@ test("approved controlled writes with assertions and cleanup are executable", ()
 
 test("validation keeps approval, cleanup, and assertion gaps distinct", () => {
   const result = validateTestSpec(
-    testSpecInput({ approved: false, approval: null, assertions: [], cleanup: null }),
+    testSpecInput({ approved: false, approval: null, assertions: [], preconditions: [], cleanup: null }),
     fixedClock,
   );
 
@@ -60,7 +61,7 @@ test("validation keeps approval, cleanup, and assertion gaps distinct", () => {
   assert.equal(result.executable, false);
   assert.deepEqual(
     result.violations.map((item) => item.code),
-    ["NO_ASSERTION", "APPROVAL_REQUIRED", "CLEANUP_REQUIRED"],
+    ["NO_ASSERTION", "APPROVAL_REQUIRED", "SEED_REQUIRED", "CLEANUP_REQUIRED"],
   );
 });
 

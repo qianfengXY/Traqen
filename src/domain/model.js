@@ -34,6 +34,12 @@ export const TestOperationLevel = enumValues([
 
 export const TestExecutor = enumValues(["HTTP", "DATABASE", "EXISTING_TEST"]);
 
+export const TestSpecOriginType = enumValues([
+  "MANUAL",
+  "CONFIRMED_CLAIM_CONVERSION",
+  "REVERSE_SKILL_CANDIDATE",
+]);
+
 export const TestSpecViolationSeverity = enumValues(["WARNING", "BLOCKING"]);
 
 export const AssertionResultStatus = enumValues(["PASS", "FAIL", "ERROR", "INCONCLUSIVE", "SKIPPED"]);

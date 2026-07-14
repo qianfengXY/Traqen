@@ -278,7 +278,13 @@ test("governance reference conflicts return 409", async (t) => {
 });
 
 test("TestSpec API validates candidates and preserves immutable versions", async (t) => {
-  const baseUrl = await startServer(t);
+  const baseUrl = await startServer(t, {
+    reviewerResolver: (_projectId, context) =>
+      context.authorization === "Bearer quality-reviewer"
+        ? { actorId: "USER-001", actorRole: "quality-owner" }
+        : null,
+    reviewPolicyResolver: () => ({ allowedTestSpecApproverRoles: ["quality-owner"] }),
+  });
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
   await postJson(`${projectUrl}/features`, { id: "FEATURE-001", version: 1, name: "Submit order" });
   await postJson(`${projectUrl}/claim-scopes`, {
@@ -307,6 +313,7 @@ test("TestSpec API validates candidates and preserves immutable versions", async
     featureId: "FEATURE-001",
     verifiesClaims: [{ id: "CLAIM-001", version: 1 }],
     environment: { target: "sit", operationLevel: "CONTROLLED_WRITE" },
+    preconditions: [{ type: "SEED", seedRef: "draft-order" }],
     variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
     steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/1/submit" }],
     assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
@@ -330,17 +337,22 @@ test("TestSpec API validates candidates and preserves immutable versions", async
   assert.equal(validationBody.executable, false);
   assert.equal(validationBody.violations[0].code, "APPROVAL_REQUIRED");
 
-  const secondVersion = await postJson(`${projectUrl}/test-specs`, {
+  const directApprovalSpoof = await postJson(`${projectUrl}/test-specs`, {
     ...firstVersion,
     version: 2,
     approved: true,
-    approval: {
-      actorId: "USER-001",
-      actorRole: "quality-owner",
-      approvedAt: "2026-07-14T03:59:00.000Z",
-    },
+    approval: { actorId: "USER-001", actorRole: "quality-owner", approvedAt: "2026-07-14T03:59:00.000Z" },
   });
+  assert.equal(directApprovalSpoof.response.status, 400);
+
+  const secondVersion = await postJson(
+    `${projectUrl}/test-specs/TEST-001/approvals`,
+    { expectedVersion: 1, rationale: "The quality owner approves this bounded read scenario." },
+    { authorization: "Bearer quality-reviewer" },
+  );
   assert.equal(secondVersion.response.status, 201);
+  assert.equal(secondVersion.body.version, 2);
+  assert.equal(secondVersion.body.approval.actorId, "USER-001");
 
   const latestResponse = await fetch(`${projectUrl}/test-specs/TEST-001`);
   assert.equal(latestResponse.status, 200);
@@ -401,6 +413,11 @@ test("attested execution evidence is verified, persisted, and queryable", async 
   const runnerSecret = "runner-shared-secret";
   const baseUrl = await startServer(t, {
     runnerKeyResolver: (runnerId) => (runnerId === "RUNNER-001" ? runnerSecret : null),
+    reviewerResolver: (_projectId, context) =>
+      context.authorization === "Bearer quality-reviewer"
+        ? { actorId: "USER-001", actorRole: "quality-owner" }
+        : null,
+    reviewPolicyResolver: () => ({ allowedTestSpecApproverRoles: ["quality-owner"] }),
   });
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
   const traceInput = await exampleInput();
@@ -431,12 +448,7 @@ test("attested execution evidence is verified, persisted, and queryable", async 
     version: 1,
     name: "Read order state",
     risk: "LOW",
-    approved: true,
-    approval: {
-      actorId: "USER-001",
-      actorRole: "quality-owner",
-      approvedAt: "2026-07-14T03:40:00.000Z",
-    },
+    approved: false,
     featureId: "FEATURE-001",
     verifiesClaims: [{ id: "CLAIM-001", version: 1 }],
     environment: { target: "sit", operationLevel: "SAFE_READ" },
@@ -445,11 +457,17 @@ test("attested execution evidence is verified, persisted, and queryable", async 
     cleanup: null,
     policy: { approvalRequired: true },
   });
+  const approvedTestSpec = await postJson(
+    `${projectUrl}/test-specs/TEST-001/approvals`,
+    { expectedVersion: 1, rationale: "The bounded read scenario is ready for Runner execution." },
+    { authorization: "Bearer quality-reviewer" },
+  );
+  assert.equal(approvedTestSpec.response.status, 201);
 
   const execution = {
     id: "EXEC-001",
     testSpecId: "TEST-001",
-    testSpecVersion: 1,
+    testSpecVersion: 2,
     snapshotManifestId: preparedManifest,
     deploymentId: manifest.deployment.id,
     runner: { id: "RUNNER-001", version: "1.0.0" },
@@ -594,6 +612,7 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
     reviewPolicyResolver: () => ({
       allowedRoles: ["business-owner"],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
+      allowedTestSpecApproverRoles: ["business-owner"],
     }),
   });
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
@@ -789,6 +808,60 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   const storedChainBody = await storedChain.json();
   assert.equal(storedChain.status, 200);
   assert.deepEqual(storedChainBody.segments, recomputed.body.traceChains[0].segments);
+
+  const generationInput = {
+    id: "TEST-GENERATED-API-001",
+    snapshotManifestId,
+    endpointFactId: bundle.nodes[0].factId,
+    target: "sit",
+    expectedHttpStatus: 200,
+    preconditions: [{ type: "SEED", seedRef: "draft-order" }],
+    variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
+    headers: { Authorization: "Bearer ${accessToken}" },
+    body: { orderId: "ORDER-001" },
+    cleanup: { strategy: "SEED_RESET" },
+  };
+  const generationUrl =
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/claims/CLAIM-REVIEW-API-001/test-spec-drafts`;
+  const generated = await postJson(generationUrl, generationInput);
+  assert.equal(generated.response.status, 201);
+  assert.equal(generated.body.draft.approved, false);
+  assert.equal(generated.body.draft.origin.type, "CONFIRMED_CLAIM_CONVERSION");
+  assert.equal(generated.body.draft.origin.decisionId, "DECISION-REVIEW-API-001");
+  assert.equal(generated.body.draft.environment.operationLevel, "CONTROLLED_WRITE");
+  assert.deepEqual(generated.body.validation.violations.map((item) => item.code), ["APPROVAL_REQUIRED"]);
+  const repeatedGeneration = await postJson(generationUrl, generationInput);
+  assert.equal(repeatedGeneration.response.status, 201);
+  assert.deepEqual(repeatedGeneration.body, generated.body);
+
+  const approvalUrl = `${projectUrl}/test-specs/TEST-GENERATED-API-001/approvals`;
+  const approvalInput = {
+    expectedVersion: 1,
+    rationale: "The business owner approves this mapped endpoint scenario with deterministic cleanup.",
+  };
+  const unauthenticatedApproval = await postJson(approvalUrl, approvalInput);
+  assert.equal(unauthenticatedApproval.response.status, 401);
+  const approved = await postJson(
+    approvalUrl,
+    approvalInput,
+    { authorization: "Bearer reviewer-token" },
+  );
+  assert.equal(approved.response.status, 201);
+  assert.equal(approved.body.version, 2);
+  assert.equal(approved.body.approval.actorId, "USER-001");
+  assert.equal(approved.body.origin.requestFingerprint, generated.body.generation.requestFingerprint);
+  const repeatedApproval = await postJson(
+    approvalUrl,
+    approvalInput,
+    { authorization: "Bearer reviewer-token" },
+  );
+  assert.equal(repeatedApproval.response.status, 201);
+  assert.deepEqual(repeatedApproval.body, approved.body);
+  const generatedAfterApproval = await postJson(generationUrl, generationInput);
+  assert.equal(generatedAfterApproval.response.status, 201);
+  assert.equal(generatedAfterApproval.body.draft.version, 1);
+  assert.equal(generatedAfterApproval.body.draft.approved, false);
+  assert.deepEqual(generatedAfterApproval.body.generation, generated.body.generation);
 
   const continuedTraceInput = structuredClone(traceInput);
   continuedTraceInput.snapshotManifest.source = {

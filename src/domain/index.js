@@ -1,6 +1,7 @@
 export * from "./canonical-json.js";
 export * from "./governance.js";
 export * from "./test-spec.js";
+export * from "./test-spec-generation.js";
 export * from "./execution-evidence.js";
 export * from "./facts.js";
 export * from "./invalidation.js";

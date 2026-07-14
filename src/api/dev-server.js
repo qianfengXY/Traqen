@@ -55,6 +55,7 @@ const application = new TraceabilityApplication({
     allowedRoles: [reviewerRole],
     allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
     allowedDecisionTypes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"],
+    allowedTestSpecApproverRoles: [reviewerRole],
   }),
 });
 const server = createTraceabilityHttpServer({ application });

@@ -16,6 +16,7 @@ import {
   createFeatureVersion,
   createSnapshotManifest,
   createTestSpec,
+  generateEndpointTestSpecDraft,
   evaluateTraceChain,
   assertTestSpecSafeToStore,
   validateTestSpec as validateTestSpecProtocol,
@@ -266,6 +267,194 @@ export class TraceabilityApplication {
     const testSpec = assertTestSpecSafeToStore(createTestSpec(input, this.#clock));
     await this.#store.appendTestSpec(projectId, testSpec);
     return testSpec;
+  }
+
+  async appendTestSpecDraft(projectId, input) {
+    requireId(projectId, "projectId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("TestSpec draft input must be an object");
+    }
+    for (const serverField of ["createdAt", "approval", "origin"]) {
+      if (Object.hasOwn(input, serverField)) {
+        throw new TypeError(`testSpec.${serverField} is assigned by a trusted server workflow`);
+      }
+    }
+    if (input.approved !== false) throw new TypeError("Public TestSpec creation only accepts unapproved drafts");
+    return this.appendTestSpec(projectId, { ...input, approval: null });
+  }
+
+  async generateTestSpecDraft(projectId, featureId, claimId, input) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    requireId(claimId, "claimId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("TestSpec generation input must be an object");
+    }
+    assertOnlyFields(
+      input,
+      [
+        "id",
+        "snapshotManifestId",
+        "endpointFactId",
+        "target",
+        "expectedHttpStatus",
+        "name",
+        "risk",
+        "preconditions",
+        "variables",
+        "headers",
+        "body",
+        "cleanup",
+      ],
+      "testSpecGeneration",
+    );
+    const snapshotManifestId = requireId(input.snapshotManifestId, "snapshotManifestId");
+    const baseline = await this.#store.getFeatureBaseline(projectId, featureId);
+    if (!baseline) throw new PersistenceConflictError(`Feature ${featureId} does not exist`);
+    const claimRecord = baseline.claims.find((item) => item.claim.id === claimId);
+    if (!claimRecord) throw new PersistenceConflictError(`Claim ${claimId} does not belong to Feature ${featureId}`);
+    const decision = claimRecord.latestDecision;
+    if (!decision || !["CONFIRMED", "EXCEPTION_RECORDED"].includes(decision.type)) {
+      throw new PersistenceConflictError("TestSpec generation requires a currently authorized Claim Decision");
+    }
+    const mapping = baseline.implementationMappings
+      .filter(
+        (item) =>
+          item.claimId === claimRecord.claim.id &&
+          item.claimVersion === claimRecord.claim.version &&
+          item.snapshotManifestId === snapshotManifestId &&
+          item.status === "ACTIVE",
+      )
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .at(-1);
+    if (!mapping) {
+      throw new PersistenceConflictError(
+        "TestSpec generation requires an active implementation mapping for the selected Snapshot Manifest",
+      );
+    }
+    const graph = await this.#store.getFactGraphByReferences(
+      projectId,
+      snapshotManifestId,
+      mapping.factRefs.map((reference) => reference.factId),
+    );
+    const endpoints = graph.nodes.filter((node) => node.type === "ENDPOINT");
+    const endpoint = input.endpointFactId
+      ? endpoints.find((node) => node.factId === input.endpointFactId)
+      : endpoints.length === 1
+        ? endpoints[0]
+        : null;
+    if (!endpoint) {
+      throw new PersistenceConflictError(
+        endpoints.length > 1
+          ? "Multiple mapped Endpoint Facts exist; endpointFactId must select one explicitly"
+          : "No mapped Endpoint Fact can be converted for this Claim",
+      );
+    }
+    const generated = generateEndpointTestSpecDraft({
+      ...input,
+      projectId,
+      claim: claimRecord.claim,
+      decision,
+      mapping,
+      endpoint,
+    }, this.#clock);
+    const existing = await this.#store.getTestSpec(projectId, generated.draft.id);
+    if (existing) {
+      if (existing.origin?.requestFingerprint === generated.generation.requestFingerprint) {
+        const originalDraft = await this.#store.getTestSpec(
+          projectId,
+          generated.draft.id,
+          generated.draft.version,
+        );
+        if (!originalDraft || originalDraft.approved) {
+          throw new PersistenceConflictError(
+            `TestSpec ${generated.draft.id} no longer has its immutable generated draft version`,
+          );
+        }
+        return deepFreeze({
+          ...generated,
+          draft: originalDraft,
+          validation: this.validateTestSpec(originalDraft),
+        });
+      }
+      throw new PersistenceConflictError(
+        `TestSpec ${generated.draft.id} already exists with a different immutable origin`,
+      );
+    }
+    await this.#store.appendTestSpec(projectId, assertTestSpecSafeToStore(generated.draft));
+    return generated;
+  }
+
+  async approveTestSpec(projectId, testSpecId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(testSpecId, "testSpecId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("TestSpec approval input must be an object");
+    }
+    assertOnlyFields(input, ["expectedVersion", "rationale"], "testSpecApproval");
+    const expectedVersion = input.expectedVersion;
+    if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) {
+      throw new TypeError("testSpecApproval.expectedVersion must be a positive integer");
+    }
+    const rationale = requireId(input.rationale, "testSpecApproval.rationale");
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const policy = (await this.#reviewPolicyResolver(projectId, {
+      reviewer,
+      testSpecId,
+      approvalInput: input,
+    })) ?? {};
+    if (
+      !Array.isArray(policy.allowedTestSpecApproverRoles) ||
+      !policy.allowedTestSpecApproverRoles.includes(actorRole)
+    ) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot approve TestSpecs in this project`);
+    }
+    const requestFingerprint = contentId("TEST-SPEC-APPROVAL-REQUEST", {
+      projectId,
+      testSpecId,
+      expectedVersion,
+      rationale,
+      actorId,
+      actorRole,
+    });
+    const current = await this.#store.getTestSpec(projectId, testSpecId);
+    if (!current) throw new PersistenceConflictError(`TestSpec ${testSpecId} does not exist`);
+    if (current.approved) {
+      if (current.approval?.requestFingerprint === requestFingerprint) return current;
+      throw new PersistenceConflictError(`TestSpec ${testSpecId} is already approved by another immutable decision`);
+    }
+    if (current.version !== expectedVersion) {
+      throw new PersistenceConflictError(
+        `TestSpec ${testSpecId} expected version ${expectedVersion} but current version is ${current.version}`,
+      );
+    }
+    const now = this.#clock();
+    if (!(now instanceof Date) || Number.isNaN(now.getTime())) throw new TypeError("Application clock must return a valid Date");
+    const timestamp = now.toISOString();
+    const approved = createTestSpec({
+      ...current,
+      version: current.version + 1,
+      approved: true,
+      approval: {
+        actorId,
+        actorRole,
+        approvedAt: timestamp,
+        rationale,
+        requestFingerprint,
+      },
+      createdAt: timestamp,
+    }, () => now);
+    const validation = this.validateTestSpec(approved);
+    if (!validation.executable) {
+      throw new PersistenceConflictError(
+        `TestSpec cannot be approved while blocking gaps remain: ${validation.violations.map((item) => item.code).join(", ")}`,
+      );
+    }
+    await this.#store.appendTestSpec(projectId, approved);
+    return approved;
   }
 
   async getTestSpec(projectId, testSpecId, version = null) {

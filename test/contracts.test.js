@@ -71,6 +71,16 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "appendTestSpec",
   );
   assert.equal(
+    contract.paths[
+      "/v1/projects/{projectId}/features/{featureId}/claims/{claimId}/test-spec-drafts"
+    ].post.operationId,
+    "generateTestSpecDraft",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/test-specs/{testSpecId}/approvals"].post.operationId,
+    "approveTestSpec",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/test-specs/{testSpecId}/validate"].post.operationId,
     "validateStoredTestSpec",
   );
@@ -204,6 +214,8 @@ test("TestSpec contract exposes traceability and execution-policy boundaries", a
   assert.ok(contract.required.includes("verifiesClaims"));
   assert.ok(contract.required.includes("assertions"));
   assert.ok(contract.required.includes("approval"));
+  assert.ok(contract.required.includes("origin"));
+  assert.ok(contract.$defs.Origin.required.includes("requestFingerprint"));
   assert.deepEqual(contract.properties.environment.properties.operationLevel.enum, [
     "SAFE_READ",
     "CONTROLLED_WRITE",
@@ -211,6 +223,20 @@ test("TestSpec contract exposes traceability and execution-policy boundaries", a
     "EXTERNAL_SIDE_EFFECT",
   ]);
   assert.ok(contract.$defs.ValidationResult.required.includes("executable"));
+});
+
+test("TestSpec conversion contract separates public drafts, generated provenance, and approvals", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/test-spec-generation.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "TestSpecGenerationRequest");
+  assert.ok(contract.required.includes("snapshotManifestId"));
+  assert.equal(contract.$defs.ManualDraftRequest.properties.approved.const, false);
+  assert.equal(contract.$defs.ManualDraftRequest.properties.approval, undefined);
+  assert.equal(contract.$defs.ManualDraftRequest.properties.origin, undefined);
+  assert.deepEqual(contract.$defs.ApprovalRequest.required, ["expectedVersion", "rationale"]);
+  assert.ok(contract.$defs.GenerationResult.required.includes("generation"));
 });
 
 test("execution Evidence contract binds results to Runner, TestSpec, manifest, and deployment", async () => {
