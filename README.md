@@ -17,6 +17,14 @@ The first executable slice is the framework-neutral domain kernel. It provides:
 - layered invalidation rules that do not invalidate business intent when code changes;
 - a JSON command-line interface and automated tests.
 
+The PostgreSQL storage slice adds:
+
+- versioned tables for snapshots, features, claims, decisions, conformance, tests, evidence, and trace chains;
+- append-only protection for facts, decisions, executions, evidence, and trace-chain history;
+- deterministic, checksum-protected migrations;
+- a storage port and PostgreSQL adapter for manifests and trace-chain revisions;
+- real PostgreSQL migration tests through an embedded development-only database.
+
 It intentionally has no web framework, database driver, LLM, or scanner dependency yet. Those integrations will be added around this kernel after the first platform and scanner technology choices are confirmed.
 
 ## Run
@@ -25,6 +33,7 @@ Requires Node.js 20 or newer.
 
 ```bash
 npm test
+npm run test:storage
 npm run example
 ```
 
