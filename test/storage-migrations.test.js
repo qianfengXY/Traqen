@@ -5,7 +5,11 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
-import { evaluateTraceChain } from "../src/domain/index.js";
+import {
+  createExecutionEvidenceBundle,
+  evaluateTraceChain,
+  signExecutionEvidenceBundle,
+} from "../src/domain/index.js";
 import { applyMigrations } from "../src/storage/postgres/migrations.js";
 import { PostgresTraceabilityStore } from "../src/storage/postgres/postgres-traceability-store.js";
 import { completeInput, fixedClock } from "./fixtures.js";
@@ -15,7 +19,11 @@ const migrationsDirectory = fileURLToPath(new URL("../db/migrations", import.met
 async function migratedDatabase() {
   const database = await PGlite.create();
   const applied = await applyMigrations(database, migrationsDirectory);
-  assert.deepEqual(applied, ["0001_core_traceability", "0002_governance_integrity"]);
+  assert.deepEqual(applied, [
+    "0001_core_traceability",
+    "0002_governance_integrity",
+    "0003_runner_attestation",
+  ]);
   return database;
 }
 
@@ -615,4 +623,151 @@ test("PostgreSQL store preserves TestSpec versions and authoritative Claim links
     }),
     /approver must belong to the project tenant/,
   );
+});
+
+test("PostgreSQL atomically persists attested execution evidence for the exact deployment", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await insertSnapshot(database);
+  const runnerSecret = "runner-shared-secret";
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: () => new Date("2026-07-14T06:10:00.000Z"),
+    runnerKeyResolver: (runnerId) => (runnerId === "RUNNER-001" ? runnerSecret : null),
+  });
+
+  await application.appendFeatureVersion("PROJECT-001", {
+    id: "FEATURE-EXEC-001",
+    version: 1,
+    name: "Read order",
+  });
+  await application.appendClaimScope("PROJECT-001", {
+    id: "SCOPE-EXEC-001",
+    version: 1,
+    scope: { actor: "normal-user" },
+  });
+  await application.appendClaim("PROJECT-001", {
+    id: "CLAIM-EXEC-001",
+    version: 1,
+    featureId: "FEATURE-EXEC-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "A normal user may read an order.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-EXEC-001",
+    scopeVersion: 1,
+  });
+  await application.appendTestSpec("PROJECT-001", {
+    id: "TEST-EXEC-001",
+    version: 1,
+    name: "Read order",
+    risk: "LOW",
+    approved: true,
+    approval: {
+      actorId: "USER-001",
+      actorRole: "quality-owner",
+      approvedAt: "2026-07-14T05:50:00.000Z",
+    },
+    featureId: "FEATURE-EXEC-001",
+    verifiesClaims: [{ id: "CLAIM-EXEC-001", version: 1 }],
+    environment: { target: "sit", operationLevel: "SAFE_READ" },
+    steps: [{ id: "read", executor: "HTTP", method: "GET", path: "/orders/1" }],
+    assertions: [{ id: "http-status", type: "HTTP_STATUS", expected: 200 }],
+    cleanup: null,
+    policy: { approvalRequired: true },
+  });
+
+  const execution = {
+    id: "EXEC-ATTESTED-001",
+    testSpecId: "TEST-EXEC-001",
+    testSpecVersion: 1,
+    snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    deploymentId: "DEPLOY-001",
+    runner: { id: "RUNNER-001", version: "1.0.0" },
+    completionReason: "COMPLETED",
+    startedAt: "2026-07-14T06:00:00.000Z",
+    finishedAt: "2026-07-14T06:05:00.000Z",
+    attempts: [
+      {
+        number: 1,
+        startedAt: "2026-07-14T06:00:00.000Z",
+        finishedAt: "2026-07-14T06:05:00.000Z",
+        phaseStatus: "PASS",
+        stepResults: [{ id: "read", status: "PASS" }],
+        assertionResults: [{ id: "http-status", status: "PASS", actual: 200 }],
+        cleanup: { status: "SKIPPED" },
+      },
+    ],
+  };
+  const normalized = createExecutionEvidenceBundle(
+    {
+      execution,
+      evidence: [
+        {
+          id: "EVIDENCE-ATTESTED-001",
+          type: "ASSERTION",
+          freshness: "FRESH",
+          manifest: {
+            executionId: execution.id,
+            testSpecId: execution.testSpecId,
+            testSpecVersion: execution.testSpecVersion,
+            snapshotManifestId: execution.snapshotManifestId,
+            deploymentId: execution.deploymentId,
+            runnerId: execution.runner.id,
+            runnerVersion: execution.runner.version,
+            assertionResults: execution.attempts[0].assertionResults,
+            redactions: [],
+          },
+        },
+      ],
+    },
+    () => new Date("2026-07-14T06:10:00.000Z"),
+  );
+  const signed = signExecutionEvidenceBundle("PROJECT-001", normalized, runnerSecret);
+  const stored = await application.ingestExecutionEvidence("PROJECT-001", signed);
+
+  assert.equal(stored.execution.status, "PASS");
+  assert.equal(stored.evidence[0].integrity, "VERIFIED");
+  assert.equal(stored.evidence[0].contentHash, normalized.evidence[0].contentHash);
+  assert.deepEqual(await application.ingestExecutionEvidence("PROJECT-001", signed), stored);
+  const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-EXEC-001");
+  assert.equal(baseline.testExecutions[0].id, "EXEC-ATTESTED-001");
+  assert.equal(baseline.testExecutions[0].evidenceCount, 1);
+
+  const wrongDeploymentExecution = {
+    ...execution,
+    id: "EXEC-WRONG-DEPLOYMENT",
+    deploymentId: "DEPLOY-OTHER",
+  };
+  const wrongDeployment = createExecutionEvidenceBundle(
+    {
+      execution: wrongDeploymentExecution,
+      evidence: [
+        {
+          id: "EVIDENCE-WRONG-DEPLOYMENT",
+          type: "ASSERTION",
+          manifest: {
+            ...normalized.evidence[0].manifest,
+            executionId: wrongDeploymentExecution.id,
+            deploymentId: wrongDeploymentExecution.deploymentId,
+          },
+        },
+      ],
+    },
+    () => new Date("2026-07-14T06:10:00.000Z"),
+  );
+  await assert.rejects(
+    application.ingestExecutionEvidence(
+      "PROJECT-001",
+      signExecutionEvidenceBundle("PROJECT-001", wrongDeployment, runnerSecret),
+    ),
+    /Persistence constraints rejected|deployment/,
+  );
+
+  const evidenceRows = await database.query(
+    "SELECT id FROM evidence WHERE project_id = $1 ORDER BY id",
+    ["PROJECT-001"],
+  );
+  assert.deepEqual(evidenceRows.rows, [{ id: "EVIDENCE-ATTESTED-001" }]);
 });

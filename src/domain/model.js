@@ -36,6 +36,23 @@ export const TestExecutor = enumValues(["HTTP", "DATABASE", "EXISTING_TEST"]);
 
 export const TestSpecViolationSeverity = enumValues(["WARNING", "BLOCKING"]);
 
+export const AssertionResultStatus = enumValues(["PASS", "FAIL", "ERROR", "INCONCLUSIVE", "SKIPPED"]);
+
+export const ExecutionCompletionReason = enumValues(["COMPLETED", "SKIPPED", "CANCELLED"]);
+
+export const ExecutionPhaseStatus = enumValues(["PASS", "FAIL", "ERROR", "SKIPPED"]);
+
+export const EvidenceType = enumValues([
+  "HTTP",
+  "DATABASE",
+  "LOG",
+  "TRACE",
+  "COVERAGE",
+  "SCREENSHOT",
+  "ASSERTION",
+  "OTHER",
+]);
+
 export const AuthorityStatus = enumValues([
   "UNREVIEWED",
   "CONFIRMED",

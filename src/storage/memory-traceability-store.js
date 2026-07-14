@@ -24,6 +24,9 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #claims = new Map();
   #decisions = new Map();
   #testSpecs = new Map();
+  #executions = new Map();
+  #evidence = new Map();
+  #evidenceHashes = new Map();
 
   async appendSnapshotManifest(projectId, manifest) {
     const storageKey = key(projectId, manifest.id);
@@ -158,10 +161,50 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       if (!current || testSpec.version > current.version) latestTestSpecs.set(testSpec.id, testSpec);
     }
 
+    const governedTestSpecVersions = new Set(
+      [...latestTestSpecs.values()].map((testSpec) => `${testSpec.id}\u0000${testSpec.version}`),
+    );
+    const latestExecutions = new Map();
+    for (const [storageKey, record] of this.#executions.entries()) {
+      if (
+        !storageKey.startsWith(`${projectId}\u0000`) ||
+        !governedTestSpecVersions.has(`${record.execution.testSpecId}\u0000${record.execution.testSpecVersion}`)
+      ) {
+        continue;
+      }
+      const current = latestExecutions.get(record.execution.testSpecId);
+      if (!current || Date.parse(record.execution.finishedAt) > Date.parse(current.execution.finishedAt)) {
+        latestExecutions.set(record.execution.testSpecId, record);
+      }
+    }
+    const testExecutions = [...latestExecutions.values()]
+      .filter(
+        (record) =>
+          governedTestSpecVersions.has(`${record.execution.testSpecId}\u0000${record.execution.testSpecVersion}`),
+      )
+      .map((record) => ({
+        id: record.execution.id,
+        testSpecId: record.execution.testSpecId,
+        testSpecVersion: record.execution.testSpecVersion,
+        snapshotManifestId: record.execution.snapshotManifestId,
+        deploymentId: record.execution.deploymentId,
+        status: record.execution.status,
+        runner: record.execution.runner,
+        finishedAt: record.execution.finishedAt,
+        evidenceCount: [...this.#evidence.entries()]
+          .filter(
+            ([storageKey, item]) =>
+              storageKey.startsWith(`${projectId}\u0000`) && item.executionId === record.execution.id,
+          )
+          .length,
+      }))
+      .sort((left, right) => Date.parse(right.finishedAt) - Date.parse(left.finishedAt));
+
     return deepFreeze({
       feature: featureVersions[0],
       claims,
       testSpecs: [...latestTestSpecs.values()],
+      testExecutions,
       traceChains,
     });
   }
@@ -201,5 +244,67 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
         .map(([, testSpec]) => testSpec)
         .sort((left, right) => right.version - left.version)[0] ?? null
     );
+  }
+
+  async appendExecutionEvidenceBundle(projectId, bundle) {
+    const { execution, evidence, attestation } = bundle;
+    const testSpec = this.#testSpecs.get(
+      key(projectId, `${execution.testSpecId}\u0000${execution.testSpecVersion}`),
+    );
+    if (!testSpec) {
+      throw new PersistenceConflictError(
+        `TestSpec ${execution.testSpecId} version ${execution.testSpecVersion} does not exist`,
+      );
+    }
+    const manifest = this.#manifests.get(key(projectId, execution.snapshotManifestId));
+    if (!manifest) {
+      throw new PersistenceConflictError(
+        `Snapshot manifest ${execution.snapshotManifestId} does not exist in project ${projectId}`,
+      );
+    }
+    if (manifest.components?.deployment?.id !== execution.deploymentId) {
+      throw new PersistenceConflictError("Execution deployment must belong to the referenced snapshot manifest");
+    }
+
+    const executionKey = key(projectId, execution.id);
+    const executionRecord = deepFreeze({ execution: structuredClone(execution), attestation: structuredClone(attestation) });
+    const existingExecution = this.#executions.get(executionKey);
+    if (existingExecution && canonicalJson(existingExecution) !== canonicalJson(executionRecord)) {
+      throw new PersistenceConflictError(`TestExecution ${execution.id} conflicts with an existing record`);
+    }
+    for (const item of evidence) {
+      const verifiedItem = { ...item, integrity: "VERIFIED" };
+      const evidenceKey = key(projectId, item.id);
+      const existingEvidence = this.#evidence.get(evidenceKey);
+      if (existingEvidence && canonicalJson(existingEvidence) !== canonicalJson(verifiedItem)) {
+        throw new PersistenceConflictError(`Evidence ${item.id} conflicts with an existing record`);
+      }
+      const hashOwner = this.#evidenceHashes.get(key(projectId, item.contentHash));
+      if (hashOwner && hashOwner !== item.id) {
+        throw new PersistenceConflictError(`Evidence hash ${item.contentHash} already belongs to ${hashOwner}`);
+      }
+    }
+
+    if (!existingExecution) this.#executions.set(executionKey, executionRecord);
+    for (const item of evidence) {
+      const evidenceKey = key(projectId, item.id);
+      if (!this.#evidence.has(evidenceKey)) {
+        this.#evidence.set(evidenceKey, deepFreeze(structuredClone({ ...item, integrity: "VERIFIED" })));
+        this.#evidenceHashes.set(key(projectId, item.contentHash), item.id);
+      }
+    }
+    return deepFreeze({ executionId: execution.id, evidenceIds: evidence.map((item) => item.id) });
+  }
+
+  async getExecutionEvidence(projectId, executionId) {
+    const record = this.#executions.get(key(projectId, executionId));
+    if (!record) return null;
+    const evidence = [...this.#evidence.entries()]
+      .filter(
+        ([storageKey, item]) =>
+          storageKey.startsWith(`${projectId}\u0000`) && item.executionId === executionId,
+      )
+      .map(([, item]) => item);
+    return deepFreeze({ ...record, evidence });
   }
 }

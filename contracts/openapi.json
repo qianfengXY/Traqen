@@ -3,7 +3,7 @@
   "info": {
     "title": "Traqen Traceability API",
     "version": "0.1.0",
-    "description": "API for deterministic trace-chain evaluation, append-only business governance, and TestSpec validation. The development server is intentionally unauthenticated."
+    "description": "API for deterministic trace-chain evaluation, append-only business governance, TestSpec validation, and attested execution Evidence ingestion. The development server is intentionally unauthenticated."
   },
   "paths": {
     "/health": {
@@ -228,6 +228,34 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
+    },
+    "/v1/projects/{projectId}/test-executions": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "ingestExecutionEvidence",
+        "requestBody": { "$ref": "#/components/requestBodies/ExecutionEvidenceBundle" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ExecutionEvidenceStored" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/RunnerUnauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-executions/{executionId}/evidence": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ExecutionId" }
+      ],
+      "get": {
+        "operationId": "getExecutionEvidence",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ExecutionEvidenceFound" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
     }
   },
   "components": {
@@ -255,6 +283,12 @@
         "in": "query",
         "required": false,
         "schema": { "type": "integer", "minimum": 1 }
+      },
+      "ExecutionId": {
+        "name": "executionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
       }
     },
     "requestBodies": {
@@ -285,6 +319,12 @@
       "TestSpec": {
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+      },
+      "ExecutionEvidenceBundle": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./execution-evidence.schema.json" } }
+        }
       }
     },
     "schemas": {
@@ -328,6 +368,10 @@
         "description": "The append conflicts with immutable history or a required reference",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
+      "RunnerUnauthorized": {
+        "description": "Runner attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
       "FeatureVersionCreated": {
         "description": "Feature version appended",
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
@@ -357,6 +401,22 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./test-spec.schema.json#/$defs/ValidationResult" }
+          }
+        }
+      },
+      "ExecutionEvidenceStored": {
+        "description": "Attested execution and verified Evidence appended atomically",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./execution-evidence.schema.json#/$defs/StoredExecutionEvidence" }
+          }
+        }
+      },
+      "ExecutionEvidenceFound": {
+        "description": "Execution, verified Evidence, and Runner attestation",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./execution-evidence.schema.json#/$defs/StoredExecutionEvidence" }
           }
         }
       }

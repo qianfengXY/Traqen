@@ -10,7 +10,13 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
   throw new Error("PORT must be an integer between 0 and 65535");
 }
 
-const application = new TraceabilityApplication({ store: new MemoryTraceabilityStore() });
+const runnerId = process.env.RUNNER_ID ?? null;
+const runnerSharedSecret = process.env.RUNNER_SHARED_SECRET ?? null;
+const application = new TraceabilityApplication({
+  store: new MemoryTraceabilityStore(),
+  runnerKeyResolver: (candidateRunnerId) =>
+    runnerId && runnerSharedSecret && candidateRunnerId === runnerId ? runnerSharedSecret : null,
+});
 const server = createTraceabilityHttpServer({ application });
 
 server.listen(port, host, () => {

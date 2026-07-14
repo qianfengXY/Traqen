@@ -4,3 +4,10 @@ export class PersistenceConflictError extends Error {
     this.name = "PersistenceConflictError";
   }
 }
+
+export class RunnerAttestationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "RunnerAttestationError";
+  }
+}

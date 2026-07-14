@@ -56,6 +56,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/test-specs/{testSpecId}/validate"].post.operationId,
     "validateStoredTestSpec",
   );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/test-executions"].post.operationId,
+    "ingestExecutionEvidence",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/test-executions/{executionId}/evidence"].get.operationId,
+    "getExecutionEvidence",
+  );
 });
 
 test("governance contract defines immutable version fields", async () => {
@@ -67,6 +75,7 @@ test("governance contract defines immutable version fields", async () => {
   assert.ok(contract.$defs.Claim.required.includes("scopeVersion"));
   assert.ok(contract.$defs.Decision.required.includes("claimVersion"));
   assert.ok(contract.$defs.FeatureBaseline.required.includes("testSpecs"));
+  assert.ok(contract.$defs.FeatureBaseline.required.includes("testExecutions"));
 });
 
 test("TestSpec contract exposes traceability and execution-policy boundaries", async () => {
@@ -85,4 +94,17 @@ test("TestSpec contract exposes traceability and execution-policy boundaries", a
     "EXTERNAL_SIDE_EFFECT",
   ]);
   assert.ok(contract.$defs.ValidationResult.required.includes("executable"));
+});
+
+test("execution Evidence contract binds results to Runner, TestSpec, manifest, and deployment", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/execution-evidence.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "ExecutionEvidenceBundle");
+  assert.ok(contract.$defs.TestExecution.required.includes("snapshotManifestId"));
+  assert.ok(contract.$defs.TestExecution.required.includes("deploymentId"));
+  assert.ok(contract.$defs.TestExecution.required.includes("runner"));
+  assert.equal(contract.$defs.RunnerAttestation.properties.algorithm.const, "HMAC-SHA256");
+  assert.ok(contract.$defs.StoredExecutionEvidence.allOf[1].properties.evidence.items.allOf[1].required.includes("integrity"));
 });

@@ -38,4 +38,12 @@ export class TraceabilityStore {
   async getTestSpec(_projectId, _testSpecId, _version = null) {
     throw new Error("getTestSpec must be implemented");
   }
+
+  async appendExecutionEvidenceBundle(_projectId, _bundle) {
+    throw new Error("appendExecutionEvidenceBundle must be implemented");
+  }
+
+  async getExecutionEvidence(_projectId, _executionId) {
+    throw new Error("getExecutionEvidence must be implemented");
+  }
 }

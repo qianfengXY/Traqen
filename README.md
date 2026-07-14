@@ -51,7 +51,16 @@ The TestSpec validation slice adds:
 - blocking policy gaps for missing assertions, missing approval, unsafe writes, and missing cleanup;
 - latest TestSpec versions in the Feature business baseline.
 
-The development server remains intentionally unauthenticated and in-memory. Validation decides whether a TestSpec is eligible for a future Runner; this slice does not execute requests or manufacture Evidence. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
+The trusted execution-ingestion slice adds:
+
+- deterministic TestExecution status derivation from preserved attempt and assertion results;
+- an attested Evidence Bundle bound to the exact TestSpec version, snapshot manifest, deployment, and Runner version;
+- canonical SHA-256 Evidence hashes and HMAC-SHA256 Runner attestation verification;
+- atomic append-only persistence for TestExecution and verified Evidence;
+- rejection of forged status, modified Evidence, unredacted sensitive values, wrong deployments, and cross-project signatures;
+- latest execution summaries in the Feature baseline and an on-demand full Evidence endpoint.
+
+The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise Runner identity and mTLS boundary. This slice ingests trusted execution results but does not yet dispatch arbitrary remote requests. Production authentication, runtime PostgreSQL wiring, scanners, and LLM-assisted extraction are not part of this slice.
 
 ## Run
 

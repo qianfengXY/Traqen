@@ -2,13 +2,16 @@ import {
   createClaim,
   createClaimScope,
   createDecision,
+  createExecutionEvidenceBundle,
   createFeatureVersion,
   createSnapshotManifest,
   createTestSpec,
   evaluateTraceChain,
   assertTestSpecSafeToStore,
   validateTestSpec as validateTestSpecProtocol,
+  verifyExecutionEvidenceAttestation,
 } from "../domain/index.js";
+import { PersistenceConflictError, RunnerAttestationError } from "../storage/index.js";
 
 function requireId(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -24,11 +27,14 @@ function currentReference(value, currentId) {
 export class TraceabilityApplication {
   #store;
   #clock;
+  #runnerKeyResolver;
 
-  constructor({ store, clock = () => new Date() }) {
+  constructor({ store, clock = () => new Date(), runnerKeyResolver = () => null }) {
     if (!store) throw new TypeError("store is required");
+    if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
     this.#store = store;
     this.#clock = clock;
+    this.#runnerKeyResolver = runnerKeyResolver;
   }
 
   prepareEvaluation(input) {
@@ -131,5 +137,43 @@ export class TraceabilityApplication {
     const testSpec = await this.getTestSpec(projectId, testSpecId, version);
     if (!testSpec) return null;
     return this.validateTestSpec(testSpec);
+  }
+
+  async ingestExecutionEvidence(projectId, input) {
+    requireId(projectId, "projectId");
+    const normalized = createExecutionEvidenceBundle(input, this.#clock);
+    const attestedBundle = { ...normalized, attestation: input?.attestation };
+    const runnerSecret = await this.#runnerKeyResolver(normalized.execution.runner.id, projectId);
+    if (
+      typeof runnerSecret !== "string" ||
+      runnerSecret === "" ||
+      !verifyExecutionEvidenceAttestation(projectId, attestedBundle, runnerSecret)
+    ) {
+      throw new RunnerAttestationError("Runner attestation is missing, unknown, or invalid");
+    }
+
+    const testSpec = await this.#store.getTestSpec(
+      projectId,
+      normalized.execution.testSpecId,
+      normalized.execution.testSpecVersion,
+    );
+    if (!testSpec) {
+      throw new PersistenceConflictError(
+        `TestSpec ${normalized.execution.testSpecId} version ${normalized.execution.testSpecVersion} does not exist`,
+      );
+    }
+    const validation = this.validateTestSpec(testSpec);
+    if (!validation.executable) {
+      throw new PersistenceConflictError("TestSpec is not eligible for execution under the current policy");
+    }
+
+    await this.#store.appendExecutionEvidenceBundle(projectId, attestedBundle);
+    return this.#store.getExecutionEvidence(projectId, normalized.execution.id);
+  }
+
+  async getExecutionEvidence(projectId, executionId) {
+    requireId(projectId, "projectId");
+    requireId(executionId, "executionId");
+    return this.#store.getExecutionEvidence(projectId, executionId);
   }
 }

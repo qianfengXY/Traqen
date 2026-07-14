@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
+import { createExecutionEvidenceBundle, signExecutionEvidenceBundle } from "../src/domain/index.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
 
 const fixedClock = () => new Date("2026-07-14T04:00:00.000Z");
@@ -13,9 +14,10 @@ async function exampleInput() {
 }
 
 async function startServer(t, options = {}) {
+  const { runnerKeyResolver, ...serverOptions } = options;
   const store = new MemoryTraceabilityStore();
-  const application = new TraceabilityApplication({ store, clock: fixedClock });
-  const server = createTraceabilityHttpServer({ application, ...options });
+  const application = new TraceabilityApplication({ store, clock: fixedClock, runnerKeyResolver });
+  const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", resolve);
@@ -346,4 +348,119 @@ test("TestSpec storage rejects raw secrets and cross-feature claim links", async
   });
   assert.equal(missingClaim.response.status, 409);
   assert.equal(missingClaim.body.error.code, "PERSISTENCE_CONFLICT");
+});
+
+test("attested execution evidence is verified, persisted, and queryable", async (t) => {
+  const runnerSecret = "runner-shared-secret";
+  const baseUrl = await startServer(t, {
+    runnerKeyResolver: (runnerId) => (runnerId === "RUNNER-001" ? runnerSecret : null),
+  });
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
+  const traceInput = await exampleInput();
+  const persistedTrace = await postJson(`${projectUrl}/trace-chains`, traceInput);
+  assert.equal(persistedTrace.response.status, 201);
+  const manifest = traceInput.snapshotManifest;
+  const preparedManifest = persistedTrace.body.chain.snapshotManifestId;
+
+  await postJson(`${projectUrl}/features`, { id: "FEATURE-001", version: 1, name: "Submit order" });
+  await postJson(`${projectUrl}/claim-scopes`, {
+    id: "SCOPE-001",
+    version: 1,
+    scope: { actor: "normal-user" },
+  });
+  await postJson(`${projectUrl}/claims`, {
+    id: "CLAIM-001",
+    version: 1,
+    featureId: "FEATURE-001",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "A normal user may submit only a DRAFT order.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+  });
+  await postJson(`${projectUrl}/test-specs`, {
+    id: "TEST-001",
+    version: 1,
+    name: "Read order state",
+    risk: "LOW",
+    approved: true,
+    approval: {
+      actorId: "USER-001",
+      actorRole: "quality-owner",
+      approvedAt: "2026-07-14T03:40:00.000Z",
+    },
+    featureId: "FEATURE-001",
+    verifiesClaims: [{ id: "CLAIM-001", version: 1 }],
+    environment: { target: "sit", operationLevel: "SAFE_READ" },
+    steps: [{ id: "read", executor: "HTTP", method: "GET", path: "/orders/1" }],
+    assertions: [{ id: "http-status", type: "HTTP_STATUS", expected: 200 }],
+    cleanup: null,
+    policy: { approvalRequired: true },
+  });
+
+  const execution = {
+    id: "EXEC-001",
+    testSpecId: "TEST-001",
+    testSpecVersion: 1,
+    snapshotManifestId: preparedManifest,
+    deploymentId: manifest.deployment.id,
+    runner: { id: "RUNNER-001", version: "1.0.0" },
+    completionReason: "COMPLETED",
+    startedAt: "2026-07-14T03:50:00.000Z",
+    finishedAt: "2026-07-14T03:55:00.000Z",
+    attempts: [
+      {
+        number: 1,
+        startedAt: "2026-07-14T03:50:00.000Z",
+        finishedAt: "2026-07-14T03:55:00.000Z",
+        phaseStatus: "PASS",
+        stepResults: [{ id: "read", status: "PASS" }],
+        assertionResults: [{ id: "http-status", status: "PASS", actual: 200 }],
+        cleanup: { status: "SKIPPED" },
+      },
+    ],
+  };
+  const evidence = {
+    id: "EVIDENCE-001",
+    type: "ASSERTION",
+    freshness: "FRESH",
+    manifest: {
+      executionId: execution.id,
+      testSpecId: execution.testSpecId,
+      testSpecVersion: execution.testSpecVersion,
+      snapshotManifestId: execution.snapshotManifestId,
+      deploymentId: execution.deploymentId,
+      runnerId: execution.runner.id,
+      runnerVersion: execution.runner.version,
+      assertionResults: execution.attempts[0].assertionResults,
+      redactions: [],
+    },
+  };
+  const normalized = createExecutionEvidenceBundle({ execution, evidence: [evidence] }, fixedClock);
+  const signed = signExecutionEvidenceBundle("PROJECT-001", normalized, runnerSecret);
+
+  const ingested = await postJson(`${projectUrl}/test-executions`, signed);
+  assert.equal(ingested.response.status, 201);
+  assert.equal(ingested.body.execution.status, "PASS");
+  assert.equal(ingested.body.evidence[0].integrity, "VERIFIED");
+
+  const queried = await fetch(`${projectUrl}/test-executions/EXEC-001/evidence`);
+  assert.equal(queried.status, 200);
+  assert.equal((await queried.json()).evidence[0].contentHash, normalized.evidence[0].contentHash);
+  const baseline = await fetch(`${projectUrl}/features/FEATURE-001/baseline`);
+  const baselineBody = await baseline.json();
+  assert.equal(baselineBody.testExecutions[0].id, "EXEC-001");
+  assert.equal(baselineBody.testExecutions[0].evidenceCount, 1);
+
+  const forged = structuredClone(signed);
+  forged.attestation.signature = "0".repeat(64);
+  const rejected = await postJson(`${projectUrl}/test-executions`, forged);
+  assert.equal(rejected.response.status, 401);
+  assert.equal(rejected.body.error.code, "RUNNER_ATTESTATION_INVALID");
+
+  const crossProjectSignature = signExecutionEvidenceBundle("PROJECT-OTHER", normalized, runnerSecret);
+  const crossProject = await postJson(`${projectUrl}/test-executions`, crossProjectSignature);
+  assert.equal(crossProject.response.status, 401);
+  assert.equal(crossProject.body.error.code, "RUNNER_ATTESTATION_INVALID");
 });

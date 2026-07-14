@@ -61,6 +61,36 @@ function testSpecFromRow(row) {
   };
 }
 
+function executionFromRow(row) {
+  return {
+    id: row.id,
+    testSpecId: row.test_spec_id,
+    testSpecVersion: row.test_spec_version,
+    snapshotManifestId: row.snapshot_manifest_id,
+    deploymentId: row.deployment_component_id,
+    runner: { id: row.runner_id, version: row.runner_version },
+    completionReason: row.completion_reason,
+    status: row.status,
+    startedAt: new Date(row.started_at).toISOString(),
+    finishedAt: new Date(row.finished_at).toISOString(),
+    attempts: row.attempts,
+  };
+}
+
+function evidenceFromRow(row) {
+  return {
+    id: row.id,
+    executionId: row.execution_id,
+    type: row.evidence_type,
+    integrity: row.integrity_status,
+    freshness: row.freshness_status,
+    contentHash: row.content_hash,
+    storageUri: row.storage_uri,
+    manifest: row.manifest,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
 export class PostgresTraceabilityStore extends TraceabilityStore {
   #database;
 
@@ -507,6 +537,40 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
        ORDER BY ts.id, ts.version DESC`,
       [projectId, featureId],
     );
+    const testExecutionResult = await this.#database.query(
+      `SELECT DISTINCT ON (te.test_spec_id)
+         te.id, te.test_spec_id, te.test_spec_version, te.snapshot_manifest_id,
+         te.deployment_component_id, te.status, te.runner_id, te.runner_version,
+         te.finished_at,
+         (SELECT COUNT(*)::integer
+          FROM evidence e
+          WHERE e.project_id = te.project_id AND e.execution_id = te.id) AS evidence_count
+       FROM test_execution te
+       JOIN test_spec ts
+         ON ts.project_id = te.project_id
+        AND ts.id = te.test_spec_id
+        AND ts.version = te.test_spec_version
+       WHERE te.project_id = $1
+         AND ts.version = (
+           SELECT MAX(latest.version)
+           FROM test_spec latest
+           WHERE latest.project_id = ts.project_id AND latest.id = ts.id
+         )
+         AND EXISTS (
+           SELECT 1
+           FROM test_spec_claim tsc
+           JOIN claim c
+             ON c.project_id = tsc.project_id
+            AND c.id = tsc.claim_id
+            AND c.version = tsc.claim_version
+           WHERE tsc.project_id = ts.project_id
+             AND tsc.test_spec_id = ts.id
+             AND tsc.test_spec_version = ts.version
+             AND c.feature_id = $2
+         )
+       ORDER BY te.test_spec_id, te.finished_at DESC, te.id`,
+      [projectId, featureId],
+    );
 
     const decisionsByClaim = new Map();
     for (const row of decisionResult.rows) {
@@ -567,6 +631,17 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         };
       }),
       testSpecs: testSpecResult.rows.map(testSpecFromRow),
+      testExecutions: testExecutionResult.rows.map((row) => ({
+        id: row.id,
+        testSpecId: row.test_spec_id,
+        testSpecVersion: row.test_spec_version,
+        snapshotManifestId: row.snapshot_manifest_id,
+        deploymentId: row.deployment_component_id,
+        status: row.status,
+        runner: row.runner_id ? { id: row.runner_id, version: row.runner_version } : null,
+        finishedAt: new Date(row.finished_at).toISOString(),
+        evidenceCount: row.evidence_count,
+      })),
       traceChains: chainResult.rows.map((row) => ({
         id: row.chain_id,
         revision: Number(row.revision),
@@ -675,5 +750,108 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     const row = result.rows[0];
     if (!row) return null;
     return deepFreeze(testSpecFromRow(row));
+  }
+
+  async appendExecutionEvidenceBundle(projectId, bundle) {
+    requireId(projectId, "projectId");
+    const { execution, evidence, attestation } = bundle;
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO test_execution (
+           project_id, id, test_spec_id, test_spec_version, snapshot_manifest_id,
+           deployment_component_id, status, started_at, finished_at, attempts,
+           runner_id, runner_version, completion_reason, runner_attestation
+         ) VALUES (
+           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14::jsonb
+         )
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [
+          projectId,
+          execution.id,
+          execution.testSpecId,
+          execution.testSpecVersion,
+          execution.snapshotManifestId,
+          execution.deploymentId,
+          execution.status,
+          execution.startedAt,
+          execution.finishedAt,
+          JSON.stringify(execution.attempts),
+          execution.runner.id,
+          execution.runner.version,
+          execution.completionReason,
+          JSON.stringify(attestation),
+        ],
+      );
+
+      const storedExecution = await this.#database.query(
+        `SELECT * FROM test_execution WHERE project_id = $1 AND id = $2`,
+        [projectId, execution.id],
+      );
+      const row = storedExecution.rows[0];
+      if (
+        !row ||
+        canonicalJson(executionFromRow(row)) !== canonicalJson(execution) ||
+        canonicalJson(row.runner_attestation) !== canonicalJson(attestation)
+      ) {
+        throw new PersistenceConflictError(`TestExecution ${execution.id} conflicts with an existing record`);
+      }
+
+      for (const item of evidence) {
+        await this.#database.query(
+          `INSERT INTO evidence (
+             project_id, id, execution_id, evidence_type, integrity_status,
+             freshness_status, content_hash, storage_uri, manifest, created_at
+           ) VALUES ($1, $2, $3, $4, 'VERIFIED', $5, $6, $7, $8::jsonb, $9)
+           ON CONFLICT (project_id, id) DO NOTHING`,
+          [
+            projectId,
+            item.id,
+            execution.id,
+            item.type,
+            item.freshness,
+            item.contentHash,
+            item.storageUri,
+            JSON.stringify(item.manifest),
+            item.createdAt,
+          ],
+        );
+        const storedEvidence = await this.#database.query(
+          `SELECT * FROM evidence WHERE project_id = $1 AND id = $2`,
+          [projectId, item.id],
+        );
+        const evidenceRow = storedEvidence.rows[0];
+        const expected = { ...item, integrity: "VERIFIED" };
+        if (!evidenceRow || canonicalJson(evidenceFromRow(evidenceRow)) !== canonicalJson(expected)) {
+          throw new PersistenceConflictError(`Evidence ${item.id} conflicts with an existing record`);
+        }
+      }
+
+      return deepFreeze({
+        executionId: execution.id,
+        evidenceIds: evidence.map((item) => item.id),
+      });
+    });
+  }
+
+  async getExecutionEvidence(projectId, executionId) {
+    requireId(projectId, "projectId");
+    requireId(executionId, "executionId");
+    const executionResult = await this.#database.query(
+      `SELECT * FROM test_execution WHERE project_id = $1 AND id = $2`,
+      [projectId, executionId],
+    );
+    const row = executionResult.rows[0];
+    if (!row) return null;
+    const evidenceResult = await this.#database.query(
+      `SELECT * FROM evidence
+       WHERE project_id = $1 AND execution_id = $2
+       ORDER BY created_at, id`,
+      [projectId, executionId],
+    );
+    return deepFreeze({
+      execution: executionFromRow(row),
+      evidence: evidenceResult.rows.map(evidenceFromRow),
+      attestation: row.runner_attestation,
+    });
   }
 }

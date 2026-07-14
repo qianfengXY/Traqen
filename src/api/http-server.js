@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { PersistenceConflictError } from "../storage/index.js";
+import { PersistenceConflictError, RunnerAttestationError } from "../storage/index.js";
 
 class HttpError extends Error {
   constructor(status, code, message, details) {
@@ -103,6 +103,12 @@ function errorResponse(error, id) {
     return {
       status: 409,
       body: { error: { code: "PERSISTENCE_CONFLICT", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof RunnerAttestationError) {
+    return {
+      status: 401,
+      body: { error: { code: "RUNNER_ATTESTATION_INVALID", message: error.message, requestId: id } },
     };
   }
   return {
@@ -220,6 +226,27 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
         );
         if (!validation) throw new HttpError(404, "TEST_SPEC_NOT_FOUND", "TestSpec was not found");
         sendJson(response, 200, validation, id);
+        return;
+      }
+
+      const executionCollectionMatch = /^\/v1\/projects\/([^/]+)\/test-executions$/.exec(url.pathname);
+      if (request.method === "POST" && executionCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(executionCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const stored = await application.ingestExecutionEvidence(projectId, input);
+        sendJson(response, 201, stored, id);
+        return;
+      }
+
+      const executionEvidenceMatch =
+        /^\/v1\/projects\/([^/]+)\/test-executions\/([^/]+)\/evidence$/.exec(url.pathname);
+      if (request.method === "GET" && executionEvidenceMatch) {
+        const projectId = decodePathSegment(executionEvidenceMatch[1]);
+        const executionId = decodePathSegment(executionEvidenceMatch[2]);
+        const bundle = await application.getExecutionEvidence(projectId, executionId);
+        if (!bundle) throw new HttpError(404, "TEST_EXECUTION_NOT_FOUND", "TestExecution was not found");
+        sendJson(response, 200, bundle, id);
         return;
       }
 

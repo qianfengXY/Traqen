@@ -78,7 +78,7 @@
     },
     "FeatureBaseline": {
       "type": "object",
-      "required": ["feature", "claims", "testSpecs", "traceChains"],
+      "required": ["feature", "claims", "testSpecs", "testExecutions", "traceChains"],
       "properties": {
         "feature": { "$ref": "#/$defs/FeatureVersion" },
         "claims": {
@@ -98,6 +98,10 @@
         "testSpecs": {
           "type": "array",
           "items": { "$ref": "./test-spec.schema.json" }
+        },
+        "testExecutions": {
+          "type": "array",
+          "items": { "$ref": "./execution-evidence.schema.json#/$defs/TestExecutionSummary" }
         },
         "traceChains": { "type": "array", "items": { "type": "object" } }
       },
