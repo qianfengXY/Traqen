@@ -163,13 +163,50 @@ function errorResponse(error, id) {
   };
 }
 
-export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024 * 1024 }) {
+function normalizeCorsOrigins(value) {
+  if (!Array.isArray(value)) throw new TypeError("corsAllowedOrigins must be an array");
+  return new Set(value.map((origin, index) => {
+    if (typeof origin !== "string" || origin.trim() === "" || origin === "*") {
+      throw new TypeError(`corsAllowedOrigins[${index}] must be an explicit origin`);
+    }
+    const url = new URL(origin);
+    if (url.origin !== origin || url.username || url.password) {
+      throw new TypeError(`corsAllowedOrigins[${index}] must contain only scheme, host, and port`);
+    }
+    return origin;
+  }));
+}
+
+function applyCors(request, response, allowedOrigins) {
+  const origin = request.headers.origin;
+  if (typeof origin !== "string" || !allowedOrigins.has(origin)) return false;
+  response.setHeader("access-control-allow-origin", origin);
+  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  response.setHeader("access-control-allow-headers", "authorization, content-type, x-request-id");
+  response.setHeader("access-control-expose-headers", "x-request-id");
+  response.setHeader("vary", "Origin");
+  return true;
+}
+
+export function createTraceabilityHttpHandler({
+  application,
+  maxBodyBytes = 1024 * 1024,
+  corsAllowedOrigins = [],
+}) {
   if (!application) throw new TypeError("application is required");
+  const allowedOrigins = normalizeCorsOrigins(corsAllowedOrigins);
 
   return async function traceabilityHttpHandler(request, response) {
     const id = requestId(request);
+    applyCors(request, response, allowedOrigins);
     try {
       const url = new URL(request.url, "http://localhost");
+
+      if (request.method === "OPTIONS") {
+        response.writeHead(204, { "cache-control": "no-store", "x-request-id": id });
+        response.end();
+        return;
+      }
 
       if (request.method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, { status: "ok" }, id);

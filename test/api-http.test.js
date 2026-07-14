@@ -74,6 +74,34 @@ test("health endpoint returns a request correlation ID", async (t) => {
   assert.deepEqual(await response.json(), { status: "ok" });
 });
 
+test("browser product origins are explicit and preflight never grants an unknown origin", async (t) => {
+  await assert.rejects(startServer(t, { corsAllowedOrigins: ["*"] }), /explicit origin/);
+  await assert.rejects(startServer(t, { corsAllowedOrigins: ["https://traqen.example/path"] }), /scheme, host, and port/);
+  const baseUrl = await startServer(t, { corsAllowedOrigins: ["https://traqen.example"] });
+  const allowed = await fetch(`${baseUrl}/health`, {
+    headers: { origin: "https://traqen.example" },
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal(allowed.headers.get("access-control-allow-origin"), "https://traqen.example");
+  assert.equal(allowed.headers.get("vary"), "Origin");
+
+  const preflight = await fetch(`${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/traceability`, {
+    method: "OPTIONS",
+    headers: {
+      origin: "https://traqen.example",
+      "access-control-request-method": "GET",
+    },
+  });
+  assert.equal(preflight.status, 204);
+  assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
+
+  const unknown = await fetch(`${baseUrl}/health`, {
+    headers: { origin: "https://unknown.example" },
+  });
+  assert.equal(unknown.status, 200);
+  assert.equal(unknown.headers.get("access-control-allow-origin"), null);
+});
+
 test("evaluation endpoint returns the independent trace-chain dimensions", async (t) => {
   const baseUrl = await startServer(t);
   const response = await fetch(`${baseUrl}/v1/trace-chains/evaluate`, {

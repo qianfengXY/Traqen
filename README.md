@@ -107,6 +107,15 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - append-only PostgreSQL migrations through `0007_change_impact`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
+The product-interface slice adds:
+
+- a responsive Feature traceability workbench under `web/` that leads with “why the current deployment is trusted” rather than a composite quality score;
+- independent authority, conformance, verification, freshness, and conflict status cards;
+- an ordered Claim, Scope, Decision, implementation/data/config, TestSpec, assertion, execution, and Evidence chain with node provenance;
+- explicit TraceGap ownership, an authenticated statement-level human review flow, and API-backed Snapshot history comparison with change-impact repair guidance;
+- an explicitly labelled synthetic demonstration plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
+- an explicit CORS origin allowlist for connecting the browser product to a Traqen API.
+
 The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision, candidate-review, and TestSpec-approval routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation level and route, names a trusted fixture protocol, permits its cleanup strategy, and the Runner has the matching local handler. DELETE, destructive execution, external side effects, TestSpec SQL, arbitrary fixture code, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
 
 ## Run
@@ -116,6 +125,7 @@ Requires Node.js 20 or newer.
 ```bash
 npm test
 npm run test:storage
+npm run test:web
 npm run example
 npm run scan:self
 npm run api:dev

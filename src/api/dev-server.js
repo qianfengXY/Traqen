@@ -20,6 +20,10 @@ const skillPublisherSharedSecret = process.env.SKILL_PUBLISHER_SHARED_SECRET ?? 
 const reviewerId = process.env.REVIEWER_ID ?? null;
 const reviewerRole = process.env.REVIEWER_ROLE ?? "business-owner";
 const reviewerBearerToken = process.env.REVIEWER_BEARER_TOKEN ?? null;
+const corsAllowedOrigins = (process.env.CORS_ALLOWED_ORIGINS ?? "http://localhost:3000")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 const referenceSkills = createReferenceSkillSet();
 const installedSkills = new Map(
   referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
@@ -58,7 +62,7 @@ const application = new TraceabilityApplication({
     allowedTestSpecApproverRoles: [reviewerRole],
   }),
 });
-const server = createTraceabilityHttpServer({ application });
+const server = createTraceabilityHttpServer({ application, corsAllowedOrigins });
 
 server.listen(port, host, () => {
   const address = server.address();

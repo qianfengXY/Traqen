@@ -10,6 +10,9 @@
     "test": "node --test test/*.test.js",
     "test:storage": "node --test test/storage-migrations.test.js",
     "test:runner": "node --test test/runner.test.js",
+    "test:web": "npm --prefix web test",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
     "api:dev": "node src/api/dev-server.js",
     "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json",
     "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary"
