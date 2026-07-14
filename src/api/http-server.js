@@ -1,6 +1,11 @@
 import { createServer } from "node:http";
 import { randomUUID } from "node:crypto";
-import { PersistenceConflictError, RunnerAttestationError, ScannerAttestationError } from "../storage/index.js";
+import {
+  PersistenceConflictError,
+  RunnerAttestationError,
+  ScannerAttestationError,
+  SkillAttestationError,
+} from "../storage/index.js";
 
 class HttpError extends Error {
   constructor(status, code, message, details) {
@@ -130,6 +135,12 @@ function errorResponse(error, id) {
     return {
       status: 401,
       body: { error: { code: "SCANNER_ATTESTATION_INVALID", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof SkillAttestationError) {
+    return {
+      status: 401,
+      body: { error: { code: "SKILL_ATTESTATION_INVALID", message: error.message, requestId: id } },
     };
   }
   return {
@@ -292,6 +303,37 @@ export function createTraceabilityHttpHandler({ application, maxBodyBytes = 1024
           limit: optionalLimit(url),
         });
         sendJson(response, 200, graph, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/skills" && request.method === "POST") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        const registration = await application.registerReverseSkill(input);
+        sendJson(response, 201, registration, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/skills" && request.method === "GET") {
+        sendJson(response, 200, { skills: await application.listReverseSkills() }, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/reverse-runs" && request.method === "POST") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        const run = await application.executeReverseRun(input);
+        sendJson(response, 201, run, id);
+        return;
+      }
+
+      const reverseRunMatch = /^\/v1\/projects\/([^/]+)\/reverse-runs\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && reverseRunMatch) {
+        const projectId = decodePathSegment(reverseRunMatch[1]);
+        const runId = decodePathSegment(reverseRunMatch[2]);
+        const run = await application.getReverseRun(projectId, runId);
+        if (!run) throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run was not found");
+        sendJson(response, 200, run, id);
         return;
       }
 

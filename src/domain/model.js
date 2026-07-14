@@ -75,6 +75,58 @@ export const FactPredicate = enumValues([
   "EXERCISES",
 ]);
 
+export const ReverseSkillCapability = enumValues([
+  "ARCHITECTURE_REVERSE",
+  "FEATURE_DISCOVERY",
+  "DOMAIN_MODELING",
+  "BUSINESS_RULE_MINING",
+  "STATE_MACHINE_RECOVERY",
+  "PERMISSION_ANALYSIS",
+  "DATA_SEMANTICS",
+  "CONFIGURATION_ANALYSIS",
+  "TEST_INVENTORY_REVIEW",
+  "TEST_DESIGN",
+  "RUNTIME_CORRELATION",
+  "CHANGE_IMPACT",
+  "REVERSE_REVIEW",
+]);
+
+export const ReverseArtifactType = enumValues([
+  "CANDIDATE_FEATURE",
+  "CANDIDATE_CLAIM",
+  "CANDIDATE_TEST_SPEC",
+  "EVIDENCE_LINK",
+  "OPEN_QUESTION",
+]);
+
+export const ReverseConfidence = enumValues(["LOW", "MEDIUM", "HIGH"]);
+
+export const ReverseRunStatus = enumValues([
+  "CREATED",
+  "FACT_SCANNING",
+  "SKILL_PLANNING",
+  "SKILL_RUNNING",
+  "NORMALIZING",
+  "CONFLICT_ANALYSIS",
+  "WAITING_REVIEW",
+  "BASELINED",
+  "COMPLETED",
+  "FAILED",
+  "CANCELLED",
+]);
+
+export const ReverseSkillStatus = enumValues(["ALLOWED", "OBSERVE", "BLOCKED"]);
+
+export const ConstraintOperator = enumValues([
+  "EQUALS",
+  "NOT_EQUALS",
+  "IN",
+  "NOT_IN",
+  "ALLOWS",
+  "FORBIDS",
+  "REQUIRES",
+]);
+
 export const AuthorityStatus = enumValues([
   "UNREVIEWED",
   "CONFIRMED",

@@ -11,9 +11,11 @@ import {
   evaluateTraceChain,
   signExecutionEvidenceBundle,
   signFactBundle,
+  signReverseSkillManifest,
 } from "../src/domain/index.js";
 import { applyMigrations } from "../src/storage/postgres/migrations.js";
 import { PostgresTraceabilityStore } from "../src/storage/postgres/postgres-traceability-store.js";
+import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../src/skills/index.js";
 import { completeInput, fixedClock } from "./fixtures.js";
 
 const migrationsDirectory = fileURLToPath(new URL("../db/migrations", import.meta.url));
@@ -26,6 +28,7 @@ async function migratedDatabase() {
     "0002_governance_integrity",
     "0003_runner_attestation",
     "0004_fact_graph",
+    "0005_reverse_skill_framework",
   ]);
   return database;
 }
@@ -237,6 +240,11 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "fact_bundle",
     "fact_node",
     "fact_edge",
+    "reverse_skill_registration",
+    "reverse_run",
+    "reverse_skill_execution",
+    "reverse_conflict",
+    "reverse_open_question",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }
@@ -861,6 +869,124 @@ test("PostgreSQL persists signed fact graphs as immutable snapshot evidence", as
   );
   await assert.rejects(
     database.query("DELETE FROM fact_bundle WHERE project_id = $1", ["PROJECT-001"]),
+    /append-only; UPDATE and DELETE are forbidden/,
+  );
+});
+
+test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidates, and run audit", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await insertSnapshot(database);
+  const scannerSecret = "scanner-secret";
+  const publisherSecret = "publisher-secret";
+  const referenceSkills = createReferenceSkillSet();
+  let applicationNow = "2026-07-14T10:00:00.000Z";
+  const installed = new Map(
+    referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
+  );
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: () => new Date(applicationNow),
+    scannerKeyResolver: (scannerId) => (scannerId === "SCANNER-001" ? scannerSecret : null),
+    publisherKeyResolver: (publisher) => (publisher === "TRAQEN" ? publisherSecret : null),
+    installedSkillResolver: (skillId, version) => installed.get(`${skillId}\u0000${version}`) ?? null,
+    skillPolicyResolver: () => ({
+      allowedSkillIds: referenceSkills.map(({ adapter }) => adapter.id),
+      allowedPublishers: ["TRAQEN"],
+      maxSkills: 2,
+      maxAttempts: 1,
+    }),
+    reverseOrchestrator: new ReverseSkillOrchestrator({
+      adapters: referenceSkills.map(({ adapter }) => adapter),
+      clock: () => new Date("2026-07-14T10:00:00.000Z"),
+    }),
+  });
+  const source = {
+    artifact: "src/orders.js",
+    startLine: 1,
+    endLine: 4,
+    contentHash: `sha256:${"e".repeat(64)}`,
+  };
+  const bundle = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    sourceComponentId: "SOURCE-001",
+    sourceDigest: `sha256:${"f".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T09:55:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [{
+      type: "ENDPOINT",
+      naturalKey: "http:POST /orders/{id}/submit",
+      name: "POST /orders/{id}/submit",
+      attributes: { method: "POST", path: "/orders/{id}/submit" },
+      source,
+    }],
+    edges: [],
+  });
+  await application.ingestFactBundle("PROJECT-001", signFactBundle(bundle, scannerSecret));
+
+  for (const item of referenceSkills) {
+    await application.registerReverseSkill({
+      ...signReverseSkillManifest(item.manifest, publisherSecret),
+      status: "ALLOWED",
+    });
+  }
+  const run = await application.executeReverseRun({
+    id: "REVERSE-RUN-DB-001",
+    projectId: "PROJECT-001",
+    snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+    sourceComponentId: "SOURCE-001",
+    factBundleIds: [bundle.id],
+    skills: referenceSkills.map(({ adapter }) => ({ id: adapter.id, version: adapter.version })),
+    taskScope: { nodeTypes: ["ENDPOINT"] },
+  });
+
+  assert.equal(run.status, "WAITING_REVIEW");
+  assert.equal(run.mergedOutput.candidateFeatures[0].sources.length, 2);
+  assert.deepEqual(await application.getReverseRun("PROJECT-001", run.id), run);
+  const executionRows = await database.query(
+    `SELECT skill_id, status, raw_output IS NOT NULL AS has_raw,
+            normalized_output IS NOT NULL AS has_normalized
+     FROM reverse_skill_execution
+     WHERE project_id = $1 AND run_id = $2
+     ORDER BY skill_id`,
+    ["PROJECT-001", run.id],
+  );
+  assert.equal(executionRows.rows.length, 2);
+  assert.ok(executionRows.rows.every((row) => row.status === "COMPLETED" && row.has_raw && row.has_normalized));
+  const eventRows = await database.query(
+    "SELECT status FROM reverse_run_event WHERE project_id = $1 AND run_id = $2 ORDER BY sequence",
+    ["PROJECT-001", run.id],
+  );
+  assert.deepEqual(eventRows.rows.map((row) => row.status), run.statusHistory.map((event) => event.status));
+
+  applicationNow = "2026-07-14T10:01:00.000Z";
+  await application.registerReverseSkill({
+    ...signReverseSkillManifest(referenceSkills[0].manifest, publisherSecret),
+    status: "BLOCKED",
+  });
+  const currentSkills = await application.listReverseSkills();
+  assert.equal(
+    currentSkills.find((registration) => registration.manifest.metadata.id === referenceSkills[0].adapter.id).status,
+    "BLOCKED",
+  );
+  await assert.rejects(
+    application.executeReverseRun({
+      id: "REVERSE-RUN-BLOCKED-DB",
+      projectId: "PROJECT-001",
+      snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+      sourceComponentId: "SOURCE-001",
+      factBundleIds: [bundle.id],
+      skills: [{ id: referenceSkills[0].adapter.id, version: referenceSkills[0].adapter.version }],
+      taskScope: { nodeTypes: ["ENDPOINT"] },
+    }),
+    /is blocked/,
+  );
+  await assert.rejects(
+    database.query("DELETE FROM reverse_skill_execution WHERE project_id = $1", ["PROJECT-001"]),
     /append-only; UPDATE and DELETE are forbidden/,
   );
 });

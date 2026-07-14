@@ -28,6 +28,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #evidence = new Map();
   #evidenceHashes = new Map();
   #factBundles = new Map();
+  #reverseSkills = new Map();
+  #reverseSkillSequence = new Map();
+  #nextReverseSkillSequence = 0;
+  #reverseRuns = new Map();
 
   async appendSnapshotManifest(projectId, manifest) {
     const storageKey = key(projectId, manifest.id);
@@ -405,5 +409,66 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       truncated,
       edgesTruncated: matchingEdges.length > edgeLimit,
     });
+  }
+
+  async getFactBundles(projectId, bundleIds) {
+    const bundles = bundleIds.map((bundleId) => this.#factBundles.get(key(projectId, bundleId)) ?? null);
+    if (bundles.some((bundle) => bundle === null)) return null;
+    return deepFreeze(structuredClone(bundles));
+  }
+
+  async appendReverseSkillRegistration(registration) {
+    const storageKey = registration.id;
+    const existing = this.#reverseSkills.get(storageKey);
+    if (existing && canonicalJson(existing) !== canonicalJson(registration)) {
+      throw new PersistenceConflictError(
+        `ReverseSkill ${registration.manifest.metadata.id}@${registration.manifest.metadata.version} conflicts with an existing registration`,
+      );
+    }
+    if (!existing) {
+      this.#reverseSkills.set(storageKey, deepFreeze(structuredClone(registration)));
+      this.#nextReverseSkillSequence += 1;
+      this.#reverseSkillSequence.set(storageKey, this.#nextReverseSkillSequence);
+    }
+    return registration;
+  }
+
+  async listReverseSkills() {
+    const latest = new Map();
+    for (const registration of [...this.#reverseSkills.values()].sort((left, right) =>
+      this.#reverseSkillSequence.get(right.id) - this.#reverseSkillSequence.get(left.id),
+    )) {
+      const identity = `${registration.manifest.metadata.id}\u0000${registration.manifest.metadata.version}`;
+      if (!latest.has(identity)) latest.set(identity, registration);
+    }
+    return deepFreeze([...latest.values()].map((registration) => structuredClone(registration)));
+  }
+
+  async getReverseSkillRegistration(skillId, version = null) {
+    return (
+      [...this.#reverseSkills.values()]
+        .filter(
+          (registration) =>
+            registration.manifest.metadata.id === skillId &&
+            (version === null || registration.manifest.metadata.version === version),
+        )
+        .sort((left, right) =>
+          this.#reverseSkillSequence.get(right.id) - this.#reverseSkillSequence.get(left.id),
+        )[0] ?? null
+    );
+  }
+
+  async appendReverseRun(projectId, run) {
+    const storageKey = key(projectId, run.id);
+    const existing = this.#reverseRuns.get(storageKey);
+    if (existing && canonicalJson(existing) !== canonicalJson(run)) {
+      throw new PersistenceConflictError(`ReverseRun ${run.id} conflicts with an existing immutable record`);
+    }
+    if (!existing) this.#reverseRuns.set(storageKey, deepFreeze(structuredClone(run)));
+    return deepFreeze({ runId: run.id, status: run.status });
+  }
+
+  async getReverseRun(projectId, runId) {
+    return this.#reverseRuns.get(key(projectId, runId)) ?? null;
   }
 }

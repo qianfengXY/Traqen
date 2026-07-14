@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/reverse-skill-v1alpha1.json",
+  "title": "ReverseSkillRegistration",
+  "type": "object",
+  "required": [
+    "apiVersion", "kind", "metadata", "capabilities", "compatibility", "inputs",
+    "outputs", "permissions", "model", "execution", "status", "attestation"
+  ],
+  "properties": {
+    "apiVersion": { "const": "quality.traqen/v1alpha1" },
+    "kind": { "const": "ReverseSkill" },
+    "metadata": { "$ref": "#/$defs/Metadata" },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/Capability" }
+    },
+    "compatibility": {
+      "type": "object",
+      "required": ["languages", "frameworks", "factSchema"],
+      "properties": {
+        "languages": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "frameworks": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "factSchema": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "inputs": {
+      "type": "object",
+      "required": ["required", "optional"],
+      "properties": {
+        "required": { "type": "array", "minItems": 2, "uniqueItems": true, "items": { "$ref": "#/$defs/InputType" } },
+        "optional": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/InputType" } }
+      },
+      "additionalProperties": false
+    },
+    "outputs": {
+      "type": "object",
+      "required": ["schema", "types"],
+      "properties": {
+        "schema": { "const": "reverse-artifact-bundle/v1alpha1" },
+        "types": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/OutputType" } }
+      },
+      "additionalProperties": false
+    },
+    "permissions": {
+      "type": "object",
+      "required": ["filesystem", "database", "network", "shell", "secrets"],
+      "properties": {
+        "filesystem": { "enum": ["NONE", "READ_ONLY"] },
+        "database": { "enum": ["NONE", "READ_ONLY"] },
+        "network": { "enum": ["NONE", "ALLOWLISTED"] },
+        "shell": { "const": "NONE" },
+        "secrets": { "const": "NONE" }
+      },
+      "additionalProperties": false
+    },
+    "model": {
+      "type": "object",
+      "required": ["required", "allowedProfiles", "contextStrategy"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "allowedProfiles": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "contextStrategy": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": ["timeoutMinutes", "costClass", "supportsIncremental", "maxOutputCandidates"],
+      "properties": {
+        "timeoutMinutes": { "type": "integer", "minimum": 1, "maximum": 30 },
+        "costClass": { "type": "string", "minLength": 1 },
+        "supportsIncremental": { "type": "boolean" },
+        "maxOutputCandidates": { "type": "integer", "minimum": 1, "maximum": 5000 }
+      },
+      "additionalProperties": false
+    },
+    "status": { "enum": ["ALLOWED", "OBSERVE", "BLOCKED"] },
+    "attestation": { "$ref": "#/$defs/PublisherAttestation" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Metadata": {
+      "type": "object",
+      "required": ["id", "name", "version", "publisher", "artifactDigest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$" },
+        "publisher": { "type": "string", "minLength": 1 },
+        "artifactDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "Capability": {
+      "enum": [
+        "ARCHITECTURE_REVERSE", "FEATURE_DISCOVERY", "DOMAIN_MODELING", "BUSINESS_RULE_MINING",
+        "STATE_MACHINE_RECOVERY", "PERMISSION_ANALYSIS", "DATA_SEMANTICS", "CONFIGURATION_ANALYSIS",
+        "TEST_INVENTORY_REVIEW", "TEST_DESIGN", "RUNTIME_CORRELATION", "CHANGE_IMPACT", "REVERSE_REVIEW"
+      ]
+    },
+    "InputType": {
+      "enum": [
+        "PROJECT_SNAPSHOT", "CODE_FACT_BUNDLE", "DATABASE_FACT_BUNDLE",
+        "EXISTING_TEST_BUNDLE", "RUNTIME_FACT_BUNDLE"
+      ]
+    },
+    "OutputType": {
+      "enum": ["CANDIDATE_FEATURE", "CANDIDATE_CLAIM", "CANDIDATE_TEST_SPEC", "EVIDENCE_LINK", "OPEN_QUESTION"]
+    },
+    "PublisherAttestation": {
+      "type": "object",
+      "required": ["algorithm", "publisher", "signature"],
+      "properties": {
+        "algorithm": { "const": "HMAC-SHA256" },
+        "publisher": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "StoredRegistration": {
+      "type": "object",
+      "required": ["id", "manifest", "status", "attestation", "registeredAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "manifest": { "type": "object" },
+        "status": { "enum": ["ALLOWED", "OBSERVE", "BLOCKED"] },
+        "attestation": { "$ref": "#/$defs/PublisherAttestation" },
+        "registeredAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

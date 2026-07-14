@@ -54,4 +54,28 @@ export class TraceabilityStore {
   async queryFacts(_projectId, _filters = {}) {
     throw new Error("queryFacts must be implemented");
   }
+
+  async getFactBundles(_projectId, _bundleIds) {
+    throw new Error("getFactBundles must be implemented");
+  }
+
+  async appendReverseSkillRegistration(_registration) {
+    throw new Error("appendReverseSkillRegistration must be implemented");
+  }
+
+  async listReverseSkills() {
+    throw new Error("listReverseSkills must be implemented");
+  }
+
+  async getReverseSkillRegistration(_skillId, _version = null) {
+    throw new Error("getReverseSkillRegistration must be implemented");
+  }
+
+  async appendReverseRun(_projectId, _run) {
+    throw new Error("appendReverseRun must be implemented");
+  }
+
+  async getReverseRun(_projectId, _runId) {
+    throw new Error("getReverseRun must be implemented");
+  }
 }

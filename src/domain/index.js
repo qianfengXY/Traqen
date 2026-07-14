@@ -4,6 +4,7 @@ export * from "./test-spec.js";
 export * from "./execution-evidence.js";
 export * from "./facts.js";
 export * from "./invalidation.js";
+export * from "./reverse-skill.js";
 export * from "./model.js";
 export * from "./snapshot-manifest.js";
 export * from "./trace-chain.js";

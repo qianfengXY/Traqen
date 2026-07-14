@@ -69,6 +69,13 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "ingestFactBundle",
   );
   assert.equal(contract.paths["/v1/projects/{projectId}/facts"].get.operationId, "queryFacts");
+  assert.equal(contract.paths["/v1/skills"].post.operationId, "registerReverseSkill");
+  assert.equal(contract.paths["/v1/skills"].get.operationId, "listReverseSkills");
+  assert.equal(contract.paths["/v1/reverse-runs"].post.operationId, "executeReverseRun");
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}"].get.operationId,
+    "getReverseRun",
+  );
 });
 
 test("FactBundle contract keeps facts locatable, snapshot-bound, and scanner-attested", async () => {
@@ -83,6 +90,24 @@ test("FactBundle contract keeps facts locatable, snapshot-bound, and scanner-att
   assert.deepEqual(contract.$defs.SourceLocation.required, ["artifact", "startLine", "endLine", "contentHash"]);
   assert.ok(contract.$defs.FactNode.properties.type.enum.includes("ENDPOINT"));
   assert.ok(contract.$defs.FactEdge.properties.predicate.enum.includes("IMPLEMENTED_BY"));
+});
+
+test("Reverse Skill contracts bind supply-chain permissions, structured output, and audit history", async () => {
+  const skill = JSON.parse(
+    await readFile(new URL("../contracts/reverse-skill.schema.json", import.meta.url), "utf8"),
+  );
+  const run = JSON.parse(
+    await readFile(new URL("../contracts/reverse-run.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(skill.title, "ReverseSkillRegistration");
+  assert.ok(skill.required.includes("attestation"));
+  assert.equal(skill.properties.permissions.properties.shell.const, "NONE");
+  assert.ok(skill.properties.capabilities.items.$ref);
+  assert.equal(run.title, "ReverseRunRequest");
+  assert.ok(run.required.includes("factBundleIds"));
+  assert.ok(run.$defs.ReverseRun.required.includes("statusHistory"));
+  assert.ok(run.$defs.ReverseArtifactBundle.required.includes("rawOutputHash"));
 });
 
 test("governance contract defines immutable version fields", async () => {

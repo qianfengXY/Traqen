@@ -80,7 +80,19 @@ The deterministic fact-foundation slice adds:
 - append-only memory and PostgreSQL storage plus a filtered one-hop fact graph API;
 - a self-scan command and a checked-in scanner validation report.
 
-The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise Runner/Scanner identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Production authentication, runtime PostgreSQL wiring, additional language scanners, OpenAPI YAML extraction, and LLM-assisted extraction are not part of this slice.
+The Reverse Skill Framework slice adds:
+
+- signed, versioned Skill Manifests with declared compatibility, structured input/output types, least-privilege permissions, model profiles, timeouts, and output caps;
+- append-only `ALLOWED`/`OBSERVE`/`BLOCKED` supply-chain registration events bound to an installed adapter artifact digest;
+- controlled, reproducibly hashed and server-size-bounded Fact input packages whose task scopes cannot escape the selected Snapshot Manifest and Source Snapshot;
+- two replaceable built-in Specone- and GSD-compatible reference adapters that emit only candidate implementation knowledge from deterministic facts;
+- timeout, retry, cancellation-signal, sensitive-output, undeclared-output, incomplete-fact, publisher, model, and policy checks;
+- canonical structured candidate output with mandatory fact provenance and separately preserved raw output;
+- exact deterministic deduplication that preserves every source, plus scope-aware explicit conflicts and open questions instead of majority voting;
+- append-only PostgreSQL run events, per-Skill attempts, raw and normalized outputs, conflicts, and open questions;
+- APIs for Skill registration/listing and synchronous bounded Reverse Runs.
+
+The development server remains intentionally unauthenticated and in-memory. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
 
 ## Run
 
@@ -112,5 +124,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 ```
 
 The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
+
+Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions for the later human-governance flow.
 
 The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md).

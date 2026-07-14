@@ -3,7 +3,7 @@
   "info": {
     "title": "Traqen Traceability API",
     "version": "0.1.0",
-    "description": "API for deterministic trace-chain evaluation, append-only business governance, TestSpec validation, and attested execution Evidence ingestion. The development server is intentionally unauthenticated."
+    "description": "API for deterministic fact ingestion, controlled Reverse Skill runs, trace-chain evaluation, append-only business governance, TestSpec validation, and attested execution Evidence ingestion. The development server is intentionally unauthenticated."
   },
   "paths": {
     "/health": {
@@ -291,6 +291,67 @@
           "400": { "$ref": "#/components/responses/BadRequest" }
         }
       }
+    },
+    "/v1/skills": {
+      "get": {
+        "operationId": "listReverseSkills",
+        "responses": {
+          "200": {
+            "description": "Current registration state for every installed Skill version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["skills"],
+                  "properties": {
+                    "skills": {
+                      "type": "array",
+                      "items": { "$ref": "./reverse-skill.schema.json#/$defs/StoredRegistration" }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerReverseSkill",
+        "requestBody": { "$ref": "#/components/requestBodies/ReverseSkillRegistration" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ReverseSkillRegistered" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/SkillUnauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/reverse-runs": {
+      "post": {
+        "operationId": "executeReverseRun",
+        "requestBody": { "$ref": "#/components/requestBodies/ReverseRun" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ReverseRunFound" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "get": {
+        "operationId": "getReverseRun",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReverseRunFound" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
     }
   },
   "components": {
@@ -321,6 +382,12 @@
       },
       "ExecutionId": {
         "name": "executionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "ReverseRunId": {
+        "name": "runId",
         "in": "path",
         "required": true,
         "schema": { "type": "string", "minLength": 1 }
@@ -365,6 +432,18 @@
         "required": true,
         "content": {
           "application/json": { "schema": { "$ref": "./fact-bundle.schema.json" } }
+        }
+      },
+      "ReverseSkillRegistration": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./reverse-skill.schema.json" } }
+        }
+      },
+      "ReverseRun": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./reverse-run.schema.json" } }
         }
       }
     },
@@ -415,6 +494,10 @@
       },
       "ScannerUnauthorized": {
         "description": "Scanner attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "SkillUnauthorized": {
+        "description": "Skill publisher attestation is missing, unknown, or invalid",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "FeatureVersionCreated": {
@@ -470,6 +553,22 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./fact-bundle.schema.json#/$defs/StoredFactBundle" }
+          }
+        }
+      },
+      "ReverseSkillRegistered": {
+        "description": "Signed installed Skill registration appended",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./reverse-skill.schema.json#/$defs/StoredRegistration" }
+          }
+        }
+      },
+      "ReverseRunFound": {
+        "description": "Reverse run with raw/normalized Skill outputs, merge results, conflicts, and audit history",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./reverse-run.schema.json#/$defs/ReverseRun" }
           }
         }
       }

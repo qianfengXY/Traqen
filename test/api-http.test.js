@@ -9,8 +9,10 @@ import {
   createFactBundle,
   signExecutionEvidenceBundle,
   signFactBundle,
+  signReverseSkillManifest,
 } from "../src/domain/index.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
+import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../src/skills/index.js";
 
 const fixedClock = () => new Date("2026-07-14T04:00:00.000Z");
 
@@ -19,13 +21,25 @@ async function exampleInput() {
 }
 
 async function startServer(t, options = {}) {
-  const { runnerKeyResolver, scannerKeyResolver, ...serverOptions } = options;
+  const {
+    runnerKeyResolver,
+    scannerKeyResolver,
+    publisherKeyResolver,
+    installedSkillResolver,
+    skillPolicyResolver,
+    reverseOrchestrator,
+    ...serverOptions
+  } = options;
   const store = new MemoryTraceabilityStore();
   const application = new TraceabilityApplication({
     store,
     clock: fixedClock,
     runnerKeyResolver,
     scannerKeyResolver,
+    publisherKeyResolver,
+    installedSkillResolver,
+    skillPolicyResolver,
+    reverseOrchestrator,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -526,4 +540,155 @@ test("attested fact scans are snapshot-bound and queryable as a one-hop graph", 
   assert.deepEqual(graph.matchedNodeIds, [endpoint.id]);
   assert.equal(graph.nodes.length, 2);
   assert.equal(graph.edges[0].predicate, "CONTAINS");
+});
+
+test("Skill API registers two attested adapters and preserves a reviewable reverse run", async (t) => {
+  const scannerSecret = "scanner-shared-secret";
+  const publisherSecret = "publisher-shared-secret";
+  const referenceSkills = createReferenceSkillSet();
+  const installed = new Map(
+    referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
+  );
+  const baseUrl = await startServer(t, {
+    scannerKeyResolver: (scannerId) => (scannerId === "SCANNER-001" ? scannerSecret : null),
+    publisherKeyResolver: (publisher) => (publisher === "TRAQEN" ? publisherSecret : null),
+    installedSkillResolver: (skillId, version) => installed.get(`${skillId}\u0000${version}`) ?? null,
+    skillPolicyResolver: () => ({
+      allowedSkillIds: referenceSkills.map(({ adapter }) => adapter.id),
+      allowedPublishers: ["TRAQEN"],
+      maxSkills: 2,
+      maxAttempts: 1,
+      maxInputNodes: 1,
+    }),
+    reverseOrchestrator: new ReverseSkillOrchestrator({
+      adapters: referenceSkills.map(({ adapter }) => adapter),
+      clock: fixedClock,
+    }),
+  });
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
+  const traceInput = await exampleInput();
+  const persistedTrace = await postJson(`${projectUrl}/trace-chains`, traceInput);
+  const snapshotManifestId = persistedTrace.body.chain.snapshotManifestId;
+  const source = {
+    artifact: "src/orders.js",
+    startLine: 1,
+    endLine: 3,
+    contentHash: `sha256:${"c".repeat(64)}`,
+  };
+  const bundle = createFactBundle({
+    projectId: "PROJECT-001",
+    snapshotManifestId,
+    sourceComponentId: traceInput.snapshotManifest.source.id,
+    sourceDigest: `sha256:${"d".repeat(64)}`,
+    extractor: { id: "SCANNER-001", version: "1.0.0" },
+    observedAt: "2026-07-14T03:55:00.000Z",
+    complete: true,
+    diagnostics: [],
+    nodes: [{
+      type: "ENDPOINT",
+      naturalKey: "http:POST /orders/{id}/submit",
+      name: "POST /orders/{id}/submit",
+      attributes: { method: "POST", path: "/orders/{id}/submit" },
+      source,
+    }],
+    edges: [],
+  });
+  assert.equal((await postJson(`${projectUrl}/fact-scans`, signFactBundle(bundle, scannerSecret))).response.status, 201);
+
+  const forged = {
+    ...signReverseSkillManifest(referenceSkills[0].manifest, publisherSecret),
+    status: "ALLOWED",
+  };
+  forged.attestation = { ...forged.attestation, signature: "0".repeat(64) };
+  const rejected = await postJson(`${baseUrl}/v1/skills`, forged);
+  assert.equal(rejected.response.status, 401);
+  assert.equal(rejected.body.error.code, "SKILL_ATTESTATION_INVALID");
+
+  const clientTimestamp = await postJson(`${baseUrl}/v1/skills`, {
+    ...signReverseSkillManifest(referenceSkills[0].manifest, publisherSecret),
+    status: "ALLOWED",
+    registeredAt: "2099-01-01T00:00:00.000Z",
+  });
+  assert.equal(clientTimestamp.response.status, 400);
+  assert.match(clientTimestamp.body.error.message, /assigned by the server/);
+
+  let firstRegistration;
+  for (const item of referenceSkills) {
+    const registered = await postJson(`${baseUrl}/v1/skills`, {
+      ...signReverseSkillManifest(item.manifest, publisherSecret),
+      status: "ALLOWED",
+    });
+    assert.equal(registered.response.status, 201);
+    firstRegistration ??= registered.body;
+  }
+  const observedRegistration = await postJson(`${baseUrl}/v1/skills`, {
+    ...signReverseSkillManifest(referenceSkills[0].manifest, publisherSecret),
+    status: "OBSERVE",
+  });
+  const allowedAgain = await postJson(`${baseUrl}/v1/skills`, {
+    ...signReverseSkillManifest(referenceSkills[0].manifest, publisherSecret),
+    status: "ALLOWED",
+  });
+  assert.equal(observedRegistration.response.status, 201);
+  assert.equal(allowedAgain.response.status, 201);
+  assert.ok(Date.parse(observedRegistration.body.registeredAt) > Date.parse(firstRegistration.registeredAt));
+  assert.ok(Date.parse(allowedAgain.body.registeredAt) > Date.parse(observedRegistration.body.registeredAt));
+  const skillsResponse = await fetch(`${baseUrl}/v1/skills`);
+  assert.equal(skillsResponse.status, 200);
+  const listedSkills = (await skillsResponse.json()).skills;
+  assert.equal(listedSkills.length, 2);
+  assert.equal(listedSkills.find((skill) => skill.manifest.metadata.id === referenceSkills[0].adapter.id).status, "ALLOWED");
+
+  const runRequest = {
+    id: "REVERSE-RUN-API-001",
+    projectId: "PROJECT-001",
+    snapshotManifestId,
+    sourceComponentId: traceInput.snapshotManifest.source.id,
+    factBundleIds: [bundle.id],
+    skills: referenceSkills.map(({ adapter }) => ({ id: adapter.id, version: adapter.version })),
+    taskScope: { nodeTypes: ["ENDPOINT"] },
+  };
+  const clientPolicy = await postJson(`${baseUrl}/v1/reverse-runs`, {
+    ...runRequest,
+    policyContext: { allowNetwork: true },
+  });
+  assert.equal(clientPolicy.response.status, 400);
+  assert.match(clientPolicy.body.error.message, /assigned by the server/);
+
+  const missingSkillVersion = await postJson(`${baseUrl}/v1/reverse-runs`, {
+    ...runRequest,
+    skills: [{ id: referenceSkills[0].adapter.id }],
+  });
+  assert.equal(missingSkillVersion.response.status, 400);
+  assert.match(missingSkillVersion.body.error.message, /version must be a non-empty string/);
+
+  const duplicateBundles = await postJson(`${baseUrl}/v1/reverse-runs`, {
+    ...runRequest,
+    factBundleIds: [bundle.id, bundle.id],
+  });
+  assert.equal(duplicateBundles.response.status, 400);
+  assert.match(duplicateBundles.body.error.message, /must not contain duplicates/);
+
+  const duplicateSkills = await postJson(`${baseUrl}/v1/reverse-runs`, {
+    ...runRequest,
+    skills: [runRequest.skills[0], runRequest.skills[0]],
+  });
+  assert.equal(duplicateSkills.response.status, 400);
+  assert.match(duplicateSkills.body.error.message, /must not contain duplicates/);
+
+  const raisedInputLimit = await postJson(`${baseUrl}/v1/reverse-runs`, {
+    ...runRequest,
+    maxInputNodes: 2,
+  });
+  assert.equal(raisedInputLimit.response.status, 400);
+  assert.match(raisedInputLimit.body.error.message, /exceeds the server policy/);
+
+  const executed = await postJson(`${baseUrl}/v1/reverse-runs`, runRequest);
+  assert.equal(executed.response.status, 201);
+  assert.equal(executed.body.status, "WAITING_REVIEW");
+  assert.equal(executed.body.mergedOutput.candidateFeatures[0].sources.length, 2);
+
+  const queried = await fetch(`${projectUrl}/reverse-runs/REVERSE-RUN-API-001`);
+  assert.equal(queried.status, 200);
+  assert.deepEqual(await queried.json(), executed.body);
 });

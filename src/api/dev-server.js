@@ -3,6 +3,7 @@ import process from "node:process";
 import { TraceabilityApplication } from "../application/traceability-application.js";
 import { createTraceabilityHttpServer } from "./http-server.js";
 import { MemoryTraceabilityStore } from "../storage/index.js";
+import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number(process.env.PORT ?? 3000);
@@ -14,12 +15,34 @@ const runnerId = process.env.RUNNER_ID ?? null;
 const runnerSharedSecret = process.env.RUNNER_SHARED_SECRET ?? null;
 const scannerId = process.env.SCANNER_ID ?? null;
 const scannerSharedSecret = process.env.SCANNER_SHARED_SECRET ?? null;
+const skillPublisher = process.env.SKILL_PUBLISHER ?? null;
+const skillPublisherSharedSecret = process.env.SKILL_PUBLISHER_SHARED_SECRET ?? null;
+const referenceSkills = createReferenceSkillSet();
+const installedSkills = new Map(
+  referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
+);
 const application = new TraceabilityApplication({
   store: new MemoryTraceabilityStore(),
   runnerKeyResolver: (candidateRunnerId) =>
     runnerId && runnerSharedSecret && candidateRunnerId === runnerId ? runnerSharedSecret : null,
   scannerKeyResolver: (candidateScannerId) =>
     scannerId && scannerSharedSecret && candidateScannerId === scannerId ? scannerSharedSecret : null,
+  publisherKeyResolver: (candidatePublisher) =>
+    skillPublisher && skillPublisherSharedSecret && candidatePublisher === skillPublisher
+      ? skillPublisherSharedSecret
+      : null,
+  installedSkillResolver: (skillId, version) => installedSkills.get(`${skillId}\u0000${version}`) ?? null,
+  skillPolicyResolver: () => ({
+    allowedSkillIds: referenceSkills.map(({ adapter }) => adapter.id),
+    allowedPublishers: ["TRAQEN"],
+    maxSkills: 2,
+    maxAttempts: 1,
+    maxTimeoutMinutes: 1,
+    inputContext: { dataClassification: "LOCAL_DEVELOPMENT" },
+  }),
+  reverseOrchestrator: new ReverseSkillOrchestrator({
+    adapters: referenceSkills.map(({ adapter }) => adapter),
+  }),
 });
 const server = createTraceabilityHttpServer({ application });
 

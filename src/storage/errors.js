@@ -18,3 +18,10 @@ export class ScannerAttestationError extends Error {
     this.name = "ScannerAttestationError";
   }
 }
+
+export class SkillAttestationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "SkillAttestationError";
+  }
+}

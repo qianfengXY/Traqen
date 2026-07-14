@@ -91,6 +91,16 @@ function evidenceFromRow(row) {
   };
 }
 
+function reverseSkillRegistrationFromRow(row) {
+  return {
+    id: row.registration_id,
+    manifest: row.manifest,
+    status: row.supply_status,
+    attestation: row.publisher_attestation,
+    registeredAt: new Date(row.registered_at).toISOString(),
+  };
+}
+
 export class PostgresTraceabilityStore extends TraceabilityStore {
   #database;
 
@@ -1104,5 +1114,222 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       truncated,
       edgesTruncated,
     });
+  }
+
+  async getFactBundles(projectId, bundleIds) {
+    requireId(projectId, "projectId");
+    if (!Array.isArray(bundleIds) || bundleIds.length === 0 || new Set(bundleIds).size !== bundleIds.length) {
+      throw new TypeError("bundleIds must be a non-empty array without duplicates");
+    }
+    bundleIds.forEach((bundleId) => requireId(bundleId, "bundleId"));
+    const [bundleResult, nodeResult, edgeResult] = await Promise.all([
+      this.#database.query(
+        `SELECT * FROM fact_bundle WHERE project_id = $1 AND id = ANY($2::text[])`,
+        [projectId, bundleIds],
+      ),
+      this.#database.query(
+        `SELECT bundle_id, payload FROM fact_node
+         WHERE project_id = $1 AND bundle_id = ANY($2::text[])
+         ORDER BY bundle_id, fact_id`,
+        [projectId, bundleIds],
+      ),
+      this.#database.query(
+        `SELECT bundle_id, payload FROM fact_edge
+         WHERE project_id = $1 AND bundle_id = ANY($2::text[])
+         ORDER BY bundle_id, id`,
+        [projectId, bundleIds],
+      ),
+    ]);
+    if (bundleResult.rows.length !== bundleIds.length) return null;
+    const nodesByBundle = new Map();
+    for (const row of nodeResult.rows) {
+      const nodes = nodesByBundle.get(row.bundle_id) ?? [];
+      nodes.push(row.payload);
+      nodesByBundle.set(row.bundle_id, nodes);
+    }
+    const edgesByBundle = new Map();
+    for (const row of edgeResult.rows) {
+      const edges = edgesByBundle.get(row.bundle_id) ?? [];
+      edges.push(row.payload);
+      edgesByBundle.set(row.bundle_id, edges);
+    }
+    const byId = new Map(bundleResult.rows.map((row) => [row.id, row]));
+    return deepFreeze(bundleIds.map((bundleId) => {
+      const row = byId.get(bundleId);
+      return {
+        id: row.id,
+        projectId,
+        snapshotManifestId: row.snapshot_manifest_id,
+        sourceComponentId: row.source_component_id,
+        sourceDigest: row.source_digest,
+        extractor: { id: row.extractor_id, version: row.extractor_version },
+        observedAt: new Date(row.observed_at).toISOString(),
+        complete: row.complete,
+        diagnostics: row.diagnostics,
+        nodes: nodesByBundle.get(bundleId) ?? [],
+        edges: edgesByBundle.get(bundleId) ?? [],
+        attestation: row.scanner_attestation,
+      };
+    }));
+  }
+
+  async appendReverseSkillRegistration(registration) {
+    const manifest = registration.manifest;
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO reverse_skill_registration (
+           registration_id, skill_id, skill_version, name, publisher, artifact_digest,
+           supply_status, manifest, publisher_attestation, registered_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10)
+         ON CONFLICT (registration_id) DO NOTHING`,
+        [
+          registration.id,
+          manifest.metadata.id,
+          manifest.metadata.version,
+          manifest.metadata.name,
+          manifest.metadata.publisher,
+          manifest.metadata.artifactDigest,
+          registration.status,
+          JSON.stringify(manifest),
+          JSON.stringify(registration.attestation),
+          registration.registeredAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT * FROM reverse_skill_registration WHERE registration_id = $1`,
+        [registration.id],
+      );
+      const row = stored.rows[0];
+      if (!row || canonicalJson(reverseSkillRegistrationFromRow(row)) !== canonicalJson(registration)) {
+        throw new PersistenceConflictError(`ReverseSkill registration ${registration.id} conflicts with an existing record`);
+      }
+      return registration;
+    });
+  }
+
+  async listReverseSkills() {
+    const result = await this.#database.query(
+      `SELECT DISTINCT ON (skill_id, skill_version) *
+       FROM reverse_skill_registration
+       ORDER BY skill_id, skill_version, event_sequence DESC`,
+    );
+    return deepFreeze(result.rows.map(reverseSkillRegistrationFromRow));
+  }
+
+  async getReverseSkillRegistration(skillId, version = null) {
+    requireId(skillId, "skillId");
+    const parameters = version === null ? [skillId] : [skillId, version];
+    const versionPredicate = version === null ? "" : "AND skill_version = $2";
+    const result = await this.#database.query(
+      `SELECT * FROM reverse_skill_registration
+       WHERE skill_id = $1 ${versionPredicate}
+       ORDER BY event_sequence DESC
+       LIMIT 1`,
+      parameters,
+    );
+    return result.rows[0] ? deepFreeze(reverseSkillRegistrationFromRow(result.rows[0])) : null;
+  }
+
+  async appendReverseRun(projectId, run) {
+    requireId(projectId, "projectId");
+    requireId(run?.id, "run.id");
+    return this.#transaction(async () => {
+      const createdAt = run.statusHistory[0].occurredAt;
+      const finishedAt = run.statusHistory.at(-1).occurredAt;
+      await this.#database.query(
+        `INSERT INTO reverse_run (
+           project_id, id, snapshot_manifest_id, source_component_id, input_digest,
+           status, input_package, run_payload, created_at, finished_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [
+          projectId,
+          run.id,
+          run.snapshotManifestId,
+          run.sourceComponentId,
+          run.inputPackage.digest,
+          run.status,
+          JSON.stringify(run.inputPackage),
+          JSON.stringify(run),
+          createdAt,
+          finishedAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT run_payload FROM reverse_run WHERE project_id = $1 AND id = $2`,
+        [projectId, run.id],
+      );
+      if (!stored.rows[0] || canonicalJson(stored.rows[0].run_payload) !== canonicalJson(run)) {
+        throw new PersistenceConflictError(`ReverseRun ${run.id} conflicts with an existing immutable record`);
+      }
+
+      for (const item of run.statusHistory) {
+        await this.#database.query(
+          `INSERT INTO reverse_run_event (project_id, run_id, sequence, status, details, occurred_at)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+           ON CONFLICT (project_id, run_id, sequence) DO NOTHING`,
+          [projectId, run.id, item.sequence, item.status, JSON.stringify(item.details), item.occurredAt],
+        );
+      }
+      for (const skillRun of run.skillRuns) {
+        await this.#database.query(
+          `INSERT INTO reverse_skill_execution (
+             project_id, run_id, skill_id, skill_version, registration_id, status,
+             observe_only, attempts, raw_output, normalized_output
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb)
+           ON CONFLICT (project_id, run_id, skill_id, skill_version) DO NOTHING`,
+          [
+            projectId,
+            run.id,
+            skillRun.skillId,
+            skillRun.skillVersion,
+            skillRun.registrationId,
+            skillRun.status,
+            skillRun.observeOnly,
+            JSON.stringify(skillRun.attempts),
+            skillRun.rawOutput === null ? null : JSON.stringify(skillRun.rawOutput),
+            skillRun.normalizedOutput === null ? null : JSON.stringify(skillRun.normalizedOutput),
+          ],
+        );
+      }
+      for (const conflict of run.mergedOutput?.conflicts ?? []) {
+        await this.#database.query(
+          `INSERT INTO reverse_conflict (
+             project_id, run_id, id, conflict_type, status, candidate_ids, reason, evidence, detected_at
+           ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8::jsonb, $9)
+           ON CONFLICT (project_id, run_id, id) DO NOTHING`,
+          [
+            projectId,
+            run.id,
+            conflict.id,
+            conflict.type,
+            conflict.status,
+            JSON.stringify(conflict.candidateIds),
+            conflict.reason,
+            JSON.stringify(conflict.evidence),
+            conflict.detectedAt,
+          ],
+        );
+      }
+      for (const question of run.mergedOutput?.openQuestions ?? []) {
+        await this.#database.query(
+          `INSERT INTO reverse_open_question (project_id, run_id, id, question, evidence, sources)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb)
+           ON CONFLICT (project_id, run_id, id) DO NOTHING`,
+          [projectId, run.id, question.id, question.question, JSON.stringify(question.evidence), JSON.stringify(question.sources)],
+        );
+      }
+      return deepFreeze({ runId: run.id, status: run.status });
+    });
+  }
+
+  async getReverseRun(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    const result = await this.#database.query(
+      `SELECT run_payload FROM reverse_run WHERE project_id = $1 AND id = $2`,
+      [projectId, runId],
+    );
+    return result.rows[0] ? deepFreeze(result.rows[0].run_payload) : null;
   }
 }
