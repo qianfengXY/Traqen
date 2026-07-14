@@ -39,13 +39,19 @@
       "type": "object",
       "required": [
         "number", "startedAt", "finishedAt", "phaseStatus",
-        "stepResults", "assertionResults", "cleanup"
+        "setup", "stepResults", "assertionResults", "cleanup"
       ],
       "properties": {
         "number": { "type": "integer", "minimum": 1 },
         "startedAt": { "type": "string", "format": "date-time" },
         "finishedAt": { "type": "string", "format": "date-time" },
         "phaseStatus": { "enum": ["PASS", "FAIL", "ERROR", "SKIPPED"] },
+        "setup": {
+          "type": "object",
+          "required": ["status"],
+          "properties": { "status": { "enum": ["PASS", "FAIL", "ERROR", "SKIPPED"] } },
+          "additionalProperties": true
+        },
         "stepResults": { "type": "array", "items": { "type": "object" } },
         "assertionResults": { "type": "array", "items": { "$ref": "#/$defs/AssertionResult" } },
         "cleanup": {

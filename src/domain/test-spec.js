@@ -240,6 +240,126 @@ function sensitiveValueViolations(testSpec) {
   return violations;
 }
 
+function executionProtocolViolations(testSpec) {
+  const violations = [];
+  const stepsById = new Map(testSpec.steps.map((step) => [step.id, step]));
+  for (const [index, step] of testSpec.steps.entries()) {
+    if (step.executor === "DATABASE") {
+      if (Object.hasOwn(step, "sql") || Object.hasOwn(step, "query")) {
+        violations.push(
+          violation(
+            "RAW_SQL_FORBIDDEN",
+            `/steps/${index}`,
+            "Raw SQL is forbidden in TestSpec; use a trusted queryRef",
+          ),
+        );
+      }
+      if (typeof step.queryRef !== "string" || step.queryRef.trim() === "") {
+        violations.push(
+          violation(
+            "QUERY_REF_REQUIRED",
+            `/steps/${index}/queryRef`,
+            "DATABASE steps require a trusted queryRef",
+          ),
+        );
+      }
+    }
+    if (step.executor === "HTTP") {
+      const method = typeof step.method === "string" ? step.method.toUpperCase() : "";
+      if (
+        !method ||
+        typeof step.path !== "string" ||
+        step.path === "" ||
+        /^[a-z][a-z0-9+.-]*:/i.test(step.path) ||
+        step.path.startsWith("//")
+      ) {
+        violations.push(
+          violation(
+            "HTTP_STEP_INVALID",
+            `/steps/${index}`,
+            "HTTP steps require an explicit method and origin-relative path",
+          ),
+        );
+      } else if (
+        testSpec.environment.operationLevel === "SAFE_READ" &&
+        !["GET", "HEAD"].includes(method)
+      ) {
+        violations.push(
+          violation(
+            "OPERATION_METHOD_MISMATCH",
+            `/steps/${index}/method`,
+            `HTTP ${method} is not executable as SAFE_READ`,
+          ),
+        );
+      } else if (
+        testSpec.environment.operationLevel === "CONTROLLED_WRITE" &&
+        !["POST", "PUT", "PATCH"].includes(method)
+      ) {
+        violations.push(
+          violation(
+            "OPERATION_METHOD_MISMATCH",
+            `/steps/${index}/method`,
+            `HTTP ${method} is not executable as CONTROLLED_WRITE`,
+          ),
+        );
+      }
+    }
+  }
+  const assertionExecutors = {
+    HTTP_STATUS: "HTTP",
+    RESPONSE_HEADER: "HTTP",
+    JSON_PATH: "HTTP",
+    DATABASE_ROW_COUNT: "DATABASE",
+    DATABASE_FIELD: "DATABASE",
+  };
+  for (const [index, assertion] of testSpec.assertions.entries()) {
+    const requiredExecutor = assertionExecutors[assertion.type];
+    if (!requiredExecutor) {
+      violations.push(
+        violation(
+          "UNSUPPORTED_ASSERTION",
+          `/assertions/${index}/type`,
+          `Assertion type ${assertion.type} is not supported by this Runner`,
+        ),
+      );
+      continue;
+    }
+    const step = stepsById.get(assertion.stepId);
+    if (!step) {
+      violations.push(
+        violation(
+          "ASSERTION_STEP_REQUIRED",
+          `/assertions/${index}/stepId`,
+          "Assertion must reference an existing TestSpec step",
+        ),
+      );
+    } else if (step.executor !== requiredExecutor) {
+      violations.push(
+        violation(
+          "ASSERTION_EXECUTOR_MISMATCH",
+          `/assertions/${index}/stepId`,
+          `${assertion.type} requires a ${requiredExecutor} step`,
+        ),
+      );
+    }
+    const sensitiveTarget =
+      (assertion.type === "RESPONSE_HEADER" && assertion.name) ||
+      (assertion.type === "JSON_PATH" && assertion.expression) ||
+      (assertion.type === "DATABASE_FIELD" && assertion.field) ||
+      "";
+    if (sensitiveValueName.test(String(sensitiveTarget))) {
+      violations.push(
+        violation(
+          "SENSITIVE_ASSERTION_FORBIDDEN",
+          `/assertions/${index}`,
+          "Assertions must not extract credential, token, cookie, or other sensitive values into Evidence",
+        ),
+      );
+    }
+  }
+  return violations;
+}
+
 export function validateTestSpec(input, clock = () => new Date()) {
   let testSpec;
   try {
@@ -252,7 +372,10 @@ export function validateTestSpec(input, clock = () => new Date()) {
     });
   }
 
-  const violations = sensitiveValueViolations(testSpec);
+  const violations = [
+    ...sensitiveValueViolations(testSpec),
+    ...executionProtocolViolations(testSpec),
+  ];
   if (testSpec.assertions.length === 0) {
     violations.push(violation("NO_ASSERTION", "/assertions", "At least one deterministic assertion is required"));
   }
@@ -264,14 +387,15 @@ export function validateTestSpec(input, clock = () => new Date()) {
     !testSpec.preconditions.some(
       (item) =>
         ["SEED", "SEED_API", "SEED_DATABASE"].includes(item.type) &&
-        (typeof item.seedRef === "string" || typeof item.strategy === "string"),
+        typeof item.seedRef === "string" &&
+        item.seedRef.trim() !== "",
     )
   ) {
     violations.push(
       violation(
         "SEED_REQUIRED",
         "/preconditions",
-        "Controlled writes require an explicit server-recognized Seed protocol",
+        "Controlled writes require an explicit server-recognized Seed protocol reference",
       ),
     );
   }
@@ -296,7 +420,18 @@ export function validateTestSpec(input, clock = () => new Date()) {
   }
 
   return deepFreeze({
-    valid: !violations.some((item) => item.code === "INVALID_TEST_SPEC" || item.code === "RAW_SECRET_FORBIDDEN"),
+    valid: !violations.some((item) => [
+      "INVALID_TEST_SPEC",
+      "RAW_SECRET_FORBIDDEN",
+      "RAW_SQL_FORBIDDEN",
+      "QUERY_REF_REQUIRED",
+      "HTTP_STEP_INVALID",
+      "OPERATION_METHOD_MISMATCH",
+      "UNSUPPORTED_ASSERTION",
+      "ASSERTION_STEP_REQUIRED",
+      "ASSERTION_EXECUTOR_MISMATCH",
+      "SENSITIVE_ASSERTION_FORBIDDEN",
+    ].includes(item.code)),
     executable: violations.length === 0,
     violations,
   });
@@ -305,5 +440,8 @@ export function validateTestSpec(input, clock = () => new Date()) {
 export function assertTestSpecSafeToStore(testSpec) {
   const rawSecretViolation = sensitiveValueViolations(testSpec)[0];
   if (rawSecretViolation) throw new TypeError(rawSecretViolation.message);
+  const unsafeProtocolViolation = executionProtocolViolations(testSpec)
+    .find((item) => ["RAW_SQL_FORBIDDEN", "SENSITIVE_ASSERTION_FORBIDDEN"].includes(item.code));
+  if (unsafeProtocolViolation) throw new TypeError(unsafeProtocolViolation.message);
   return testSpec;
 }

@@ -16,6 +16,15 @@
     "variables": { "type": "object" },
     "headers": { "type": "object" },
     "body": true,
+    "pathParameters": {
+      "type": "object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          { "type": "number" }
+        ]
+      }
+    },
     "cleanup": {
       "oneOf": [
         { "type": "null" },
@@ -26,10 +35,52 @@
           "additionalProperties": true
         }
       ]
+    },
+    "databaseVerification": {
+      "type": "object",
+      "required": ["queryRef", "assertions"],
+      "properties": {
+        "stepId": { "type": "string", "minLength": 1 },
+        "queryRef": { "type": "string", "minLength": 1 },
+        "parameters": { "type": "array" },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/DatabaseRowCountAssertion" },
+              { "$ref": "#/$defs/DatabaseFieldAssertion" }
+            ]
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false,
   "$defs": {
+    "DatabaseRowCountAssertion": {
+      "type": "object",
+      "required": ["id", "type", "expected"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "DATABASE_ROW_COUNT" },
+        "expected": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "DatabaseFieldAssertion": {
+      "type": "object",
+      "required": ["id", "type", "field", "expected"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "const": "DATABASE_FIELD" },
+        "row": { "type": "integer", "minimum": 0 },
+        "field": { "type": "string", "minLength": 1 },
+        "expected": true
+      },
+      "additionalProperties": false
+    },
     "ManualDraftRequest": {
       "type": "object",
       "required": [

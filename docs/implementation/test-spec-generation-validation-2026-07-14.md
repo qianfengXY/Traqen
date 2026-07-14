@@ -29,6 +29,6 @@ PostgreSQL validation exercises the public draft and approval workflows, tenant-
 - Contract JSON parsing: OpenAPI, TestSpec, and TestSpec-generation schemas parsed successfully.
 - Coverage includes converter eligibility, safe-read and controlled-write classification, Seed/cleanup gaps, unsupported and unconfirmed Claim rejection, client approval spoofing, authentication, project role policy, approval idempotency, generation idempotency before and after approval, immutable PostgreSQL versions, tenant isolation, and existing Feature traceability behavior.
 
-## Remaining vertical-closure work
+## Vertical-closure continuation
 
-The approved controlled-write TestSpec is structurally executable but the current Runner still deliberately allows only `SAFE_READ`. The next implementation slice must execute the approved write against an allowlisted test target, run a trusted Seed protocol, perform the API call, verify the database through the trusted query catalog, execute cleanup in a guaranteed finalization path, and produce signed Evidence for the same TestSpec, Snapshot Manifest, and deployment.
+The subsequent controlled-write Runner slice closes the execution boundary described here: generation can explicitly bind endpoint path parameters and add reviewer-supplied database expectations through query-catalog references; the Runner then executes Seed, the allowlisted API write, read-only database verification, guaranteed cleanup, and signed Evidence for the same TestSpec, Snapshot Manifest, and deployment. The converter still does not infer database business expectations—the supplied draft remains subject to independent human approval.

@@ -305,6 +305,8 @@ export class TraceabilityApplication {
         "headers",
         "body",
         "cleanup",
+        "pathParameters",
+        "databaseVerification",
       ],
       "testSpecGeneration",
     );

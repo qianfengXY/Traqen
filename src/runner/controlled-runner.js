@@ -27,12 +27,24 @@ function bindingManifest(execution, runner) {
   };
 }
 
+function mergeFixtureBindings(variables, bindings) {
+  const merged = { ...variables };
+  for (const [name, value] of Object.entries(bindings)) {
+    if (Object.hasOwn(merged, name)) {
+      throw new RunnerPolicyError(`Fixture binding ${name} conflicts with a TestSpec variable`);
+    }
+    merged[name] = structuredClone(value);
+  }
+  return merged;
+}
+
 export class ControlledRunner {
   #runner;
   #runnerSecret;
   #targetPolicyResolver;
   #secretResolver;
   #executors;
+  #fixtureLifecycle;
   #clock;
   #usedNonces;
 
@@ -42,6 +54,7 @@ export class ControlledRunner {
     targetPolicyResolver,
     secretResolver,
     executors,
+    fixtureLifecycle = null,
     nonceRegistry = new Set(),
     clock = () => new Date(),
   }) {
@@ -62,6 +75,10 @@ export class ControlledRunner {
     this.#targetPolicyResolver = targetPolicyResolver;
     this.#secretResolver = secretResolver;
     this.#executors = new Map(Object.entries(executors));
+    if (fixtureLifecycle !== null && typeof fixtureLifecycle?.createSession !== "function") {
+      throw new TypeError("fixtureLifecycle must provide createSession(testSpec, context)");
+    }
+    this.#fixtureLifecycle = fixtureLifecycle;
     this.#usedNonces = nonceRegistry;
     this.#clock = clock;
   }
@@ -115,44 +132,85 @@ export class ControlledRunner {
         `Operation level ${testSpec.environment.operationLevel} is not allowed for target ${testSpec.environment.target}`,
       );
     }
-    if (testSpec.environment.operationLevel !== "SAFE_READ") {
-      throw new RunnerPolicyError("This Runner slice executes SAFE_READ TestSpecs only");
+    if (!["SAFE_READ", "CONTROLLED_WRITE"].includes(testSpec.environment.operationLevel)) {
+      throw new RunnerPolicyError(
+        `Runner does not execute operation level ${testSpec.environment.operationLevel}`,
+      );
+    }
+    if (testSpec.environment.operationLevel === "CONTROLLED_WRITE" && !this.#fixtureLifecycle) {
+      throw new RunnerPolicyError("CONTROLLED_WRITE requires a trusted fixture lifecycle executor");
     }
 
-    const { variables, secretValues } = await resolveVariables(testSpec.variables, (secretRef) =>
+    const resolvedVariables = await resolveVariables(testSpec.variables, (secretRef) =>
       this.#secretResolver(secretRef, { projectId, target: testSpec.environment.target }),
     );
+    let variables = resolvedVariables.variables;
+    const { secretValues } = resolvedVariables;
     const startedAt = acceptedAt.toISOString();
     const rawStepResults = [];
     const stepResultsById = new Map();
+    let rawSetupResult = { status: "SKIPPED" };
+    let rawCleanupResult = { status: "SKIPPED" };
+    let fixtureSession = null;
+    let fixtureState = null;
+    let setupSucceeded = false;
     let executionError = null;
 
-    for (const step of testSpec.steps) {
-      const executor = this.#executors.get(step.executor);
-      if (!executor || typeof executor.execute !== "function") {
-        executionError = new RunnerPolicyError(`Executor ${step.executor} is not configured`);
-        rawStepResults.push({
-          id: step.id,
-          executor: step.executor,
-          status: "ERROR",
-          message: executionError.message,
-        });
-        break;
-      }
+    if (testSpec.environment.operationLevel === "CONTROLLED_WRITE") {
+      fixtureSession = await this.#fixtureLifecycle.createSession(testSpec, {
+        targetPolicy,
+        projectId,
+        operationLevel: testSpec.environment.operationLevel,
+      });
       try {
-        const resolvedStep = interpolateValue(step, variables);
-        const result = await executor.execute(resolvedStep, { targetPolicy, projectId });
-        rawStepResults.push(result);
-        stepResultsById.set(step.id, result);
+        const setup = await fixtureSession.setup(variables);
+        variables = mergeFixtureBindings(variables, setup.bindings);
+        fixtureState = setup.state;
+        rawSetupResult = setup.result;
+        setupSucceeded = true;
       } catch (error) {
         executionError = error;
-        rawStepResults.push({
-          id: step.id,
-          executor: step.executor,
+        rawSetupResult = {
           status: "ERROR",
+          seedRef: fixtureSession.seedRef,
           message: error.message,
-        });
-        break;
+        };
+      }
+    }
+
+    if (!executionError) {
+      for (const step of testSpec.steps) {
+        const executor = this.#executors.get(step.executor);
+        if (!executor || typeof executor.execute !== "function") {
+          executionError = new RunnerPolicyError(`Executor ${step.executor} is not configured`);
+          rawStepResults.push({
+            id: step.id,
+            executor: step.executor,
+            status: "ERROR",
+            message: executionError.message,
+          });
+          break;
+        }
+        try {
+          const resolvedStep = interpolateValue(step, variables);
+          const result = await executor.execute(resolvedStep, {
+            targetPolicy,
+            projectId,
+            operationLevel: testSpec.environment.operationLevel,
+            secretValues,
+          });
+          rawStepResults.push(result);
+          stepResultsById.set(step.id, result);
+        } catch (error) {
+          executionError = error;
+          rawStepResults.push({
+            id: step.id,
+            executor: step.executor,
+            status: "ERROR",
+            message: error.message,
+          });
+          break;
+        }
       }
     }
 
@@ -171,7 +229,26 @@ export class ControlledRunner {
       }
     });
 
+    if (fixtureSession) {
+      try {
+        rawCleanupResult = await fixtureSession.cleanup({
+          variables,
+          state: fixtureState,
+          setupSucceeded,
+        });
+      } catch (error) {
+        rawCleanupResult = {
+          status: "ERROR",
+          seedRef: fixtureSession.seedRef,
+          message: error.message,
+          isolationRequired: true,
+          compensationRef: fixtureSession.compensationRef,
+        };
+      }
+    }
+
     const executionRedactions = [];
+    const setupResult = redactValue(rawSetupResult, secretValues, "/setup", executionRedactions);
     const stepResults = redactValue(rawStepResults, secretValues, "/stepResults", executionRedactions);
     const assertionResults = redactValue(
       rawAssertionResults,
@@ -179,6 +256,7 @@ export class ControlledRunner {
       "/assertionResults",
       executionRedactions,
     );
+    const cleanupResult = redactValue(rawCleanupResult, secretValues, "/cleanup", executionRedactions);
     const finishedAt = this.#now();
     const execution = {
       id: executionId,
@@ -196,9 +274,10 @@ export class ControlledRunner {
           startedAt,
           finishedAt,
           phaseStatus: executionError ? "ERROR" : "PASS",
+          setup: setupResult,
           stepResults,
           assertionResults,
-          cleanup: { status: "SKIPPED" },
+          cleanup: cleanupResult,
         },
       ],
     };
@@ -222,6 +301,19 @@ export class ControlledRunner {
         type: stepResult.executor === "DATABASE" ? "DATABASE" : stepResult.executor === "HTTP" ? "HTTP" : "OTHER",
         freshness: "FRESH",
         manifest,
+        createdAt: finishedAt,
+      });
+    }
+    if (testSpec.environment.operationLevel === "CONTROLLED_WRITE") {
+      evidence.push({
+        id: `EVIDENCE-${executionId}-LIFECYCLE`,
+        type: "OTHER",
+        freshness: cleanupResult.status === "PASS" ? "FRESH" : "INCOMPLETE",
+        manifest: {
+          ...commonBinding,
+          lifecycle: { setup: setupResult, cleanup: cleanupResult },
+          redactions: uniqueRedactions(executionRedactions),
+        },
         createdAt: finishedAt,
       });
     }

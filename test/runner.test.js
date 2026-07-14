@@ -8,11 +8,13 @@ import {
   createSnapshotManifest,
   createTestSpec,
   evaluateTraceChain,
+  generateEndpointTestSpecDraft,
   verifyExecutionEvidenceAttestation,
 } from "../src/domain/index.js";
 import {
   ControlledRunner,
   DatabaseExecutor,
+  FixtureLifecycleExecutor,
   HttpExecutor,
   assertReadOnlySql,
   runnerPolicyHash,
@@ -248,6 +250,240 @@ test("database executor uses the trusted query catalog and deterministic asserti
   assert.equal(bundle.evidence.find((item) => item.type === "DATABASE").manifest.stepResult.rows[0].status, "DRAFT");
 });
 
+test("controlled write seeds data, executes an allowlisted API, verifies the database, and always cleans up", async (t) => {
+  const postgres = await PGlite.create();
+  t.after(() => postgres.close());
+  await postgres.exec("CREATE TABLE orders (id text PRIMARY KEY, status text NOT NULL)");
+  const baseUrl = await listen(t, async (request, response) => {
+    const match = /^\/orders\/([^/]+)\/submit$/.exec(request.url);
+    if (request.method !== "POST" || !match) {
+      response.writeHead(404).end();
+      return;
+    }
+    await postgres.query("UPDATE orders SET status = $1 WHERE id = $2", [
+      "SUBMITTED",
+      decodeURIComponent(match[1]),
+    ]);
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ data: { id: decodeURIComponent(match[1]), status: "SUBMITTED" } }));
+  });
+  const database = {
+    query: (sql, parameters) => postgres.query(sql, parameters),
+  };
+  const targetPolicy = {
+    baseUrl,
+    allowedOperationLevels: ["CONTROLLED_WRITE"],
+    maxRequestBytes: 4096,
+    httpAllowlist: [{
+      method: "POST",
+      pathPattern: "^/orders/[^/]+/submit$",
+      operationLevels: ["CONTROLLED_WRITE"],
+      maxRequestBytes: 1024,
+    }],
+    databaseRef: "orders-readonly",
+    queryCatalog: {
+      order_by_id: {
+        sql: "SELECT status FROM orders WHERE id = $1",
+        safeRead: true,
+        maxRows: 1,
+      },
+    },
+    fixtureCatalog: {
+      "draft-order": {
+        protocolVersion: "1.0.0",
+        cleanupStrategies: ["SEED_RESET"],
+        compensationRef: "COMPENSATE-DRAFT-ORDER",
+      },
+    },
+  };
+  const lifecycleCalls = [];
+  const fixtureLifecycle = new FixtureLifecycleExecutor({
+    handlerResolver: async (seedRef) => seedRef === "draft-order" ? {
+      async setup(seed) {
+        lifecycleCalls.push("setup");
+        await postgres.query("DELETE FROM orders WHERE id = $1", [seed.parameters.orderId]);
+        await postgres.query("INSERT INTO orders (id, status) VALUES ($1, $2)", [
+          seed.parameters.orderId,
+          "DRAFT",
+        ]);
+        return {
+          bindings: { seed: { orderId: seed.parameters.orderId } },
+          state: { orderId: seed.parameters.orderId },
+          evidence: { seededStatus: "DRAFT" },
+        };
+      },
+      async cleanup({ state }) {
+        lifecycleCalls.push("cleanup");
+        await postgres.query("DELETE FROM orders WHERE id = $1", [state.orderId]);
+        return { evidence: { removedOrderId: state.orderId } };
+      },
+    } : null,
+  });
+  const runner = new ControlledRunner({
+    runner: { id: "RUNNER-001", version: "1.1.0" },
+    runnerSecret,
+    targetPolicyResolver: async () => targetPolicy,
+    secretResolver: async (secretRef) =>
+      secretRef === "accounts/normal-user/token" ? "local-write-token" : null,
+    fixtureLifecycle,
+    executors: {
+      HTTP: new HttpExecutor(),
+      DATABASE: new DatabaseExecutor({ databaseResolver: async () => database }),
+    },
+    clock: sequenceClock(),
+  });
+  const snapshot = snapshotManifest();
+  const generated = generateEndpointTestSpecDraft({
+    id: "TEST-WRITE-001",
+    projectId: "PROJECT-001",
+    target: "sit",
+    expectedHttpStatus: 200,
+    claim: {
+      id: "CLAIM-001",
+      version: 1,
+      featureId: "FEATURE-001",
+      type: "NORMATIVE_REQUIREMENT",
+      constraint: { dimension: "endpointExposed", operator: "EQUALS", value: true },
+    },
+    decision: { id: "DECISION-001", type: "CONFIRMED" },
+    mapping: {
+      id: "MAPPING-001",
+      snapshotManifestId: snapshot.id,
+      factRefs: [{ factId: "FACT-ENDPOINT-WRITE-001", relation: "SUPPORTS" }],
+    },
+    endpoint: {
+      factId: "FACT-ENDPOINT-WRITE-001",
+      type: "ENDPOINT",
+      attributes: { method: "POST", path: "/orders/{id}/submit" },
+    },
+    preconditions: [{
+      type: "SEED",
+      seedRef: "draft-order",
+      parameters: { orderId: "ORDER-001" },
+    }],
+    pathParameters: { id: "${seed.orderId}" },
+    variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
+    headers: { Authorization: "Bearer ${accessToken}" },
+    body: { orderId: "${seed.orderId}" },
+    databaseVerification: {
+      stepId: "read-order-row",
+      queryRef: "order_by_id",
+      parameters: ["${seed.orderId}"],
+      assertions: [{
+        id: "database-status",
+        type: "DATABASE_FIELD",
+        row: 0,
+        field: "status",
+        expected: "SUBMITTED",
+      }],
+    },
+    cleanup: { strategy: "SEED_RESET" },
+  }, () => new Date("2026-07-14T05:10:00.000Z"));
+  assert.deepEqual(generated.validation.violations.map((item) => item.code), ["APPROVAL_REQUIRED"]);
+  const specification = createTestSpec({
+    ...generated.draft,
+    version: 2,
+    approved: true,
+    approval: {
+      actorId: "USER-001",
+      actorRole: "quality-owner",
+      approvedAt: "2026-07-14T05:20:00.000Z",
+      rationale: "Approve the isolated API and database verification protocol.",
+      requestFingerprint: "APPROVAL-FINGERPRINT-001",
+    },
+    createdAt: "2026-07-14T05:30:00.000Z",
+  });
+  const bundle = await runner.run(taskFor({
+    executionId: "EXEC-WRITE-001",
+    specification,
+    snapshot,
+    policy: targetPolicy,
+  }));
+
+  assert.equal(bundle.execution.status, "PASS");
+  assert.equal(bundle.execution.attempts[0].setup.status, "PASS");
+  assert.equal(bundle.execution.attempts[0].cleanup.status, "PASS");
+  assert.deepEqual(lifecycleCalls, ["setup", "cleanup"]);
+  assert.equal((await postgres.query("SELECT count(*)::int AS count FROM orders")).rows[0].count, 0);
+  assert.equal(verifyExecutionEvidenceAttestation("PROJECT-001", bundle, runnerSecret), true);
+  assert.doesNotMatch(JSON.stringify(bundle), /local-write-token/);
+  assert.ok(bundle.evidence.some((item) => item.type === "HTTP"));
+  assert.ok(bundle.evidence.some((item) => item.type === "DATABASE"));
+  assert.ok(bundle.evidence.some((item) => item.id.endsWith("-LIFECYCLE")));
+  const traceInput = completeInput();
+  traceInput.snapshotManifest = snapshot;
+  traceInput.conformance.snapshotManifestId = snapshot.id;
+  traceInput.testSpec = specification;
+  traceInput.execution = bundle.execution;
+  traceInput.evidence = bundle.evidence.map((item) => ({ ...item, integrity: "VERIFIED" }));
+  const traceChain = evaluateTraceChain(
+    traceInput,
+    () => new Date("2026-07-14T06:01:00.000Z"),
+  );
+  assert.equal(traceChain.complete, true);
+  assert.equal(traceChain.dimensions.verification, "PASS");
+});
+
+test("cleanup failure produces ERROR evidence and an explicit compensation reference", async () => {
+  const targetPolicy = {
+    allowedOperationLevels: ["CONTROLLED_WRITE"],
+    fixtureCatalog: {
+      "draft-order": {
+        cleanupStrategies: ["SEED_RESET"],
+        compensationRef: "COMPENSATE-DRAFT-ORDER",
+      },
+    },
+  };
+  const runner = new ControlledRunner({
+    runner: { id: "RUNNER-001", version: "1.1.0" },
+    runnerSecret,
+    targetPolicyResolver: async () => targetPolicy,
+    secretResolver: async () => null,
+    fixtureLifecycle: new FixtureLifecycleExecutor({
+      handlerResolver: async () => ({
+        setup: async () => ({ bindings: {}, state: { seeded: true } }),
+        cleanup: async () => {
+          throw new Error("fixture database unavailable");
+        },
+      }),
+    }),
+    executors: {
+      HTTP: {
+        execute: async (step) => ({
+          id: step.id,
+          executor: "HTTP",
+          status: "PASS",
+          response: { status: 200, headers: {}, body: "{}", json: {} },
+        }),
+      },
+    },
+    clock: sequenceClock(),
+  });
+  const specification = testSpec({
+    id: "TEST-CLEANUP-ERROR-001",
+    risk: "HIGH",
+    variables: {},
+    environment: { target: "sit", operationLevel: "CONTROLLED_WRITE" },
+    preconditions: [{ type: "SEED", seedRef: "draft-order" }],
+    steps: [{ id: "write", executor: "HTTP", method: "POST", path: "/orders" }],
+    assertions: [{ id: "status", type: "HTTP_STATUS", stepId: "write", expected: 200 }],
+    cleanup: { strategy: "SEED_RESET" },
+  });
+  const snapshot = snapshotManifest();
+  const bundle = await runner.run(taskFor({
+    executionId: "EXEC-CLEANUP-ERROR-001",
+    specification,
+    snapshot,
+    policy: targetPolicy,
+  }));
+
+  assert.equal(bundle.execution.status, "ERROR");
+  assert.equal(bundle.execution.attempts[0].cleanup.status, "ERROR");
+  assert.equal(bundle.execution.attempts[0].cleanup.isolationRequired, true);
+  assert.equal(bundle.execution.attempts[0].cleanup.compensationRef, "COMPENSATE-DRAFT-ORDER");
+  assert.equal(bundle.evidence.find((item) => item.id.endsWith("-LIFECYCLE")).freshness, "INCOMPLETE");
+});
+
 test("runner records assertion failure separately from execution errors", async (t) => {
   const baseUrl = await listen(t, (_request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
@@ -300,6 +536,52 @@ test("unallowlisted targets and raw SQL are never executed", async () => {
       },
     ),
     /not allowlisted/,
+  );
+  await assert.rejects(
+    httpExecutor.execute(
+      { id: "secret-url", method: "GET", path: "/orders/local-secret-token" },
+      {
+        operationLevel: "SAFE_READ",
+        secretValues: new Set(["local-secret-token"]),
+        targetPolicy: {
+          baseUrl: "http://127.0.0.1:3000",
+          httpAllowlist: [{ method: "GET", pathPattern: "^/orders/" }],
+        },
+      },
+    ),
+    /must not be placed in an HTTP URL/,
+  );
+  assert.deepEqual(httpCalls, []);
+
+  await assert.rejects(
+    httpExecutor.execute(
+      { id: "blocked-write", method: "POST", path: "/orders", body: { status: "DRAFT" } },
+      {
+        operationLevel: "CONTROLLED_WRITE",
+        targetPolicy: {
+          baseUrl: "http://127.0.0.1:3000",
+          httpAllowlist: [{ method: "POST", pathPattern: "^/orders$" }],
+        },
+      },
+    ),
+    /not allowlisted for CONTROLLED_WRITE/,
+  );
+  await assert.rejects(
+    httpExecutor.execute(
+      { id: "blocked-delete", method: "DELETE", path: "/orders/1" },
+      {
+        operationLevel: "CONTROLLED_WRITE",
+        targetPolicy: {
+          baseUrl: "http://127.0.0.1:3000",
+          httpAllowlist: [{
+            method: "DELETE",
+            pathPattern: "^/orders/1$",
+            operationLevels: ["CONTROLLED_WRITE"],
+          }],
+        },
+      },
+    ),
+    /DELETE is not allowed for CONTROLLED_WRITE/,
   );
   assert.deepEqual(httpCalls, []);
 

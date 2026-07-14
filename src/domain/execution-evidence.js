@@ -65,6 +65,7 @@ function normalizeAttempt(value, index) {
   if (Date.parse(startedAt) > Date.parse(finishedAt)) {
     throw new RangeError(`execution.attempts[${index}].startedAt must not be later than finishedAt`);
   }
+  const setup = requireObject(attempt.setup ?? { status: "SKIPPED" }, `execution.attempts[${index}].setup`);
   const cleanup = requireObject(attempt.cleanup ?? { status: "SKIPPED" }, `execution.attempts[${index}].cleanup`);
   const assertionResults = requireArray(
     attempt.assertionResults ?? [],
@@ -84,6 +85,14 @@ function normalizeAttempt(value, index) {
       attempt.phaseStatus,
       `execution.attempts[${index}].phaseStatus`,
     ),
+    setup: {
+      ...setup,
+      status: assertEnum(
+        ExecutionPhaseStatus,
+        setup.status,
+        `execution.attempts[${index}].setup.status`,
+      ),
+    },
     stepResults: requireArray(attempt.stepResults ?? [], `execution.attempts[${index}].stepResults`).map(
       (result, resultIndex) => requireObject(result, `execution.attempts[${index}].stepResults[${resultIndex}]`),
     ),
@@ -129,6 +138,7 @@ export function deriveExecutionStatus({ completionReason, attempts }) {
     attempts.some(
       (attempt) =>
         attempt.phaseStatus === ExecutionPhaseStatus.ERROR ||
+        [ExecutionPhaseStatus.FAIL, ExecutionPhaseStatus.ERROR].includes(attempt.setup.status) ||
         [ExecutionPhaseStatus.FAIL, ExecutionPhaseStatus.ERROR].includes(attempt.cleanup.status),
     ) ||
     assertions.some((result) => result.status === AssertionResultStatus.ERROR)

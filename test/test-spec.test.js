@@ -27,7 +27,7 @@ function testSpecInput(overrides = {}) {
       accessToken: { secretRef: "accounts/normal-user/token" },
     },
     steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/${orderId}/submit" }],
-    assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
+    assertions: [{ id: "status", type: "HTTP_STATUS", stepId: "submit", expected: 200 }],
     cleanup: { strategy: "SEED_RESET" },
     policy: { approvalRequired: true, destructive: false, externalSideEffect: false },
     ...overrides,
@@ -78,13 +78,25 @@ test("raw secrets are invalid and cannot enter storage", () => {
 test("literal authorization headers are rejected while secret templates are allowed", () => {
   const literal = validateTestSpec(
     testSpecInput({
-      steps: [{ id: "submit", executor: "HTTP", headers: { Authorization: "Bearer raw-token" } }],
+      steps: [{
+        id: "submit",
+        executor: "HTTP",
+        method: "POST",
+        path: "/orders/1/submit",
+        headers: { Authorization: "Bearer raw-token" },
+      }],
     }),
     fixedClock,
   );
   const referenced = validateTestSpec(
     testSpecInput({
-      steps: [{ id: "submit", executor: "HTTP", headers: { Authorization: "Bearer ${accessToken}" } }],
+      steps: [{
+        id: "submit",
+        executor: "HTTP",
+        method: "POST",
+        path: "/orders/1/submit",
+        headers: { Authorization: "Bearer ${accessToken}" },
+      }],
     }),
     fixedClock,
   );
@@ -108,12 +120,65 @@ test("destructive and external side effects remain blocked even when approved", 
   assert.equal(external.violations[0].code, "EXTERNAL_SIDE_EFFECT_BLOCKED");
 });
 
+test("executable validation rejects raw SQL, missing step links, and method-level escalation", () => {
+  const rawSql = testSpecInput({
+    steps: [{ id: "database", executor: "DATABASE", sql: "SELECT * FROM orders" }],
+    assertions: [{
+      id: "rows",
+      type: "DATABASE_ROW_COUNT",
+      stepId: "database",
+      expected: 1,
+    }],
+  });
+  const rawSqlResult = validateTestSpec(rawSql, fixedClock);
+  assert.equal(rawSqlResult.valid, false);
+  assert.ok(rawSqlResult.violations.some((item) => item.code === "RAW_SQL_FORBIDDEN"));
+  assert.throws(
+    () => assertTestSpecSafeToStore(createTestSpec(rawSql, fixedClock)),
+    /Raw SQL is forbidden/,
+  );
+
+  const missingStep = validateTestSpec(
+    testSpecInput({
+      assertions: [{ id: "status", type: "HTTP_STATUS", stepId: "unknown", expected: 200 }],
+    }),
+    fixedClock,
+  );
+  assert.ok(missingStep.violations.some((item) => item.code === "ASSERTION_STEP_REQUIRED"));
+
+  const deleteWrite = validateTestSpec(
+    testSpecInput({
+      steps: [{ id: "submit", executor: "HTTP", method: "DELETE", path: "/orders/1" }],
+    }),
+    fixedClock,
+  );
+  assert.ok(deleteWrite.violations.some((item) => item.code === "OPERATION_METHOD_MISMATCH"));
+
+  const sensitiveAssertion = testSpecInput({
+    assertions: [{
+      id: "token",
+      type: "JSON_PATH",
+      stepId: "submit",
+      expression: "$.data.accessToken",
+      expected: "never-store-this",
+    }],
+  });
+  const sensitiveResult = validateTestSpec(sensitiveAssertion, fixedClock);
+  assert.ok(sensitiveResult.violations.some(
+    (item) => item.code === "SENSITIVE_ASSERTION_FORBIDDEN",
+  ));
+  assert.throws(
+    () => assertTestSpecSafeToStore(createTestSpec(sensitiveAssertion, fixedClock)),
+    /must not extract credential/,
+  );
+});
+
 test("step and assertion identifiers cannot be ambiguous", () => {
   const result = validateTestSpec(
     testSpecInput({
       assertions: [
-        { id: "status", type: "HTTP_STATUS", expected: 200 },
-        { id: "status", type: "JSON_PATH", expected: "SUBMITTED" },
+        { id: "status", type: "HTTP_STATUS", stepId: "submit", expected: 200 },
+        { id: "status", type: "JSON_PATH", stepId: "submit", expected: "SUBMITTED" },
       ],
     }),
     fixedClock,

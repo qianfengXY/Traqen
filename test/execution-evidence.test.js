@@ -69,6 +69,7 @@ test("execution status is derived from deterministic assertion results", () => {
   const execution = createTestExecution({ ...executionInput(), status: "FAIL" });
 
   assert.equal(execution.status, "PASS");
+  assert.equal(execution.attempts[0].setup.status, "SKIPPED");
   assert.equal(Object.isFrozen(execution.attempts[0].assertionResults[0]), true);
 });
 

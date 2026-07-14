@@ -67,9 +67,11 @@ The controlled Runner slice adds:
 - signed Runner tasks with a maximum five-minute validity window, replay-resistant nonces, local policy hashes, target Runner binding, and an injectable nonce registry;
 - explicit target and route allowlists, response-size limits, timeouts, and redirect blocking;
 - local-only `secretRef` resolution with recursive request, response, row, assertion, and error redaction;
-- a SAFE_READ HTTP executor for GET/HEAD plus status, response-header, and JSON-path assertions;
+- a SAFE_READ HTTP executor for GET/HEAD plus an explicitly allowlisted CONTROLLED_WRITE executor for bounded POST/PUT/PATCH requests;
 - a read-only database executor that accepts only trusted query-catalog references, never TestSpec SQL;
+- trusted target-local Seed and cleanup handlers selected through a signed fixture catalog, with setup/cleanup results preserved separately;
 - deterministic row-count and field assertions, followed by signed Evidence Bundle generation;
+- guaranteed cleanup after setup, step, or assertion failure, plus isolation and compensation metadata when cleanup fails;
 - distinct product assertion failures and Runner/executor errors.
 
 The deterministic fact-foundation slice adds:
@@ -105,7 +107,7 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - append-only PostgreSQL migrations through `0007_change_impact`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
-The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision, candidate-review, and TestSpec-approval routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. The Runner intentionally executes only explicit SAFE_READ policies in this slice; controlled writes remain blocked until executable seed and cleanup protocols are available. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
+The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision, candidate-review, and TestSpec-approval routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation level and route, names a trusted fixture protocol, permits its cleanup strategy, and the Runner has the matching local handler. DELETE, destructive execution, external side effects, TestSpec SQL, arbitrary fixture code, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
 
 ## Run
 

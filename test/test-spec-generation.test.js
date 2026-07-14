@@ -75,8 +75,12 @@ test("an authorized endpoint Claim converts into a traceable unapproved TestSpec
 test("write endpoints remain non-executable until cleanup and approval are both present", () => {
   const input = generationInput();
   const writeEndpoint = structuredClone(input.endpoint);
-  writeEndpoint.attributes = { method: "POST", path: "/orders/ORDER-001/submit" };
-  const withoutCleanup = generateEndpointTestSpecDraft({ ...input, endpoint: writeEndpoint }, fixedClock);
+  writeEndpoint.attributes = { method: "POST", path: "/orders/{id}/submit" };
+  const withoutCleanup = generateEndpointTestSpecDraft({
+    ...input,
+    endpoint: writeEndpoint,
+    pathParameters: { id: "ORDER-001" },
+  }, fixedClock);
   assert.equal(withoutCleanup.draft.environment.operationLevel, "CONTROLLED_WRITE");
   assert.deepEqual(
     withoutCleanup.validation.violations.map((item) => item.code).sort(),
@@ -87,9 +91,27 @@ test("write endpoints remain non-executable until cleanup and approval are both 
     ...input,
     endpoint: writeEndpoint,
     preconditions: [{ type: "SEED", seedRef: "draft-order" }],
+    pathParameters: { id: "${seed.orderId}" },
     cleanup: { strategy: "SEED_RESET" },
+    databaseVerification: {
+      queryRef: "order_by_id",
+      parameters: ["${seed.orderId}"],
+      assertions: [
+        {
+          id: "database-status",
+          type: "DATABASE_FIELD",
+          field: "status",
+          expected: "SUBMITTED",
+        },
+      ],
+    },
   }, fixedClock);
   assert.deepEqual(withCleanup.validation.violations.map((item) => item.code), ["APPROVAL_REQUIRED"]);
+  assert.equal(withCleanup.draft.steps[1].executor, "DATABASE");
+  assert.equal(withCleanup.draft.steps[0].path, "/orders/${seed.orderId}/submit");
+  assert.equal(withCleanup.draft.steps[1].queryRef, "order_by_id");
+  assert.equal(withCleanup.draft.assertions[1].type, "DATABASE_FIELD");
+  assert.equal(withCleanup.draft.assertions[1].expected, "SUBMITTED");
 });
 
 test("the converter refuses unconfirmed or unsupported Claims", () => {
@@ -105,5 +127,23 @@ test("the converter refuses unconfirmed or unsupported Claims", () => {
   assert.throws(
     () => generateEndpointTestSpecDraft(unsupported, fixedClock),
     /only supports endpointExposed/,
+  );
+  assert.throws(
+    () => generateEndpointTestSpecDraft(
+      generationInput({
+        databaseVerification: {
+          queryRef: "order_by_id",
+          assertions: [{ id: "unsafe", type: "SQL", expected: 1 }],
+        },
+      }),
+      fixedClock,
+    ),
+    /DATABASE_ROW_COUNT or DATABASE_FIELD/,
+  );
+  const parameterized = structuredClone(generationInput());
+  parameterized.endpoint.attributes = { method: "POST", path: "/orders/{id}/submit" };
+  assert.throws(
+    () => generateEndpointTestSpecDraft(parameterized, fixedClock),
+    /pathParameters\.id/,
   );
 });

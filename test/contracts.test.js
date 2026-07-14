@@ -236,6 +236,9 @@ test("TestSpec conversion contract separates public drafts, generated provenance
   assert.equal(contract.$defs.ManualDraftRequest.properties.approval, undefined);
   assert.equal(contract.$defs.ManualDraftRequest.properties.origin, undefined);
   assert.deepEqual(contract.$defs.ApprovalRequest.required, ["expectedVersion", "rationale"]);
+  assert.ok(contract.properties.databaseVerification);
+  assert.ok(contract.properties.pathParameters);
+  assert.equal(contract.$defs.DatabaseFieldAssertion.properties.type.const, "DATABASE_FIELD");
   assert.ok(contract.$defs.GenerationResult.required.includes("generation"));
 });
 
@@ -248,6 +251,8 @@ test("execution Evidence contract binds results to Runner, TestSpec, manifest, a
   assert.ok(contract.$defs.TestExecution.required.includes("snapshotManifestId"));
   assert.ok(contract.$defs.TestExecution.required.includes("deploymentId"));
   assert.ok(contract.$defs.TestExecution.required.includes("runner"));
+  assert.ok(contract.$defs.Attempt.required.includes("setup"));
+  assert.ok(contract.$defs.Attempt.required.includes("cleanup"));
   assert.equal(contract.$defs.RunnerAttestation.properties.algorithm.const, "HMAC-SHA256");
   assert.ok(contract.$defs.StoredExecutionEvidence.allOf[1].properties.evidence.items.allOf[1].required.includes("integrity"));
 });

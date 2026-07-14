@@ -583,7 +583,7 @@ test("PostgreSQL store preserves TestSpec versions and authoritative Claim links
     preconditions: [{ type: "SEED", seedRef: "draft-order" }],
     variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
     steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/1/submit" }],
-    assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
+    assertions: [{ id: "status", type: "HTTP_STATUS", stepId: "submit", expected: 200 }],
     cleanup: { strategy: "SEED_RESET" },
     policy: { approvalRequired: true },
   };
@@ -695,7 +695,7 @@ test("PostgreSQL atomically persists attested execution evidence for the exact d
     verifiesClaims: [{ id: "CLAIM-EXEC-001", version: 1 }],
     environment: { target: "sit", operationLevel: "SAFE_READ" },
     steps: [{ id: "read", executor: "HTTP", method: "GET", path: "/orders/1" }],
-    assertions: [{ id: "http-status", type: "HTTP_STATUS", expected: 200 }],
+    assertions: [{ id: "http-status", type: "HTTP_STATUS", stepId: "read", expected: 200 }],
     cleanup: null,
     policy: { approvalRequired: true },
   });

@@ -316,7 +316,7 @@ test("TestSpec API validates candidates and preserves immutable versions", async
     preconditions: [{ type: "SEED", seedRef: "draft-order" }],
     variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
     steps: [{ id: "submit", executor: "HTTP", method: "POST", path: "/orders/1/submit" }],
-    assertions: [{ id: "status", type: "HTTP_STATUS", expected: 200 }],
+    assertions: [{ id: "status", type: "HTTP_STATUS", stepId: "submit", expected: 200 }],
     cleanup: { strategy: "SEED_RESET" },
     policy: { approvalRequired: true },
   };
@@ -370,7 +370,7 @@ test("TestSpec API validates candidates and preserves immutable versions", async
   assert.equal(baseline.testSpecs[0].version, 2);
 });
 
-test("TestSpec storage rejects raw secrets and cross-feature claim links", async (t) => {
+test("TestSpec storage rejects raw secrets, raw SQL, and cross-feature claim links", async (t) => {
   const baseUrl = await startServer(t);
   const projectUrl = `${baseUrl}/v1/projects/PROJECT-001`;
   await postJson(`${projectUrl}/features`, { id: "FEATURE-001", version: 1, name: "Submit order" });
@@ -391,6 +391,22 @@ test("TestSpec storage rejects raw secrets and cross-feature claim links", async
   });
   assert.equal(rawSecret.response.status, 400);
   assert.equal(rawSecret.body.error.code, "INVALID_REQUEST");
+
+  const rawSql = await postJson(`${projectUrl}/test-specs`, {
+    id: "TEST-RAW-SQL",
+    version: 1,
+    name: "Unsafe database test",
+    risk: "HIGH",
+    approved: false,
+    featureId: "FEATURE-001",
+    verifiesClaims: [{ id: "CLAIM-MISSING", version: 1 }],
+    environment: { target: "sit", operationLevel: "SAFE_READ" },
+    steps: [{ id: "database", executor: "DATABASE", sql: "SELECT * FROM orders" }],
+    assertions: [],
+    policy: {},
+  });
+  assert.equal(rawSql.response.status, 400);
+  assert.equal(rawSql.body.error.code, "INVALID_REQUEST");
 
   const missingClaim = await postJson(`${projectUrl}/test-specs`, {
     id: "TEST-ORPHAN",
@@ -453,7 +469,7 @@ test("attested execution evidence is verified, persisted, and queryable", async 
     verifiesClaims: [{ id: "CLAIM-001", version: 1 }],
     environment: { target: "sit", operationLevel: "SAFE_READ" },
     steps: [{ id: "read", executor: "HTTP", method: "GET", path: "/orders/1" }],
-    assertions: [{ id: "http-status", type: "HTTP_STATUS", expected: 200 }],
+    assertions: [{ id: "http-status", type: "HTTP_STATUS", stepId: "read", expected: 200 }],
     cleanup: null,
     policy: { approvalRequired: true },
   });
@@ -816,10 +832,21 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
     target: "sit",
     expectedHttpStatus: 200,
     preconditions: [{ type: "SEED", seedRef: "draft-order" }],
+    pathParameters: { id: "${seed.orderId}" },
     variables: { accessToken: { secretRef: "accounts/normal-user/token" } },
     headers: { Authorization: "Bearer ${accessToken}" },
-    body: { orderId: "ORDER-001" },
+    body: { orderId: "${seed.orderId}" },
     cleanup: { strategy: "SEED_RESET" },
+    databaseVerification: {
+      queryRef: "order_by_id",
+      parameters: ["${seed.orderId}"],
+      assertions: [{
+        id: "database-status",
+        type: "DATABASE_FIELD",
+        field: "status",
+        expected: "SUBMITTED",
+      }],
+    },
   };
   const generationUrl =
     `${projectUrl}/features/FEATURE-REVIEW-API-001/claims/CLAIM-REVIEW-API-001/test-spec-drafts`;
@@ -829,6 +856,9 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   assert.equal(generated.body.draft.origin.type, "CONFIRMED_CLAIM_CONVERSION");
   assert.equal(generated.body.draft.origin.decisionId, "DECISION-REVIEW-API-001");
   assert.equal(generated.body.draft.environment.operationLevel, "CONTROLLED_WRITE");
+  assert.equal(generated.body.draft.steps[0].path, "/orders/${seed.orderId}/submit");
+  assert.equal(generated.body.draft.steps[1].queryRef, "order_by_id");
+  assert.equal(generated.body.draft.assertions[1].type, "DATABASE_FIELD");
   assert.deepEqual(generated.body.validation.violations.map((item) => item.code), ["APPROVAL_REQUIRED"]);
   const repeatedGeneration = await postJson(generationUrl, generationInput);
   assert.equal(repeatedGeneration.response.status, 201);
