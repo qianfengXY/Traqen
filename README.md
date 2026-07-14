@@ -68,7 +68,7 @@ The controlled Runner slice adds:
 - explicit target and route allowlists, response-size limits, timeouts, and redirect blocking;
 - local-only `secretRef` resolution with recursive request, response, row, assertion, and error redaction;
 - a SAFE_READ HTTP executor for GET/HEAD plus an explicitly allowlisted CONTROLLED_WRITE executor for bounded POST/PUT/PATCH requests;
-- a read-only database executor that accepts only trusted query-catalog references, never TestSpec SQL;
+- a read-only database executor that accepts only trusted query-catalog references, never TestSpec SQL, while preserving the executed normalized catalog SQL in signed Evidence;
 - trusted target-local Seed and cleanup handlers selected through a signed fixture catalog, with setup/cleanup results preserved separately;
 - deterministic row-count and field assertions, followed by signed Evidence Bundle generation;
 - guaranteed cleanup after setup, step, or assertion failure, plus isolation and compensation metadata when cleanup fails;
@@ -117,6 +117,13 @@ The product-interface slice adds:
 - an explicitly labelled synthetic demonstration plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
 - an explicit CORS origin allowlist for connecting the browser product to a Traqen API.
 
+The built-in reference-pilot slice adds:
+
+- a runnable synthetic order platform with a real HTTP endpoint, PostgreSQL-compatible state, configuration, role and state guards, idempotency, an inventory dependency, transaction rollback, and same-order concurrency serialization;
+- one command that scans the reference source, runs both replaceable Reverse Skills, performs an authorized statement review, generates and approves a controlled-write TestSpec, executes API plus database assertions, stores signed Evidence, and proves a complete trace chain;
+- a real source modification in an isolated copy, Snapshot comparison, affected-Feature invalidation, explicit stale gaps, authorized implementation reanalysis, regression execution on the new deployment, and restoration of a complete chain;
+- reuse of the unchanged approved TestSpec across Snapshots: its `sourceSnapshotId` remains generation provenance, while the signed Runner task and Evidence bind the actual execution Snapshot and deployment.
+
 The development server remains local-only and in-memory. Most foundation write routes are not production-authenticated; Decision, candidate-review, and TestSpec-approval routes fail closed unless `REVIEWER_ID` is configured, and may be protected with `REVIEWER_BEARER_TOKEN`. Implementation reanalysis separately fails closed unless `IMPLEMENTATION_REVIEWER_ID` is configured, defaults to the `developer` role, and may be protected with `IMPLEMENTATION_REVIEWER_BEARER_TOKEN`. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to enable local ingestion of matching Runner-signed bundles; use `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles. Skill registration additionally requires `SKILL_PUBLISHER=TRAQEN` and `SKILL_PUBLISHER_SHARED_SECRET`. HMAC is the local MVP trust mechanism, not a replacement for the planned enterprise workload identity and mTLS boundary. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation level and route, names a trusted fixture protocol, permits its cleanup strategy, and the Runner has the matching local handler. DELETE, destructive execution, external side effects, TestSpec SQL, arbitrary fixture code, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters can execute in-process: arbitrary uploaded code, official external Specone/GSD integrations, model execution, and networked Skills are not enabled. Production-wide authentication, runtime PostgreSQL wiring, isolated external Skill workers, additional language scanners, and OpenAPI YAML extraction are not part of this slice.
 
 ## Run
@@ -127,7 +134,9 @@ Requires Node.js 20 or newer.
 npm test
 npm run test:storage
 npm run test:web
+npm run test:reference
 npm run example
+npm run pilot:order-submit
 npm run scan:self
 npm run api:dev
 ```
@@ -150,6 +159,8 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 ```
 
 The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
+
+`npm run pilot:order-submit` is the reproducible in-repository MVP proof. It uses only synthetic data and the same generic Scanner, Skill, review, TestSpec, Runner, Evidence, impact, and repair paths that a real pilot uses; no order-specific behavior exists in the Traqen core.
 
 Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions until the separate authorized review flow records an outcome.
 

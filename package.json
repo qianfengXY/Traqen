@@ -7,15 +7,17 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node --test test/*.test.js examples/order-platform/tests/*.test.js",
     "test:storage": "node --test test/storage-migrations.test.js",
     "test:runner": "node --test test/runner.test.js",
+    "test:reference": "node --test examples/order-platform/tests/*.test.js",
     "test:web": "npm --prefix web test",
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
     "api:dev": "node src/api/dev-server.js",
     "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json",
-    "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary"
+    "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary",
+    "pilot:order-submit": "node src/cli/run-order-submit-pilot.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.4"

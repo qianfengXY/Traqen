@@ -66,6 +66,7 @@ export class DatabaseExecutor {
       status: "PASS",
       durationMs: Math.max(0, Math.round(performance.now() - started)),
       queryRef: step.queryRef,
+      sql,
       parameters,
       rows: structuredClone(result.rows),
     };

@@ -123,10 +123,6 @@ export class ControlledRunner {
     if (!snapshotManifest?.complete) throw new RunnerPolicyError("Runner requires a complete snapshot manifest");
     const deploymentId = snapshotManifest.components?.deployment?.id;
     if (!deploymentId) throw new RunnerPolicyError("Snapshot manifest has no deployment component");
-    if (testSpec.sourceSnapshotId && testSpec.sourceSnapshotId !== snapshotManifest.id) {
-      throw new RunnerPolicyError("TestSpec sourceSnapshotId does not match the execution snapshot manifest");
-    }
-
     if (!(targetPolicy.allowedOperationLevels ?? []).includes(testSpec.environment.operationLevel)) {
       throw new RunnerPolicyError(
         `Operation level ${testSpec.environment.operationLevel} is not allowed for target ${testSpec.environment.target}`,

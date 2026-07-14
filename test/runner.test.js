@@ -247,7 +247,9 @@ test("database executor uses the trusted query catalog and deterministic asserti
   assert.deepEqual(queries, [
     { sql: "SELECT status FROM orders WHERE id = $1", parameters: ["ORDER-001"] },
   ]);
-  assert.equal(bundle.evidence.find((item) => item.type === "DATABASE").manifest.stepResult.rows[0].status, "DRAFT");
+  const databaseEvidence = bundle.evidence.find((item) => item.type === "DATABASE");
+  assert.equal(databaseEvidence.manifest.stepResult.sql, "SELECT status FROM orders WHERE id = $1");
+  assert.equal(databaseEvidence.manifest.stepResult.rows[0].status, "DRAFT");
 });
 
 test("controlled write seeds data, executes an allowlisted API, verifies the database, and always cleans up", async (t) => {
@@ -408,7 +410,10 @@ test("controlled write seeds data, executes an allowlisted API, verifies the dat
   assert.equal(verifyExecutionEvidenceAttestation("PROJECT-001", bundle, runnerSecret), true);
   assert.doesNotMatch(JSON.stringify(bundle), /local-write-token/);
   assert.ok(bundle.evidence.some((item) => item.type === "HTTP"));
-  assert.ok(bundle.evidence.some((item) => item.type === "DATABASE"));
+  assert.equal(
+    bundle.evidence.find((item) => item.type === "DATABASE").manifest.stepResult.sql,
+    "SELECT status FROM orders WHERE id = $1",
+  );
   assert.ok(bundle.evidence.some((item) => item.id.endsWith("-LIFECYCLE")));
   const traceInput = completeInput();
   traceInput.snapshotManifest = snapshot;
@@ -422,6 +427,26 @@ test("controlled write seeds data, executes an allowlisted API, verifies the dat
   );
   assert.equal(traceChain.complete, true);
   assert.equal(traceChain.dimensions.verification, "PASS");
+
+  const laterSnapshot = createSnapshotManifest({
+    source: { id: "SOURCE-002", digest: "sha256:source-002" },
+    build: { id: "BUILD-002", digest: "sha256:build-002" },
+    deployment: { id: "DEPLOY-002", digest: "sha256:deployment-002" },
+    runtime: { id: "RUNTIME-002", digest: "sha256:runtime-002" },
+    observedFrom: "2026-07-14T05:40:00.000Z",
+    observedTo: "2026-07-14T05:50:00.000Z",
+  }, () => new Date("2026-07-14T05:51:00.000Z"));
+  const regressionBundle = await runner.run(taskFor({
+    executionId: "EXEC-WRITE-REGRESSION-002",
+    specification,
+    snapshot: laterSnapshot,
+    policy: targetPolicy,
+  }));
+  assert.equal(regressionBundle.execution.status, "PASS");
+  assert.equal(regressionBundle.execution.snapshotManifestId, laterSnapshot.id);
+  assert.equal(regressionBundle.execution.deploymentId, laterSnapshot.components.deployment.id);
+  assert.equal(specification.sourceSnapshotId, snapshot.id);
+  assert.deepEqual(lifecycleCalls, ["setup", "cleanup", "setup", "cleanup"]);
 });
 
 test("cleanup failure produces ERROR evidence and an explicit compensation reference", async () => {

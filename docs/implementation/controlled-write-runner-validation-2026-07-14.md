@@ -24,7 +24,7 @@ confirmed Claim and exact Endpoint Fact
 - Only POST, PUT, and PATCH are enabled. DELETE, destructive, external-side-effect, absolute/cross-origin, credential-bearing URL, redirect-following, and unallowlisted requests remain blocked.
 - Request and response sizes are bounded. JSON bodies are serialized by the executor and Evidence is recursively redacted.
 - Endpoint placeholders such as `/orders/{id}/submit` must be explicitly bound during TestSpec generation. The binding is part of the immutable generation fingerprint.
-- Database verification accepts only a trusted `queryRef`. The query catalog must mark it `safeRead`, and the executor still rejects multi-statement, commented, or mutating SQL.
+- Database verification accepts only a trusted `queryRef`. The query catalog must mark it `safeRead`, and the executor still rejects multi-statement, commented, or mutating SQL. Evidence preserves the normalized catalog SQL, query reference, redacted parameters, and returned rows so the database check can be independently audited without permitting TestSpec-authored SQL.
 
 ## Fixture lifecycle
 
@@ -34,11 +34,11 @@ Setup and cleanup have separate phase records. Cleanup runs after successful set
 
 ## Vertical proof
 
-The integration test uses a real local HTTP server and PGlite database. The fixture handler inserts a DRAFT order, the generated TestSpec calls POST `/orders/{id}/submit`, the API changes the row to SUBMITTED, the database executor reads the row through the trusted catalog, deterministic assertions pass, and cleanup removes the row. The resulting Evidence contains HTTP, DATABASE, ASSERTION, and lifecycle records, verifies under the Runner HMAC, contains no resolved token, and completes the current-deployment trace chain.
+The integration test uses a real local HTTP server and PGlite database. The fixture handler inserts a DRAFT order, the generated TestSpec calls POST `/orders/{id}/submit`, the API changes the row to SUBMITTED, the database executor reads the row through the trusted catalog, deterministic assertions pass, and cleanup removes the row. The resulting Evidence contains the HTTP request and response, the normalized trusted SQL, query reference, redacted parameters, returned rows, assertion outcomes, and lifecycle records. It verifies under the Runner HMAC, contains no resolved token, and completes the current-deployment trace chain.
 
 ## Verification
 
-- `npm test`: 112 tests passed.
+- `npm test`: 119 tests passed in the current repository regression suite.
 - Tests cover generated path binding and database assertions, signed policy drift, route-level operation grants, request bounds, secret-in-URL rejection, raw-SQL storage rejection, real API/database execution, setup and cleanup evidence, cleanup compensation, HMAC verification, and full trace-chain completion.
 - OpenAPI and all JSON Schema contracts parse successfully; the execution contract now records setup and cleanup as independent phases.
 
