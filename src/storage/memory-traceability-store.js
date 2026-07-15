@@ -24,6 +24,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #scopes = new Map();
   #claims = new Map();
   #decisions = new Map();
+  #businessProcessModels = new Map();
   #testSpecs = new Map();
   #executions = new Map();
   #evidence = new Map();
@@ -149,6 +150,28 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     );
   }
 
+  async appendBusinessProcessModel(projectId, processModel) {
+    if (!this.#features.has(key(projectId, `${processModel.featureId}\u0000${processModel.featureVersion}`))) {
+      throw new PersistenceConflictError(
+        `Feature ${processModel.featureId} version ${processModel.featureVersion} does not exist`,
+      );
+    }
+    return this.#appendVersion(
+      this.#businessProcessModels,
+      key(projectId, `${processModel.id}\u0000${processModel.version}`),
+      processModel,
+      `BusinessProcessModel ${processModel.id} version ${processModel.version}`,
+    );
+  }
+
+  async getLatestBusinessProcessModel(projectId, featureId) {
+    const models = [...this.#businessProcessModels.entries()]
+      .filter(([storageKey, model]) => storageKey.startsWith(`${projectId}\u0000`) && model.featureId === featureId)
+      .map(([, model]) => model)
+      .sort((left, right) => right.version - left.version || right.createdAt.localeCompare(left.createdAt));
+    return models[0] ?? null;
+  }
+
   async getFeatureBaseline(projectId, featureId) {
     const featureVersions = [...this.#features.entries()]
       .filter(([storageKey]) => storageKey.startsWith(key(projectId, `${featureId}\u0000`)))
@@ -254,6 +277,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
     return deepFreeze({
       feature: featureVersions[0],
+      processModel: await this.getLatestBusinessProcessModel(projectId, featureId),
       claims,
       testSpecs: [...latestTestSpecs.values()],
       testExecutions,

@@ -39,6 +39,14 @@ export class TraceabilityStore {
     throw new Error("appendDecision must be implemented");
   }
 
+  async appendBusinessProcessModel(_projectId, _processModel) {
+    throw new Error("appendBusinessProcessModel must be implemented");
+  }
+
+  async getLatestBusinessProcessModel(_projectId, _featureId) {
+    throw new Error("getLatestBusinessProcessModel must be implemented");
+  }
+
   async getFeatureBaseline(_projectId, _featureId) {
     throw new Error("getFeatureBaseline must be implemented");
   }

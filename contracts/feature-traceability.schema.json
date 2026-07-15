@@ -4,11 +4,18 @@
   "title": "FeatureTraceability",
   "type": "object",
   "required": [
-    "feature", "snapshotManifest", "claims", "dimensions", "traceChains",
+    "feature", "processModel", "processImplementationFacts", "snapshotManifest", "claims", "dimensions", "traceChains",
     "gaps", "persisted", "computedAt"
   ],
   "properties": {
     "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+    "processModel": {
+      "oneOf": [{ "$ref": "./business-process-model.schema.json" }, { "type": "null" }]
+    },
+    "processImplementationFacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ProcessFactGraph" }
+    },
     "snapshotManifest": { "type": "object" },
     "claims": {
       "type": "array",
@@ -74,6 +81,17 @@
       "type": "object",
       "required": ["nodes", "edges", "missingFactRefs"],
       "properties": {
+        "nodes": { "type": "array", "items": { "type": "object" } },
+        "edges": { "type": "array", "items": { "type": "object" } },
+        "missingFactRefs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "ProcessFactGraph": {
+      "type": "object",
+      "required": ["snapshotManifestId", "nodes", "edges", "missingFactRefs"],
+      "properties": {
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
         "nodes": { "type": "array", "items": { "type": "object" } },
         "edges": { "type": "array", "items": { "type": "object" } },
         "missingFactRefs": { "type": "array", "items": { "type": "string" } }

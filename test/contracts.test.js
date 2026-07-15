@@ -58,6 +58,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getFeatureBaseline",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/process-model"].post.operationId,
+    "appendBusinessProcessModel",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/features/{featureId}/traceability"].get.operationId,
     "getFeatureTraceability",
   );
@@ -188,7 +192,20 @@ test("governance contract defines immutable version fields", async () => {
   assert.ok(contract.$defs.FeatureBaseline.required.includes("testExecutions"));
   assert.ok(contract.$defs.FeatureBaseline.required.includes("implementationMappings"));
   assert.ok(contract.$defs.FeatureBaseline.required.includes("conformances"));
+  assert.ok(contract.$defs.FeatureBaseline.required.includes("processModel"));
   assert.ok(contract.$defs.Claim.properties.constraint);
+});
+
+test("business process contract keeps authority server-owned and implementation links Snapshot-bound", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/business-process-model.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(contract.title, "BusinessProcessModel");
+  assert.equal(contract.$defs.Input.properties.featureId, undefined);
+  assert.equal(contract.$defs.Input.properties.authority.properties.actorId, undefined);
+  assert.ok(contract.$defs.Model.required.includes("featureId"));
+  assert.ok(contract.$defs.Model.properties.authority.required.includes("actorId"));
+  assert.ok(contract.$defs.Transition.properties.implementationFactRefs.items.$ref);
 });
 
 test("candidate review contract keeps reviewer identity server-side and baseline creation explicit", async () => {
@@ -213,6 +230,7 @@ test("Feature traceability contract exposes independent dimensions, ordered chai
   assert.ok(contract.required.includes("dimensions"));
   assert.ok(contract.required.includes("traceChains"));
   assert.ok(contract.required.includes("gaps"));
+  assert.ok(contract.required.includes("processModel"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("facts"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("traceChain"));
 });

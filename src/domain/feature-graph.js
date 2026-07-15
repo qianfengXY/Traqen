@@ -3,7 +3,18 @@ import { requireNonEmptyString } from "./model.js";
 
 const graphViews = Object.freeze({
   traceability: null,
-  business: new Set(["FEATURE", "CLAIM", "CLAIM_SCOPE", "DECISION", "CONFLICT", "TRACE_GAP"]),
+  business: new Set([
+    "FEATURE",
+    "CLAIM",
+    "CLAIM_SCOPE",
+    "DECISION",
+    "ACTOR_ROLE",
+    "BUSINESS_STATE",
+    "STATE_TRANSITION",
+    "DESIGN_ELEMENT",
+    "CONFLICT",
+    "TRACE_GAP",
+  ]),
   implementation: new Set([
     "FEATURE",
     "CLAIM",
@@ -65,6 +76,10 @@ function nodeLabel(type, value, fallback) {
   if (type === "TEST_ASSERTION") return value?.type ?? value?.id ?? fallback;
   if (type === "TEST_EXECUTION") return value?.status ?? fallback;
   if (type === "EVIDENCE") return value?.type ? `${value.type} · ${value.id}` : fallback;
+  if (type === "ACTOR_ROLE") return `${value?.name ?? fallback} · ${value?.role ?? "role"}`;
+  if (type === "BUSINESS_STATE") return `${value?.name ?? fallback} · ${value?.kind ?? "state"}`;
+  if (type === "STATE_TRANSITION") return value?.name ?? value?.trigger ?? fallback;
+  if (type === "DESIGN_ELEMENT") return `${value?.name ?? fallback} · ${value?.type ?? "design"}`;
   return value?.name ?? value?.naturalKey ?? fallback;
 }
 
@@ -86,6 +101,23 @@ function metadataIndex(traceability) {
   };
 
   put("FEATURE", traceability.feature, { provenance: "GOVERNED_BASELINE" });
+  const processModel = traceability.processModel;
+  for (const actor of processModel?.actors ?? []) put("ACTOR_ROLE", actor, { provenance: "AUTHORIZED_HUMAN_DECISION" });
+  for (const state of processModel?.states ?? []) put("BUSINESS_STATE", state, { provenance: "AUTHORIZED_HUMAN_DECISION" });
+  for (const transition of processModel?.transitions ?? []) {
+    put("STATE_TRANSITION", transition, { provenance: "AUTHORIZED_HUMAN_DECISION" });
+  }
+  for (const designElement of processModel?.designElements ?? []) {
+    put("DESIGN_ELEMENT", designElement, { provenance: "AUTHORIZED_HUMAN_DECISION" });
+  }
+  for (const factGraph of traceability.processImplementationFacts ?? []) {
+    for (const fact of factGraph.nodes ?? []) {
+      put(fact.type, fact, {
+        provenance: "DETERMINISTIC_FACT",
+        status: factGraph.snapshotManifestId === traceability.snapshotManifest?.id ? "ACTIVE" : "STALE",
+      });
+    }
+  }
   for (const claimView of traceability.claims ?? []) {
     put("CLAIM", claimView.claim, { provenance: claimView.claim?.sourceType ?? "GOVERNED_BASELINE" });
     put("CLAIM_SCOPE", claimView.scope, { provenance: "GOVERNED_BASELINE" });
@@ -215,6 +247,61 @@ function buildCompleteGraph(traceability) {
   }
   const featureId = requireNonEmptyString(traceability.feature?.id, "feature.id");
   if (!nodes.has(featureId)) addGraphNode(nodes, metadata, { id: featureId, type: "FEATURE", version: null });
+  const addProcessEdge = (source, type, target, status = "ACTIVE") => {
+    const id = contentId("GRAPH-EDGE", { source, type, target });
+    edges.set(id, {
+      id,
+      source,
+      target,
+      type,
+      provenance: "AUTHORIZED_HUMAN_DECISION",
+      status,
+      snapshotManifestId,
+    });
+  };
+  const processModel = traceability.processModel;
+  if (processModel) {
+    for (const actor of processModel.actors) {
+      addGraphNode(nodes, metadata, { id: actor.id, type: "ACTOR_ROLE" });
+      addProcessEdge(featureId, "HAS_ROLE", actor.id);
+    }
+    for (const state of processModel.states) {
+      addGraphNode(nodes, metadata, { id: state.id, type: "BUSINESS_STATE" });
+      addProcessEdge(featureId, "HAS_STATE", state.id);
+    }
+    for (const transition of processModel.transitions) {
+      addGraphNode(nodes, metadata, { id: transition.id, type: "STATE_TRANSITION" });
+      addProcessEdge(transition.fromStateId, "HAS_TRANSITION", transition.id);
+      addProcessEdge(transition.id, "TRANSITIONS_TO", transition.toStateId);
+      for (const actorId of transition.actorIds) addProcessEdge(actorId, "PERFORMS", transition.id);
+      for (const reference of transition.implementationFactRefs) {
+        const known = metadata.get(reference.factId);
+        if (!known) continue;
+        addGraphNode(nodes, metadata, { id: reference.factId, type: known.type });
+        addProcessEdge(
+          transition.id,
+          "IMPLEMENTED_BY",
+          reference.factId,
+          reference.snapshotManifestId === snapshotManifestId ? "ACTIVE" : "STALE",
+        );
+      }
+    }
+    for (const designElement of processModel.designElements) {
+      addGraphNode(nodes, metadata, { id: designElement.id, type: "DESIGN_ELEMENT" });
+      addProcessEdge(featureId, "DESIGNED_BY", designElement.id);
+      for (const reference of designElement.implementationFactRefs) {
+        const known = metadata.get(reference.factId);
+        if (!known) continue;
+        addGraphNode(nodes, metadata, { id: reference.factId, type: known.type });
+        addProcessEdge(
+          designElement.id,
+          "IMPLEMENTED_BY",
+          reference.factId,
+          reference.snapshotManifestId === snapshotManifestId ? "ACTIVE" : "STALE",
+        );
+      }
+    }
+  }
   return { center: featureId, snapshotManifestId, nodes, edges };
 }
 

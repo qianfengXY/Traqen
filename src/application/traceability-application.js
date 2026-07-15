@@ -1,6 +1,7 @@
 import {
   createClaim,
   createClaimScope,
+  createBusinessProcessModel,
   createChangeSet,
   createContinuousProtectionAssessment,
   createProductEffectivenessMetrics,
@@ -29,6 +30,7 @@ import {
   verifyFactBundleAttestation,
   verifyReverseSkillManifestAttestation,
   assessImplementationConformance,
+  listBusinessProcessFactRefs,
   compareFactGraphs,
   CandidateReviewOutcome,
   canonicalJson,
@@ -296,6 +298,64 @@ export class TraceabilityApplication {
     const decision = createDecision({ ...input, actorId, actorRole }, this.#clock);
     await this.#store.appendDecision(projectId, decision);
     return decision;
+  }
+
+  async appendBusinessProcessModel(projectId, featureId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("process model input must be an object");
+    }
+    if (Object.hasOwn(input, "featureId") || Object.hasOwn(input, "createdAt")) {
+      throw new TypeError("processModel.featureId and processModel.createdAt are assigned by the server or route");
+    }
+    for (const serverField of ["actorId", "actorRole", "confirmedAt"]) {
+      if (Object.hasOwn(input.authority ?? {}, serverField)) {
+        throw new TypeError(`processModel.authority.${serverField} is assigned by the server`);
+      }
+    }
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const policy = (await this.#reviewPolicyResolver(projectId, {
+      reviewer,
+      featureId,
+      processModelInput: input,
+    })) ?? {};
+    if (!Array.isArray(policy.allowedProcessModelRoles) || !policy.allowedProcessModelRoles.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot confirm business process models in this project`);
+    }
+    const processModel = createBusinessProcessModel({
+      ...input,
+      featureId,
+      authority: { ...input.authority, actorId, actorRole },
+    }, this.#clock);
+    const refsBySnapshot = new Map();
+    for (const ref of listBusinessProcessFactRefs(processModel)) {
+      const refs = refsBySnapshot.get(ref.snapshotManifestId) ?? [];
+      refs.push(ref.factId);
+      refsBySnapshot.set(ref.snapshotManifestId, refs);
+    }
+    for (const [snapshotManifestId, factIds] of refsBySnapshot) {
+      if (!await this.#store.getSnapshotManifest(projectId, snapshotManifestId)) {
+        throw new PersistenceConflictError(`SnapshotManifest ${snapshotManifestId} does not exist in project ${projectId}`);
+      }
+      const facts = await this.#store.getFactGraphByReferences(projectId, snapshotManifestId, factIds);
+      if (facts.missingFactRefs.length > 0) {
+        throw new PersistenceConflictError(
+          `Business process implementation references are missing from Snapshot ${snapshotManifestId}: ${facts.missingFactRefs.join(", ")}`,
+        );
+      }
+    }
+    await this.#store.appendBusinessProcessModel(projectId, processModel);
+    return processModel;
+  }
+
+  async getBusinessProcessModel(projectId, featureId) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    return this.#store.getLatestBusinessProcessModel(projectId, featureId);
   }
 
   async getFeatureBaseline(projectId, featureId) {
@@ -1185,6 +1245,23 @@ export class TraceabilityApplication {
       throw new PersistenceConflictError(`SnapshotManifest ${snapshotManifestId} does not exist in project ${projectId}`);
     }
 
+    const processFactRefsBySnapshot = new Map();
+    for (const ref of baseline.processModel ? listBusinessProcessFactRefs(baseline.processModel) : []) {
+      const refs = processFactRefsBySnapshot.get(ref.snapshotManifestId) ?? [];
+      refs.push(ref.factId);
+      processFactRefsBySnapshot.set(ref.snapshotManifestId, refs);
+    }
+    const processImplementationFacts = await Promise.all(
+      [...processFactRefsBySnapshot].map(async ([referencedSnapshotManifestId, factIds]) => ({
+        snapshotManifestId: referencedSnapshotManifestId,
+        ...(await this.#store.getFactGraphByReferences(
+          projectId,
+          referencedSnapshotManifestId,
+          factIds,
+        )),
+      })),
+    );
+
     const claimViews = [];
     const persisted = [];
     for (const claimRecord of baseline.claims) {
@@ -1282,6 +1359,8 @@ export class TraceabilityApplication {
     const traceChains = claimViews.map((item) => item.traceChain);
     return deepFreeze({
       feature: baseline.feature,
+      processModel: baseline.processModel,
+      processImplementationFacts,
       snapshotManifest,
       claims: claimViews,
       dimensions: {

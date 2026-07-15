@@ -15,3 +15,4 @@ export * from "./snapshot-manifest.js";
 export * from "./project.js";
 export * from "./trace-chain.js";
 export * from "./feature-graph.js";
+export * from "./business-process.js";

@@ -112,11 +112,14 @@
     "FeatureBaseline": {
       "type": "object",
       "required": [
-        "feature", "claims", "testSpecs", "testExecutions", "traceChains",
+        "feature", "processModel", "claims", "testSpecs", "testExecutions", "traceChains",
         "implementationMappings", "conformances", "candidateReviews"
       ],
       "properties": {
         "feature": { "$ref": "#/$defs/FeatureVersion" },
+        "processModel": {
+          "oneOf": [{ "$ref": "./business-process-model.schema.json" }, { "type": "null" }]
+        },
         "claims": {
           "type": "array",
           "items": {

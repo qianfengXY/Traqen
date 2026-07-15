@@ -226,10 +226,29 @@ function demoGraphForScenario(scenario: Scenario, view: GraphViewPreset): Featur
   };
   const typeSets: Record<GraphViewPreset, Set<string> | null> = {
     traceability: null,
-    business: new Set(["FEATURE", "CLAIM", "CLAIM_SCOPE", "DECISION", "TRACE_GAP"]),
+    business: new Set(["FEATURE", "CLAIM", "CLAIM_SCOPE", "DECISION", "ACTOR_ROLE", "BUSINESS_STATE", "STATE_TRANSITION", "DESIGN_ELEMENT", "TRACE_GAP"]),
     implementation: new Set(["FEATURE", "CLAIM", "ENDPOINT", "CODE_SYMBOL", "DATA_OBJECT", "CONFIGURATION", "EXTERNAL_DEPENDENCY", "TRACE_GAP"]),
     coverage: new Set(["FEATURE", "CLAIM", "TEST_SPEC", "TEST_ASSERTION", "TEST_EXECUTION", "EVIDENCE", "TRACE_GAP"]),
   };
+  const demoProcessNodes: FeatureGraphNode[] = [
+    ["ACTOR-DEMO-BUYER", "ACTOR_ROLE", "买家 · order-owner"],
+    ["STATE-DEMO-DRAFT", "BUSINESS_STATE", "草稿 · INITIAL"],
+    ["STATE-DEMO-SUBMITTED", "BUSINESS_STATE", "已提交 · TERMINAL"],
+    ["STATE-DEMO-REJECTED", "BUSINESS_STATE", "提交拒绝 · EXCEPTION"],
+    ["TRANSITION-DEMO-SUBMIT", "STATE_TRANSITION", "提交草稿订单"],
+    ["TRANSITION-DEMO-REJECT", "STATE_TRANSITION", "拒绝非法提交"],
+    ["DESIGN-DEMO-TRANSACTION", "DESIGN_ELEMENT", "原子提交事务 · TRANSACTION"],
+  ].map(([id, type, label]) => ({
+    id,
+    type,
+    label,
+    version: 1,
+    status: "ACTIVE",
+    risk: null,
+    provenance: "DEMO_AUTHORIZED_HUMAN_DECISION",
+    source: null,
+    details: { demo: true, authority: "business-owner" },
+  }));
   const allNodes: FeatureGraphNode[] = [{
     id: scenario.feature.id,
     type: "FEATURE",
@@ -250,7 +269,7 @@ function demoGraphForScenario(scenario: Scenario, view: GraphViewPreset): Featur
     provenance: node.provenance,
     source: null,
     details: { meta: node.meta, demo: true },
-  })), ...scenario.gaps.map((gap) => ({
+  })), ...demoProcessNodes, ...scenario.gaps.map((gap) => ({
     id: `TRACE-GAP:DEMO:${gap.type}`,
     type: "TRACE_GAP",
     label: gap.type,
@@ -285,6 +304,21 @@ function demoGraphForScenario(scenario: Scenario, view: GraphViewPreset): Featur
       status: "ACTIVE",
       snapshotManifestId: scenario.snapshotId,
     });
+  }
+  for (const [source, type, target] of [
+    [scenario.feature.id, "HAS_ROLE", "ACTOR-DEMO-BUYER"],
+    [scenario.feature.id, "HAS_STATE", "STATE-DEMO-DRAFT"],
+    [scenario.feature.id, "HAS_STATE", "STATE-DEMO-SUBMITTED"],
+    [scenario.feature.id, "HAS_STATE", "STATE-DEMO-REJECTED"],
+    ["STATE-DEMO-DRAFT", "HAS_TRANSITION", "TRANSITION-DEMO-SUBMIT"],
+    ["TRANSITION-DEMO-SUBMIT", "TRANSITIONS_TO", "STATE-DEMO-SUBMITTED"],
+    ["STATE-DEMO-DRAFT", "HAS_TRANSITION", "TRANSITION-DEMO-REJECT"],
+    ["TRANSITION-DEMO-REJECT", "TRANSITIONS_TO", "STATE-DEMO-REJECTED"],
+    ["ACTOR-DEMO-BUYER", "PERFORMS", "TRANSITION-DEMO-SUBMIT"],
+    ["ACTOR-DEMO-BUYER", "PERFORMS", "TRANSITION-DEMO-REJECT"],
+    [scenario.feature.id, "DESIGNED_BY", "DESIGN-DEMO-TRANSACTION"],
+  ]) {
+    allEdges.push({ id: `DEMO-PROCESS-EDGE:${source}:${type}:${target}`, source, target, type, provenance: "DEMO_AUTHORIZED_HUMAN_DECISION", status: "ACTIVE", snapshotManifestId: scenario.snapshotId });
   }
   const allowed = typeSets[view];
   const nodes = allowed ? allNodes.filter((node) => allowed.has(node.type)) : allNodes;
@@ -325,6 +359,10 @@ function nodeLabel(type: string) {
     TEST_ASSERTION: "Assertions",
     TEST_EXECUTION: "Execution",
     EVIDENCE: "Evidence",
+    ACTOR_ROLE: "Actor / Role",
+    BUSINESS_STATE: "Business State",
+    STATE_TRANSITION: "State Transition",
+    DESIGN_ELEMENT: "Design Element",
   } as Record<string, string>)[type] ?? type.replaceAll("_", " ");
 }
 
@@ -661,7 +699,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
     <section className="panel graph-toolbar">
       <div className="panel-head"><div><h2>Feature 可交互追溯图谱</h2><p>默认最多 30 个节点；按业务问题渐进披露，而不是展开全量代码“毛线团”。</p></div><span className={`mode-badge ${remoteGraph ? "live" : ""}`}>{remoteGraph ? "LIVE GRAPH" : "DEMO GRAPH"}</span></div>
       <div className="graph-presets" aria-label="图谱预设视图">
-        {(["traceability", "business", "implementation", "coverage"] as GraphViewPreset[]).map((item) => <button key={item} className={preset === item ? "active" : ""} onClick={() => changePreset(item)}>{({ traceability: "产品追溯", business: "业务规则", implementation: "实现依赖", coverage: "测试覆盖" } as Record<GraphViewPreset, string>)[item]}</button>)}
+        {(["traceability", "business", "implementation", "coverage"] as GraphViewPreset[]).map((item) => <button key={item} className={preset === item ? "active" : ""} onClick={() => changePreset(item)}>{({ traceability: "产品追溯", business: "业务流程", implementation: "实现依赖", coverage: "测试覆盖" } as Record<GraphViewPreset, string>)[item]}</button>)}
       </div>
       <div className="graph-filter-row">
         <div className="field"><label htmlFor="graph-depth">展开深度</label><select id="graph-depth" value={depth} onChange={(event) => setDepth(Number(event.target.value))}><option value={1}>1 层</option><option value={2}>2 层</option><option value={4}>4 层</option><option value={8}>8 层（完整路径上限）</option></select></div>

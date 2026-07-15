@@ -43,6 +43,15 @@ The governance slice adds:
 - database enforcement that a decision cannot replace its Claim's bound scope or cross the project's tenant boundary;
 - stable conflict responses when immutable IDs or governed references collide.
 
+The governed business-process slice adds:
+
+- immutable, Feature-version-bound Actor/Role, BusinessState, StateTransition, guard, exception, and DesignElement records;
+- structural checks for exactly one initial state, terminal outcomes, valid actor/state references, no self transitions, and no unreachable states;
+- authenticated policy-controlled human authority, with actor identity and confirmation time assigned by the server rather than accepted from a client or Skill;
+- Snapshot-bound links from transitions and design elements to existing deterministic implementation Facts, rejecting missing Facts instead of inventing mappings;
+- a real business-process graph preset with `HAS_ROLE`, `HAS_STATE`, `HAS_TRANSITION`, `TRANSITIONS_TO`, `PERFORMS`, `DESIGNED_BY`, and `IMPLEMENTED_BY` relations;
+- PostgreSQL migration `0008_business_process_model`, memory parity, HTTP/OpenAPI contracts, UI demonstration, and reference-pilot coverage across changed Snapshots.
+
 The TestSpec validation slice adds:
 
 - an immutable, Feature- and Claim-linked TestSpec v1alpha1 protocol;
@@ -115,7 +124,7 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - a no-Shell Git Diff analyzer that accepts only full commit hashes, preserves add/delete/modify/rename paths, and deterministically correlates changed artifacts with Snapshot Fact changes;
 - an authenticated implementation-reanalysis workflow that binds a reviewed current-Snapshot Reverse Candidate back to the existing normative Claim, records reviewer provenance in immutable conformance analysis, and closes the stale implementation segment without creating a replacement business Decision;
-- append-only PostgreSQL migrations through `0007_change_impact`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
+- append-only PostgreSQL migrations through `0008_business_process_model`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
 The product-interface slice adds:
 
@@ -146,7 +155,7 @@ The continuous-protection slice adds:
 
 The product-effectiveness metrics slice adds a Snapshot-bound dashboard and API for high-value valid-chain rate, Claim confirmation, confirmed-rule TestSpec coverage, meaningful assertions, Evidence freshness, TraceGap type/severity/owner, and per-Feature layer presence. Every ratio keeps its numerator and denominator, every Feature keeps its independent trust dimensions, and metrics that require external longitudinal, CI/CD, or defect data are explicitly unavailable instead of estimated. `HIGH_VALUE_FEATURE_IDS` optionally narrows the north-star population; without it, all governed Features are included.
 
-The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision, candidate-review, and TestSpec-approval routes additionally fail closed unless `REVIEWER_ID` is configured, and may use a distinct `REVIEWER_BEARER_TOKEN`; implementation reanalysis has the equivalent `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
+The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision, candidate-review, TestSpec-approval, and business-process confirmation routes additionally fail closed unless `REVIEWER_ID` is configured, and may use a distinct `REVIEWER_BEARER_TOKEN`; implementation reanalysis has the equivalent `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
 
 ## Run
 
@@ -192,7 +201,7 @@ The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans
 
 Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions until the separate authorized review flow records an outcome.
 
-Review one candidate with `POST /v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews`, then read its governed baseline and server-derived proof chain from `GET /v1/projects/{projectId}/features/{featureId}/baseline` and `GET /v1/projects/{projectId}/features/{featureId}/traceability?snapshotManifestId=...`. Explore the same data through `GET /v1/projects/{projectId}/features/{featureId}/graph?snapshotManifestId=...` and the bounded path-query endpoint. Compare two manifests with `POST /v1/projects/{projectId}/change-sets`; the immutable impact record is available at `GET /v1/projects/{projectId}/change-sets/{changeSetId}/impact`.
+Review one candidate with `POST /v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews`, then read its governed baseline and server-derived proof chain from `GET /v1/projects/{projectId}/features/{featureId}/baseline` and `GET /v1/projects/{projectId}/features/{featureId}/traceability?snapshotManifestId=...`. Authorized product/business reviewers append or read the Feature state machine at `POST/GET /v1/projects/{projectId}/features/{featureId}/process-model`. Explore the same data through `GET /v1/projects/{projectId}/features/{featureId}/graph?snapshotManifestId=...&view=business` and the bounded path-query endpoint. Compare two manifests with `POST /v1/projects/{projectId}/change-sets`; the immutable impact record is available at `GET /v1/projects/{projectId}/change-sets/{changeSetId}/impact`.
 
 Derive its incremental regression and policy-controlled CI result from `GET /v1/projects/{projectId}/change-sets/{changeSetId}/continuous-protection`. This endpoint never turns incomplete impact into a pass and never replaces the individual Feature trust dimensions with one composite score.
 

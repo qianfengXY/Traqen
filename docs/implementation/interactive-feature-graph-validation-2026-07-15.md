@@ -20,7 +20,7 @@ The JSON Schema and OpenAPI documents define the projection, node, edge, expansi
 
 The Feature workspace includes a dedicated **追溯图谱** surface implemented with Cytoscape.js. It provides:
 
-- product traceability, business-rule, implementation-dependency, and test-coverage presets;
+- product traceability, governed business-process, implementation-dependency, and test-coverage presets;
 - explicit depth, node-type, and relation filters;
 - pan, zoom, node selection, provenance/version/source details, status-specific shapes and borders, and a text relation list for accessibility;
 - server-backed shortest-path locking between any two visible nodes, including reverse exploration from Evidence to business rules;
@@ -29,8 +29,8 @@ The Feature workspace includes a dedicated **追溯图谱** surface implemented 
 
 ## Executable proof
 
-Domain, application, HTTP, contract, rendered-product, PostgreSQL integration, and built-in pilot tests cover this slice. The built-in order pilot now fails unless a complete current-Snapshot graph contains first-class assertions and a Feature-to-Evidence path. This proves the graph is backed by the same persisted vertical chain used for trust evaluation.
+Domain, application, HTTP, contract, rendered-product, PostgreSQL integration, and built-in pilot tests cover this slice. The built-in order pilot now fails unless a complete current-Snapshot graph contains first-class assertions, a Feature-to-Evidence path, three authorized BusinessState nodes, and two StateTransition nodes. This proves both technical proof and business flow are backed by the same persisted Feature source.
 
 ## Deliberate boundary
 
-The current graph is Feature-centered and bounded. Cross-Feature business-process/state-machine and ChangeSet-centered impact projections require the corresponding governed Actor, BusinessState, transition, and regression-selection records; they must not be inferred from labels or invented solely for visualization.
+The current graph is Feature-centered and bounded. Its governed Actor, BusinessState, StateTransition, DesignElement, and Snapshot Fact links now support the single-Feature business-process view. Cross-Feature process traversal and a ChangeSet-centered impact graph remain separate projections; neither may be inferred from labels or invented solely for visualization.

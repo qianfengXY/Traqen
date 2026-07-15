@@ -345,6 +345,29 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const featureProcessModelMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/process-model$/.exec(
+        url.pathname,
+      );
+      if (featureProcessModelMatch && request.method === "POST") {
+        requireJson(request);
+        const projectId = decodePathSegment(featureProcessModelMatch[1]);
+        const featureId = decodePathSegment(featureProcessModelMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.appendBusinessProcessModel(projectId, featureId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
+        return;
+      }
+      if (featureProcessModelMatch && request.method === "GET") {
+        const projectId = decodePathSegment(featureProcessModelMatch[1]);
+        const featureId = decodePathSegment(featureProcessModelMatch[2]);
+        const processModel = await application.getBusinessProcessModel(projectId, featureId);
+        if (!processModel) throw new HttpError(404, "PROCESS_MODEL_NOT_FOUND", "Business process model was not found");
+        sendJson(response, 200, processModel, id);
+        return;
+      }
+
       const featureTraceabilityMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/traceability$/.exec(
         url.pathname,
       );

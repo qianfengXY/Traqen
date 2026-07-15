@@ -86,6 +86,7 @@ export function createConfiguredApplication({ store, env = process.env }) {
         "DEPRECATED",
       ],
       allowedTestSpecApproverRoles: [reviewerRole],
+      allowedProcessModelRoles: [reviewerRole],
     }),
   });
   return { application, corsAllowedOrigins };

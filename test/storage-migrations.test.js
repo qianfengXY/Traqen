@@ -32,6 +32,7 @@ async function migratedDatabase() {
     "0005_reverse_skill_framework",
     "0006_candidate_review_baseline",
     "0007_change_impact",
+    "0008_business_process_model",
   ]);
   return database;
 }
@@ -233,6 +234,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "snapshot_manifest",
     "claim",
     "human_decision",
+    "business_process_model",
     "implementation_conformance",
     "test_spec",
     "test_execution",
@@ -251,6 +253,47 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }
+});
+
+test("PostgreSQL persists authorized business process models against a Feature version", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: fixedClock,
+    reviewerResolver: () => ({ actorId: "USER-001", actorRole: "business-owner" }),
+    reviewPolicyResolver: () => ({ allowedProcessModelRoles: ["business-owner"] }),
+  });
+  await application.appendFeatureVersion("PROJECT-001", {
+    id: "FEATURE-PROCESS-001",
+    version: 1,
+    name: "Submit order",
+  });
+  const model = await application.appendBusinessProcessModel("PROJECT-001", "FEATURE-PROCESS-001", {
+    id: "PROCESS-001",
+    version: 1,
+    featureVersion: 1,
+    name: "Submit lifecycle",
+    actors: [{ id: "ACTOR-BUYER", name: "Buyer", role: "order-owner" }],
+    states: [
+      { id: "STATE-DRAFT", name: "Draft", kind: "INITIAL" },
+      { id: "STATE-SUBMITTED", name: "Submitted", kind: "TERMINAL" },
+    ],
+    transitions: [{
+      id: "TRANSITION-SUBMIT",
+      name: "Submit",
+      fromStateId: "STATE-DRAFT",
+      toStateId: "STATE-SUBMITTED",
+      trigger: "submit",
+      actorIds: ["ACTOR-BUYER"],
+    }],
+    authority: { rationale: "The business owner confirms the lifecycle." },
+  });
+  assert.equal(model.authority.actorId, "USER-001");
+  const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-PROCESS-001");
+  assert.equal(baseline.processModel.id, "PROCESS-001");
+  assert.equal((await application.getBusinessProcessModel("PROJECT-001", "FEATURE-PROCESS-001")).version, 1);
 });
 
 test("application bootstraps a PostgreSQL project and Snapshot without manual SQL", async (t) => {

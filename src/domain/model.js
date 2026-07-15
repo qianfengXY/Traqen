@@ -233,6 +233,10 @@ export const ChangeType = enumValues([
   "CONTRADICTORY_EVIDENCE",
 ]);
 
+export const BusinessStateKind = enumValues(["INITIAL", "INTERMEDIATE", "TERMINAL", "EXCEPTION"]);
+
+export const DesignElementType = enumValues(["MODULE", "SEQUENCE", "TRANSACTION", "EXCEPTION_HANDLER"]);
+
 export function assertEnum(enumObject, value, fieldName) {
   if (!Object.hasOwn(enumObject, value)) {
     throw new TypeError(`${fieldName} must be one of: ${Object.keys(enumObject).join(", ")}`);

@@ -231,6 +231,35 @@
         }
       }
     },
+    "/v1/projects/{projectId}/features/{featureId}/process-model": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "appendBusinessProcessModel",
+        "requestBody": { "$ref": "#/components/requestBodies/BusinessProcessModel" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/BusinessProcessModel" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "get": {
+        "operationId": "getBusinessProcessModel",
+        "responses": {
+          "200": { "$ref": "#/components/responses/BusinessProcessModel" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/features/{featureId}/traceability": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
@@ -771,6 +800,10 @@
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
       },
+      "BusinessProcessModel": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./business-process-model.schema.json#/$defs/Input" } } }
+      },
       "ClaimScope": {
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/ClaimScope" } } }
@@ -1183,6 +1216,12 @@
           "application/json": {
             "schema": { "$ref": "./feature-traceability.schema.json" }
           }
+        }
+      },
+      "BusinessProcessModel": {
+        "description": "Authorized immutable business actors, states, transitions, exceptions, and Snapshot-bound implementation mappings",
+        "content": {
+          "application/json": { "schema": { "$ref": "./business-process-model.schema.json" } }
         }
       },
       "FeatureGraph": {

@@ -609,6 +609,56 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async appendBusinessProcessModel(projectId, processModel) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO business_process_model (
+           project_id, id, version, feature_id, feature_version, model_payload,
+           authority_actor_id, authority_actor_role, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9)
+         ON CONFLICT (project_id, id, version) DO NOTHING`,
+        [
+          projectId,
+          processModel.id,
+          processModel.version,
+          processModel.featureId,
+          processModel.featureVersion,
+          JSON.stringify(processModel),
+          processModel.authority.actorId,
+          processModel.authority.actorRole,
+          processModel.createdAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT model_payload
+         FROM business_process_model
+         WHERE project_id = $1 AND id = $2 AND version = $3`,
+        [projectId, processModel.id, processModel.version],
+      );
+      if (!stored.rows[0] || canonicalJson(stored.rows[0].model_payload) !== canonicalJson(processModel)) {
+        throw new PersistenceConflictError(
+          `BusinessProcessModel ${processModel.id} version ${processModel.version} conflicts with an existing record`,
+        );
+      }
+      return processModel;
+    });
+  }
+
+  async getLatestBusinessProcessModel(projectId, featureId) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    const result = await this.#database.query(
+      `SELECT model_payload
+       FROM business_process_model
+       WHERE project_id = $1 AND feature_id = $2
+       ORDER BY version DESC, created_at DESC
+       LIMIT 1`,
+      [projectId, featureId],
+    );
+    return result.rows[0]?.model_payload ?? null;
+  }
+
   async getFeatureBaseline(projectId, featureId) {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
@@ -760,6 +810,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         description: featureRow.description,
         createdAt: new Date(featureRow.created_at).toISOString(),
       },
+      processModel: await this.getLatestBusinessProcessModel(projectId, featureId),
       claims: claimResult.rows.map((row) => {
         const decisionHistory = decisionsByClaim.get(`${row.id}\u0000${row.version}`) ?? [];
         return {

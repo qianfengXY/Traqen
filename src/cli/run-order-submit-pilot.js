@@ -95,6 +95,81 @@ function runnerTask({ executionId, testSpec, snapshotManifest, targetPolicy }) {
   }, runnerSecret);
 }
 
+function governedOrderProcessModel({ version, snapshotManifestId, factBundle }) {
+  const requireFact = (predicate, label) => {
+    const fact = factBundle.nodes.find(predicate);
+    if (!fact) throw new Error(`Reference scan did not expose the ${label} Fact required by the business process model`);
+    return { snapshotManifestId, factId: fact.factId };
+  };
+  const endpoint = requireFact(
+    (node) => node.type === "ENDPOINT" && node.name.includes("POST") && node.name.includes("submit"),
+    "submit Endpoint",
+  );
+  const stateTransition = requireFact(
+    (node) => node.attributes?.kind === "state-transition" && node.attributes?.toState === "SUBMITTED",
+    "SUBMITTED state transition",
+  );
+  const stateGuard = requireFact(
+    (node) => node.attributes?.kind === "condition-branch" && node.attributes?.classifications?.includes("STATE_GUARD"),
+    "state guard",
+  );
+  const exceptionPath = requireFact(
+    (node) => node.attributes?.kind === "exception-path",
+    "exception path",
+  );
+  return {
+    id: "PROCESS-ORDER-SUBMIT",
+    version,
+    featureVersion: 1,
+    name: "Submit order lifecycle",
+    description: "Authorized customer flow with explicit success and rejection outcomes.",
+    actors: [{
+      id: "ACTOR-ORDER-CUSTOMER",
+      name: "Order customer",
+      role: "customer",
+      responsibilities: ["Own the order", "Request submission"],
+    }],
+    states: [
+      { id: "STATE-ORDER-DRAFT", name: "Draft", kind: "INITIAL" },
+      { id: "STATE-ORDER-SUBMITTED", name: "Submitted", kind: "TERMINAL" },
+      { id: "STATE-ORDER-REJECTED", name: "Submission rejected", kind: "EXCEPTION" },
+    ],
+    transitions: [
+      {
+        id: "TRANSITION-ORDER-SUBMIT",
+        name: "Submit draft order",
+        fromStateId: "STATE-ORDER-DRAFT",
+        toStateId: "STATE-ORDER-SUBMITTED",
+        trigger: "POST /orders/{id}/submit",
+        actorIds: ["ACTOR-ORDER-CUSTOMER"],
+        guards: ["The actor owns the order", "The order is DRAFT", "Submission is enabled"],
+        implementationFactRefs: [endpoint, stateGuard, stateTransition],
+      },
+      {
+        id: "TRANSITION-ORDER-REJECT",
+        name: "Reject invalid submission",
+        fromStateId: "STATE-ORDER-DRAFT",
+        toStateId: "STATE-ORDER-REJECTED",
+        trigger: "A guard or dependency rejects the request",
+        actorIds: ["ACTOR-ORDER-CUSTOMER"],
+        exception: "The order remains DRAFT and an explicit failure is returned.",
+        implementationFactRefs: [stateGuard, exceptionPath],
+      },
+    ],
+    designElements: [{
+      id: "DESIGN-ORDER-SUBMIT-TRANSACTION",
+      name: "Atomic order submission",
+      type: "TRANSACTION",
+      description: "Persist state and idempotency outcome as one controlled operation.",
+      implementationFactRefs: [endpoint, stateTransition],
+    }],
+    authority: {
+      rationale: "The product owner confirms the customer, guards, state changes, and rejection semantics.",
+      decisionRefs: ["DECISION-ORDER-SUBMIT"],
+    },
+  };
+}
+
 async function main() {
   const temporaryRoot = await mkdtemp(path.join(tmpdir(), "traqen-order-pilot-"));
   const changedRoot = path.join(temporaryRoot, "order-platform");
@@ -126,6 +201,7 @@ async function main() {
       allowedRoles: ["business-owner"],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
       allowedTestSpecApproverRoles: ["business-owner"],
+      allowedProcessModelRoles: ["business-owner"],
     }),
     implementationReviewerResolver: () => ({ actorId: "DEVELOPER-ORDER", actorRole: "developer" }),
     implementationPolicyResolver: () => ({ allowedRoles: ["developer"] }),
@@ -192,6 +268,11 @@ async function main() {
         scope: { actorRole: "customer", orderState: "DRAFT" },
       },
     });
+    await application.appendBusinessProcessModel(
+      projectId,
+      featureId,
+      governedOrderProcessModel({ version: 1, snapshotManifestId: firstSnapshot.id, factBundle: firstBundle }),
+    );
 
     const generated = await application.generateTestSpecDraft(projectId, featureId, claimId, {
       id: "TEST-ORDER-SUBMIT",
@@ -411,6 +492,11 @@ async function main() {
       sourceCandidateId: secondCandidate.id,
       rationale: "The developer confirms the changed endpoint still implements the existing governed Claim.",
     });
+    await application.appendBusinessProcessModel(
+      projectId,
+      featureId,
+      governedOrderProcessModel({ version: 2, snapshotManifestId: secondSnapshot.id, factBundle: secondBundle }),
+    );
     const repairedBeforeExecution = await application.getFeatureTraceability(projectId, featureId, secondSnapshot.id);
     if (repairedBeforeExecution.dimensions.conformance[0]?.status !== "CONFORMS") {
       throw new Error("Implementation reanalysis did not restore conformance");
@@ -449,6 +535,17 @@ async function main() {
       depth: 8,
       limit: 100,
     });
+    const finalBusinessGraph = await application.getFeatureGraph(projectId, featureId, secondSnapshot.id, {
+      view: "business",
+      depth: 8,
+      limit: 100,
+    });
+    if (!finalBusinessGraph.nodes.some((node) => node.type === "BUSINESS_STATE")) {
+      throw new Error("The governed business graph did not expose BusinessState nodes");
+    }
+    if (!finalBusinessGraph.edges.some((edge) => edge.type === "TRANSITIONS_TO")) {
+      throw new Error("The governed business graph did not expose state transitions");
+    }
     const graphEvidence = finalGraph.nodes.find((node) => node.type === "EVIDENCE");
     if (!graphEvidence) throw new Error("The repaired traceability graph did not expose execution Evidence");
     const proofPath = await application.queryFeatureGraphPath(projectId, featureId, {
@@ -521,6 +618,8 @@ async function main() {
         assertions: finalGraph.nodes.filter((node) => node.type === "TEST_ASSERTION").length,
         featureToEvidencePathFound: proofPath.found,
         featureToEvidenceHops: proofPath.hopCount,
+        businessStates: finalBusinessGraph.nodes.filter((node) => node.type === "BUSINESS_STATE").length,
+        stateTransitions: finalBusinessGraph.nodes.filter((node) => node.type === "STATE_TRANSITION").length,
       },
       continuousProtection: {
         selectionStrategy: finalProtection.regressionPlan.selectionStrategy,

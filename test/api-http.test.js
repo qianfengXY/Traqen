@@ -137,6 +137,67 @@ test("project and Snapshot bootstrap require no direct database setup", async (t
   assert.equal((await fetched.json()).tenant.id, "TENANT-BOOTSTRAP");
 });
 
+test("business process endpoint assigns reviewer identity and returns the governed state machine", async (t) => {
+  const baseUrl = await startServer(t, {
+    reviewerResolver: (_projectId, context) => context.authorization === "Bearer reviewer-token"
+      ? { actorId: "OWNER-PROCESS", actorRole: "business-owner" }
+      : null,
+    reviewPolicyResolver: () => ({ allowedProcessModelRoles: ["business-owner"] }),
+  });
+  await postJson(`${baseUrl}/v1/projects`, {
+    organization: { id: "ORG-PROCESS", name: "Process organization" },
+    tenant: { id: "TENANT-PROCESS", name: "Process tenant" },
+    project: { id: "PROJECT-PROCESS", name: "Process project" },
+    principals: [{ id: "OWNER-PROCESS", type: "USER", displayName: "Process owner" }],
+  });
+  await postJson(`${baseUrl}/v1/projects/PROJECT-PROCESS/features`, {
+    id: "FEATURE-PROCESS",
+    version: 1,
+    name: "Submit order",
+  });
+  const payload = {
+    id: "PROCESS-SUBMIT",
+    version: 1,
+    featureVersion: 1,
+    name: "Submit lifecycle",
+    actors: [{ id: "ACTOR-BUYER", name: "Buyer", role: "order-owner" }],
+    states: [
+      { id: "STATE-DRAFT", name: "Draft", kind: "INITIAL" },
+      { id: "STATE-SUBMITTED", name: "Submitted", kind: "TERMINAL" },
+    ],
+    transitions: [{
+      id: "TRANSITION-SUBMIT",
+      name: "Submit",
+      fromStateId: "STATE-DRAFT",
+      toStateId: "STATE-SUBMITTED",
+      trigger: "submit",
+      actorIds: ["ACTOR-BUYER"],
+      guards: ["order.status = DRAFT"],
+    }],
+    authority: { rationale: "The product owner confirms the normal submission lifecycle." },
+  };
+  const unauthorized = await postJson(
+    `${baseUrl}/v1/projects/PROJECT-PROCESS/features/FEATURE-PROCESS/process-model`,
+    payload,
+  );
+  assert.equal(unauthorized.response.status, 401);
+
+  const created = await postJson(
+    `${baseUrl}/v1/projects/PROJECT-PROCESS/features/FEATURE-PROCESS/process-model`,
+    payload,
+    { authorization: "Bearer reviewer-token" },
+  );
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.authority.actorId, "OWNER-PROCESS");
+  assert.equal(created.body.states[0].kind, "INITIAL");
+
+  const found = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-PROCESS/features/FEATURE-PROCESS/process-model`,
+  );
+  assert.equal(found.status, 200);
+  assert.equal((await found.json()).transitions[0].id, "TRANSITION-SUBMIT");
+});
+
 test("product-effectiveness metrics require a Snapshot and preserve independent results", async (t) => {
   const calls = [];
   const application = {
