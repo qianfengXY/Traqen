@@ -464,6 +464,10 @@ async function main() {
     if (finalProtection.qualityGate.status !== "PASS") {
       throw new Error("The repaired reference Snapshot did not restore its continuous-protection gate");
     }
+    const productMetrics = await application.getProductEffectivenessMetrics(projectId, secondSnapshot.id);
+    if (productMetrics.highValueValidTraceChainRate.ratio !== 1) {
+      throw new Error("The repaired reference Snapshot did not restore its high-value Feature metric");
+    }
 
     process.stdout.write(`${JSON.stringify({
       projectId,
@@ -517,6 +521,14 @@ async function main() {
         staleEnforcement: staleProtection.qualityGate.enforcement,
         finalStatus: finalProtection.qualityGate.status,
         finalEnforcement: finalProtection.qualityGate.enforcement,
+      },
+      productMetrics: {
+        validTraceChainRate: productMetrics.highValueValidTraceChainRate,
+        claimConfirmationRate: productMetrics.claimConfirmationRate,
+        ruleTestCoverageRate: productMetrics.confirmedRuleTestCoverageRate,
+        meaningfulAssertionRate: productMetrics.meaningfulAssertionRate,
+        gapTypes: productMetrics.gapBreakdown.byType,
+        unavailableMetrics: productMetrics.unavailableMetrics.map((item) => item.metric),
       },
     }, null, 2)}\n`);
   } finally {

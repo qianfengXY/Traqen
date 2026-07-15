@@ -9,6 +9,7 @@ export * from "./reverse-skill.js";
 export * from "./review.js";
 export * from "./change-impact.js";
 export * from "./continuous-protection.js";
+export * from "./product-metrics.js";
 export * from "./model.js";
 export * from "./snapshot-manifest.js";
 export * from "./project.js";

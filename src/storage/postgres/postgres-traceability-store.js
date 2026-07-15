@@ -841,6 +841,18 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async listFeatureIds(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT DISTINCT feature_id
+       FROM feature_version
+       WHERE project_id = $1
+       ORDER BY feature_id`,
+      [projectId],
+    );
+    return deepFreeze(result.rows.map((row) => row.feature_id));
+  }
+
   async appendTestSpec(projectId, testSpec) {
     requireId(projectId, "projectId");
     return this.#transaction(async () => {

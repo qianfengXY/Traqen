@@ -33,6 +33,7 @@ async function startServer(t, options = {}) {
     implementationReviewerResolver,
     implementationPolicyResolver,
     continuousProtectionPolicyResolver,
+    productMetricsPolicyResolver,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -50,6 +51,7 @@ async function startServer(t, options = {}) {
     implementationReviewerResolver,
     implementationPolicyResolver,
     continuousProtectionPolicyResolver,
+    productMetricsPolicyResolver,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -133,6 +135,40 @@ test("project and Snapshot bootstrap require no direct database setup", async (t
   const fetched = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP`, { headers: apiHeaders });
   assert.equal(fetched.status, 200);
   assert.equal((await fetched.json()).tenant.id, "TENANT-BOOTSTRAP");
+});
+
+test("product-effectiveness metrics require a Snapshot and preserve independent results", async (t) => {
+  const calls = [];
+  const application = {
+    async getProductEffectivenessMetrics(projectId, snapshotManifestId) {
+      calls.push({ projectId, snapshotManifestId });
+      return {
+        projectId,
+        snapshotManifestId,
+        computedAt: "2026-07-15T00:00:00.000Z",
+        highValueValidTraceChainRate: { numerator: 1, denominator: 2, ratio: 0.5 },
+        claimConfirmationRate: { numerator: 2, denominator: 2, ratio: 1 },
+        confirmedRuleTestCoverageRate: { numerator: 1, denominator: 2, ratio: 0.5 },
+        meaningfulAssertionRate: { numerator: 1, denominator: 2, ratio: 0.5 },
+        evidenceFreshness: { FRESH: 1, EXPIRING: 0, STALE: 0, INCOMPLETE: 1, UNKNOWN: 0 },
+        gapBreakdown: { byType: { NO_TEST_SPEC: 1 }, bySeverity: { BLOCKING: 1 }, byOwnerRole: { QUALITY_OWNER: 1 } },
+        features: [],
+        unavailableMetrics: [],
+      };
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const response = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/metrics/product-effectiveness?snapshotManifestId=SNAPSHOT-001`,
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.highValueValidTraceChainRate.ratio, 0.5);
+  assert.equal(body.compositeScore, undefined);
+  assert.deepEqual(calls, [{ projectId: "PROJECT-001", snapshotManifestId: "SNAPSHOT-001" }]);
+
+  const missing = await fetch(`${baseUrl}/v1/projects/PROJECT-001/metrics/product-effectiveness`);
+  assert.equal(missing.status, 400);
 });
 
 test("Feature graph APIs preserve bounded filters and path-query scope", async (t) => {

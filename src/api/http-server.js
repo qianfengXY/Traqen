@@ -266,6 +266,17 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const projectMetricsMatch = /^\/v1\/projects\/([^/]+)\/metrics\/product-effectiveness$/.exec(url.pathname);
+      if (request.method === "GET" && projectMetricsMatch) {
+        const projectId = decodePathSegment(projectMetricsMatch[1]);
+        const snapshotManifestId = url.searchParams.get("snapshotManifestId");
+        if (!snapshotManifestId) throw new HttpError(400, "SNAPSHOT_REQUIRED", "snapshotManifestId is required");
+        const metrics = await application.getProductEffectivenessMetrics(projectId, snapshotManifestId);
+        if (!metrics) throw new HttpError(404, "SNAPSHOT_NOT_FOUND", "Snapshot Manifest was not found");
+        sendJson(response, 200, metrics, id);
+        return;
+      }
+
       const snapshotCollectionMatch = /^\/v1\/projects\/([^/]+)\/snapshots$/.exec(url.pathname);
       if (request.method === "POST" && snapshotCollectionMatch) {
         requireJson(request);

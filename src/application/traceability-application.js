@@ -3,6 +3,7 @@ import {
   createClaimScope,
   createChangeSet,
   createContinuousProtectionAssessment,
+  createProductEffectivenessMetrics,
   createDecision,
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -139,6 +140,7 @@ export class TraceabilityApplication {
   #implementationReviewerResolver;
   #implementationPolicyResolver;
   #continuousProtectionPolicyResolver;
+  #productMetricsPolicyResolver;
 
   constructor({
     store,
@@ -154,6 +156,7 @@ export class TraceabilityApplication {
     implementationReviewerResolver = () => null,
     implementationPolicyResolver = () => ({ allowedRoles: [] }),
     continuousProtectionPolicyResolver = () => ({ mode: "ADVISORY" }),
+    productMetricsPolicyResolver = () => ({}),
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -172,6 +175,9 @@ export class TraceabilityApplication {
     if (typeof continuousProtectionPolicyResolver !== "function") {
       throw new TypeError("continuousProtectionPolicyResolver must be a function");
     }
+    if (typeof productMetricsPolicyResolver !== "function") {
+      throw new TypeError("productMetricsPolicyResolver must be a function");
+    }
     this.#store = store;
     this.#clock = clock;
     this.#runnerKeyResolver = runnerKeyResolver;
@@ -185,6 +191,7 @@ export class TraceabilityApplication {
     this.#implementationReviewerResolver = implementationReviewerResolver;
     this.#implementationPolicyResolver = implementationPolicyResolver;
     this.#continuousProtectionPolicyResolver = continuousProtectionPolicyResolver;
+    this.#productMetricsPolicyResolver = productMetricsPolicyResolver;
   }
 
   async createProject(input) {
@@ -1525,6 +1532,24 @@ export class TraceabilityApplication {
       testSpecs,
       traceabilities,
       policy,
+    }, this.#clock);
+  }
+
+  async getProductEffectivenessMetrics(projectId, snapshotManifestId) {
+    requireId(projectId, "projectId");
+    requireId(snapshotManifestId, "snapshotManifestId");
+    const manifest = await this.#store.getSnapshotManifest(projectId, snapshotManifestId);
+    if (!manifest) return null;
+    const featureIds = await this.#store.listFeatureIds(projectId);
+    const traceabilities = (await Promise.all(
+      featureIds.map((featureId) => this.getFeatureTraceability(projectId, featureId, snapshotManifestId)),
+    )).filter(Boolean);
+    const policy = await this.#productMetricsPolicyResolver(projectId, { snapshotManifest: manifest, featureIds });
+    return createProductEffectivenessMetrics({
+      projectId,
+      snapshotManifestId,
+      traceabilities,
+      highValueFeatureIds: policy?.highValueFeatureIds ?? featureIds,
     }, this.#clock);
   }
 }

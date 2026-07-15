@@ -3,7 +3,7 @@
 import cytoscape from "cytoscape";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type View = "trace" | "graph" | "review" | "impact";
+type View = "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
 type GraphViewPreset = "traceability" | "business" | "implementation" | "coverage";
 
@@ -113,6 +113,20 @@ type ContinuousProtection = {
     reasons: string[];
     requiredActions: string[];
   };
+};
+
+type ProductMetrics = {
+  projectId: string;
+  snapshotManifestId: string;
+  computedAt: string;
+  highValueValidTraceChainRate: { numerator: number; denominator: number; ratio: number | null };
+  claimConfirmationRate: { numerator: number; denominator: number; ratio: number | null };
+  confirmedRuleTestCoverageRate: { numerator: number; denominator: number; ratio: number | null };
+  meaningfulAssertionRate: { numerator: number; denominator: number; ratio: number | null };
+  evidenceFreshness: Record<string, number>;
+  gapBreakdown: { byType: Record<string, number>; bySeverity: Record<string, number>; byOwnerRole: Record<string, number> };
+  features: Array<{ featureId: string; name: string; highValue: boolean; chainComplete: boolean; coverage: Record<string, boolean>; openGapCount: number }>;
+  unavailableMetrics: Array<{ metric: string; reason: string }>;
 };
 
 type Scenario = {
@@ -428,13 +442,14 @@ export function TraqenProduct() {
           <button className={`nav-button ${view === "graph" ? "active" : ""}`} onClick={() => setView("graph")}><span className="nav-icon">◎</span>追溯图谱</button>
           <button className={`nav-button ${view === "review" ? "active" : ""}`} onClick={() => setView("review")}><span className="nav-icon">✓</span>声明审核</button>
           <button className={`nav-button ${view === "impact" ? "active" : ""}`} onClick={() => setView("impact")}><span className="nav-icon">△</span>变更影响</button>
+          <button className={`nav-button ${view === "metrics" ? "active" : ""}`} onClick={() => setView("metrics")}><span className="nav-icon">▦</span>效果指标</button>
         </nav>
         <div className="sidebar-note"><b>北极星</b><br />从当前部署证据反向证明业务规则，而不是统计生成了多少文档或测试。</div>
       </aside>
 
       <main className="main">
         <header className="topbar">
-          <div className="breadcrumb">Order Platform&nbsp; / &nbsp;<b>{{ trace: "功能追溯", graph: "追溯图谱", review: "声明审核", impact: "变更影响" }[view]}</b></div>
+          <div className="breadcrumb">Order Platform&nbsp; / &nbsp;<b>{{ trace: "功能追溯", graph: "追溯图谱", review: "声明审核", impact: "变更影响", metrics: "效果指标" }[view]}</b></div>
           <div className="top-actions">
             <span className={`mode-badge ${liveScenario ? "live" : ""}`}>{liveScenario ? "LIVE API" : "DEMO SNAPSHOT"}</span>
             {liveScenario && <button className="button ghost" onClick={() => setLiveScenario(null)}>返回演示</button>}
@@ -459,6 +474,7 @@ export function TraqenProduct() {
         {view === "graph" && <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />}
         {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
         {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
+        {view === "metrics" && <MetricsView apiBase={apiBase} apiToken={apiToken} projectId={projectId} snapshotId={snapshotId} />}
       </main>
     </div>
   );
@@ -865,6 +881,62 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
       <section className="panel candidate"><p className="eyebrow">Reverse candidate · WAITING_REVIEW</p><h1>{candidate.subjectKey}</h1><div className="candidate-statement">“{candidate.statement}”</div><p className="hero-sub">这是 Skill 生成的候选陈述，不是业务事实。确认时平台会新建独立的规范性 Claim 与 Decision，并保留候选原文和 Fact 证据。</p><h2>原始证据</h2><div className="candidate-evidence">{candidate.evidence.map((item) => <div className="evidence-snippet" key={`${item.factId}:${item.relation}`}>{item.relation} · {item.factId}</div>)}{candidate.sources.map((item, index) => <div className="evidence-snippet" key={`${item.candidateId ?? index}:source`}>SOURCE · {item.producer?.skillId ?? "unknown-skill"}@{item.producer?.skillVersion ?? "unknown"}<br />{item.candidateId ?? "raw candidate"}</div>)}</div></section>
       <section className="panel decision-box"><p className="eyebrow">Human authority boundary</p><h2>最小声明审核</h2><p>候选不能自行晋升为业务真相。正式提交由服务端鉴权、校验冲突并记录不可变 Decision。</p><div className="review-fields"><div className="field full"><label htmlFor="normative-statement">规范性表述</label><textarea id="normative-statement" value={statement} onChange={(event) => setStatement(event.target.value)} /></div><div className="field full"><label htmlFor="scope-json">Scope JSON</label><textarea id="scope-json" value={scopeJson} onChange={(event) => setScopeJson(event.target.value)} /></div><div className="field"><label htmlFor="feature-mode">Feature 模式</label><select id="feature-mode" value={featureMode} onChange={(event) => setFeatureMode(event.target.value as "CREATE" | "EXISTING")}><option value="CREATE">CREATE</option><option value="EXISTING">EXISTING</option></select></div><div className="field"><label htmlFor="target-feature">Feature ID</label><input id="target-feature" value={featureId} onChange={(event) => setFeatureId(event.target.value)} /></div><div className="field"><label htmlFor="target-claim">Claim ID</label><input id="target-claim" value={claimId} onChange={(event) => setClaimId(event.target.value)} /></div><div className="field"><label htmlFor="target-scope">Scope ID</label><input id="target-scope" value={scopeId} onChange={(event) => setScopeId(event.target.value)} /></div><div className="field"><label htmlFor="target-decision">Decision ID</label><input id="target-decision" value={decisionId} onChange={(event) => setDecisionId(event.target.value)} /></div><div className="field"><label htmlFor="review-id">Review ID</label><input id="review-id" value={reviewId} onChange={(event) => setReviewId(event.target.value)} /></div>{featureMode === "EXISTING" && <div className="field full"><label htmlFor="association-rationale">关联既有 Feature 的理由</label><textarea id="association-rationale" value={associationRationale} onChange={(event) => setAssociationRationale(event.target.value)} /></div>}<div className="field full"><label htmlFor="review-rationale">审核理由</label><textarea id="review-rationale" value={rationale} onChange={(event) => setRationale(event.target.value)} /></div><div className="field full"><label htmlFor="conflict-ids">已确认 Conflict IDs（逗号分隔）</label><input id="conflict-ids" value={conflictIds} onChange={(event) => setConflictIds(event.target.value)} /></div><div className="field full"><label htmlFor="review-token">Reviewer bearer token（仅保存在当前页面内存，成功后清空）</label><input id="review-token" type="password" autoComplete="off" value={token} onChange={(event) => setToken(event.target.value)} /></div></div><div className="decision-actions"><button disabled={loading} className="decision-action confirm" onClick={() => void submitReview("CONFIRMED")}><b>确认最小声明</b><span>创建独立 Claim、Scope 与 CONFIRMED Decision</span></button><button disabled={loading} className="decision-action" onClick={() => void submitReview("EXCEPTION_RECORDED")}><b>确认并记录例外</b><span>保留冲突并明确适用边界</span></button><button disabled={loading} className="decision-action" onClick={() => void submitReview("REJECTED")}><b>驳回候选</b><span>不创建规范性业务基线</span></button></div><div className={`review-notice ${message && !message.startsWith("已") && !message.startsWith("演示") ? "error" : ""}`}>{message || (outcome ? `审核结果：${outcome}` : "演示候选的选择不会写入；只有加载真实候选并提供凭据后才会调用正式审核 API。")}</div></section>
     </div>
+  </>;
+}
+
+function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: string; apiToken: string; projectId: string; snapshotId: string }) {
+  const [metrics, setMetrics] = useState<ProductMetrics | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const demo: ProductMetrics = {
+    projectId,
+    snapshotManifestId: snapshotId,
+    computedAt: "2026-07-15T09:30:00.000Z",
+    highValueValidTraceChainRate: { numerator: 7, denominator: 10, ratio: .7 },
+    claimConfirmationRate: { numerator: 16, denominator: 20, ratio: .8 },
+    confirmedRuleTestCoverageRate: { numerator: 12, denominator: 16, ratio: .75 },
+    meaningfulAssertionRate: { numerator: 18, denominator: 24, ratio: .75 },
+    evidenceFreshness: { FRESH: 7, EXPIRING: 1, STALE: 1, INCOMPLETE: 1, UNKNOWN: 0 },
+    gapBreakdown: { byType: { NO_TEST_SPEC: 2, EVIDENCE_STALE: 1 }, bySeverity: { BLOCKING: 2, WARNING: 1 }, byOwnerRole: { QUALITY_OWNER: 2, DEVELOPER: 1 } },
+    features: [
+      { featureId: "FEATURE-ORDER-SUBMIT-001", name: "提交订单", highValue: true, chainComplete: true, coverage: { product: true, rules: true, implementation: true, data: true, configuration: true, tests: true, assertions: true, execution: true, evidence: true }, openGapCount: 0 },
+      { featureId: "FEATURE-ORDER-CANCEL-001", name: "取消订单", highValue: true, chainComplete: false, coverage: { product: true, rules: true, implementation: true, data: true, configuration: false, tests: false, assertions: false, execution: false, evidence: false }, openGapCount: 2 },
+    ],
+    unavailableMetrics: [{ metric: "DEFECT_ESCAPE_RATE", reason: "需要外部缺陷管理系统提供结果数据。" }],
+  };
+  const current = metrics ?? demo;
+  const rateCards = [
+    ["高价值功能有效追踪链率", current.highValueValidTraceChainRate],
+    ["声明确认率", current.claimConfirmationRate],
+    ["已确认规则测试覆盖率", current.confirmedRuleTestCoverageRate],
+    ["有效断言率", current.meaningfulAssertionRate],
+  ] as const;
+
+  async function loadMetrics() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const base = apiBase.replace(/\/$/, "");
+      const response = await fetch(
+        `${base}/v1/projects/${encodeURIComponent(projectId)}/metrics/product-effectiveness?snapshotManifestId=${encodeURIComponent(snapshotId)}`,
+        { headers: apiHeaders(apiToken, { accept: "application/json" }) },
+      );
+      const body = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
+      setMetrics(body as unknown as ProductMetrics);
+      setMessage("已加载服务端按当前 Snapshot 派生的产品效果指标。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "产品指标加载失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return <>
+    <section className="panel metrics-head"><div className="panel-head"><div><h2>产品效果指标</h2><p>每项指标独立展示分子、分母、断点与数据边界；没有综合绿色分数。</p></div><span className={`mode-badge ${metrics ? "live" : ""}`}>{metrics ? "LIVE METRICS" : "DEMO METRICS"}</span></div><div className="metrics-context"><span>{current.snapshotManifestId}</span><span>{current.computedAt}</span><button className="button primary" disabled={loading} onClick={() => void loadMetrics()}>{loading ? "加载中…" : "加载服务端指标"}</button></div>{message && <div className="inline-message">{message}</div>}</section>
+    <section className="metrics-rate-grid">{rateCards.map(([label, value]) => <div className="panel rate-card" key={label}><span>{label}</span><strong>{value.ratio === null ? "N/A" : `${Math.round(value.ratio * 100)}%`}</strong><small>{value.numerator} / {value.denominator}</small></div>)}</section>
+    <div className="metrics-grid"><section className="panel metrics-card"><div className="panel-head"><div><h2>证据新鲜度与断点</h2><p>未知和不完整不会被其他维度抵消。</p></div></div><div className="metric-breakdown"><h3>Evidence freshness</h3>{Object.entries(current.evidenceFreshness).map(([key, value]) => <div key={key}><span>{key}</span><b>{value}</b></div>)}<h3>TraceGap by type</h3>{Object.entries(current.gapBreakdown.byType).map(([key, value]) => <div key={key}><span>{key}</span><b>{value}</b></div>)}</div></section><section className="panel metrics-card"><div className="panel-head"><div><h2>明确缺失的数据源</h2><p>无法由仓库内事实证明的指标不会被估算。</p></div></div><div className="unavailable-list">{current.unavailableMetrics.map((item) => <div key={item.metric}><b>{item.metric}</b><p>{item.reason}</p></div>)}</div></section></div>
+    <section className="panel feature-metrics"><div className="panel-head"><div><h2>Feature 追溯维度</h2><p>逐项显示产品、规则、实现、数据、配置、测试、断言、执行与 Evidence。</p></div></div>{current.features.map((feature) => <div className="feature-metric-row" key={feature.featureId}><div><b>{feature.name}</b><small>{feature.featureId} · {feature.highValue ? "HIGH VALUE" : "GOVERNED"} · {feature.openGapCount} gaps</small></div><span className={`graph-status ${feature.chainComplete ? "active" : "gap"}`}>{feature.chainComplete ? "COMPLETE" : "INCOMPLETE"}</span><div className="coverage-flags">{Object.entries(feature.coverage).map(([key, present]) => <span className={present ? "present" : "missing"} key={key}>{key}</span>)}</div></div>)}</section>
   </>;
 }
 

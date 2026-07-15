@@ -70,6 +70,10 @@ export function createConfiguredApplication({ store, env = process.env }) {
       fixedHighRiskTestSpecIds: commaSeparated(env.FIXED_HIGH_RISK_TEST_SPEC_IDS),
       conservativeTestSpecIds: commaSeparated(env.CONSERVATIVE_REGRESSION_TEST_SPEC_IDS),
     }),
+    productMetricsPolicyResolver: (_projectId, context) => {
+      const configured = commaSeparated(env.HIGH_VALUE_FEATURE_IDS);
+      return { highValueFeatureIds: configured.length > 0 ? configured : context.featureIds };
+    },
     reviewPolicyResolver: () => ({
       allowedRoles: [reviewerRole],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],

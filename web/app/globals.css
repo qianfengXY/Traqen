@@ -223,6 +223,30 @@ button { color: inherit; }
 .regression-list span, .regression-list small { color: var(--muted); font-family: var(--font-geist-mono); overflow-wrap: anywhere; }
 .gate-actions { padding: 11px 18px 17px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 9px; }
 .gate-actions span { padding: 5px 7px; border-radius: 999px; background: #f8e5bd; color: #795e28; font-family: var(--font-geist-mono); }
+.metrics-head { overflow: visible; }
+.metrics-context { padding: 13px 18px 17px; display: flex; gap: 12px; align-items: center; color: var(--muted); font-family: var(--font-geist-mono); font-size: 9px; }
+.metrics-context .button { margin-left: auto; }
+.metrics-rate-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.rate-card { padding: 17px; display: flex; flex-direction: column; }
+.rate-card > span { min-height: 28px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.rate-card strong { margin: 8px 0 4px; font-size: 29px; letter-spacing: -.05em; }
+.rate-card small { color: #718078; font-family: var(--font-geist-mono); font-size: 9px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.metric-breakdown { padding: 14px 18px 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; font-size: 9px; }
+.metric-breakdown h3 { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.metric-breakdown span { color: var(--muted); font-family: var(--font-geist-mono); }
+.unavailable-list { padding: 9px 18px 18px; }
+.unavailable-list > div { padding: 11px 0; border-bottom: 1px solid var(--line); }
+.unavailable-list b { font-family: var(--font-geist-mono); font-size: 9px; }
+.unavailable-list p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+.feature-metric-row { padding: 14px 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(190px, .75fr) auto minmax(350px, 1.25fr); gap: 14px; align-items: center; }
+.feature-metric-row b, .feature-metric-row small { display: block; }
+.feature-metric-row b { font-size: 11px; }
+.feature-metric-row small { margin-top: 4px; color: var(--muted); font-family: var(--font-geist-mono); font-size: 8px; }
+.coverage-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+.coverage-flags span { padding: 4px 6px; border-radius: 999px; font-family: var(--font-geist-mono); font-size: 7px; text-transform: uppercase; }
+.coverage-flags .present { background: var(--mint); color: #2f684f; }
+.coverage-flags .missing { border: 1px dashed #c78e84; background: #fff0ec; color: #8d4035; }
 .metric { padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .metric strong { display: block; font-size: 24px; letter-spacing: -.05em; }
 .metric span { color: var(--muted); font-size: 9px; }
@@ -242,13 +266,16 @@ button { color: inherit; }
   .graph-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .graph-layout { grid-template-columns: 175px minmax(360px, 1fr); }
   .graph-detail { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
+  .metrics-rate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .feature-metric-row { grid-template-columns: minmax(180px, 1fr) auto; }
+  .coverage-flags { grid-column: 1 / -1; }
 }
 
 @media (max-width: 760px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; height: auto; position: static; padding: 15px; gap: 14px; }
   .workspace, .workspace-label, .sidebar-note { display: none; }
-  .nav { grid-template-columns: repeat(4, 1fr); }
+  .nav { grid-template-columns: repeat(5, 1fr); }
   .nav-button { justify-content: center; padding: 9px 5px; font-size: 10px; }
   .nav-icon { display: none; }
   .main { padding: 17px 14px 35px; }
@@ -261,6 +288,9 @@ button { color: inherit; }
   .inline-form, .inline-form.impact-form, .review-fields { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
   .protection-summary, .regression-list > div { grid-template-columns: 1fr; }
+  .metrics-rate-grid, .metrics-grid, .feature-metric-row { grid-template-columns: 1fr; }
+  .metrics-context { align-items: flex-start; flex-direction: column; }
+  .metrics-context .button { margin-left: 0; }
   .graph-filter-row, .graph-layout, .graph-path-bar { grid-template-columns: 1fr; }
   .graph-legend { border-right: 0; border-bottom: 1px solid var(--line); }
   .graph-canvas { min-height: 500px; }

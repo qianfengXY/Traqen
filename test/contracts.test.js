@@ -92,6 +92,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getContinuousProtectionAssessment",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/metrics/product-effectiveness"].get.operationId,
+    "getProductEffectivenessMetrics",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/test-specs"].post.operationId,
     "appendTestSpec",
   );
@@ -254,6 +258,18 @@ test("continuous-protection contract keeps regression selection and gate enforce
   assert.deepEqual(contract.$defs.QualityGate.properties.status.enum, ["PASS", "BLOCKED", "UNKNOWN"]);
   assert.deepEqual(contract.$defs.QualityGate.properties.enforcement.enum, ["PASS", "WARN", "REQUIRE_APPROVAL", "FAIL"]);
   assert.ok(contract.$defs.SelectedTest.required.includes("reasons"));
+});
+
+test("product-effectiveness metrics contract exposes causes and never defines a composite score", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/product-effectiveness-metrics.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(contract.title, "ProductEffectivenessMetrics");
+  assert.ok(contract.required.includes("gapBreakdown"));
+  assert.ok(contract.required.includes("unavailableMetrics"));
+  assert.equal(contract.properties.compositeScore, undefined);
+  assert.equal(contract.$defs.Rate.properties.ratio.maximum, 1);
+  assert.ok(contract.$defs.FeatureMetric.required.includes("dimensions"));
 });
 
 test("implementation reanalysis contract keeps actor identity server-side and reuses governed records", async () => {

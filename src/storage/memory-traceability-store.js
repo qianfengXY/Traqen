@@ -264,6 +264,14 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async listFeatureIds(projectId) {
+    return deepFreeze([...new Set(
+      [...this.#features.entries()]
+        .filter(([storageKey]) => storageKey.startsWith(`${projectId}\u0000`))
+        .map(([, feature]) => feature.id),
+    )].sort());
+  }
+
   async appendTestSpec(projectId, testSpec) {
     const featureExists = [...this.#features.entries()].some(
       ([storageKey, feature]) => storageKey.startsWith(`${projectId}\u0000`) && feature.id === testSpec.featureId,

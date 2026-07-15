@@ -24,6 +24,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /<title>Traqen · 可追溯质量工作台<\/title>/i);
   assert.match(html, /功能追溯/);
   assert.match(html, /追溯图谱/);
+  assert.match(html, /效果指标/);
   assert.match(html, /端到端证据追踪链/);
   assert.match(html, /为什么相信/);
   assert.match(html, /TraceGap/);
@@ -52,6 +53,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /continuous-protection/);
   assert.match(product, /增量回归与质量门禁/);
   assert.match(product, /不把未知显示为通过/);
+  assert.match(product, /metrics\/product-effectiveness/);
+  assert.match(product, /没有综合绿色分数/);
   assert.match(product, /服务端派生/);
   assert.match(product, /演示模式不会写入业务基线/);
   assert.match(product, /成功后清空/);

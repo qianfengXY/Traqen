@@ -1143,6 +1143,14 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
   );
   assert.equal(featureToEndpointPath.found, true);
   assert.ok(featureToEndpointPath.hopCount >= 1);
+  assert.ok((await store.listFeatureIds("PROJECT-001")).includes("FEATURE-REVIEW-DB-001"));
+  const productMetrics = await application.getProductEffectivenessMetrics(
+    "PROJECT-001",
+    "SNAPSHOT-MANIFEST-001",
+  );
+  assert.equal(productMetrics.highValueValidTraceChainRate.denominator, 1);
+  assert.equal(productMetrics.highValueValidTraceChainRate.numerator, 0);
+  assert.equal(productMetrics.gapBreakdown.byType.NO_TEST_SPEC, 1);
   const recomputed = await application.recomputeFeatureTraceChains(
     "PROJECT-001",
     "FEATURE-REVIEW-DB-001",

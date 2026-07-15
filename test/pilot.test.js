@@ -41,4 +41,10 @@ test("built-in order pilot executes, invalidates, repairs, and re-proves one com
   assert.equal(result.continuousProtection.staleEnforcement, "WARN");
   assert.equal(result.continuousProtection.finalStatus, "PASS");
   assert.equal(result.continuousProtection.finalEnforcement, "PASS");
+  assert.deepEqual(result.productMetrics.validTraceChainRate, { numerator: 1, denominator: 1, ratio: 1 });
+  assert.deepEqual(result.productMetrics.claimConfirmationRate, { numerator: 1, denominator: 1, ratio: 1 });
+  assert.deepEqual(result.productMetrics.ruleTestCoverageRate, { numerator: 1, denominator: 1, ratio: 1 });
+  assert.deepEqual(result.productMetrics.meaningfulAssertionRate, { numerator: 1, denominator: 2, ratio: 0.5 });
+  assert.deepEqual(result.productMetrics.gapTypes, {});
+  assert.ok(result.productMetrics.unavailableMetrics.includes("DEFECT_ESCAPE_RATE"));
 });

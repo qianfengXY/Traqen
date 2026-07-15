@@ -52,6 +52,25 @@
         }
       }
     },
+    "/v1/projects/{projectId}/metrics/product-effectiveness": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "snapshotManifestId",
+          "in": "query",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getProductEffectivenessMetrics",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProductEffectivenessMetrics" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/snapshots": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
@@ -1195,6 +1214,14 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./continuous-protection.schema.json" }
+          }
+        }
+      },
+      "ProductEffectivenessMetrics": {
+        "description": "Snapshot-bound effectiveness metrics with independent rates, gap causes, freshness, and explicit unavailable external inputs",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./product-effectiveness-metrics.schema.json" }
           }
         }
       }
