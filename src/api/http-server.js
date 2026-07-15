@@ -654,6 +654,13 @@ export function createTraceabilityHttpHandler({
       if (url.pathname === "/v1/reverse-runs" && request.method === "POST") {
         requireJson(request);
         const input = await readJson(request, maxBodyBytes);
+        const respondAsync = url.searchParams.get("async") === "true" ||
+          (typeof request.headers.prefer === "string" &&
+            request.headers.prefer.split(",").some((value) => value.trim() === "respond-async"));
+        if (respondAsync) {
+          sendJson(response, 202, await application.submitReverseRun(input), id);
+          return;
+        }
         const run = await application.executeReverseRun(input);
         sendJson(response, 201, run, id);
         return;
@@ -664,8 +671,29 @@ export function createTraceabilityHttpHandler({
         const projectId = decodePathSegment(reverseRunMatch[1]);
         const runId = decodePathSegment(reverseRunMatch[2]);
         const run = await application.getReverseRun(projectId, runId);
-        if (!run) throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run was not found");
-        sendJson(response, 200, run, id);
+        const job = run ? null : await application.getReverseRunJobProjection(projectId, runId);
+        if (!run && !job) throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run was not found");
+        sendJson(response, 200, run ?? job, id);
+        return;
+      }
+
+      const reverseRunCancelMatch = /^\/v1\/projects\/([^/]+)\/reverse-runs\/([^/]+)\/cancel$/.exec(url.pathname);
+      if (request.method === "POST" && reverseRunCancelMatch) {
+        const projectId = decodePathSegment(reverseRunCancelMatch[1]);
+        const runId = decodePathSegment(reverseRunCancelMatch[2]);
+        const job = await application.cancelReverseRun(projectId, runId);
+        if (!job) throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run job was not found");
+        sendJson(response, 202, job, id);
+        return;
+      }
+
+      const reverseRunResumeMatch = /^\/v1\/projects\/([^/]+)\/reverse-runs\/([^/]+)\/resume$/.exec(url.pathname);
+      if (request.method === "POST" && reverseRunResumeMatch) {
+        const projectId = decodePathSegment(reverseRunResumeMatch[1]);
+        const runId = decodePathSegment(reverseRunResumeMatch[2]);
+        const job = await application.resumeReverseRun(projectId, runId);
+        if (!job) throw new HttpError(404, "REVERSE_RUN_NOT_FOUND", "Reverse run job was not found");
+        sendJson(response, 202, job, id);
         return;
       }
 

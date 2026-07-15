@@ -37,6 +37,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #reverseSkillSequence = new Map();
   #nextReverseSkillSequence = 0;
   #reverseRuns = new Map();
+  #reverseRunJobs = new Map();
+  #reverseRunJobEvents = new Map();
   #candidateReviews = new Map();
   #candidateReviewIds = new Map();
   #implementationMappings = new Map();
@@ -751,6 +753,40 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
   async getReverseRun(projectId, runId) {
     return this.#reverseRuns.get(key(projectId, runId)) ?? null;
+  }
+
+  async appendReverseRunJob(projectId, job, event) {
+    const storageKey = key(projectId, job.id);
+    const existing = this.#reverseRunJobs.get(storageKey);
+    if (existing && canonicalJson(existing) !== canonicalJson(job)) {
+      throw new PersistenceConflictError(`ReverseRunJob ${job.id} conflicts with an existing record`);
+    }
+    if (!existing) this.#reverseRunJobs.set(storageKey, deepFreeze(structuredClone(job)));
+    await this.appendReverseRunJobEvent(projectId, event);
+    return this.getReverseRunJob(projectId, job.id);
+  }
+
+  async appendReverseRunJobEvent(projectId, event) {
+    if (!this.#reverseRunJobs.has(key(projectId, event.jobId))) {
+      throw new PersistenceConflictError(`ReverseRunJob ${event.jobId} does not exist`);
+    }
+    const events = this.#reverseRunJobEvents.get(key(projectId, event.jobId)) ?? [];
+    const existing = events.find((item) => item.id === event.id);
+    if (existing && canonicalJson(existing) !== canonicalJson(event)) {
+      throw new PersistenceConflictError(`ReverseRunJobEvent ${event.id} conflicts with an existing record`);
+    }
+    if (!existing) events.push(deepFreeze(structuredClone(event)));
+    this.#reverseRunJobEvents.set(key(projectId, event.jobId), events);
+    return this.getReverseRunJob(projectId, event.jobId);
+  }
+
+  async getReverseRunJob(projectId, jobId) {
+    const job = this.#reverseRunJobs.get(key(projectId, jobId));
+    if (!job) return null;
+    return deepFreeze({
+      job,
+      events: structuredClone(this.#reverseRunJobEvents.get(key(projectId, jobId)) ?? []),
+    });
   }
 
   async appendReverseCandidateReview(projectId, reviewPackage) {

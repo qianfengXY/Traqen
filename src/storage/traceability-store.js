@@ -131,6 +131,18 @@ export class TraceabilityStore {
     throw new Error("getReverseRun must be implemented");
   }
 
+  async appendReverseRunJob(_projectId, _job, _event) {
+    throw new Error("appendReverseRunJob must be implemented");
+  }
+
+  async appendReverseRunJobEvent(_projectId, _event) {
+    throw new Error("appendReverseRunJobEvent must be implemented");
+  }
+
+  async getReverseRunJob(_projectId, _jobId) {
+    throw new Error("getReverseRunJob must be implemented");
+  }
+
   async appendReverseCandidateReview(_projectId, _reviewPackage) {
     throw new Error("appendReverseCandidateReview must be implemented");
   }

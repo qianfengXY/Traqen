@@ -4,6 +4,8 @@ import {
   createBusinessProcessModel,
   createDecisionReviewCase,
   createDecisionReviewEvent,
+  createReverseRunJob,
+  createReverseRunJobEvent,
   createChangeSet,
   createContinuousProtectionAssessment,
   createProductEffectivenessMetrics,
@@ -26,6 +28,7 @@ import {
   generateEndpointTestSpecDraft,
   evaluateTraceChain,
   evaluateDecisionReviewCase,
+  projectReverseRunJob,
   queryFeatureGraphPath as resolveFeatureGraphPath,
   assertTestSpecSafeToStore,
   validateTestSpec as validateTestSpecProtocol,
@@ -147,6 +150,7 @@ export class TraceabilityApplication {
   #implementationPolicyResolver;
   #continuousProtectionPolicyResolver;
   #productMetricsPolicyResolver;
+  #reverseJobControllers = new Map();
 
   constructor({
     store,
@@ -891,7 +895,7 @@ export class TraceabilityApplication {
     return this.#store.listReverseSkills();
   }
 
-  async executeReverseRun(input) {
+  async executeReverseRun(input, options = {}) {
     if (!this.#reverseOrchestrator) throw new TypeError("Reverse Skill execution is not configured");
     if (Object.hasOwn(input ?? {}, "createdAt")) {
       throw new TypeError("Reverse input creation time is assigned by the server");
@@ -962,6 +966,7 @@ export class TraceabilityApplication {
       registrations,
       modelProfile: input.modelProfile ?? null,
       policy,
+      signal: options.signal ?? null,
     });
     await this.#store.appendReverseRun(projectId, run);
     return run;
@@ -971,6 +976,118 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(runId, "runId");
     return this.#store.getReverseRun(projectId, runId);
+  }
+
+  async submitReverseRun(input) {
+    const job = createReverseRunJob(input, this.#clock);
+    const existing = await this.#store.getReverseRunJob(job.projectId, job.id);
+    if (existing) {
+      if (canonicalJson(existing.job.request) !== canonicalJson(job.request)) {
+        throw new PersistenceConflictError(`ReverseRunJob ${job.id} already exists with a different request`);
+      }
+      return this.getReverseRunJobProjection(job.projectId, job.id);
+    }
+    if (await this.#store.getReverseRun(job.projectId, job.id)) {
+      throw new PersistenceConflictError(`ReverseRun ${job.id} already exists without an asynchronous job record`);
+    }
+    const queued = createReverseRunJobEvent({
+      id: contentId("REVERSE-RUN-JOB-EVENT", { jobId: job.id, sequence: 1, status: "QUEUED" }),
+      jobId: job.id,
+      status: "QUEUED",
+      details: {},
+    }, this.#clock);
+    await this.#store.appendReverseRunJob(job.projectId, job, queued);
+    const controller = new AbortController();
+    this.#reverseJobControllers.set(`${job.projectId}\u0000${job.id}`, controller);
+    Promise.resolve()
+      .then(() => this.#runReverseJob(job, controller))
+      .catch(() => {});
+    return this.getReverseRunJobProjection(job.projectId, job.id);
+  }
+
+  async #appendReverseJobStatus(projectId, jobId, status, details = {}) {
+    const stored = await this.#store.getReverseRunJob(projectId, jobId);
+    if (!stored) throw new PersistenceConflictError(`ReverseRunJob ${jobId} does not exist`);
+    const sequence = stored.events.length + 1;
+    const event = createReverseRunJobEvent({
+      id: contentId("REVERSE-RUN-JOB-EVENT", { jobId, sequence, status }),
+      jobId,
+      status,
+      details,
+    }, this.#clock);
+    return this.#store.appendReverseRunJobEvent(projectId, event);
+  }
+
+  async #runReverseJob(job, controller) {
+    const identity = `${job.projectId}\u0000${job.id}`;
+    try {
+      if (controller.signal.aborted) {
+        await this.#appendReverseJobStatus(job.projectId, job.id, "CANCELLED", { phase: "BEFORE_START" });
+        return;
+      }
+      await this.#appendReverseJobStatus(job.projectId, job.id, "STARTED", {});
+      const run = await this.executeReverseRun(job.request, { signal: controller.signal });
+      await this.#appendReverseJobStatus(
+        job.projectId,
+        job.id,
+        run.status === "CANCELLED" ? "CANCELLED" : run.status === "FAILED" ? "FAILED" : "COMPLETED",
+        { runStatus: run.status },
+      );
+    } catch (error) {
+      await this.#appendReverseJobStatus(
+        job.projectId,
+        job.id,
+        controller.signal.aborted || error?.name === "AbortError" ? "CANCELLED" : "FAILED",
+        { error: { name: error?.name ?? "Error", message: error?.message ?? "Reverse run failed" } },
+      );
+    } finally {
+      this.#reverseJobControllers.delete(identity);
+    }
+  }
+
+  async getReverseRunJobProjection(projectId, jobId) {
+    requireId(projectId, "projectId");
+    requireId(jobId, "jobId");
+    const stored = await this.#store.getReverseRunJob(projectId, jobId);
+    if (!stored) return null;
+    const run = await this.#store.getReverseRun(projectId, jobId);
+    return projectReverseRunJob(stored.job, stored.events, run);
+  }
+
+  async cancelReverseRun(projectId, jobId) {
+    requireId(projectId, "projectId");
+    requireId(jobId, "jobId");
+    const projection = await this.getReverseRunJobProjection(projectId, jobId);
+    if (!projection) return null;
+    if (projection.terminal) throw new PersistenceConflictError(`ReverseRunJob ${jobId} is already ${projection.status}`);
+    if (!projection.cancelRequested) {
+      await this.#appendReverseJobStatus(projectId, jobId, "CANCEL_REQUESTED", {});
+    }
+    const controller = this.#reverseJobControllers.get(`${projectId}\u0000${jobId}`);
+    if (controller) controller.abort();
+    else await this.#appendReverseJobStatus(projectId, jobId, "CANCELLED", { phase: "RECOVERY" });
+    return this.getReverseRunJobProjection(projectId, jobId);
+  }
+
+  async resumeReverseRun(projectId, jobId) {
+    requireId(projectId, "projectId");
+    requireId(jobId, "jobId");
+    const projection = await this.getReverseRunJobProjection(projectId, jobId);
+    if (!projection) return null;
+    if (projection.terminal) throw new PersistenceConflictError(`ReverseRunJob ${jobId} is already ${projection.status}`);
+    const identity = `${projectId}\u0000${jobId}`;
+    if (this.#reverseJobControllers.has(identity)) return projection;
+    if (projection.cancelRequested) {
+      await this.#appendReverseJobStatus(projectId, jobId, "CANCELLED", { phase: "RECOVERY" });
+      return this.getReverseRunJobProjection(projectId, jobId);
+    }
+    const stored = await this.#store.getReverseRunJob(projectId, jobId);
+    const controller = new AbortController();
+    this.#reverseJobControllers.set(identity, controller);
+    Promise.resolve()
+      .then(() => this.#runReverseJob(stored.job, controller))
+      .catch(() => {});
+    return this.getReverseRunJobProjection(projectId, jobId);
   }
 
   async reviewReverseCandidate(projectId, runId, candidateId, input, requestContext = {}) {

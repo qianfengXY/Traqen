@@ -119,7 +119,15 @@ The Reverse Skill Framework slice adds:
 - canonical structured candidate output with mandatory fact provenance and separately preserved raw output;
 - exact deterministic deduplication that preserves every source, plus scope-aware explicit conflicts and open questions instead of majority voting;
 - append-only PostgreSQL run events, per-Skill attempts, raw and normalized outputs, conflicts, and open questions;
-- APIs for Skill registration/listing and synchronous bounded Reverse Runs.
+- APIs for Skill registration/listing, synchronous bounded Reverse Runs, and opt-in durable asynchronous jobs.
+
+The asynchronous Reverse Run slice adds:
+
+- `Prefer: respond-async` or `?async=true` submission with immediate `202` and a queryable job projection;
+- append-only `QUEUED`, `STARTED`, `CANCEL_REQUESTED`, `COMPLETED`, `FAILED`, and `CANCELLED` events instead of an overwritten task row;
+- active AbortSignal cancellation through the existing Skill timeout boundary, terminal-state conflict protection, and deterministic error summaries;
+- persisted recovery of an interrupted nonterminal request through an explicit resume operation, while preserving every prior attempt event;
+- PostgreSQL migration `0010_reverse_run_job`, in-memory parity, HTTP/OpenAPI contracts, and tests for ordered persistence, cancellation, recovery, and immutable job history.
 
 The governed Feature-traceability slice adds:
 
@@ -133,7 +141,7 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - a no-Shell Git Diff analyzer that accepts only full commit hashes, preserves add/delete/modify/rename paths, and deterministically correlates changed artifacts with Snapshot Fact changes;
 - an authenticated implementation-reanalysis workflow that binds a reviewed current-Snapshot Reverse Candidate back to the existing normative Claim, records reviewer provenance in immutable conformance analysis, and closes the stale implementation segment without creating a replacement business Decision;
-- append-only PostgreSQL migrations through `0009_decision_governance`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
+- append-only PostgreSQL migrations through `0010_reverse_run_job`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
 The product-interface slice adds:
 
@@ -209,6 +217,8 @@ The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans
 `npm run pilot:order-submit` is the reproducible in-repository MVP proof. It uses only synthetic data and the same generic Scanner, Skill, review, TestSpec, Runner, Evidence, impact, and repair paths that a real pilot uses; no order-specific behavior exists in the Traqen core.
 
 Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions until the separate authorized review flow records an outcome.
+
+For long-running work, send `Prefer: respond-async` or `?async=true`. Poll the same run URL; cancel with `POST .../cancel`, or resume a persisted nonterminal job after process recovery with `POST .../resume`. Job state is append-only in PostgreSQL. The repository does not claim that this single-process worker is a distributed lease coordinator; multi-instance ownership and queue infrastructure remain deployment integrations.
 
 Review one candidate with `POST /v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews`, then read its governed baseline and server-derived proof chain from `GET /v1/projects/{projectId}/features/{featureId}/baseline` and `GET /v1/projects/{projectId}/features/{featureId}/traceability?snapshotManifestId=...`. Authorized product/business reviewers append or read the Feature state machine at `POST/GET /v1/projects/{projectId}/features/{featureId}/process-model`. Explore the same data through `GET /v1/projects/{projectId}/features/{featureId}/graph?snapshotManifestId=...&view=business` and the bounded path-query endpoint. Compare two manifests with `POST /v1/projects/{projectId}/change-sets`; the immutable impact record is available at `GET /v1/projects/{projectId}/change-sets/{changeSetId}/impact`.
 

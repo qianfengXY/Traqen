@@ -9,6 +9,8 @@ import {
   createExecutionEvidenceBundle,
   createFactBundle,
   createSnapshotManifest,
+  createReverseRunJob,
+  createReverseRunJobEvent,
   evaluateTraceChain,
   signExecutionEvidenceBundle,
   signFactBundle,
@@ -34,6 +36,7 @@ async function migratedDatabase() {
     "0007_change_impact",
     "0008_business_process_model",
     "0009_decision_governance",
+    "0010_reverse_run_job",
   ]);
   return database;
 }
@@ -251,6 +254,8 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "fact_edge",
     "reverse_skill_registration",
     "reverse_run",
+    "reverse_run_job",
+    "reverse_run_job_event",
     "reverse_skill_execution",
     "reverse_conflict",
     "reverse_open_question",
@@ -361,6 +366,43 @@ test("PostgreSQL atomically materializes a dual-approved Decision with its revie
     ["PROJECT-001", "CASE-DB-001"],
   );
   assert.deepEqual(stored.rows, [{ decision_type: "CONFIRMED", event_id: "EVENT-DB-002" }]);
+});
+
+test("PostgreSQL keeps asynchronous Reverse Run job state as ordered immutable events", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const store = new PostgresTraceabilityStore(database);
+  const job = createReverseRunJob({
+    id: "REVERSE-JOB-DB-001",
+    projectId: "PROJECT-001",
+    snapshotManifestId: "SNAPSHOT-DB-001",
+    sourceComponentId: "SOURCE-DB-001",
+    factBundleIds: ["BUNDLE-DB-001"],
+    skills: [{ id: "skill-db", version: "1.0.0" }],
+  }, fixedClock);
+  await store.appendReverseRunJob("PROJECT-001", job, createReverseRunJobEvent({
+    id: "EVENT-JOB-DB-QUEUED",
+    jobId: job.id,
+    status: "QUEUED",
+  }, fixedClock));
+  await store.appendReverseRunJobEvent("PROJECT-001", createReverseRunJobEvent({
+    id: "EVENT-JOB-DB-STARTED",
+    jobId: job.id,
+    status: "STARTED",
+  }, fixedClock));
+  await store.appendReverseRunJobEvent("PROJECT-001", createReverseRunJobEvent({
+    id: "EVENT-JOB-DB-FAILED",
+    jobId: job.id,
+    status: "FAILED",
+    details: { error: { name: "Error", message: "bounded failure" } },
+  }, fixedClock));
+  const stored = await store.getReverseRunJob("PROJECT-001", job.id);
+  assert.deepEqual(stored.events.map((event) => event.status), ["QUEUED", "STARTED", "FAILED"]);
+  await assert.rejects(
+    database.query("UPDATE reverse_run_job SET created_at = now() WHERE project_id = $1 AND id = $2", ["PROJECT-001", job.id]),
+    /append-only/i,
+  );
 });
 
 test("application bootstraps a PostgreSQL project and Snapshot without manual SQL", async (t) => {

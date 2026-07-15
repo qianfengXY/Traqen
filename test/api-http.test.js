@@ -1167,6 +1167,26 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   assert.equal(queried.status, 200);
   assert.deepEqual(await queried.json(), executed.body);
 
+  const asynchronous = await postJson(`${baseUrl}/v1/reverse-runs?async=true`, {
+    ...runRequest,
+    id: "REVERSE-RUN-API-ASYNC-001",
+  });
+  assert.equal(asynchronous.response.status, 202);
+  assert.equal(asynchronous.body.projectId, "PROJECT-001");
+  let asynchronousResult = asynchronous.body;
+  for (let attempt = 0; attempt < 20 && asynchronousResult.status !== "WAITING_REVIEW"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const polled = await fetch(`${projectUrl}/reverse-runs/REVERSE-RUN-API-ASYNC-001`);
+    assert.equal(polled.status, 200);
+    asynchronousResult = await polled.json();
+  }
+  assert.equal(asynchronousResult.status, "WAITING_REVIEW");
+  const cancelCompleted = await postJson(
+    `${projectUrl}/reverse-runs/REVERSE-RUN-API-ASYNC-001/cancel`,
+    {},
+  );
+  assert.equal(cancelCompleted.response.status, 409);
+
   const candidate = executed.body.mergedOutput.candidateClaims.find((item) => item.subjectKey.startsWith("endpoint:"));
   const candidateFeature = executed.body.mergedOutput.candidateFeatures.find(
     (item) => item.externalKey === candidate.subjectKey,

@@ -706,9 +706,17 @@
     "/v1/reverse-runs": {
       "post": {
         "operationId": "executeReverseRun",
+        "parameters": [{
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "schema": { "type": "boolean", "default": false },
+          "description": "When true (or Prefer: respond-async is sent), persist and return an asynchronous job."
+        }],
         "requestBody": { "$ref": "#/components/requestBodies/ReverseRun" },
         "responses": {
           "201": { "$ref": "#/components/responses/ReverseRunFound" },
+          "202": { "$ref": "#/components/responses/ReverseRunJob" },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "413": { "$ref": "#/components/responses/PayloadTooLarge" },
@@ -726,6 +734,34 @@
         "responses": {
           "200": { "$ref": "#/components/responses/ReverseRunFound" },
           "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/cancel": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "post": {
+        "operationId": "cancelReverseRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/ReverseRunJob" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/resume": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "post": {
+        "operationId": "resumeReverseRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/ReverseRunJob" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
     },
@@ -1224,8 +1260,19 @@
         "description": "Reverse run with raw/normalized Skill outputs, merge results, conflicts, and audit history",
         "content": {
           "application/json": {
-            "schema": { "$ref": "./reverse-run.schema.json#/$defs/ReverseRun" }
+            "schema": {
+              "oneOf": [
+                { "$ref": "./reverse-run.schema.json#/$defs/ReverseRun" },
+                { "$ref": "./reverse-run-job.schema.json" }
+              ]
+            }
           }
+        }
+      },
+      "ReverseRunJob": {
+        "description": "Durable asynchronous Reverse Run job projection with ordered status and cancellation events",
+        "content": {
+          "application/json": { "schema": { "$ref": "./reverse-run-job.schema.json" } }
         }
       },
       "CandidateReviewed": {

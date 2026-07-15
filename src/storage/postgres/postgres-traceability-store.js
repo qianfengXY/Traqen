@@ -1994,6 +1994,97 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return result.rows[0] ? deepFreeze(result.rows[0].run_payload) : null;
   }
 
+  async appendReverseRunJob(projectId, job, event) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO reverse_run_job (project_id, id, request_payload, created_at)
+         VALUES ($1, $2, $3::jsonb, $4)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [projectId, job.id, JSON.stringify(job.request), job.createdAt],
+      );
+      const stored = await this.#database.query(
+        `SELECT request_payload, created_at FROM reverse_run_job WHERE project_id = $1 AND id = $2`,
+        [projectId, job.id],
+      );
+      if (
+        !stored.rows[0] ||
+        canonicalJson(stored.rows[0].request_payload) !== canonicalJson(job.request) ||
+        new Date(stored.rows[0].created_at).toISOString() !== job.createdAt
+      ) {
+        throw new PersistenceConflictError(`ReverseRunJob ${job.id} conflicts with an existing record`);
+      }
+      await this.#appendReverseRunJobEvent(event, projectId);
+      return this.getReverseRunJob(projectId, job.id);
+    });
+  }
+
+  async #appendReverseRunJobEvent(event, projectId) {
+    await this.#database.query(
+      `INSERT INTO reverse_run_job_event (
+         project_id, job_id, id, status, details, occurred_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+       ON CONFLICT (project_id, job_id, id) DO NOTHING`,
+      [projectId, event.jobId, event.id, event.status, JSON.stringify(event.details), event.occurredAt],
+    );
+    const stored = await this.#database.query(
+      `SELECT status, details, occurred_at
+       FROM reverse_run_job_event
+       WHERE project_id = $1 AND job_id = $2 AND id = $3`,
+      [projectId, event.jobId, event.id],
+    );
+    const row = stored.rows[0];
+    if (
+      !row ||
+      row.status !== event.status ||
+      canonicalJson(row.details) !== canonicalJson(event.details) ||
+      new Date(row.occurred_at).toISOString() !== event.occurredAt
+    ) {
+      throw new PersistenceConflictError(`ReverseRunJobEvent ${event.id} conflicts with an existing record`);
+    }
+  }
+
+  async appendReverseRunJobEvent(projectId, event) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#appendReverseRunJobEvent(event, projectId);
+      return this.getReverseRunJob(projectId, event.jobId);
+    });
+  }
+
+  async getReverseRunJob(projectId, jobId) {
+    requireId(projectId, "projectId");
+    requireId(jobId, "jobId");
+    const result = await this.#database.query(
+      `SELECT request_payload, created_at
+       FROM reverse_run_job WHERE project_id = $1 AND id = $2`,
+      [projectId, jobId],
+    );
+    if (!result.rows[0]) return null;
+    const events = await this.#database.query(
+      `SELECT id, status, details, occurred_at
+       FROM reverse_run_job_event
+       WHERE project_id = $1 AND job_id = $2
+       ORDER BY append_sequence`,
+      [projectId, jobId],
+    );
+    return deepFreeze({
+      job: {
+        id: jobId,
+        projectId,
+        request: result.rows[0].request_payload,
+        createdAt: new Date(result.rows[0].created_at).toISOString(),
+      },
+      events: events.rows.map((row) => ({
+        id: row.id,
+        jobId,
+        status: row.status,
+        details: row.details,
+        occurredAt: new Date(row.occurred_at).toISOString(),
+      })),
+    });
+  }
+
   async appendReverseCandidateReview(projectId, reviewPackage) {
     requireId(projectId, "projectId");
     const { review, feature, scope, claim, decision, implementationMapping, conformance } = reviewPackage;

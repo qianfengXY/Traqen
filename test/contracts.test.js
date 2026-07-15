@@ -146,6 +146,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getReverseRun",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}/cancel"].post.operationId,
+    "cancelReverseRun",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}/resume"].post.operationId,
+    "resumeReverseRun",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews"].post.operationId,
     "reviewReverseCandidate",
   );
@@ -185,6 +193,16 @@ test("Reverse Skill contracts bind supply-chain permissions, structured output, 
   assert.ok(run.required.includes("factBundleIds"));
   assert.ok(run.$defs.ReverseRun.required.includes("statusHistory"));
   assert.ok(run.$defs.ReverseArtifactBundle.required.includes("rawOutputHash"));
+});
+
+test("asynchronous Reverse Run contract exposes durable ordered status and cancellation", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/reverse-run-job.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(contract.title, "ReverseRunJob");
+  assert.ok(contract.required.includes("cancelRequested"));
+  assert.ok(contract.properties.status.enum.includes("CANCEL_REQUESTED"));
+  assert.ok(contract.$defs.Event.properties.status.enum.includes("FAILED"));
 });
 
 test("governance contract defines immutable version fields", async () => {
