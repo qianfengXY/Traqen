@@ -186,9 +186,23 @@ The product-effectiveness metrics slice adds a Snapshot-bound dashboard and API 
 
 The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision review, candidate-review, TestSpec-approval, and business-process confirmation routes additionally fail closed unless a reviewer identity is configured. Use legacy `REVIEWER_ID`/`REVIEWER_ROLE` with an optional `REVIEWER_BEARER_TOKEN`, or `REVIEWER_IDENTITIES_JSON` for multiple token-bound actor/role identities; direct Decision creation is disabled by default and requires the review-case API unless `ALLOW_DIRECT_DECISIONS=true` is explicitly set. Decision proposer/approver/business/compliance/Break-glass/lifecycle roles and maximum emergency minutes are independently configurable. Implementation reanalysis has the distinct `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
 
-## Run
+## Quick start
 
-Requires Node.js 20 or newer.
+The complete local stack requires Node.js 22.13 or newer. On the first checkout, or after a lockfile changes, install both root and Web dependencies once:
+
+```bash
+npm run setup
+```
+
+After that, one command starts the local API and Web application together:
+
+```bash
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`. The command starts the in-memory API at `http://127.0.0.1:3100`, configures the exact local CORS origins, and stops both processes when you press `Ctrl+C`. It does not enable production credentials or weaken any governance boundary.
+
+The API can still be run independently on its default port with `npm run api:dev`; this path requires Node.js 20 or newer. Other focused commands remain available:
 
 ```bash
 npm test
@@ -197,13 +211,12 @@ npm run test:web
 npm run test:reference
 npm run example
 npm run pilot:order-submit
-npm run quality-gate -- --base-url http://127.0.0.1:3000 --project PROJECT-001 --change-set CHANGESET-001
+npm run quality-gate -- --base-url http://127.0.0.1:3100 --project PROJECT-001 --change-set CHANGESET-001
 npm run scan:self
-npm run api:dev
 npm run api:serve
 ```
 
-The development API binds to `127.0.0.1:3000` by default. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
+The development API remains loopback-only and in-memory. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
 
 The production API binds to `0.0.0.0:3000` by default and requires `DATABASE_URL` plus `API_BEARER_TOKEN`. `POSTGRES_SSL` is `require` by default and also accepts `no-verify` or `disable` for explicitly controlled environments. `CORS_ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist. On startup the process connects through the pinned `pg` client, verifies and applies pending migrations, then serves the PostgreSQL-backed application. Create the initial boundary through `POST /v1/projects`, register immutable execution context through `POST /v1/projects/{projectId}/snapshots`, and send the API token through `Authorization: Bearer ...` or `x-traqen-api-token`. The API and product UI can discover available resources through `GET /v1/projects/{projectId}/features` and `GET /v1/projects/{projectId}/snapshots`; Snapshot results are newest first, so service verification does not require copying opaque IDs from storage.
 

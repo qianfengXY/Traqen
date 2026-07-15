@@ -19,19 +19,24 @@ The default screen is an explicitly labelled synthetic demonstration of the orde
 
 Requires Node.js 22.13 or newer.
 
+From the repository root, install dependencies once and then start both the Web application and local API with the unified commands:
+
 ```bash
-npm install
+npm run setup
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`. The API is already available at `http://127.0.0.1:3100`, matching the product's default connection value. `Ctrl+C` stops both processes.
+
+To work on the Web package independently, run:
+
+```bash
+cd web
 npm run dev
 npm test
 ```
 
-The local Traqen API defaults to port 3000, so run it on another port while the web preview is active:
-
-```bash
-PORT=3100 CORS_ALLOWED_ORIGINS=http://localhost:3000 npm run api:dev
-```
-
-Then use “连接 Traqen API” in the product header and provide the Project, Feature, and Snapshot Manifest IDs. A deployed web origin must be listed explicitly in `CORS_ALLOWED_ORIGINS`; wildcard origins are rejected.
+A separately deployed Web origin must still be listed explicitly in `CORS_ALLOWED_ORIGINS`; wildcard origins are rejected.
 
 ## Trust boundary
 

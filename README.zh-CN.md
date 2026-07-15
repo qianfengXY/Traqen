@@ -186,9 +186,23 @@ Reverse Skill 框架切片添加：
 
 开发服务器仍然位于本地且位于内存中。生产过程需要 PostgreSQL 和全局 API 代币。除非配置了审阅者身份，否则 Decision 审阅、候选人审阅、TestSpec-批准和业务流程确认路由也会无法关闭。将旧版 `REVIEWER_ID`/`REVIEWER_ROLE` 与可选的 `REVIEWER_BEARER_TOKEN` 或 `REVIEWER_IDENTITIES_JSON` 结合使用以获取多个令牌绑定的 actor/role 身份；默认情况下禁用直接 Decision 创建，并且需要审查用例 API ，除非显式设置 `ALLOW_DIRECT_DECISIONS=true` 。 Decision proposer/approver/business/compliance/Break-glass/lifecycle 角色和最长紧急分钟数可独立配置。实现重新分析具有明显的 `IMPLEMENTATION_REVIEWER_*` 边界。将 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 设置为摄取匹配 Runner 签名的捆绑包，将 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 设置为 Scanner 签名的 Fact Bundles，将 `SKILL_PUBLISHER=TRAQEN` 加上 `SKILL_PUBLISHER_SHARED_SECRET` 设置为Skill 注册。 HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。 CONTROLLED_WRITE 保持禁用状态，除非签名的目标策略明确允许操作和路由、绑定每个 Snapshot 组件、命名受信任的固定装置和清理协议，并且 Runner 具有匹配的本地处理程序。 DELETE、破坏性执行、任务编写的 commands/SQL/fixture 代码、外部副作用和跨源重定向仍然被阻止。仅编译后的、摘要匹配的参考 Skill 适配器在进程内执行；官方外部 Specone/GSD 集成、模型支持或第三方 Skills、独立的 Skill 工作人员、其他语言扫描程序和 OpenAPI YAML 提取仍然位于存储库控制的 MVP 之外。
 
-## 运行
+## 快速启动
 
-需要 Node.js 20 或更高版本。
+完整的本地环境需要 Node.js 22.13 或更高版本。首次检出代码或锁文件发生变化后，只需安装一次根目录和 Web 依赖：
+
+```bash
+npm run setup
+```
+
+此后使用一个命令即可同时启动本地 API 和 Web 应用：
+
+```bash
+npm run dev
+```
+
+打开 `http://127.0.0.1:3000` 即可访问页面。该命令会在 `http://127.0.0.1:3100` 启动内存 API，自动配置精确的本地 CORS 来源，并在按下 `Ctrl+C` 时一起关闭两个进程。它不会启用生产凭据，也不会弱化任何治理边界。
+
+仍可通过 `npm run api:dev` 在默认端口单独启动 API；此路径只要求 Node.js 20 或更高版本。其他专项命令保持可用：
 
 ```bash
 npm test
@@ -197,13 +211,12 @@ npm run test:web
 npm run test:reference
 npm run example
 npm run pilot:order-submit
-npm run quality-gate -- --base-url http://127.0.0.1:3000 --project PROJECT-001 --change-set CHANGESET-001
+npm run quality-gate -- --base-url http://127.0.0.1:3100 --project PROJECT-001 --change-set CHANGESET-001
 npm run scan:self
-npm run api:dev
 npm run api:serve
 ```
 
-默认情况下，开发 API 绑定到 `127.0.0.1:3000`。它不是生产认证边界，不得暴露在本地开发环境之外；除非配置了受信任的本地审核者，否则治理审核操作还会失败。
+开发 API 仍然只绑定本机回环地址并使用内存存储。它不是生产认证边界，不得暴露到本地开发环境之外；除非配置了受信任的本地审核者，否则治理审核操作仍会安全失败。
 
 生产 API 默认绑定到 `0.0.0.0:3000`，并且需要 `DATABASE_URL` 加上 `API_BEARER_TOKEN`。默认情况下，`POSTGRES_SSL` 是 `require`，并且对于显式控制环境也接受 `no-verify` 或 `disable`。 `CORS_ALLOWED_ORIGINS` 是一个以逗号分隔的精确来源允许列表。启动时，该进程通过固定的 `pg` 客户端进行连接，验证并应用挂起的迁移，然后为 PostgreSQL 支持的应用程序提供服务。通过 `POST /v1/projects` 创建初始边界，通过 `POST /v1/projects/{projectId}/snapshots` 注册不可变执行上下文，并通过 `Authorization: Bearer ...` 或 `x-traqen-api-token` 发送 API 令牌。 API和产品UI可以通过`GET /v1/projects/{projectId}/features`和`GET /v1/projects/{projectId}/snapshots`发现可用资源； Snapshot 结果首先是最新的，因此服务验证不需要从存储中复制不透明 ID。
 

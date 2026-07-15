@@ -15,23 +15,28 @@ Traqen 的证据优先 Feature 可追溯模型的产品表面。
 - 历史 Snapshot 比较由不可变的 ChangeSet API 支持，包括保留的规范事实、无效的派生层和修复队列。
 - 授权实施修复，将新的 Snapshot 反向候选链接回现有 Claim 并仅恢复实施一致性段。
 
-## 当地发展
+## 本地开发
 
 需要 Node.js 22.13 或更高版本。
 
+在仓库根目录首次安装依赖，然后使用统一命令同时启动 Web 应用和本地 API：
+
 ```bash
-npm install
+npm run setup
+npm run dev
+```
+
+打开 `http://127.0.0.1:3000` 即可访问页面。API 已在 `http://127.0.0.1:3100` 启动，与产品中的默认连接地址一致。按下 `Ctrl+C` 会同时停止两个进程。
+
+如需单独开发 Web 包，可运行：
+
+```bash
+cd web
 npm run dev
 npm test
 ```
 
-本地 Traqen API 默认为端口 3000，因此在 Web 预览处于活动状态时在另一个端口上运行它：
-
-```bash
-PORT=3100 CORS_ALLOWED_ORIGINS=http://localhost:3000 npm run api:dev
-```
-
-然后在产品标题中使用“连接 Traqen API”，并提供项目、Feature 和 Snapshot 清单 ID。已部署的 Web 源必须在 `CORS_ALLOWED_ORIGINS` 中明确列出；通配符来源被拒绝。
+单独部署 Web 时，仍必须在 `CORS_ALLOWED_ORIGINS` 中明确列出其来源；通配符来源会被拒绝。
 
 ## 信任边界
 
