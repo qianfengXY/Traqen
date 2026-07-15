@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/evidence-lifecycle-v1alpha1.json",
+  "title": "EvidenceLifecycle",
+  "$defs": {
+    "PolicyRequest": {
+      "type": "object",
+      "required": ["id", "version", "dataClassification", "evidenceTypes", "retentionDays", "archiveAfterDays", "legalHoldDefault", "allowedAccessRoles"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "dataClassification": { "type": "string", "minLength": 1 },
+        "evidenceTypes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["HTTP", "DATABASE", "LOG", "TRACE", "COVERAGE", "SCREENSHOT", "ASSERTION", "OTHER"] } },
+        "retentionDays": { "type": "integer", "minimum": 1 },
+        "archiveAfterDays": { "type": "integer", "minimum": 1 },
+        "legalHoldDefault": { "type": "boolean" },
+        "allowedAccessRoles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+      },
+      "additionalProperties": false
+    },
+    "Policy": {
+      "type": "object",
+      "required": ["id", "version", "dataClassification", "evidenceTypes", "retentionDays", "archiveAfterDays", "legalHoldDefault", "allowedAccessRoles", "actorId", "actorRole", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "dataClassification": { "type": "string", "minLength": 1 },
+        "evidenceTypes": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["HTTP", "DATABASE", "LOG", "TRACE", "COVERAGE", "SCREENSHOT", "ASSERTION", "OTHER"] } },
+        "retentionDays": { "type": "integer", "minimum": 1 },
+        "archiveAfterDays": { "type": "integer", "minimum": 1 },
+        "legalHoldDefault": { "type": "boolean" },
+        "allowedAccessRoles": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "EventRequest": {
+      "type": "object",
+      "required": ["id", "policyId", "policyVersion", "action", "reason"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "policyId": { "type": "string", "minLength": 1 },
+        "policyVersion": { "type": "integer", "minimum": 1 },
+        "action": { "enum": ["ARCHIVED", "LEGAL_HOLD_PLACED", "LEGAL_HOLD_RELEASED", "DELETION_REQUESTED", "DELETED", "ACCESSED", "EXPORTED"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "deletionProof": {
+          "type": ["object", "null"],
+          "properties": {
+            "proofHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "storageProvider": { "type": "string", "minLength": 1 }
+          },
+          "required": ["proofHash", "storageProvider"],
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "Event": {
+      "type": "object",
+      "required": ["id", "evidenceId", "policyId", "policyVersion", "action", "reason", "actorId", "actorRole", "deletionProof", "occurredAt"],
+      "properties": {
+        "id": { "type": "string" },
+        "evidenceId": { "type": "string" },
+        "policyId": { "type": "string" },
+        "policyVersion": { "type": "integer" },
+        "action": { "enum": ["ARCHIVED", "LEGAL_HOLD_PLACED", "LEGAL_HOLD_RELEASED", "DELETION_REQUESTED", "DELETED", "ACCESSED", "EXPORTED"] },
+        "reason": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "deletionProof": { "type": ["object", "null"] },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "Projection": {
+      "type": "object",
+      "required": ["evidenceId", "policyRef", "status", "legalHold", "archived", "deletionRequested", "deleted", "archiveDueAt", "retentionEndsAt", "deletionProof", "accessEventCount", "events", "evaluatedAt"],
+      "properties": {
+        "evidenceId": { "type": "string" },
+        "policyRef": { "type": "object", "required": ["id", "version"], "properties": { "id": { "type": "string" }, "version": { "type": "integer" } }, "additionalProperties": false },
+        "status": { "enum": ["ACTIVE", "ARCHIVE_DUE", "ARCHIVED", "DELETION_DUE", "DELETION_BLOCKED_LEGAL_HOLD", "DELETED"] },
+        "legalHold": { "type": "boolean" },
+        "archived": { "type": "boolean" },
+        "deletionRequested": { "type": "boolean" },
+        "deleted": { "type": "boolean" },
+        "archiveDueAt": { "type": "string", "format": "date-time" },
+        "retentionEndsAt": { "type": "string", "format": "date-time" },
+        "deletionProof": { "type": ["object", "null"] },
+        "accessEventCount": { "type": "integer", "minimum": 0 },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/Event" } },
+        "evaluatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

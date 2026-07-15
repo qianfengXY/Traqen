@@ -32,6 +32,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #executions = new Map();
   #evidence = new Map();
   #evidenceHashes = new Map();
+  #evidenceRetentionPolicies = new Map();
+  #evidenceLifecycleEvents = new Map();
   #factBundles = new Map();
   #reverseSkills = new Map();
   #reverseSkillSequence = new Map();
@@ -450,6 +452,50 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       )
       .map(([, item]) => item);
     return deepFreeze({ ...record, evidence });
+  }
+
+  async getEvidence(projectId, evidenceId) {
+    return this.#evidence.get(key(projectId, evidenceId)) ?? null;
+  }
+
+  async appendEvidenceRetentionPolicy(projectId, policy) {
+    return this.#appendVersion(
+      this.#evidenceRetentionPolicies,
+      key(projectId, `${policy.id}\u0000${policy.version}`),
+      policy,
+      `EvidenceRetentionPolicy ${policy.id} version ${policy.version}`,
+    );
+  }
+
+  async getEvidenceRetentionPolicy(projectId, policyId, version = null) {
+    if (version !== null) {
+      return this.#evidenceRetentionPolicies.get(key(projectId, `${policyId}\u0000${version}`)) ?? null;
+    }
+    return [...this.#evidenceRetentionPolicies.entries()]
+      .filter(([storageKey, policy]) => storageKey.startsWith(`${projectId}\u0000`) && policy.id === policyId)
+      .map(([, policy]) => policy)
+      .sort((left, right) => right.version - left.version)[0] ?? null;
+  }
+
+  async appendEvidenceLifecycleEvent(projectId, event) {
+    if (!this.#evidence.has(key(projectId, event.evidenceId))) {
+      throw new PersistenceConflictError(`Evidence ${event.evidenceId} does not exist`);
+    }
+    if (!this.#evidenceRetentionPolicies.has(key(projectId, `${event.policyId}\u0000${event.policyVersion}`))) {
+      throw new PersistenceConflictError(`Evidence retention policy ${event.policyId}@${event.policyVersion} does not exist`);
+    }
+    const events = this.#evidenceLifecycleEvents.get(key(projectId, event.evidenceId)) ?? [];
+    const existing = events.find((item) => item.id === event.id);
+    if (existing && canonicalJson(existing) !== canonicalJson(event)) {
+      throw new PersistenceConflictError(`EvidenceLifecycleEvent ${event.id} conflicts with an existing record`);
+    }
+    if (!existing) events.push(deepFreeze(structuredClone(event)));
+    this.#evidenceLifecycleEvents.set(key(projectId, event.evidenceId), events);
+    return event;
+  }
+
+  async listEvidenceLifecycleEvents(projectId, evidenceId) {
+    return deepFreeze(structuredClone(this.#evidenceLifecycleEvents.get(key(projectId, evidenceId)) ?? []));
   }
 
   async appendFactBundle(projectId, bundle) {

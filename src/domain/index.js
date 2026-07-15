@@ -18,3 +18,4 @@ export * from "./feature-graph.js";
 export * from "./business-process.js";
 export * from "./decision-governance.js";
 export * from "./reverse-job.js";
+export * from "./evidence-lifecycle.js";

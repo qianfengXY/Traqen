@@ -6,6 +6,8 @@ import {
   createDecisionReviewEvent,
   createReverseRunJob,
   createReverseRunJobEvent,
+  createEvidenceRetentionPolicy,
+  createEvidenceLifecycleEvent,
   createChangeSet,
   createContinuousProtectionAssessment,
   createProductEffectivenessMetrics,
@@ -29,6 +31,7 @@ import {
   evaluateTraceChain,
   evaluateDecisionReviewCase,
   projectReverseRunJob,
+  evaluateEvidenceLifecycle,
   queryFeatureGraphPath as resolveFeatureGraphPath,
   assertTestSpecSafeToStore,
   validateTestSpec as validateTestSpecProtocol,
@@ -806,6 +809,87 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(executionId, "executionId");
     return this.#store.getExecutionEvidence(projectId, executionId);
+  }
+
+  async appendEvidenceRetentionPolicy(projectId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("Evidence retention policy input must be an object");
+    }
+    for (const serverField of ["actorId", "actorRole", "createdAt"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`evidenceRetentionPolicy.${serverField} is assigned by the server`);
+    }
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const governance = (await this.#reviewPolicyResolver(projectId, {
+      reviewer,
+      evidenceRetentionPolicyInput: input,
+    })) ?? {};
+    if (!Array.isArray(governance.allowedEvidenceLifecycleRoles) || !governance.allowedEvidenceLifecycleRoles.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot govern Evidence lifecycle`);
+    }
+    const policy = createEvidenceRetentionPolicy({ ...input, actorId, actorRole }, this.#clock);
+    await this.#store.appendEvidenceRetentionPolicy(projectId, policy);
+    return policy;
+  }
+
+  async getEvidenceLifecycle(projectId, evidenceId, policyId, policyVersion = null) {
+    requireId(projectId, "projectId");
+    requireId(evidenceId, "evidenceId");
+    requireId(policyId, "policyId");
+    const [evidence, policy, events] = await Promise.all([
+      this.#store.getEvidence(projectId, evidenceId),
+      this.#store.getEvidenceRetentionPolicy(projectId, policyId, policyVersion),
+      this.#store.listEvidenceLifecycleEvents(projectId, evidenceId),
+    ]);
+    if (!evidence || !policy) return null;
+    const relevantEvents = events.filter((event) => event.policyId === policy.id && event.policyVersion === policy.version);
+    return evaluateEvidenceLifecycle(evidence, policy, relevantEvents, this.#clock);
+  }
+
+  async appendEvidenceLifecycleEvent(projectId, evidenceId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(evidenceId, "evidenceId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("Evidence lifecycle event input must be an object");
+    }
+    for (const serverField of ["evidenceId", "actorId", "actorRole", "occurredAt"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`evidenceLifecycleEvent.${serverField} is assigned by the server`);
+    }
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const evidence = await this.#store.getEvidence(projectId, evidenceId);
+    const policy = await this.#store.getEvidenceRetentionPolicy(projectId, input.policyId, input.policyVersion);
+    if (!evidence) throw new PersistenceConflictError(`Evidence ${evidenceId} does not exist`);
+    if (!policy) throw new PersistenceConflictError(`Evidence retention policy ${input.policyId}@${input.policyVersion} does not exist`);
+    const governance = (await this.#reviewPolicyResolver(projectId, {
+      reviewer,
+      evidence,
+      policy,
+      evidenceLifecycleEventInput: input,
+    })) ?? {};
+    const accessAction = ["ACCESSED", "EXPORTED"].includes(input.action);
+    const allowed = accessAction ? policy.allowedAccessRoles : governance.allowedEvidenceLifecycleRoles;
+    if (!Array.isArray(allowed) || !allowed.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot perform Evidence lifecycle action ${input.action}`);
+    }
+    const events = (await this.#store.listEvidenceLifecycleEvents(projectId, evidenceId))
+      .filter((item) => item.policyId === policy.id && item.policyVersion === policy.version);
+    const current = evaluateEvidenceLifecycle(evidence, policy, events, this.#clock);
+    if (current.deleted) throw new PersistenceConflictError("Deleted Evidence content cannot receive further lifecycle events");
+    if (input.action === "DELETED" && current.legalHold) {
+      throw new PersistenceConflictError("Evidence under Legal Hold cannot be deleted");
+    }
+    if (input.action === "DELETED" && !current.deletionRequested) {
+      throw new PersistenceConflictError("Evidence deletion requires a prior DELETION_REQUESTED event");
+    }
+    const event = createEvidenceLifecycleEvent({ ...input, evidenceId, actorId, actorRole }, this.#clock);
+    await this.#store.appendEvidenceLifecycleEvent(projectId, event);
+    return this.getEvidenceLifecycle(projectId, evidenceId, policy.id, policy.version);
   }
 
   async ingestFactBundle(projectId, input) {

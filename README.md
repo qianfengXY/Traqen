@@ -82,6 +82,14 @@ The trusted execution-ingestion slice adds:
 - rejection of forged status, modified Evidence, unredacted sensitive values, wrong deployments, and cross-project signatures;
 - latest execution summaries in the Feature baseline and an on-demand full Evidence endpoint.
 
+The Evidence-lifecycle slice adds:
+
+- immutable, versioned retention policies scoped by data classification and Evidence type, with separate archive and retention deadlines;
+- append-only archive, Legal Hold placement/release, deletion request, deletion proof, access, and export events;
+- explicit `DELETION_BLOCKED_LEGAL_HOLD` and `DELETION_DUE` states rather than silently deleting or indefinitely retaining content;
+- role-filtered access/export audit, lifecycle-governance authorization, and required irreversible external-object deletion proof while retaining hashes and audit history;
+- PostgreSQL migration `0011_evidence_lifecycle`, memory parity, HTTP/OpenAPI contracts, and domain/API/PostgreSQL tests.
+
 The controlled Runner slice adds:
 
 - signed Runner tasks with a maximum five-minute validity window, replay-resistant nonces, local policy hashes, target Runner binding, and an injectable nonce registry;
@@ -141,7 +149,7 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - a no-Shell Git Diff analyzer that accepts only full commit hashes, preserves add/delete/modify/rename paths, and deterministically correlates changed artifacts with Snapshot Fact changes;
 - an authenticated implementation-reanalysis workflow that binds a reviewed current-Snapshot Reverse Candidate back to the existing normative Claim, records reviewer provenance in immutable conformance analysis, and closes the stale implementation segment without creating a replacement business Decision;
-- append-only PostgreSQL migrations through `0010_reverse_run_job`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
+- append-only PostgreSQL migrations through `0011_evidence_lifecycle`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
 The product-interface slice adds:
 
@@ -227,6 +235,8 @@ Create a high-risk or emergency authority proposal with `POST /v1/projects/{proj
 Derive its incremental regression and policy-controlled CI result from `GET /v1/projects/{projectId}/change-sets/{changeSetId}/continuous-protection`. This endpoint never turns incomplete impact into a pass and never replaces the individual Feature trust dimensions with one composite score.
 
 Read the current Snapshot's product-effectiveness view from `GET /v1/projects/{projectId}/metrics/product-effectiveness?snapshotManifestId=...`. The response intentionally has no composite score.
+
+Govern Evidence retention with `POST /v1/projects/{projectId}/evidence-retention-policies`, append archive/Legal Hold/deletion/access events at `POST /v1/projects/{projectId}/evidence/{evidenceId}/lifecycle-events`, and read the replayed state from `GET .../lifecycle?policyId=...`. A `DELETED` event proves deletion of external raw content; it never removes the immutable hash and audit proof. The adopting enterprise still supplies encrypted object storage and executes the physical object operation.
 
 After a changed implementation is analyzed in a new Reverse Run, an authorized developer or architect can repair the stale implementation segment with `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses`. This creates a new Snapshot-bound mapping and conformance record for the existing Claim and Scope; it never edits or replaces the normative Decision.
 

@@ -83,6 +83,26 @@ export class TraceabilityStore {
     throw new Error("getExecutionEvidence must be implemented");
   }
 
+  async getEvidence(_projectId, _evidenceId) {
+    throw new Error("getEvidence must be implemented");
+  }
+
+  async appendEvidenceRetentionPolicy(_projectId, _policy) {
+    throw new Error("appendEvidenceRetentionPolicy must be implemented");
+  }
+
+  async getEvidenceRetentionPolicy(_projectId, _policyId, _version = null) {
+    throw new Error("getEvidenceRetentionPolicy must be implemented");
+  }
+
+  async appendEvidenceLifecycleEvent(_projectId, _event) {
+    throw new Error("appendEvidenceLifecycleEvent must be implemented");
+  }
+
+  async listEvidenceLifecycleEvents(_projectId, _evidenceId) {
+    throw new Error("listEvidenceLifecycleEvents must be implemented");
+  }
+
   async appendFactBundle(_projectId, _bundle) {
     throw new Error("appendFactBundle must be implemented");
   }

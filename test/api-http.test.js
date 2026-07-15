@@ -310,6 +310,65 @@ test("product-effectiveness metrics require a Snapshot and preserve independent 
   assert.equal(missing.status, 400);
 });
 
+test("Evidence lifecycle routes expose policy, Legal Hold state, and deletion-proof audit", async (t) => {
+  const calls = [];
+  const projection = {
+    evidenceId: "EVIDENCE-001",
+    policyRef: { id: "POLICY-001", version: 1 },
+    status: "DELETION_BLOCKED_LEGAL_HOLD",
+    legalHold: true,
+    archived: true,
+    deletionRequested: true,
+    deleted: false,
+    archiveDueAt: "2026-07-10T00:00:00.000Z",
+    retentionEndsAt: "2026-08-01T00:00:00.000Z",
+    deletionProof: null,
+    accessEventCount: 1,
+    events: [],
+    evaluatedAt: "2026-07-15T00:00:00.000Z",
+  };
+  const application = {
+    async appendEvidenceRetentionPolicy(projectId, input, context) {
+      calls.push({ operation: "policy", projectId, input, context });
+      return { ...input, actorId: "OWNER-001", actorRole: "governance-owner", createdAt: projection.evaluatedAt };
+    },
+    async appendEvidenceLifecycleEvent(projectId, evidenceId, input, context) {
+      calls.push({ operation: "event", projectId, evidenceId, input, context });
+      return projection;
+    },
+    async getEvidenceLifecycle(projectId, evidenceId, policyId, policyVersion) {
+      calls.push({ operation: "get", projectId, evidenceId, policyId, policyVersion });
+      return projection;
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const policy = await postJson(`${baseUrl}/v1/projects/PROJECT-001/evidence-retention-policies`, {
+    id: "POLICY-001",
+    version: 1,
+    dataClassification: "INTERNAL",
+    evidenceTypes: ["TRACE"],
+    retentionDays: 30,
+    archiveAfterDays: 7,
+    legalHoldDefault: false,
+    allowedAccessRoles: ["auditor"],
+  }, { authorization: "Bearer governance-token" });
+  assert.equal(policy.response.status, 201);
+  const lifecycleEvent = await postJson(`${baseUrl}/v1/projects/PROJECT-001/evidence/EVIDENCE-001/lifecycle-events`, {
+    id: "EVENT-HOLD-001",
+    policyId: "POLICY-001",
+    policyVersion: 1,
+    action: "LEGAL_HOLD_PLACED",
+    reason: "Active legal discovery.",
+  }, { authorization: "Bearer governance-token" });
+  assert.equal(lifecycleEvent.body.status, "DELETION_BLOCKED_LEGAL_HOLD");
+  const lifecycle = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/evidence/EVIDENCE-001/lifecycle?policyId=POLICY-001&policyVersion=1`,
+  );
+  assert.equal(lifecycle.status, 200);
+  assert.equal((await lifecycle.json()).legalHold, true);
+  assert.deepEqual(calls.map((call) => call.operation), ["policy", "event", "get"]);
+});
+
 test("Feature graph APIs preserve bounded filters and path-query scope", async (t) => {
   const calls = [];
   const application = {

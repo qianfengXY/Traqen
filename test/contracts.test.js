@@ -108,6 +108,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getProductEffectivenessMetrics",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/evidence/{evidenceId}/lifecycle"].get.operationId,
+    "getEvidenceLifecycle",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/test-specs"].post.operationId,
     "appendTestSpec",
   );
@@ -244,6 +248,18 @@ test("Decision governance contract makes multi-party review and Break-glass life
   assert.ok(contract.$defs.Case.properties.approvalMode.enum.includes("BREAK_GLASS"));
   assert.ok(contract.$defs.Event.properties.action.enum.includes("POST_REVIEW"));
   assert.ok(contract.$defs.Evaluation.properties.status.enum.includes("POST_REVIEW_OVERDUE"));
+});
+
+test("Evidence lifecycle contract keeps Legal Hold, deletion proof, and access audit explicit", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/evidence-lifecycle.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(contract.title, "EvidenceLifecycle");
+  assert.equal(contract.$defs.PolicyRequest.properties.actorId, undefined);
+  assert.equal(contract.$defs.EventRequest.properties.actorId, undefined);
+  assert.ok(contract.$defs.EventRequest.properties.action.enum.includes("LEGAL_HOLD_PLACED"));
+  assert.ok(contract.$defs.Projection.properties.status.enum.includes("DELETION_BLOCKED_LEGAL_HOLD"));
+  assert.ok(contract.$defs.Projection.required.includes("deletionProof"));
 });
 
 test("candidate review contract keeps reviewer identity server-side and baseline creation explicit", async () => {

@@ -11,6 +11,8 @@ import {
   createSnapshotManifest,
   createReverseRunJob,
   createReverseRunJobEvent,
+  createEvidenceRetentionPolicy,
+  createEvidenceLifecycleEvent,
   evaluateTraceChain,
   signExecutionEvidenceBundle,
   signFactBundle,
@@ -37,6 +39,7 @@ async function migratedDatabase() {
     "0008_business_process_model",
     "0009_decision_governance",
     "0010_reverse_run_job",
+    "0011_evidence_lifecycle",
   ]);
   return database;
 }
@@ -246,6 +249,8 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "test_spec",
     "test_execution",
     "evidence",
+    "evidence_retention_policy",
+    "evidence_lifecycle_event",
     "trace_chain_revision",
     "trace_gap",
     "audit_event",
@@ -402,6 +407,61 @@ test("PostgreSQL keeps asynchronous Reverse Run job state as ordered immutable e
   await assert.rejects(
     database.query("UPDATE reverse_run_job SET created_at = now() WHERE project_id = $1 AND id = $2", ["PROJECT-001", job.id]),
     /append-only/i,
+  );
+});
+
+test("PostgreSQL preserves Evidence retention, Legal Hold, access, and deletion-proof events", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await insertSnapshot(database);
+  await insertTraceabilityChain(database);
+  const store = new PostgresTraceabilityStore(database);
+  const policy = createEvidenceRetentionPolicy({
+    id: "EVIDENCE-POLICY-DB-001",
+    version: 1,
+    dataClassification: "INTERNAL",
+    evidenceTypes: ["ASSERTION"],
+    retentionDays: 90,
+    archiveAfterDays: 30,
+    legalHoldDefault: false,
+    allowedAccessRoles: ["business-owner"],
+    actorId: "USER-001",
+    actorRole: "business-owner",
+  }, fixedClock);
+  await store.appendEvidenceRetentionPolicy("PROJECT-001", policy);
+  for (const [id, action] of [
+    ["EVIDENCE-EVENT-ACCESS", "ACCESSED"],
+    ["EVIDENCE-EVENT-HOLD", "LEGAL_HOLD_PLACED"],
+    ["EVIDENCE-EVENT-RELEASE", "LEGAL_HOLD_RELEASED"],
+    ["EVIDENCE-EVENT-REQUEST", "DELETION_REQUESTED"],
+  ]) {
+    await store.appendEvidenceLifecycleEvent("PROJECT-001", createEvidenceLifecycleEvent({
+      id,
+      evidenceId: "EVIDENCE-001",
+      policyId: policy.id,
+      policyVersion: policy.version,
+      action,
+      reason: `${action} integration proof`,
+      actorId: "USER-001",
+      actorRole: "business-owner",
+    }, fixedClock));
+  }
+  await store.appendEvidenceLifecycleEvent("PROJECT-001", createEvidenceLifecycleEvent({
+    id: "EVIDENCE-EVENT-DELETED",
+    evidenceId: "EVIDENCE-001",
+    policyId: policy.id,
+    policyVersion: policy.version,
+    action: "DELETED",
+    reason: "External raw object deletion completed after retention approval.",
+    actorId: "USER-001",
+    actorRole: "business-owner",
+    deletionProof: { proofHash: `sha256:${"f".repeat(64)}`, storageProvider: "test-object-store" },
+  }, fixedClock));
+  assert.equal((await store.getEvidence("PROJECT-001", "EVIDENCE-001")).integrity, "VERIFIED");
+  assert.deepEqual(
+    (await store.listEvidenceLifecycleEvents("PROJECT-001", "EVIDENCE-001")).map((event) => event.action),
+    ["ACCESSED", "LEGAL_HOLD_PLACED", "LEGAL_HOLD_RELEASED", "DELETION_REQUESTED", "DELETED"],
   );
 });
 

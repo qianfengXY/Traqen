@@ -1285,6 +1285,102 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async getEvidence(projectId, evidenceId) {
+    requireId(projectId, "projectId");
+    requireId(evidenceId, "evidenceId");
+    const result = await this.#database.query(
+      `SELECT * FROM evidence WHERE project_id = $1 AND id = $2`,
+      [projectId, evidenceId],
+    );
+    return result.rows[0] ? deepFreeze(evidenceFromRow(result.rows[0])) : null;
+  }
+
+  async appendEvidenceRetentionPolicy(projectId, policy) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO evidence_retention_policy (
+           project_id, id, version, policy_payload, actor_id, actor_role, created_at
+         ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+         ON CONFLICT (project_id, id, version) DO NOTHING`,
+        [projectId, policy.id, policy.version, JSON.stringify(policy), policy.actorId, policy.actorRole, policy.createdAt],
+      );
+      const stored = await this.#database.query(
+        `SELECT policy_payload
+         FROM evidence_retention_policy
+         WHERE project_id = $1 AND id = $2 AND version = $3`,
+        [projectId, policy.id, policy.version],
+      );
+      if (!stored.rows[0] || canonicalJson(stored.rows[0].policy_payload) !== canonicalJson(policy)) {
+        throw new PersistenceConflictError(`EvidenceRetentionPolicy ${policy.id}@${policy.version} conflicts`);
+      }
+      return policy;
+    });
+  }
+
+  async getEvidenceRetentionPolicy(projectId, policyId, version = null) {
+    requireId(projectId, "projectId");
+    requireId(policyId, "policyId");
+    const parameters = version === null ? [projectId, policyId] : [projectId, policyId, version];
+    const versionFilter = version === null ? "" : "AND version = $3";
+    const result = await this.#database.query(
+      `SELECT policy_payload
+       FROM evidence_retention_policy
+       WHERE project_id = $1 AND id = $2 ${versionFilter}
+       ORDER BY version DESC LIMIT 1`,
+      parameters,
+    );
+    return result.rows[0]?.policy_payload ?? null;
+  }
+
+  async appendEvidenceLifecycleEvent(projectId, event) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO evidence_lifecycle_event (
+           project_id, evidence_id, id, policy_id, policy_version, action,
+           event_payload, actor_id, actor_role, occurred_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)
+         ON CONFLICT (project_id, evidence_id, id) DO NOTHING`,
+        [
+          projectId,
+          event.evidenceId,
+          event.id,
+          event.policyId,
+          event.policyVersion,
+          event.action,
+          JSON.stringify(event),
+          event.actorId,
+          event.actorRole,
+          event.occurredAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT event_payload
+         FROM evidence_lifecycle_event
+         WHERE project_id = $1 AND evidence_id = $2 AND id = $3`,
+        [projectId, event.evidenceId, event.id],
+      );
+      if (!stored.rows[0] || canonicalJson(stored.rows[0].event_payload) !== canonicalJson(event)) {
+        throw new PersistenceConflictError(`EvidenceLifecycleEvent ${event.id} conflicts`);
+      }
+      return event;
+    });
+  }
+
+  async listEvidenceLifecycleEvents(projectId, evidenceId) {
+    requireId(projectId, "projectId");
+    requireId(evidenceId, "evidenceId");
+    const result = await this.#database.query(
+      `SELECT event_payload
+       FROM evidence_lifecycle_event
+       WHERE project_id = $1 AND evidence_id = $2
+       ORDER BY append_sequence`,
+      [projectId, evidenceId],
+    );
+    return deepFreeze(result.rows.map((row) => row.event_payload));
+  }
+
   async appendFactBundle(projectId, bundle) {
     requireId(projectId, "projectId");
     requireId(bundle?.id, "bundle.id");

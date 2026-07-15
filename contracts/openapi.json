@@ -71,6 +71,53 @@
         }
       }
     },
+    "/v1/projects/{projectId}/evidence-retention-policies": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendEvidenceRetentionPolicy",
+        "requestBody": { "$ref": "#/components/requestBodies/EvidenceRetentionPolicy" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceRetentionPolicy" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/evidence/{evidenceId}/lifecycle": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "evidenceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "policyId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "policyVersion", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1 } }
+      ],
+      "get": {
+        "operationId": "getEvidenceLifecycle",
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceLifecycle" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/evidence/{evidenceId}/lifecycle-events": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "evidenceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "appendEvidenceLifecycleEvent",
+        "requestBody": { "$ref": "#/components/requestBodies/EvidenceLifecycleEvent" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceLifecycle" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/snapshots": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
@@ -904,6 +951,14 @@
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/EventRequest" } } }
       },
+      "EvidenceRetentionPolicy": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/PolicyRequest" } } }
+      },
+      "EvidenceLifecycleEvent": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/EventRequest" } } }
+      },
       "TestSpecDraft": {
         "required": true,
         "content": {
@@ -1328,6 +1383,14 @@
         "content": {
           "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/Projection" } }
         }
+      },
+      "EvidenceRetentionPolicy": {
+        "description": "Immutable Evidence retention and access policy with server-owned authority",
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/Policy" } } }
+      },
+      "EvidenceLifecycle": {
+        "description": "Event-replayed Evidence archive, Legal Hold, deletion-proof, and access-audit state",
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/Projection" } } }
       },
       "FeatureGraph": {
         "description": "Bounded Feature-centered graph projection with typed provenance and progressive expansion metadata",

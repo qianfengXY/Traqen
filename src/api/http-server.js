@@ -277,6 +277,47 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const evidencePolicyCollectionMatch = /^\/v1\/projects\/([^/]+)\/evidence-retention-policies$/.exec(url.pathname);
+      if (request.method === "POST" && evidencePolicyCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(evidencePolicyCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.appendEvidenceRetentionPolicy(projectId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
+        return;
+      }
+
+      const evidenceLifecycleEventMatch = /^\/v1\/projects\/([^/]+)\/evidence\/([^/]+)\/lifecycle-events$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && evidenceLifecycleEventMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(evidenceLifecycleEventMatch[1]);
+        const evidenceId = decodePathSegment(evidenceLifecycleEventMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.appendEvidenceLifecycleEvent(projectId, evidenceId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
+        return;
+      }
+
+      const evidenceLifecycleMatch = /^\/v1\/projects\/([^/]+)\/evidence\/([^/]+)\/lifecycle$/.exec(url.pathname);
+      if (request.method === "GET" && evidenceLifecycleMatch) {
+        const projectId = decodePathSegment(evidenceLifecycleMatch[1]);
+        const evidenceId = decodePathSegment(evidenceLifecycleMatch[2]);
+        const policyId = url.searchParams.get("policyId");
+        if (!policyId) throw new HttpError(400, "EVIDENCE_POLICY_REQUIRED", "policyId is required");
+        const rawVersion = url.searchParams.get("policyVersion");
+        const policyVersion = rawVersion === null ? null : boundedQueryInteger(url, "policyVersion", 1, 1_000_000);
+        const lifecycle = await application.getEvidenceLifecycle(projectId, evidenceId, policyId, policyVersion);
+        if (!lifecycle) throw new HttpError(404, "EVIDENCE_LIFECYCLE_NOT_FOUND", "Evidence or retention policy was not found");
+        sendJson(response, 200, lifecycle, id);
+        return;
+      }
+
       const snapshotCollectionMatch = /^\/v1\/projects\/([^/]+)\/snapshots$/.exec(url.pathname);
       if (request.method === "POST" && snapshotCollectionMatch) {
         requireJson(request);
