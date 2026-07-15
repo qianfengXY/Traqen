@@ -85,6 +85,34 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     );
   }
 
+  async getPlatformOperationObservations(projectId) {
+    const projectEntries = (collection) => [...collection.entries()]
+      .filter(([storageKey]) => storageKey.startsWith(`${projectId}\u0000`))
+      .map(([, value]) => value);
+    const reverseJobs = projectEntries(this.#reverseRunJobs).map((job) => {
+      const events = this.#reverseRunJobEvents.get(key(projectId, job.id)) ?? [];
+      return { id: job.id, status: events.at(-1)?.status ?? "QUEUED" };
+    });
+    return deepFreeze({
+      reverseRuns: projectEntries(this.#reverseRuns),
+      reverseJobs,
+      factBundles: projectEntries(this.#factBundles).map((bundle) => ({
+        extractorId: bundle.extractor.id, extractorVersion: bundle.extractor.version,
+        complete: bundle.complete, nodeCount: bundle.nodes.length, edgeCount: bundle.edges.length,
+      })),
+      testExecutions: projectEntries(this.#executions).map((record) => record.execution),
+      evidence: projectEntries(this.#evidence),
+      evidenceLifecycleEvents: projectEntries(this.#evidenceLifecycleEvents),
+      changeImpacts: projectEntries(this.#changeImpacts).map((item) => ({
+        changeSetCreatedAt: item.changeSet.createdAt,
+        impactCreatedAt: item.impact.createdAt,
+        changedFactCount: item.changeSet.changes.length,
+        affectedFeatureCount: item.impact.affectedFeatureIds.length,
+        regressionSelectionCount: item.impact.affectedTestSpecIds.length,
+      })),
+    });
+  }
+
   async appendTraceChainRevision(projectId, chain, options = {}) {
     if (!this.#manifests.has(key(projectId, chain.snapshotManifestId))) {
       throw new PersistenceConflictError(`Snapshot manifest ${chain.snapshotManifestId} does not exist in project ${projectId}`);

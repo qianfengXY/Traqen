@@ -340,6 +340,9 @@ test("PostgreSQL preserves Feature aliases and human-governed lineage", async (t
   assert.equal(lineage.id, "LINEAGE-DB-001");
   assert.equal((await application.listFeatureAliases("PROJECT-001", "FEATURE-OLD")).length, 1);
   assert.equal((await application.listFeatureLineages("PROJECT-001", "FEATURE-NEW")).length, 1);
+  const operationalMetrics = await application.getPlatformOperationsMetrics("PROJECT-001");
+  assert.equal(operationalMetrics.reverseRuns.runCount, 0);
+  assert.equal(operationalMetrics.scanners.bundleCount, 0);
 });
 
 test("PostgreSQL atomically materializes a dual-approved Decision with its review history", async (t) => {

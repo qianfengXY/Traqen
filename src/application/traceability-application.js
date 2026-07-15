@@ -11,6 +11,7 @@ import {
   createChangeSet,
   createContinuousProtectionAssessment,
   createProductEffectivenessMetrics,
+  createPlatformOperationsMetrics,
   createDecision,
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -2130,5 +2131,12 @@ export class TraceabilityApplication {
       traceabilities,
       highValueFeatureIds: policy?.highValueFeatureIds ?? featureIds,
     }, this.#clock);
+  }
+
+  async getPlatformOperationsMetrics(projectId) {
+    requireId(projectId, "projectId");
+    if (!await this.#store.getProjectFoundation(projectId)) return null;
+    const observations = await this.#store.getPlatformOperationObservations(projectId);
+    return createPlatformOperationsMetrics(projectId, observations, this.#clock);
   }
 }

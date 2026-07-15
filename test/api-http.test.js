@@ -147,6 +147,14 @@ test("project and Snapshot bootstrap require no direct database setup", async (t
   const features = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP/features`, { headers: apiHeaders });
   assert.equal(features.status, 200);
   assert.equal((await features.json()).features[0].feature.id, "FEATURE-BOOTSTRAP");
+  const platformMetrics = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-BOOTSTRAP/metrics/platform-operations`,
+    { headers: apiHeaders },
+  );
+  assert.equal(platformMetrics.status, 200);
+  const platformMetricsBody = await platformMetrics.json();
+  assert.equal(platformMetricsBody.scanners.bundleCount, 0);
+  assert.ok(platformMetricsBody.unavailableSignals.some((item) => item.status === "UNAVAILABLE"));
 });
 
 test("business process endpoint assigns reviewer identity and returns the governed state machine", async (t) => {

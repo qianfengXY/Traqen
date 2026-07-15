@@ -69,6 +69,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "appendFeatureLineage",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/metrics/platform-operations"].get.operationId,
+    "getPlatformOperationsMetrics",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/decision-review-cases"].post.operationId,
     "createDecisionReviewCase",
   );
@@ -464,4 +468,13 @@ test("Feature evolution contract keeps aliases versioned and lineage human-gover
     "PREDECESSOR_OF", "SUCCESSOR_OF", "MERGED_INTO", "SPLIT_INTO",
   ]);
   assert.ok(contract.$defs.FeatureLineage.required.includes("rationale"));
+});
+
+test("platform operations metrics contract makes unavailable telemetry explicit", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/platform-operations-metrics.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(contract.title, "PlatformOperationsMetrics");
+  assert.ok(contract.required.includes("unavailableSignals"));
+  assert.equal(contract.properties.unavailableSignals.items.properties.status.const, "UNAVAILABLE");
 });

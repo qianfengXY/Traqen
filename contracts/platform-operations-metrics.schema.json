@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/platform-operations-metrics-v1alpha1.json",
+  "title": "PlatformOperationsMetrics",
+  "type": "object",
+  "required": ["projectId", "computedAt", "reverseRuns", "scanners", "tests", "evidence", "impactAnalysis", "unavailableSignals"],
+  "properties": {
+    "projectId": { "type": "string", "minLength": 1 },
+    "computedAt": { "type": "string", "format": "date-time" },
+    "reverseRuns": { "type": "object" },
+    "scanners": { "type": "object" },
+    "tests": { "type": "object" },
+    "evidence": { "type": "object" },
+    "impactAnalysis": { "type": "object" },
+    "unavailableSignals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["signal", "status", "reason"],
+        "properties": {
+          "signal": { "type": "string", "minLength": 1 },
+          "status": { "const": "UNAVAILABLE" },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

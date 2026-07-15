@@ -129,6 +129,16 @@ type ProductMetrics = {
   unavailableMetrics: Array<{ metric: string; reason: string }>;
 };
 
+type PlatformMetrics = {
+  computedAt: string;
+  reverseRuns: { runCount: number; retryCount: number; failedAttemptCount: number; queue: { activeCount: number }; duration: { meanMs: number | null } };
+  scanners: { bundleCount: number; incompleteBundleCount: number; nodeCount: number; edgeCount: number };
+  tests: { executionCount: number; unstableTestSpecCount: number; duration: { meanMs: number | null } };
+  evidence: { evidenceCount: number; externalObjectCount: number };
+  impactAnalysis: { assessmentCount: number; regressionSelectionCount: number; duration: { meanMs: number | null } };
+  unavailableSignals: Array<{ signal: string; status: "UNAVAILABLE"; reason: string }>;
+};
+
 type Scenario = {
   feature: { id: string; name: string; version: number };
   snapshotId: string;
@@ -958,6 +968,7 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
 
 function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: string; apiToken: string; projectId: string; snapshotId: string }) {
   const [metrics, setMetrics] = useState<ProductMetrics | null>(null);
+  const [platformMetrics, setPlatformMetrics] = useState<PlatformMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const demo: ProductMetrics = {
@@ -989,14 +1000,20 @@ function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: st
     setMessage("");
     try {
       const base = apiBase.replace(/\/$/, "");
-      const response = await fetch(
-        `${base}/v1/projects/${encodeURIComponent(projectId)}/metrics/product-effectiveness?snapshotManifestId=${encodeURIComponent(snapshotId)}`,
-        { headers: apiHeaders(apiToken, { accept: "application/json" }) },
-      );
-      const body = await response.json() as Record<string, unknown>;
+      const headers = apiHeaders(apiToken, { accept: "application/json" });
+      const [response, platformResponse] = await Promise.all([
+        fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/metrics/product-effectiveness?snapshotManifestId=${encodeURIComponent(snapshotId)}`, { headers }),
+        fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/metrics/platform-operations`, { headers }),
+      ]);
+      const [body, platformBody] = await Promise.all([
+        response.json() as Promise<Record<string, unknown>>,
+        platformResponse.json() as Promise<Record<string, unknown>>,
+      ]);
       if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
+      if (!platformResponse.ok) throw new Error(String((platformBody.error as { message?: string } | undefined)?.message ?? `Platform metrics returned ${platformResponse.status}`));
       setMetrics(body as unknown as ProductMetrics);
-      setMessage("已加载服务端按当前 Snapshot 派生的产品效果指标。");
+      setPlatformMetrics(platformBody as unknown as PlatformMetrics);
+      setMessage("已加载服务端按当前 Snapshot 派生的产品效果与平台运营指标。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "产品指标加载失败");
     } finally {
@@ -1007,6 +1024,7 @@ function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: st
   return <>
     <section className="panel metrics-head"><div className="panel-head"><div><h2>产品效果指标</h2><p>每项指标独立展示分子、分母、断点与数据边界；没有综合绿色分数。</p></div><span className={`mode-badge ${metrics ? "live" : ""}`}>{metrics ? "LIVE METRICS" : "DEMO METRICS"}</span></div><div className="metrics-context"><span>{current.snapshotManifestId}</span><span>{current.computedAt}</span><button className="button primary" disabled={loading} onClick={() => void loadMetrics()}>{loading ? "加载中…" : "加载服务端指标"}</button></div>{message && <div className="inline-message">{message}</div>}</section>
     <section className="metrics-rate-grid">{rateCards.map(([label, value]) => <div className="panel rate-card" key={label}><span>{label}</span><strong>{value.ratio === null ? "N/A" : `${Math.round(value.ratio * 100)}%`}</strong><small>{value.numerator} / {value.denominator}</small></div>)}</section>
+    {platformMetrics && <section className="panel operations-metrics"><div className="panel-head"><div><h2>平台运营可观测性</h2><p>任务、Scanner、执行、Evidence 与影响分析分别展示；没有数据源的信号明确标记为不可用。</p></div><span className="mode-badge live">LIVE OPERATIONS</span></div><div className="operations-grid"><div><span>Reverse Runs / retries</span><b>{platformMetrics.reverseRuns.runCount} / {platformMetrics.reverseRuns.retryCount}</b><small>active queue {platformMetrics.reverseRuns.queue.activeCount} · mean {platformMetrics.reverseRuns.duration.meanMs ?? "N/A"} ms</small></div><div><span>Scanner bundles</span><b>{platformMetrics.scanners.bundleCount}</b><small>{platformMetrics.scanners.nodeCount} nodes · {platformMetrics.scanners.edgeCount} edges · {platformMetrics.scanners.incompleteBundleCount} incomplete</small></div><div><span>Test executions</span><b>{platformMetrics.tests.executionCount}</b><small>{platformMetrics.tests.unstableTestSpecCount} unstable · mean {platformMetrics.tests.duration.meanMs ?? "N/A"} ms</small></div><div><span>Evidence objects</span><b>{platformMetrics.evidence.evidenceCount}</b><small>{platformMetrics.evidence.externalObjectCount} external objects</small></div><div><span>Impact assessments</span><b>{platformMetrics.impactAnalysis.assessmentCount}</b><small>{platformMetrics.impactAnalysis.regressionSelectionCount} regression selections · mean {platformMetrics.impactAnalysis.duration.meanMs ?? "N/A"} ms</small></div></div><div className="unavailable-list">{platformMetrics.unavailableSignals.map((item) => <div key={item.signal}><b>{item.signal} · {item.status}</b><p>{item.reason}</p></div>)}</div></section>}
     <div className="metrics-grid"><section className="panel metrics-card"><div className="panel-head"><div><h2>证据新鲜度与断点</h2><p>未知和不完整不会被其他维度抵消。</p></div></div><div className="metric-breakdown"><h3>Evidence freshness</h3>{Object.entries(current.evidenceFreshness).map(([key, value]) => <div key={key}><span>{key}</span><b>{value}</b></div>)}<h3>TraceGap by type</h3>{Object.entries(current.gapBreakdown.byType).map(([key, value]) => <div key={key}><span>{key}</span><b>{value}</b></div>)}</div></section><section className="panel metrics-card"><div className="panel-head"><div><h2>明确缺失的数据源</h2><p>无法由仓库内事实证明的指标不会被估算。</p></div></div><div className="unavailable-list">{current.unavailableMetrics.map((item) => <div key={item.metric}><b>{item.metric}</b><p>{item.reason}</p></div>)}</div></section></div>
     <section className="panel feature-metrics"><div className="panel-head"><div><h2>Feature 追溯维度</h2><p>逐项显示产品、规则、实现、数据、配置、测试、断言、执行与 Evidence。</p></div></div>{current.features.map((feature) => <div className="feature-metric-row" key={feature.featureId}><div><b>{feature.name}</b><small>{feature.featureId} · {feature.highValue ? "HIGH VALUE" : "GOVERNED"} · {feature.openGapCount} gaps</small></div><span className={`graph-status ${feature.chainComplete ? "active" : "gap"}`}>{feature.chainComplete ? "COMPLETE" : "INCOMPLETE"}</span><div className="coverage-flags">{Object.entries(feature.coverage).map(([key, present]) => <span className={present ? "present" : "missing"} key={key}>{key}</span>)}</div></div>)}</section>
   </>;

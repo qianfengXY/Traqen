@@ -57,6 +57,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /增量回归与质量门禁/);
   assert.match(product, /不把未知显示为通过/);
   assert.match(product, /metrics\/product-effectiveness/);
+  assert.match(product, /metrics\/platform-operations/);
+  assert.match(product, /平台运营可观测性/);
   assert.match(product, /没有综合绿色分数/);
   assert.match(product, /服务端派生/);
   assert.match(product, /演示模式不会写入业务基线/);

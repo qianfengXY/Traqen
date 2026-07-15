@@ -277,6 +277,15 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const platformMetricsMatch = /^\/v1\/projects\/([^/]+)\/metrics\/platform-operations$/.exec(url.pathname);
+      if (request.method === "GET" && platformMetricsMatch) {
+        const projectId = decodePathSegment(platformMetricsMatch[1]);
+        const metrics = await application.getPlatformOperationsMetrics(projectId);
+        if (!metrics) throw new HttpError(404, "PROJECT_NOT_FOUND", "Project was not found");
+        sendJson(response, 200, metrics, id);
+        return;
+      }
+
       const evidencePolicyCollectionMatch = /^\/v1\/projects\/([^/]+)\/evidence-retention-policies$/.exec(url.pathname);
       if (request.method === "POST" && evidencePolicyCollectionMatch) {
         requireJson(request);

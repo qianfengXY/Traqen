@@ -19,6 +19,10 @@ export class TraceabilityStore {
     throw new Error("listSnapshotManifests must be implemented");
   }
 
+  async getPlatformOperationObservations(_projectId) {
+    throw new Error("getPlatformOperationObservations must be implemented");
+  }
+
   async appendTraceChainRevision(_projectId, _chain, _options = {}) {
     throw new Error("appendTraceChainRevision must be implemented");
   }

@@ -327,6 +327,68 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return deepFreeze(await Promise.all(result.rows.map((row) => this.getSnapshotManifest(projectId, row.id))));
   }
 
+  async getPlatformOperationObservations(projectId) {
+    requireId(projectId, "projectId");
+    const [runs, jobEvents, bundles, executions, evidence, lifecycleEvents, impacts] = await Promise.all([
+      this.#database.query("SELECT run_payload FROM reverse_run WHERE project_id = $1 ORDER BY created_at, id", [projectId]),
+      this.#database.query(
+        `SELECT j.id, e.status, e.append_sequence
+         FROM reverse_run_job j
+         LEFT JOIN reverse_run_job_event e ON e.project_id = j.project_id AND e.job_id = j.id
+         WHERE j.project_id = $1 ORDER BY j.id, e.append_sequence`, [projectId],
+      ),
+      this.#database.query(
+        `SELECT fb.extractor_id, fb.extractor_version, fb.complete,
+           (SELECT count(*) FROM fact_node fn WHERE fn.project_id = fb.project_id AND fn.bundle_id = fb.id) AS node_count,
+           (SELECT count(*) FROM fact_edge fe WHERE fe.project_id = fb.project_id AND fe.bundle_id = fb.id) AS edge_count
+         FROM fact_bundle fb WHERE fb.project_id = $1 ORDER BY fb.observed_at, fb.id`, [projectId],
+      ),
+      this.#database.query(
+        `SELECT test_spec_id, test_spec_version, status, started_at, finished_at, attempts
+         FROM test_execution WHERE project_id = $1 ORDER BY started_at, id`, [projectId],
+      ),
+      this.#database.query(
+        `SELECT evidence_type, integrity_status, freshness_status, storage_uri
+         FROM evidence WHERE project_id = $1 ORDER BY created_at, id`, [projectId],
+      ),
+      this.#database.query(
+        `SELECT action FROM evidence_lifecycle_event WHERE project_id = $1 ORDER BY append_sequence`, [projectId],
+      ),
+      this.#database.query(
+        `SELECT cs.created_at AS change_set_created_at, ia.created_at AS impact_created_at,
+                cs.changes, ia.impact_payload
+         FROM change_set cs JOIN impact_assessment ia
+           ON ia.project_id = cs.project_id AND ia.change_set_id = cs.id
+         WHERE cs.project_id = $1 ORDER BY cs.created_at, cs.id`, [projectId],
+      ),
+    ]);
+    const jobs = new Map();
+    for (const row of jobEvents.rows) jobs.set(row.id, { id: row.id, status: row.status ?? "QUEUED" });
+    return deepFreeze({
+      reverseRuns: runs.rows.map((row) => row.run_payload),
+      reverseJobs: [...jobs.values()],
+      factBundles: bundles.rows.map((row) => ({
+        extractorId: row.extractor_id, extractorVersion: row.extractor_version, complete: row.complete,
+        nodeCount: Number(row.node_count), edgeCount: Number(row.edge_count),
+      })),
+      testExecutions: executions.rows.map((row) => ({
+        testSpecId: row.test_spec_id, testSpecVersion: row.test_spec_version, status: row.status,
+        startedAt: new Date(row.started_at).toISOString(), finishedAt: isoOrNull(row.finished_at), attempts: row.attempts,
+      })),
+      evidence: evidence.rows.map((row) => ({
+        type: row.evidence_type, integrity: row.integrity_status, freshness: row.freshness_status, storageUri: row.storage_uri,
+      })),
+      evidenceLifecycleEvents: lifecycleEvents.rows.map((row) => ({ action: row.action })),
+      changeImpacts: impacts.rows.map((row) => ({
+        changeSetCreatedAt: new Date(row.change_set_created_at).toISOString(),
+        impactCreatedAt: new Date(row.impact_created_at).toISOString(),
+        changedFactCount: row.changes.length,
+        affectedFeatureCount: row.impact_payload.affectedFeatureIds.length,
+        regressionSelectionCount: row.impact_payload.affectedTestSpecIds.length,
+      })),
+    });
+  }
+
   async appendTraceChainRevision(projectId, chain, options = {}) {
     requireId(projectId, "projectId");
     requireId(chain?.id, "chain.id");

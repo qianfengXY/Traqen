@@ -232,6 +232,10 @@ button { color: inherit; }
 .rate-card strong { margin: 8px 0 4px; font-size: 29px; letter-spacing: -.05em; }
 .rate-card small { color: #718078; font-family: var(--font-geist-mono); font-size: 9px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.operations-grid { padding: 15px 18px 6px; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.operations-grid > div { padding: 12px; border: 1px solid var(--line); border-radius: 9px; display: flex; flex-direction: column; gap: 6px; }
+.operations-grid span, .operations-grid small { color: var(--muted); font-family: var(--font-geist-mono); font-size: 8px; line-height: 1.4; }
+.operations-grid b { font-size: 17px; }
 .metric-breakdown { padding: 14px 18px 18px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; font-size: 9px; }
 .metric-breakdown h3 { grid-column: 1 / -1; margin: 10px 0 2px; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
 .metric-breakdown span { color: var(--muted); font-family: var(--font-geist-mono); }
@@ -288,7 +292,7 @@ button { color: inherit; }
   .inline-form, .inline-form.impact-form, .review-fields { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
   .protection-summary, .regression-list > div { grid-template-columns: 1fr; }
-  .metrics-rate-grid, .metrics-grid, .feature-metric-row { grid-template-columns: 1fr; }
+  .metrics-rate-grid, .metrics-grid, .operations-grid, .feature-metric-row { grid-template-columns: 1fr; }
   .metrics-context { align-items: flex-start; flex-direction: column; }
   .metrics-context .button { margin-left: 0; }
   .graph-filter-row, .graph-layout, .graph-path-bar { grid-template-columns: 1fr; }
