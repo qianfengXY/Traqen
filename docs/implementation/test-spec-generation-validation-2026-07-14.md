@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](test-spec-generation-validation-2026-07-14.zh-CN.md)
+
 # TestSpec Generation and Approval Validation — 2026-07-14
 
 ## Outcome

@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](product-effectiveness-metrics-validation-2026-07-15.zh-CN.md)
+
 # Product effectiveness metrics validation — 2026-07-15
 
 ## Outcome

@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](implementation-reanalysis-validation-2026-07-14.zh-CN.md)
+
 # Implementation reanalysis validation — 2026-07-14
 
 ## Outcome

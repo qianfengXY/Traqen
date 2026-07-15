@@ -1,10 +1,12 @@
+> Language: **English** · [简体中文](README.zh-CN.md)
+
 # Traqen
 
 Traqen is an enterprise traceable-quality platform for legacy systems that do not have trustworthy product, design, or test assets.
 
 The implementation follows one non-negotiable product vision:
 
-> For every governed high-value feature, show an explainable chain from confirmed business intent to evidence produced against the actual deployment, and expose every missing, stale, conflicting, or failed link.
+> For every governed high-value Feature, present an explainable traceability chain from confirmed business intent to Evidence from the actual deployment, and expose every missing, stale, conflicting, or failed link.
 
 ## Implemented foundation
 
@@ -242,4 +244,4 @@ Govern Evidence retention with `POST /v1/projects/{projectId}/evidence-retention
 
 After a changed implementation is analyzed in a new Reverse Run, an authorized developer or architect can repair the stale implementation segment with `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses`. This creates a new Snapshot-bound mapping and conformance record for the existing Claim and Scope; it never edits or replaces the normative Decision.
 
-The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md). The current repository acceptance result and the explicit external-pilot boundary are recorded in [docs/implementation/mvp-acceptance-audit-2026-07-14.md](docs/implementation/mvp-acceptance-audit-2026-07-14.md); production startup and bootstrap are covered by [docs/implementation/production-runtime-validation-2026-07-14.md](docs/implementation/production-runtime-validation-2026-07-14.md).
+The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md). The current repository acceptance result and the explicit external-pilot boundary are recorded in [docs/implementation/mvp-acceptance-audit-2026-07-14.md](docs/implementation/mvp-acceptance-audit-2026-07-14.md); production startup and bootstrap are covered by [docs/implementation/production-runtime-validation-2026-07-14.md](docs/implementation/production-runtime-validation-2026-07-14.md). See the [documentation index and bilingual maintenance policy](docs/README.md) for the complete convention.

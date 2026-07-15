@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](README.zh-CN.md)
+
 # Order platform reference project
 
 This synthetic system is Traqen's built-in, non-production reference target. It exposes `POST /orders/{id}/submit`, writes PostgreSQL-compatible state, reserves inventory, requires an allowed role and idempotency key, and guarantees cleanup/rollback behavior around controlled tests.

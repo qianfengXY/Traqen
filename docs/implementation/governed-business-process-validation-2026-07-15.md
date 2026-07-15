@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](governed-business-process-validation-2026-07-15.zh-CN.md)
+
 # Governed business-process validation — 2026-07-15
 
 ## Design obligation

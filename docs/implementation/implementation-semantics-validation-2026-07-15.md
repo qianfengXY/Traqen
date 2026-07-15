@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](implementation-semantics-validation-2026-07-15.zh-CN.md)
+
 # Implementation semantics validation — 2026-07-15
 
 ## Outcome

@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](continuous-protection-validation-2026-07-15.zh-CN.md)
+
 # Continuous protection validation — 2026-07-15
 
 ## Outcome

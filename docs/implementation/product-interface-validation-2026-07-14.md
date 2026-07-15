@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](product-interface-validation-2026-07-14.zh-CN.md)
+
 # Product interface validation — 2026-07-14
 
 ## Outcome

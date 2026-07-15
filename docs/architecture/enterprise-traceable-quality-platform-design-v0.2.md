@@ -1,3 +1,5 @@
+> 语言：**简体中文** · [English](enterprise-traceable-quality-platform-design-v0.2.en.md)
+
 # 企业级可追溯质量平台详细设计
 
 > 版本：v0.2.0

@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](reference-order-pilot-validation-2026-07-14.zh-CN.md)
+
 # Reference order pilot validation — 2026-07-14
 
 ## Outcome

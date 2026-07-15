@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](production-runtime-validation-2026-07-14.zh-CN.md)
+
 # Production runtime validation — 2026-07-14
 
 ## Outcome

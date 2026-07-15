@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](interactive-feature-graph-validation-2026-07-15.zh-CN.md)
+
 # Interactive Feature graph validation — 2026-07-15
 
 ## Product outcome

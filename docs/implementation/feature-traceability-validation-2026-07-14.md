@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](feature-traceability-validation-2026-07-14.zh-CN.md)
+
 # Governed Feature traceability validation — 2026-07-14
 
 ## Product boundary

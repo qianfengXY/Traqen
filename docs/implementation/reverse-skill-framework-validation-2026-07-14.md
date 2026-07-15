@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](reverse-skill-framework-validation-2026-07-14.zh-CN.md)
+
 # Reverse Skill Framework validation — 2026-07-14
 
 ## Product boundary
