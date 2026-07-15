@@ -337,6 +337,91 @@
         }
       }
     },
+    "/v1/projects/{projectId}/features/{featureId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getFeature",
+        "responses": {
+          "200": {
+            "description": "Latest governed Feature baseline",
+            "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureBaseline" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/conflicts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "snapshotManifestId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getFeatureConflicts",
+        "responses": {
+          "200": {
+            "description": "Snapshot-bound conflicts derived from the governed Feature traceability model",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["feature", "snapshotManifest", "conflicts", "computedAt"],
+              "properties": {
+                "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+                "snapshotManifest": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" },
+                "conflicts": { "type": "array", "items": {
+                  "type": "object",
+                  "required": ["id", "type", "status", "reason", "featureId", "claimId", "claimVersion", "traceChainId"],
+                  "properties": {
+                    "id": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" },
+                    "reason": { "type": ["string", "null"] }, "featureId": { "type": "string" },
+                    "claimId": { "type": "string" }, "claimVersion": { "type": "integer", "minimum": 1 },
+                    "traceChainId": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                } },
+                "computedAt": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/trace-chains": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "snapshotManifestId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getFeatureTraceChains",
+        "responses": {
+          "200": {
+            "description": "Snapshot-bound Feature trace chains and explicit gaps",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["feature", "snapshotManifest", "traceChains", "gaps", "computedAt"],
+              "properties": {
+                "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+                "snapshotManifest": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" },
+                "traceChains": { "type": "array", "items": { "$ref": "./trace-chain.schema.json" } },
+                "gaps": { "type": "array", "items": { "type": "object" } },
+                "computedAt": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/features/{featureId}/baseline": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },

@@ -428,6 +428,16 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const featureDetailMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && featureDetailMatch) {
+        const projectId = decodePathSegment(featureDetailMatch[1]);
+        const featureId = decodePathSegment(featureDetailMatch[2]);
+        const baseline = await application.getFeatureBaseline(projectId, featureId);
+        if (!baseline) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, baseline, id);
+        return;
+      }
+
       const featureBaselineMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/baseline$/.exec(url.pathname);
       if (request.method === "GET" && featureBaselineMatch) {
         const projectId = decodePathSegment(featureBaselineMatch[1]);
@@ -472,6 +482,22 @@ export function createTraceabilityHttpHandler({
         const traceability = await application.getFeatureTraceability(projectId, featureId, snapshotManifestId);
         if (!traceability) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, traceability, id);
+        return;
+      }
+
+      const featureDerivedCollectionMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/(conflicts|trace-chains)$/.exec(
+        url.pathname,
+      );
+      if (request.method === "GET" && featureDerivedCollectionMatch) {
+        const projectId = decodePathSegment(featureDerivedCollectionMatch[1]);
+        const featureId = decodePathSegment(featureDerivedCollectionMatch[2]);
+        const snapshotManifestId = url.searchParams.get("snapshotManifestId");
+        const resource = featureDerivedCollectionMatch[3];
+        const result = resource === "conflicts"
+          ? await application.getFeatureConflicts(projectId, featureId, snapshotManifestId)
+          : await application.getFeatureTraceChains(projectId, featureId, snapshotManifestId);
+        if (!result) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, result, id);
         return;
       }
 

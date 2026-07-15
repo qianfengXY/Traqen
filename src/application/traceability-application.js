@@ -534,6 +534,38 @@ export class TraceabilityApplication {
     return this.#store.getFeatureBaseline(projectId, featureId);
   }
 
+  async getFeatureConflicts(projectId, featureId, snapshotManifestId) {
+    const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId);
+    if (!traceability) return null;
+    const conflicts = traceability.claims.flatMap((claimView) =>
+      claimView.traceChain.conflicts.map((conflict) => ({
+        ...conflict,
+        featureId,
+        claimId: claimView.claim.id,
+        claimVersion: claimView.claim.version,
+        traceChainId: claimView.traceChain.id,
+      })),
+    );
+    return deepFreeze({
+      feature: traceability.feature,
+      snapshotManifest: traceability.snapshotManifest,
+      conflicts,
+      computedAt: traceability.computedAt,
+    });
+  }
+
+  async getFeatureTraceChains(projectId, featureId, snapshotManifestId) {
+    const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId);
+    if (!traceability) return null;
+    return deepFreeze({
+      feature: traceability.feature,
+      snapshotManifest: traceability.snapshotManifest,
+      traceChains: traceability.traceChains,
+      gaps: traceability.gaps,
+      computedAt: traceability.computedAt,
+    });
+  }
+
   async listFeatures(projectId) {
     requireId(projectId, "projectId");
     const featureIds = await this.#store.listFeatureIds(projectId);

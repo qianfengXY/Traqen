@@ -1314,6 +1314,22 @@ test("Skill API registers two attested adapters and preserves a reviewable rever
   assert.ok(traceability.traceChains[0].segments.some((segment) => segment.relation === "CONFIRMED_BY"));
   assert.ok(traceability.traceChains[0].segments.some((segment) => segment.relation === "CONFORMS_TO"));
 
+  const featureDetail = await fetch(`${projectUrl}/features/FEATURE-REVIEW-API-001`);
+  assert.equal(featureDetail.status, 200);
+  assert.equal((await featureDetail.json()).feature.id, "FEATURE-REVIEW-API-001");
+  const featureConflicts = await fetch(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/conflicts?snapshotManifestId=${snapshotManifestId}`,
+  );
+  assert.equal(featureConflicts.status, 200);
+  assert.deepEqual((await featureConflicts.json()).conflicts, []);
+  const featureTraceChains = await fetch(
+    `${projectUrl}/features/FEATURE-REVIEW-API-001/trace-chains?snapshotManifestId=${snapshotManifestId}`,
+  );
+  assert.equal(featureTraceChains.status, 200);
+  const featureTraceChainsBody = await featureTraceChains.json();
+  assert.equal(featureTraceChainsBody.traceChains[0].id, traceability.traceChains[0].id);
+  assert.deepEqual(featureTraceChainsBody.gaps, traceability.gaps);
+
   const recomputed = await postJson(
     `${projectUrl}/features/FEATURE-REVIEW-API-001/trace-chains/recompute`,
     { snapshotManifestId },
