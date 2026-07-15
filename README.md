@@ -82,7 +82,7 @@ The controlled Runner slice adds:
 The deterministic fact-foundation slice adds:
 
 - a language-neutral, immutable `FactNode`/`FactEdge`/`FactBundle` contract with stable entity IDs and snapshot-specific fact IDs;
-- a bounded JavaScript/Node scanner for modules, symbols, Express-style routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
+- a bounded JavaScript/Node scanner for modules, symbols, state enums/transitions, condition and permission guards, exception paths, Express-style routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
 - source artifact, line range, and SHA-256 location data on every fact and relation;
 - explicit incomplete results for parser failures, oversized files, unsupported source languages, and unsupported OpenAPI formats;
 - a deterministic source fingerprint API used as the Source Snapshot digest;
@@ -134,6 +134,7 @@ The built-in reference-pilot slice adds:
 - Source digests computed by the generic Scanner, Deployment/Build digests computed over the actual runnable module files, Runtime digests computed from the effective schema/config/inventory context, and LOG/TRACE telemetry collected from the running target;
 - a real source modification in an isolated copy, Snapshot comparison, affected-Feature invalidation, explicit stale gaps, authorized implementation reanalysis, regression execution on the new deployment, and restoration of a complete chain;
 - reuse of the unchanged approved TestSpec across Snapshots: its `sourceSnapshotId` remains generation provenance, while the signed Runner task and Evidence bind the actual execution Snapshot and deployment.
+- bounded endpoint implementation context that retains state/permission guards, state transitions, and exception-path Facts through review, mapping, change impact, graph exploration, and repair without treating them as business authority.
 
 The continuous-protection slice adds:
 

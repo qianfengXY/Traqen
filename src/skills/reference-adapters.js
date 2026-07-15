@@ -10,6 +10,59 @@ function evidence(node, relation = "SUPPORTS") {
   return [{ factId: node.factId, relation }];
 }
 
+function implementationContextEvidence(inputPackage, rootNode) {
+  const nodesById = new Map(inputPackage.facts.nodes.map((node) => [node.id, node]));
+  const allowedPredicates = new Set(["IMPLEMENTED_BY", "CONTAINS", "CALLS", "READS", "WRITES", "CONTROLLED_BY", "DEPENDS_ON"]);
+  const selectedNodeIds = new Set([rootNode.id]);
+  const selectedEdges = [];
+  let frontier = new Set([rootNode.id]);
+  for (let depth = 0; depth < 2 && frontier.size > 0; depth += 1) {
+    const next = new Set();
+    for (const edge of inputPackage.facts.edges) {
+      if (!allowedPredicates.has(edge.predicate) || !frontier.has(edge.subjectId)) continue;
+      if (!nodesById.has(edge.objectId)) continue;
+      selectedEdges.push(edge);
+      selectedNodeIds.add(edge.objectId);
+      next.add(edge.objectId);
+      if (selectedNodeIds.size + selectedEdges.length >= 50) break;
+    }
+    frontier = next;
+  }
+  const artifactIdsByPath = new Map(
+    inputPackage.facts.nodes
+      .filter((node) => node.type === "ARTIFACT")
+      .map((node) => [node.source.artifact, node.id]),
+  );
+  const relevantArtifactIds = new Set([artifactIdsByPath.get(rootNode.source.artifact)].filter(Boolean));
+  for (let depth = 0; depth < 2; depth += 1) {
+    for (const edge of inputPackage.facts.edges) {
+      if (edge.predicate === "DEPENDS_ON" && relevantArtifactIds.has(edge.subjectId)) {
+        relevantArtifactIds.add(edge.objectId);
+      }
+    }
+  }
+  const relevantArtifacts = new Set(
+    [...artifactIdsByPath].filter(([, id]) => relevantArtifactIds.has(id)).map(([artifact]) => artifact),
+  );
+  for (const node of inputPackage.facts.nodes) {
+    if (
+      node.type === "CODE_SYMBOL" &&
+      relevantArtifacts.has(node.source.artifact) &&
+      ["condition-branch", "permission-check", "state-transition", "exception-path", "enum"].includes(node.attributes.kind)
+    ) {
+      selectedNodeIds.add(node.id);
+    }
+    if (selectedNodeIds.size + selectedEdges.length >= 50) break;
+  }
+  return [
+    { factId: rootNode.factId, relation: "SUPPORTS" },
+    ...[...selectedNodeIds]
+      .filter((id) => id !== rootNode.id)
+      .map((id) => ({ factId: nodesById.get(id).factId, relation: "CONTEXT" })),
+    ...selectedEdges.map((edge) => ({ factId: edge.id, relation: "CONTEXT" })),
+  ];
+}
+
 function endpointArtifacts(inputPackage, wording, { includeTestDesign = false } = {}) {
   const endpoints = inputPackage.facts.nodes.filter((node) => node.type === "ENDPOINT").slice(0, 100);
   const candidateFeatures = [];
@@ -20,12 +73,13 @@ function endpointArtifacts(inputPackage, wording, { includeTestDesign = false } 
     const method = endpoint.attributes.method ?? endpoint.name.split(" ")[0];
     const endpointPath = endpoint.attributes.path ?? endpoint.name.slice(method.length + 1);
     const suffix = endpoint.id.toLowerCase();
+    const contextualEvidence = implementationContextEvidence(inputPackage, endpoint);
     candidateFeatures.push({
       localId: `feature-${suffix}`,
       externalKey: `endpoint:${method} ${endpointPath}`,
       name: `${method} ${endpointPath}`,
       description: `${wording} feature candidate derived from a deterministic endpoint fact.`,
-      evidence: evidence(endpoint),
+      evidence: contextualEvidence,
     });
     candidateClaims.push({
       localId: `claim-${suffix}`,
@@ -37,7 +91,7 @@ function endpointArtifacts(inputPackage, wording, { includeTestDesign = false } 
       confidence: "HIGH",
       constraint: { dimension: "endpointExposed", operator: "EQUALS", value: true },
       scope: {},
-      evidence: evidence(endpoint),
+      evidence: contextualEvidence,
     });
     if (includeTestDesign) {
       candidateTestSpecs.push({
@@ -52,14 +106,14 @@ function endpointArtifacts(inputPackage, wording, { includeTestDesign = false } 
           requiredAssertions: ["HTTP_STATUS", "BUSINESS_OUTCOME"],
           requiresHumanReview: true,
         },
-        evidence: evidence(endpoint),
+        evidence: contextualEvidence,
       });
     }
     openQuestions.push({
       localId: `question-${suffix}`,
       question: `Which authorized business outcome and actors govern ${method} ${endpointPath}?`,
       relatedLocalIds: [`feature-${suffix}`, `claim-${suffix}`],
-      evidence: evidence(endpoint, "CONTEXT"),
+      evidence: contextualEvidence.map((item) => ({ ...item, relation: "CONTEXT" })),
     });
   }
   return { candidateFeatures, candidateClaims, candidateTestSpecs, openQuestions };

@@ -166,7 +166,7 @@ async function main() {
       sourceComponentId: firstSnapshot.components.source.id,
       factBundleIds: [firstBundle.id],
       skills: referenceSkills.map(({ adapter }) => ({ id: adapter.id, version: adapter.version })),
-      taskScope: { nodeTypes: ["ENDPOINT", "DATA_OBJECT", "CONFIGURATION"] },
+      taskScope: { nodeTypes: ["ARTIFACT", "ENDPOINT", "CODE_SYMBOL", "DATA_OBJECT", "CONFIGURATION"] },
     });
     const firstCandidate = candidateFor(firstRun);
     const candidateFeature = firstRun.mergedOutput.candidateFeatures.find(
@@ -402,7 +402,7 @@ async function main() {
       sourceComponentId: secondSnapshot.components.source.id,
       factBundleIds: [secondBundle.id],
       skills: referenceSkills.map(({ adapter }) => ({ id: adapter.id, version: adapter.version })),
-      taskScope: { nodeTypes: ["ENDPOINT", "DATA_OBJECT", "CONFIGURATION"] },
+      taskScope: { nodeTypes: ["ARTIFACT", "ENDPOINT", "CODE_SYMBOL", "DATA_OBJECT", "CONFIGURATION"] },
     });
     const secondCandidate = candidateFor(secondRun);
     const reanalysis = await application.reanalyzeImplementation(projectId, featureId, claimId, {
@@ -468,6 +468,14 @@ async function main() {
     if (productMetrics.highValueValidTraceChainRate.ratio !== 1) {
       throw new Error("The repaired reference Snapshot did not restore its high-value Feature metric");
     }
+    const implementationSemanticKinds = [...new Set(
+      finalTraceability.claims.flatMap((item) => item.facts.nodes)
+        .map((node) => node.attributes?.kind)
+        .filter((kind) => ["condition-branch", "permission-check", "state-transition", "exception-path", "enum"].includes(kind)),
+    )].sort();
+    if (!implementationSemanticKinds.includes("condition-branch") || !implementationSemanticKinds.includes("state-transition")) {
+      throw new Error("The repaired Feature mapping did not retain state and guard implementation facts");
+    }
 
     process.stdout.write(`${JSON.stringify({
       projectId,
@@ -530,6 +538,7 @@ async function main() {
         gapTypes: productMetrics.gapBreakdown.byType,
         unavailableMetrics: productMetrics.unavailableMetrics.map((item) => item.metric),
       },
+      implementationSemantics: implementationSemanticKinds,
     }, null, 2)}\n`);
   } finally {
     if (platform) await platform.close().catch(() => {});

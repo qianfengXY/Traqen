@@ -47,4 +47,7 @@ test("built-in order pilot executes, invalidates, repairs, and re-proves one com
   assert.deepEqual(result.productMetrics.meaningfulAssertionRate, { numerator: 1, denominator: 2, ratio: 0.5 });
   assert.deepEqual(result.productMetrics.gapTypes, {});
   assert.ok(result.productMetrics.unavailableMetrics.includes("DEFECT_ESCAPE_RATE"));
+  assert.ok(result.implementationSemantics.includes("condition-branch"));
+  assert.ok(result.implementationSemantics.includes("state-transition"));
+  assert.ok(result.implementationSemantics.includes("exception-path"));
 });

@@ -50,6 +50,20 @@ function calleeName(node) {
   return null;
 }
 
+function boundedSourceText(content, node, maximum = 512) {
+  if (!node || !Number.isInteger(node.start) || !Number.isInteger(node.end)) return null;
+  const text = content.slice(node.start, node.end).replace(/\s+/g, " ").trim();
+  return text.length <= maximum ? text : `${text.slice(0, maximum - 1)}…`;
+}
+
+function conditionClassifications(text) {
+  const result = [];
+  if (/\b(?:status|state|phase|stage)\b/i.test(text)) result.push("STATE_GUARD");
+  if (/\b(?:role|permission|authori[sz]e|allowedRoles?|actorRole)\b/i.test(text)) result.push("PERMISSION_GUARD");
+  if (/\b(?:featureFlag|feature[_-]?flag|enabled)\b/i.test(text)) result.push("CONFIGURATION_GUARD");
+  return result;
+}
+
 function isTestArtifact(relativePath) {
   return /(^|\/)test(s)?\/|\.test\.[cm]?js$|\.spec\.[cm]?js$/.test(relativePath);
 }
@@ -344,16 +358,19 @@ export class JavaScriptProjectScanner {
     }
     const symbolByName = new Map();
     const symbolByNode = new Map();
-    const addSymbol = (name, kind, node) => {
+    const naturalKeyBySymbolId = new Map();
+    const addSymbol = (name, kind, node, extraAttributes = {}) => {
+      const naturalKey = `javascript:${relativePath}:${name}`;
       const symbolId = addNode(
         "CODE_SYMBOL",
-        `javascript:${relativePath}:${name}`,
+        naturalKey,
         name,
-        { language: "javascript", kind },
+        { language: "javascript", kind, ...extraAttributes },
         source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
       );
       symbolByName.set(name, symbolId);
       symbolByNode.set(node, symbolId);
+      naturalKeyBySymbolId.set(symbolId, naturalKey);
       addEdge(artifactId, "CONTAINS", symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
       return symbolId;
     };
@@ -386,7 +403,10 @@ export class JavaScriptProjectScanner {
           const symbolId = addSymbol(node.id.name, "function", node);
           symbolByNode.set(node.init, symbolId);
         } else if (node.id?.type === "Identifier" && calleeName(node.init?.callee) === "enumValues") {
-          addSymbol(node.id.name, "enum", node);
+          const values = node.init.arguments?.[0]?.type === "ArrayExpression"
+            ? node.init.arguments[0].elements.map(literalString).filter((value) => value !== null)
+            : [];
+          addSymbol(node.id.name, "enum", node, { values });
         }
       },
       ImportDeclaration: (node) => {
@@ -424,6 +444,55 @@ export class JavaScriptProjectScanner {
       return null;
     };
     ancestor(ast, {
+      IfStatement: (node, _state, ancestors) => {
+        const callingSymbolId = findCallingSymbol(ancestors);
+        const condition = boundedSourceText(content, node.test);
+        const classifications = conditionClassifications(condition ?? "");
+        const owner = naturalKeyBySymbolId.get(callingSymbolId) ?? `javascript:${relativePath}:artifact`;
+        const branchId = addNode(
+          "CODE_SYMBOL",
+          `${owner}:branch:${digest(condition ?? String(node.loc.start.line))}:${node.loc.start.line}`,
+          `condition @ line ${node.loc.start.line}`,
+          { language: "javascript", kind: "condition-branch", condition, classifications },
+          source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+        );
+        addEdge(
+          callingSymbolId ?? artifactId,
+          "CONTAINS",
+          branchId,
+          { relation: classifications.length > 0 ? "SEMANTIC_GUARD" : "CONTROL_FLOW" },
+          source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+        );
+      },
+      AssignmentExpression: (node, _state, ancestors) => {
+        const field = memberName(node.left);
+        const toState = literalString(node.right);
+        if (!field || !toState || !/^(?:status|state|phase|stage)$/i.test(field)) return;
+        const callingSymbolId = findCallingSymbol(ancestors);
+        const owner = naturalKeyBySymbolId.get(callingSymbolId) ?? `javascript:${relativePath}:artifact`;
+        const transitionId = addNode(
+          "CODE_SYMBOL",
+          `${owner}:state-transition:${field}:${toState}:${node.loc.start.line}`,
+          `${field} → ${toState}`,
+          { language: "javascript", kind: "state-transition", field, toState },
+          source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+        );
+        addEdge(callingSymbolId ?? artifactId, "CONTAINS", transitionId, { relation: "STATE_TRANSITION" }, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+      },
+      ThrowStatement: (node, _state, ancestors) => {
+        const callingSymbolId = findCallingSymbol(ancestors);
+        const owner = naturalKeyBySymbolId.get(callingSymbolId) ?? `javascript:${relativePath}:artifact`;
+        const errorType = node.argument?.type === "NewExpression" ? calleeName(node.argument.callee) : null;
+        const message = node.argument?.type === "NewExpression" ? literalString(node.argument.arguments?.[0]) : null;
+        const exceptionId = addNode(
+          "CODE_SYMBOL",
+          `${owner}:exception:${errorType ?? "throw"}:${node.loc.start.line}`,
+          `${errorType ?? "throw"} @ line ${node.loc.start.line}`,
+          { language: "javascript", kind: "exception-path", errorType, message },
+          source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+        );
+        addEdge(callingSymbolId ?? artifactId, "CONTAINS", exceptionId, { relation: "EXCEPTION_PATH" }, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+      },
       CallExpression: (node, _state, ancestors) => {
         const callingSymbolId = findCallingSymbol(ancestors);
         const method = memberName(node.callee)?.toLowerCase();
@@ -448,6 +517,21 @@ export class JavaScriptProjectScanner {
         const calledName = calleeName(node.callee);
         if (callingSymbolId && calledName && symbolByName.has(calledName)) {
           addEdge(callingSymbolId, "CALLS", symbolByName.get(calledName), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+        }
+        if (callingSymbolId && calledName && /(?:require|check|assert|enforce).*(?:role|permission)|authori[sz]e|canAccess/i.test(calledName)) {
+          const permissionId = addNode(
+            "CODE_SYMBOL",
+            `${naturalKeyBySymbolId.get(callingSymbolId)}:permission-check:${calledName}:${node.loc.start.line}`,
+            `${calledName} permission check`,
+            {
+              language: "javascript",
+              kind: "permission-check",
+              operation: calledName,
+              declaredArguments: node.arguments.map((argument) => literalString(argument)).filter((value) => value !== null),
+            },
+            source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+          );
+          addEdge(callingSymbolId, "CONTAINS", permissionId, { relation: "PERMISSION_GUARD" }, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
         }
 
         if (calledName === "require") {
@@ -486,6 +570,17 @@ export class JavaScriptProjectScanner {
             );
             const predicate = /^SELECT/i.test(match[1]) ? "READS" : "WRITES";
             addEdge(callingSymbolId, predicate, tableId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+            const transition = /^UPDATE\s+[a-zA-Z_][\w.]*\s+SET\s+(?:[^;]*?,\s*)?(status|state|phase|stage)\s*=\s*'([^']+)'/is.exec(statement);
+            if (transition) {
+              const transitionId = addNode(
+                "CODE_SYMBOL",
+                `${naturalKeyBySymbolId.get(callingSymbolId)}:sql-state-transition:${transition[1]}:${transition[2]}:${node.loc.start.line}`,
+                `${transition[1]} → ${transition[2]}`,
+                { language: "sql", kind: "state-transition", field: transition[1], toState: transition[2], table: tableName },
+                source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+              );
+              addEdge(callingSymbolId, "CONTAINS", transitionId, { relation: "STATE_TRANSITION" }, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+            }
           }
         }
       },

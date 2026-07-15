@@ -37,9 +37,14 @@ async function fixtureProject() {
     writeFile(path.join(rootPath, "src", "server.js"), [
       'import express from "express";',
       "const app = express();",
+      'const OrderStatus = enumValues(["DRAFT", "SUBMITTED"]);',
       "function loadOrder() { return null; }",
       "export async function getOrder(req, res) {",
+      '  requireRole("customer");',
+      '  if (req.actorRole !== "customer") throw new Error("FORBIDDEN");',
+      '  if (req.order.status !== "DRAFT") throw new Error("INVALID_STATE");',
       '  await db.query("SELECT id, status FROM orders");',
+      '  req.order.status = "SUBMITTED";',
       "  return loadOrder();",
       "}",
       'app.get("/orders/:id", getOrder);',
@@ -88,6 +93,13 @@ test("scanner produces locatable code, API, SQL, config, dependency, and test fa
   assert.ok(bundle.edges.some((edge) => edge.subjectId === endpointId && edge.predicate === "IMPLEMENTED_BY" && edge.objectId === symbolId("getOrder")));
   assert.ok(bundle.edges.some((edge) => edge.subjectId === symbolId("getOrder") && edge.predicate === "CALLS" && edge.objectId === symbolId("loadOrder")));
   assert.ok(bundle.edges.some((edge) => edge.subjectId === symbolId("getOrder") && edge.predicate === "READS" && edge.objectId === tableId));
+  const semanticSymbols = bundle.nodes.filter((node) => node.type === "CODE_SYMBOL");
+  assert.deepEqual(semanticSymbols.find((node) => node.name === "OrderStatus")?.attributes.values, ["DRAFT", "SUBMITTED"]);
+  assert.ok(semanticSymbols.some((node) => node.attributes.kind === "condition-branch" && node.attributes.classifications.includes("PERMISSION_GUARD")));
+  assert.ok(semanticSymbols.some((node) => node.attributes.kind === "condition-branch" && node.attributes.classifications.includes("STATE_GUARD")));
+  assert.ok(semanticSymbols.some((node) => node.attributes.kind === "state-transition" && node.attributes.toState === "SUBMITTED"));
+  assert.equal(semanticSymbols.filter((node) => node.attributes.kind === "exception-path").length, 2);
+  assert.ok(semanticSymbols.some((node) => node.attributes.kind === "permission-check" && node.attributes.declaredArguments.includes("customer")));
   const testAssetId = bundle.nodes.find((node) => node.type === "TEST_ASSET")?.id;
   assert.ok(bundle.edges.some((edge) => edge.subjectId === testAssetId && edge.predicate === "EXERCISES" && edge.objectId === symbolId("getOrder")));
 
