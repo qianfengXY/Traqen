@@ -39,6 +39,23 @@ export function supportsFullStackNode(version = process.versions.node) {
   return major > 22 || (major === 22 && minor >= 13);
 }
 
+export function webDevelopmentCommand({
+  root = repositoryRoot,
+  execPath = process.execPath,
+  config = localDevelopmentConfig(),
+} = {}) {
+  return {
+    command: execPath,
+    args: [
+      path.join(root, "web/node_modules/vinext/dist/cli.js"),
+      "dev",
+      "--host", config.webHost,
+      "--port", String(config.webPort),
+    ],
+    cwd: path.join(root, "web"),
+  };
+}
+
 export async function startDevelopment({ env = process.env, root = repositoryRoot } = {}) {
   if (!supportsFullStackNode()) {
     throw new Error(`Full-stack development requires Node.js 22.13 or newer; current version is ${process.versions.node}.`);
@@ -49,7 +66,7 @@ export async function startDevelopment({ env = process.env, root = repositoryRoo
   }
 
   const config = localDevelopmentConfig(env);
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const web = webDevelopmentCommand({ root, config });
   const children = [
     spawn(process.execPath, ["src/api/dev-server.js"], {
       cwd: root,
@@ -61,13 +78,12 @@ export async function startDevelopment({ env = process.env, root = repositoryRoo
       },
       stdio: "inherit",
     }),
-    spawn(npmCommand, [
-      "--prefix", "web", "run", "dev", "--",
-      "--host", config.webHost,
-      "--port", String(config.webPort),
-    ], {
-      cwd: root,
-      env,
+    spawn(web.command, web.args, {
+      cwd: web.cwd,
+      env: {
+        ...env,
+        WRANGLER_LOG_PATH: env.WRANGLER_LOG_PATH ?? ".wrangler/wrangler.log",
+      },
       stdio: "inherit",
     }),
   ];

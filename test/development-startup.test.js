@@ -8,6 +8,7 @@ import {
   localDevelopmentConfig,
   missingDevelopmentDependencies,
   supportsFullStackNode,
+  webDevelopmentCommand,
 } from "../src/cli/start-development.js";
 
 test("local development uses one stable API/Web configuration", () => {
@@ -26,6 +27,25 @@ test("full-stack startup rejects Node versions unsupported by the Web applicatio
   assert.equal(supportsFullStackNode("22.12.0"), false);
   assert.equal(supportsFullStackNode("22.13.0"), true);
   assert.equal(supportsFullStackNode("23.0.0"), true);
+});
+
+test("Web startup executes the JavaScript CLI directly on every operating system", () => {
+  const root = path.join(os.tmpdir(), "traqen-cross-platform");
+  const command = webDevelopmentCommand({
+    root,
+    execPath: "C:\\Program Files\\nodejs\\node.exe",
+    config: localDevelopmentConfig(),
+  });
+
+  assert.equal(command.command, "C:\\Program Files\\nodejs\\node.exe");
+  assert.deepEqual(command.args, [
+    path.join(root, "web/node_modules/vinext/dist/cli.js"),
+    "dev",
+    "--host", "127.0.0.1",
+    "--port", "3000",
+  ]);
+  assert.equal(command.cwd, path.join(root, "web"));
+  assert.equal(command.args.includes("npm.cmd"), false);
 });
 
 test("local development reports a single setup action when dependencies are absent", async (t) => {
