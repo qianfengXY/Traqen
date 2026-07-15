@@ -25,6 +25,9 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #claims = new Map();
   #decisions = new Map();
   #businessProcessModels = new Map();
+  #decisionReviewCases = new Map();
+  #decisionReviewEvents = new Map();
+  #decisionReviewMaterializations = new Map();
   #testSpecs = new Map();
   #executions = new Map();
   #evidence = new Map();
@@ -170,6 +173,58 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       .map(([, model]) => model)
       .sort((left, right) => right.version - left.version || right.createdAt.localeCompare(left.createdAt));
     return models[0] ?? null;
+  }
+
+  async appendDecisionReviewCase(projectId, reviewCase) {
+    const claim = this.#claims.get(key(projectId, `${reviewCase.claimId}\u0000${reviewCase.claimVersion}`));
+    if (!claim) {
+      throw new PersistenceConflictError(
+        `Claim ${reviewCase.claimId} version ${reviewCase.claimVersion} does not exist`,
+      );
+    }
+    if (claim.scopeId !== reviewCase.scopeId || claim.scopeVersion !== reviewCase.scopeVersion) {
+      throw new PersistenceConflictError("Decision review case scope must match the Claim version scope");
+    }
+    const stored = this.#appendVersion(
+      this.#decisionReviewCases,
+      key(projectId, reviewCase.id),
+      reviewCase,
+      `DecisionReviewCase ${reviewCase.id}`,
+    );
+    return this.getDecisionReviewCase(projectId, stored.id);
+  }
+
+  async getDecisionReviewCase(projectId, caseId) {
+    const reviewCase = this.#decisionReviewCases.get(key(projectId, caseId));
+    if (!reviewCase) return null;
+    const events = this.#decisionReviewEvents.get(key(projectId, caseId)) ?? [];
+    const decisionIds = this.#decisionReviewMaterializations.get(key(projectId, caseId)) ?? [];
+    const decisions = decisionIds.map((decisionId) => this.#decisions.get(key(projectId, decisionId))).filter(Boolean);
+    return deepFreeze({
+      reviewCase,
+      events: structuredClone(events),
+      decisions,
+      decision: decisions.at(-1) ?? null,
+    });
+  }
+
+  async appendDecisionReviewEvent(projectId, { event, decision = null }) {
+    const reviewCase = this.#decisionReviewCases.get(key(projectId, event.caseId));
+    if (!reviewCase) throw new PersistenceConflictError(`DecisionReviewCase ${event.caseId} does not exist`);
+    const events = this.#decisionReviewEvents.get(key(projectId, event.caseId)) ?? [];
+    const existing = events.find((item) => item.id === event.id);
+    if (existing && canonicalJson(existing) !== canonicalJson(event)) {
+      throw new PersistenceConflictError(`DecisionReviewEvent ${event.id} conflicts with an existing record`);
+    }
+    if (decision) {
+      await this.appendDecision(projectId, decision);
+      const decisionIds = this.#decisionReviewMaterializations.get(key(projectId, event.caseId)) ?? [];
+      if (!decisionIds.includes(decision.id)) decisionIds.push(decision.id);
+      this.#decisionReviewMaterializations.set(key(projectId, event.caseId), decisionIds);
+    }
+    if (!existing) events.push(deepFreeze(structuredClone(event)));
+    this.#decisionReviewEvents.set(key(projectId, event.caseId), events);
+    return this.getDecisionReviewCase(projectId, event.caseId);
   }
 
   async getFeatureBaseline(projectId, featureId) {

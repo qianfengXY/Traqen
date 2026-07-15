@@ -83,6 +83,50 @@
         }
       }
     },
+    "/v1/projects/{projectId}/decision-review-cases": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "createDecisionReviewCase",
+        "requestBody": { "$ref": "#/components/requestBodies/DecisionReviewCase" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DecisionReviewCase" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decision-review-cases/{caseId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "caseId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getDecisionReviewCase",
+        "responses": {
+          "200": { "$ref": "#/components/responses/DecisionReviewCase" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decision-review-cases/{caseId}/events": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "caseId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "appendDecisionReviewEvent",
+        "requestBody": { "$ref": "#/components/requestBodies/DecisionReviewEvent" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DecisionReviewCase" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/trace-chains/evaluate": {
       "post": {
         "operationId": "evaluateTraceChain",
@@ -816,6 +860,14 @@
         "required": true,
         "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/DecisionRequest" } } }
       },
+      "DecisionReviewCase": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/CaseRequest" } } }
+      },
+      "DecisionReviewEvent": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/EventRequest" } } }
+      },
       "TestSpecDraft": {
         "required": true,
         "content": {
@@ -1222,6 +1274,12 @@
         "description": "Authorized immutable business actors, states, transitions, exceptions, and Snapshot-bound implementation mappings",
         "content": {
           "application/json": { "schema": { "$ref": "./business-process-model.schema.json" } }
+        }
+      },
+      "DecisionReviewCase": {
+        "description": "Append-only governed Decision review with separation of duties, approvals, lifecycle events, and materialized authority",
+        "content": {
+          "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/Projection" } }
         }
       },
       "FeatureGraph": {

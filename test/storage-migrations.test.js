@@ -33,6 +33,7 @@ async function migratedDatabase() {
     "0006_candidate_review_baseline",
     "0007_change_impact",
     "0008_business_process_model",
+    "0009_decision_governance",
   ]);
   return database;
 }
@@ -235,6 +236,9 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "claim",
     "human_decision",
     "business_process_model",
+    "decision_review_case",
+    "decision_review_event",
+    "decision_review_materialization",
     "implementation_conformance",
     "test_spec",
     "test_execution",
@@ -294,6 +298,69 @@ test("PostgreSQL persists authorized business process models against a Feature v
   const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-PROCESS-001");
   assert.equal(baseline.processModel.id, "PROCESS-001");
   assert.equal((await application.getBusinessProcessModel("PROJECT-001", "FEATURE-PROCESS-001")).version, 1);
+});
+
+test("PostgreSQL atomically materializes a dual-approved Decision with its review history", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await insertClaimFoundation(database);
+  for (const [id, name] of [["APPROVER-DB-001", "Approver one"], ["APPROVER-DB-002", "Approver two"]]) {
+    await database.query(
+      "INSERT INTO principal (id, tenant_id, principal_type, display_name) VALUES ($1, 'TENANT-001', 'USER', $2)",
+      [id, name],
+    );
+  }
+  let reviewer = { actorId: "USER-001", actorRole: "business-owner" };
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: fixedClock,
+    reviewerResolver: () => reviewer,
+    reviewPolicyResolver: () => ({
+      decisionGovernance: {
+        proposerRoles: ["business-owner"],
+        approvalRoles: ["business-owner", "compliance-owner"],
+        businessRoles: ["business-owner"],
+        complianceRoles: ["compliance-owner"],
+        breakGlassRoles: ["incident-commander"],
+        lifecycleRoles: ["governance-owner"],
+      },
+    }),
+  });
+  let result = await application.createDecisionReviewCase("PROJECT-001", {
+    id: "CASE-DB-001",
+    claimId: "CLAIM-001",
+    claimVersion: 1,
+    scopeId: "SCOPE-001",
+    scopeVersion: 1,
+    risk: "HIGH",
+    approvalMode: "DUAL",
+    proposedDecision: { id: "DECISION-DB-DUAL", type: "CONFIRMED" },
+    expiresAt: "2026-07-15T12:00:00.000Z",
+  });
+  reviewer = { actorId: "APPROVER-DB-001", actorRole: "business-owner" };
+  await application.appendDecisionReviewEvent("PROJECT-001", result.reviewCase.id, {
+    id: "EVENT-DB-001",
+    action: "APPROVE",
+    rationale: "Business approval.",
+  });
+  reviewer = { actorId: "APPROVER-DB-002", actorRole: "compliance-owner" };
+  result = await application.appendDecisionReviewEvent("PROJECT-001", result.reviewCase.id, {
+    id: "EVENT-DB-002",
+    action: "APPROVE",
+    rationale: "Independent compliance approval.",
+  });
+  assert.equal(result.evaluation.status, "APPROVED");
+  assert.equal(result.events.length, 2);
+  assert.equal(result.decision.id, "DECISION-DB-DUAL");
+  const stored = await database.query(
+    `SELECT d.decision_type, m.event_id
+     FROM decision_review_materialization m
+     JOIN human_decision d ON d.project_id = m.project_id AND d.id = m.decision_id
+     WHERE m.project_id = $1 AND m.case_id = $2`,
+    ["PROJECT-001", "CASE-DB-001"],
+  );
+  assert.deepEqual(stored.rows, [{ decision_type: "CONFIRMED", event_id: "EVENT-DB-002" }]);
 });
 
 test("application bootstraps a PostgreSQL project and Snapshot without manual SQL", async (t) => {

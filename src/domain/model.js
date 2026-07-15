@@ -237,6 +237,19 @@ export const BusinessStateKind = enumValues(["INITIAL", "INTERMEDIATE", "TERMINA
 
 export const DesignElementType = enumValues(["MODULE", "SEQUENCE", "TRANSACTION", "EXCEPTION_HANDLER"]);
 
+export const DecisionRisk = enumValues(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+
+export const DecisionApprovalMode = enumValues(["SINGLE", "DUAL", "BUSINESS_COMPLIANCE", "BREAK_GLASS"]);
+
+export const DecisionReviewAction = enumValues([
+  "APPROVE",
+  "REJECT",
+  "REVOKE",
+  "DISPUTE",
+  "REOPEN",
+  "POST_REVIEW",
+]);
+
 export function assertEnum(enumObject, value, fieldName) {
   if (!Object.hasOwn(enumObject, value)) {
     throw new TypeError(`${fieldName} must be one of: ${Object.keys(enumObject).join(", ")}`);

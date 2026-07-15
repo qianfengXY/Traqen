@@ -40,6 +40,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/snapshots"].post.operationId,
     "registerSnapshot",
   );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/decision-review-cases"].post.operationId,
+    "createDecisionReviewCase",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/decision-review-cases/{caseId}/events"].post.operationId,
+    "appendDecisionReviewEvent",
+  );
   assert.equal(contract.components.securitySchemes.ApiToken.name, "x-traqen-api-token");
   assert.equal(
     contract.paths["/v1/trace-chains/evaluate"].post.operationId,
@@ -206,6 +214,18 @@ test("business process contract keeps authority server-owned and implementation 
   assert.ok(contract.$defs.Model.required.includes("featureId"));
   assert.ok(contract.$defs.Model.properties.authority.required.includes("actorId"));
   assert.ok(contract.$defs.Transition.properties.implementationFactRefs.items.$ref);
+});
+
+test("Decision governance contract makes multi-party review and Break-glass lifecycle explicit", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/decision-governance.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(contract.title, "DecisionGovernance");
+  assert.equal(contract.$defs.CaseRequest.properties.proposerId, undefined);
+  assert.equal(contract.$defs.EventRequest.properties.actorId, undefined);
+  assert.ok(contract.$defs.Case.properties.approvalMode.enum.includes("BREAK_GLASS"));
+  assert.ok(contract.$defs.Event.properties.action.enum.includes("POST_REVIEW"));
+  assert.ok(contract.$defs.Evaluation.properties.status.enum.includes("POST_REVIEW_OVERDUE"));
 });
 
 test("candidate review contract keeps reviewer identity server-side and baseline creation explicit", async () => {

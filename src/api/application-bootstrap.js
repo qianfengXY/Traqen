@@ -5,6 +5,27 @@ function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+function reviewerDirectory(value) {
+  if (!value) return [];
+  let parsed;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    throw new Error("REVIEWER_IDENTITIES_JSON must be valid JSON", { cause: error });
+  }
+  if (!Array.isArray(parsed)) throw new Error("REVIEWER_IDENTITIES_JSON must be an array");
+  return parsed.map((entry, index) => {
+    if (
+      typeof entry?.token !== "string" || entry.token === "" ||
+      typeof entry?.actorId !== "string" || entry.actorId === "" ||
+      typeof entry?.actorRole !== "string" || entry.actorRole === ""
+    ) {
+      throw new Error(`REVIEWER_IDENTITIES_JSON[${index}] requires token, actorId, and actorRole`);
+    }
+    return { token: entry.token, actorId: entry.actorId, actorRole: entry.actorRole };
+  });
+}
+
 export function createConfiguredApplication({ store, env = process.env }) {
   if (!store) throw new TypeError("store is required");
   const runnerId = env.RUNNER_ID ?? null;
@@ -16,6 +37,7 @@ export function createConfiguredApplication({ store, env = process.env }) {
   const reviewerId = env.REVIEWER_ID ?? null;
   const reviewerRole = env.REVIEWER_ROLE ?? "business-owner";
   const reviewerBearerToken = env.REVIEWER_BEARER_TOKEN ?? null;
+  const configuredReviewers = reviewerDirectory(env.REVIEWER_IDENTITIES_JSON);
   const implementationReviewerId = env.IMPLEMENTATION_REVIEWER_ID ?? null;
   const implementationReviewerRole = env.IMPLEMENTATION_REVIEWER_ROLE ?? "developer";
   const implementationReviewerBearerToken = env.IMPLEMENTATION_REVIEWER_BEARER_TOKEN ?? null;
@@ -51,6 +73,10 @@ export function createConfiguredApplication({ store, env = process.env }) {
       adapters: referenceSkills.map(({ adapter }) => adapter),
     }),
     reviewerResolver: (_projectId, context) => {
+      if (configuredReviewers.length > 0) {
+        const matched = configuredReviewers.find((entry) => context.authorization === `Bearer ${entry.token}`);
+        return matched ? { actorId: matched.actorId, actorRole: matched.actorRole } : null;
+      }
       if (!reviewerId) return null;
       if (reviewerBearerToken && context.authorization !== `Bearer ${reviewerBearerToken}`) return null;
       return { actorId: reviewerId, actorRole: reviewerRole };
@@ -75,6 +101,7 @@ export function createConfiguredApplication({ store, env = process.env }) {
       return { highValueFeatureIds: configured.length > 0 ? configured : context.featureIds };
     },
     reviewPolicyResolver: () => ({
+      requireDecisionReviewCases: env.ALLOW_DIRECT_DECISIONS !== "true",
       allowedRoles: [reviewerRole],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
       allowedDecisionTypes: [
@@ -87,6 +114,15 @@ export function createConfiguredApplication({ store, env = process.env }) {
       ],
       allowedTestSpecApproverRoles: [reviewerRole],
       allowedProcessModelRoles: [reviewerRole],
+      decisionGovernance: {
+        proposerRoles: commaSeparated(env.DECISION_PROPOSER_ROLES, reviewerRole),
+        approvalRoles: commaSeparated(env.DECISION_APPROVER_ROLES, reviewerRole),
+        businessRoles: commaSeparated(env.DECISION_BUSINESS_ROLES, "business-owner"),
+        complianceRoles: commaSeparated(env.DECISION_COMPLIANCE_ROLES, "compliance-owner"),
+        breakGlassRoles: commaSeparated(env.DECISION_BREAK_GLASS_ROLES, "incident-commander,risk-owner"),
+        lifecycleRoles: commaSeparated(env.DECISION_LIFECYCLE_ROLES, "business-owner,compliance-owner,risk-owner"),
+        maxBreakGlassMinutes: Number(env.MAX_BREAK_GLASS_MINUTES ?? 60),
+      },
     }),
   });
   return { application, corsAllowedOrigins };

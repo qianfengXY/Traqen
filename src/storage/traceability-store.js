@@ -47,6 +47,18 @@ export class TraceabilityStore {
     throw new Error("getLatestBusinessProcessModel must be implemented");
   }
 
+  async appendDecisionReviewCase(_projectId, _reviewCase) {
+    throw new Error("appendDecisionReviewCase must be implemented");
+  }
+
+  async getDecisionReviewCase(_projectId, _caseId) {
+    throw new Error("getDecisionReviewCase must be implemented");
+  }
+
+  async appendDecisionReviewEvent(_projectId, _reviewPackage) {
+    throw new Error("appendDecisionReviewEvent must be implemented");
+  }
+
   async getFeatureBaseline(_projectId, _featureId) {
     throw new Error("getFeatureBaseline must be implemented");
   }

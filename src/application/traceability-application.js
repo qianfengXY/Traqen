@@ -2,6 +2,8 @@ import {
   createClaim,
   createClaimScope,
   createBusinessProcessModel,
+  createDecisionReviewCase,
+  createDecisionReviewEvent,
   createChangeSet,
   createContinuousProtectionAssessment,
   createProductEffectivenessMetrics,
@@ -23,6 +25,7 @@ import {
   createTestSpec,
   generateEndpointTestSpecDraft,
   evaluateTraceChain,
+  evaluateDecisionReviewCase,
   queryFeatureGraphPath as resolveFeatureGraphPath,
   assertTestSpecSafeToStore,
   validateTestSpec as validateTestSpecProtocol,
@@ -68,7 +71,7 @@ function currentReference(value, currentId) {
   return value === undefined || value === "__CURRENT__" ? currentId : value;
 }
 
-function authorityFromDecision(decision) {
+function authorityFromDecision(decision, now = new Date()) {
   const mapping = {
     CONFIRMED: "CONFIRMED",
     EXCEPTION_RECORDED: "EXCEPTION_RECORDED",
@@ -77,6 +80,7 @@ function authorityFromDecision(decision) {
     INSUFFICIENT_EVIDENCE: "UNREVIEWED",
     DEFERRED: "UNREVIEWED",
   };
+  if (decision?.validUntil && Date.parse(decision.validUntil) <= now.getTime()) return "DEPRECATED";
   return decision ? mapping[decision.type] ?? "UNREVIEWED" : "UNREVIEWED";
 }
 
@@ -289,6 +293,9 @@ export class TraceabilityApplication {
     const actorId = requireId(reviewer.actorId, "reviewer.actorId");
     const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
     const policy = (await this.#reviewPolicyResolver(projectId, { reviewer, decisionInput: input })) ?? {};
+    if (policy.requireDecisionReviewCases === true) {
+      throw new ReviewAuthorizationError("Direct Decision creation is disabled; use a governed Decision review case");
+    }
     if (!Array.isArray(policy.allowedRoles) || !policy.allowedRoles.includes(actorRole)) {
       throw new ReviewAuthorizationError(`Role ${actorRole} cannot decide Claims in this project`);
     }
@@ -356,6 +363,157 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
     return this.#store.getLatestBusinessProcessModel(projectId, featureId);
+  }
+
+  async createDecisionReviewCase(projectId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("decision review case input must be an object");
+    }
+    for (const serverField of ["proposerId", "proposerRole", "createdAt"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`decisionReviewCase.${serverField} is assigned by the server`);
+    }
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const proposerId = requireId(reviewer.actorId, "reviewer.actorId");
+    const proposerRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const policy = (await this.#reviewPolicyResolver(projectId, {
+      reviewer,
+      decisionReviewCaseInput: input,
+    }))?.decisionGovernance ?? {};
+    if (!Array.isArray(policy.proposerRoles) || !policy.proposerRoles.includes(proposerRole)) {
+      throw new ReviewAuthorizationError(`Role ${proposerRole} cannot propose governed Decisions in this project`);
+    }
+    const reviewCase = createDecisionReviewCase({ ...input, proposerId, proposerRole }, this.#clock);
+    if (reviewCase.approvalMode === "BREAK_GLASS") {
+      const maximumMinutes = policy.maxBreakGlassMinutes ?? 60;
+      if (!Number.isInteger(maximumMinutes) || maximumMinutes < 1) {
+        throw new TypeError("decision governance policy.maxBreakGlassMinutes must be a positive integer");
+      }
+      if (Date.parse(reviewCase.proposedDecision.validUntil) - Date.parse(reviewCase.createdAt) > maximumMinutes * 60_000) {
+        throw new ReviewAuthorizationError(`Break-glass validity exceeds the ${maximumMinutes}-minute policy maximum`);
+      }
+    }
+    const stored = await this.#store.appendDecisionReviewCase(projectId, reviewCase);
+    return this.#decisionReviewView(projectId, stored);
+  }
+
+  async getDecisionReviewCase(projectId, caseId) {
+    requireId(projectId, "projectId");
+    requireId(caseId, "caseId");
+    const stored = await this.#store.getDecisionReviewCase(projectId, caseId);
+    return stored ? this.#decisionReviewView(projectId, stored) : null;
+  }
+
+  async #decisionReviewView(projectId, stored) {
+    const policy = (await this.#reviewPolicyResolver(projectId, { reviewCase: stored.reviewCase }))
+      ?.decisionGovernance ?? {};
+    return deepFreeze({
+      ...stored,
+      evaluation: evaluateDecisionReviewCase(stored.reviewCase, stored.events, policy, this.#clock),
+    });
+  }
+
+  async appendDecisionReviewEvent(projectId, caseId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(caseId, "caseId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("decision review event input must be an object");
+    }
+    for (const serverField of ["caseId", "actorId", "actorRole", "createdAt"]) {
+      if (Object.hasOwn(input, serverField)) throw new TypeError(`decisionReviewEvent.${serverField} is assigned by the server`);
+    }
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const stored = await this.#store.getDecisionReviewCase(projectId, caseId);
+    if (!stored) throw new PersistenceConflictError(`DecisionReviewCase ${caseId} does not exist`);
+    const policy = (await this.#reviewPolicyResolver(projectId, {
+      reviewer,
+      reviewCase: stored.reviewCase,
+      decisionReviewEventInput: input,
+    }))?.decisionGovernance ?? {};
+    const current = evaluateDecisionReviewCase(stored.reviewCase, stored.events, policy, this.#clock);
+    const event = createDecisionReviewEvent({ ...input, caseId, actorId, actorRole }, this.#clock);
+    const lifecycleRoles = new Set(policy.lifecycleRoles ?? []);
+    const approvalRoles = new Set(
+      stored.reviewCase.approvalMode === "BUSINESS_COMPLIANCE"
+        ? [...(policy.businessRoles ?? []), ...(policy.complianceRoles ?? [])]
+        : stored.reviewCase.approvalMode === "BREAK_GLASS"
+          ? policy.breakGlassRoles ?? []
+          : policy.approvalRoles ?? [],
+    );
+    if (["APPROVE", "REJECT"].includes(event.action) && !approvalRoles.has(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot ${event.action.toLowerCase()} this Decision case`);
+    }
+    if (["REVOKE", "DISPUTE", "REOPEN", "POST_REVIEW"].includes(event.action) && !lifecycleRoles.has(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot perform Decision lifecycle action ${event.action}`);
+    }
+    if (event.action === "APPROVE") {
+      if (actorId === stored.reviewCase.proposerId) {
+        throw new ReviewAuthorizationError("The proposer cannot approve their own governed Decision");
+      }
+      const lastReopenIndex = stored.events.findLastIndex((item) => item.action === "REOPEN");
+      if (
+        stored.events.slice(lastReopenIndex + 1).some((item) => item.action === "APPROVE" && item.actorId === actorId) &&
+        current.status === "PENDING"
+      ) {
+        throw new PersistenceConflictError(`Actor ${actorId} already approved this active review round`);
+      }
+      if (current.status !== "PENDING") throw new PersistenceConflictError(`Cannot approve a case in ${current.status}`);
+    }
+    if (event.action === "REJECT" && current.status !== "PENDING") {
+      throw new PersistenceConflictError(`Cannot reject a case in ${current.status}`);
+    }
+    if (["REVOKE", "DISPUTE"].includes(event.action) && !["APPROVED", "POST_REVIEW_OVERDUE"].includes(current.status)) {
+      throw new PersistenceConflictError(`Cannot ${event.action.toLowerCase()} a case in ${current.status}`);
+    }
+    if (event.action === "REOPEN" && !["REJECTED", "REVOKED", "DISPUTED"].includes(current.status)) {
+      throw new PersistenceConflictError(`Cannot reopen a case in ${current.status}`);
+    }
+    if (
+      event.action === "POST_REVIEW" &&
+      (stored.reviewCase.approvalMode !== "BREAK_GLASS" || !["APPROVED", "POST_REVIEW_OVERDUE"].includes(current.status))
+    ) {
+      throw new PersistenceConflictError("POST_REVIEW is only valid for an approved Break-glass case");
+    }
+    const next = evaluateDecisionReviewCase(stored.reviewCase, [...stored.events, event], policy, this.#clock);
+    if (event.action === "APPROVE" && next.ignoredApprovalEventIds.includes(event.id)) {
+      throw new ReviewAuthorizationError("This approval does not satisfy the configured role and separation policy");
+    }
+    let decision = null;
+    if (event.action === "APPROVE" && next.mayMaterializeDecision) {
+      const lastReopen = [...stored.events].reverse().find((item) => item.action === "REOPEN");
+      decision = createDecision({
+        ...stored.reviewCase.proposedDecision,
+        id: stored.decisions.length === 0
+          ? stored.reviewCase.proposedDecision.id
+          : `${stored.reviewCase.proposedDecision.id}:REOPEN:${lastReopen?.id ?? event.id}`,
+        claimId: stored.reviewCase.claimId,
+        claimVersion: stored.reviewCase.claimVersion,
+        scopeId: stored.reviewCase.scopeId,
+        scopeVersion: stored.reviewCase.scopeVersion,
+        actorId,
+        actorRole,
+      }, this.#clock);
+    } else if (["REVOKE", "DISPUTE"].includes(event.action)) {
+      decision = createDecision({
+        id: `${stored.reviewCase.proposedDecision.id}:${event.action}:${event.id}`,
+        claimId: stored.reviewCase.claimId,
+        claimVersion: stored.reviewCase.claimVersion,
+        scopeId: stored.reviewCase.scopeId,
+        scopeVersion: stored.reviewCase.scopeVersion,
+        type: event.action === "REVOKE" ? "DEPRECATED" : "DEFERRED",
+        content: event.rationale,
+        actorId,
+        actorRole,
+        evidenceRefs: [],
+        validUntil: null,
+      }, this.#clock);
+    }
+    const persisted = await this.#store.appendDecisionReviewEvent(projectId, { event, decision });
+    return this.#decisionReviewView(projectId, persisted);
   }
 
   async getFeatureBaseline(projectId, featureId) {
@@ -1320,7 +1478,7 @@ export class TraceabilityApplication {
         feature: baseline.feature,
         claim: {
           ...claim,
-          authorityStatus: authorityFromDecision(latestDecision),
+          authorityStatus: authorityFromDecision(latestDecision, this.#clock()),
         },
         decision: latestDecision,
         scope,
@@ -1344,7 +1502,7 @@ export class TraceabilityApplication {
         scope,
         decisionHistory: claimRecord.decisionHistory,
         latestDecision,
-        authorityStatus: authorityFromDecision(latestDecision),
+        authorityStatus: authorityFromDecision(latestDecision, this.#clock()),
         implementationMappings: mappings,
         selectedImplementationMapping: displayMapping,
         facts,

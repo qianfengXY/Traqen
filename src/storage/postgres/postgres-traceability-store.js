@@ -659,6 +659,186 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return result.rows[0]?.model_payload ?? null;
   }
 
+  async appendDecisionReviewCase(projectId, reviewCase) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO decision_review_case (
+           project_id, id, claim_id, claim_version, scope_id, scope_version, risk,
+           approval_mode, proposed_decision_id, case_payload, proposer_id, proposer_role,
+           expires_at, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [
+          projectId,
+          reviewCase.id,
+          reviewCase.claimId,
+          reviewCase.claimVersion,
+          reviewCase.scopeId,
+          reviewCase.scopeVersion,
+          reviewCase.risk,
+          reviewCase.approvalMode,
+          reviewCase.proposedDecision.id,
+          JSON.stringify(reviewCase),
+          reviewCase.proposerId,
+          reviewCase.proposerRole,
+          reviewCase.expiresAt,
+          reviewCase.createdAt,
+        ],
+      );
+      const stored = await this.#database.query(
+        `SELECT case_payload FROM decision_review_case WHERE project_id = $1 AND id = $2`,
+        [projectId, reviewCase.id],
+      );
+      if (!stored.rows[0] || canonicalJson(stored.rows[0].case_payload) !== canonicalJson(reviewCase)) {
+        throw new PersistenceConflictError(`DecisionReviewCase ${reviewCase.id} conflicts with an existing record`);
+      }
+      return this.getDecisionReviewCase(projectId, reviewCase.id);
+    });
+  }
+
+  async getDecisionReviewCase(projectId, caseId) {
+    requireId(projectId, "projectId");
+    requireId(caseId, "caseId");
+    const caseResult = await this.#database.query(
+      `SELECT case_payload FROM decision_review_case WHERE project_id = $1 AND id = $2`,
+      [projectId, caseId],
+    );
+    const reviewCase = caseResult.rows[0]?.case_payload;
+    if (!reviewCase) return null;
+    const eventResult = await this.#database.query(
+      `SELECT event_payload
+       FROM decision_review_event
+       WHERE project_id = $1 AND case_id = $2
+       ORDER BY append_sequence`,
+      [projectId, caseId],
+    );
+    const decisionResult = await this.#database.query(
+      `SELECT d.*
+       FROM decision_review_materialization m
+       JOIN decision_review_event re
+         ON re.project_id = m.project_id AND re.case_id = m.case_id AND re.id = m.event_id
+       JOIN human_decision d
+         ON d.project_id = m.project_id AND d.id = m.decision_id
+       WHERE m.project_id = $1 AND m.case_id = $2
+       ORDER BY re.append_sequence`,
+      [projectId, caseId],
+    );
+    const decisions = decisionResult.rows.map((row) => ({
+      id: row.id,
+      claimId: row.claim_id,
+      claimVersion: row.claim_version,
+      scopeId: row.scope_id,
+      scopeVersion: row.scope_version,
+      type: row.decision_type,
+      content: row.content,
+      actorId: row.actor_id,
+      actorRole: row.actor_role,
+      evidenceRefs: row.evidence_refs,
+      validUntil: isoOrNull(row.valid_until),
+      createdAt: new Date(row.created_at).toISOString(),
+    }));
+    return deepFreeze({
+      reviewCase,
+      events: eventResult.rows.map((item) => item.event_payload),
+      decisions,
+      decision: decisions.at(-1) ?? null,
+    });
+  }
+
+  async appendDecisionReviewEvent(projectId, { event, decision = null }) {
+    requireId(projectId, "projectId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO decision_review_event (
+           project_id, case_id, id, action, actor_id, actor_role, rationale, event_payload, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+         ON CONFLICT (project_id, case_id, id) DO NOTHING`,
+        [
+          projectId,
+          event.caseId,
+          event.id,
+          event.action,
+          event.actorId,
+          event.actorRole,
+          event.rationale,
+          JSON.stringify(event),
+          event.createdAt,
+        ],
+      );
+      const storedEvent = await this.#database.query(
+        `SELECT event_payload
+         FROM decision_review_event
+         WHERE project_id = $1 AND case_id = $2 AND id = $3`,
+        [projectId, event.caseId, event.id],
+      );
+      if (!storedEvent.rows[0] || canonicalJson(storedEvent.rows[0].event_payload) !== canonicalJson(event)) {
+        throw new PersistenceConflictError(`DecisionReviewEvent ${event.id} conflicts with an existing record`);
+      }
+      if (decision) {
+        await this.#database.query(
+          `INSERT INTO human_decision (
+             project_id, id, claim_id, claim_version, scope_id, scope_version,
+             decision_type, content, actor_id, actor_role, evidence_refs, valid_until, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, $13)
+           ON CONFLICT (project_id, id) DO NOTHING`,
+          [
+            projectId,
+            decision.id,
+            decision.claimId,
+            decision.claimVersion,
+            decision.scopeId,
+            decision.scopeVersion,
+            decision.type,
+            decision.content,
+            decision.actorId,
+            decision.actorRole,
+            JSON.stringify(decision.evidenceRefs),
+            decision.validUntil,
+            decision.createdAt,
+          ],
+        );
+        const storedDecision = await this.#database.query(
+          `SELECT claim_id, claim_version, scope_id, scope_version, decision_type,
+                  content, actor_id, actor_role, evidence_refs, valid_until
+           FROM human_decision WHERE project_id = $1 AND id = $2`,
+          [projectId, decision.id],
+        );
+        const row = storedDecision.rows[0];
+        if (
+          !row ||
+          row.claim_id !== decision.claimId ||
+          row.claim_version !== decision.claimVersion ||
+          row.scope_id !== decision.scopeId ||
+          row.scope_version !== decision.scopeVersion ||
+          row.decision_type !== decision.type ||
+          row.actor_id !== decision.actorId ||
+          row.actor_role !== decision.actorRole ||
+          canonicalJson(row.evidence_refs) !== canonicalJson(decision.evidenceRefs)
+        ) {
+          throw new PersistenceConflictError(`Decision ${decision.id} conflicts with an existing record`);
+        }
+        await this.#database.query(
+          `INSERT INTO decision_review_materialization (
+             project_id, case_id, event_id, decision_id, created_at
+           ) VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (project_id, case_id, event_id) DO NOTHING`,
+          [projectId, event.caseId, event.id, decision.id, event.createdAt],
+        );
+        const materialized = await this.#database.query(
+          `SELECT decision_id
+           FROM decision_review_materialization
+           WHERE project_id = $1 AND case_id = $2 AND event_id = $3`,
+          [projectId, event.caseId, event.id],
+        );
+        if (materialized.rows[0]?.decision_id !== decision.id) {
+          throw new PersistenceConflictError(`Decision materialization for event ${event.id} conflicts`);
+        }
+      }
+      return this.getDecisionReviewCase(projectId, event.caseId);
+    });
+  }
+
   async getFeatureBaseline(projectId, featureId) {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");

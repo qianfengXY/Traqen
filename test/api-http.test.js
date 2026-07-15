@@ -198,6 +198,84 @@ test("business process endpoint assigns reviewer identity and returns the govern
   assert.equal((await found.json()).transitions[0].id, "TRANSITION-SUBMIT");
 });
 
+test("Decision review API keeps proposer and two approvers distinct before publishing authority", async (t) => {
+  const identities = new Map([
+    ["Bearer proposer-token", { actorId: "PROPOSER-API", actorRole: "business-owner" }],
+    ["Bearer business-approver-token", { actorId: "APPROVER-API-1", actorRole: "business-owner" }],
+    ["Bearer compliance-approver-token", { actorId: "APPROVER-API-2", actorRole: "compliance-owner" }],
+  ]);
+  const baseUrl = await startServer(t, {
+    reviewerResolver: (_projectId, context) => identities.get(context.authorization) ?? null,
+    reviewPolicyResolver: () => ({
+      decisionGovernance: {
+        proposerRoles: ["business-owner"],
+        approvalRoles: ["business-owner", "compliance-owner"],
+        businessRoles: ["business-owner"],
+        complianceRoles: ["compliance-owner"],
+        breakGlassRoles: ["incident-commander"],
+        lifecycleRoles: ["governance-owner"],
+      },
+    }),
+  });
+  await postJson(`${baseUrl}/v1/projects`, {
+    organization: { id: "ORG-DECISION-API", name: "Decision organization" },
+    tenant: { id: "TENANT-DECISION-API", name: "Decision tenant" },
+    project: { id: "PROJECT-DECISION-API", name: "Decision project" },
+    principals: [
+      { id: "PROPOSER-API", type: "USER", displayName: "Proposer" },
+      { id: "APPROVER-API-1", type: "USER", displayName: "Business approver" },
+      { id: "APPROVER-API-2", type: "USER", displayName: "Compliance approver" },
+    ],
+  });
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-DECISION-API`;
+  await postJson(`${projectUrl}/features`, { id: "FEATURE-DECISION-API", version: 1, name: "Governed feature" });
+  await postJson(`${projectUrl}/claim-scopes`, { id: "SCOPE-DECISION-API", version: 1, scope: { actor: "customer" } });
+  await postJson(`${projectUrl}/claims`, {
+    id: "CLAIM-DECISION-API",
+    version: 1,
+    featureId: "FEATURE-DECISION-API",
+    type: "NORMATIVE_REQUIREMENT",
+    statement: "The high-risk operation requires governed approval.",
+    sourceType: "HUMAN",
+    evidenceSupport: "MULTI_SOURCE",
+    scopeId: "SCOPE-DECISION-API",
+    scopeVersion: 1,
+    provenance: {},
+  });
+  const created = await postJson(`${projectUrl}/decision-review-cases`, {
+    id: "CASE-DECISION-API",
+    claimId: "CLAIM-DECISION-API",
+    claimVersion: 1,
+    scopeId: "SCOPE-DECISION-API",
+    scopeVersion: 1,
+    risk: "HIGH",
+    approvalMode: "DUAL",
+    proposedDecision: { id: "DECISION-DUAL-API", type: "CONFIRMED" },
+    expiresAt: "2026-07-16T04:00:00.000Z",
+  }, { authorization: "Bearer proposer-token" });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.reviewCase.proposerId, "PROPOSER-API");
+
+  const first = await postJson(`${projectUrl}/decision-review-cases/CASE-DECISION-API/events`, {
+    id: "EVENT-DECISION-API-1",
+    action: "APPROVE",
+    rationale: "Business approval.",
+  }, { authorization: "Bearer business-approver-token" });
+  assert.equal(first.body.evaluation.status, "PENDING");
+  const second = await postJson(`${projectUrl}/decision-review-cases/CASE-DECISION-API/events`, {
+    id: "EVENT-DECISION-API-2",
+    action: "APPROVE",
+    rationale: "Compliance approval.",
+  }, { authorization: "Bearer compliance-approver-token" });
+  assert.equal(second.response.status, 201);
+  assert.equal(second.body.evaluation.status, "APPROVED");
+  assert.equal(second.body.decision.id, "DECISION-DUAL-API");
+
+  const found = await fetch(`${projectUrl}/decision-review-cases/CASE-DECISION-API`);
+  assert.equal(found.status, 200);
+  assert.equal((await found.json()).events.length, 2);
+});
+
 test("product-effectiveness metrics require a Snapshot and preserve independent results", async (t) => {
   const calls = [];
   const application = {

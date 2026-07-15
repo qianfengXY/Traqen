@@ -16,3 +16,4 @@ export * from "./project.js";
 export * from "./trace-chain.js";
 export * from "./feature-graph.js";
 export * from "./business-process.js";
+export * from "./decision-governance.js";

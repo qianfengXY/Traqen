@@ -286,6 +286,47 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const decisionReviewCaseCollectionMatch = /^\/v1\/projects\/([^/]+)\/decision-review-cases$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && decisionReviewCaseCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(decisionReviewCaseCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.createDecisionReviewCase(projectId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
+        return;
+      }
+
+      const decisionReviewCaseMatch = /^\/v1\/projects\/([^/]+)\/decision-review-cases\/([^/]+)$/.exec(
+        url.pathname,
+      );
+      if (request.method === "GET" && decisionReviewCaseMatch) {
+        const projectId = decodePathSegment(decisionReviewCaseMatch[1]);
+        const caseId = decodePathSegment(decisionReviewCaseMatch[2]);
+        const reviewCase = await application.getDecisionReviewCase(projectId, caseId);
+        if (!reviewCase) throw new HttpError(404, "DECISION_REVIEW_CASE_NOT_FOUND", "Decision review case was not found");
+        sendJson(response, 200, reviewCase, id);
+        return;
+      }
+
+      const decisionReviewEventMatch = /^\/v1\/projects\/([^/]+)\/decision-review-cases\/([^/]+)\/events$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && decisionReviewEventMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(decisionReviewEventMatch[1]);
+        const caseId = decodePathSegment(decisionReviewEventMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.appendDecisionReviewEvent(projectId, caseId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/trace-chains/evaluate") {
         requireJson(request);
         const input = await readJson(request, maxBodyBytes);
