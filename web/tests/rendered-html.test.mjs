@@ -43,6 +43,9 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
 
   assert.match(page, /<TraqenProduct \/>/);
   assert.match(product, /\/traceability\?snapshotManifestId=/);
+  assert.match(product, /\/features`, \{ headers \}/);
+  assert.match(product, /\/snapshots`, \{ headers \}/);
+  assert.match(product, /自动发现并加载/);
   assert.match(product, /\/graph\?\$\{parameters\}/);
   assert.match(product, /\/graph\/paths\/query/);
   assert.match(product, /默认最多 30 个节点/);

@@ -224,6 +224,11 @@ export class TraceabilityApplication {
     return manifest;
   }
 
+  async listSnapshotManifests(projectId) {
+    requireId(projectId, "projectId");
+    return this.#store.listSnapshotManifests(projectId);
+  }
+
   prepareEvaluation(input) {
     if (input === null || typeof input !== "object" || Array.isArray(input)) {
       throw new TypeError("evaluation input must be an object");
@@ -527,6 +532,22 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
     return this.#store.getFeatureBaseline(projectId, featureId);
+  }
+
+  async listFeatures(projectId) {
+    requireId(projectId, "projectId");
+    const featureIds = await this.#store.listFeatureIds(projectId);
+    const baselines = await Promise.all(featureIds.map((featureId) => this.#store.getFeatureBaseline(projectId, featureId)));
+    return deepFreeze(baselines.filter(Boolean).map((baseline) => ({
+      feature: baseline.feature,
+      processModel: baseline.processModel,
+      claimCount: baseline.claims.length,
+      confirmedClaimCount: baseline.claims.filter((item) => ["CONFIRMED", "EXCEPTION_RECORDED"].includes(
+        authorityFromDecision(item.latestDecision, this.#clock()),
+      )).length,
+      testSpecCount: baseline.testSpecs.length,
+      latestExecutionAt: baseline.testExecutions.map((item) => item.finishedAt).sort().at(-1) ?? null,
+    })));
   }
 
   validateTestSpec(input) {

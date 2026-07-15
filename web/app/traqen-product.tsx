@@ -443,25 +443,59 @@ export function TraqenProduct() {
     [scenario, selectedId],
   );
 
+  async function fetchTraceability(targetFeatureId: string, targetSnapshotId: string) {
+    const base = apiBase.replace(/\/$/, "");
+    const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(targetFeatureId)}/traceability?snapshotManifestId=${encodeURIComponent(targetSnapshotId)}`;
+    const response = await fetch(url, { headers: apiHeaders(apiToken, { accept: "application/json" }) });
+    const body = await response.json() as Record<string, unknown>;
+    if (!response.ok) {
+      const error = body.error as { message?: string } | undefined;
+      throw new Error(error?.message ?? `API returned ${response.status}`);
+    }
+    const normalized = fromApi(body);
+    setLiveScenario(normalized);
+    setSelectedId(normalized.nodes[0]?.id ?? "");
+    setConnectionOpen(false);
+    setMessage("已加载服务端派生的 Feature 追溯视图。");
+  }
+
   async function loadTraceability() {
     setLoading(true);
     setMessage("");
     try {
-      const base = apiBase.replace(/\/$/, "");
-      const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/traceability?snapshotManifestId=${encodeURIComponent(snapshotId)}`;
-      const response = await fetch(url, { headers: apiHeaders(apiToken, { accept: "application/json" }) });
-      const body = await response.json() as Record<string, unknown>;
-      if (!response.ok) {
-        const error = body.error as { message?: string } | undefined;
-        throw new Error(error?.message ?? `API returned ${response.status}`);
-      }
-      const normalized = fromApi(body);
-      setLiveScenario(normalized);
-      setSelectedId(normalized.nodes[0]?.id ?? "");
-      setConnectionOpen(false);
-      setMessage("已加载服务端派生的 Feature 追溯视图。");
+      await fetchTraceability(featureId, snapshotId);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "无法加载追溯视图");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function discoverAndLoadTraceability() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const base = apiBase.replace(/\/$/, "");
+      const headers = apiHeaders(apiToken, { accept: "application/json" });
+      const [featureResponse, snapshotResponse] = await Promise.all([
+        fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/features`, { headers }),
+        fetch(`${base}/v1/projects/${encodeURIComponent(projectId)}/snapshots`, { headers }),
+      ]);
+      const featureBody = await featureResponse.json() as { features?: Array<{ feature?: { id?: string }; confirmedClaimCount?: number }>; error?: { message?: string } };
+      const snapshotBody = await snapshotResponse.json() as { snapshots?: Array<{ id?: string }>; error?: { message?: string } };
+      if (!featureResponse.ok) throw new Error(featureBody.error?.message ?? `Feature discovery returned ${featureResponse.status}`);
+      if (!snapshotResponse.ok) throw new Error(snapshotBody.error?.message ?? `Snapshot discovery returned ${snapshotResponse.status}`);
+      const discoveredFeature = [...(featureBody.features ?? [])]
+        .sort((left, right) => (right.confirmedClaimCount ?? 0) - (left.confirmedClaimCount ?? 0))
+        .find((item) => item.feature?.id)?.feature?.id;
+      const discoveredSnapshot = snapshotBody.snapshots?.find((item) => item.id)?.id;
+      if (!discoveredFeature) throw new Error("该项目尚无可加载的 Feature。");
+      if (!discoveredSnapshot) throw new Error("该项目尚无可加载的 Snapshot Manifest。");
+      setFeatureId(discoveredFeature);
+      setSnapshotId(discoveredSnapshot);
+      await fetchTraceability(discoveredFeature, discoveredSnapshot);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "无法自动发现项目资源");
     } finally {
       setLoading(false);
     }
@@ -504,7 +538,7 @@ export function TraqenProduct() {
               <div className="field full"><label htmlFor="snapshot-id">Snapshot Manifest ID</label><input id="snapshot-id" value={snapshotId} onChange={(event) => setSnapshotId(event.target.value)} /></div>
               <div className="field full"><label htmlFor="api-token">API token（仅保存在当前页面内存）</label><input id="api-token" type="password" autoComplete="off" value={apiToken} onChange={(event) => setApiToken(event.target.value)} /></div>
             </div>
-            <div className="connection-actions"><button className="button primary" disabled={loading} onClick={loadTraceability}>{loading ? "加载中…" : "加载服务端追溯视图"}</button>{message && <span className={`form-message ${message.startsWith("已加载") ? "" : "error"}`}>{message}</span>}</div>
+            <div className="connection-actions"><button className="button primary" disabled={loading} onClick={() => void discoverAndLoadTraceability()}>{loading ? "加载中…" : "自动发现并加载"}</button><button className="button" disabled={loading} onClick={() => void loadTraceability()}>按指定 ID 加载</button>{message && <span className={`form-message ${message.startsWith("已加载") ? "" : "error"}`}>{message}</span>}</div>
           </section>
         )}
 

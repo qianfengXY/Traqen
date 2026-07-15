@@ -74,6 +74,15 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     return this.#manifests.get(key(projectId, snapshotManifestId)) ?? null;
   }
 
+  async listSnapshotManifests(projectId) {
+    return deepFreeze(
+      [...this.#manifests.entries()]
+        .filter(([storageKey]) => storageKey.startsWith(`${projectId}\u0000`))
+        .map(([, manifest]) => manifest)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id)),
+    );
+  }
+
   async appendTraceChainRevision(projectId, chain, options = {}) {
     if (!this.#manifests.has(key(projectId, chain.snapshotManifestId))) {
       throw new PersistenceConflictError(`Snapshot manifest ${chain.snapshotManifestId} does not exist in project ${projectId}`);

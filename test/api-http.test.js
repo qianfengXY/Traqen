@@ -135,6 +135,18 @@ test("project and Snapshot bootstrap require no direct database setup", async (t
   const fetched = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP`, { headers: apiHeaders });
   assert.equal(fetched.status, 200);
   assert.equal((await fetched.json()).tenant.id, "TENANT-BOOTSTRAP");
+
+  await postJson(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP/features`, {
+    id: "FEATURE-BOOTSTRAP",
+    version: 1,
+    name: "Discoverable feature",
+  }, apiHeaders);
+  const snapshots = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP/snapshots`, { headers: apiHeaders });
+  assert.equal(snapshots.status, 200);
+  assert.equal((await snapshots.json()).snapshots[0].id, snapshot.body.id);
+  const features = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP/features`, { headers: apiHeaders });
+  assert.equal(features.status, 200);
+  assert.equal((await features.json()).features[0].feature.id, "FEATURE-BOOTSTRAP");
 });
 
 test("business process endpoint assigns reviewer identity and returns the governed state machine", async (t) => {

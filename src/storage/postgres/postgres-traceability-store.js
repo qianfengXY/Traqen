@@ -310,6 +310,18 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async listSnapshotManifests(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT id
+       FROM snapshot_manifest
+       WHERE project_id = $1
+       ORDER BY created_at DESC, id`,
+      [projectId],
+    );
+    return deepFreeze(await Promise.all(result.rows.map((row) => this.getSnapshotManifest(projectId, row.id))));
+  }
+
   async appendTraceChainRevision(projectId, chain, options = {}) {
     requireId(projectId, "projectId");
     requireId(chain?.id, "chain.id");

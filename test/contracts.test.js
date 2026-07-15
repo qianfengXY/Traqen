@@ -41,6 +41,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "registerSnapshot",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/snapshots"].get.operationId,
+    "listSnapshotManifests",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/features"].get.operationId,
+    "listFeatures",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/decision-review-cases"].post.operationId,
     "createDecisionReviewCase",
   );

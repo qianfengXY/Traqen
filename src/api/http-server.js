@@ -319,6 +319,11 @@ export function createTraceabilityHttpHandler({
       }
 
       const snapshotCollectionMatch = /^\/v1\/projects\/([^/]+)\/snapshots$/.exec(url.pathname);
+      if (request.method === "GET" && snapshotCollectionMatch) {
+        const projectId = decodePathSegment(snapshotCollectionMatch[1]);
+        sendJson(response, 200, { snapshots: await application.listSnapshotManifests(projectId) }, id);
+        return;
+      }
       if (request.method === "POST" && snapshotCollectionMatch) {
         requireJson(request);
         const projectId = decodePathSegment(snapshotCollectionMatch[1]);
@@ -398,6 +403,12 @@ export function createTraceabilityHttpHandler({
       const governanceAppendMatch = /^\/v1\/projects\/([^/]+)\/(features|claim-scopes|claims|decisions)$/.exec(
         url.pathname,
       );
+      const featureCollectionMatch = /^\/v1\/projects\/([^/]+)\/features$/.exec(url.pathname);
+      if (request.method === "GET" && featureCollectionMatch) {
+        const projectId = decodePathSegment(featureCollectionMatch[1]);
+        sendJson(response, 200, { features: await application.listFeatures(projectId) }, id);
+        return;
+      }
       if (request.method === "POST" && governanceAppendMatch) {
         requireJson(request);
         const projectId = decodePathSegment(governanceAppendMatch[1]);
