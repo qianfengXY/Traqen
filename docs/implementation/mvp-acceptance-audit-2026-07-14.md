@@ -6,6 +6,8 @@ The repository-controlled MVP mechanism satisfies all 17 acceptance capabilities
 
 This is not presented as final proof of enterprise value. Sections 18.2 and the enterprise half of 18.4 require a real medium-sized pilot system, three actual business flows, 10–20 governed Features, real test infrastructure/data, and confirmation by the responsible business, development, and test owners. Those assets and people are outside this repository and have not been fabricated.
 
+The completion audit was refreshed on 2026-07-15 after the repository also added the production-runtime bootstrap, durable asynchronous Reverse Run state, governed business process models, high-risk multi-party Decision review, Evidence retention/Legal Hold/deletion proof, Feature alias and merge/split lineage, continuous-protection policy enforcement, independent product-effectiveness metrics, platform operations observations, project resource discovery, and bounded interactive graph/path APIs. These additions close design constraints beyond the 17 minimum acceptance items without changing the product north star.
+
 ## Section 20 acceptance matrix
 
 | # | Result | Repository evidence |
@@ -35,6 +37,9 @@ This is not presented as final proof of enterprise value. Sections 18.2 and the 
 - The base Scanner, HTTP executor, read-only database assertion executor, controlled-write executor, and trusted existing-test executor are implemented.
 - Two replaceable Reverse adapters plus a generic TEST_DESIGN capability are implemented. Skill output remains candidate knowledge pending human review.
 - Human review, Feature traceability, ordered proof chains, TraceGap display, Snapshot history comparison, and Git Diff/Fact incremental impact are implemented in protocols, APIs, and the product interface.
+- The production API starts from PostgreSQL migrations and environment configuration, requires authentication, resolves reviewer identity server-side, restricts browser origins, and exposes project/Feature/Snapshot discovery without direct database setup.
+- Business state machines, Feature versions/aliases/lineage, high-risk multi-party Decisions, Evidence lifecycle, asynchronous job history, continuous quality gates, independent product health, and operational telemetry all remain append-only or server-derived rather than client-owned mutable state.
+- External telemetry that the repository cannot observe—Runner heartbeat/resource use, model Token cost, and Evidence pipeline-stage duration—is explicitly unavailable instead of being rendered as zero or healthy.
 
 ## Executable vertical proof
 
@@ -57,3 +62,7 @@ The following design outcomes cannot be truthfully completed from source code al
 3. Have the actual business, development, and test owners confirm statements and measure reverse-analysis accuracy, review cost, TestSpec executability, impact quality, regression value, high-value Feature trace-chain rate, repair time, Evidence freshness, and defect escape.
 
 When those inputs are supplied, no Mock-only code path is required: the production API, Scanner/Fact contracts, replaceable Skill protocol, review workflow, trusted Runner catalogs, Evidence ingestion, impact service, and UI are the intended pilot path. Until that real pilot is run, the honest status is **repository MVP mechanism complete; enterprise-value acceptance pending external pilot**.
+
+## Integration decision
+
+The external pilot boundary is an acceptance/deployment dependency, not unfinished repository code. The repository-controlled design scope is therefore eligible for integration once the complete automated test suite, Web lint/build/render tests, and built-in vertical pilot pass on the integration commit. Integration must not claim that an enterprise pilot or unavailable external infrastructure has been completed.
