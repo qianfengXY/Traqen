@@ -30,6 +30,9 @@ The single-client database adapter is intentional: the store's explicit `BEGIN`/
 | `SKILL_PUBLISHER`, `SKILL_PUBLISHER_SHARED_SECRET` | Skill registration | trusted local MVP publisher identity |
 | `REVIEWER_ID`, `REVIEWER_ROLE`, `REVIEWER_BEARER_TOKEN` | business review | fail-closed reviewer identity/policy |
 | `IMPLEMENTATION_REVIEWER_ID`, `IMPLEMENTATION_REVIEWER_ROLE`, `IMPLEMENTATION_REVIEWER_BEARER_TOKEN` | reanalysis | fail-closed implementation reviewer identity/policy |
+| `QUALITY_GATE_MODE` | no | `ADVISORY` (default), `MANUAL_APPROVAL`, or `ENFORCED` |
+| `HIGH_RISK_FEATURE_IDS`, `FIXED_HIGH_RISK_TEST_SPEC_IDS` | no | comma-separated fixed high-risk regression policy |
+| `CONSERVATIVE_REGRESSION_TEST_SPEC_IDS` | no | comma-separated fallback set used when impact is incomplete |
 
 The global token may be sent as `Authorization: Bearer ...` or `x-traqen-api-token`. The second form exists so reviewer endpoints can independently use `Authorization` for the narrower reviewer credential. Token comparison is constant-time. `GET /health` and CORS preflight remain public; every other route is protected in production.
 

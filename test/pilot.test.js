@@ -35,4 +35,10 @@ test("built-in order pilot executes, invalidates, repairs, and re-proves one com
   assert.ok(result.graph.assertions >= 2);
   assert.equal(result.graph.featureToEvidencePathFound, true);
   assert.ok(result.graph.featureToEvidenceHops >= 3);
+  assert.equal(result.continuousProtection.selectionStrategy, "TARGETED_UNION_HIGH_RISK");
+  assert.deepEqual(result.continuousProtection.selectedTestSpecIds, ["TEST-ORDER-SUBMIT"]);
+  assert.equal(result.continuousProtection.staleStatus, "BLOCKED");
+  assert.equal(result.continuousProtection.staleEnforcement, "WARN");
+  assert.equal(result.continuousProtection.finalStatus, "PASS");
+  assert.equal(result.continuousProtection.finalEnforcement, "PASS");
 });

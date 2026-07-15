@@ -32,6 +32,7 @@ async function startServer(t, options = {}) {
     reviewPolicyResolver,
     implementationReviewerResolver,
     implementationPolicyResolver,
+    continuousProtectionPolicyResolver,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -48,6 +49,7 @@ async function startServer(t, options = {}) {
     reviewPolicyResolver,
     implementationReviewerResolver,
     implementationPolicyResolver,
+    continuousProtectionPolicyResolver,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -211,6 +213,44 @@ test("Feature graph APIs preserve bounded filters and path-query scope", async (
     `${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/graph?snapshotManifestId=SNAPSHOT-001&limit=101`,
   );
   assert.equal(oversized.status, 400);
+});
+
+test("continuous-protection endpoint returns the server-derived regression plan and gate", async (t) => {
+  const calls = [];
+  const application = {
+    async getContinuousProtectionAssessment(projectId, changeSetId) {
+      calls.push({ projectId, changeSetId });
+      return {
+        id: "CONTINUOUS-PROTECTION-001",
+        projectId,
+        changeSetId,
+        snapshotManifestId: "SNAPSHOT-002",
+        createdAt: "2026-07-15T00:00:00.000Z",
+        regressionPlan: {
+          selectionStrategy: "TARGETED_UNION_HIGH_RISK",
+          complete: true,
+          selectedTests: [],
+          unresolvedTestSpecIds: [],
+          changeSetWarnings: [],
+        },
+        featureAssessments: [],
+        qualityGate: {
+          status: "PASS",
+          policyMode: "ADVISORY",
+          enforcement: "PASS",
+          reasons: [],
+          requiredActions: [],
+        },
+      };
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const response = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/change-sets/CHANGESET-001/continuous-protection`,
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).qualityGate.status, "PASS");
+  assert.deepEqual(calls, [{ projectId: "PROJECT-001", changeSetId: "CHANGESET-001" }]);
 });
 
 test("browser product origins are explicit and preflight never grants an unknown origin", async (t) => {

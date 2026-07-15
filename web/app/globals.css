@@ -209,6 +209,20 @@ button { color: inherit; }
 .review-notice.error { background: #f8e2dc; color: #8c4237; }
 
 .impact-summary { padding: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
+.protection-panel { overflow: visible; }
+.protection-summary { padding: 16px 18px 10px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.gate-card { min-height: 104px; padding: 14px; border: 1px solid var(--line); border-radius: 11px; background: #fff; display: flex; flex-direction: column; }
+.gate-card > span { color: var(--muted); font-size: 9px; }
+.gate-card strong { margin: 9px 0 5px; font-family: var(--font-geist-mono); font-size: 16px; }
+.gate-card small { margin-top: auto; color: var(--muted); font-family: var(--font-geist-mono); font-size: 8px; line-height: 1.4; overflow-wrap: anywhere; }
+.gate-card.pass { border-color: #97b3a4; background: #f0f8f3; }
+.gate-card.blocked { border-color: #e2b16a; background: #fff6e5; }
+.gate-card.unknown { border-style: dashed; border-color: #c78e84; background: #fff0ec; }
+.regression-list { padding: 5px 18px 13px; display: grid; gap: 6px; }
+.regression-list > div { padding: 10px 11px; border: 1px solid var(--line); border-radius: 9px; background: #fff; display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, .7fr) minmax(160px, .7fr); gap: 10px; align-items: center; font-size: 9px; }
+.regression-list span, .regression-list small { color: var(--muted); font-family: var(--font-geist-mono); overflow-wrap: anywhere; }
+.gate-actions { padding: 11px 18px 17px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 9px; }
+.gate-actions span { padding: 5px 7px; border-radius: 999px; background: #f8e5bd; color: #795e28; font-family: var(--font-geist-mono); }
 .metric { padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .metric strong { display: block; font-size: 24px; letter-spacing: -.05em; }
 .metric span { color: var(--muted); font-size: 9px; }
@@ -246,6 +260,7 @@ button { color: inherit; }
   .connection-grid { grid-template-columns: 1fr; }
   .inline-form, .inline-form.impact-form, .review-fields { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
+  .protection-summary, .regression-list > div { grid-template-columns: 1fr; }
   .graph-filter-row, .graph-layout, .graph-path-bar { grid-template-columns: 1fr; }
   .graph-legend { border-right: 0; border-bottom: 1px solid var(--line); }
   .graph-canvas { min-height: 500px; }

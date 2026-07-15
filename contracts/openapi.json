@@ -393,6 +393,24 @@
         }
       }
     },
+    "/v1/projects/{projectId}/change-sets/{changeSetId}/continuous-protection": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "changeSetId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getContinuousProtectionAssessment",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ContinuousProtection" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/test-specs": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
@@ -1169,6 +1187,14 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./change-impact.schema.json" }
+          }
+        }
+      },
+      "ContinuousProtection": {
+        "description": "Server-derived incremental regression selection and policy-controlled quality gate without a composite trust score",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./continuous-protection.schema.json" }
           }
         }
       }

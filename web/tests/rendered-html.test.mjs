@@ -49,6 +49,9 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
   assert.match(product, /implementation-reanalyses/);
+  assert.match(product, /continuous-protection/);
+  assert.match(product, /增量回归与质量门禁/);
+  assert.match(product, /不把未知显示为通过/);
   assert.match(product, /服务端派生/);
   assert.match(product, /演示模式不会写入业务基线/);
   assert.match(product, /成功后清空/);

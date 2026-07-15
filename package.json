@@ -18,7 +18,8 @@
     "api:serve": "node src/api/production-server.js",
     "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json",
     "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary",
-    "pilot:order-submit": "node src/cli/run-order-submit-pilot.js"
+    "pilot:order-submit": "node src/cli/run-order-submit-pilot.js",
+    "quality-gate": "node src/cli/evaluate-quality-gate.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.4"

@@ -19,6 +19,10 @@ export function createConfiguredApplication({ store, env = process.env }) {
   const implementationReviewerId = env.IMPLEMENTATION_REVIEWER_ID ?? null;
   const implementationReviewerRole = env.IMPLEMENTATION_REVIEWER_ROLE ?? "developer";
   const implementationReviewerBearerToken = env.IMPLEMENTATION_REVIEWER_BEARER_TOKEN ?? null;
+  const qualityGateMode = env.QUALITY_GATE_MODE ?? "ADVISORY";
+  if (!["ADVISORY", "MANUAL_APPROVAL", "ENFORCED"].includes(qualityGateMode)) {
+    throw new Error("QUALITY_GATE_MODE must be ADVISORY, MANUAL_APPROVAL, or ENFORCED");
+  }
   const corsAllowedOrigins = commaSeparated(env.CORS_ALLOWED_ORIGINS, "http://localhost:3000");
   const referenceSkills = createReferenceSkillSet();
   const installedSkills = new Map(
@@ -60,6 +64,12 @@ export function createConfiguredApplication({ store, env = process.env }) {
       return { actorId: implementationReviewerId, actorRole: implementationReviewerRole };
     },
     implementationPolicyResolver: () => ({ allowedRoles: [implementationReviewerRole] }),
+    continuousProtectionPolicyResolver: () => ({
+      mode: qualityGateMode,
+      highRiskFeatureIds: commaSeparated(env.HIGH_RISK_FEATURE_IDS),
+      fixedHighRiskTestSpecIds: commaSeparated(env.FIXED_HIGH_RISK_TEST_SPEC_IDS),
+      conservativeTestSpecIds: commaSeparated(env.CONSERVATIVE_REGRESSION_TEST_SPEC_IDS),
+    }),
     reviewPolicyResolver: () => ({
       allowedRoles: [reviewerRole],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],

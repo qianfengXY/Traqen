@@ -435,6 +435,17 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const continuousProtectionMatch =
+        /^\/v1\/projects\/([^/]+)\/change-sets\/([^/]+)\/continuous-protection$/.exec(url.pathname);
+      if (request.method === "GET" && continuousProtectionMatch) {
+        const projectId = decodePathSegment(continuousProtectionMatch[1]);
+        const changeSetId = decodePathSegment(continuousProtectionMatch[2]);
+        const assessment = await application.getContinuousProtectionAssessment(projectId, changeSetId);
+        if (!assessment) throw new HttpError(404, "CHANGE_SET_NOT_FOUND", "ChangeSet was not found");
+        sendJson(response, 200, assessment, id);
+        return;
+      }
+
       const testSpecCollectionMatch = /^\/v1\/projects\/([^/]+)\/test-specs$/.exec(url.pathname);
       if (request.method === "POST" && testSpecCollectionMatch) {
         requireJson(request);

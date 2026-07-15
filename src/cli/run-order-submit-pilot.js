@@ -390,6 +390,10 @@ async function main() {
     if (!staleTraceability.gaps.some((gap) => gap.type === "CONFORMANCE_STALE")) {
       throw new Error("The changed reference Snapshot did not expose its implementation gap");
     }
+    const staleProtection = await application.getContinuousProtectionAssessment(projectId, impact.changeSet.id);
+    if (staleProtection.qualityGate.status !== "BLOCKED") {
+      throw new Error("The changed reference Snapshot did not block its continuous-protection assessment");
+    }
 
     const secondRun = await application.executeReverseRun({
       id: "REVERSE-RUN-ORDER-V2",
@@ -456,6 +460,10 @@ async function main() {
       view: "traceability",
     });
     if (!proofPath.found) throw new Error("The repaired traceability graph did not connect Feature to Evidence");
+    const finalProtection = await application.getContinuousProtectionAssessment(projectId, impact.changeSet.id);
+    if (finalProtection.qualityGate.status !== "PASS") {
+      throw new Error("The repaired reference Snapshot did not restore its continuous-protection gate");
+    }
 
     process.stdout.write(`${JSON.stringify({
       projectId,
@@ -501,6 +509,14 @@ async function main() {
         assertions: finalGraph.nodes.filter((node) => node.type === "TEST_ASSERTION").length,
         featureToEvidencePathFound: proofPath.found,
         featureToEvidenceHops: proofPath.hopCount,
+      },
+      continuousProtection: {
+        selectionStrategy: finalProtection.regressionPlan.selectionStrategy,
+        selectedTestSpecIds: finalProtection.regressionPlan.selectedTests.map((item) => item.id),
+        staleStatus: staleProtection.qualityGate.status,
+        staleEnforcement: staleProtection.qualityGate.enforcement,
+        finalStatus: finalProtection.qualityGate.status,
+        finalEnforcement: finalProtection.qualityGate.enforcement,
       },
     }, null, 2)}\n`);
   } finally {

@@ -135,6 +135,14 @@ The built-in reference-pilot slice adds:
 - a real source modification in an isolated copy, Snapshot comparison, affected-Feature invalidation, explicit stale gaps, authorized implementation reanalysis, regression execution on the new deployment, and restoration of a complete chain;
 - reuse of the unchanged approved TestSpec across Snapshots: its `sourceSnapshotId` remains generation provenance, while the signed Runner task and Evidence bind the actual execution Snapshot and deployment.
 
+The continuous-protection slice adds:
+
+- a server-derived regression plan that selects mapped affected TestSpecs union an operator-configured fixed high-risk set;
+- conservative fallback expansion whenever Fact comparison is incomplete or emits warnings;
+- explicit unresolved tests, per-Feature independent dimensions, TraceGaps, selection reasons, and required repair actions;
+- separate `PASS`, `BLOCKED`, and `UNKNOWN` assessment from `ADVISORY`, `MANUAL_APPROVAL`, and `ENFORCED` policy enforcement;
+- an API, CI exit-code CLI, product gate panel, and vertical-pilot proof that transitions from blocked after change to pass after reanalysis and current-deployment execution.
+
 The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision, candidate-review, and TestSpec-approval routes additionally fail closed unless `REVIEWER_ID` is configured, and may use a distinct `REVIEWER_BEARER_TOKEN`; implementation reanalysis has the equivalent `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
 
 ## Run
@@ -148,6 +156,7 @@ npm run test:web
 npm run test:reference
 npm run example
 npm run pilot:order-submit
+npm run quality-gate -- --base-url http://127.0.0.1:3000 --project PROJECT-001 --change-set CHANGESET-001
 npm run scan:self
 npm run api:dev
 npm run api:serve
@@ -156,6 +165,8 @@ npm run api:serve
 The development API binds to `127.0.0.1:3000` by default. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
 
 The production API binds to `0.0.0.0:3000` by default and requires `DATABASE_URL` plus `API_BEARER_TOKEN`. `POSTGRES_SSL` is `require` by default and also accepts `no-verify` or `disable` for explicitly controlled environments. `CORS_ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist. On startup the process connects through the pinned `pg` client, verifies and applies pending migrations, then serves the PostgreSQL-backed application. Create the initial boundary through `POST /v1/projects`, register immutable execution context through `POST /v1/projects/{projectId}/snapshots`, and send the API token through `Authorization: Bearer ...` or `x-traqen-api-token`.
+
+`QUALITY_GATE_MODE` defaults to `ADVISORY` and may be set to `MANUAL_APPROVAL` or `ENFORCED`. `HIGH_RISK_FEATURE_IDS`, `FIXED_HIGH_RISK_TEST_SPEC_IDS`, and `CONSERVATIVE_REGRESSION_TEST_SPEC_IDS` are comma-separated policy inputs. The quality-gate CLI reads its credential from `TRAQEN_API_TOKEN` (or `API_BEARER_TOKEN`), returns 0 for pass/advisory warning, 1 for enforced failure, 2 when manual approval is required, and 3 for API/configuration failure.
 
 Evaluate another trace-chain input:
 
@@ -179,6 +190,8 @@ The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans
 Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions until the separate authorized review flow records an outcome.
 
 Review one candidate with `POST /v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews`, then read its governed baseline and server-derived proof chain from `GET /v1/projects/{projectId}/features/{featureId}/baseline` and `GET /v1/projects/{projectId}/features/{featureId}/traceability?snapshotManifestId=...`. Explore the same data through `GET /v1/projects/{projectId}/features/{featureId}/graph?snapshotManifestId=...` and the bounded path-query endpoint. Compare two manifests with `POST /v1/projects/{projectId}/change-sets`; the immutable impact record is available at `GET /v1/projects/{projectId}/change-sets/{changeSetId}/impact`.
+
+Derive its incremental regression and policy-controlled CI result from `GET /v1/projects/{projectId}/change-sets/{changeSetId}/continuous-protection`. This endpoint never turns incomplete impact into a pass and never replaces the individual Feature trust dimensions with one composite score.
 
 After a changed implementation is analyzed in a new Reverse Run, an authorized developer or architect can repair the stale implementation segment with `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses`. This creates a new Snapshot-bound mapping and conformance record for the existing Claim and Scope; it never edits or replaces the normative Decision.
 

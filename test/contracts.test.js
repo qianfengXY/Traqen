@@ -88,6 +88,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getChangeImpact",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/change-sets/{changeSetId}/continuous-protection"].get.operationId,
+    "getContinuousProtectionAssessment",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/test-specs"].post.operationId,
     "appendTestSpec",
   );
@@ -237,6 +241,19 @@ test("change-impact contract separates invalidated derived layers from preserved
   assert.ok(contract.required.includes("continuities"));
   assert.ok(contract.$defs.ImpactAssessment.required.includes("continuedFeatureIds"));
   assert.ok(contract.$defs.ImplementationContinuity.required.includes("factRefRebindings"));
+});
+
+test("continuous-protection contract keeps regression selection and gate enforcement explainable", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/continuous-protection.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "ContinuousProtectionAssessment");
+  assert.ok(contract.required.includes("regressionPlan"));
+  assert.ok(contract.required.includes("featureAssessments"));
+  assert.deepEqual(contract.$defs.QualityGate.properties.status.enum, ["PASS", "BLOCKED", "UNKNOWN"]);
+  assert.deepEqual(contract.$defs.QualityGate.properties.enforcement.enum, ["PASS", "WARN", "REQUIRE_APPROVAL", "FAIL"]);
+  assert.ok(contract.$defs.SelectedTest.required.includes("reasons"));
 });
 
 test("implementation reanalysis contract keeps actor identity server-side and reuses governed records", async () => {

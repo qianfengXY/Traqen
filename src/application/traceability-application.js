@@ -2,6 +2,7 @@ import {
   createClaim,
   createClaimScope,
   createChangeSet,
+  createContinuousProtectionAssessment,
   createDecision,
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -137,6 +138,7 @@ export class TraceabilityApplication {
   #reviewPolicyResolver;
   #implementationReviewerResolver;
   #implementationPolicyResolver;
+  #continuousProtectionPolicyResolver;
 
   constructor({
     store,
@@ -151,6 +153,7 @@ export class TraceabilityApplication {
     reviewPolicyResolver = () => ({ allowedRoles: [], allowedOutcomes: [] }),
     implementationReviewerResolver = () => null,
     implementationPolicyResolver = () => ({ allowedRoles: [] }),
+    continuousProtectionPolicyResolver = () => ({ mode: "ADVISORY" }),
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -166,6 +169,9 @@ export class TraceabilityApplication {
     if (typeof implementationPolicyResolver !== "function") {
       throw new TypeError("implementationPolicyResolver must be a function");
     }
+    if (typeof continuousProtectionPolicyResolver !== "function") {
+      throw new TypeError("continuousProtectionPolicyResolver must be a function");
+    }
     this.#store = store;
     this.#clock = clock;
     this.#runnerKeyResolver = runnerKeyResolver;
@@ -178,6 +184,7 @@ export class TraceabilityApplication {
     this.#reviewPolicyResolver = reviewPolicyResolver;
     this.#implementationReviewerResolver = implementationReviewerResolver;
     this.#implementationPolicyResolver = implementationPolicyResolver;
+    this.#continuousProtectionPolicyResolver = continuousProtectionPolicyResolver;
   }
 
   async createProject(input) {
@@ -1488,5 +1495,36 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(changeSetId, "changeSetId");
     return this.#store.getChangeImpact(projectId, changeSetId);
+  }
+
+  async getContinuousProtectionAssessment(projectId, changeSetId) {
+    requireId(projectId, "projectId");
+    requireId(changeSetId, "changeSetId");
+    const changeImpact = await this.#store.getChangeImpact(projectId, changeSetId);
+    if (!changeImpact) return null;
+    const policy = await this.#continuousProtectionPolicyResolver(projectId, { changeImpact });
+    const conservative = changeImpact.changeSet.complete !== true || changeImpact.changeSet.warnings.length > 0;
+    const requestedTestSpecIds = [...new Set([
+      ...changeImpact.impact.affectedTestSpecIds,
+      ...(policy?.fixedHighRiskTestSpecIds ?? []),
+      ...(conservative ? policy?.conservativeTestSpecIds ?? [] : []),
+    ])];
+    const testSpecs = (await Promise.all(
+      requestedTestSpecIds.map((testSpecId) => this.#store.getTestSpec(projectId, testSpecId)),
+    )).filter(Boolean);
+    const featureIds = [...new Set([
+      ...changeImpact.impact.affectedFeatureIds,
+      ...testSpecs.map((testSpec) => testSpec.featureId),
+      ...(policy?.highRiskFeatureIds ?? []),
+    ])];
+    const traceabilities = await Promise.all(featureIds.map((featureId) =>
+      this.getFeatureTraceability(projectId, featureId, changeImpact.impact.toSnapshotManifestId)));
+    return createContinuousProtectionAssessment({
+      projectId,
+      changeImpact,
+      testSpecs,
+      traceabilities,
+      policy,
+    }, this.#clock);
   }
 }
