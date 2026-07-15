@@ -149,7 +149,8 @@ The governed Feature-traceability slice adds:
 - deterministic carry-forward of unchanged Fact mappings and conformance into a new Snapshot, while changed implementation invalidates only its derived layers and preserves normative Claims, business Decisions, historical Facts, Evidence, and audit history;
 - a no-Shell Git Diff analyzer that accepts only full commit hashes, preserves add/delete/modify/rename paths, and deterministically correlates changed artifacts with Snapshot Fact changes;
 - an authenticated implementation-reanalysis workflow that binds a reviewed current-Snapshot Reverse Candidate back to the existing normative Claim, records reviewer provenance in immutable conformance analysis, and closes the stale implementation segment without creating a replacement business Decision;
-- append-only PostgreSQL migrations through `0011_evidence_lifecycle`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
+- governed Feature evolution with sequential immutable versions, version-bound aliases, and human-attributed merge/split lineage that rejects dangling or cyclic edges;
+- append-only PostgreSQL migrations through `0012_feature_evolution`, plus equivalent in-memory behavior and HTTP/OpenAPI contracts.
 
 The product-interface slice adds:
 

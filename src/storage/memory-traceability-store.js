@@ -21,6 +21,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #manifests = new Map();
   #chains = new Map();
   #features = new Map();
+  #featureAliases = new Map();
+  #featureLineages = new Map();
   #scopes = new Map();
   #claims = new Map();
   #decisions = new Map();
@@ -362,6 +364,54 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
         .filter(([storageKey]) => storageKey.startsWith(`${projectId}\u0000`))
         .map(([, feature]) => feature.id),
     )].sort());
+  }
+
+  async appendFeatureAlias(projectId, alias) {
+    if (!this.#features.has(key(projectId, `${alias.featureId}\u0000${alias.featureVersion}`))) {
+      throw new PersistenceConflictError(`Feature ${alias.featureId}@${alias.featureVersion} does not exist`);
+    }
+    const storageKey = key(projectId, alias.aliasKey);
+    const existing = this.#featureAliases.get(storageKey);
+    if (existing && canonicalJson(recordIdentity(existing)) !== canonicalJson(recordIdentity(alias))) {
+      throw new PersistenceConflictError(`Feature alias ${alias.alias} is already assigned`);
+    }
+    if (!existing) this.#featureAliases.set(storageKey, deepFreeze(structuredClone(alias)));
+    return this.#featureAliases.get(storageKey);
+  }
+
+  async listFeatureAliases(projectId, featureId) {
+    return deepFreeze([...this.#featureAliases.entries()]
+      .filter(([storageKey, alias]) => storageKey.startsWith(`${projectId}\u0000`) && alias.featureId === featureId)
+      .map(([, alias]) => alias)
+      .sort((left, right) => left.aliasKey.localeCompare(right.aliasKey)));
+  }
+
+  async appendFeatureLineage(projectId, lineage) {
+    const featureIds = new Set(await this.listFeatureIds(projectId));
+    if (!featureIds.has(lineage.predecessorFeatureId) || !featureIds.has(lineage.successorFeatureId)) {
+      throw new PersistenceConflictError("Feature lineage endpoints must exist in the project");
+    }
+    const storageKey = key(projectId, lineage.id);
+    const relationKey = key(projectId, `${lineage.predecessorFeatureId}\u0000${lineage.successorFeatureId}\u0000${lineage.relationType}`);
+    const existing = this.#featureLineages.get(storageKey);
+    const duplicateRelation = [...this.#featureLineages.entries()].find(([candidateKey, item]) =>
+      candidateKey.startsWith(`${projectId}\u0000`) && candidateKey !== storageKey &&
+      key(projectId, `${item.predecessorFeatureId}\u0000${item.successorFeatureId}\u0000${item.relationType}`) === relationKey,
+    )?.[1];
+    if ((existing && canonicalJson(recordIdentity(existing)) !== canonicalJson(recordIdentity(lineage))) || duplicateRelation) {
+      throw new PersistenceConflictError(`Feature lineage ${lineage.id} conflicts with immutable history`);
+    }
+    if (!existing) this.#featureLineages.set(storageKey, deepFreeze(structuredClone(lineage)));
+    return this.#featureLineages.get(storageKey);
+  }
+
+  async listFeatureLineages(projectId, featureId = null) {
+    return deepFreeze([...this.#featureLineages.entries()]
+      .filter(([storageKey, lineage]) => storageKey.startsWith(`${projectId}\u0000`) && (
+        featureId === null || lineage.predecessorFeatureId === featureId || lineage.successorFeatureId === featureId
+      ))
+      .map(([, lineage]) => lineage)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)));
   }
 
   async appendTestSpec(projectId, testSpec) {

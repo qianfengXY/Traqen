@@ -210,6 +210,47 @@ test("business process endpoint assigns reviewer identity and returns the govern
   assert.equal((await found.json()).transitions[0].id, "TRANSITION-SUBMIT");
 });
 
+test("Feature evolution API requires a human governor and exposes aliases and lineage", async (t) => {
+  const baseUrl = await startServer(t, {
+    reviewerResolver: (_projectId, context) => context.authorization === "Bearer feature-owner-token"
+      ? { actorId: "OWNER-FEATURE", actorRole: "product-owner" }
+      : null,
+    reviewPolicyResolver: () => ({ allowedFeatureGovernanceRoles: ["product-owner"] }),
+  });
+  const projectUrl = `${baseUrl}/v1/projects/PROJECT-FEATURE-EVOLUTION`;
+  await postJson(`${baseUrl}/v1/projects`, {
+    organization: { id: "ORG-FEATURE-EVOLUTION", name: "Feature org" },
+    tenant: { id: "TENANT-FEATURE-EVOLUTION", name: "Feature tenant" },
+    project: { id: "PROJECT-FEATURE-EVOLUTION", name: "Feature project" },
+    principals: [{ id: "OWNER-FEATURE", type: "USER", displayName: "Feature owner" }],
+  });
+  await postJson(`${projectUrl}/features`, { id: "FEATURE-OLD", version: 1, name: "Legacy order" });
+  await postJson(`${projectUrl}/features`, { id: "FEATURE-NEW", version: 1, name: "Order management" });
+
+  const unauthenticated = await postJson(`${projectUrl}/features/FEATURE-OLD/aliases`, {
+    featureVersion: 1, alias: "Orders", rationale: "Keep an import alias.",
+  });
+  assert.equal(unauthenticated.response.status, 401);
+  const headers = { authorization: "Bearer feature-owner-token" };
+  const alias = await postJson(`${projectUrl}/features/FEATURE-OLD/aliases`, {
+    featureVersion: 1, alias: "Orders", rationale: "Keep an import alias.",
+  }, headers);
+  assert.equal(alias.response.status, 201);
+  assert.equal(alias.body.actorId, "OWNER-FEATURE");
+  const lineage = await postJson(`${projectUrl}/feature-lineages`, {
+    id: "LINEAGE-API-001",
+    predecessorFeatureId: "FEATURE-OLD",
+    successorFeatureId: "FEATURE-NEW",
+    relationType: "MERGED_INTO",
+    rationale: "The replacement consolidates the governed capability.",
+  }, headers);
+  assert.equal(lineage.response.status, 201);
+  const aliases = await fetch(`${projectUrl}/features/FEATURE-OLD/aliases`);
+  assert.equal((await aliases.json()).aliases[0].alias, "Orders");
+  const lineages = await fetch(`${projectUrl}/feature-lineages?featureId=FEATURE-NEW`);
+  assert.equal((await lineages.json()).lineages[0].id, "LINEAGE-API-001");
+});
+
 test("Decision review API keeps proposer and two approvers distinct before publishing authority", async (t) => {
   const identities = new Map([
     ["Bearer proposer-token", { actorId: "PROPOSER-API", actorRole: "business-owner" }],

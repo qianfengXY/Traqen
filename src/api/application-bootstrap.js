@@ -114,6 +114,7 @@ export function createConfiguredApplication({ store, env = process.env }) {
       ],
       allowedTestSpecApproverRoles: [reviewerRole],
       allowedProcessModelRoles: [reviewerRole],
+      allowedFeatureGovernanceRoles: [reviewerRole],
       allowedEvidenceLifecycleRoles: commaSeparated(env.EVIDENCE_LIFECYCLE_ROLES, reviewerRole),
       decisionGovernance: {
         proposerRoles: commaSeparated(env.DECISION_PROPOSER_ROLES, reviewerRole),

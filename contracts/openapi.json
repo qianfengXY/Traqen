@@ -353,6 +353,55 @@
         }
       }
     },
+    "/v1/projects/{projectId}/features/{featureId}/aliases": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "listFeatureAliases",
+        "responses": { "200": { "description": "Human-governed aliases for the stable Feature ID", "content": { "application/json": { "schema": {
+          "type": "object", "required": ["aliases"], "properties": { "aliases": { "type": "array", "items": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureAlias" } } }, "additionalProperties": false
+        } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "post": {
+        "operationId": "appendFeatureAlias",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["featureVersion", "alias", "rationale"],
+          "properties": { "featureVersion": { "type": "integer", "minimum": 1 }, "alias": { "type": "string", "minLength": 1 }, "rationale": { "type": "string", "minLength": 1 } },
+          "additionalProperties": false
+        } } } },
+        "responses": {
+          "201": { "description": "Immutable alias assignment", "content": { "application/json": { "schema": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureAlias" } } } },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" }, "403": { "$ref": "#/components/responses/ReviewerForbidden" }, "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/feature-lineages": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listFeatureLineages",
+        "parameters": [{ "name": "featureId", "in": "query", "required": false, "schema": { "type": "string", "minLength": 1 } }],
+        "responses": { "200": { "description": "Immutable Feature evolution graph edges", "content": { "application/json": { "schema": {
+          "type": "object", "required": ["lineages"], "properties": { "lineages": { "type": "array", "items": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureLineage" } } }, "additionalProperties": false
+        } } } } }
+      },
+      "post": {
+        "operationId": "appendFeatureLineage",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["id", "predecessorFeatureId", "successorFeatureId", "relationType", "rationale"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 }, "predecessorFeatureId": { "type": "string", "minLength": 1 },
+            "successorFeatureId": { "type": "string", "minLength": 1 }, "relationType": { "enum": ["PREDECESSOR_OF", "SUCCESSOR_OF", "MERGED_INTO", "SPLIT_INTO"] },
+            "rationale": { "type": "string", "minLength": 1 }
+          }, "additionalProperties": false
+        } } } },
+        "responses": {
+          "201": { "description": "Human-governed immutable lineage edge", "content": { "application/json": { "schema": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureLineage" } } } },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" }, "403": { "$ref": "#/components/responses/ReviewerForbidden" }, "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/features/{featureId}/conflicts": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },

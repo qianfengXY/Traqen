@@ -61,6 +61,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getFeatureTraceChains",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/aliases"].post.operationId,
+    "appendFeatureAlias",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/feature-lineages"].post.operationId,
+    "appendFeatureLineage",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/decision-review-cases"].post.operationId,
     "createDecisionReviewCase",
   );
@@ -444,4 +452,16 @@ test("Runner task contract requires replay protection, policy binding, and a tar
   assert.ok(contract.required.includes("runnerId"));
   assert.ok(contract.required.includes("expiresAt"));
   assert.equal(contract.$defs.TaskAttestation.properties.algorithm.const, "HMAC-SHA256");
+});
+
+test("Feature evolution contract keeps aliases versioned and lineage human-governed", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/feature-evolution.schema.json", import.meta.url), "utf8"),
+  );
+  assert.ok(contract.$defs.FeatureAlias.required.includes("featureVersion"));
+  assert.ok(contract.$defs.FeatureAlias.required.includes("actorId"));
+  assert.deepEqual(contract.$defs.FeatureLineage.properties.relationType.enum, [
+    "PREDECESSOR_OF", "SUCCESSOR_OF", "MERGED_INTO", "SPLIT_INTO",
+  ]);
+  assert.ok(contract.$defs.FeatureLineage.required.includes("rationale"));
 });

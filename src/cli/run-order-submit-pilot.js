@@ -202,6 +202,7 @@ async function main() {
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
       allowedTestSpecApproverRoles: ["business-owner"],
       allowedProcessModelRoles: ["business-owner"],
+      allowedFeatureGovernanceRoles: ["business-owner"],
     }),
     implementationReviewerResolver: () => ({ actorId: "DEVELOPER-ORDER", actorRole: "developer" }),
     implementationPolicyResolver: () => ({ allowedRoles: ["developer"] }),

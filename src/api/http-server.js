@@ -409,6 +409,23 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, { features: await application.listFeatures(projectId) }, id);
         return;
       }
+      const featureLineageCollectionMatch = /^\/v1\/projects\/([^/]+)\/feature-lineages$/.exec(url.pathname);
+      if (request.method === "GET" && featureLineageCollectionMatch) {
+        const projectId = decodePathSegment(featureLineageCollectionMatch[1]);
+        const featureId = url.searchParams.get("featureId");
+        sendJson(response, 200, { lineages: await application.listFeatureLineages(projectId, featureId) }, id);
+        return;
+      }
+      if (request.method === "POST" && featureLineageCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(featureLineageCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.appendFeatureLineage(projectId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
+        return;
+      }
       if (request.method === "POST" && governanceAppendMatch) {
         requireJson(request);
         const projectId = decodePathSegment(governanceAppendMatch[1]);
@@ -435,6 +452,27 @@ export function createTraceabilityHttpHandler({
         const baseline = await application.getFeatureBaseline(projectId, featureId);
         if (!baseline) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, baseline, id);
+        return;
+      }
+
+      const featureAliasCollectionMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/aliases$/.exec(url.pathname);
+      if (request.method === "GET" && featureAliasCollectionMatch) {
+        const projectId = decodePathSegment(featureAliasCollectionMatch[1]);
+        const featureId = decodePathSegment(featureAliasCollectionMatch[2]);
+        const aliases = await application.listFeatureAliases(projectId, featureId);
+        if (!aliases) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, { aliases }, id);
+        return;
+      }
+      if (request.method === "POST" && featureAliasCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(featureAliasCollectionMatch[1]);
+        const featureId = decodePathSegment(featureAliasCollectionMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.appendFeatureAlias(projectId, featureId, input, {
+          authorization: request.headers.authorization ?? null,
+          requestId: id,
+        }), id);
         return;
       }
 

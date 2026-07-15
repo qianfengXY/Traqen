@@ -40,6 +40,7 @@ async function migratedDatabase() {
     "0009_decision_governance",
     "0010_reverse_run_job",
     "0011_evidence_lifecycle",
+    "0012_feature_evolution",
   ]);
   return database;
 }
@@ -251,6 +252,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "evidence",
     "evidence_retention_policy",
     "evidence_lifecycle_event",
+    "feature_alias",
     "trace_chain_revision",
     "trace_gap",
     "audit_event",
@@ -308,6 +310,36 @@ test("PostgreSQL persists authorized business process models against a Feature v
   const baseline = await application.getFeatureBaseline("PROJECT-001", "FEATURE-PROCESS-001");
   assert.equal(baseline.processModel.id, "PROCESS-001");
   assert.equal((await application.getBusinessProcessModel("PROJECT-001", "FEATURE-PROCESS-001")).version, 1);
+});
+
+test("PostgreSQL preserves Feature aliases and human-governed lineage", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const application = new TraceabilityApplication({
+    store: new PostgresTraceabilityStore(database),
+    clock: fixedClock,
+    reviewerResolver: () => ({ actorId: "USER-001", actorRole: "business-owner" }),
+    reviewPolicyResolver: () => ({ allowedFeatureGovernanceRoles: ["business-owner"] }),
+  });
+  await application.appendFeatureVersion("PROJECT-001", { id: "FEATURE-OLD", version: 1, name: "Legacy" });
+  await application.appendFeatureVersion("PROJECT-001", { id: "FEATURE-NEW", version: 1, name: "Replacement" });
+  const alias = await application.appendFeatureAlias("PROJECT-001", "FEATURE-OLD", {
+    featureVersion: 1,
+    alias: "Old order flow",
+    rationale: "Preserve imported references.",
+  });
+  assert.equal(alias.actorId, "USER-001");
+  const lineage = await application.appendFeatureLineage("PROJECT-001", {
+    id: "LINEAGE-DB-001",
+    predecessorFeatureId: "FEATURE-OLD",
+    successorFeatureId: "FEATURE-NEW",
+    relationType: "PREDECESSOR_OF",
+    rationale: "The replacement supersedes the legacy capability.",
+  });
+  assert.equal(lineage.id, "LINEAGE-DB-001");
+  assert.equal((await application.listFeatureAliases("PROJECT-001", "FEATURE-OLD")).length, 1);
+  assert.equal((await application.listFeatureLineages("PROJECT-001", "FEATURE-NEW")).length, 1);
 });
 
 test("PostgreSQL atomically materializes a dual-approved Decision with its review history", async (t) => {

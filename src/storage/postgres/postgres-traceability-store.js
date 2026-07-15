@@ -22,6 +22,11 @@ function isoOrNull(value) {
   return value === null || value === undefined ? null : new Date(value).toISOString();
 }
 
+function recordIdentity(record) {
+  const { createdAt: _createdAt, ...identity } = record;
+  return identity;
+}
+
 function manifestContentHash(manifest) {
   return createHash("sha256")
     .update(
@@ -1094,6 +1099,113 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       [projectId],
     );
     return deepFreeze(result.rows.map((row) => row.feature_id));
+  }
+
+  async appendFeatureAlias(projectId, alias) {
+    requireId(projectId, "projectId");
+    await this.#database.query(
+      `INSERT INTO feature_alias (
+         project_id, feature_id, feature_version, alias, alias_key, actor_id, actor_role, rationale, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (project_id, alias_key) DO NOTHING`,
+      [projectId, alias.featureId, alias.featureVersion, alias.alias, alias.aliasKey,
+        alias.actorId, alias.actorRole, alias.rationale, alias.createdAt],
+    );
+    const result = await this.#database.query(
+      `SELECT feature_id, feature_version, alias, alias_key, actor_id, actor_role, rationale, created_at
+       FROM feature_alias WHERE project_id = $1 AND alias_key = $2`,
+      [projectId, alias.aliasKey],
+    );
+    const row = result.rows[0];
+    const stored = row ? {
+      featureId: row.feature_id,
+      featureVersion: row.feature_version,
+      alias: row.alias,
+      aliasKey: row.alias_key,
+      actorId: row.actor_id,
+      actorRole: row.actor_role,
+      rationale: row.rationale,
+      createdAt: new Date(row.created_at).toISOString(),
+    } : null;
+    if (!stored || canonicalJson(recordIdentity(stored)) !== canonicalJson(recordIdentity(alias))) {
+      throw new PersistenceConflictError(`Feature alias ${alias.alias} is already assigned`);
+    }
+    return deepFreeze(stored);
+  }
+
+  async listFeatureAliases(projectId, featureId) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    const result = await this.#database.query(
+      `SELECT feature_id, feature_version, alias, alias_key, actor_id, actor_role, rationale, created_at
+       FROM feature_alias WHERE project_id = $1 AND feature_id = $2 ORDER BY alias_key`,
+      [projectId, featureId],
+    );
+    return deepFreeze(result.rows.map((row) => ({
+      featureId: row.feature_id,
+      featureVersion: row.feature_version,
+      alias: row.alias,
+      aliasKey: row.alias_key,
+      actorId: row.actor_id,
+      actorRole: row.actor_role,
+      rationale: row.rationale,
+      createdAt: new Date(row.created_at).toISOString(),
+    })));
+  }
+
+  async appendFeatureLineage(projectId, lineage) {
+    requireId(projectId, "projectId");
+    await this.#database.query(
+      `INSERT INTO feature_lineage (
+         project_id, predecessor_id, successor_id, relation_type, decision_id, actor_id, actor_role, rationale, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (project_id, predecessor_id, successor_id, relation_type) DO NOTHING`,
+      [projectId, lineage.predecessorFeatureId, lineage.successorFeatureId, lineage.relationType,
+        lineage.id, lineage.actorId, lineage.actorRole, lineage.rationale, lineage.createdAt],
+    );
+    const result = await this.#database.query(
+      `SELECT predecessor_id, successor_id, relation_type, decision_id, actor_id, actor_role, rationale, created_at
+       FROM feature_lineage
+       WHERE project_id = $1 AND predecessor_id = $2 AND successor_id = $3 AND relation_type = $4`,
+      [projectId, lineage.predecessorFeatureId, lineage.successorFeatureId, lineage.relationType],
+    );
+    const row = result.rows[0];
+    const stored = row ? {
+      id: row.decision_id,
+      predecessorFeatureId: row.predecessor_id,
+      successorFeatureId: row.successor_id,
+      relationType: row.relation_type,
+      actorId: row.actor_id,
+      actorRole: row.actor_role,
+      rationale: row.rationale,
+      createdAt: new Date(row.created_at).toISOString(),
+    } : null;
+    if (!stored || canonicalJson(recordIdentity(stored)) !== canonicalJson(recordIdentity(lineage))) {
+      throw new PersistenceConflictError(`Feature lineage ${lineage.id} conflicts with immutable history`);
+    }
+    return deepFreeze(stored);
+  }
+
+  async listFeatureLineages(projectId, featureId = null) {
+    requireId(projectId, "projectId");
+    if (featureId !== null) requireId(featureId, "featureId");
+    const result = await this.#database.query(
+      `SELECT predecessor_id, successor_id, relation_type, decision_id, actor_id, actor_role, rationale, created_at
+       FROM feature_lineage
+       WHERE project_id = $1 AND ($2::text IS NULL OR predecessor_id = $2 OR successor_id = $2)
+       ORDER BY created_at, decision_id`,
+      [projectId, featureId],
+    );
+    return deepFreeze(result.rows.map((row) => ({
+      id: row.decision_id,
+      predecessorFeatureId: row.predecessor_id,
+      successorFeatureId: row.successor_id,
+      relationType: row.relation_type,
+      actorId: row.actor_id,
+      actorRole: row.actor_role,
+      rationale: row.rationale,
+      createdAt: new Date(row.created_at).toISOString(),
+    })));
   }
 
   async appendTestSpec(projectId, testSpec) {

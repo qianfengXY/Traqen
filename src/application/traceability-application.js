@@ -24,6 +24,8 @@ import {
   createReverseSkillManifest,
   createReverseSkillRegistration,
   createFeatureVersion,
+  createFeatureAlias,
+  createFeatureLineage,
   createFeatureGraphProjection,
   createSnapshotManifest,
   createTestSpec,
@@ -71,6 +73,25 @@ function assertOnlyFields(value, allowedFields, fieldName) {
   for (const field of Object.keys(value)) {
     if (!allowedFields.includes(field)) throw new TypeError(`${fieldName}.${field} is not supported`);
   }
+}
+
+function introducesFeatureLineageCycle(lineages, predecessorFeatureId, successorFeatureId) {
+  const adjacency = new Map();
+  for (const lineage of lineages) {
+    const successors = adjacency.get(lineage.predecessorFeatureId) ?? [];
+    successors.push(lineage.successorFeatureId);
+    adjacency.set(lineage.predecessorFeatureId, successors);
+  }
+  const pending = [successorFeatureId];
+  const visited = new Set();
+  while (pending.length > 0) {
+    const featureId = pending.pop();
+    if (featureId === predecessorFeatureId) return true;
+    if (visited.has(featureId)) continue;
+    visited.add(featureId);
+    pending.push(...(adjacency.get(featureId) ?? []));
+  }
+  return false;
 }
 
 function currentReference(value, currentId) {
@@ -274,8 +295,75 @@ export class TraceabilityApplication {
   async appendFeatureVersion(projectId, input) {
     requireId(projectId, "projectId");
     const feature = createFeatureVersion(input, this.#clock);
+    const baseline = await this.#store.getFeatureBaseline(projectId, feature.id);
+    if (!baseline && feature.version !== 1) {
+      throw new PersistenceConflictError("A new Feature must start at version 1");
+    }
+    if (baseline && feature.version !== baseline.feature.version && feature.version !== baseline.feature.version + 1) {
+      throw new PersistenceConflictError(
+        `Feature ${feature.id} must advance from version ${baseline.feature.version} to ${baseline.feature.version + 1}`,
+      );
+    }
     await this.#store.appendFeatureVersion(projectId, feature);
     return feature;
+  }
+
+  async #featureGovernor(projectId, requestContext) {
+    const reviewer = await this.#reviewerResolver(projectId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError();
+    const actorId = requireId(reviewer.actorId, "reviewer.actorId");
+    const actorRole = requireId(reviewer.actorRole, "reviewer.actorRole");
+    const policy = await this.#reviewPolicyResolver(projectId);
+    const allowedRoles = policy.allowedFeatureGovernanceRoles ?? policy.allowedProcessModelRoles ?? [];
+    if (!Array.isArray(allowedRoles) || !allowedRoles.includes(actorRole)) {
+      throw new ReviewAuthorizationError(`Role ${actorRole} cannot govern Feature evolution in this project`);
+    }
+    return { actorId, actorRole };
+  }
+
+  async appendFeatureAlias(projectId, featureId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    assertOnlyFields(input, ["featureVersion", "alias", "rationale"], "featureAlias");
+    const baseline = await this.#store.getFeatureBaseline(projectId, featureId);
+    if (!baseline) throw new PersistenceConflictError(`Feature ${featureId} does not exist`);
+    if (input.featureVersion !== baseline.feature.version) {
+      throw new PersistenceConflictError("A new alias must bind the current immutable Feature version");
+    }
+    const actor = await this.#featureGovernor(projectId, requestContext);
+    const alias = createFeatureAlias({ ...input, featureId, ...actor }, this.#clock);
+    return this.#store.appendFeatureAlias(projectId, alias);
+  }
+
+  async listFeatureAliases(projectId, featureId) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    if (!await this.#store.getFeatureBaseline(projectId, featureId)) return null;
+    return this.#store.listFeatureAliases(projectId, featureId);
+  }
+
+  async appendFeatureLineage(projectId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    assertOnlyFields(input, ["id", "predecessorFeatureId", "successorFeatureId", "relationType", "rationale"], "featureLineage");
+    const actor = await this.#featureGovernor(projectId, requestContext);
+    const lineage = createFeatureLineage({ ...input, ...actor }, this.#clock);
+    const [predecessor, successor, existing] = await Promise.all([
+      this.#store.getFeatureBaseline(projectId, lineage.predecessorFeatureId),
+      this.#store.getFeatureBaseline(projectId, lineage.successorFeatureId),
+      this.#store.listFeatureLineages(projectId),
+    ]);
+    if (!predecessor || !successor) throw new PersistenceConflictError("Feature lineage endpoints must exist in the project");
+    const same = existing.find((item) => item.id === lineage.id);
+    if (!same && introducesFeatureLineageCycle(existing, lineage.predecessorFeatureId, lineage.successorFeatureId)) {
+      throw new PersistenceConflictError("Feature lineage would create a cycle");
+    }
+    return this.#store.appendFeatureLineage(projectId, lineage);
+  }
+
+  async listFeatureLineages(projectId, featureId = null) {
+    requireId(projectId, "projectId");
+    if (featureId !== null) requireId(featureId, "featureId");
+    return this.#store.listFeatureLineages(projectId, featureId);
   }
 
   async appendClaimScope(projectId, input) {

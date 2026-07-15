@@ -71,6 +71,22 @@ export class TraceabilityStore {
     throw new Error("listFeatureIds must be implemented");
   }
 
+  async appendFeatureAlias(_projectId, _alias) {
+    throw new Error("appendFeatureAlias must be implemented");
+  }
+
+  async listFeatureAliases(_projectId, _featureId) {
+    throw new Error("listFeatureAliases must be implemented");
+  }
+
+  async appendFeatureLineage(_projectId, _lineage) {
+    throw new Error("appendFeatureLineage must be implemented");
+  }
+
+  async listFeatureLineages(_projectId, _featureId = null) {
+    throw new Error("listFeatureLineages must be implemented");
+  }
+
   async appendTestSpec(_projectId, _testSpec) {
     throw new Error("appendTestSpec must be implemented");
   }
