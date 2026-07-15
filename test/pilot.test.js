@@ -29,4 +29,10 @@ test("built-in order pilot executes, invalidates, repairs, and re-proves one com
   assert.equal(result.repair.regressionExecution, "PASS");
   assert.equal(result.repair.finalTraceComplete, true);
   assert.equal(result.repair.finalGapCount, 0);
+  assert.match(result.graph.snapshotManifestId, /^SNAPSHOT-/);
+  assert.ok(result.graph.nodes >= 10);
+  assert.ok(result.graph.edges >= 10);
+  assert.ok(result.graph.assertions >= 2);
+  assert.equal(result.graph.featureToEvidencePathFound, true);
+  assert.ok(result.graph.featureToEvidenceHops >= 3);
 });

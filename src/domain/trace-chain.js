@@ -141,9 +141,17 @@ function createSegments(input, chainId, identity, conformance, executionIsCurren
   if (input.testSpec?.id) {
     const testSpec = traceNode("TEST_SPEC", input.testSpec, input.testSpec.id);
     append(claim, "VERIFIED_BY", testSpec, "APPROVED_TEST_SPEC", input.testSpec.approved ? "ACTIVE" : "PENDING");
+    const assertions = (input.testSpec.assertions ?? []).map((assertion, index) =>
+      traceNode("TEST_ASSERTION", assertion, `${input.testSpec.id}:ASSERTION:${index + 1}`));
+    for (const assertion of assertions) {
+      append(testSpec, "HAS_ASSERTION", assertion, "DETERMINISTIC_ASSERTION", input.testSpec.approved ? "ACTIVE" : "PENDING");
+    }
     if (input.execution?.id) {
       const execution = traceNode("TEST_EXECUTION", input.execution, input.execution.id);
       append(testSpec, "EXECUTED_AS", execution, "ATTESTED_RUNNER", executionIsCurrent ? "ACTIVE" : "STALE");
+      for (const assertion of assertions) {
+        append(assertion, "EVALUATED_IN", execution, "DETERMINISTIC_ASSERTION_RESULT", executionIsCurrent ? "ACTIVE" : "STALE");
+      }
       for (const [index, evidence] of (input.evidence ?? []).entries()) {
         if (evidence.executionId !== input.execution.id) continue;
         append(

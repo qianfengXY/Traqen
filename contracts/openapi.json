@@ -238,6 +238,80 @@
         }
       }
     },
+    "/v1/projects/{projectId}/features/{featureId}/graph": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "snapshotManifestId",
+          "in": "query",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "view",
+          "in": "query",
+          "schema": { "enum": ["traceability", "business", "implementation", "coverage"] }
+        },
+        {
+          "name": "depth",
+          "in": "query",
+          "schema": { "type": "integer", "minimum": 1, "maximum": 8, "default": 1 }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 }
+        },
+        {
+          "name": "nodeType",
+          "in": "query",
+          "schema": { "type": "array", "items": { "type": "string" } },
+          "explode": true
+        },
+        {
+          "name": "relation",
+          "in": "query",
+          "schema": { "type": "array", "items": { "type": "string" } },
+          "explode": true
+        }
+      ],
+      "get": {
+        "operationId": "getFeatureGraph",
+        "responses": {
+          "200": { "$ref": "#/components/responses/FeatureGraph" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/graph/paths/query": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "queryFeatureGraphPath",
+        "requestBody": { "$ref": "#/components/requestBodies/FeatureGraphPathQuery" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/FeatureGraphPath" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
@@ -753,6 +827,26 @@
           }
         }
       },
+      "FeatureGraphPathQuery": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["snapshotManifestId", "fromNodeId", "toNodeId"],
+              "properties": {
+                "snapshotManifestId": { "type": "string", "minLength": 1 },
+                "fromNodeId": { "type": "string", "minLength": 1 },
+                "toNodeId": { "type": "string", "minLength": 1 },
+                "direction": { "enum": ["ANY", "FORWARD", "REVERSE"], "default": "ANY" },
+                "maxDepth": { "type": "integer", "minimum": 1, "maximum": 12, "default": 8 },
+                "view": { "enum": ["traceability", "business", "implementation", "coverage"] }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
       "ChangeSetComparison": {
         "required": true,
         "content": {
@@ -1051,6 +1145,22 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./feature-traceability.schema.json" }
+          }
+        }
+      },
+      "FeatureGraph": {
+        "description": "Bounded Feature-centered graph projection with typed provenance and progressive expansion metadata",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./feature-graph.schema.json#/$defs/Projection" }
+          }
+        }
+      },
+      "FeatureGraphPath": {
+        "description": "Bounded deterministic path between two authorized nodes in a Feature graph",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./feature-graph.schema.json#/$defs/PathResult" }
           }
         }
       },

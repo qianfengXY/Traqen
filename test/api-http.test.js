@@ -67,6 +67,16 @@ async function postJson(url, body, headers = {}) {
   return { response, body: await response.json() };
 }
 
+async function startStubServer(t, application) {
+  const server = createTraceabilityHttpServer({ application });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
 test("health endpoint returns a request correlation ID", async (t) => {
   const baseUrl = await startServer(t);
   const response = await fetch(`${baseUrl}/health`, {
@@ -121,6 +131,86 @@ test("project and Snapshot bootstrap require no direct database setup", async (t
   const fetched = await fetch(`${baseUrl}/v1/projects/PROJECT-BOOTSTRAP`, { headers: apiHeaders });
   assert.equal(fetched.status, 200);
   assert.equal((await fetched.json()).tenant.id, "TENANT-BOOTSTRAP");
+});
+
+test("Feature graph APIs preserve bounded filters and path-query scope", async (t) => {
+  const calls = [];
+  const application = {
+    async getFeatureGraph(projectId, featureId, snapshotManifestId, options) {
+      calls.push({ operation: "graph", projectId, featureId, snapshotManifestId, options });
+      return {
+        center: featureId,
+        snapshotManifestId,
+        view: options.view,
+        depth: options.depth,
+        nodes: [{
+          id: featureId,
+          type: "FEATURE",
+          label: "Submit order",
+          version: 1,
+          status: "ACTIVE",
+          risk: null,
+          provenance: "GOVERNED_BASELINE",
+          source: null,
+          details: {},
+        }],
+        edges: [],
+        truncated: false,
+        availableExpansions: [],
+      };
+    },
+    async queryFeatureGraphPath(projectId, featureId, input) {
+      calls.push({ operation: "path", projectId, featureId, input });
+      return {
+        center: featureId,
+        snapshotManifestId: input.snapshotManifestId,
+        view: input.view ?? "traceability",
+        query: {
+          fromNodeId: input.fromNodeId,
+          toNodeId: input.toNodeId,
+          direction: input.direction ?? "ANY",
+          maxDepth: input.maxDepth ?? 8,
+        },
+        found: false,
+        nodes: [],
+        edges: [],
+        hopCount: null,
+      };
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const graphResponse = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/graph?` +
+      "snapshotManifestId=SNAPSHOT-001&view=coverage&depth=4&limit=25&nodeType=CLAIM&relation=VERIFIED_BY",
+  );
+  assert.equal(graphResponse.status, 200);
+  assert.equal((await graphResponse.json()).view, "coverage");
+  assert.deepEqual(calls[0].options, {
+    view: "coverage",
+    depth: 4,
+    limit: 25,
+    nodeTypes: ["CLAIM"],
+    relations: ["VERIFIED_BY"],
+  });
+
+  const path = await postJson(
+    `${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/graph/paths/query`,
+    {
+      snapshotManifestId: "SNAPSHOT-001",
+      fromNodeId: "FEATURE-001",
+      toNodeId: "EVIDENCE-001",
+      direction: "FORWARD",
+      maxDepth: 6,
+    },
+  );
+  assert.equal(path.response.status, 200);
+  assert.equal(path.body.query.direction, "FORWARD");
+  assert.equal(calls[1].operation, "path");
+
+  const oversized = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/graph?snapshotManifestId=SNAPSHOT-001&limit=101`,
+  );
+  assert.equal(oversized.status, 400);
 });
 
 test("browser product origins are explicit and preflight never grants an unknown origin", async (t) => {

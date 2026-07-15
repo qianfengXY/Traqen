@@ -1,9 +1,51 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import cytoscape from "cytoscape";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-type View = "trace" | "review" | "impact";
+type View = "trace" | "graph" | "review" | "impact";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
+type GraphViewPreset = "traceability" | "business" | "implementation" | "coverage";
+
+type FeatureGraphNode = {
+  id: string;
+  type: string;
+  label: string;
+  version: string | number | null;
+  status: "ACTIVE" | "PENDING" | "STALE" | "CONFLICTED" | "GAP";
+  risk: string | null;
+  provenance: string;
+  source: Record<string, unknown> | null;
+  details: Record<string, unknown>;
+};
+
+type FeatureGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  provenance: string;
+  status: "ACTIVE" | "PENDING" | "STALE";
+  snapshotManifestId: string;
+};
+
+type FeatureGraph = {
+  center: string;
+  snapshotManifestId: string;
+  view: GraphViewPreset;
+  depth: number;
+  nodes: FeatureGraphNode[];
+  edges: FeatureGraphEdge[];
+  truncated: boolean;
+  availableExpansions: Array<{ relation: string; nodeType: string; count: number }>;
+};
+
+type FeatureGraphPath = {
+  found: boolean;
+  nodes: FeatureGraphNode[];
+  edges: FeatureGraphEdge[];
+  hopCount: number | null;
+};
 
 type ChainNode = {
   id: string;
@@ -137,6 +179,95 @@ const staleScenario: Scenario = {
     "必须重新分析映射并在当前部署重跑 TestSpec，才能恢复完整可信链。",
   ],
 };
+
+function demoGraphForScenario(scenario: Scenario, view: GraphViewPreset): FeatureGraph {
+  const kindTypes: Record<string, string> = {
+    Claim: "CLAIM",
+    Scope: "CLAIM_SCOPE",
+    Decision: "DECISION",
+    Implementation: "ENDPOINT",
+    "Data / Config": "DATA_OBJECT",
+    TestSpec: "TEST_SPEC",
+    Assertions: "TEST_ASSERTION",
+    Execution: "TEST_EXECUTION",
+    Evidence: "EVIDENCE",
+  };
+  const typeSets: Record<GraphViewPreset, Set<string> | null> = {
+    traceability: null,
+    business: new Set(["FEATURE", "CLAIM", "CLAIM_SCOPE", "DECISION", "TRACE_GAP"]),
+    implementation: new Set(["FEATURE", "CLAIM", "ENDPOINT", "CODE_SYMBOL", "DATA_OBJECT", "CONFIGURATION", "EXTERNAL_DEPENDENCY", "TRACE_GAP"]),
+    coverage: new Set(["FEATURE", "CLAIM", "TEST_SPEC", "TEST_ASSERTION", "TEST_EXECUTION", "EVIDENCE", "TRACE_GAP"]),
+  };
+  const allNodes: FeatureGraphNode[] = [{
+    id: scenario.feature.id,
+    type: "FEATURE",
+    label: scenario.feature.name,
+    version: scenario.feature.version,
+    status: "ACTIVE",
+    risk: null,
+    provenance: "DEMO_GOVERNED_BASELINE",
+    source: null,
+    details: { demo: true },
+  }, ...scenario.nodes.map((node) => ({
+    id: node.id,
+    type: kindTypes[node.kind] ?? node.kind.toUpperCase().replaceAll(" ", "_"),
+    label: node.title,
+    version: null,
+    status: node.status,
+    risk: null,
+    provenance: node.provenance,
+    source: null,
+    details: { meta: node.meta, demo: true },
+  })), ...scenario.gaps.map((gap) => ({
+    id: `TRACE-GAP:DEMO:${gap.type}`,
+    type: "TRACE_GAP",
+    label: gap.type,
+    version: null,
+    status: "GAP" as const,
+    risk: gap.severity,
+    provenance: "DEMO_TRACE_CHAIN_EVALUATION",
+    source: null,
+    details: { ownerRole: gap.ownerRole, message: gap.message, demo: true },
+  }))];
+  const allEdges: FeatureGraphEdge[] = [];
+  const chainNodes = allNodes.filter((node) => node.type !== "TRACE_GAP");
+  for (let index = 0; index < chainNodes.length - 1; index += 1) {
+    const original = index === 0 ? null : scenario.nodes[index - 1];
+    allEdges.push({
+      id: `DEMO-EDGE-${index + 1}`,
+      source: chainNodes[index].id,
+      target: chainNodes[index + 1].id,
+      type: original?.relation ?? (index === 0 ? "HAS_RULE" : "LINKED_TO"),
+      provenance: "DEMO_TRACE_CHAIN",
+      status: chainNodes[index + 1].status === "STALE" ? "STALE" : "ACTIVE",
+      snapshotManifestId: scenario.snapshotId,
+    });
+  }
+  for (const gap of allNodes.filter((node) => node.type === "TRACE_GAP")) {
+    allEdges.push({
+      id: `DEMO-EDGE-${gap.id}`,
+      source: scenario.nodes[0].id,
+      target: gap.id,
+      type: "HAS_GAP",
+      provenance: "DEMO_TRACE_CHAIN_EVALUATION",
+      status: "ACTIVE",
+      snapshotManifestId: scenario.snapshotId,
+    });
+  }
+  const allowed = typeSets[view];
+  const nodes = allowed ? allNodes.filter((node) => allowed.has(node.type)) : allNodes;
+  const ids = new Set(nodes.map((node) => node.id));
+  return {
+    center: scenario.feature.id,
+    snapshotManifestId: scenario.snapshotId,
+    view,
+    depth: 8,
+    nodes,
+    edges: allEdges.filter((edge) => ids.has(edge.source) && ids.has(edge.target)),
+    truncated: false,
+    availableExpansions: [],
+  };
+}
 
 function tone(value: string) {
   if (["CONFIRMED", "CONFORMS", "PASS", "FRESH", "NONE", "VERIFIED", "ACTIVE"].includes(value)) return "good";
@@ -276,6 +407,7 @@ export function TraqenProduct() {
         </div>
         <nav className="nav" aria-label="产品导航">
           <button className={`nav-button ${view === "trace" ? "active" : ""}`} onClick={() => setView("trace")}><span className="nav-icon">→</span>功能追溯</button>
+          <button className={`nav-button ${view === "graph" ? "active" : ""}`} onClick={() => setView("graph")}><span className="nav-icon">◎</span>追溯图谱</button>
           <button className={`nav-button ${view === "review" ? "active" : ""}`} onClick={() => setView("review")}><span className="nav-icon">✓</span>声明审核</button>
           <button className={`nav-button ${view === "impact" ? "active" : ""}`} onClick={() => setView("impact")}><span className="nav-icon">△</span>变更影响</button>
         </nav>
@@ -284,7 +416,7 @@ export function TraqenProduct() {
 
       <main className="main">
         <header className="topbar">
-          <div className="breadcrumb">Order Platform&nbsp; / &nbsp;<b>{view === "trace" ? "功能追溯" : view === "review" ? "声明审核" : "变更影响"}</b></div>
+          <div className="breadcrumb">Order Platform&nbsp; / &nbsp;<b>{{ trace: "功能追溯", graph: "追溯图谱", review: "声明审核", impact: "变更影响" }[view]}</b></div>
           <div className="top-actions">
             <span className={`mode-badge ${liveScenario ? "live" : ""}`}>{liveScenario ? "LIVE API" : "DEMO SNAPSHOT"}</span>
             {liveScenario && <button className="button ghost" onClick={() => setLiveScenario(null)}>返回演示</button>}
@@ -306,11 +438,231 @@ export function TraqenProduct() {
         )}
 
         {view === "trace" && <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selected={selected} setSelectedId={setSelectedId} />}
+        {view === "graph" && <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />}
         {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
         {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
       </main>
     </div>
   );
+}
+
+function localGraphPath(graph: FeatureGraph, fromNodeId: string, toNodeId: string): FeatureGraphPath {
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  if (!nodes.has(fromNodeId) || !nodes.has(toNodeId)) return { found: false, nodes: [], edges: [], hopCount: null };
+  const adjacency = new Map<string, Array<{ nodeId: string; edge: FeatureGraphEdge }>>();
+  for (const edge of graph.edges) {
+    const forward = adjacency.get(edge.source) ?? [];
+    forward.push({ nodeId: edge.target, edge });
+    adjacency.set(edge.source, forward);
+    const reverse = adjacency.get(edge.target) ?? [];
+    reverse.push({ nodeId: edge.source, edge });
+    adjacency.set(edge.target, reverse);
+  }
+  const queue = [fromNodeId];
+  const previous = new Map<string, { nodeId: string; edge: FeatureGraphEdge } | null>([[fromNodeId, null]]);
+  while (queue.length > 0 && !previous.has(toNodeId)) {
+    const current = queue.shift() as string;
+    for (const next of adjacency.get(current) ?? []) {
+      if (previous.has(next.nodeId)) continue;
+      previous.set(next.nodeId, { nodeId: current, edge: next.edge });
+      queue.push(next.nodeId);
+    }
+  }
+  if (!previous.has(toNodeId)) return { found: false, nodes: [], edges: [], hopCount: null };
+  const nodeIds: string[] = [];
+  const edges: FeatureGraphEdge[] = [];
+  for (let cursor: string | null = toNodeId; cursor !== null;) {
+    nodeIds.push(cursor);
+    const step = previous.get(cursor);
+    if (!step) break;
+    edges.push(step.edge);
+    cursor = step.nodeId;
+  }
+  nodeIds.reverse();
+  edges.reverse();
+  return { found: true, nodes: nodeIds.map((id) => nodes.get(id) as FeatureGraphNode), edges, hopCount: edges.length };
+}
+
+function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenario, live }: {
+  apiBase: string;
+  apiToken: string;
+  projectId: string;
+  featureId: string;
+  snapshotId: string;
+  scenario: Scenario;
+  live: boolean;
+}) {
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  const [preset, setPreset] = useState<GraphViewPreset>("traceability");
+  const [depth, setDepth] = useState(8);
+  const [nodeTypes, setNodeTypes] = useState("");
+  const [relations, setRelations] = useState("");
+  const [remoteGraph, setRemoteGraph] = useState<FeatureGraph | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [pathFrom, setPathFrom] = useState("");
+  const [pathTo, setPathTo] = useState("");
+  const [pathResult, setPathResult] = useState<FeatureGraphPath | null>(null);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+  const demoGraph = useMemo(() => demoGraphForScenario(scenario, preset), [scenario, preset]);
+  const graph = remoteGraph ?? demoGraph;
+  const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
+  const effectivePathFrom = graph.nodes.some((node) => node.id === pathFrom) ? pathFrom : graph.center;
+  const effectivePathTo = graph.nodes.some((node) => node.id === pathTo)
+    ? pathTo
+    : graph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? graph.nodes.at(-1)?.id ?? graph.center;
+  const pathNodeIds = useMemo(() => new Set(pathResult?.nodes.map((node) => node.id) ?? []), [pathResult]);
+  const pathEdgeIds = useMemo(() => new Set(pathResult?.edges.map((edge) => edge.id) ?? []), [pathResult]);
+
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const instance = cytoscape({
+      container: canvasRef.current,
+      elements: [
+        ...graph.nodes.map((node) => ({
+          data: { ...node, path: pathNodeIds.has(node.id) ? 1 : 0 },
+        })),
+        ...graph.edges.map((edge) => ({
+          data: { ...edge, path: pathEdgeIds.has(edge.id) ? 1 : 0 },
+        })),
+      ],
+      style: [
+        { selector: "node", style: { "background-color": "#fffdf8", "border-color": "#718c7d", "border-width": 2, label: "data(label)", color: "#13221d", "font-size": 9, "text-wrap": "wrap", "text-max-width": 92, width: 52, height: 52, "text-valign": "bottom", "text-margin-y": 8 } },
+        { selector: "node[type = 'FEATURE']", style: { "background-color": "#143f32", color: "#143f32", "border-color": "#d9ef7b", "border-width": 4, width: 68, height: 68, shape: "round-rectangle" } },
+        { selector: "node[type = 'CLAIM']", style: { "background-color": "#dcece4", shape: "round-rectangle" } },
+        { selector: "node[type = 'TEST_SPEC'], node[type = 'TEST_ASSERTION']", style: { "background-color": "#e8eef0", shape: "round-rectangle" } },
+        { selector: "node[type = 'EVIDENCE']", style: { "background-color": "#d9ef7b", shape: "hexagon" } },
+        { selector: "node[type = 'CONFLICT']", style: { "background-color": "#e98572", shape: "diamond", "border-color": "#8d3f34" } },
+        { selector: "node[type = 'TRACE_GAP']", style: { "background-color": "#f4c666", shape: "octagon", "border-color": "#8a6724" } },
+        { selector: "node[status = 'STALE']", style: { "border-style": "dashed", "background-color": "#fbf4e3" } },
+        { selector: "node[path = 1]", style: { "border-color": "#266f50", "border-width": 5 } },
+        { selector: "edge", style: { width: 1.5, "line-color": "#9aa79f", "target-arrow-color": "#9aa79f", "target-arrow-shape": "triangle", "curve-style": "bezier", label: "data(type)", "font-size": 7, color: "#69766f", "text-background-color": "#f4f1e9", "text-background-opacity": .9, "text-background-padding": 2 } },
+        { selector: "edge[status = 'STALE']", style: { "line-style": "dashed", "line-color": "#bd9345", "target-arrow-color": "#bd9345" } },
+        { selector: "edge[path = 1]", style: { width: 4, "line-color": "#266f50", "target-arrow-color": "#266f50", "z-index": 10 } },
+      ],
+      layout: { name: "breadthfirst", directed: true, padding: 28, spacingFactor: 1.25, animate: false },
+      minZoom: .35,
+      maxZoom: 2.2,
+      wheelSensitivity: .2,
+    });
+    instance.on("tap", "node", (event) => setSelectedId(event.target.id()));
+    return () => instance.destroy();
+  }, [graph, pathEdgeIds, pathNodeIds]);
+
+  async function loadGraph() {
+    setLoading(true);
+    setMessage("");
+    try {
+      const base = apiBase.replace(/\/$/, "");
+      const parameters = new URLSearchParams({
+        snapshotManifestId: snapshotId,
+        view: preset,
+        depth: String(depth),
+        limit: "30",
+      });
+      for (const type of nodeTypes.split(",").map((item) => item.trim()).filter(Boolean)) parameters.append("nodeType", type);
+      for (const relation of relations.split(",").map((item) => item.trim()).filter(Boolean)) parameters.append("relation", relation);
+      const response = await fetch(
+        `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/graph?${parameters}`,
+        { headers: apiHeaders(apiToken, { accept: "application/json" }) },
+      );
+      const body = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
+      const loadedGraph = body as unknown as FeatureGraph;
+      setRemoteGraph(loadedGraph);
+      setSelectedId(loadedGraph.center);
+      setPathFrom(loadedGraph.center);
+      setPathTo(loadedGraph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? loadedGraph.nodes.at(-1)?.id ?? loadedGraph.center);
+      setPathResult(null);
+      setMessage("已加载服务端受限图谱；节点、边和线性追踪链来自同一底层数据。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "无法加载 Feature 图谱");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function queryPath() {
+    setLoading(true);
+    setMessage("");
+    try {
+      if (!remoteGraph) {
+        const result = localGraphPath(graph, effectivePathFrom, effectivePathTo);
+        setPathResult(result);
+        setMessage(result.found ? `演示路径已锁定：${result.hopCount} hops。` : "所选演示节点之间不存在路径。");
+        return;
+      }
+      const base = apiBase.replace(/\/$/, "");
+      const response = await fetch(
+        `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/graph/paths/query`,
+        {
+          method: "POST",
+          headers: apiHeaders(apiToken, { "content-type": "application/json" }),
+          body: JSON.stringify({ snapshotManifestId: remoteGraph.snapshotManifestId, fromNodeId: effectivePathFrom, toNodeId: effectivePathTo, direction: "ANY", maxDepth: 8, view: preset }),
+        },
+      );
+      const body = await response.json() as Record<string, unknown>;
+      if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
+      const result = body as unknown as FeatureGraphPath;
+      setPathResult(result);
+      setMessage(result.found ? `服务端路径已锁定：${result.hopCount} hops。` : "受限图谱中未找到路径。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "路径查询失败");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function changePreset(next: GraphViewPreset) {
+    const nextGraph = demoGraphForScenario(scenario, next);
+    setPreset(next);
+    setRemoteGraph(null);
+    setSelectedId(nextGraph.center);
+    setPathFrom(nextGraph.center);
+    setPathTo(nextGraph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? nextGraph.nodes.at(-1)?.id ?? nextGraph.center);
+    setPathResult(null);
+  }
+
+  return <>
+    <section className="panel graph-toolbar">
+      <div className="panel-head"><div><h2>Feature 可交互追溯图谱</h2><p>默认最多 30 个节点；按业务问题渐进披露，而不是展开全量代码“毛线团”。</p></div><span className={`mode-badge ${remoteGraph ? "live" : ""}`}>{remoteGraph ? "LIVE GRAPH" : "DEMO GRAPH"}</span></div>
+      <div className="graph-presets" aria-label="图谱预设视图">
+        {(["traceability", "business", "implementation", "coverage"] as GraphViewPreset[]).map((item) => <button key={item} className={preset === item ? "active" : ""} onClick={() => changePreset(item)}>{({ traceability: "产品追溯", business: "业务规则", implementation: "实现依赖", coverage: "测试覆盖" } as Record<GraphViewPreset, string>)[item]}</button>)}
+      </div>
+      <div className="graph-filter-row">
+        <div className="field"><label htmlFor="graph-depth">展开深度</label><select id="graph-depth" value={depth} onChange={(event) => setDepth(Number(event.target.value))}><option value={1}>1 层</option><option value={2}>2 层</option><option value={4}>4 层</option><option value={8}>8 层（完整路径上限）</option></select></div>
+        <div className="field"><label htmlFor="graph-node-types">节点类型过滤（逗号分隔）</label><input id="graph-node-types" placeholder="CLAIM,TEST_SPEC,EVIDENCE" value={nodeTypes} onChange={(event) => setNodeTypes(event.target.value)} /></div>
+        <div className="field"><label htmlFor="graph-relations">关系过滤（逗号分隔）</label><input id="graph-relations" placeholder="VERIFIED_BY,PROVED_BY" value={relations} onChange={(event) => setRelations(event.target.value)} /></div>
+        <button className="button primary" disabled={loading} onClick={() => void loadGraph()}>{loading ? "加载中…" : live ? "加载服务端图谱" : "尝试连接服务端"}</button>
+      </div>
+      {message && <div className="inline-message">{message}</div>}
+    </section>
+
+    <section className="panel graph-panel">
+      <div className="graph-layout">
+        <aside className="graph-legend" aria-label="图谱过滤与图例">
+          <p className="eyebrow">Visible graph</p><strong>{graph.nodes.length} nodes · {graph.edges.length} edges</strong>
+          <p>{graph.snapshotManifestId}</p>
+          <ul><li><i className="legend-swatch feature" />Feature 中心</li><li><i className="legend-swatch claim" />规则 / Scope</li><li><i className="legend-swatch evidence" />执行 Evidence</li><li><i className="legend-swatch gap" />Conflict / TraceGap</li></ul>
+          {graph.truncated && <div className="graph-warning">结果已按节点上限截断。请缩小类型/关系或逐层展开。</div>}
+          {graph.availableExpansions.length > 0 && <div className="expansion-list"><b>可继续展开</b>{graph.availableExpansions.map((item) => <span key={`${item.relation}:${item.nodeType}`}>{item.relation} → {item.nodeType} · {item.count}</span>)}</div>}
+        </aside>
+        <div ref={canvasRef} className="graph-canvas" role="img" aria-label={`Feature ${graph.center} 的 ${preset} 追溯图谱`} />
+        <aside className="graph-detail" aria-live="polite">
+          <p className="eyebrow">Selected node</p>
+          {selected ? <><h2>{selected.label}</h2><span className={`graph-status ${selected.status.toLowerCase()}`}>{selected.type} · {selected.status}</span><dl><dt>ID</dt><dd>{selected.id}</dd><dt>来源</dt><dd>{selected.provenance}</dd><dt>版本</dt><dd>{selected.version ?? "immutable"}</dd><dt>风险</dt><dd>{selected.risk ?? "—"}</dd><dt>定位</dt><dd>{selected.source ? JSON.stringify(selected.source) : "无源文件定位"}</dd></dl></> : <p>选择节点查看来源、版本和状态。</p>}
+        </aside>
+      </div>
+      <div className="graph-path-bar">
+        <div className="field"><label htmlFor="path-from">路径起点</label><select id="path-from" value={effectivePathFrom} onChange={(event) => setPathFrom(event.target.value)}>{graph.nodes.map((node) => <option key={`from:${node.id}`} value={node.id}>{node.type} · {node.label}</option>)}</select></div>
+        <span aria-hidden="true">→</span>
+        <div className="field"><label htmlFor="path-to">路径终点</label><select id="path-to" value={effectivePathTo} onChange={(event) => setPathTo(event.target.value)}>{graph.nodes.map((node) => <option key={`to:${node.id}`} value={node.id}>{node.type} · {node.label}</option>)}</select></div>
+        <button className="button" disabled={loading || graph.nodes.length === 0} onClick={() => void queryPath()}>锁定最短路径</button>
+        {pathResult && <button className="button ghost" onClick={() => setPathResult(null)}>清除路径</button>}
+      </div>
+      <div className="graph-accessible-list"><h3>当前可见关系</h3>{graph.edges.map((edge) => <div key={edge.id}><span>{edge.source}</span><b>{edge.type}</b><span>{edge.target}</span><small>{edge.provenance} · {edge.status}</small></div>)}</div>
+    </section>
+  </>;
 }
 
 function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selected, setSelectedId }: {

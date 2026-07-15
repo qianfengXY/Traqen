@@ -62,6 +62,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "getFeatureTraceability",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/graph"].get.operationId,
+    "getFeatureGraph",
+  );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/features/{featureId}/graph/paths/query"].post.operationId,
+    "queryFeatureGraphPath",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute"].post.operationId,
     "recomputeFeatureTraceChains",
   );
@@ -199,6 +207,19 @@ test("Feature traceability contract exposes independent dimensions, ordered chai
   assert.ok(contract.required.includes("gaps"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("facts"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("traceChain"));
+});
+
+test("Feature graph contract keeps projections bounded, typed, and path-queryable", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/feature-graph.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "FeatureGraph");
+  assert.ok(contract.$defs.Projection.required.includes("availableExpansions"));
+  assert.equal(contract.$defs.Projection.properties.depth.maximum, 8);
+  assert.equal(contract.$defs.Node.properties.status.enum.includes("GAP"), true);
+  assert.ok(contract.$defs.Edge.required.includes("snapshotManifestId"));
+  assert.equal(contract.$defs.PathResult.properties.query.properties.maxDepth.maximum, 12);
 });
 
 test("change-impact contract separates invalidated derived layers from preserved business truth", async () => {

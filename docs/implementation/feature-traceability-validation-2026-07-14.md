@@ -76,4 +76,4 @@ Counts are reproducible for this source state and will change as implementation 
 - The low-level `/v1/trace-chains/evaluate` endpoint remains a deterministic diagnostic evaluator for supplied inputs. Product truth is read from the server-derived Feature traceability endpoint.
 - Development identity is an environment-configured local reviewer and optional bearer token. Enterprise SSO, delegated authority, two-person approval, break-glass, revocation, and production-wide route authorization remain later infrastructure work.
 - Change comparison operates on ingested deterministic Fact graphs. Dynamic runtime-only behavior requires Runtime Facts and Trace correlation before it can participate in impact selection.
-- The slice exposes the server data contract and ordered proof-chain model; the interactive React/Cytoscape Feature page remains a later UI delivery.
+- The ordered proof-chain and the interactive React/Cytoscape graph now project the same server-derived Feature traceability object. The graph is bounded by view, depth, node count, node type, and relation filters; it does not maintain a second truth model.

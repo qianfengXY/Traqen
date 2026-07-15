@@ -1121,6 +1121,28 @@ test("PostgreSQL preserves Skill registrations, raw outputs, normalized candidat
   assert.equal(traceability.dimensions.authority[0].status, "CONFIRMED");
   assert.equal(traceability.dimensions.conformance[0].status, "CONFORMS");
   assert.ok(traceability.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  const featureGraph = await application.getFeatureGraph(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    "SNAPSHOT-MANIFEST-001",
+    { depth: 8, limit: 100 },
+  );
+  assert.ok(featureGraph.nodes.some((node) => node.type === "ENDPOINT"));
+  assert.ok(featureGraph.nodes.some((node) => node.type === "TRACE_GAP" && node.details.type === "NO_TEST_SPEC"));
+  const endpointNode = featureGraph.nodes.find((node) => node.type === "ENDPOINT");
+  const featureToEndpointPath = await application.queryFeatureGraphPath(
+    "PROJECT-001",
+    "FEATURE-REVIEW-DB-001",
+    {
+      snapshotManifestId: "SNAPSHOT-MANIFEST-001",
+      fromNodeId: "FEATURE-REVIEW-DB-001",
+      toNodeId: endpointNode.id,
+      direction: "ANY",
+      maxDepth: 8,
+    },
+  );
+  assert.equal(featureToEndpointPath.found, true);
+  assert.ok(featureToEndpointPath.hopCount >= 1);
   const recomputed = await application.recomputeFeatureTraceChains(
     "PROJECT-001",
     "FEATURE-REVIEW-DB-001",

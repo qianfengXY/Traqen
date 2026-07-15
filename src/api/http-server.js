@@ -108,6 +108,19 @@ function optionalLimit(url) {
   return Number(value);
 }
 
+function boundedQueryInteger(url, name, fallback, maximum) {
+  const value = url.searchParams.get(name);
+  if (value === null) return fallback;
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new RangeError(`${name} must be an integer between 1 and ${maximum}`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > maximum) {
+    throw new RangeError(`${name} must be an integer between 1 and ${maximum}`);
+  }
+  return parsed;
+}
+
 function errorResponse(error, id) {
   if (error instanceof HttpError) {
     return {
@@ -332,6 +345,38 @@ export function createTraceabilityHttpHandler({
         const traceability = await application.getFeatureTraceability(projectId, featureId, snapshotManifestId);
         if (!traceability) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, traceability, id);
+        return;
+      }
+
+      const featureGraphMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/graph$/.exec(url.pathname);
+      if (request.method === "GET" && featureGraphMatch) {
+        const projectId = decodePathSegment(featureGraphMatch[1]);
+        const featureId = decodePathSegment(featureGraphMatch[2]);
+        const snapshotManifestId = url.searchParams.get("snapshotManifestId");
+        if (!snapshotManifestId) throw new HttpError(400, "SNAPSHOT_REQUIRED", "snapshotManifestId is required");
+        const graph = await application.getFeatureGraph(projectId, featureId, snapshotManifestId, {
+          view: url.searchParams.get("view") ?? "traceability",
+          depth: boundedQueryInteger(url, "depth", 1, 8),
+          limit: boundedQueryInteger(url, "limit", 30, 100),
+          nodeTypes: repeatedEnumFilter(url, "nodeType"),
+          relations: repeatedEnumFilter(url, "relation"),
+        });
+        if (!graph) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, graph, id);
+        return;
+      }
+
+      const featureGraphPathMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/graph\/paths\/query$/.exec(
+        url.pathname,
+      );
+      if (request.method === "POST" && featureGraphPathMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(featureGraphPathMatch[1]);
+        const featureId = decodePathSegment(featureGraphPathMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        const path = await application.queryFeatureGraphPath(projectId, featureId, input);
+        if (!path) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, path, id);
         return;
       }
 

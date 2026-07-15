@@ -15,10 +15,12 @@ import {
   createReverseSkillManifest,
   createReverseSkillRegistration,
   createFeatureVersion,
+  createFeatureGraphProjection,
   createSnapshotManifest,
   createTestSpec,
   generateEndpointTestSpecDraft,
   evaluateTraceChain,
+  queryFeatureGraphPath as resolveFeatureGraphPath,
   assertTestSpecSafeToStore,
   validateTestSpec as validateTestSpecProtocol,
   verifyExecutionEvidenceAttestation,
@@ -1284,6 +1286,44 @@ export class TraceabilityApplication {
 
   async recomputeFeatureTraceChains(projectId, featureId, snapshotManifestId) {
     return this.getFeatureTraceability(projectId, featureId, snapshotManifestId, { persist: true });
+  }
+
+  async getFeatureGraph(projectId, featureId, snapshotManifestId, options = {}) {
+    const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId);
+    if (!traceability) return null;
+    return createFeatureGraphProjection(traceability, options);
+  }
+
+  async queryFeatureGraphPath(projectId, featureId, input) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("graph path query must be an object");
+    }
+    assertOnlyFields(
+      input,
+      ["snapshotManifestId", "fromNodeId", "toNodeId", "direction", "maxDepth", "view"],
+      "graphPathQuery",
+    );
+    const snapshotManifestId = requireId(input.snapshotManifestId, "snapshotManifestId");
+    const graph = await this.getFeatureGraph(projectId, featureId, snapshotManifestId, {
+      view: input.view ?? "traceability",
+      depth: 8,
+      limit: 100,
+    });
+    if (!graph) return null;
+    return deepFreeze({
+      center: graph.center,
+      snapshotManifestId: graph.snapshotManifestId,
+      view: graph.view,
+      query: {
+        fromNodeId: input.fromNodeId,
+        toNodeId: input.toNodeId,
+        direction: input.direction ?? "ANY",
+        maxDepth: input.maxDepth ?? 8,
+      },
+      ...resolveFeatureGraphPath(graph, input),
+    });
   }
 
   async compareAndPersistSnapshots(projectId, input) {

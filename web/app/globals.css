@@ -142,6 +142,47 @@ button { color: inherit; }
 .form-message { color: var(--muted); font-size: 10px; }
 .form-message.error { color: #9b493c; }
 
+.graph-toolbar { overflow: visible; }
+.graph-presets { padding: 13px 18px 0; display: flex; gap: 6px; flex-wrap: wrap; }
+.graph-presets button { padding: 7px 11px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); font-size: 10px; font-weight: 700; cursor: pointer; }
+.graph-presets button:hover, .graph-presets button:focus-visible { border-color: #789082; outline: none; }
+.graph-presets button.active { border-color: var(--forest); background: var(--forest); color: #fff; }
+.graph-filter-row { padding: 13px 18px 17px; display: grid; grid-template-columns: minmax(110px, .45fr) minmax(220px, 1fr) minmax(220px, 1fr) auto; gap: 9px; align-items: end; }
+.graph-filter-row .button { min-height: 38px; white-space: nowrap; }
+.graph-panel { background: #efede4; }
+.graph-layout { min-height: 590px; display: grid; grid-template-columns: 205px minmax(360px, 1fr) 250px; }
+.graph-legend, .graph-detail { padding: 18px; background: rgba(255,253,248,.95); }
+.graph-legend { border-right: 1px solid var(--line); }
+.graph-detail { border-left: 1px solid var(--line); }
+.graph-legend > strong { font-family: var(--font-geist-mono); font-size: 12px; }
+.graph-legend > p:not(.eyebrow) { margin: 7px 0 14px; color: var(--muted); font-family: var(--font-geist-mono); font-size: 8px; word-break: break-all; }
+.graph-legend ul { margin: 0; padding: 0; display: grid; gap: 9px; list-style: none; color: var(--muted); font-size: 10px; }
+.graph-legend li { display: flex; gap: 8px; align-items: center; }
+.legend-swatch { width: 12px; height: 12px; border: 2px solid #718c7d; border-radius: 4px; background: #fffdf8; }
+.legend-swatch.feature { border-color: var(--lime); background: var(--forest); }
+.legend-swatch.claim { background: var(--mint); }
+.legend-swatch.evidence { background: var(--lime); }
+.legend-swatch.gap { border-color: #8d3f34; background: var(--amber); transform: rotate(45deg); }
+.graph-warning { margin-top: 15px; padding: 10px; border-radius: 9px; background: #fff1d4; color: #755c2a; font-size: 9px; line-height: 1.45; }
+.expansion-list { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.expansion-list b { font-size: 9px; text-transform: uppercase; letter-spacing: .06em; }
+.expansion-list span { color: var(--muted); font-family: var(--font-geist-mono); font-size: 8px; line-height: 1.35; }
+.graph-canvas { width: 100%; min-width: 0; min-height: 590px; background: radial-gradient(circle at center, rgba(217,239,123,.13), transparent 38%), #efede4; }
+.graph-detail h2 { margin: 7px 0 9px; font-size: 17px; line-height: 1.2; word-break: break-word; }
+.graph-status { display: inline-flex; padding: 5px 7px; border-radius: 999px; background: var(--mint); color: #2d654e; font-family: var(--font-geist-mono); font-size: 8px; font-weight: 760; }
+.graph-status.stale, .graph-status.pending, .graph-status.gap { background: #f8e5bd; color: #795e28; }
+.graph-status.conflicted { background: #f6ded8; color: #8d4035; }
+.graph-detail dl { margin: 17px 0 0; display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 8px; font-size: 9px; }
+.graph-detail dt { color: #89948e; }
+.graph-detail dd { margin: 0; font-family: var(--font-geist-mono); line-height: 1.4; overflow-wrap: anywhere; }
+.graph-path-bar { padding: 14px 18px; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(180px, 1fr) auto minmax(180px, 1fr) auto auto; gap: 10px; align-items: end; background: var(--panel); }
+.graph-path-bar > span { padding-bottom: 9px; color: #718078; }
+.graph-accessible-list { padding: 15px 18px 18px; border-top: 1px solid var(--line); background: var(--panel); }
+.graph-accessible-list h3 { margin: 0 0 10px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+.graph-accessible-list > div { padding: 7px 0; border-top: 1px solid #ebe7dd; display: grid; grid-template-columns: minmax(140px, 1fr) auto minmax(140px, 1fr) minmax(150px, .7fr); gap: 10px; color: var(--muted); font-family: var(--font-geist-mono); font-size: 8px; align-items: center; overflow-wrap: anywhere; }
+.graph-accessible-list b { color: var(--ink); text-align: center; }
+.graph-accessible-list small { color: #89948e; }
+
 .review-loader { overflow: visible; }
 .inline-form { padding: 16px 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; gap: 10px; align-items: end; }
 .inline-form.impact-form { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
@@ -184,13 +225,16 @@ button { color: inherit; }
 @media (max-width: 1040px) {
   .dimension-grid { grid-template-columns: repeat(3, 1fr); }
   .hero, .two-column, .review-grid, .impact-grid { grid-template-columns: 1fr; }
+  .graph-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .graph-layout { grid-template-columns: 175px minmax(360px, 1fr); }
+  .graph-detail { grid-column: 1 / -1; border-top: 1px solid var(--line); border-left: 0; }
 }
 
 @media (max-width: 760px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; height: auto; position: static; padding: 15px; gap: 14px; }
   .workspace, .workspace-label, .sidebar-note { display: none; }
-  .nav { grid-template-columns: repeat(3, 1fr); }
+  .nav { grid-template-columns: repeat(4, 1fr); }
   .nav-button { justify-content: center; padding: 9px 5px; font-size: 10px; }
   .nav-icon { display: none; }
   .main { padding: 17px 14px 35px; }
@@ -202,6 +246,12 @@ button { color: inherit; }
   .connection-grid { grid-template-columns: 1fr; }
   .inline-form, .inline-form.impact-form, .review-fields { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }
+  .graph-filter-row, .graph-layout, .graph-path-bar { grid-template-columns: 1fr; }
+  .graph-legend { border-right: 0; border-bottom: 1px solid var(--line); }
+  .graph-canvas { min-height: 500px; }
+  .graph-path-bar > span { display: none; }
+  .graph-accessible-list > div { grid-template-columns: 1fr; gap: 4px; }
+  .graph-accessible-list b { text-align: left; }
 }
 
 @media (prefers-reduced-motion: reduce) {

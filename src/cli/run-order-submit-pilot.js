@@ -440,6 +440,22 @@ async function main() {
         `The repaired reference Snapshot did not return to a complete trace chain: ${JSON.stringify({ dimensions: finalTraceability.dimensions, gaps: finalTraceability.gaps })}`,
       );
     }
+    const finalGraph = await application.getFeatureGraph(projectId, featureId, secondSnapshot.id, {
+      view: "traceability",
+      depth: 8,
+      limit: 100,
+    });
+    const graphEvidence = finalGraph.nodes.find((node) => node.type === "EVIDENCE");
+    if (!graphEvidence) throw new Error("The repaired traceability graph did not expose execution Evidence");
+    const proofPath = await application.queryFeatureGraphPath(projectId, featureId, {
+      snapshotManifestId: secondSnapshot.id,
+      fromNodeId: featureId,
+      toNodeId: graphEvidence.id,
+      direction: "ANY",
+      maxDepth: 12,
+      view: "traceability",
+    });
+    if (!proofPath.found) throw new Error("The repaired traceability graph did not connect Feature to Evidence");
 
     process.stdout.write(`${JSON.stringify({
       projectId,
@@ -477,6 +493,14 @@ async function main() {
         regressionExecution: secondEvidence.execution.status,
         finalTraceComplete: featureComplete(finalTraceability),
         finalGapCount: finalTraceability.gaps.length,
+      },
+      graph: {
+        snapshotManifestId: finalGraph.snapshotManifestId,
+        nodes: finalGraph.nodes.length,
+        edges: finalGraph.edges.length,
+        assertions: finalGraph.nodes.filter((node) => node.type === "TEST_ASSERTION").length,
+        featureToEvidencePathFound: proofPath.found,
+        featureToEvidenceHops: proofPath.hopCount,
       },
     }, null, 2)}\n`);
   } finally {

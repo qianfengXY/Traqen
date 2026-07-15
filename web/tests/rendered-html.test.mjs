@@ -23,6 +23,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   const html = await response.text();
   assert.match(html, /<title>Traqen · 可追溯质量工作台<\/title>/i);
   assert.match(html, /功能追溯/);
+  assert.match(html, /追溯图谱/);
   assert.match(html, /端到端证据追踪链/);
   assert.match(html, /为什么相信/);
   assert.match(html, /TraceGap/);
@@ -41,6 +42,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
 
   assert.match(page, /<TraqenProduct \/>/);
   assert.match(product, /\/traceability\?snapshotManifestId=/);
+  assert.match(product, /\/graph\?\$\{parameters\}/);
+  assert.match(product, /\/graph\/paths\/query/);
+  assert.match(product, /默认最多 30 个节点/);
+  assert.match(product, /cytoscape/);
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
   assert.match(product, /implementation-reanalyses/);
