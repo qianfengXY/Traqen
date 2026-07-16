@@ -73,7 +73,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /结果数据/);
   assert.match(product, /完整功能说明/);
   assert.match(product, /业务人工确认/);
-  assert.match(product, /具体代码块/);
+  assert.match(product, /设计文档/);
+  assert.match(product, /原始 Markdown/);
+  assert.match(product, /业务逻辑代码块/);
+  assert.match(product, /完整源文件/);
   assert.match(product, /跨环境配置矩阵/);
   assert.match(product, /测试设计策略/);
   assert.match(product, /具体测试用例/);
@@ -87,6 +90,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(detailModel, /failedStepId/);
   assert.match(detailModel, /"DEV" \| "SIT" \| "UAT" \| "PROD"/);
   assert.match(detailModel, /applicability: "CURRENT" \| "HISTORICAL"/);
+  assert.match(detailModel, /order-submit-design\.zh-CN\.md\?raw/);
+  assert.match(detailModel, /order-service\.js\?raw/);
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
   assert.match(product, /implementation-reanalyses/);

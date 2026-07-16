@@ -952,6 +952,69 @@ function NarrativeSection({ title, items }: { title: string; items: string[] }) 
   return <section className="narrative-section"><h4>{title}</h4><ul>{items.map((item) => <li key={item}>{item}</li>)}</ul></section>;
 }
 
+function InlineMarkdown({ text }: { text: string }) {
+  return <>{text.split(/(`[^`]+`)/g).filter(Boolean).map((part, index) => part.startsWith("`") && part.endsWith("`")
+    ? <code key={`${part}-${index}`}>{part.slice(1, -1)}</code>
+    : <span key={`${part}-${index}`}>{part}</span>)}</>;
+}
+
+function MarkdownDocument({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const blocks: Array<{ type: "heading" | "paragraph" | "unordered" | "ordered"; level?: number; text?: string; items?: string[] }> = [];
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index].trim();
+    if (!line || line.startsWith("> Language") || line.startsWith("> 语言")) { index += 1; continue; }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading) {
+      blocks.push({ type: "heading", level: heading[1].length, text: heading[2] });
+      index += 1;
+      continue;
+    }
+    if (line.startsWith("- ")) {
+      const items: string[] = [];
+      while (index < lines.length && lines[index].trim().startsWith("- ")) {
+        items.push(lines[index].trim().slice(2));
+        index += 1;
+      }
+      blocks.push({ type: "unordered", items });
+      continue;
+    }
+    if (/^\d+\.\s+/.test(line)) {
+      const items: string[] = [];
+      while (index < lines.length && /^\d+\.\s+/.test(lines[index].trim())) {
+        items.push(lines[index].trim().replace(/^\d+\.\s+/, ""));
+        index += 1;
+      }
+      blocks.push({ type: "ordered", items });
+      continue;
+    }
+    const paragraph: string[] = [];
+    while (index < lines.length) {
+      const next = lines[index].trim();
+      if (!next || /^(#{1,3})\s+/.test(next) || next.startsWith("- ") || /^\d+\.\s+/.test(next)) break;
+      paragraph.push(next.replace(/\s{2}$/, ""));
+      index += 1;
+    }
+    blocks.push({ type: "paragraph", text: paragraph.join(" ") });
+  }
+
+  return <article className="markdown-document">{blocks.map((block, blockIndex) => {
+    if (block.type === "heading") {
+      if (block.level === 1) return <h1 key={blockIndex}><InlineMarkdown text={block.text ?? ""} /></h1>;
+      if (block.level === 2) return <h2 key={blockIndex}><InlineMarkdown text={block.text ?? ""} /></h2>;
+      return <h3 key={blockIndex}><InlineMarkdown text={block.text ?? ""} /></h3>;
+    }
+    if (block.type === "unordered") return <ul key={blockIndex}>{block.items?.map((item) => <li key={item}><InlineMarkdown text={item} /></li>)}</ul>;
+    if (block.type === "ordered") return <ol key={blockIndex}>{block.items?.map((item) => <li key={item}><InlineMarkdown text={item} /></li>)}</ol>;
+    return <p key={blockIndex}><InlineMarkdown text={block.text ?? ""} /></p>;
+  })}</article>;
+}
+
+function SourceCodeViewer({ content }: { content: string }) {
+  return <pre className="source-file"><code>{content.split("\n").map((line, index) => <span className="source-line" key={`${index}-${line}`}><i>{String(index + 1).padStart(3, "0")}</i><b>{line || " "}</b></span>)}</code></pre>;
+}
+
 function FeatureDescriptionDetail({ document, demo }: { document: FeatureDescriptionDocument; demo: boolean }) {
   const [confirmation, setConfirmation] = useState<HumanConfirmation>(document.confirmation);
   const [draft, setDraft] = useState<HumanConfirmation>(document.confirmation);
@@ -976,7 +1039,7 @@ function FeatureDescriptionDetail({ document, demo }: { document: FeatureDescrip
     <article className="feature-document" aria-label="完整功能说明">
       <header><div><span>FEATURE DESCRIPTION · v{document.version}</span><h4>{document.title}</h4></div><b>受治理功能说明</b></header>
       <section className="feature-purpose"><h4>功能目标</h4><p>{document.purpose}</p></section>
-      <div className="feature-narrative-grid">
+      <div className="feature-narrative-grid document-sections">
         <NarrativeSection title="业务逻辑" items={document.businessLogic} />
         <NarrativeSection title="权限控制" items={document.permissions} />
         <NarrativeSection title="前置条件" items={document.prerequisites} />
@@ -1004,11 +1067,24 @@ function FeatureDescriptionDetail({ document, demo }: { document: FeatureDescrip
 }
 
 function DesignImplementationDetail({ document }: { document: DesignDocument }) {
-  return <div className="design-document">
+  const [view, setView] = useState<"document" | "raw-markdown" | "code-blocks" | "source-file">("document");
+  const [selectedSourcePath, setSelectedSourcePath] = useState(document.sourceFiles[0]?.path ?? "");
+  const sourceFile = document.sourceFiles.find((source) => source.path === selectedSourcePath) ?? document.sourceFiles[0];
+  const views = [
+    ["document", "设计文档"],
+    ["raw-markdown", "原始 Markdown"],
+    ["code-blocks", "业务代码块"],
+    ["source-file", "完整源文件"],
+  ] as const;
+
+  return <div className="design-document file-reader">
     <header className="artifact-document-head"><div><span>{document.id} · v{document.version}</span><h4>{document.title}</h4><p>{document.overview}</p></div><div><b className={"artifact-state " + document.status.toLowerCase()}>{document.status}</b><small>{document.owner}<br />{document.updatedAt}</small></div></header>
-    <section className="design-flow"><h4>设计流程</h4><div>{document.flow.map((item, index) => <div className="design-flow-item" key={item}><span>{index + 1}</span><b>{item}</b>{index < document.flow.length - 1 && <i aria-hidden="true">→</i>}</div>)}</div></section>
-    <section className="design-decisions"><h4>关键设计决策</h4><div>{document.decisions.map((decision) => <article key={decision.title}><b>{decision.title}</b><p>{decision.content}</p></article>)}</div></section>
-    <section className="code-evidence"><h4>具体代码块</h4>{document.codeBlocks.map((codeBlock) => <article key={codeBlock.id}><header><div><b>{codeBlock.title}</b><span>{codeBlock.file}:{codeBlock.startLine}</span></div><small>{codeBlock.factId} · {codeBlock.language}</small></header><pre><code>{codeBlock.code}</code></pre></article>)}</section>
+    <nav className="reader-toolbar" aria-label="设计与代码查看方式">{views.map(([key, label]) => <button key={key} className={view === key ? "active" : ""} aria-pressed={view === key} onClick={() => setView(key)}>{label}</button>)}</nav>
+    {(view === "document" || view === "raw-markdown") && <div className="reader-file-head"><div><span className="file-type">MD</span><div><b>{document.markdownFile.path.split("/").at(-1)}</b><small>{document.markdownFile.path}</small></div></div><span>{document.markdownFile.content.split("\n").length} lines</span></div>}
+    {view === "document" && <MarkdownDocument content={document.markdownFile.content} />}
+    {view === "raw-markdown" && <SourceCodeViewer content={document.markdownFile.content} />}
+    {view === "code-blocks" && <section className="code-evidence"><div className="reader-section-title"><div><h4>业务逻辑代码块</h4><p>从原文件中提取并绑定 Fact 的关键实现，不用摘要替代代码。</p></div><span>{document.codeBlocks.length} BLOCKS</span></div>{document.codeBlocks.map((codeBlock) => <article key={codeBlock.id}><header><div><b>{codeBlock.title}</b><span>{codeBlock.file}:{codeBlock.startLine}</span></div><small>{codeBlock.factId} · {codeBlock.language}</small></header><SourceCodeViewer content={codeBlock.code} /></article>)}</section>}
+    {view === "source-file" && sourceFile && <section className="full-source-view"><div className="reader-file-head"><div><span className="file-type code">JS</span><div><b>{sourceFile.path.split("/").at(-1)}</b><small>{sourceFile.path}</small></div></div><span>{sourceFile.factIds.join(" · ")}</span></div>{document.sourceFiles.length > 1 && <select aria-label="选择源文件" value={sourceFile.path} onChange={(event) => setSelectedSourcePath(event.target.value)}>{document.sourceFiles.map((source) => <option key={source.path} value={source.path}>{source.path}</option>)}</select>}<SourceCodeViewer content={sourceFile.content} /></section>}
   </div>;
 }
 
@@ -1028,7 +1104,7 @@ function TestCaseDetail({ design }: { design: TestDesign }) {
   return <div className="test-design-layout">
     <article className="test-strategy-document">
       <div className="artifact-intro"><div><h4>测试设计策略</h4><p>{design.strategy.objective}</p></div><span>STRATEGY</span></div>
-      <div className="strategy-grid"><NarrativeSection title="风险重点" items={design.strategy.riskFocus} /><NarrativeSection title="测试层次" items={design.strategy.levels} /><section className="narrative-section"><h4>测试数据策略</h4><p>{design.strategy.dataStrategy}</p></section><section className="narrative-section"><h4>环境策略</h4><p>{design.strategy.environmentStrategy}</p></section><NarrativeSection title="退出准则" items={design.strategy.exitCriteria} /></div>
+      <div className="strategy-grid document-sections"><NarrativeSection title="风险重点" items={design.strategy.riskFocus} /><NarrativeSection title="测试层次" items={design.strategy.levels} /><section className="narrative-section"><h4>测试数据策略</h4><p>{design.strategy.dataStrategy}</p></section><section className="narrative-section"><h4>环境策略</h4><p>{design.strategy.environmentStrategy}</p></section><NarrativeSection title="退出准则" items={design.strategy.exitCriteria} /></div>
     </article>
     <div className="test-case-workbench">
       <aside className="test-case-list"><header><h4>具体测试用例</h4><span>{design.cases.length} CASES</span></header>{design.cases.map((testCase) => <button key={testCase.id} className={selectedCase?.id === testCase.id ? "selected" : ""} aria-pressed={selectedCase?.id === testCase.id} onClick={() => setSelectedCaseId(testCase.id)}><span>{testCase.scenario} · {testCase.priority}</span><b>{testCase.title}</b><small>{testCase.id}@{testCase.version} · {testCase.automationStatus}</small></button>)}</aside>

@@ -1,3 +1,6 @@
+import orderServiceSource from "../../examples/order-platform/src/order-service.js?raw";
+import orderSubmitDesignMarkdown from "../../docs/features/order-submit-design.zh-CN.md?raw";
+
 export type ConfirmationStatus = "PENDING" | "CONFIRMED" | "REJECTED" | "EXCEPTION_RECORDED";
 export type TestResultStatus = "PASS" | "FAIL" | "ERROR" | "NOT_RUN";
 
@@ -31,6 +34,16 @@ export type DesignDocument = {
   updatedAt: string;
   status: "APPROVED" | "DRAFT" | "STALE";
   overview: string;
+  markdownFile: {
+    path: string;
+    content: string;
+  };
+  sourceFiles: Array<{
+    path: string;
+    language: string;
+    content: string;
+    factIds: string[];
+  }>;
   flow: string[];
   decisions: Array<{ title: string; content: string }>;
   codeBlocks: Array<{
@@ -243,6 +256,18 @@ export const currentOrderSubmitArtifacts: TraceDetailArtifacts = {
     updatedAt: "2026-07-14 15:40 CST",
     status: "APPROVED",
     overview: "提交入口先校验身份、权限、订单归属、状态和功能开关，再在受控事务中完成订单状态迁移与库存生命周期处理。所有关键边界输出结构化日志与 Trace。",
+    markdownFile: {
+      path: "docs/features/order-submit-design.zh-CN.md",
+      content: orderSubmitDesignMarkdown,
+    },
+    sourceFiles: [
+      {
+        path: "examples/order-platform/src/order-service.js",
+        language: "javascript",
+        content: orderServiceSource,
+        factIds: ["FACT-ENDPOINT-ORDER-SUBMIT", "FACT-CODE-ORDER-ROLLBACK"],
+      },
+    ],
     flow: ["HTTP POST /orders/{id}/submit", "鉴权与 order:submit 权限校验", "读取并锁定 DRAFT 订单", "库存预留与订单状态原子提交", "发布业务事件并生成 Evidence"],
     decisions: [
       { title: "状态机边界", content: "只允许 DRAFT → SUBMITTED；其他状态返回稳定冲突错误，不执行写入。" },
