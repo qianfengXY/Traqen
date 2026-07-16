@@ -9,7 +9,8 @@ The default screen is an explicitly labelled synthetic demonstration of the orde
 ## Product surfaces
 
 - Feature traceability with independent authority, conformance, verification, freshness, and conflict dimensions.
-- A five-block Feature description → design/implementation → configuration → test cases → test results view. Each block opens its corresponding business logic, design/code, configuration, test, or result data while retaining the ordered Claim → Scope → Decision → Fact → TestSpec → assertion → execution → Evidence records.
+- A five-block Feature description → design/implementation → configuration → test cases → test results view. Feature description is a complete governed document with a separate editable human-confirmation draft; design shows the design document and concrete code blocks; configuration compares DEV/SIT/UAT/PROD; tests combine strategy with expandable versioned cases; results are grouped by scenario and failed executions drill down to the case, failed step, expected/actual values, error, and Evidence.
+- A future Agent contract is reserved: Agents consume approved immutable TestSpec versions and return structured step/assertion results plus signed Evidence and runner identity. External Agent execution is not wired yet, and an Agent cannot rewrite business authority or decide the final trusted state.
 - Visible TraceGap ownership and reasons that prevent a feature from being shown as complete.
 - Statement-level review that loads a real Reverse Run candidate and submits an authenticated, server-validated Decision without accepting client-supplied reviewer identity.
 - Historical Snapshot comparison backed by the immutable ChangeSet API, including preserved normative truth, invalidated derived layers, and a repair queue.

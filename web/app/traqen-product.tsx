@@ -3,6 +3,19 @@
 import cytoscape from "cytoscape";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  changedOrderSubmitArtifacts,
+  currentOrderSubmitArtifacts,
+  type DesignDocument,
+  type EnvironmentConfiguration,
+  type FeatureDescriptionDocument,
+  type HumanConfirmation,
+  type ScenarioTestResult,
+  type TestCaseDefinition,
+  type TestDesign,
+  type TraceDetailArtifacts,
+} from "./trace-detail-model";
+
 type View = "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
 type GraphViewPreset = "traceability" | "business" | "implementation" | "coverage";
@@ -893,6 +906,7 @@ function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selectedBlock,
   const blocks = traceBlocksForScenario(scenario);
   const selected = blocks.find((block) => block.key === selectedBlock) ?? blocks[0];
   const evidenceFreshness = dimensionState(scenario, "证据新鲜度", "UNKNOWN");
+  const artifacts = demo ? (scenarioKey === "current" ? currentOrderSubmitArtifacts : changedOrderSubmitArtifacts) : null;
 
   return <>
     <section className="hero">
@@ -907,7 +921,16 @@ function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selectedBlock,
     <section className="panel">
       <div className="panel-head"><div><h2>端到端功能追踪链</h2><p>Snapshot {scenario.snapshotId} · 点击五大块查看对应数据与底层追溯记录</p></div>{demo && <div className="scenario-switch"><button className={scenarioKey === "current" ? "active" : ""} onClick={() => setScenarioKey("current")}>当前部署</button><button className={scenarioKey === "changed" ? "active" : ""} onClick={() => setScenarioKey("changed")}>代码变更后</button></div>}</div>
       <div className="chain-wrap"><div className="chain five-block-chain">{blocks.map((block, index) => <div className="chain-item" key={block.key}><button aria-pressed={selected.key === block.key} className={`chain-node ${tone(block.state)} ${selected.key === block.key ? "selected" : ""}`} onClick={() => setSelectedBlock(block.key)}><span className="node-kind">{block.detailLabel}</span><strong className="node-title">{block.label}</strong><span className="node-summary">{block.summary}</span><span className="node-meta">{block.state} · {block.records.length} 条追溯记录</span></button>{index < blocks.length - 1 && <div className="chain-link" aria-hidden="true"><span /><small>{block.relation}</small></div>}</div>)}</div></div>
-      <div className="chain-foot trace-block-foot"><div className="detail-pane trace-block-pane"><div className="trace-detail-heading"><div><p className="eyebrow">{selected.detailLabel}</p><h3>{selected.label}</h3><p>{selected.description}</p></div><span className={`mode-badge ${tone(selected.state) === "good" ? "live" : ""}`}>{selected.state}</span></div><div className="trace-detail-grid">{selected.details.map((detail, index) => <div key={`${detail.label}:${index}`}><span>{detail.label}</span><strong>{detail.value}</strong></div>)}</div><div className="trace-records"><h3>底层追溯记录</h3>{selected.records.map((record) => <div key={record.id}><span>{record.kind} · {record.status}</span><b>{record.id}</b><small>{record.provenance}</small></div>)}</div></div><div className="why-pane"><h3>{scenario.complete ? "为什么相信" : "为什么不能相信"}</h3><ul>{scenario.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div></div>
+      <div className="chain-foot trace-block-foot">
+        <div className="detail-pane trace-block-pane">
+          <div className="trace-detail-heading"><div><p className="eyebrow">{selected.detailLabel}</p><h3>{selected.label}</h3><p>{selected.description}</p></div><span className={`mode-badge ${tone(selected.state) === "good" ? "live" : ""}`}>{selected.state}</span></div>
+          {artifacts
+            ? <TraceArtifactDetail block={selected.key} artifacts={artifacts} demo={demo} />
+            : <div className="trace-detail-grid">{selected.details.map((detail, index) => <div key={`${detail.label}:${index}`}><span>{detail.label}</span><strong>{detail.value}</strong></div>)}</div>}
+          <div className="trace-records"><h3>底层追溯记录</h3>{selected.records.map((record) => <div key={record.id}><span>{record.kind} · {record.status}</span><b>{record.id}</b><small>{record.provenance}</small></div>)}</div>
+        </div>
+        <div className="why-pane"><h3>{scenario.complete ? "为什么相信" : "为什么不能相信"}</h3><ul>{scenario.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div>
+      </div>
     </section>
 
     <div className="two-column">
@@ -915,6 +938,125 @@ function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selectedBlock,
       <section className="panel"><div className="panel-head"><div><h2>Evidence</h2><p>{evidenceFreshness === "FRESH" ? "当前执行产生的已验证证据" : "保留的历史证据；完整性已验证，但不能证明当前部署"}</p></div></div><div className="evidence-list">{scenario.evidence.map((item) => <div className="evidence-item" key={item.id}><div><strong>{item.type} · {item.detail}</strong><small>{item.id}</small></div><span className={`evidence-state ${evidenceFreshness === "FRESH" ? "" : "stale"}`}>{item.state}{evidenceFreshness === "FRESH" ? "" : " · STALE"}</span></div>)}</div></section>
     </div>
   </>;
+}
+
+function TraceArtifactDetail({ block, artifacts, demo }: { block: TraceBlockKey; artifacts: TraceDetailArtifacts; demo: boolean }) {
+  if (block === "description") return <FeatureDescriptionDetail key={`${artifacts.featureDescription.title}@${artifacts.featureDescription.version}`} document={artifacts.featureDescription} demo={demo} />;
+  if (block === "design") return <DesignImplementationDetail key={`${artifacts.design.id}@${artifacts.design.version}:${artifacts.design.status}`} document={artifacts.design} />;
+  if (block === "configuration") return <ConfigurationDetail configurations={artifacts.configurations} />;
+  if (block === "test-case") return <TestCaseDetail key={artifacts.testDesign.agentContract.schema} design={artifacts.testDesign} />;
+  return <TestResultDetail key={artifacts.testResults.map((result) => result.id).join(":")} results={artifacts.testResults} design={artifacts.testDesign} />;
+}
+
+function NarrativeSection({ title, items }: { title: string; items: string[] }) {
+  return <section className="narrative-section"><h4>{title}</h4><ul>{items.map((item) => <li key={item}>{item}</li>)}</ul></section>;
+}
+
+function FeatureDescriptionDetail({ document, demo }: { document: FeatureDescriptionDocument; demo: boolean }) {
+  const [confirmation, setConfirmation] = useState<HumanConfirmation>(document.confirmation);
+  const [draft, setDraft] = useState<HumanConfirmation>(document.confirmation);
+  const [editing, setEditing] = useState(false);
+  const [message, setMessage] = useState("");
+
+  function beginEdit() {
+    setDraft(confirmation);
+    setEditing(true);
+    setMessage("");
+  }
+
+  function saveDraft() {
+    setConfirmation(draft);
+    setEditing(false);
+    setMessage(demo
+      ? "演示确认草稿已更新；刷新页面后恢复，不会写入业务基线。"
+      : "确认草稿已更新；正式生效仍需通过服务端鉴权生成不可变 Decision。");
+  }
+
+  return <div className="feature-description-layout">
+    <article className="feature-document" aria-label="完整功能说明">
+      <header><div><span>FEATURE DESCRIPTION · v{document.version}</span><h4>{document.title}</h4></div><b>受治理功能说明</b></header>
+      <section className="feature-purpose"><h4>功能目标</h4><p>{document.purpose}</p></section>
+      <div className="feature-narrative-grid">
+        <NarrativeSection title="业务逻辑" items={document.businessLogic} />
+        <NarrativeSection title="权限控制" items={document.permissions} />
+        <NarrativeSection title="前置条件" items={document.prerequisites} />
+        <NarrativeSection title="外部依赖" items={document.dependencies} />
+        <NarrativeSection title="适用范围" items={document.applicableScope} />
+        <NarrativeSection title="例外与边界" items={document.exceptions} />
+      </div>
+    </article>
+    <aside className="human-confirmation-card">
+      <div className="confirmation-head"><div><p className="eyebrow">Human confirmation</p><h4>业务人工确认</h4></div><span className={"confirmation-status " + confirmation.status.toLowerCase()}>{confirmation.status}</span></div>
+      {!editing ? <div className="confirmation-summary">
+        <dl><dt>确认结果</dt><dd>{confirmation.status}</dd><dt>确认时间</dt><dd>{confirmation.confirmedAt}</dd><dt>负责人</dt><dd>{confirmation.owner}</dd><dt>Decision</dt><dd>{confirmation.decisionId}@{confirmation.version}</dd><dt>确认说明</dt><dd>{confirmation.rationale}</dd></dl>
+        <button className="button" onClick={beginEdit}>编辑确认结果</button>
+      </div> : <div className="confirmation-editor">
+        <div className="field"><label htmlFor="confirmation-status">确认结果</label><select id="confirmation-status" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value as HumanConfirmation["status"] })}><option value="PENDING">PENDING</option><option value="CONFIRMED">CONFIRMED</option><option value="EXCEPTION_RECORDED">EXCEPTION_RECORDED</option><option value="REJECTED">REJECTED</option></select></div>
+        <div className="field"><label htmlFor="confirmation-time">确认时间</label><input id="confirmation-time" type="datetime-local" value={draft.confirmedAt} onChange={(event) => setDraft({ ...draft, confirmedAt: event.target.value })} /></div>
+        <div className="field"><label htmlFor="confirmation-owner">负责人</label><input id="confirmation-owner" value={draft.owner} onChange={(event) => setDraft({ ...draft, owner: event.target.value })} /></div>
+        <div className="field"><label htmlFor="confirmation-rationale">确认说明</label><textarea id="confirmation-rationale" value={draft.rationale} onChange={(event) => setDraft({ ...draft, rationale: event.target.value })} /></div>
+        <div className="confirmation-actions"><button className="button primary" onClick={saveDraft}>保存确认草稿</button><button className="button ghost" onClick={() => setEditing(false)}>取消</button></div>
+      </div>}
+      <p className="confirmation-boundary">编辑不会直接覆盖权威事实。正式确认必须由有权限的负责人提交，并由服务端记录新的不可变 Decision。</p>
+      {message && <div className="inline-message confirmation-message">{message}</div>}
+    </aside>
+  </div>;
+}
+
+function DesignImplementationDetail({ document }: { document: DesignDocument }) {
+  return <div className="design-document">
+    <header className="artifact-document-head"><div><span>{document.id} · v{document.version}</span><h4>{document.title}</h4><p>{document.overview}</p></div><div><b className={"artifact-state " + document.status.toLowerCase()}>{document.status}</b><small>{document.owner}<br />{document.updatedAt}</small></div></header>
+    <section className="design-flow"><h4>设计流程</h4><div>{document.flow.map((item, index) => <div className="design-flow-item" key={item}><span>{index + 1}</span><b>{item}</b>{index < document.flow.length - 1 && <i aria-hidden="true">→</i>}</div>)}</div></section>
+    <section className="design-decisions"><h4>关键设计决策</h4><div>{document.decisions.map((decision) => <article key={decision.title}><b>{decision.title}</b><p>{decision.content}</p></article>)}</div></section>
+    <section className="code-evidence"><h4>具体代码块</h4>{document.codeBlocks.map((codeBlock) => <article key={codeBlock.id}><header><div><b>{codeBlock.title}</b><span>{codeBlock.file}:{codeBlock.startLine}</span></div><small>{codeBlock.factId} · {codeBlock.language}</small></header><pre><code>{codeBlock.code}</code></pre></article>)}</section>
+  </div>;
+}
+
+function ConfigurationDetail({ configurations }: { configurations: EnvironmentConfiguration[] }) {
+  const environments = ["DEV", "SIT", "UAT", "PROD"] as const;
+  return <div className="configuration-document">
+    <div className="artifact-intro"><div><h4>跨环境配置矩阵</h4><p>配置值与来源绑定到环境 Snapshot；敏感配置只展示密钥引用，不展示明文。</p></div><span>{configurations.length} CONFIG ITEMS</span></div>
+    <div className="config-table-wrap"><table><thead><tr><th>配置项</th>{environments.map((environment) => <th key={environment}>{environment}</th>)}<th>来源</th></tr></thead><tbody>{configurations.map((configuration) => <tr key={configuration.key}><th><b>{configuration.key}</b><small>{configuration.description}{configuration.sensitive ? " · SENSITIVE REF" : ""}</small></th>{environments.map((environment) => <td key={environment}><code>{configuration.values[environment]}</code></td>)}<td><span>{configuration.source}</span></td></tr>)}</tbody></table></div>
+    <p className="config-boundary">后续环境变更必须形成新的配置 Fact 与 Snapshot 比较；页面不能用一个环境的值推断其他环境。</p>
+  </div>;
+}
+
+function TestCaseDetail({ design }: { design: TestDesign }) {
+  const [selectedCaseId, setSelectedCaseId] = useState(design.cases[0]?.id ?? "");
+  const selectedCase = design.cases.find((testCase) => testCase.id === selectedCaseId) ?? design.cases[0];
+
+  return <div className="test-design-layout">
+    <article className="test-strategy-document">
+      <div className="artifact-intro"><div><h4>测试设计策略</h4><p>{design.strategy.objective}</p></div><span>STRATEGY</span></div>
+      <div className="strategy-grid"><NarrativeSection title="风险重点" items={design.strategy.riskFocus} /><NarrativeSection title="测试层次" items={design.strategy.levels} /><section className="narrative-section"><h4>测试数据策略</h4><p>{design.strategy.dataStrategy}</p></section><section className="narrative-section"><h4>环境策略</h4><p>{design.strategy.environmentStrategy}</p></section><NarrativeSection title="退出准则" items={design.strategy.exitCriteria} /></div>
+    </article>
+    <div className="test-case-workbench">
+      <aside className="test-case-list"><header><h4>具体测试用例</h4><span>{design.cases.length} CASES</span></header>{design.cases.map((testCase) => <button key={testCase.id} className={selectedCase?.id === testCase.id ? "selected" : ""} aria-pressed={selectedCase?.id === testCase.id} onClick={() => setSelectedCaseId(testCase.id)}><span>{testCase.scenario} · {testCase.priority}</span><b>{testCase.title}</b><small>{testCase.id}@{testCase.version} · {testCase.automationStatus}</small></button>)}</aside>
+      {selectedCase && <TestCaseLogic testCase={selectedCase} />}
+    </div>
+    <section className="agent-contract"><div><p className="eyebrow">Future agent contract</p><h4>Agent 执行与回传预留</h4><p>{design.agentContract.note}</p></div><dl><dt>Schema</dt><dd>{design.agentContract.schema}</dd><dt>执行请求</dt><dd>{design.agentContract.requestFields.join(" · ")}</dd><dt>结果回传</dt><dd>{design.agentContract.resultFields.join(" · ")}</dd></dl></section>
+  </div>;
+}
+
+function TestCaseLogic({ testCase }: { testCase: TestCaseDefinition }) {
+  return <article className="test-case-logic"><header><div><p className="eyebrow">{testCase.scenario} · {testCase.priority}</p><h4>{testCase.title}</h4><span>{testCase.id}@{testCase.version}</span></div><div><b>{testCase.operationLevel}</b><small>{testCase.automationStatus}</small></div></header><p className="test-objective">{testCase.objective}</p><div className="test-meta-grid"><NarrativeSection title="前置条件" items={testCase.preconditions} /><NarrativeSection title="测试数据" items={testCase.testData} /></div><section className="test-steps"><h4>测试逻辑与步骤</h4>{testCase.steps.map((step, index) => <div key={step.id}><span>{index + 1}</span><b>{step.executor}</b><p>{step.action}</p><small>期望：{step.expected}</small></div>)}</section><section className="test-assertions"><h4>断言</h4>{testCase.assertions.map((assertion) => <code key={assertion}>{assertion}</code>)}</section><dl className="test-execution-contract"><dt>Fixture</dt><dd>{testCase.fixtureProtocol ?? "N/A"}</dd><dt>Cleanup</dt><dd>{testCase.cleanupProtocol ?? "N/A"}</dd><dt>所需能力</dt><dd>{testCase.requiredCapabilities.join(" · ")}</dd></dl></article>;
+}
+
+function TestResultDetail({ results, design }: { results: ScenarioTestResult[]; design: TestDesign }) {
+  const initialResult = results.find((result) => result.status === "FAIL" || result.status === "ERROR") ?? results[0];
+  const [selectedResultId, setSelectedResultId] = useState(initialResult?.id ?? "");
+  const selectedResult = results.find((result) => result.id === selectedResultId) ?? initialResult;
+  const groups = results.reduce<Record<string, ScenarioTestResult[]>>((grouped, result) => {
+    grouped[result.scenario] = [...(grouped[result.scenario] ?? []), result];
+    return grouped;
+  }, {});
+
+  const linkedCase = design.cases.find((testCase) => testCase.id === selectedResult?.testCaseId);
+
+  return <div className="test-result-layout">
+    <div className="result-scenario-list"><div className="artifact-intro"><div><h4>按场景执行结果</h4><p>每个结果绑定 TestCase 版本、部署、环境和 Evidence；失败条目可下钻到具体步骤与错误。</p></div><span>{results.length} RESULTS</span></div>{Object.entries(groups).map(([scenario, scenarioResults]) => <section key={scenario}><h4>{scenario}</h4>{scenarioResults.map((result) => <button key={result.id} className={selectedResult?.id === result.id ? "selected" : ""} aria-pressed={selectedResult?.id === result.id} onClick={() => setSelectedResultId(result.id)}><span className={"result-status " + result.status.toLowerCase()}>{result.status}</span><div><b>{design.cases.find((testCase) => testCase.id === result.testCaseId)?.title ?? result.testCaseId}</b><small>{result.applicability} · {result.testCaseId} · {result.environment} · {result.durationMs === null ? "未执行" : String(result.durationMs) + " ms"}</small></div><i aria-hidden="true">›</i></button>)}</section>)}</div>
+    {selectedResult && <article className="result-detail"><header><div><p className="eyebrow">{selectedResult.scenario} · {selectedResult.applicability}</p><h4>{linkedCase?.title ?? selectedResult.testCaseId}</h4><span>{selectedResult.executionId}</span></div><b className={"result-status large " + selectedResult.status.toLowerCase()}>{selectedResult.status}</b></header><p className="result-summary">{selectedResult.summary}</p><dl><dt>测试用例</dt><dd>{selectedResult.testCaseId}{linkedCase ? "@" + linkedCase.version : ""}</dd><dt>部署</dt><dd>{selectedResult.deploymentId}</dd><dt>环境</dt><dd>{selectedResult.environment}</dd><dt>开始时间</dt><dd>{selectedResult.startedAt ?? "NOT RUN"}</dd><dt>耗时</dt><dd>{selectedResult.durationMs === null ? "N/A" : String(selectedResult.durationMs) + " ms"}</dd></dl>{(selectedResult.status === "FAIL" || selectedResult.status === "ERROR") && <section className="failure-detail"><h4>失败详情</h4><div><span>失败步骤</span><b>{selectedResult.failedStepId}</b><span>错误码</span><b>{selectedResult.errorCode}</b><span>期望</span><b>{selectedResult.expected}</b><span>实际</span><b>{selectedResult.actual}</b></div><p>{selectedResult.errorMessage}</p></section>}<section className="result-evidence"><h4>Evidence 引用</h4>{selectedResult.evidenceIds.map((evidenceId) => <code key={evidenceId}>{evidenceId}</code>)}</section><p className="result-agent-boundary">未来 Agent 回传此结构化执行结果与签名 Evidence；服务端负责校验身份、版本、部署绑定和可信状态，不接受 Agent 自行判定功能可信。</p></article>}
+  </div>;
 }
 
 const demoCandidate: ReviewCandidate = {

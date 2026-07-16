@@ -32,6 +32,13 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /测试用例/);
   assert.match(html, /测试结果/);
   assert.match(html, /业务功能逻辑/);
+  assert.match(html, /完整功能说明/);
+  assert.match(html, /业务人工确认/);
+  assert.match(html, /权限控制/);
+  assert.match(html, /前置条件/);
+  assert.match(html, /外部依赖/);
+  assert.match(html, /适用范围/);
+  assert.match(html, /编辑确认结果/);
   assert.match(html, /底层追溯记录/);
   assert.match(html, /为什么相信/);
   assert.match(html, /TraceGap/);
@@ -40,9 +47,10 @@ test("server-renders the Traqen proof-chain product surface", async () => {
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, layout, packageJson, hosting] = await Promise.all([
+  const [page, product, detailModel, layout, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/trace-detail-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
@@ -63,6 +71,22 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /配置项/);
   assert.match(product, /测试步骤/);
   assert.match(product, /结果数据/);
+  assert.match(product, /完整功能说明/);
+  assert.match(product, /业务人工确认/);
+  assert.match(product, /具体代码块/);
+  assert.match(product, /跨环境配置矩阵/);
+  assert.match(product, /测试设计策略/);
+  assert.match(product, /具体测试用例/);
+  assert.match(product, /测试逻辑与步骤/);
+  assert.match(product, /Agent 执行与回传预留/);
+  assert.match(product, /按场景执行结果/);
+  assert.match(product, /失败详情/);
+  assert.match(product, /正式确认必须由有权限的负责人提交/);
+  assert.match(detailModel, /traqen\.testspec\.agent\/v1/);
+  assert.match(detailModel, /runnerIdentity/);
+  assert.match(detailModel, /failedStepId/);
+  assert.match(detailModel, /"DEV" \| "SIT" \| "UAT" \| "PROD"/);
+  assert.match(detailModel, /applicability: "CURRENT" \| "HISTORICAL"/);
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
   assert.match(product, /implementation-reanalyses/);
