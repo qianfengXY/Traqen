@@ -49,11 +49,12 @@ test("server-renders the Traqen proof-chain product surface", async () => {
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, detailModel, layout, packageJson, hosting] = await Promise.all([
+  const [page, product, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/trace-detail-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
   ]);
@@ -116,6 +117,9 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /x-traqen-api-token/);
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(layout, /Traqen · 可追溯质量工作台/);
+  assert.match(viteConfig, /fileURLToPath\(new URL\("\.\."/);
+  assert.match(viteConfig, /fs: \{ allow: \[repositoryRoot\] \}/);
+  assert.match(viteConfig, /CLOUDFLARE_CF_FETCH_ENABLED \?\?= "false"/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   const hostingConfig = JSON.parse(hosting);
   assert.equal(hostingConfig.d1, null);
