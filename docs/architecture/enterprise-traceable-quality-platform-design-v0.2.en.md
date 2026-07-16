@@ -668,6 +668,8 @@ The traceability chain is the core product view that the platform must deliver, 
   → [Evidence: Request, SQL, Log and Trace Hash]
 ```
 
+The product UI groups those underlying nodes into five business-readable blocks by default: `Feature description → design/implementation → configuration → test cases → test results`. Selecting a block must reveal its data, provenance, version, and state. Feature description expands Claim/Scope/Decision and business logic; design/implementation expands design elements, endpoints, and code Facts; configuration expands configuration and data constraints; test cases expand TestSpecs, steps, and assertions; test results expand Execution, Evidence, and freshness. This grouping is a presentation projection only and must not delete, merge, or hide the auditable underlying relationships.
+
 Traceability chains support at least three directions:
 
 1. **Forward proof chain**: from Feature or business rules to the current implementation, testing and evidence.

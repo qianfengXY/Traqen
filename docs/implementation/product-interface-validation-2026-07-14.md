@@ -12,7 +12,7 @@ The north-star question remains: **why can the selected Feature be trusted on th
 
 The responsive React workbench in `web/` provides three connected surfaces:
 
-1. **Feature traceability** — an ordered Claim → Scope → Decision → implementation/data/config → TestSpec → assertion → execution → Evidence chain, per-node provenance, independent trust dimensions, explicit TraceGap ownership, and a human-readable explanation of why the deployment can or cannot currently be trusted.
+1. **Feature traceability** — a five-block Feature description → design/implementation → configuration → test cases → test results projection. Selecting a block exposes its business logic, design/code, configuration, TestSpec/assertion, or execution/Evidence data, while preserving the ordered Claim → Scope → Decision → Fact → TestSpec → assertion → execution → Evidence records, provenance, independent trust dimensions, and explicit TraceGap ownership underneath.
 2. **Statement review** — a Reverse Run and Candidate can be loaded from the API. A reviewer must explicitly supply the normative statement, Scope, target IDs, rationale, and acknowledged conflicts. A formal decision is sent to the authenticated candidate-review endpoint. Reviewer identity and role are never accepted from the browser; its reviewer bearer token is held only in component memory and cleared after success.
 3. **Change impact** — two immutable Snapshot Manifest IDs are compared through the ChangeSet endpoint. The UI shows changed Facts, affected Features/Claims/TestSpecs, invalidated derived layers, preserved normative truth and history, semantic continuities, warnings, and the server-recommended repair order.
 

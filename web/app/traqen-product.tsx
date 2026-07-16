@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type View = "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
 type GraphViewPreset = "traceability" | "business" | "implementation" | "coverage";
+type TraceBlockKey = "description" | "design" | "configuration" | "test-case" | "test-result";
+type TraceDetail = { label: string; value: string };
 
 type FeatureGraphNode = {
   id: string;
@@ -55,6 +57,19 @@ type ChainNode = {
   status: NodeStatus;
   relation?: string;
   provenance: string;
+  details?: TraceDetail[];
+};
+
+type TraceBlock = {
+  key: TraceBlockKey;
+  label: string;
+  detailLabel: string;
+  description: string;
+  summary: string;
+  state: string;
+  relation: string;
+  details: TraceDetail[];
+  records: ChainNode[];
 };
 
 type Gap = { type: string; severity: string; ownerRole: string; message: string };
@@ -166,15 +181,15 @@ const completeScenario: Scenario = {
     { label: "冲突", value: "NONE" },
   ],
   nodes: [
-    { id: "CLAIM-ORDER-STATUS-001@1", kind: "Claim", title: "仅草稿订单可提交", meta: "NORMATIVE_REQUIREMENT", status: "ACTIVE", relation: "APPLIES_IN", provenance: "业务负责人确认" },
-    { id: "SCOPE-NORMAL-DRAFT@1", kind: "Scope", title: "普通用户 · 标准订单", meta: "actor=normal-user", status: "ACTIVE", relation: "CONFIRMED_BY", provenance: "生效范围 v1" },
-    { id: "DECISION-ORDER-001", kind: "Decision", title: "已确认", meta: "business-owner · 14 Jul", status: "ACTIVE", relation: "CONFORMS_TO", provenance: "不可变人工决策" },
-    { id: "ENDPOINT-POST-ORDER-SUBMIT", kind: "Implementation", title: "POST /orders/{id}/submit", meta: "src/orders.js:84", status: "ACTIVE", relation: "CONTROLLED_BY", provenance: "Scanner + exact Fact mapping" },
-    { id: "TABLE-ORDERS + FLAG-SUBMIT", kind: "Data / Config", title: "orders.status · submit.enabled", meta: "PostgreSQL + config", status: "ACTIVE", relation: "VERIFIED_BY", provenance: "Snapshot-bound Facts" },
-    { id: "TEST-ORDER-SUBMIT-001@2", kind: "TestSpec", title: "提交已 Seed 的草稿订单", meta: "CONTROLLED_WRITE", status: "ACTIVE", relation: "ASSERTED_BY", provenance: "独立批准的 TestSpec" },
-    { id: "ASSERT-HTTP-DB", kind: "Assertions", title: "HTTP 200 · DB=SUBMITTED", meta: "2 deterministic checks", status: "ACTIVE", relation: "EXECUTED_AS", provenance: "Runner deterministic assertions" },
-    { id: "EXEC-WRITE-001", kind: "Execution", title: "PASS · cleanup PASS", meta: "runner 1.1.0", status: "ACTIVE", relation: "PROVEN_BY", provenance: "Signed Runner task" },
-    { id: "EVIDENCE-BUNDLE-001", kind: "Evidence", title: "请求 · 响应 · SQL · 日志 · Trace · 生命周期", meta: "HMAC verified", status: "ACTIVE", provenance: "Current deployment artifact evidence" },
+    { id: "CLAIM-ORDER-STATUS-001@1", kind: "Claim", title: "仅草稿订单可提交", meta: "NORMATIVE_REQUIREMENT", status: "ACTIVE", relation: "APPLIES_IN", provenance: "业务负责人确认", details: [{ label: "业务功能逻辑", value: "普通用户只能提交 DRAFT 状态的标准订单；提交成功后订单进入 SUBMITTED。" }, { label: "前置条件", value: "订单存在、属于当前用户、状态为 DRAFT，且提交功能已开启。" }] },
+    { id: "SCOPE-NORMAL-DRAFT@1", kind: "Scope", title: "普通用户 · 标准订单", meta: "actor=normal-user", status: "ACTIVE", relation: "CONFIRMED_BY", provenance: "生效范围 v1", details: [{ label: "适用角色", value: "normal-user / order-owner" }, { label: "适用范围", value: "标准订单；管理员强制提交属于独立例外流程。" }] },
+    { id: "DECISION-ORDER-001", kind: "Decision", title: "已确认", meta: "business-owner · 14 Jul", status: "ACTIVE", relation: "CONFORMS_TO", provenance: "不可变人工决策", details: [{ label: "权威结论", value: "CONFIRMED" }, { label: "确认责任", value: "business-owner · Decision 不可变并绑定 Claim/Scope 版本。" }] },
+    { id: "ENDPOINT-POST-ORDER-SUBMIT", kind: "Implementation", title: "POST /orders/{id}/submit", meta: "src/orders.js:84", status: "ACTIVE", relation: "CONTROLLED_BY", provenance: "Scanner + exact Fact mapping", details: [{ label: "设计流程", value: "POST /orders/{id}/submit → OrderService.submit → 状态校验 → 原子事务 → SUBMITTED" }, { label: "代码定位", value: "src/orders.js:84 · submitOrder handler" }, { label: "设计约束", value: "状态校验、幂等保护、数据库写入和库存生命周期必须处于受控事务边界。" }] },
+    { id: "TABLE-ORDERS + FLAG-SUBMIT", kind: "Data / Config", title: "orders.status · submit.enabled", meta: "PostgreSQL + config", status: "ACTIVE", relation: "VERIFIED_BY", provenance: "Snapshot-bound Facts", details: [{ label: "配置项", value: "order.submit.enabled = true" }, { label: "数据对象", value: "orders.status: DRAFT → SUBMITTED" }, { label: "配置来源", value: "当前 Snapshot 绑定的运行配置与 PostgreSQL Schema Fact。" }] },
+    { id: "TEST-ORDER-SUBMIT-001@2", kind: "TestSpec", title: "提交已 Seed 的草稿订单", meta: "CONTROLLED_WRITE", status: "ACTIVE", relation: "ASSERTED_BY", provenance: "独立批准的 TestSpec", details: [{ label: "测试用例", value: "准备一个属于普通用户的 DRAFT 标准订单，调用提交接口并验证业务状态。" }, { label: "执行级别", value: "CONTROLLED_WRITE · 使用可信 Seed 与 Cleanup 协议" }, { label: "测试步骤", value: "Seed 订单 → 调用提交接口 → 查询订单状态 → 校验日志/Trace → Cleanup" }] },
+    { id: "ASSERT-HTTP-DB", kind: "Assertions", title: "HTTP 200 · DB=SUBMITTED", meta: "2 deterministic checks", status: "ACTIVE", relation: "EXECUTED_AS", provenance: "Runner deterministic assertions", details: [{ label: "业务断言", value: "HTTP 200；响应订单状态为 SUBMITTED；数据库 orders.status 为 SUBMITTED。" }, { label: "可观测性断言", value: "出现 ORDER_SUBMIT_RECEIVED/COMPLETED 日志，Trace span 状态为 OK。" }] },
+    { id: "EXEC-WRITE-001", kind: "Execution", title: "PASS · cleanup PASS", meta: "runner 1.1.0", status: "ACTIVE", relation: "PROVEN_BY", provenance: "Signed Runner task", details: [{ label: "测试结果", value: "PASS · 2/2 确定性断言通过 · Cleanup PASS" }, { label: "执行环境", value: "DEPLOY-SIT-20260714.4 · runner 1.1.0" }] },
+    { id: "EVIDENCE-BUNDLE-001", kind: "Evidence", title: "请求 · 响应 · SQL · 日志 · Trace · 生命周期", meta: "HMAC verified", status: "ACTIVE", provenance: "Current deployment artifact evidence", details: [{ label: "结果数据", value: "HTTP 请求/响应、SQL 查询结果、结构化日志、Trace、Seed/Cleanup 生命周期记录。" }, { label: "完整性", value: "HMAC VERIFIED · 绑定当前 TestSpec、Runner、Snapshot 与部署。" }] },
   ],
   gaps: [],
   evidence: [
@@ -206,10 +221,22 @@ const staleScenario: Scenario = {
     { label: "证据新鲜度", value: "STALE" },
     { label: "冲突", value: "NONE" },
   ],
-  nodes: completeScenario.nodes.map((node, index) => ({
-    ...node,
-    status: index <= 2 ? "ACTIVE" : "STALE",
-  })),
+  nodes: completeScenario.nodes.map((node, index) => {
+    const changed = { ...node, status: (index <= 2 ? "ACTIVE" : "STALE") as NodeStatus };
+    if (node.kind === "Execution") {
+      changed.details = [
+        { label: "当前测试结果", value: "NOT_RUN · DEPLOY-SIT-20260714.5 尚未执行批准的 TestSpec。" },
+        { label: "历史测试结果", value: "DEPLOY-SIT-20260714.4 · PASS · 2/2 断言通过 · Cleanup PASS" },
+      ];
+    }
+    if (node.kind === "Evidence") {
+      changed.details = [
+        { label: "当前结果数据", value: "暂无；必须在当前部署重新执行后生成。" },
+        { label: "历史 Evidence", value: "完整性仍为 VERIFIED，但仅绑定 DEPLOY-SIT-20260714.4，对当前部署为 STALE。" },
+      ];
+    }
+    return changed;
+  }),
   gaps: [
     { type: "CONFORMANCE_STALE", severity: "BLOCKING", ownerRole: "DEVELOPER", message: "订单提交处理器发生语义变化，需要重新分析当前实现是否仍符合已确认规则。" },
     { type: "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT", severity: "BLOCKING", ownerRole: "QUALITY_OWNER", message: "已批准 TestSpec 尚未在 DEPLOY-SIT-20260714.5 上重新执行。" },
@@ -433,11 +460,90 @@ function fromApi(input: Record<string, unknown>): Scenario {
   };
 }
 
+const traceBlockDefinitions: Array<{
+  key: TraceBlockKey;
+  label: string;
+  detailLabel: string;
+  description: string;
+  relation: string;
+  kinds: string[];
+}> = [
+  { key: "description", label: "功能描述", detailLabel: "业务功能逻辑", description: "说明功能解决什么问题、适用于谁、遵循什么业务规则，以及由谁确认。", relation: "指导设计", kinds: ["Claim", "Scope", "Decision"] },
+  { key: "design", label: "设计实现", detailLabel: "设计图与代码", description: "展示接口、组件、状态流转、代码定位和实现符合性。", relation: "依赖配置", kinds: ["Implementation"] },
+  { key: "configuration", label: "配置", detailLabel: "配置与数据约束", description: "展示当前 Snapshot 中影响功能行为的配置、数据结构和运行约束。", relation: "约束用例", kinds: ["Data / Config"] },
+  { key: "test-case", label: "测试用例", detailLabel: "用例、步骤与断言", description: "展示批准的 TestSpec、准备条件、执行步骤和有意义的业务断言。", relation: "产生结果", kinds: ["TestSpec", "Assertions"] },
+  { key: "test-result", label: "测试结果", detailLabel: "执行结果数据", description: "展示当前部署的执行结论、证据数据、完整性和新鲜度。", relation: "", kinds: ["Execution", "Evidence"] },
+];
+
+function dimensionState(scenario: Scenario, label: string, fallback: string) {
+  return scenario.dimensions.find((dimension) => dimension.label === label)?.value ?? fallback;
+}
+
+function nodeState(nodes: ChainNode[]) {
+  if (nodes.some((node) => node.status === "STALE")) return "STALE";
+  if (nodes.some((node) => node.status === "PENDING")) return "PENDING";
+  return nodes.length > 0 ? "ACTIVE" : "UNKNOWN";
+}
+
+function traceBlocksForScenario(scenario: Scenario): TraceBlock[] {
+  return traceBlockDefinitions.map((definition) => {
+    const records = scenario.nodes.filter((node) => definition.kinds.includes(node.kind));
+    const recordDetails = records.flatMap((node) => node.details ?? [{ label: node.kind, value: `${node.title} · ${node.meta}` }]);
+    let state = nodeState(records);
+    let summary = records.map((node) => node.title).join(" · ") || "尚无可展示数据";
+    let context: TraceDetail[] = [];
+
+    if (definition.key === "description") {
+      state = dimensionState(scenario, "业务权威", state);
+      summary = records.find((node) => node.kind === "Claim")?.title ?? scenario.feature.name;
+      context = [
+        { label: "功能", value: `${scenario.feature.name} · ${scenario.feature.id}@${scenario.feature.version}` },
+        { label: "业务权威", value: state },
+      ];
+    } else if (definition.key === "design") {
+      state = dimensionState(scenario, "实现符合性", state);
+      context = [
+        { label: "实现符合性", value: state },
+        { label: "实现快照", value: scenario.snapshotId },
+      ];
+    } else if (definition.key === "configuration") {
+      context = [
+        { label: "配置快照", value: scenario.snapshotId },
+        { label: "目标部署", value: scenario.deploymentId },
+      ];
+    } else if (definition.key === "test-case") {
+      context = [
+        { label: "用例状态", value: state },
+        { label: "绑定快照", value: scenario.snapshotId },
+      ];
+    } else {
+      const verification = dimensionState(scenario, "验证结果", state);
+      const freshness = dimensionState(scenario, "证据新鲜度", "UNKNOWN");
+      state = verification;
+      summary = `${verification} · ${scenario.evidence.length} 条结果证据`;
+      context = [
+        { label: "验证结果", value: verification },
+        { label: "证据新鲜度", value: freshness },
+        { label: "执行部署", value: scenario.deploymentId },
+        { label: "结果时间", value: scenario.computedAt },
+      ];
+    }
+
+    return {
+      ...definition,
+      summary,
+      state,
+      details: [...context, ...recordDetails],
+      records,
+    };
+  });
+}
+
 export function TraqenProduct() {
   const [view, setView] = useState<View>("trace");
   const [scenarioKey, setScenarioKey] = useState<"current" | "changed">("current");
   const [liveScenario, setLiveScenario] = useState<Scenario | null>(null);
-  const [selectedId, setSelectedId] = useState(completeScenario.nodes[0].id);
+  const [selectedTraceBlock, setSelectedTraceBlock] = useState<TraceBlockKey>("description");
   const [connectionOpen, setConnectionOpen] = useState(false);
   const [apiBase, setApiBase] = useState("http://127.0.0.1:3100");
   const [apiToken, setApiToken] = useState("");
@@ -448,11 +554,6 @@ export function TraqenProduct() {
   const [loading, setLoading] = useState(false);
 
   const scenario = liveScenario ?? (scenarioKey === "current" ? completeScenario : staleScenario);
-  const selected = useMemo(
-    () => scenario.nodes.find((node) => node.id === selectedId) ?? scenario.nodes[0],
-    [scenario, selectedId],
-  );
-
   async function fetchTraceability(targetFeatureId: string, targetSnapshotId: string) {
     const base = apiBase.replace(/\/$/, "");
     const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(targetFeatureId)}/traceability?snapshotManifestId=${encodeURIComponent(targetSnapshotId)}`;
@@ -464,7 +565,7 @@ export function TraqenProduct() {
     }
     const normalized = fromApi(body);
     setLiveScenario(normalized);
-    setSelectedId(normalized.nodes[0]?.id ?? "");
+    setSelectedTraceBlock("description");
     setConnectionOpen(false);
     setMessage("已加载服务端派生的 Feature 追溯视图。");
   }
@@ -552,7 +653,7 @@ export function TraqenProduct() {
           </section>
         )}
 
-        {view === "trace" && <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selected={selected} setSelectedId={setSelectedId} />}
+        {view === "trace" && <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />}
         {view === "graph" && <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />}
         {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
         {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
@@ -781,14 +882,18 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   </>;
 }
 
-function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selected, setSelectedId }: {
+function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selectedBlock, setSelectedBlock }: {
   scenario: Scenario;
   demo: boolean;
   scenarioKey: "current" | "changed";
   setScenarioKey: (value: "current" | "changed") => void;
-  selected?: ChainNode;
-  setSelectedId: (value: string) => void;
+  selectedBlock: TraceBlockKey;
+  setSelectedBlock: (value: TraceBlockKey) => void;
 }) {
+  const blocks = traceBlocksForScenario(scenario);
+  const selected = blocks.find((block) => block.key === selectedBlock) ?? blocks[0];
+  const evidenceFreshness = dimensionState(scenario, "证据新鲜度", "UNKNOWN");
+
   return <>
     <section className="hero">
       <div className="hero-card"><p className="eyebrow">Feature · {scenario.feature.id} · v{scenario.feature.version}</p><h1>{scenario.feature.name}</h1><p className="hero-sub">从已确认业务声明出发，沿实现、测试与执行证据回答：为什么相信这个功能在当前部署正常？每个状态维度独立展示，任何断链都会阻止“完整可信”。</p></div>
@@ -800,14 +905,14 @@ function TraceView({ scenario, demo, scenarioKey, setScenarioKey, selected, setS
     </section>
 
     <section className="panel">
-      <div className="panel-head"><div><h2>端到端证据追踪链</h2><p>Snapshot {scenario.snapshotId} · 点击节点查看来源与绑定</p></div>{demo && <div className="scenario-switch"><button className={scenarioKey === "current" ? "active" : ""} onClick={() => setScenarioKey("current")}>当前部署</button><button className={scenarioKey === "changed" ? "active" : ""} onClick={() => setScenarioKey("changed")}>代码变更后</button></div>}</div>
-      <div className="chain-wrap"><div className="chain">{scenario.nodes.map((node, index) => <div className="chain-item" key={node.id}><button className={`chain-node ${node.status.toLowerCase()} ${selected?.id === node.id ? "selected" : ""}`} onClick={() => setSelectedId(node.id)}><span className="node-kind">{node.kind}</span><strong className="node-title">{node.title}</strong><span className="node-meta">{node.meta}<br />{node.status}</span></button>{index < scenario.nodes.length - 1 && <div className="chain-link" aria-hidden="true"><span /></div>}</div>)}</div><div className="relation-row" aria-hidden="true">{scenario.nodes.slice(0, -1).map((node) => <span key={node.id}>{node.relation ?? "LINKED_TO"}</span>)}</div></div>
-      <div className="chain-foot"><div className="detail-pane"><h3>Selected node</h3>{selected && <div className="detail-kv"><span>类型</span><span>{selected.kind}</span><span>ID</span><span>{selected.id}</span><span>来源</span><span>{selected.provenance}</span><span>状态</span><span>{selected.status}</span></div>}</div><div className="why-pane"><h3>{scenario.complete ? "为什么相信" : "为什么不能相信"}</h3><ul>{scenario.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div></div>
+      <div className="panel-head"><div><h2>端到端功能追踪链</h2><p>Snapshot {scenario.snapshotId} · 点击五大块查看对应数据与底层追溯记录</p></div>{demo && <div className="scenario-switch"><button className={scenarioKey === "current" ? "active" : ""} onClick={() => setScenarioKey("current")}>当前部署</button><button className={scenarioKey === "changed" ? "active" : ""} onClick={() => setScenarioKey("changed")}>代码变更后</button></div>}</div>
+      <div className="chain-wrap"><div className="chain five-block-chain">{blocks.map((block, index) => <div className="chain-item" key={block.key}><button aria-pressed={selected.key === block.key} className={`chain-node ${tone(block.state)} ${selected.key === block.key ? "selected" : ""}`} onClick={() => setSelectedBlock(block.key)}><span className="node-kind">{block.detailLabel}</span><strong className="node-title">{block.label}</strong><span className="node-summary">{block.summary}</span><span className="node-meta">{block.state} · {block.records.length} 条追溯记录</span></button>{index < blocks.length - 1 && <div className="chain-link" aria-hidden="true"><span /><small>{block.relation}</small></div>}</div>)}</div></div>
+      <div className="chain-foot trace-block-foot"><div className="detail-pane trace-block-pane"><div className="trace-detail-heading"><div><p className="eyebrow">{selected.detailLabel}</p><h3>{selected.label}</h3><p>{selected.description}</p></div><span className={`mode-badge ${tone(selected.state) === "good" ? "live" : ""}`}>{selected.state}</span></div><div className="trace-detail-grid">{selected.details.map((detail, index) => <div key={`${detail.label}:${index}`}><span>{detail.label}</span><strong>{detail.value}</strong></div>)}</div><div className="trace-records"><h3>底层追溯记录</h3>{selected.records.map((record) => <div key={record.id}><span>{record.kind} · {record.status}</span><b>{record.id}</b><small>{record.provenance}</small></div>)}</div></div><div className="why-pane"><h3>{scenario.complete ? "为什么相信" : "为什么不能相信"}</h3><ul>{scenario.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></div></div>
     </section>
 
     <div className="two-column">
       <section className="panel"><div className="panel-head"><div><h2>TraceGap</h2><p>缺口、责任角色与下一步动作</p></div><span className="mode-badge">{scenario.gaps.length} OPEN</span></div><div className="gap-list">{scenario.gaps.length === 0 ? <div className="gap-empty">没有缺失环节。该状态仅对所选 Snapshot 与部署成立。</div> : scenario.gaps.map((gap) => <div className="gap" key={gap.type}><div className="gap-top"><span>{gap.severity} · {gap.type}</span><span className="owner">{gap.ownerRole}</span></div><p>{gap.message}</p></div>)}</div></section>
-      <section className="panel"><div className="panel-head"><div><h2>Evidence</h2><p>当前执行产生的已验证证据</p></div></div><div className="evidence-list">{scenario.evidence.map((item) => <div className="evidence-item" key={item.id}><div><strong>{item.type} · {item.detail}</strong><small>{item.id}</small></div><span className="evidence-state">{item.state}</span></div>)}</div></section>
+      <section className="panel"><div className="panel-head"><div><h2>Evidence</h2><p>{evidenceFreshness === "FRESH" ? "当前执行产生的已验证证据" : "保留的历史证据；完整性已验证，但不能证明当前部署"}</p></div></div><div className="evidence-list">{scenario.evidence.map((item) => <div className="evidence-item" key={item.id}><div><strong>{item.type} · {item.detail}</strong><small>{item.id}</small></div><span className={`evidence-state ${evidenceFreshness === "FRESH" ? "" : "stale"}`}>{item.state}{evidenceFreshness === "FRESH" ? "" : " · STALE"}</span></div>)}</div></section>
     </div>
   </>;
 }

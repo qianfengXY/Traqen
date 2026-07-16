@@ -159,7 +159,7 @@ Reverse Skill 框架切片添加：
 - `web/` 下的响应式 Feature 可追溯性工作台，以“为什么当前部署值得信赖”而不是综合质量评分为主导；
 - 独立权威、一致性、验证、新鲜度、冲突状态卡；
 - 针对反向运行、Scanner 数量、测试执行、Evidence 和影响分析的实时平台操作观察，并明确显示不可用的外部遥测；
-- 具有节点来源的有序 Claim、Scope、Decision、implementation/data/config、TestSpec、断言、执行和 Evidence 链；
+- 面向业务用户的五段式投影——功能描述、设计实现、配置、测试用例和测试结果——支持点击查看对应数据，并在下层保留有序的 Claim、Scope、Decision、Fact、TestSpec、断言、执行和 Evidence 记录；
 - 明确的 TraceGap 所有权、经过验证的语句级人工审核流程以及 API 支持的 Snapshot 历史记录与变更影响修复指南的比较；
 - 明确标记的合成演示加上一个连接面板，该连接面板加载服务器衍生的 Feature 可追溯性 API ，而无需重新解释对客户端的信任；
 - 仅保存在页面内存中并通过 `x-traqen-api-token` 发送的 API 令牌字段，使审阅者授权凭证保持独立；

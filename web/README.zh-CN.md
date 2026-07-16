@@ -9,7 +9,7 @@ Traqen 的证据优先 Feature 可追溯模型的产品表面。
 ## 产品表面
 
 - Feature具有独立权威、一致性、验证、新鲜度、冲突维度的可追溯性。
-- 有序 Claim → Scope → Decision → implementation/data/config → TestSpec → 断言 → 执行 → Evidence 链。
+- 五段式“功能描述 → 设计实现 → 配置 → 测试用例 → 测试结果”视图。点击每一块可查看业务逻辑、设计与代码、配置、用例或结果数据，同时保留下层有序的 Claim → Scope → Decision → Fact → TestSpec → 断言 → 执行 → Evidence 记录。
 - 可见的 TraceGap 所有权以及阻止功能显示为完整的原因。
 - 语句级审核，加载真实的反向运行候选者并提交经过身份验证、服务器验证的 Decision，而不接受客户端提供的审核者身份。
 - 历史 Snapshot 比较由不可变的 ChangeSet API 支持，包括保留的规范事实、无效的派生层和修复队列。

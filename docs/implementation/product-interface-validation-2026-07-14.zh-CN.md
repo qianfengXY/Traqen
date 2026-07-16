@@ -12,7 +12,7 @@
 
 `web/` 中的响应式 React 工作台提供了三个连接的表面：
 
-1. **Feature 可追溯性** — 有序的 Claim → Scope → Decision → implementation/data/config → TestSpec → 断言 → 执行 → Evidence 链、每个节点的出处、独立的信任维度、显式的 TraceGap 所有权和人类可读的解释为什么部署当前可以或不可以信任。
+1. **Feature 可追溯性** — 五段式“功能描述 → 设计实现 → 配置 → 测试用例 → 测试结果”投影。选择任一块即可查看对应的业务逻辑、设计与代码、配置、TestSpec/断言或执行/Evidence 数据，同时在下层保留有序的 Claim → Scope → Decision → Fact → TestSpec → 断言 → 执行 → Evidence 记录、来源、独立可信维度和显式 TraceGap 所有权。
 2. **语句审查** — 可以从 API 加载反向运行和候选。审阅者必须明确提供规范性声明、Scope、目标 ID、基本原理和已确认的冲突。正式决定将发送到经过身份验证的候选人审核端点。浏览器永远不会接受审阅者的身份和角色；其审阅者持有者令牌仅保存在组件内存中，并在成功后清除。
 3. **更改影响** — 通过 ChangeSet 端点比较两个不可变的 Snapshot 清单 ID。 UI 显示已更改的 Facts、受影响的 Features/Claims/TestSpecs、无效的派生层、保留的规范事实和历史、语义连续性、警告以及服务器建议的修复顺序。
 

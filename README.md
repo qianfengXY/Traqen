@@ -159,7 +159,7 @@ The product-interface slice adds:
 - a responsive Feature traceability workbench under `web/` that leads with “why the current deployment is trusted” rather than a composite quality score;
 - independent authority, conformance, verification, freshness, and conflict status cards;
 - live platform operations observations for Reverse Runs, Scanner volume, test execution, Evidence, and impact analysis, with unavailable external telemetry shown explicitly;
-- an ordered Claim, Scope, Decision, implementation/data/config, TestSpec, assertion, execution, and Evidence chain with node provenance;
+- a five-block product projection—Feature description, design/implementation, configuration, test cases, and test results—with click-through data and the ordered Claim, Scope, Decision, Fact, TestSpec, assertion, execution, and Evidence records preserved underneath;
 - explicit TraceGap ownership, an authenticated statement-level human review flow, and API-backed Snapshot history comparison with change-impact repair guidance;
 - an explicitly labelled synthetic demonstration plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
 - an API token field kept only in page memory and sent through `x-traqen-api-token`, leaving reviewer Authorization credentials independent;

@@ -25,7 +25,14 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /功能追溯/);
   assert.match(html, /追溯图谱/);
   assert.match(html, /效果指标/);
-  assert.match(html, /端到端证据追踪链/);
+  assert.match(html, /端到端功能追踪链/);
+  assert.match(html, /功能描述/);
+  assert.match(html, /设计实现/);
+  assert.match(html, /配置与数据约束/);
+  assert.match(html, /测试用例/);
+  assert.match(html, /测试结果/);
+  assert.match(html, /业务功能逻辑/);
+  assert.match(html, /底层追溯记录/);
   assert.match(html, /为什么相信/);
   assert.match(html, /TraceGap/);
   assert.match(html, /DEMO SNAPSHOT/);
@@ -50,6 +57,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /\/graph\/paths\/query/);
   assert.match(product, /默认最多 30 个节点/);
   assert.match(product, /cytoscape/);
+  assert.match(product, /"description" \| "design" \| "configuration" \| "test-case" \| "test-result"/);
+  assert.match(product, /设计流程/);
+  assert.match(product, /代码定位/);
+  assert.match(product, /配置项/);
+  assert.match(product, /测试步骤/);
+  assert.match(product, /结果数据/);
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
   assert.match(product, /implementation-reanalyses/);

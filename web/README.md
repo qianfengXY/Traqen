@@ -9,7 +9,7 @@ The default screen is an explicitly labelled synthetic demonstration of the orde
 ## Product surfaces
 
 - Feature traceability with independent authority, conformance, verification, freshness, and conflict dimensions.
-- Ordered Claim → Scope → Decision → implementation/data/config → TestSpec → assertions → execution → Evidence chain.
+- A five-block Feature description → design/implementation → configuration → test cases → test results view. Each block opens its corresponding business logic, design/code, configuration, test, or result data while retaining the ordered Claim → Scope → Decision → Fact → TestSpec → assertion → execution → Evidence records.
 - Visible TraceGap ownership and reasons that prevent a feature from being shown as complete.
 - Statement-level review that loads a real Reverse Run candidate and submits an authenticated, server-validated Decision without accepting client-supplied reviewer identity.
 - Historical Snapshot comparison backed by the immutable ChangeSet API, including preserved normative truth, invalidated derived layers, and a repair queue.
