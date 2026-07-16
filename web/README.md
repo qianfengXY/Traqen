@@ -4,7 +4,7 @@
 
 The product surface for Traqen's evidence-first Feature traceability model.
 
-The default screen is an explicitly labelled synthetic demonstration of the order-submission vertical slice. It shows a complete current-deployment proof chain and a changed-code scenario where only implementation-derived layers become stale. The connection panel can load the server-derived Feature traceability view from a real Traqen API; the browser never computes a replacement trust score.
+The default screen treats the Traqen repository itself as the first `SELF WORKSPACE`. Its Feature traceability capability is demonstrated with the repository's real design document, domain source, environment configuration contract, test design, and execution results. A changed `trace-chain.js` scenario shows how only implementation-derived layers become stale. The connection panel can load the same server-derived projection from a running Traqen API; the browser never computes a replacement trust score.
 
 ## Product surfaces
 

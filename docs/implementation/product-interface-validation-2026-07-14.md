@@ -22,7 +22,7 @@ The test data also reserves the `traqen.testspec.agent/v1` execution boundary. I
 
 ## Truth boundary
 
-The built-in order-submission scenario is labelled `DEMO SNAPSHOT`. Its review actions never persist anything. Live Feature traceability, candidate review, and history comparison use the Traqen API and are labelled separately.
+The built-in `SELF WORKSPACE` uses Traqen's own Feature traceability design, domain source, configuration contract, test design, and execution results. It remains a repository-backed demonstration projection, so its review actions never persist anything. Live Feature traceability, candidate review, and history comparison use the running Traqen API and are labelled separately.
 
 The browser does not infer a green status from partial data. Live completeness, dimensions, segments, gaps, impact, invalidations, and continuity all come from server-derived contracts. A missing necessary link remains a visible TraceGap and prevents the chain from being represented as complete.
 
@@ -32,7 +32,7 @@ The API accepts an explicit `CORS_ALLOWED_ORIGINS` allowlist. Wildcards, origins
 
 ## Scenarios validated
 
-- A complete current-deployment chain displays all required stages and verified HTTP, database, assertion, lifecycle, LOG, and TRACE Evidence.
+- A complete current-deployment chain for Traqen Feature traceability displays all required stages and verified domain output, HTTP response, Schema, test, and source Evidence.
 - A semantically changed implementation preserves the normative Claim, Scope, Decision, and historical Evidence while marking only implementation-derived and verification segments stale.
 - The changed scenario explains why the new deployment cannot yet be trusted and assigns each gap to a repair role.
 - Demo decisions remain non-persistent.

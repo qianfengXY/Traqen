@@ -163,7 +163,7 @@ The product-interface slice adds:
 - an Apple-inspired responsive visual system tuned for a 27-inch desktop workspace, with larger typography, restrained system colors, wider document reading measures, consistent spacing, and unified navigation, panels, forms, graphs, reviews, impact, and metrics surfaces;
 - a stable future-Agent boundary in which an Agent consumes an approved versioned TestSpec and returns structured step, assertion, Evidence, runner identity, and attestation data, without being allowed to rewrite business confirmation or decide the final trusted state;
 - explicit TraceGap ownership, an authenticated statement-level human review flow, and API-backed Snapshot history comparison with change-impact repair guidance;
-- an explicitly labelled synthetic demonstration plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
+- a Traqen `SELF WORKSPACE` projection backed by this repository's real design, source, configuration contract, tests, and results, plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
 - an API token field kept only in page memory and sent through `x-traqen-api-token`, leaving reviewer Authorization credentials independent;
 - an explicit CORS origin allowlist for connecting the browser product to a Traqen API.
 
