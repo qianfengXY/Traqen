@@ -42,7 +42,9 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /底层追溯记录/);
   assert.match(html, /为什么相信/);
   assert.match(html, /TraceGap/);
-  assert.match(html, /DEMO SNAPSHOT/);
+  assert.match(html, /SELF WORKSPACE/);
+  assert.match(html, /Traqen Platform/);
+  assert.match(html, /功能追溯 \/ Feature traceability/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
@@ -90,8 +92,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(detailModel, /failedStepId/);
   assert.match(detailModel, /"DEV" \| "SIT" \| "UAT" \| "PROD"/);
   assert.match(detailModel, /applicability: "CURRENT" \| "HISTORICAL"/);
-  assert.match(detailModel, /order-submit-design\.zh-CN\.md\?raw/);
-  assert.match(detailModel, /order-service\.js\?raw/);
+  assert.match(detailModel, /feature-traceability-design\.zh-CN\.md\?raw/);
+  assert.match(detailModel, /trace-chain\.js\?raw/);
+  assert.match(detailModel, /feature-graph\.js\?raw/);
+  assert.match(product, /PROJECT-TRAQEN/);
+  assert.match(product, /FEATURE-TRACEABILITY-001/);
+  assert.doesNotMatch(`${product}\n${detailModel}`, /Order Platform|FEATURE-ORDER|ORDER-SUBMIT|order-service\.js\?raw|order-submit-design/);
   assert.match(product, /\/reverse-runs\/\$\{encodeURIComponent\(runId\)\}\/candidates/);
   assert.match(product, /\/change-sets/);
   assert.match(product, /implementation-reanalyses/);
@@ -103,7 +109,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /平台运营可观测性/);
   assert.match(product, /没有综合绿色分数/);
   assert.match(product, /服务端派生/);
-  assert.match(product, /演示模式不会写入业务基线/);
+  assert.match(product, /自 Workspace 候选的选择不会写入/);
   assert.match(product, /成功后清空/);
   assert.match(product, /历史版本比较/);
   assert.match(product, /重建当前实现映射/);
