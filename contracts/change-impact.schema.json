@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.local/contracts/change-impact.schema.json",
+  "title": "ChangeImpact",
+  "type": "object",
+  "required": ["changeSet", "impact", "continuities"],
+  "properties": {
+    "changeSet": { "$ref": "#/$defs/ChangeSet" },
+    "impact": { "$ref": "#/$defs/ImpactAssessment" },
+    "continuities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ContinuityPackage" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ChangeSetRequest": {
+      "type": "object",
+      "required": ["id", "fromSnapshotManifestId", "toSnapshotManifestId"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "fromSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "toSnapshotManifestId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "ChangeSet": {
+      "type": "object",
+      "required": [
+        "id",
+        "fromSnapshotManifestId",
+        "toSnapshotManifestId",
+        "complete",
+        "warnings",
+        "changes",
+        "createdAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "fromSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "toSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "complete": { "type": "boolean" },
+        "warnings": {
+          "type": "array",
+          "items": { "enum": ["FROM_FACT_GRAPH_INCOMPLETE", "TO_FACT_GRAPH_INCOMPLETE"] },
+          "uniqueItems": true
+        },
+        "changes": { "type": "array", "items": { "$ref": "#/$defs/FactChange" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "FactChange": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "entityType",
+        "stableId",
+        "beforeFactId",
+        "afterFactId",
+        "changeType",
+        "artifact",
+        "nodeType",
+        "predicate"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["ADDED", "REMOVED", "MODIFIED"] },
+        "entityType": { "enum": ["NODE", "EDGE"] },
+        "stableId": { "type": "string", "minLength": 1 },
+        "beforeFactId": { "type": ["string", "null"] },
+        "afterFactId": { "type": ["string", "null"] },
+        "changeType": {
+          "enum": [
+            "SOURCE_CODE",
+            "API_CONTRACT",
+            "SQL",
+            "DATABASE_SCHEMA",
+            "CONFIGURATION",
+            "DEPENDENCY",
+            "TEST_SPEC"
+          ]
+        },
+        "artifact": { "type": ["string", "null"] },
+        "nodeType": { "type": ["string", "null"] },
+        "predicate": { "type": ["string", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "Invalidation": {
+      "type": "object",
+      "required": [
+        "id",
+        "featureId",
+        "claimId",
+        "claimVersion",
+        "scopeId",
+        "scopeVersion",
+        "mappingId",
+        "testSpecIds",
+        "changeIds",
+        "layers",
+        "preserves",
+        "reason",
+        "recommendedActions"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "featureId": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "mappingId": { "type": "string", "minLength": 1 },
+        "testSpecIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "changeIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "layers": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "preserves": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "reason": { "type": "string", "minLength": 1 },
+        "recommendedActions": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "REMAP_IMPLEMENTATION_FACTS",
+              "RECOMPUTE_IMPLEMENTATION_CONFORMANCE",
+              "REVIEW_TEST_COVERAGE",
+              "RERUN_AFFECTED_TESTS",
+              "RECOMPUTE_TRACE_CHAIN",
+              "REVIEW_CLAIM_SCOPE",
+              "REAPPROVE_TEST_SPEC",
+              "REFRESH_EXECUTION_EVIDENCE",
+              "REVIEW_EVIDENCE_CONFLICT"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "FactRefRebinding": {
+      "type": "object",
+      "required": ["fromFactId", "toFactId", "relation"],
+      "properties": {
+        "fromFactId": { "type": "string", "minLength": 1 },
+        "toFactId": { "type": "string", "minLength": 1 },
+        "relation": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "ImplementationContinuity": {
+      "type": "object",
+      "required": [
+        "id",
+        "changeSetId",
+        "featureId",
+        "claimId",
+        "claimVersion",
+        "scopeId",
+        "scopeVersion",
+        "fromSnapshotManifestId",
+        "toSnapshotManifestId",
+        "fromMappingId",
+        "toMappingId",
+        "fromConformanceId",
+        "toConformanceId",
+        "factRefRebindings",
+        "reason"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "changeSetId": { "type": "string", "minLength": 1 },
+        "featureId": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "fromSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "toSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "fromMappingId": { "type": "string", "minLength": 1 },
+        "toMappingId": { "type": "string", "minLength": 1 },
+        "fromConformanceId": { "type": "string", "minLength": 1 },
+        "toConformanceId": { "type": "string", "minLength": 1 },
+        "factRefRebindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/FactRefRebinding" },
+          "minItems": 1
+        },
+        "reason": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "ContinuityPackage": {
+      "type": "object",
+      "required": ["continuity", "implementationMapping", "conformance"],
+      "properties": {
+        "continuity": { "$ref": "#/$defs/ImplementationContinuity" },
+        "implementationMapping": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" },
+        "conformance": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationConformance" }
+      },
+      "additionalProperties": false
+    },
+    "ImpactAssessment": {
+      "type": "object",
+      "required": [
+        "id",
+        "changeSetId",
+        "fromSnapshotManifestId",
+        "toSnapshotManifestId",
+        "invalidations",
+        "continuities",
+        "affectedFeatureIds",
+        "affectedClaimRefs",
+        "affectedTestSpecIds",
+        "continuedFeatureIds",
+        "createdAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "changeSetId": { "type": "string", "minLength": 1 },
+        "fromSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "toSnapshotManifestId": { "type": "string", "minLength": 1 },
+        "invalidations": { "type": "array", "items": { "$ref": "#/$defs/Invalidation" } },
+        "continuities": { "type": "array", "items": { "$ref": "#/$defs/ImplementationContinuity" } },
+        "affectedFeatureIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "affectedClaimRefs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "version"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "version": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "affectedTestSpecIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "continuedFeatureIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

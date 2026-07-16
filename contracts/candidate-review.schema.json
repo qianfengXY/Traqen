@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/candidate-review-v1alpha1.json",
+  "title": "ReverseCandidateReviewRequest",
+  "type": "object",
+  "required": ["id", "outcome", "rationale"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "outcome": { "$ref": "#/$defs/Outcome" },
+    "rationale": { "type": "string", "minLength": 1 },
+    "candidateFeatureId": { "type": "string", "minLength": 1 },
+    "acknowledgedConflictIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "target": { "$ref": "#/$defs/BaselineTarget" },
+    "normative": { "$ref": "#/$defs/NormativeDecision" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "enum": ["CONFIRMED", "EXCEPTION_RECORDED"] } } },
+      "then": { "required": ["target", "normative"] },
+      "else": {
+        "not": {
+          "anyOf": [
+            { "required": ["target"] },
+            { "required": ["normative"] },
+            { "required": ["candidateFeatureId"] }
+          ]
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "Outcome": {
+      "enum": ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"]
+    },
+    "Constraint": {
+      "type": "object",
+      "required": ["dimension", "operator", "value"],
+      "properties": {
+        "dimension": { "type": "string", "minLength": 1 },
+        "operator": { "enum": ["EQUALS", "NOT_EQUALS", "IN", "NOT_IN", "ALLOWS", "FORBIDS", "REQUIRES"] },
+        "value": true
+      },
+      "additionalProperties": false
+    },
+    "BaselineTarget": {
+      "type": "object",
+      "required": ["featureMode", "featureId", "claimId", "scopeId", "decisionId"],
+      "properties": {
+        "featureMode": { "enum": ["CREATE", "EXISTING"] },
+        "featureId": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "decisionId": { "type": "string", "minLength": 1 },
+        "featureName": { "type": "string", "minLength": 1 },
+        "businessDomain": { "type": "string", "minLength": 1 },
+        "featureDescription": { "type": "string", "minLength": 1 },
+        "associationRationale": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["featureMode"],
+            "properties": { "featureMode": { "const": "EXISTING" } }
+          },
+          "then": { "required": ["associationRationale"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "NormativeDecision": {
+      "type": "object",
+      "required": ["statement", "constraint", "scope"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "constraint": { "$ref": "#/$defs/Constraint" },
+        "scope": { "type": "object" },
+        "effectiveFrom": { "type": "string", "format": "date-time" },
+        "effectiveTo": { "type": "string", "format": "date-time" },
+        "authorityEvidenceRefs": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "decisionContent": { "type": "string", "minLength": 1 },
+        "validUntil": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "CandidateReview": {
+      "type": "object",
+      "required": [
+        "id", "requestFingerprint", "runId", "candidateId", "candidateType", "outcome",
+        "rationale", "actorId", "actorRole", "acknowledgedConflictIds", "baselineRefs", "reviewedAt"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "requestFingerprint": { "type": "string" },
+        "runId": { "type": "string" },
+        "candidateId": { "type": "string" },
+        "candidateType": { "const": "CLAIM" },
+        "outcome": { "$ref": "#/$defs/Outcome" },
+        "rationale": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "acknowledgedConflictIds": { "type": "array", "items": { "type": "string" } },
+        "baselineRefs": { "type": ["object", "null"] },
+        "reviewedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ImplementationMapping": {
+      "type": "object",
+      "required": [
+        "id", "claimId", "claimVersion", "scopeId", "scopeVersion", "snapshotManifestId",
+        "sourceComponentId", "sourceRunId", "sourceCandidateId", "status", "factRefs", "createdAt"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "claimId": { "type": "string" },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string" },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "snapshotManifestId": { "type": "string" },
+        "sourceComponentId": { "type": "string" },
+        "sourceRunId": { "type": "string" },
+        "sourceCandidateId": { "type": "string" },
+        "status": { "enum": ["ACTIVE", "STALE"] },
+        "factRefs": { "type": "array", "minItems": 1, "items": { "$ref": "./reverse-run.schema.json#/$defs/EvidenceRef" } },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ImplementationConformance": {
+      "type": "object",
+      "required": [
+        "id", "claimId", "claimVersion", "scopeId", "scopeVersion", "snapshotManifestId",
+        "mappingId", "status", "evidenceRefs", "analysisMethod", "computedAt"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "claimId": { "type": "string" },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string" },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "snapshotManifestId": { "type": "string" },
+        "mappingId": { "type": "string" },
+        "status": { "enum": ["UNKNOWN", "CONFORMS", "DEVIATES", "PARTIAL", "CONFLICTED", "STALE"] },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" } },
+        "analysisMethod": { "type": "object" },
+        "computedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ReviewPackage": {
+      "type": "object",
+      "required": ["review", "feature", "scope", "claim", "decision", "implementationMapping", "conformance"],
+      "properties": {
+        "review": { "$ref": "#/$defs/CandidateReview" },
+        "feature": { "oneOf": [{ "$ref": "./governance.schema.json#/$defs/FeatureVersion" }, { "type": "null" }] },
+        "scope": { "oneOf": [{ "$ref": "./governance.schema.json#/$defs/ClaimScope" }, { "type": "null" }] },
+        "claim": { "oneOf": [{ "$ref": "./governance.schema.json#/$defs/Claim" }, { "type": "null" }] },
+        "decision": { "oneOf": [{ "$ref": "./governance.schema.json#/$defs/Decision" }, { "type": "null" }] },
+        "implementationMapping": { "oneOf": [{ "$ref": "#/$defs/ImplementationMapping" }, { "type": "null" }] },
+        "conformance": { "oneOf": [{ "$ref": "#/$defs/ImplementationConformance" }, { "type": "null" }] }
+      },
+      "additionalProperties": false
+    }
+  }
+}

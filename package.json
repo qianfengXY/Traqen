@@ -1,41 +1,34 @@
 {
-  "name": "traqen-web",
+  "name": "traqen",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=20"
   },
   "scripts": {
-    "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext dev",
-    "build": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext build",
-    "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next"
-  },
-  "dependencies": {
-    "next": "^16.2.10",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "setup": "npm ci && npm --prefix web ci",
+    "dev": "node src/cli/start-development.js",
+    "test": "node --test test/*.test.js examples/order-platform/tests/*.test.js",
+    "test:storage": "node --test test/storage-migrations.test.js",
+    "test:runner": "node --test test/runner.test.js",
+    "test:reference": "node --test examples/order-platform/tests/*.test.js",
+    "test:web": "npm --prefix web test",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "api:dev": "node src/api/dev-server.js",
+    "api:serve": "node src/api/production-server.js",
+    "example": "node src/cli/evaluate-trace-chain.js examples/order-submit.json",
+    "scan:self": "node src/cli/scan-facts.js --root . --project TRAQEN-SELF --snapshot WORKTREE --source-component WORKTREE-SOURCE --summary",
+    "pilot:order-submit": "node src/cli/run-order-submit-pilot.js",
+    "quality-gate": "node src/cli/evaluate-quality-gate.js"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.44.0",
-    "@tailwindcss/postcss": "4.2.1",
-    "@types/node": "22.19.19",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
-    "eslint": "9.39.4",
-    "eslint-config-next": "16.2.10",
-    "react-server-dom-webpack": "19.2.6",
-    "tailwindcss": "4.2.1",
-    "typescript": "5.9.3",
-    "vinext": "0.0.50",
-    "vite": "8.1.4",
-    "wrangler": "4.110.0"
+    "@electric-sql/pglite": "0.5.4"
   },
-  "overrides": {
-    "postcss": "8.5.19"
-  },
-  "type": "module"
+  "dependencies": {
+    "acorn": "^8.15.0",
+    "acorn-walk": "^8.3.4",
+    "pg": "8.22.0"
+  }
 }

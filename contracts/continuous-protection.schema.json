@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/continuous-protection-v1alpha1.json",
+  "title": "ContinuousProtectionAssessment",
+  "type": "object",
+  "required": ["id", "projectId", "changeSetId", "snapshotManifestId", "createdAt", "regressionPlan", "featureAssessments", "qualityGate"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "changeSetId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "regressionPlan": { "$ref": "#/$defs/RegressionPlan" },
+    "featureAssessments": { "type": "array", "items": { "$ref": "#/$defs/FeatureAssessment" } },
+    "qualityGate": { "$ref": "#/$defs/QualityGate" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "SelectedTest": {
+      "type": "object",
+      "required": ["id", "version", "featureId", "name", "approved", "operationLevel", "reasons"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "featureId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "approved": { "type": "boolean" },
+        "operationLevel": { "type": "string", "minLength": 1 },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["MAPPED_IMPLEMENTATION_CHANGE", "FIXED_HIGH_RISK_SET", "CONSERVATIVE_FALLBACK"] },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "RegressionPlan": {
+      "type": "object",
+      "required": ["selectionStrategy", "complete", "selectedTests", "unresolvedTestSpecIds", "changeSetWarnings"],
+      "properties": {
+        "selectionStrategy": { "enum": ["TARGETED_UNION_HIGH_RISK", "CONSERVATIVE_UNION"] },
+        "complete": { "type": "boolean" },
+        "selectedTests": { "type": "array", "items": { "$ref": "#/$defs/SelectedTest" } },
+        "unresolvedTestSpecIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "changeSetWarnings": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      },
+      "additionalProperties": false
+    },
+    "FeatureAssessment": {
+      "type": "object",
+      "required": ["featureId", "highRisk", "available", "chainComplete", "dimensions", "gaps"],
+      "properties": {
+        "featureId": { "type": "string", "minLength": 1 },
+        "highRisk": { "type": "boolean" },
+        "available": { "type": "boolean" },
+        "chainComplete": { "type": "boolean" },
+        "dimensions": {
+          "type": ["object", "null"],
+          "additionalProperties": { "type": "array", "items": { "type": "object" } }
+        },
+        "gaps": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    },
+    "QualityGate": {
+      "type": "object",
+      "required": ["status", "policyMode", "enforcement", "reasons", "requiredActions"],
+      "properties": {
+        "status": { "enum": ["PASS", "BLOCKED", "UNKNOWN"] },
+        "policyMode": { "enum": ["ADVISORY", "MANUAL_APPROVAL", "ENFORCED"] },
+        "enforcement": { "enum": ["PASS", "WARN", "REQUIRE_APPROVAL", "FAIL"] },
+        "reasons": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+        "requiredActions": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+      },
+      "additionalProperties": false
+    }
+  }
+}

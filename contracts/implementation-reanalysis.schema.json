@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.local/contracts/implementation-reanalysis.schema.json",
+  "title": "ImplementationReanalysisPackage",
+  "type": "object",
+  "required": ["implementationMapping", "conformance"],
+  "properties": {
+    "implementationMapping": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" },
+    "conformance": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationConformance" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "ImplementationReanalysisRequest": {
+      "type": "object",
+      "required": ["id", "sourceRunId", "sourceCandidateId", "rationale"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "sourceRunId": { "type": "string", "minLength": 1 },
+        "sourceCandidateId": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "acknowledgedConflictIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

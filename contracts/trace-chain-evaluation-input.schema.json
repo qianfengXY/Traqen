@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/trace-chain-evaluation-input-v1alpha1.json",
+  "title": "TraceChainEvaluationInput",
+  "type": "object",
+  "required": [
+    "feature",
+    "claim",
+    "scope",
+    "snapshotManifest",
+    "implementation",
+    "conformance",
+    "testSpec",
+    "execution",
+    "evidence"
+  ],
+  "properties": {
+    "feature": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "name": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "claim": {
+      "type": "object",
+      "required": ["id", "version", "type", "authorityStatus"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "type": {
+          "enum": [
+            "NORMATIVE_REQUIREMENT",
+            "IMPLEMENTATION_BEHAVIOR",
+            "DESIGN_INTENT",
+            "QUALITY_EXPECTATION"
+          ]
+        },
+        "authorityStatus": {
+          "enum": ["UNREVIEWED", "CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "DEPRECATED"]
+        },
+        "evidenceSupport": {
+          "enum": ["NONE", "SINGLE_SOURCE", "MULTI_SOURCE", "CONTRADICTED", "INCOMPLETE"]
+        }
+      },
+      "additionalProperties": true
+    },
+    "decision": {
+      "type": ["object", "null"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": [
+            "CONFIRMED",
+            "REJECTED",
+            "EXCEPTION_RECORDED",
+            "INSUFFICIENT_EVIDENCE",
+            "DEFERRED",
+            "DEPRECATED"
+          ]
+        },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "scope": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "snapshotManifest": {
+      "type": "object",
+      "required": ["source", "build", "deployment", "runtime", "observedFrom", "observedTo"],
+      "properties": {
+        "source": { "$ref": "#/$defs/component" },
+        "build": { "$ref": "#/$defs/component" },
+        "deployment": { "$ref": "#/$defs/component" },
+        "runtime": { "$ref": "#/$defs/component" },
+        "observedFrom": { "type": "string", "format": "date-time" },
+        "observedTo": { "type": "string", "format": "date-time" },
+        "failedSources": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "implementation": {
+      "type": "object",
+      "properties": {
+        "endpoints": { "$ref": "#/$defs/stringList" },
+        "codeSymbols": { "$ref": "#/$defs/stringList" },
+        "dataObjects": { "$ref": "#/$defs/stringList" },
+        "configurations": { "$ref": "#/$defs/stringList" },
+        "dependencies": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": true
+    },
+    "conformance": {
+      "type": "object",
+      "required": ["status", "claimId", "claimVersion", "scopeId", "snapshotManifestId"],
+      "properties": {
+        "status": { "enum": ["UNKNOWN", "CONFORMS", "DEVIATES", "PARTIAL", "CONFLICTED", "STALE"] },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    },
+    "testSpec": {
+      "type": "object",
+      "required": ["id", "version", "approved", "verifiesClaims", "assertions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "approved": { "type": "boolean" },
+        "verifiesClaims": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "version"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "version": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "assertions": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": true
+    },
+    "execution": {
+      "type": "object",
+      "required": ["id", "deploymentId", "snapshotManifestId", "testSpecId", "testSpecVersion", "status"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "deploymentId": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "testSpecId": { "type": "string", "minLength": 1 },
+        "testSpecVersion": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["NOT_RUN", "PASS", "FAIL", "ERROR", "INCONCLUSIVE", "SKIPPED", "CANCELLED"] }
+      },
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "executionId", "integrity", "freshness"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "executionId": { "type": "string", "minLength": 1 },
+          "integrity": { "enum": ["VERIFIED", "UNVERIFIED", "INVALID"] },
+          "freshness": { "enum": ["FRESH", "EXPIRING", "STALE", "INCOMPLETE"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": { "type": "object" }
+    }
+  },
+  "$defs": {
+    "component": {
+      "type": "object",
+      "required": ["id", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      },
+      "additionalProperties": true
+    },
+    "stringList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}

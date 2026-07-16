@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/feature-evolution-v1alpha1.json",
+  "title": "FeatureEvolution",
+  "$defs": {
+    "FeatureAlias": {
+      "type": "object",
+      "required": ["featureId", "featureVersion", "alias", "aliasKey", "actorId", "actorRole", "rationale", "createdAt"],
+      "properties": {
+        "featureId": { "type": "string", "minLength": 1 },
+        "featureVersion": { "type": "integer", "minimum": 1 },
+        "alias": { "type": "string", "minLength": 1 },
+        "aliasKey": { "type": "string", "minLength": 1 },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "FeatureLineage": {
+      "type": "object",
+      "required": ["id", "predecessorFeatureId", "successorFeatureId", "relationType", "actorId", "actorRole", "rationale", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "predecessorFeatureId": { "type": "string", "minLength": 1 },
+        "successorFeatureId": { "type": "string", "minLength": 1 },
+        "relationType": { "enum": ["PREDECESSOR_OF", "SUCCESSOR_OF", "MERGED_INTO", "SPLIT_INTO"] },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

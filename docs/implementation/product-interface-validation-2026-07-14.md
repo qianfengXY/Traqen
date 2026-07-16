@@ -1,0 +1,46 @@
+> Language: **English** · [简体中文](product-interface-validation-2026-07-14.zh-CN.md)
+
+# Product interface validation — 2026-07-14
+
+## Outcome
+
+This slice turns the existing protocols and APIs into the user-facing product described by the design vision. It closes the display portion of MVP acceptance items 5, 12, 13, 14, and 15, exposes the human-review workflow required by item 6, and provides the historical Snapshot comparison required by the MVP scope.
+
+The north-star question remains: **why can the selected Feature be trusted on the selected deployment?** The interface does not replace the independent authority, conformance, verification, freshness, and conflict dimensions with a composite score.
+
+## Product surfaces
+
+The responsive React workbench in `web/` provides three connected surfaces:
+
+1. **Feature traceability** — a five-block Feature description → design/implementation → configuration → test cases → test results projection. Selecting a block exposes its business logic, design/code, configuration, TestSpec/assertion, or execution/Evidence data, while preserving the ordered Claim → Scope → Decision → Fact → TestSpec → assertion → execution → Evidence records, provenance, independent trust dimensions, and explicit TraceGap ownership underneath.
+2. **Statement review** — a Reverse Run and Candidate can be loaded from the API. A reviewer must explicitly supply the normative statement, Scope, target IDs, rationale, and acknowledged conflicts. A formal decision is sent to the authenticated candidate-review endpoint. Reviewer identity and role are never accepted from the browser; its reviewer bearer token is held only in component memory and cleared after success.
+3. **Change impact** — two immutable Snapshot Manifest IDs are compared through the ChangeSet endpoint. The UI shows changed Facts, affected Features/Claims/TestSpecs, invalidated derived layers, preserved normative truth and history, semantic continuities, warnings, and the server-recommended repair order.
+
+The five-block traceability projection now uses purpose-built detail views. Feature description renders all narrative sections inside one continuous governed document with a separate editable confirmation draft. Design/implementation reads the repository Markdown design file and switches among rendered document, raw Markdown, Fact-bound business code blocks, and the complete original source file. Test strategy follows the same continuous-document treatment before expandable versioned case logic. Configuration renders a DEV/SIT/UAT/PROD matrix; test results group executions by scenario and let a failed item drill down to its TestSpec, failed step, expected/actual values, error, and Evidence. Historical failures remain visible but are explicitly separated from current results. The complete product surface uses a unified Apple-inspired visual system sized and visually verified for a 2560×1440 27-inch workspace.
+
+The test data also reserves the `traqen.testspec.agent/v1` execution boundary. It records the fields required to dispatch an approved TestSpec and receive structured step/assertion results, signed Evidence, Runner identity, and attestation. External Agent execution is intentionally not connected in this slice. The server remains the only authority that can validate the response and derive the final trusted state.
+
+## Truth boundary
+
+The built-in order-submission scenario is labelled `DEMO SNAPSHOT`. Its review actions never persist anything. Live Feature traceability, candidate review, and history comparison use the Traqen API and are labelled separately.
+
+The browser does not infer a green status from partial data. Live completeness, dimensions, segments, gaps, impact, invalidations, and continuity all come from server-derived contracts. A missing necessary link remains a visible TraceGap and prevents the chain from being represented as complete.
+
+## Browser-to-API boundary
+
+The API accepts an explicit `CORS_ALLOWED_ORIGINS` allowlist. Wildcards, origins containing paths, and credential-bearing origins are rejected during server construction. Unknown origins receive no access grant; permitted origins receive only the methods and headers needed by the product. The connection panel keeps the global production API token only in page memory and sends it in `x-traqen-api-token`, so review routes can independently reserve `Authorization` for the reviewer or implementation-reviewer credential.
+
+## Scenarios validated
+
+- A complete current-deployment chain displays all required stages and verified HTTP, database, assertion, lifecycle, LOG, and TRACE Evidence.
+- A semantically changed implementation preserves the normative Claim, Scope, Decision, and historical Evidence while marking only implementation-derived and verification segments stale.
+- The changed scenario explains why the new deployment cannot yet be trusted and assigns each gap to a repair role.
+- Demo decisions remain non-persistent.
+- Live review is fail-closed without a reviewer credential and leaves actor identity to the server.
+- Historical comparison is persisted as a named ChangeSet rather than computed as ephemeral client state.
+
+## Verification
+
+The product build, rendered-HTML tests, lint, and dependency audit are run as part of final acceptance. The rendered-HTML suite explicitly checks the API token field/header and the complete traceability chain shell.
+
+The TypeScript/TSX diagnostic is consistent with the design constraint that the MVP proves one primary backend language and framework first. It is not treated as evidence that the UI source has been semantically scanned.

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/reverse-run-v1alpha1.json",
+  "title": "ReverseRunRequest",
+  "type": "object",
+  "required": ["id", "projectId", "snapshotManifestId", "sourceComponentId", "factBundleIds", "skills", "taskScope"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "sourceComponentId": { "type": "string", "minLength": 1 },
+    "factBundleIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string" } },
+    "skills": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/SkillRef" } },
+    "taskScope": { "$ref": "#/$defs/TaskScope" },
+    "modelProfile": { "type": ["string", "null"] },
+    "maxInputNodes": { "type": "integer", "minimum": 1, "maximum": 100000 }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "SkillRef": {
+      "type": "object",
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "TaskScope": {
+      "type": "object",
+      "properties": {
+        "artifacts": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "nodeIds": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "nodeTypes": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "modules": { "type": "array", "uniqueItems": true, "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "EvidenceRef": {
+      "type": "object",
+      "required": ["factId", "relation"],
+      "properties": {
+        "factId": { "type": "string" },
+        "relation": { "enum": ["SUPPORTS", "CONTRADICTS", "CONTEXT"] }
+      },
+      "additionalProperties": false
+    },
+    "ReverseArtifactBundle": {
+      "type": "object",
+      "required": [
+        "id", "apiVersion", "kind", "runId", "producer", "scope", "inputDigest", "rawOutputHash",
+        "candidateFeatures", "candidateClaims", "candidateTestSpecs", "openQuestions", "warnings", "generatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "apiVersion": { "const": "quality.traqen/v1alpha1" },
+        "kind": { "const": "ReverseArtifactBundle" },
+        "runId": { "type": "string" },
+        "producer": { "type": "object" },
+        "scope": { "type": "object" },
+        "inputDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "rawOutputHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "candidateFeatures": { "type": "array", "items": { "type": "object" } },
+        "candidateClaims": { "type": "array", "items": { "type": "object" } },
+        "candidateTestSpecs": { "type": "array", "items": { "type": "object" } },
+        "openQuestions": { "type": "array", "items": { "type": "object" } },
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "generatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ReverseRun": {
+      "type": "object",
+      "required": [
+        "id", "projectId", "snapshotManifestId", "sourceComponentId", "inputPackage",
+        "skillRuns", "mergedOutput", "status", "statusHistory"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "snapshotManifestId": { "type": "string" },
+        "sourceComponentId": { "type": "string" },
+        "inputPackage": { "type": "object" },
+        "skillRuns": { "type": "array", "items": { "type": "object" } },
+        "mergedOutput": { "type": ["object", "null"] },
+        "status": { "enum": ["WAITING_REVIEW", "FAILED", "CANCELLED"] },
+        "statusHistory": { "type": "array", "minItems": 1, "items": { "type": "object" } }
+      },
+      "additionalProperties": false
+    }
+  }
+}

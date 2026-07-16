@@ -1,0 +1,1621 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Traqen Traceability API",
+    "version": "0.1.0",
+    "description": "API for project and Snapshot bootstrap, deterministic fact ingestion, controlled Reverse Skill runs, authorized statement-level governance, server-derived Feature traceability, layered Snapshot impact, TestSpec validation, and attested execution Evidence ingestion. The production server requires an API token; Decision and candidate-review operations additionally fail closed without configured reviewer identity."
+  },
+  "security": [
+    { "BearerAuth": [] },
+    { "ApiToken": [] }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "API process is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["status"],
+                  "properties": { "status": { "const": "ok" } },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/projects": {
+      "post": {
+        "operationId": "createProject",
+        "requestBody": { "$ref": "#/components/requestBodies/ProjectBootstrap" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ProjectCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getProject",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProjectFound" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/metrics/product-effectiveness": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "snapshotManifestId",
+          "in": "query",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getProductEffectivenessMetrics",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ProductEffectivenessMetrics" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/metrics/platform-operations": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getPlatformOperationsMetrics",
+        "responses": {
+          "200": { "description": "Independent platform operational observations and explicit unavailable signals", "content": { "application/json": { "schema": { "$ref": "./platform-operations-metrics.schema.json" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/evidence-retention-policies": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendEvidenceRetentionPolicy",
+        "requestBody": { "$ref": "#/components/requestBodies/EvidenceRetentionPolicy" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceRetentionPolicy" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/evidence/{evidenceId}/lifecycle": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "evidenceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "policyId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "policyVersion", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1 } }
+      ],
+      "get": {
+        "operationId": "getEvidenceLifecycle",
+        "responses": {
+          "200": { "$ref": "#/components/responses/EvidenceLifecycle" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/evidence/{evidenceId}/lifecycle-events": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "evidenceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "appendEvidenceLifecycleEvent",
+        "requestBody": { "$ref": "#/components/requestBodies/EvidenceLifecycleEvent" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/EvidenceLifecycle" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/snapshots": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listSnapshotManifests",
+        "responses": {
+          "200": {
+            "description": "Project Snapshot Manifests ordered newest first",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["snapshots"],
+              "properties": { "snapshots": { "type": "array", "items": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" } } },
+              "additionalProperties": false
+            } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerSnapshot",
+        "requestBody": { "$ref": "#/components/requestBodies/SnapshotRegistration" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/SnapshotRegistered" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decision-review-cases": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "createDecisionReviewCase",
+        "requestBody": { "$ref": "#/components/requestBodies/DecisionReviewCase" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DecisionReviewCase" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decision-review-cases/{caseId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "caseId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getDecisionReviewCase",
+        "responses": {
+          "200": { "$ref": "#/components/responses/DecisionReviewCase" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decision-review-cases/{caseId}/events": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "caseId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "appendDecisionReviewEvent",
+        "requestBody": { "$ref": "#/components/requestBodies/DecisionReviewEvent" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DecisionReviewCase" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/trace-chains/evaluate": {
+      "post": {
+        "operationId": "evaluateTraceChain",
+        "requestBody": { "$ref": "#/components/requestBodies/TraceChainEvaluation" },
+        "responses": {
+          "200": {
+            "description": "Deterministically evaluated trace chain",
+            "content": {
+              "application/json": { "schema": { "$ref": "./trace-chain.schema.json" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/trace-chains": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" }
+      ],
+      "post": {
+        "operationId": "evaluateAndPersistTraceChain",
+        "requestBody": { "$ref": "#/components/requestBodies/TraceChainEvaluation" },
+        "responses": {
+          "201": {
+            "description": "Trace chain revision appended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["chain", "persisted"],
+                  "properties": {
+                    "chain": { "$ref": "./trace-chain.schema.json" },
+                    "persisted": {
+                      "type": "object",
+                      "required": ["chainId", "revision"],
+                      "properties": {
+                        "chainId": { "type": "string" },
+                        "revision": { "type": "integer", "minimum": 1 }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/trace-chains/{chainId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ChainId" }
+      ],
+      "get": {
+        "operationId": "getCurrentTraceChain",
+        "responses": {
+          "200": {
+            "description": "Current trace-chain revision",
+            "content": {
+              "application/json": { "schema": { "$ref": "./trace-chain.schema.json" } }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listFeatures",
+        "responses": {
+          "200": {
+            "description": "Latest governed Feature versions and discovery summaries",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["features"],
+              "properties": { "features": { "type": "array", "items": {
+                "type": "object",
+                "required": ["feature", "processModel", "claimCount", "confirmedClaimCount", "testSpecCount", "latestExecutionAt"],
+                "properties": {
+                  "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+                  "processModel": { "oneOf": [{ "$ref": "./business-process-model.schema.json" }, { "type": "null" }] },
+                  "claimCount": { "type": "integer", "minimum": 0 },
+                  "confirmedClaimCount": { "type": "integer", "minimum": 0 },
+                  "testSpecCount": { "type": "integer", "minimum": 0 },
+                  "latestExecutionAt": { "type": ["string", "null"], "format": "date-time" }
+                },
+                "additionalProperties": false
+              } } },
+              "additionalProperties": false
+            } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "appendFeatureVersion",
+        "requestBody": { "$ref": "#/components/requestBodies/FeatureVersion" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/FeatureVersionCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/claim-scopes": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendClaimScope",
+        "requestBody": { "$ref": "#/components/requestBodies/ClaimScope" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ClaimScopeCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/claims": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendClaim",
+        "requestBody": { "$ref": "#/components/requestBodies/Claim" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ClaimCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/decisions": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendDecision",
+        "requestBody": { "$ref": "#/components/requestBodies/Decision" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/DecisionCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getFeature",
+        "responses": {
+          "200": {
+            "description": "Latest governed Feature baseline",
+            "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureBaseline" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/aliases": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "listFeatureAliases",
+        "responses": { "200": { "description": "Human-governed aliases for the stable Feature ID", "content": { "application/json": { "schema": {
+          "type": "object", "required": ["aliases"], "properties": { "aliases": { "type": "array", "items": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureAlias" } } }, "additionalProperties": false
+        } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "post": {
+        "operationId": "appendFeatureAlias",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["featureVersion", "alias", "rationale"],
+          "properties": { "featureVersion": { "type": "integer", "minimum": 1 }, "alias": { "type": "string", "minLength": 1 }, "rationale": { "type": "string", "minLength": 1 } },
+          "additionalProperties": false
+        } } } },
+        "responses": {
+          "201": { "description": "Immutable alias assignment", "content": { "application/json": { "schema": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureAlias" } } } },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" }, "403": { "$ref": "#/components/responses/ReviewerForbidden" }, "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/feature-lineages": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listFeatureLineages",
+        "parameters": [{ "name": "featureId", "in": "query", "required": false, "schema": { "type": "string", "minLength": 1 } }],
+        "responses": { "200": { "description": "Immutable Feature evolution graph edges", "content": { "application/json": { "schema": {
+          "type": "object", "required": ["lineages"], "properties": { "lineages": { "type": "array", "items": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureLineage" } } }, "additionalProperties": false
+        } } } } }
+      },
+      "post": {
+        "operationId": "appendFeatureLineage",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["id", "predecessorFeatureId", "successorFeatureId", "relationType", "rationale"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 }, "predecessorFeatureId": { "type": "string", "minLength": 1 },
+            "successorFeatureId": { "type": "string", "minLength": 1 }, "relationType": { "enum": ["PREDECESSOR_OF", "SUCCESSOR_OF", "MERGED_INTO", "SPLIT_INTO"] },
+            "rationale": { "type": "string", "minLength": 1 }
+          }, "additionalProperties": false
+        } } } },
+        "responses": {
+          "201": { "description": "Human-governed immutable lineage edge", "content": { "application/json": { "schema": { "$ref": "./feature-evolution.schema.json#/$defs/FeatureLineage" } } } },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" }, "403": { "$ref": "#/components/responses/ReviewerForbidden" }, "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/conflicts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "snapshotManifestId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getFeatureConflicts",
+        "responses": {
+          "200": {
+            "description": "Snapshot-bound conflicts derived from the governed Feature traceability model",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["feature", "snapshotManifest", "conflicts", "computedAt"],
+              "properties": {
+                "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+                "snapshotManifest": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" },
+                "conflicts": { "type": "array", "items": {
+                  "type": "object",
+                  "required": ["id", "type", "status", "reason", "featureId", "claimId", "claimVersion", "traceChainId"],
+                  "properties": {
+                    "id": { "type": "string" }, "type": { "type": "string" }, "status": { "type": "string" },
+                    "reason": { "type": ["string", "null"] }, "featureId": { "type": "string" },
+                    "claimId": { "type": "string" }, "claimVersion": { "type": "integer", "minimum": 1 },
+                    "traceChainId": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                } },
+                "computedAt": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/trace-chains": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "featureId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "snapshotManifestId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getFeatureTraceChains",
+        "responses": {
+          "200": {
+            "description": "Snapshot-bound Feature trace chains and explicit gaps",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["feature", "snapshotManifest", "traceChains", "gaps", "computedAt"],
+              "properties": {
+                "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+                "snapshotManifest": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" },
+                "traceChains": { "type": "array", "items": { "$ref": "./trace-chain.schema.json" } },
+                "gaps": { "type": "array", "items": { "type": "object" } },
+                "computedAt": { "type": "string", "format": "date-time" }
+              },
+              "additionalProperties": false
+            } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/baseline": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getFeatureBaseline",
+        "responses": {
+          "200": {
+            "description": "Latest feature version with current claims, decision history, linked TestSpecs, and trace chains",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "./governance.schema.json#/$defs/FeatureBaseline" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/process-model": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "appendBusinessProcessModel",
+        "requestBody": { "$ref": "#/components/requestBodies/BusinessProcessModel" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/BusinessProcessModel" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      },
+      "get": {
+        "operationId": "getBusinessProcessModel",
+        "responses": {
+          "200": { "$ref": "#/components/responses/BusinessProcessModel" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/traceability": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "snapshotManifestId",
+          "in": "query",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getFeatureTraceability",
+        "responses": {
+          "200": { "$ref": "#/components/responses/FeatureTraceability" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/graph": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "snapshotManifestId",
+          "in": "query",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "view",
+          "in": "query",
+          "schema": { "enum": ["traceability", "business", "implementation", "coverage"] }
+        },
+        {
+          "name": "depth",
+          "in": "query",
+          "schema": { "type": "integer", "minimum": 1, "maximum": 8, "default": 1 }
+        },
+        {
+          "name": "limit",
+          "in": "query",
+          "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 30 }
+        },
+        {
+          "name": "nodeType",
+          "in": "query",
+          "schema": { "type": "array", "items": { "type": "string" } },
+          "explode": true
+        },
+        {
+          "name": "relation",
+          "in": "query",
+          "schema": { "type": "array", "items": { "type": "string" } },
+          "explode": true
+        }
+      ],
+      "get": {
+        "operationId": "getFeatureGraph",
+        "responses": {
+          "200": { "$ref": "#/components/responses/FeatureGraph" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/graph/paths/query": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "queryFeatureGraphPath",
+        "requestBody": { "$ref": "#/components/requestBodies/FeatureGraphPathQuery" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/FeatureGraphPath" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "recomputeFeatureTraceChains",
+        "requestBody": { "$ref": "#/components/requestBodies/TraceChainRecompute" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/FeatureTraceability" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "claimId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "reanalyzeFeatureImplementation",
+        "requestBody": { "$ref": "#/components/requestBodies/ImplementationReanalysis" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ImplementationReanalyzed" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/change-sets": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "compareSnapshotManifests",
+        "requestBody": { "$ref": "#/components/requestBodies/ChangeSetComparison" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ChangeImpact" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/change-sets/{changeSetId}/impact": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "changeSetId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getChangeImpact",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ChangeImpact" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/change-sets/{changeSetId}/continuous-protection": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "changeSetId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "get": {
+        "operationId": "getContinuousProtectionAssessment",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ContinuousProtection" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "appendTestSpec",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecDraft" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TestSpecCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/claims/{claimId}/test-spec-drafts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "featureId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "claimId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "generateTestSpecDraft",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecGeneration" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TestSpecGenerated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/{testSpecId}/approvals": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TestSpecId" }
+      ],
+      "post": {
+        "operationId": "approveTestSpec",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecApproval" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/TestSpecCreated" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/validate": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "validateTestSpecCandidate",
+        "requestBody": { "$ref": "#/components/requestBodies/TestSpecCandidate" },
+        "responses": {
+          "200": { "$ref": "#/components/responses/TestSpecValidation" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/{testSpecId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TestSpecId" },
+        { "$ref": "#/components/parameters/Version" }
+      ],
+      "get": {
+        "operationId": "getTestSpec",
+        "responses": {
+          "200": { "$ref": "#/components/responses/TestSpecFound" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-specs/{testSpecId}/validate": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/TestSpecId" },
+        { "$ref": "#/components/parameters/Version" }
+      ],
+      "post": {
+        "operationId": "validateStoredTestSpec",
+        "responses": {
+          "200": { "$ref": "#/components/responses/TestSpecValidation" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-executions": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "ingestExecutionEvidence",
+        "requestBody": { "$ref": "#/components/requestBodies/ExecutionEvidenceBundle" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ExecutionEvidenceStored" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/RunnerUnauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/test-executions/{executionId}/evidence": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ExecutionId" }
+      ],
+      "get": {
+        "operationId": "getExecutionEvidence",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ExecutionEvidenceFound" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/fact-scans": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "ingestFactBundle",
+        "requestBody": { "$ref": "#/components/requestBodies/FactBundle" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/FactBundleStored" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ScannerUnauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/facts": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "snapshotManifestId", "in": "query", "schema": { "type": "string" } },
+        { "name": "type", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+        { "name": "predicate", "in": "query", "schema": { "type": "array", "items": { "type": "string" } } },
+        { "name": "q", "in": "query", "schema": { "type": "string", "maxLength": 256 } },
+        { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 500 } }
+      ],
+      "get": {
+        "operationId": "queryFacts",
+        "responses": {
+          "200": {
+            "description": "Matching facts plus their one-hop graph neighbors",
+            "content": { "application/json": { "schema": { "$ref": "./fact-bundle.schema.json#/$defs/FactGraph" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/v1/skills": {
+      "get": {
+        "operationId": "listReverseSkills",
+        "responses": {
+          "200": {
+            "description": "Current registration state for every installed Skill version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["skills"],
+                  "properties": {
+                    "skills": {
+                      "type": "array",
+                      "items": { "$ref": "./reverse-skill.schema.json#/$defs/StoredRegistration" }
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "registerReverseSkill",
+        "requestBody": { "$ref": "#/components/requestBodies/ReverseSkillRegistration" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ReverseSkillRegistered" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/SkillUnauthorized" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/reverse-runs": {
+      "post": {
+        "operationId": "executeReverseRun",
+        "parameters": [{
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "schema": { "type": "boolean", "default": false },
+          "description": "When true (or Prefer: respond-async is sent), persist and return an asynchronous job."
+        }],
+        "requestBody": { "$ref": "#/components/requestBodies/ReverseRun" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/ReverseRunFound" },
+          "202": { "$ref": "#/components/responses/ReverseRunJob" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "get": {
+        "operationId": "getReverseRun",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ReverseRunFound" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/cancel": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "post": {
+        "operationId": "cancelReverseRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/ReverseRunJob" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/resume": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "post": {
+        "operationId": "resumeReverseRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/ReverseRunJob" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/reviews": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" }
+      ],
+      "get": {
+        "operationId": "listReverseCandidateReviews",
+        "responses": {
+          "200": { "$ref": "#/components/responses/CandidateReviewList" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/reverse-runs/{runId}/candidates/{candidateId}/reviews": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ReverseRunId" },
+        {
+          "name": "candidateId",
+          "in": "path",
+          "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        }
+      ],
+      "post": {
+        "operationId": "reviewReverseCandidate",
+        "requestBody": { "$ref": "#/components/requestBodies/CandidateReview" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/CandidateReviewed" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/ReviewerUnauthenticated" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Production API token. Reviewer routes can instead reserve Authorization for reviewer identity and send the API token through ApiToken."
+      },
+      "ApiToken": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-traqen-api-token"
+      }
+    },
+    "parameters": {
+      "ProjectId": {
+        "name": "projectId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "ChainId": {
+        "name": "chainId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "TestSpecId": {
+        "name": "testSpecId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "Version": {
+        "name": "version",
+        "in": "query",
+        "required": false,
+        "schema": { "type": "integer", "minimum": 1 }
+      },
+      "ExecutionId": {
+        "name": "executionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "ReverseRunId": {
+        "name": "runId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      }
+    },
+    "requestBodies": {
+      "ProjectBootstrap": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ProjectBootstrap" } }
+        }
+      },
+      "SnapshotRegistration": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./trace-chain-evaluation-input.schema.json#/properties/snapshotManifest" }
+          }
+        }
+      },
+      "TraceChainEvaluation": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./trace-chain-evaluation-input.schema.json" }
+          }
+        }
+      },
+      "FeatureVersion": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
+      },
+      "BusinessProcessModel": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./business-process-model.schema.json#/$defs/Input" } } }
+      },
+      "ClaimScope": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/ClaimScope" } } }
+      },
+      "Claim": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Claim" } } }
+      },
+      "Decision": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/DecisionRequest" } } }
+      },
+      "DecisionReviewCase": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/CaseRequest" } } }
+      },
+      "DecisionReviewEvent": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/EventRequest" } } }
+      },
+      "EvidenceRetentionPolicy": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/PolicyRequest" } } }
+      },
+      "EvidenceLifecycleEvent": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/EventRequest" } } }
+      },
+      "TestSpecDraft": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/ManualDraftRequest" }
+          }
+        }
+      },
+      "TestSpecCandidate": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/CandidateRequest" }
+          }
+        }
+      },
+      "TestSpecGeneration": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./test-spec-generation.schema.json" } }
+        }
+      },
+      "TestSpecApproval": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/ApprovalRequest" }
+          }
+        }
+      },
+      "ExecutionEvidenceBundle": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./execution-evidence.schema.json" } }
+        }
+      },
+      "FactBundle": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./fact-bundle.schema.json" } }
+        }
+      },
+      "ReverseSkillRegistration": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./reverse-skill.schema.json" } }
+        }
+      },
+      "ReverseRun": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./reverse-run.schema.json" } }
+        }
+      },
+      "CandidateReview": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./candidate-review.schema.json" } }
+        }
+      },
+      "ImplementationReanalysis": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./implementation-reanalysis.schema.json#/$defs/ImplementationReanalysisRequest" }
+          }
+        }
+      },
+      "TraceChainRecompute": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["snapshotManifestId"],
+              "properties": { "snapshotManifestId": { "type": "string", "minLength": 1 } },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "FeatureGraphPathQuery": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["snapshotManifestId", "fromNodeId", "toNodeId"],
+              "properties": {
+                "snapshotManifestId": { "type": "string", "minLength": 1 },
+                "fromNodeId": { "type": "string", "minLength": 1 },
+                "toNodeId": { "type": "string", "minLength": 1 },
+                "direction": { "enum": ["ANY", "FORWARD", "REVERSE"], "default": "ANY" },
+                "maxDepth": { "type": "integer", "minimum": 1, "maximum": 12, "default": 8 },
+                "view": { "enum": ["traceability", "business", "implementation", "coverage"] }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "ChangeSetComparison": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./change-impact.schema.json#/$defs/ChangeSetRequest" }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "NamedEntity": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "Principal": {
+        "type": "object",
+        "required": ["id", "type", "displayName"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": {
+            "type": "string",
+            "pattern": "^(?:[Uu][Ss][Ee][Rr]|[Ss][Ee][Rr][Vv][Ii][Cc][Ee]_[Aa][Cc][Cc][Oo][Uu][Nn][Tt]|[Rr][Uu][Nn][Nn][Ee][Rr])$"
+          },
+          "displayName": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "ProjectBootstrap": {
+        "type": "object",
+        "required": ["organization", "tenant", "project"],
+        "properties": {
+          "organization": { "$ref": "#/components/schemas/NamedEntity" },
+          "tenant": { "$ref": "#/components/schemas/NamedEntity" },
+          "project": { "$ref": "#/components/schemas/NamedEntity" },
+          "principals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Principal" }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ProjectFoundation": {
+        "type": "object",
+        "required": ["organization", "tenant", "project", "principals"],
+        "properties": {
+          "organization": { "$ref": "#/components/schemas/NamedEntity" },
+          "tenant": {
+            "type": "object",
+            "required": ["id", "name", "organizationId"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "organizationId": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          },
+          "project": {
+            "type": "object",
+            "required": ["id", "name", "tenantId", "status"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "name": { "type": "string", "minLength": 1 },
+              "tenantId": { "type": "string", "minLength": 1 },
+              "status": { "const": "ACTIVE" }
+            },
+            "additionalProperties": false
+          },
+          "principals": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Principal" }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SnapshotManifest": {
+        "type": "object",
+        "required": ["id", "components", "failedSources", "observedFrom", "observedTo", "complete", "missingComponents", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "components": {
+            "type": "object",
+            "properties": {
+              "source": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" },
+              "build": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" },
+              "deployment": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" },
+              "runtime": { "$ref": "./trace-chain-evaluation-input.schema.json#/$defs/component" }
+            },
+            "additionalProperties": false
+          },
+          "failedSources": { "type": "array", "items": { "type": "string" } },
+          "observedFrom": { "type": "string", "format": "date-time" },
+          "observedTo": { "type": "string", "format": "date-time" },
+          "complete": { "type": "boolean" },
+          "missingComponents": {
+            "type": "array",
+            "items": { "enum": ["source", "build", "deployment", "runtime"] },
+            "uniqueItems": true
+          },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "requestId"],
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "details": {}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "ProjectCreated": {
+        "description": "Organization, tenant, project, and principals created idempotently",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectFoundation" } } }
+      },
+      "ProjectFound": {
+        "description": "Project foundation and tenant principals",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProjectFoundation" } } }
+      },
+      "SnapshotRegistered": {
+        "description": "Server-derived immutable Snapshot manifest registered for the project",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SnapshotManifest" } } }
+      },
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "PayloadTooLarge": {
+        "description": "Request body exceeds the configured limit",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "UnsupportedMediaType": {
+        "description": "Content-Type is not application/json",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "Conflict": {
+        "description": "The append conflicts with immutable history or a required reference",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "RunnerUnauthorized": {
+        "description": "Runner attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ScannerUnauthorized": {
+        "description": "Scanner attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "SkillUnauthorized": {
+        "description": "Skill publisher attestation is missing, unknown, or invalid",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ReviewerUnauthenticated": {
+        "description": "A trusted reviewer identity could not be established",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ReviewerForbidden": {
+        "description": "The reviewer role or outcome is not allowed by project policy",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "FeatureVersionCreated": {
+        "description": "Feature version appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } } }
+      },
+      "ClaimScopeCreated": {
+        "description": "Claim scope version appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/ClaimScope" } } }
+      },
+      "ClaimCreated": {
+        "description": "Claim version appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Claim" } } }
+      },
+      "DecisionCreated": {
+        "description": "Decision appended",
+        "content": { "application/json": { "schema": { "$ref": "./governance.schema.json#/$defs/Decision" } } }
+      },
+      "TestSpecCreated": {
+        "description": "TestSpec draft or approved version appended",
+        "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+      },
+      "TestSpecGenerated": {
+        "description": "Unapproved TestSpec draft deterministically converted from an authorized Claim and mapped Endpoint Fact",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec-generation.schema.json#/$defs/GenerationResult" }
+          }
+        }
+      },
+      "TestSpecFound": {
+        "description": "Requested or latest TestSpec version",
+        "content": { "application/json": { "schema": { "$ref": "./test-spec.schema.json" } } }
+      },
+      "TestSpecValidation": {
+        "description": "Deterministic structural and execution-policy validation",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./test-spec.schema.json#/$defs/ValidationResult" }
+          }
+        }
+      },
+      "ExecutionEvidenceStored": {
+        "description": "Attested execution and verified Evidence appended atomically",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./execution-evidence.schema.json#/$defs/StoredExecutionEvidence" }
+          }
+        }
+      },
+      "ExecutionEvidenceFound": {
+        "description": "Execution, verified Evidence, and Runner attestation",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./execution-evidence.schema.json#/$defs/StoredExecutionEvidence" }
+          }
+        }
+      },
+      "FactBundleStored": {
+        "description": "Attested immutable fact bundle appended",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./fact-bundle.schema.json#/$defs/StoredFactBundle" }
+          }
+        }
+      },
+      "ReverseSkillRegistered": {
+        "description": "Signed installed Skill registration appended",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./reverse-skill.schema.json#/$defs/StoredRegistration" }
+          }
+        }
+      },
+      "ReverseRunFound": {
+        "description": "Reverse run with raw/normalized Skill outputs, merge results, conflicts, and audit history",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                { "$ref": "./reverse-run.schema.json#/$defs/ReverseRun" },
+                { "$ref": "./reverse-run-job.schema.json" }
+              ]
+            }
+          }
+        }
+      },
+      "ReverseRunJob": {
+        "description": "Durable asynchronous Reverse Run job projection with ordered status and cancellation events",
+        "content": {
+          "application/json": { "schema": { "$ref": "./reverse-run-job.schema.json" } }
+        }
+      },
+      "CandidateReviewed": {
+        "description": "Append-only candidate review and any atomically created baseline records",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+          }
+        }
+      },
+      "ImplementationReanalyzed": {
+        "description": "Authorized reanalysis binds an existing normative Claim to current Snapshot Facts without replacing its Decision",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./implementation-reanalysis.schema.json" }
+          }
+        }
+      },
+      "CandidateReviewList": {
+        "description": "Append-only statement-level reviews for a ReverseRun",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": ["reviews"],
+              "properties": {
+                "reviews": {
+                  "type": "array",
+                  "items": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+                }
+              },
+              "additionalProperties": false
+            }
+          }
+        }
+      },
+      "FeatureTraceability": {
+        "description": "Server-derived Feature view with independent dimensions, Fact mappings, proof chains, and explicit gaps",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./feature-traceability.schema.json" }
+          }
+        }
+      },
+      "BusinessProcessModel": {
+        "description": "Authorized immutable business actors, states, transitions, exceptions, and Snapshot-bound implementation mappings",
+        "content": {
+          "application/json": { "schema": { "$ref": "./business-process-model.schema.json" } }
+        }
+      },
+      "DecisionReviewCase": {
+        "description": "Append-only governed Decision review with separation of duties, approvals, lifecycle events, and materialized authority",
+        "content": {
+          "application/json": { "schema": { "$ref": "./decision-governance.schema.json#/$defs/Projection" } }
+        }
+      },
+      "EvidenceRetentionPolicy": {
+        "description": "Immutable Evidence retention and access policy with server-owned authority",
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/Policy" } } }
+      },
+      "EvidenceLifecycle": {
+        "description": "Event-replayed Evidence archive, Legal Hold, deletion-proof, and access-audit state",
+        "content": { "application/json": { "schema": { "$ref": "./evidence-lifecycle.schema.json#/$defs/Projection" } } }
+      },
+      "FeatureGraph": {
+        "description": "Bounded Feature-centered graph projection with typed provenance and progressive expansion metadata",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./feature-graph.schema.json#/$defs/Projection" }
+          }
+        }
+      },
+      "FeatureGraphPath": {
+        "description": "Bounded deterministic path between two authorized nodes in a Feature graph",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./feature-graph.schema.json#/$defs/PathResult" }
+          }
+        }
+      },
+      "ChangeImpact": {
+        "description": "Immutable Snapshot comparison with deterministic implementation invalidations and preserved business truth",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./change-impact.schema.json" }
+          }
+        }
+      },
+      "ContinuousProtection": {
+        "description": "Server-derived incremental regression selection and policy-controlled quality gate without a composite trust score",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./continuous-protection.schema.json" }
+          }
+        }
+      },
+      "ProductEffectivenessMetrics": {
+        "description": "Snapshot-bound effectiveness metrics with independent rates, gap causes, freshness, and explicit unavailable external inputs",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./product-effectiveness-metrics.schema.json" }
+          }
+        }
+      }
+    }
+  }
+}

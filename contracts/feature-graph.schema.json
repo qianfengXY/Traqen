@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/feature-graph-v1alpha1.json",
+  "title": "FeatureGraph",
+  "oneOf": [
+    { "$ref": "#/$defs/Projection" },
+    { "$ref": "#/$defs/PathResult" }
+  ],
+  "$defs": {
+    "Node": {
+      "type": "object",
+      "required": ["id", "type", "label", "version", "status", "risk", "provenance", "source", "details"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 },
+        "version": { "type": ["integer", "string", "null"] },
+        "status": { "enum": ["ACTIVE", "PENDING", "STALE", "CONFLICTED", "GAP"] },
+        "risk": { "type": ["string", "null"] },
+        "provenance": { "type": "string", "minLength": 1 },
+        "source": { "type": ["object", "null"] },
+        "details": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["id", "source", "target", "type", "provenance", "status", "snapshotManifestId"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "provenance": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["ACTIVE", "PENDING", "STALE"] },
+        "snapshotManifestId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "Expansion": {
+      "type": "object",
+      "required": ["relation", "nodeType", "count"],
+      "properties": {
+        "relation": { "type": "string", "minLength": 1 },
+        "nodeType": { "type": "string", "minLength": 1 },
+        "count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "Projection": {
+      "type": "object",
+      "required": ["center", "snapshotManifestId", "view", "depth", "nodes", "edges", "truncated", "availableExpansions"],
+      "properties": {
+        "center": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "view": { "enum": ["traceability", "business", "implementation", "coverage"] },
+        "depth": { "type": "integer", "minimum": 1, "maximum": 8 },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
+        "truncated": { "type": "boolean" },
+        "availableExpansions": { "type": "array", "items": { "$ref": "#/$defs/Expansion" } }
+      },
+      "additionalProperties": false
+    },
+    "PathResult": {
+      "type": "object",
+      "required": ["center", "snapshotManifestId", "view", "query", "found", "nodes", "edges", "hopCount"],
+      "properties": {
+        "center": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "view": { "enum": ["traceability", "business", "implementation", "coverage"] },
+        "query": {
+          "type": "object",
+          "required": ["fromNodeId", "toNodeId", "direction", "maxDepth"],
+          "properties": {
+            "fromNodeId": { "type": "string", "minLength": 1 },
+            "toNodeId": { "type": "string", "minLength": 1 },
+            "direction": { "enum": ["ANY", "FORWARD", "REVERSE"] },
+            "maxDepth": { "type": "integer", "minimum": 1, "maximum": 12 }
+          },
+          "additionalProperties": false
+        },
+        "found": { "type": "boolean" },
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
+        "edges": { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
+        "hopCount": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

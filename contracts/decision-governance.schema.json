@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/decision-governance-v1alpha1.json",
+  "title": "DecisionGovernance",
+  "$defs": {
+    "ProposedDecision": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["CONFIRMED", "REJECTED", "EXCEPTION_RECORDED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"] },
+        "content": { "type": ["string", "null"], "minLength": 1 },
+        "evidenceRefs": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "CaseRequest": {
+      "type": "object",
+      "required": ["id", "claimId", "claimVersion", "scopeId", "scopeVersion", "risk", "approvalMode", "proposedDecision", "expiresAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "risk": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "approvalMode": { "enum": ["SINGLE", "DUAL", "BUSINESS_COMPLIANCE", "BREAK_GLASS"] },
+        "proposedDecision": { "$ref": "#/$defs/ProposedDecision" },
+        "emergencyReason": { "type": ["string", "null"], "minLength": 1 },
+        "postReviewDueAt": { "type": ["string", "null"], "format": "date-time" },
+        "expiresAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "Case": {
+      "type": "object",
+      "required": ["id", "claimId", "claimVersion", "scopeId", "scopeVersion", "risk", "approvalMode", "proposedDecision", "emergencyReason", "postReviewDueAt", "proposerId", "proposerRole", "expiresAt", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "risk": { "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"] },
+        "approvalMode": { "enum": ["SINGLE", "DUAL", "BUSINESS_COMPLIANCE", "BREAK_GLASS"] },
+        "proposedDecision": { "$ref": "#/$defs/ProposedDecision" },
+        "emergencyReason": { "type": ["string", "null"] },
+        "postReviewDueAt": { "type": ["string", "null"], "format": "date-time" },
+        "proposerId": { "type": "string", "minLength": 1 },
+        "proposerRole": { "type": "string", "minLength": 1 },
+        "expiresAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "EventRequest": {
+      "type": "object",
+      "required": ["id", "action", "rationale"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["APPROVE", "REJECT", "REVOKE", "DISPUTE", "REOPEN", "POST_REVIEW"] },
+        "rationale": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "Event": {
+      "type": "object",
+      "required": ["id", "caseId", "action", "actorId", "actorRole", "rationale", "createdAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "caseId": { "type": "string", "minLength": 1 },
+        "action": { "enum": ["APPROVE", "REJECT", "REVOKE", "DISPUTE", "REOPEN", "POST_REVIEW"] },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "Evaluation": {
+      "type": "object",
+      "required": ["status", "approvals", "ignoredApprovalEventIds", "approvalActorCount", "approvalRoleCount", "requirements", "postReviewed", "mayMaterializeDecision", "latestEvent", "eventCount", "observedApprovalActorCount"],
+      "properties": {
+        "status": { "enum": ["PENDING", "APPROVED", "REJECTED", "REVOKED", "DISPUTED", "EXPIRED", "POST_REVIEW_OVERDUE"] },
+        "approvals": { "type": "array", "items": { "$ref": "#/$defs/Event" } },
+        "ignoredApprovalEventIds": { "type": "array", "items": { "type": "string" } },
+        "approvalActorCount": { "type": "integer", "minimum": 0 },
+        "approvalRoleCount": { "type": "integer", "minimum": 0 },
+        "requirements": { "type": "object" },
+        "postReviewed": { "type": "boolean" },
+        "mayMaterializeDecision": { "type": "boolean" },
+        "latestEvent": { "oneOf": [{ "$ref": "#/$defs/Event" }, { "type": "null" }] },
+        "eventCount": { "type": "integer", "minimum": 0 },
+        "observedApprovalActorCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "Projection": {
+      "type": "object",
+      "required": ["reviewCase", "events", "decisions", "decision", "evaluation"],
+      "properties": {
+        "reviewCase": { "$ref": "#/$defs/Case" },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/Event" } },
+        "decisions": { "type": "array", "items": { "$ref": "./governance.schema.json#/$defs/Decision" } },
+        "decision": { "oneOf": [{ "$ref": "./governance.schema.json#/$defs/Decision" }, { "type": "null" }] },
+        "evaluation": { "$ref": "#/$defs/Evaluation" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

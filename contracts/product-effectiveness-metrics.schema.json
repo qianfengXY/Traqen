@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/product-effectiveness-metrics-v1alpha1.json",
+  "title": "ProductEffectivenessMetrics",
+  "type": "object",
+  "required": ["projectId", "snapshotManifestId", "computedAt", "highValueValidTraceChainRate", "claimConfirmationRate", "confirmedRuleTestCoverageRate", "meaningfulAssertionRate", "evidenceFreshness", "gapBreakdown", "features", "unavailableMetrics"],
+  "properties": {
+    "projectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "computedAt": { "type": "string", "format": "date-time" },
+    "highValueValidTraceChainRate": { "$ref": "#/$defs/Rate" },
+    "claimConfirmationRate": { "$ref": "#/$defs/Rate" },
+    "confirmedRuleTestCoverageRate": { "$ref": "#/$defs/Rate" },
+    "meaningfulAssertionRate": { "$ref": "#/$defs/Rate" },
+    "evidenceFreshness": {
+      "type": "object",
+      "required": ["FRESH", "EXPIRING", "STALE", "INCOMPLETE", "UNKNOWN"],
+      "properties": {
+        "FRESH": { "type": "integer", "minimum": 0 },
+        "EXPIRING": { "type": "integer", "minimum": 0 },
+        "STALE": { "type": "integer", "minimum": 0 },
+        "INCOMPLETE": { "type": "integer", "minimum": 0 },
+        "UNKNOWN": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "gapBreakdown": { "$ref": "#/$defs/GapBreakdown" },
+    "features": { "type": "array", "items": { "$ref": "#/$defs/FeatureMetric" } },
+    "unavailableMetrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric", "reason"],
+        "properties": {
+          "metric": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Rate": {
+      "type": "object",
+      "required": ["numerator", "denominator", "ratio"],
+      "properties": {
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 0 },
+        "ratio": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "CountMap": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "GapBreakdown": {
+      "type": "object",
+      "required": ["byType", "bySeverity", "byOwnerRole"],
+      "properties": {
+        "byType": { "$ref": "#/$defs/CountMap" },
+        "bySeverity": { "$ref": "#/$defs/CountMap" },
+        "byOwnerRole": { "$ref": "#/$defs/CountMap" }
+      },
+      "additionalProperties": false
+    },
+    "Coverage": {
+      "type": "object",
+      "required": ["product", "rules", "implementation", "data", "configuration", "tests", "assertions", "execution", "evidence"],
+      "properties": {
+        "product": { "type": "boolean" },
+        "rules": { "type": "boolean" },
+        "implementation": { "type": "boolean" },
+        "data": { "type": "boolean" },
+        "configuration": { "type": "boolean" },
+        "tests": { "type": "boolean" },
+        "assertions": { "type": "boolean" },
+        "execution": { "type": "boolean" },
+        "evidence": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "FeatureMetric": {
+      "type": "object",
+      "required": ["featureId", "name", "highValue", "chainComplete", "dimensions", "coverage", "openGapCount"],
+      "properties": {
+        "featureId": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "highValue": { "type": "boolean" },
+        "chainComplete": { "type": "boolean" },
+        "dimensions": { "type": "object", "additionalProperties": { "type": "array", "items": { "type": "object" } } },
+        "coverage": { "$ref": "#/$defs/Coverage" },
+        "openGapCount": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/runner-task-v1alpha1.json",
+  "title": "RunnerTask",
+  "type": "object",
+  "required": [
+    "id", "projectId", "executionId", "runnerId", "nonce", "policyHash",
+    "issuedAt", "expiresAt", "testSpec", "snapshotManifest", "attestation"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "executionId": { "type": "string", "minLength": 1 },
+    "runnerId": { "type": "string", "minLength": 1 },
+    "nonce": { "type": "string", "minLength": 1 },
+    "policyHash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "issuedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "testSpec": { "$ref": "./test-spec.schema.json" },
+    "snapshotManifest": {
+      "type": "object",
+      "required": ["id", "components", "complete", "observedFrom", "observedTo"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "components": {
+          "type": "object",
+          "required": ["source", "build", "deployment", "runtime"],
+          "properties": {
+            "source": { "$ref": "#/$defs/SnapshotComponent" },
+            "build": { "$ref": "#/$defs/SnapshotComponent" },
+            "deployment": { "$ref": "#/$defs/SnapshotComponent" },
+            "runtime": { "$ref": "#/$defs/SnapshotComponent" }
+          },
+          "additionalProperties": false
+        },
+        "complete": { "type": "boolean" },
+        "observedFrom": { "type": "string", "format": "date-time" },
+        "observedTo": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    },
+    "attestation": { "$ref": "#/$defs/TaskAttestation" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "SnapshotComponent": {
+      "type": "object",
+      "required": ["id", "digest"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      },
+      "additionalProperties": true
+    },
+    "TaskAttestation": {
+      "type": "object",
+      "required": ["algorithm", "signature"],
+      "properties": {
+        "algorithm": { "const": "HMAC-SHA256" },
+        "signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

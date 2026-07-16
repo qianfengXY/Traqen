@@ -1,0 +1,80 @@
+{
+  "feature": {
+    "id": "FEATURE-ORDER-001",
+    "name": "Submit order"
+  },
+  "claim": {
+    "id": "CLAIM-ORDER-STATUS-001",
+    "version": 1,
+    "type": "NORMATIVE_REQUIREMENT",
+    "statement": "A normal user may submit only a DRAFT order.",
+    "authorityStatus": "CONFIRMED",
+    "evidenceSupport": "MULTI_SOURCE"
+  },
+  "scope": {
+    "id": "SCOPE-ORDER-NORMAL-USER",
+    "actor": "normal-user",
+    "orderType": "standard"
+  },
+  "snapshotManifest": {
+    "source": {
+      "id": "SOURCE-ea259bf",
+      "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "build": {
+      "id": "BUILD-20260714-01",
+      "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "deployment": {
+      "id": "DEPLOY-20260714-01",
+      "digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "runtime": {
+      "id": "RUNTIME-SIT-20260714-01",
+      "digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    "observedFrom": "2026-07-14T01:00:00.000Z",
+    "observedTo": "2026-07-14T01:05:00.000Z",
+    "failedSources": []
+  },
+  "implementation": {
+    "endpoints": ["POST /orders/{id}/submit"],
+    "codeSymbols": ["OrderService.submit"],
+    "dataObjects": ["orders.status"],
+    "configurations": ["order.submit.enabled"],
+    "dependencies": ["inventory-service"]
+  },
+  "conformance": {
+    "status": "CONFORMS",
+    "claimId": "CLAIM-ORDER-STATUS-001",
+    "claimVersion": 1,
+    "scopeId": "SCOPE-ORDER-NORMAL-USER",
+    "snapshotManifestId": "__CURRENT__"
+  },
+  "testSpec": {
+    "id": "TEST-ORDER-SUBMIT-001",
+    "version": 1,
+    "approved": true,
+    "verifiesClaims": [
+      { "id": "CLAIM-ORDER-STATUS-001", "version": 1 }
+    ],
+    "assertions": ["http-status", "order-status", "inventory-trace"]
+  },
+  "execution": {
+    "id": "EXEC-ORDER-SUBMIT-001",
+    "deploymentId": "DEPLOY-20260714-01",
+    "snapshotManifestId": "__CURRENT__",
+    "testSpecId": "TEST-ORDER-SUBMIT-001",
+    "testSpecVersion": 1,
+    "status": "PASS"
+  },
+  "evidence": [
+    {
+      "id": "EVIDENCE-ORDER-SUBMIT-001",
+      "executionId": "EXEC-ORDER-SUBMIT-001",
+      "integrity": "VERIFIED",
+      "freshness": "FRESH"
+    }
+  ],
+  "conflicts": []
+}

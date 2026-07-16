@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/governance-v1alpha1.json",
+  "title": "TraqenGovernanceContracts",
+  "$defs": {
+    "FeatureVersion": {
+      "type": "object",
+      "required": ["id", "version", "name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "businessDomain": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "ClaimScope": {
+      "type": "object",
+      "required": ["id", "version", "scope"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "scope": { "type": "object" },
+        "effectiveFrom": { "type": ["string", "null"], "format": "date-time" },
+        "effectiveTo": { "type": ["string", "null"], "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "Claim": {
+      "type": "object",
+      "required": [
+        "id", "version", "featureId", "type", "statement", "sourceType",
+        "evidenceSupport", "scopeId", "scopeVersion"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "featureId": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": ["NORMATIVE_REQUIREMENT", "IMPLEMENTATION_BEHAVIOR", "DESIGN_INTENT", "QUALITY_EXPECTATION"]
+        },
+        "statement": { "type": "string", "minLength": 1 },
+        "sourceType": { "enum": ["AI_CANDIDATE", "HUMAN", "FORMAL_AUTHORITY", "DETERMINISTIC_DERIVATION"] },
+        "evidenceSupport": { "enum": ["NONE", "SINGLE_SOURCE", "MULTI_SOURCE", "CONTRADICTED", "INCOMPLETE"] },
+        "constraint": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["dimension", "operator", "value"],
+              "properties": {
+                "dimension": { "type": "string", "minLength": 1 },
+                "operator": { "enum": ["EQUALS", "NOT_EQUALS", "IN", "NOT_IN", "ALLOWS", "FORBIDS", "REQUIRES"] },
+                "value": true
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "provenance": { "type": "object" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "Decision": {
+      "type": "object",
+      "required": [
+        "id", "claimId", "claimVersion", "scopeId", "scopeVersion",
+        "type", "actorId", "actorRole"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "type": {
+          "enum": ["CONFIRMED", "REJECTED", "EXCEPTION_RECORDED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"]
+        },
+        "content": { "type": ["string", "null"] },
+        "actorId": { "type": "string", "minLength": 1 },
+        "actorRole": { "type": "string", "minLength": 1 },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "DecisionRequest": {
+      "type": "object",
+      "required": ["id", "claimId", "claimVersion", "scopeId", "scopeVersion", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimVersion": { "type": "integer", "minimum": 1 },
+        "scopeId": { "type": "string", "minLength": 1 },
+        "scopeVersion": { "type": "integer", "minimum": 1 },
+        "type": {
+          "enum": ["CONFIRMED", "REJECTED", "EXCEPTION_RECORDED", "INSUFFICIENT_EVIDENCE", "DEFERRED", "DEPRECATED"]
+        },
+        "content": { "type": ["string", "null"] },
+        "evidenceRefs": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "validUntil": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
+    "FeatureBaseline": {
+      "type": "object",
+      "required": [
+        "feature", "processModel", "claims", "testSpecs", "testExecutions", "traceChains",
+        "implementationMappings", "conformances", "candidateReviews"
+      ],
+      "properties": {
+        "feature": { "$ref": "#/$defs/FeatureVersion" },
+        "processModel": {
+          "oneOf": [{ "$ref": "./business-process-model.schema.json" }, { "type": "null" }]
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["claim", "scope", "decisionHistory", "latestDecision"],
+            "properties": {
+              "claim": { "$ref": "#/$defs/Claim" },
+              "scope": { "$ref": "#/$defs/ClaimScope" },
+              "decisionHistory": { "type": "array", "items": { "$ref": "#/$defs/Decision" } },
+              "latestDecision": { "oneOf": [{ "$ref": "#/$defs/Decision" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "testSpecs": {
+          "type": "array",
+          "items": { "$ref": "./test-spec.schema.json" }
+        },
+        "testExecutions": {
+          "type": "array",
+          "items": { "$ref": "./execution-evidence.schema.json#/$defs/TestExecutionSummary" }
+        },
+        "traceChains": { "type": "array", "items": { "type": "object" } },
+        "implementationMappings": {
+          "type": "array",
+          "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" }
+        },
+        "conformances": {
+          "type": "array",
+          "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationConformance" }
+        },
+        "candidateReviews": {
+          "type": "array",
+          "items": { "$ref": "./candidate-review.schema.json#/$defs/ReviewPackage" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

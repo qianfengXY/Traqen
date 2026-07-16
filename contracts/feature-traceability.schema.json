@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.example/schemas/feature-traceability-v1alpha1.json",
+  "title": "FeatureTraceability",
+  "type": "object",
+  "required": [
+    "feature", "processModel", "processImplementationFacts", "snapshotManifest", "claims", "dimensions", "traceChains",
+    "gaps", "persisted", "computedAt"
+  ],
+  "properties": {
+    "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+    "processModel": {
+      "oneOf": [{ "$ref": "./business-process-model.schema.json" }, { "type": "null" }]
+    },
+    "processImplementationFacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ProcessFactGraph" }
+    },
+    "snapshotManifest": { "type": "object" },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ClaimTraceability" }
+    },
+    "dimensions": {
+      "type": "object",
+      "required": ["authority", "conformance", "verification", "freshness", "conflict"],
+      "properties": {
+        "authority": { "$ref": "#/$defs/DimensionItems" },
+        "conformance": { "$ref": "#/$defs/DimensionItems" },
+        "verification": { "$ref": "#/$defs/DimensionItems" },
+        "freshness": { "$ref": "#/$defs/DimensionItems" },
+        "conflict": { "$ref": "#/$defs/DimensionItems" }
+      },
+      "additionalProperties": false
+    },
+    "traceChains": { "type": "array", "items": { "$ref": "./trace-chain.schema.json" } },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chainId", "type", "severity", "ownerRole", "message"],
+        "properties": {
+          "chainId": { "type": "string" },
+          "type": { "type": "string" },
+          "severity": { "enum": ["INFO", "WARNING", "BLOCKING"] },
+          "ownerRole": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "persisted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["chainId", "revision"],
+        "properties": {
+          "chainId": { "type": "string" },
+          "revision": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
+    "computedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "DimensionItems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claimId", "status"],
+        "properties": {
+          "claimId": { "type": "string" },
+          "status": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "FactGraph": {
+      "type": "object",
+      "required": ["nodes", "edges", "missingFactRefs"],
+      "properties": {
+        "nodes": { "type": "array", "items": { "type": "object" } },
+        "edges": { "type": "array", "items": { "type": "object" } },
+        "missingFactRefs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "ProcessFactGraph": {
+      "type": "object",
+      "required": ["snapshotManifestId", "nodes", "edges", "missingFactRefs"],
+      "properties": {
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "nodes": { "type": "array", "items": { "type": "object" } },
+        "edges": { "type": "array", "items": { "type": "object" } },
+        "missingFactRefs": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
+    "ClaimTraceability": {
+      "type": "object",
+      "required": [
+        "claim", "scope", "decisionHistory", "latestDecision", "authorityStatus",
+        "implementationMappings", "selectedImplementationMapping", "facts", "conformance",
+        "testSpecs", "selectedTestSpec", "execution", "evidence", "traceChain"
+      ],
+      "properties": {
+        "claim": { "$ref": "./governance.schema.json#/$defs/Claim" },
+        "scope": { "$ref": "./governance.schema.json#/$defs/ClaimScope" },
+        "decisionHistory": { "type": "array", "items": { "$ref": "./governance.schema.json#/$defs/Decision" } },
+        "latestDecision": { "oneOf": [{ "$ref": "./governance.schema.json#/$defs/Decision" }, { "type": "null" }] },
+        "authorityStatus": { "enum": ["UNREVIEWED", "CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "DEPRECATED"] },
+        "implementationMappings": { "type": "array", "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" } },
+        "selectedImplementationMapping": {
+          "oneOf": [{ "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" }, { "type": "null" }]
+        },
+        "facts": { "$ref": "#/$defs/FactGraph" },
+        "conformance": {
+          "oneOf": [{ "$ref": "./candidate-review.schema.json#/$defs/ImplementationConformance" }, { "type": "null" }]
+        },
+        "testSpecs": { "type": "array", "items": { "$ref": "./test-spec.schema.json" } },
+        "selectedTestSpec": { "oneOf": [{ "$ref": "./test-spec.schema.json" }, { "type": "null" }] },
+        "execution": {
+          "oneOf": [{ "$ref": "./execution-evidence.schema.json#/$defs/TestExecutionSummary" }, { "type": "null" }]
+        },
+        "evidence": { "type": "array", "items": { "type": "object" } },
+        "traceChain": { "$ref": "./trace-chain.schema.json" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
