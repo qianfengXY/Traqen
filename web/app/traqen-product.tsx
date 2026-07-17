@@ -1456,8 +1456,8 @@ function WorkspaceAnalysisView() {
     setScanning(true);
     setMessage("");
     try {
-      const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env)$/i;
-      const ignored = /(^|\/)(?:\.git|node_modules|dist|build|\.next|\.vinext|coverage|vendor)(\/|$)/;
+      const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env|xml|gradle|kts)$/i;
+      const ignored = /(^|\/)(?:\.git|node_modules|dist|build|target|out|\.gradle|\.next|\.vinext|coverage|vendor)(\/|$)/;
       const accumulator = createLocalWorkspaceAnalysisAccumulator({ workspaceName, projectId });
       const batchSize = 120;
       for (let offset = 0; offset < selectedFiles.length; offset += batchSize) {
@@ -1502,7 +1502,7 @@ function WorkspaceAnalysisView() {
       </section>
       {analysis && <section className="workspace-analysis-shell">
         <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Feature tree</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeature?.id ?? ""} onSelect={(featureId) => { setSelectedFeatureId(featureId); setSelectedBlock("description"); }} /></ul></aside>
-        <div className="panel workspace-analysis-main">{selectedFeature ? <WorkspaceFeatureDetail feature={selectedFeature} block={selectedBlock} setBlock={setSelectedBlock} /> : <div className="workspace-no-features"><h2>{t("未发现候选功能", "No candidate features discovered")}</h2><p>{t("当前扫描器识别常见 JavaScript/TypeScript、Python、Java、Go、C#、Rust 能力，以及 HTTP 路由、OpenAPI JSON 路径和 package.json 命令。", "The current scanner recognizes common JavaScript/TypeScript, Python, Java, Go, C#, and Rust capabilities, plus HTTP routes, OpenAPI JSON paths, and package.json commands.")}</p></div>}</div>
+        <div className="panel workspace-analysis-main">{selectedFeature ? <WorkspaceFeatureDetail feature={selectedFeature} block={selectedBlock} setBlock={setSelectedBlock} /> : <div className="workspace-no-features"><h2>{t("未发现候选功能", "No candidate features discovered")}</h2><p>{t("当前扫描器识别 Spring MVC/WebFlux、JAX-RS、Java 后端组件与接口方法，以及 JavaScript/TypeScript、Python、Go、C#、Rust 能力、OpenAPI 路径和工程命令。", "The scanner recognizes Spring MVC/WebFlux, JAX-RS, Java backend components and interface methods, plus JavaScript/TypeScript, Python, Go, C#, and Rust capabilities, OpenAPI paths, and project commands.")}</p></div>}</div>
       </section>}
     </>
   );

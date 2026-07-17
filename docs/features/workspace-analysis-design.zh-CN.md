@@ -11,7 +11,7 @@
 1. 输入 Workspace 名称与稳定的 Project ID。
 2. 通过浏览器目录选择器选择本地代码工程。
 3. Traqen 只在当前浏览器页签内存中读取受支持的文本文件；源码和结果都不持久化，刷新后消失。
-4. 本地扫描器发现 HTTP 路由、OpenAPI JSON 操作、JavaScript/TypeScript 导出能力和 `package.json` 命令。
+4. 本地扫描器发现 Spring MVC/WebFlux 和 JAX-RS 接口、Java 后端组件与接口方法、HTTP 路由、OpenAPI JSON 操作、JavaScript/TypeScript 导出能力和 `package.json` 命令。
 5. 结果按照“Workspace → 模块 → 发现类型 → 候选 Feature”组织成功能树。
 6. 点击候选功能后，展示功能描述、设计源码、配置线索、关联测试、测试结果、独立可信维度和 TraceGap 责任归属。
 
@@ -36,4 +36,4 @@
 
 ## 当前发现范围
 
-首个版本识别常见 JavaScript/TypeScript 导出能力、Python 函数、Java/C# 公共方法、Go 函数、Rust 公共函数、HTTP 路由注册、OpenAPI JSON 路径、配置文件、关联测试文件和 npm scripts。后续可以在不削弱业务权威边界的前提下，用更深入的语言 Scanner 和受治理的服务端摄取流程扩展同一份功能树契约。
+扫描器识别 Spring `@RequestMapping` 和各 HTTP 方法映射，并合并类级与方法级路径；识别 JAX-RS `@Path` 与 HTTP 注解；识别 Java Controller、Service、Repository、Component、定时任务、消息/事件监听方法、接口方法以及公开/受保护的后端方法；关联 Maven/Gradle 与 application 配置线索和 Java 测试源码。同时继续识别常见 JavaScript/TypeScript 导出能力、Python 函数、C# 公共方法、Go 函数、Rust 公共函数、HTTP 路由注册、OpenAPI JSON 路径和 npm scripts。Java 生成目录 `target`、`out` 与 Gradle 缓存仍会被排除。

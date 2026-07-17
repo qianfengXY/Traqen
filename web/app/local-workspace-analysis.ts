@@ -46,11 +46,11 @@ export type LocalWorkspaceAnalysis = {
 };
 
 const supportedExtensions = new Set([
-  "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env",
+  "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env", "xml", "gradle", "kts",
 ]);
-const ignoredSegments = new Set([".git", "node_modules", "dist", "build", ".next", ".vinext", "coverage", "vendor"]);
+const ignoredSegments = new Set([".git", "node_modules", "dist", "build", "target", "out", ".gradle", ".next", ".vinext", "coverage", "vendor"]);
 const sourceExtensions = new Set(["js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue"]);
-const configurationExtensions = new Set(["json", "yaml", "yml", "properties", "env"]);
+const configurationExtensions = new Set(["json", "yaml", "yml", "properties", "env", "xml", "gradle", "kts"]);
 const maxFileBytes = 768 * 1024;
 
 function extension(path: string) {
@@ -101,6 +101,176 @@ function titleFromSymbol(symbol: string) {
     .replace(/^./, (character) => character.toUpperCase());
 }
 
+type RawFeatureCandidate = Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">;
+type JavaAnnotation = { name: string; arguments: string; start: number; end: number };
+type JavaMethod = { name: string; offset: number; declaration: string; visibility: "public" | "protected" | "private" | "package" };
+type JavaClass = { name: string; kind: "class" | "interface" | "record"; offset: number; annotations: JavaAnnotation[] };
+
+function javaAnnotations(content: string) {
+  const annotations: JavaAnnotation[] = [];
+  const pattern = /@(?:[A-Za-z_$][\w$]*\.)*([A-Za-z_$][\w$]*)/g;
+  for (const match of content.matchAll(pattern)) {
+    let end = (match.index ?? 0) + match[0].length;
+    while (/\s/.test(content[end] ?? "")) end += 1;
+    let argumentsText = "";
+    if (content[end] === "(") {
+      const argumentStart = end + 1;
+      let depth = 1;
+      let quote = "";
+      for (end += 1; end < content.length && depth > 0; end += 1) {
+        const character = content[end];
+        if (quote) {
+          if (character === "\\") end += 1;
+          else if (character === quote) quote = "";
+        } else if (character === "\"" || character === "'") quote = character;
+        else if (character === "(") depth += 1;
+        else if (character === ")") depth -= 1;
+      }
+      argumentsText = content.slice(argumentStart, Math.max(argumentStart, end - 1));
+    }
+    annotations.push({ name: match[1], arguments: argumentsText, start: match.index ?? 0, end });
+  }
+  return annotations;
+}
+
+function javaMethods(content: string) {
+  const methods: JavaMethod[] = [];
+  const declarationPattern = /^[\t ]*(?:(?:public|protected|private|static|final|abstract|synchronized|native|default|strictfp)\s+)*(?:<[^>{};\n]+>\s+)?(?:[A-Za-z_$][\w$]*(?:\s*\.\s*[A-Za-z_$][\w$]*)?(?:\s*<[^;{}()]*>)?(?:\s*\[\s*\])?\s+)+([A-Za-z_$][\w$]*)\s*\([^;{}]*\)\s*(?:throws\s+[^;{]+)?\s*(?:\{|;)/gm;
+  for (const match of content.matchAll(declarationPattern)) {
+    const declaration = match[0];
+    const visibility = /\bpublic\b/.test(declaration) ? "public" : /\bprotected\b/.test(declaration) ? "protected" : /\bprivate\b/.test(declaration) ? "private" : "package";
+    methods.push({ name: match[1], offset: match.index ?? 0, declaration, visibility });
+  }
+  return methods;
+}
+
+function nextJavaDeclaration(annotation: JavaAnnotation, methods: JavaMethod[], classes: Array<Omit<JavaClass, "annotations">>) {
+  const method = methods.find((item) => item.offset >= annotation.end && item.offset - annotation.end < 2_500);
+  const javaClass = classes.find((item) => item.offset >= annotation.end && item.offset - annotation.end < 2_500);
+  if (javaClass && (!method || javaClass.offset < method.offset)) return { kind: "class" as const, value: javaClass };
+  return method ? { kind: "method" as const, value: method } : null;
+}
+
+function annotationPaths(argumentsText: string) {
+  if (!argumentsText.trim()) return [""];
+  const pathAssignment = argumentsText.match(/(?:^|,)\s*(?:value|path)\s*=\s*(\{[\s\S]*?\}|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')/);
+  const positionalPath = /^\s*(?:["']|\{)/.test(argumentsText) ? argumentsText.split(/,(?=\s*[A-Za-z_$][\w$]*\s*=)/, 1)[0] : "";
+  const pathSource = pathAssignment?.[1] ?? positionalPath;
+  if (!pathSource) return [""];
+  const values = [...pathSource.matchAll(/["']((?:\\.|[^"'\\])*)["']/g)].map((match) => match[1]);
+  return values.length > 0 ? values : [""];
+}
+
+function endpointPath(base: string, child: string) {
+  const joined = `${base.replace(/\/$/, "")}/${child.replace(/^\//, "")}`.replace(/\/{2,}/g, "/").replace(/\/$/, "");
+  return joined === "" ? "/" : joined.startsWith("/") ? joined : `/${joined}`;
+}
+
+function javaModulePath(file: LocalWorkspaceInputFile) {
+  const normalized = file.path.replace(/\\/g, "/");
+  const sourceRoot = normalized.indexOf("/src/");
+  const projectModule = sourceRoot > 0 ? normalized.slice(0, sourceRoot).split("/").at(-1) ?? "" : "";
+  const packageName = file.content.match(/^\s*package\s+([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)\s*;/m)?.[1] ?? "";
+  const packageParts = packageName.split(".").filter(Boolean);
+  if (/^(?:controller|resource|service|repository|handler|usecase|facade|manager|client|gateway|consumer|listener|job|scheduler|config|model|entity|dto)$/i.test(packageParts.at(-1) ?? "")) packageParts.pop();
+  const packageModule = packageParts.slice(0, 5).join(".");
+  return [projectModule, packageModule].filter(Boolean).join(" · ") || modulePath(file.path);
+}
+
+function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
+  const content = file.content;
+  const annotations = javaAnnotations(content);
+  const methods = javaMethods(content);
+  const rawClasses = [...content.matchAll(/\b(class|interface|record)\s+([A-Za-z_$][\w$]*)/g)].map((match) => ({
+    name: match[2],
+    kind: match[1] as "class" | "interface" | "record",
+    offset: match.index ?? 0,
+  }));
+  const classAnnotations = new Map<number, JavaAnnotation[]>();
+  const methodAnnotations = new Map<number, JavaAnnotation[]>();
+  for (const annotation of annotations) {
+    const declaration = nextJavaDeclaration(annotation, methods, rawClasses);
+    if (!declaration) continue;
+    const target = declaration.kind === "class" ? classAnnotations : methodAnnotations;
+    const offset = declaration.value.offset;
+    target.set(offset, [...(target.get(offset) ?? []), annotation]);
+  }
+  const classes: JavaClass[] = rawClasses.map((javaClass) => ({ ...javaClass, annotations: classAnnotations.get(javaClass.offset) ?? [] }));
+  const javaModule = javaModulePath(file);
+  const candidates: RawFeatureCandidate[] = [];
+  const endpointMethodOffsets = new Set<number>();
+  const classForMethod = (method: JavaMethod) => [...classes].reverse().find((javaClass) => javaClass.offset < method.offset);
+  const addEndpoint = (method: JavaMethod, protocol: string, httpMethod: string, path: string, annotation: JavaAnnotation) => {
+    const identity = `${file.path}:${protocol}:${httpMethod}:${path}:${method.name}:${method.offset}`;
+    candidates.push({
+      id: stableId(identity),
+      name: `${httpMethod} ${path}`,
+      kind: "ENDPOINT",
+      method: httpMethod,
+      modulePath: javaModule,
+      sourcePath: file.path,
+      startLine: lineNumber(content, annotation.start),
+      description: `Discovered Java ${protocol} endpoint ${httpMethod} ${path}, implemented by ${method.name}.`,
+      code: excerpt(content, annotation.start),
+    });
+    endpointMethodOffsets.add(method.offset);
+  };
+
+  const springMethods: Record<string, string[]> = {
+    GetMapping: ["GET"], PostMapping: ["POST"], PutMapping: ["PUT"], PatchMapping: ["PATCH"], DeleteMapping: ["DELETE"],
+  };
+  for (const method of methods) {
+    const javaClass = classForMethod(method);
+    const attached = methodAnnotations.get(method.offset) ?? [];
+    const baseMappings = javaClass?.annotations.filter((annotation) => annotation.name === "RequestMapping") ?? [];
+    const basePaths = baseMappings.flatMap((annotation) => annotationPaths(annotation.arguments));
+    const effectiveBases = basePaths.length > 0 ? basePaths : [""];
+    for (const annotation of attached.filter((item) => item.name in springMethods || item.name === "RequestMapping")) {
+      const verbs = springMethods[annotation.name] ?? [...annotation.arguments.matchAll(/RequestMethod\s*\.\s*(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)/g)].map((match) => match[1]);
+      for (const verb of verbs.length > 0 ? verbs : ["REQUEST"]) {
+        for (const base of effectiveBases) for (const child of annotationPaths(annotation.arguments)) addEndpoint(method, "Spring", verb, endpointPath(base, child), annotation);
+      }
+    }
+
+    const jaxVerbAnnotations = attached.filter((annotation) => ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"].includes(annotation.name));
+    if (jaxVerbAnnotations.length > 0) {
+      const classPaths = javaClass?.annotations.filter((annotation) => annotation.name === "Path").flatMap((annotation) => annotationPaths(annotation.arguments)) ?? [];
+      const methodPaths = attached.filter((annotation) => annotation.name === "Path").flatMap((annotation) => annotationPaths(annotation.arguments));
+      for (const annotation of jaxVerbAnnotations) {
+        for (const base of classPaths.length > 0 ? classPaths : [""]) for (const child of methodPaths.length > 0 ? methodPaths : [""]) addEndpoint(method, "JAX-RS", annotation.name, endpointPath(base, child), annotation);
+      }
+    }
+  }
+
+  const componentRoles = new Set(["RestController", "Controller", "Service", "Repository", "Component", "Configuration"]);
+  const listenerRoles = new Set(["Scheduled", "KafkaListener", "RabbitListener", "EventListener", "JmsListener"]);
+  const trivialMethod = /^(?:get|set|is)[A-Z_]|^(?:equals|hashCode|toString|canEqual)$/;
+  for (const method of methods) {
+    if (endpointMethodOffsets.has(method.offset) || method.visibility === "private") continue;
+    const javaClass = classForMethod(method);
+    const attached = methodAnnotations.get(method.offset) ?? [];
+    const component = javaClass?.annotations.find((annotation) => componentRoles.has(annotation.name));
+    const listener = attached.find((annotation) => listenerRoles.has(annotation.name));
+    const pathRole = /(?:^|\/)(?:controller|resource|service|repository|handler|usecase|facade|manager|client|gateway|consumer|listener|job|scheduler)(?:\/|$)/i.test(file.path);
+    const callable = method.visibility === "public" || method.visibility === "protected" || javaClass?.kind === "interface" || Boolean(component) || pathRole || Boolean(listener);
+    if (!callable || (trivialMethod.test(method.name) && !component && !pathRole)) continue;
+    const role = listener?.name ?? component?.name ?? (javaClass?.kind === "interface" ? "interface" : "backend");
+    const identity = `${file.path}:java:${role}:${method.name}:${method.offset}`;
+    candidates.push({
+      id: stableId(identity),
+      name: listener ? `${titleFromSymbol(listener.name)} · ${titleFromSymbol(method.name)}` : titleFromSymbol(method.name),
+      kind: "CODE_SYMBOL",
+      method: null,
+      modulePath: javaModule,
+      sourcePath: file.path,
+      startLine: lineNumber(content, listener?.start ?? method.offset),
+      description: `Discovered Java ${role} capability ${method.name}.`,
+      code: excerpt(content, listener?.start ?? method.offset),
+    });
+  }
+  return candidates;
+}
+
 function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
   const candidates: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">> = [];
   const routePattern = /\b(?:app|router|server)\s*\.\s*(get|post|put|patch|delete|options|head)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
@@ -142,7 +312,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
   if (language === "py") languagePatterns.push(/^\s*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(/gm);
   if (language === "go") languagePatterns.push(/^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)\s*\(/gm);
   if (language === "rs") languagePatterns.push(/^\s*pub\s+(?:async\s+)?fn\s+([A-Za-z_]\w*)\s*\(/gm);
-  if (language === "java" || language === "cs") {
+  if (language === "cs") {
     languagePatterns.push(/^\s*(?:public|protected)\s+(?:static\s+)?(?:async\s+)?[\w<>,?\[\].]+\s+([A-Za-z_]\w*)\s*\(/gm);
   }
   for (const pattern of languagePatterns) {
@@ -317,7 +487,7 @@ export function createLocalWorkspaceAnalysisAccumulator(input: { workspaceName: 
         supportedFileCount += 1;
         const type = extension(file.path);
         const discovered = [
-          ...(sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
+          ...(type === "java" ? discoverJavaCandidates(file) : sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
           ...discoverOpenApiCandidates(file),
           ...discoverCommands(file),
         ];

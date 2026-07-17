@@ -75,7 +75,7 @@ test("accepts a 100,000-file project in batches and skips only oversized files",
     accumulator.addFiles(Array.from({ length: 400 }, (_, index) => {
       const sequence = offset + index;
       return sequence < 2_400
-        ? { path: `src/file-${sequence}.js`, size: 32, content: `export const capability_${sequence} = ${sequence};` }
+        ? { path: `src/main/java/com/acme/capability/Capability${sequence}.java`, size: 120, content: `package com.acme.capability; public class Capability${sequence} {\n  public void executeCapability${sequence}() {}\n}` }
         : { path: `docs/file-${sequence}.md`, size: 16, content: `# File ${sequence}` };
     }));
   }
@@ -86,4 +86,91 @@ test("accepts a 100,000-file project in batches and skips only oversized files",
   assert.equal(analysis.supportedFileCount, 100_000);
   assert.equal(analysis.skippedFileCount, 1);
   assert.equal(analysis.features.length, 2_400);
+});
+
+test("discovers Spring, JAX-RS, Java backend, interface, listener, config, and test traces", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Java Commerce",
+    projectId: "PROJECT-JAVA-COMMERCE",
+    files: [
+      {
+        path: "order-service/src/main/java/com/acme/orders/controller/OrderController.java",
+        size: 900,
+        content: [
+          "package com.acme.orders.controller;",
+          "@RestController",
+          "@RequestMapping(path = \"/api/orders\")",
+          "public class OrderController {",
+          "  @GetMapping(path = \"/{id}\", produces = \"application/json\")",
+          "  public ResponseEntity<Order> findOrder(@PathVariable String id) { return null; }",
+          "  @GetMapping(produces = \"application/json\")",
+          "  public ResponseEntity<List<Order>> listOrders() { return null; }",
+          "  @RequestMapping(value = {\"\", \"/\"}, method = {RequestMethod.POST, RequestMethod.PUT})",
+          "  public ResponseEntity<Order> saveOrder(@RequestBody Order order) { return null; }",
+          "}",
+        ].join("\n"),
+      },
+      {
+        path: "order-service/src/main/java/com/acme/orders/service/OrderService.java",
+        size: 500,
+        content: [
+          "package com.acme.orders.service;",
+          "@Service",
+          "public class OrderService {",
+          "  public Order submitOrder(Order order) { return order; }",
+          "  protected void validateOrder(Order order) {}",
+          "  private void auditInternally() {}",
+          "  @KafkaListener(topics = \"orders\")",
+          "  public void consumeOrder(OrderCreated event) {}",
+          "  public String getName() { return \"orders\"; }",
+          "}",
+        ].join("\n"),
+      },
+      {
+        path: "order-service/src/main/java/com/acme/orders/port/OrderPort.java",
+        size: 180,
+        content: "package com.acme.orders.port;\npublic interface OrderPort {\n  Order loadOrder(String id);\n}",
+      },
+      {
+        path: "customer-service/src/main/java/com/acme/customers/resource/CustomerResource.java",
+        size: 350,
+        content: [
+          "package com.acme.customers.resource;",
+          "@Path(\"/v1/customers\")",
+          "public class CustomerResource {",
+          "  @GET",
+          "  @Path(\"/{id}\")",
+          "  public Customer getCustomer(String id) { return null; }",
+          "}",
+        ].join("\n"),
+      },
+      {
+        path: "order-service/src/test/java/com/acme/orders/controller/OrderControllerTest.java",
+        size: 220,
+        content: "class OrderControllerTest { @Test void findOrderReturnsOrder() { new OrderController().findOrder(\"1\"); } }",
+      },
+      { path: "order-service/src/main/resources/application.yml", size: 50, content: "spring:\n  application:\n    name: orders" },
+      { path: "order-service/pom.xml", size: 80, content: "<project><artifactId>order-service</artifactId></project>" },
+      { path: "order-service/target/generated/Generated.java", size: 80, content: "public class Generated { public void ignoreMe() {} }" },
+    ],
+  });
+
+  const endpoints = analysis.features.filter((feature) => feature.kind === "ENDPOINT");
+  assert.ok(endpoints.some((feature) => feature.name === "GET /api/orders/{id}"));
+  assert.ok(endpoints.some((feature) => feature.name === "GET /api/orders"));
+  assert.ok(endpoints.every((feature) => !feature.name.includes("application/json")));
+  assert.ok(endpoints.some((feature) => feature.name === "POST /api/orders"));
+  assert.ok(endpoints.some((feature) => feature.name === "PUT /api/orders"));
+  assert.ok(endpoints.some((feature) => feature.name === "GET /v1/customers/{id}"));
+  assert.ok(analysis.features.some((feature) => feature.name === "Submit Order" && feature.description.includes("Service")));
+  assert.ok(analysis.features.some((feature) => feature.name === "Validate Order"));
+  assert.ok(analysis.features.some((feature) => feature.name === "Kafka Listener · Consume Order"));
+  assert.ok(analysis.features.some((feature) => feature.name === "Load Order" && feature.description.includes("interface")));
+  assert.ok(analysis.features.every((feature) => feature.name !== "Audit Internally" && feature.name !== "Ignore Me"));
+  assert.ok(analysis.features.some((feature) => feature.modulePath.includes("order-service") && feature.modulePath.includes("com.acme.orders")));
+  const findOrder = endpoints.find((feature) => feature.name === "GET /api/orders/{id}");
+  assert.ok(findOrder.tests.some((item) => item.path.includes("OrderControllerTest.java")));
+  assert.ok(findOrder.configurations.some((item) => item.path.endsWith("application.yml")));
+  assert.ok(findOrder.configurations.some((item) => item.path.endsWith("pom.xml")));
+  assert.equal(analysis.skippedFileCount, 1);
 });

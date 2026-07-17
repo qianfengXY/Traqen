@@ -11,7 +11,7 @@ A user can define a Workspace, select a source-code directory, scan it without u
 1. Enter a Workspace name and stable Project ID.
 2. Select a local code directory through the browser directory chooser.
 3. Traqen reads supported text files in the current browser tab only. Source and results are not persisted and disappear after refresh.
-4. The local scanner discovers HTTP routes, OpenAPI JSON operations, JavaScript/TypeScript exported capabilities, and `package.json` commands.
+4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, JavaScript/TypeScript exported capabilities, and `package.json` commands.
 5. Results are grouped as Workspace → module → discovery type → candidate Feature.
 6. Selecting a candidate displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
 
@@ -36,4 +36,4 @@ A user can define a Workspace, select a source-code directory, scan it without u
 
 ## Current discovery coverage
 
-The first version recognizes common JavaScript/TypeScript exports, Python functions, Java/C# public methods, Go functions, Rust public functions, HTTP router registrations, OpenAPI JSON paths, configuration files, related test files, and npm scripts. Deeper language-specific scanners and a governed server-ingestion workflow can extend the same Feature-tree contract later without weakening the authority boundary.
+The scanner recognizes Spring `@RequestMapping` and HTTP method mappings with combined class/method paths; JAX-RS `@Path` and HTTP annotations; Java Controller, Service, Repository, Component, scheduled job, and message/event listener methods; Java interfaces and public/protected backend methods; Maven/Gradle and application configuration clues; and Java test-source associations. It also recognizes common JavaScript/TypeScript exports, Python functions, C# public methods, Go functions, Rust public functions, HTTP router registrations, OpenAPI JSON paths, and npm scripts. Generated Java `target`, `out`, and Gradle cache directories remain excluded.

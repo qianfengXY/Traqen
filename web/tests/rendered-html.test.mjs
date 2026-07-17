@@ -120,6 +120,11 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /export function analyzeLocalWorkspace/);
   assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
+  assert.match(analyzer, /discoverJavaCandidates/);
+  assert.match(analyzer, /GetMapping.*PostMapping.*RequestMapping/s);
+  assert.match(analyzer, /JAX-RS/);
+  assert.match(analyzer, /KafkaListener.*RabbitListener.*EventListener/);
+  assert.match(analyzer, /target.*out.*\.gradle/);
   assert.match(analyzer, /MISSING_AUTHORITY/);
   assert.match(analyzer, /NOT_EXECUTED_ON_CURRENT_DEPLOYMENT/);
   assert.match(analyzer, /maxFileBytes = 768 \* 1024/);
