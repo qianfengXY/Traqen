@@ -2,6 +2,7 @@ export type LocalWorkspaceInputFile = {
   path: string;
   content: string;
   size: number;
+  lastModified?: number;
 };
 
 export type LocalFeatureCandidate = {
@@ -44,6 +45,19 @@ export type LocalWorkspaceAnalysis = {
   features: LocalFeatureCandidate[];
   tree: LocalFeatureTreeNode;
 };
+
+export type LocalWorkspaceFileRecord = {
+  scannerVersion: number;
+  path: string;
+  size: number;
+  lastModified: number;
+  supported: boolean;
+  candidates: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>;
+  configuration: { path: string; key: string; value: string } | null;
+  test: ({ path: string; title: string; code: string } & { keys: string[] }) | null;
+};
+
+export const localWorkspaceScannerVersion = 2;
 
 const supportedExtensions = new Set([
   "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env", "xml", "gradle", "kts",
@@ -389,13 +403,6 @@ function discoverCommands(file: LocalWorkspaceInputFile) {
   }
 }
 
-function configurationClues(files: LocalWorkspaceInputFile[]) {
-  return files
-    .filter((file) => configurationExtensions.has(extension(file.path)) && !file.path.endsWith("package-lock.json"))
-    .slice(0, 12)
-    .map((file) => ({ path: file.path, key: file.path.split("/").at(-1) ?? file.path, value: redactConfiguration(file.content.slice(0, 500)) }));
-}
-
 function redactConfiguration(content: string) {
   return content.split("\n").map((line) => {
     if (!/(?:password|passwd|secret|token|api[_-]?key|private[_-]?key)/i.test(line)) return line;
@@ -409,11 +416,15 @@ function isTestFile(path: string) {
   return /(^|\/)(test|tests|__tests__|spec)(\/|\.)|\.(test|spec)\.[^.]+$/i.test(path);
 }
 
-function indexTest(testIndex: Map<string, RelatedTest[]>, file: LocalWorkspaceInputFile) {
+function testRecord(file: LocalWorkspaceInputFile) {
   const test = { path: file.path, title: file.path.split("/").at(-1) ?? file.path, code: file.content.slice(0, 4_000) };
   const identifiers = file.content.match(/[A-Za-z_$][\w$-]{2,}/g) ?? [];
   const keys = new Set([file.path.split("/").at(-1)?.replace(/\.[^.]+$/, "").toLowerCase() ?? "", ...identifiers.slice(0, 300).map((item) => item.toLowerCase())]);
-  for (const key of keys) {
+  return { ...test, keys: [...keys].filter(Boolean) };
+}
+
+function indexTest(testIndex: Map<string, RelatedTest[]>, test: RelatedTest & { keys: string[] }) {
+  for (const key of test.keys) {
     if (!key) continue;
     const records = testIndex.get(key) ?? [];
     if (records.length < 20 && !records.some((record) => record.path === test.path)) records.push(test);
@@ -465,65 +476,70 @@ export function analyzeLocalWorkspace(input: {
   return accumulator.finish();
 }
 
-export function createLocalWorkspaceAnalysisAccumulator(input: { workspaceName: string; projectId: string; now?: Date }) {
+export function scanLocalWorkspaceFile(file: LocalWorkspaceInputFile): LocalWorkspaceFileRecord {
+  const supported = eligible(file) && file.size <= maxFileBytes;
+  if (!supported) return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: false, candidates: [], configuration: null, test: null };
+  const type = extension(file.path);
+  const candidates = [
+    ...(type === "java" ? discoverJavaCandidates(file) : sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
+    ...discoverOpenApiCandidates(file),
+    ...discoverCommands(file),
+  ];
+  const configuration = configurationExtensions.has(type) && !file.path.endsWith("package-lock.json")
+    ? { path: file.path, key: file.path.split("/").at(-1) ?? file.path, value: redactConfiguration(file.content.slice(0, 500)) }
+    : null;
+  return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: true, candidates, configuration, test: isTestFile(file.path) ? testRecord(file) : null };
+}
+
+export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; projectId: string; records: LocalWorkspaceFileRecord[]; now?: Date }): LocalWorkspaceAnalysis {
   const workspaceName = input.workspaceName.trim();
   const projectId = input.projectId.trim();
   if (!workspaceName) throw new TypeError("Workspace name is required");
   if (!projectId) throw new TypeError("Project ID is required");
+  if (input.records.length === 0) throw new TypeError("Select a source directory first");
   const rawCandidates = new Map<string, Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>();
-  const configurationFiles: LocalWorkspaceInputFile[] = [];
   const testIndex = new Map<string, RelatedTest[]>();
-  let fileCount = 0;
-  let supportedFileCount = 0;
-  let skippedFileCount = 0;
+  for (const record of input.records) {
+    for (const candidate of record.candidates) rawCandidates.set(candidate.id, candidate);
+    if (record.test) indexTest(testIndex, record.test);
+  }
+  const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []).slice(0, 12);
+  const features: LocalFeatureCandidate[] = [...rawCandidates.values()].map((feature) => {
+    const tests = indexedTests(feature, testIndex);
+    return {
+      ...feature,
+      configurations,
+      tests,
+      dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
+      gaps: [
+        { type: "MISSING_AUTHORITY", severity: "BLOCKING", ownerRole: "product-owner" },
+        { type: "IMPLEMENTATION_UNREVIEWED", severity: "BLOCKING", ownerRole: "technical-owner" },
+        ...(tests.length === 0 ? [{ type: "NO_TEST_SPEC", severity: "BLOCKING" as const, ownerRole: "quality-owner" }] : []),
+        { type: "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT", severity: "BLOCKING", ownerRole: "quality-owner" },
+      ],
+    };
+  });
+  return {
+    workspaceName,
+    projectId,
+    scannedAt: (input.now ?? new Date()).toISOString(),
+    fileCount: input.records.length,
+    supportedFileCount: input.records.filter((record) => record.supported).length,
+    skippedFileCount: input.records.filter((record) => !record.supported).length,
+    features,
+    tree: buildTree(workspaceName, projectId, features),
+  };
+}
+
+export function createLocalWorkspaceAnalysisAccumulator(input: { workspaceName: string; projectId: string; now?: Date }) {
+  const records: LocalWorkspaceFileRecord[] = [];
   return {
     addFiles(files: LocalWorkspaceInputFile[]) {
-      fileCount += files.length;
-      for (const file of files) {
-        if (!eligible(file) || file.size > maxFileBytes) {
-          skippedFileCount += 1;
-          continue;
-        }
-        supportedFileCount += 1;
-        const type = extension(file.path);
-        const discovered = [
-          ...(type === "java" ? discoverJavaCandidates(file) : sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
-          ...discoverOpenApiCandidates(file),
-          ...discoverCommands(file),
-        ];
-        for (const feature of discovered) rawCandidates.set(feature.id, feature);
-        if (configurationFiles.length < 12 && configurationExtensions.has(type) && !file.path.endsWith("package-lock.json")) configurationFiles.push(file);
-        if (isTestFile(file.path)) indexTest(testIndex, file);
-      }
+      records.push(...files.map(scanLocalWorkspaceFile));
     },
     finish(): LocalWorkspaceAnalysis {
-      if (fileCount === 0) throw new TypeError("Select a source directory first");
-      const configurations = configurationClues(configurationFiles);
-      const features: LocalFeatureCandidate[] = [...rawCandidates.values()].map((feature) => {
-        const tests = indexedTests(feature, testIndex);
-        return {
-          ...feature,
-          configurations,
-          tests,
-          dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
-          gaps: [
-            { type: "MISSING_AUTHORITY", severity: "BLOCKING", ownerRole: "product-owner" },
-            { type: "IMPLEMENTATION_UNREVIEWED", severity: "BLOCKING", ownerRole: "technical-owner" },
-            ...(tests.length === 0 ? [{ type: "NO_TEST_SPEC", severity: "BLOCKING" as const, ownerRole: "quality-owner" }] : []),
-            { type: "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT", severity: "BLOCKING", ownerRole: "quality-owner" },
-          ],
-        };
-      });
-      return {
-        workspaceName,
-        projectId,
-        scannedAt: (input.now ?? new Date()).toISOString(),
-        fileCount,
-        supportedFileCount,
-        skippedFileCount,
-        features,
-        tree: buildTree(workspaceName, projectId, features),
-      };
+      return analyzeLocalWorkspaceRecords({ workspaceName: input.workspaceName, projectId: input.projectId, records, now: input.now });
     },
+    records() { return records; },
   };
 }

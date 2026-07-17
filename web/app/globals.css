@@ -42,10 +42,19 @@ button { color: inherit; }
 .brand { display: flex; align-items: center; gap: 11px; font-weight: 760; letter-spacing: -.03em; font-size: 22px; }
 .brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: var(--blue); font-size: 15px; box-shadow: 0 6px 16px rgba(0,113,227,.35); }
 .workspace-label { margin: 0 10px 9px; color: #9eb4a9; font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.workspace-switcher-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.workspace-switcher-head .workspace-label { margin-bottom: 7px; }
+.workspace-switcher-head button { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.16); border-radius: 8px; background: rgba(255,255,255,.07); color: #fff; cursor: pointer; }
 .workspace { padding: 11px 12px; border: 1px solid rgba(255,255,255,.14); border-radius: 12px; background: rgba(255,255,255,.055); }
 .workspace strong, .workspace small { display: block; }
 .workspace strong { font-size: 13px; }
 .workspace small { margin-top: 3px; color: #9eb4a9; font-size: 11px; }
+.workspace-project-list { max-height: 190px; display: grid; gap: 4px; margin-top: 7px; overflow: auto; }
+.workspace-project-list button { width: 100%; padding: 8px 10px; border: 0; border-radius: 9px; background: transparent; color: #b9cbc1; text-align: left; cursor: pointer; }
+.workspace-project-list button:hover, .workspace-project-list button.active { background: rgba(255,255,255,.09); color: #fff; }
+.workspace-project-list strong, .workspace-project-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-project-list strong { font-size: 11px; }
+.workspace-project-list small { margin-top: 3px; color: #8fa198; font-size: 9px; }
 .nav { display: grid; gap: 6px; }
 .nav-button { width: 100%; padding: 11px 12px; border: 0; border-radius: 10px; background: transparent; color: #b9cbc1; text-align: left; cursor: pointer; display: flex; gap: 10px; align-items: center; }
 .nav-button:hover, .nav-button:focus-visible { background: rgba(255,255,255,.08); color: #fff; outline: none; }
@@ -586,6 +595,9 @@ button { color: inherit; }
 .workspace-trace-overview h1 { margin: 4px 0 7px; font-size: 24px; letter-spacing: -.02em; }
 .workspace-trace-overview p:last-child { max-width: 920px; margin: 0; }
 .workspace-analysis-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
+.workspace-graph-shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
+.workspace-graph-main { min-width: 0; }
+.workspace-graph-help { margin: 12px 8px; color: #6e6e73; font-size: 10px; line-height: 1.5; }
 .feature-tree-panel { position: sticky; top: 78px; max-height: calc(100vh - 98px); overflow: auto; padding: 18px 12px; }
 .feature-tree-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 0 8px 14px; border-bottom: 1px solid var(--line); }
 .feature-tree-head h2 { margin: 3px 0 0; font-size: 18px; }
@@ -664,7 +676,7 @@ button { color: inherit; }
 @media (max-width: 760px) {
   .app-shell { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; height: auto; position: static; padding: 15px; gap: 14px; }
-  .workspace, .workspace-label, .sidebar-note { display: none; }
+  .workspace, .workspace-label, .workspace-switcher-head, .workspace-project-list, .sidebar-note { display: none; }
   .nav { grid-template-columns: repeat(6, 1fr); }
   .nav-button { justify-content: center; padding: 9px 5px; font-size: 10px; }
   .nav-icon { display: none; }
@@ -695,7 +707,7 @@ button { color: inherit; }
   .graph-path-bar > span { display: none; }
   .graph-accessible-list > div { grid-template-columns: 1fr; gap: 4px; }
   .graph-accessible-list b { text-align: left; }
-  .workspace-setup-grid, .workspace-analysis-shell { grid-template-columns: 1fr; }
+  .workspace-setup-grid, .workspace-analysis-shell, .workspace-graph-shell { grid-template-columns: 1fr; }
   .workspace-initialized-actions { align-items: stretch; flex-direction: column; }
   .feature-tree-panel { position: static; max-height: none; }
   .workspace-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)); }

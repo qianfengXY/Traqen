@@ -28,8 +28,9 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /Workspace 分析/);
   assert.match(html, /选择工程，建立自己的功能追溯 Workspace/);
   assert.match(html, /选择代码工程/);
-  assert.match(html, /开始扫描并生成功能树/);
-  assert.match(html, /面向十万级文件按批次读取源码/);
+  assert.match(html, /初始化扫描/);
+  assert.match(html, /面向十万级文件分批扫描/);
+  assert.match(html, /新建 Workspace/);
   assert.match(html, /SELF WORKSPACE/);
   assert.match(html, /Traqen Platform/);
   assert.match(html, /中文/);
@@ -38,10 +39,11 @@ test("server-renders the Traqen proof-chain product surface", async () => {
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, analyzer, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
+  const [page, product, analyzer, workspaceStore, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-analysis.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/local-workspace-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/trace-detail-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
@@ -116,6 +118,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
   assert.match(product, /WorkspaceTraceabilityView/);
+  assert.match(product, /WorkspaceGraphSurface/);
+  assert.match(product, /workspaceGraphForAnalysis/);
   assert.match(product, /WorkspaceFeatureExplorer/);
   assert.match(product, /FeatureTreeBranch/);
   assert.match(product, /const \[workspaceAnalysis, setWorkspaceAnalysis\]/);
@@ -125,9 +129,18 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /workspaceAnalysis && !liveScenario/);
   assert.match(product, /初始化完成：Workspace 已成为全局导航上下文/);
   assert.match(product, /从功能树逐项查看端到端追溯链/);
-  assert.match(product, /面向十万级文件按批次读取源码/);
+  assert.match(product, /面向十万级文件分批扫描/);
+  assert.match(product, /执行增量扫描/);
+  assert.match(product, /previous\.size === file\.size && previous\.lastModified === file\.lastModified/);
+  assert.match(product, /workspaceProjects\.map/);
+  assert.match(workspaceStore, /indexedDB\.open/);
+  assert.match(workspaceStore, /projects.*snapshots/s);
+  assert.doesNotMatch(workspaceStore, /content:/);
   assert.match(analyzer, /export function analyzeLocalWorkspace/);
   assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
+  assert.match(analyzer, /export function scanLocalWorkspaceFile/);
+  assert.match(analyzer, /export function analyzeLocalWorkspaceRecords/);
+  assert.match(analyzer, /localWorkspaceScannerVersion = 2/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
   assert.match(analyzer, /discoverJavaCandidates/);
   assert.match(analyzer, /GetMapping.*PostMapping.*RequestMapping/s);

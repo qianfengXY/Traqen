@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeLocalWorkspace, createLocalWorkspaceAnalysisAccumulator } from "../app/local-workspace-analysis.ts";
+import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, createLocalWorkspaceAnalysisAccumulator, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
 
 test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
   const analysis = analyzeLocalWorkspace({
@@ -173,4 +173,20 @@ test("discovers Spring, JAX-RS, Java backend, interface, listener, config, and t
   assert.ok(findOrder.configurations.some((item) => item.path.endsWith("application.yml")));
   assert.ok(findOrder.configurations.some((item) => item.path.endsWith("pom.xml")));
   assert.equal(analysis.skippedFileCount, 1);
+});
+
+test("rebuilds an incremental Workspace from reused, changed, added, and deleted file records", () => {
+  const unchanged = scanLocalWorkspaceFile({ path: "src/unchanged.js", size: 40, lastModified: 10, content: "export function unchangedFeature() {}" });
+  const deleted = scanLocalWorkspaceFile({ path: "src/deleted.js", size: 40, lastModified: 10, content: "export function deletedFeature() {}" });
+  const changed = scanLocalWorkspaceFile({ path: "src/changed.js", size: 50, lastModified: 20, content: "export function changedFeatureV2() {}" });
+  const added = scanLocalWorkspaceFile({ path: "src/added.js", size: 40, lastModified: 20, content: "export function addedFeature() {}" });
+
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Incremental", projectId: "PROJECT-INCREMENTAL", records: [unchanged, changed, added] });
+  assert.equal(unchanged.scannerVersion, localWorkspaceScannerVersion);
+  assert.equal(unchanged.lastModified, 10);
+  assert.ok(analysis.features.some((feature) => feature.name === "Unchanged Feature"));
+  assert.ok(analysis.features.some((feature) => feature.name === "Changed Feature V2"));
+  assert.ok(analysis.features.some((feature) => feature.name === "Added Feature"));
+  assert.ok(analysis.features.every((feature) => feature.name !== "Deleted Feature"));
+  assert.ok(deleted.candidates.length > 0);
 });

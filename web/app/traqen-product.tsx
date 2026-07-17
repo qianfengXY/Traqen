@@ -1,10 +1,11 @@
 "use client";
 
 import cytoscape from "cytoscape";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
-import { createLocalWorkspaceAnalysisAccumulator, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { analyzeLocalWorkspaceRecords, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { listLocalWorkspaceProjects, loadLocalWorkspaceProject, saveLocalWorkspaceProject, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
@@ -1154,6 +1155,10 @@ export function TraqenProduct() {
   const [workspaceExpandedNodeIds, setWorkspaceExpandedNodeIds] = useState<Set<string>>(() => new Set());
   const [workspaceSelectedFiles, setWorkspaceSelectedFiles] = useState<File[]>([]);
   const [workspaceDirectoryName, setWorkspaceDirectoryName] = useState("");
+  const [workspaceRegisteredRootName, setWorkspaceRegisteredRootName] = useState("");
+  const [workspaceFileRecords, setWorkspaceFileRecords] = useState<LocalWorkspaceFileRecord[]>([]);
+  const [workspaceProjects, setWorkspaceProjects] = useState<LocalWorkspaceProjectSummary[]>([]);
+  const [workspaceProjectLoading, setWorkspaceProjectLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
@@ -1162,17 +1167,54 @@ export function TraqenProduct() {
     document.documentElement.lang = language;
   }, [language]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void listLocalWorkspaceProjects().then(async (projects) => {
+      if (cancelled) return;
+      setWorkspaceProjects(projects);
+      if (projects.length === 0) return;
+      const snapshot = await loadLocalWorkspaceProject(projects[0].id);
+      if (!cancelled && snapshot) activateWorkspaceSnapshot(snapshot);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   const scenario = liveScenario ?? (scenarioKey === "current" ? completeScenario : staleScenario);
-  function initializeWorkspace(result: LocalWorkspaceAnalysis) {
+  function activateWorkspaceSnapshot(snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false) {
+    const result = snapshot.analysis;
     const firstFeatureId = result.features[0]?.id ?? "";
     setWorkspaceAnalysis(result);
     setWorkspaceName(result.workspaceName);
     setWorkspaceProjectId(result.projectId);
     setProjectId(result.projectId);
+    setWorkspaceDirectoryName(snapshot.project.rootName);
+    setWorkspaceRegisteredRootName(snapshot.project.rootName);
+    if (!preserveSelectedFiles) setWorkspaceSelectedFiles([]);
+    setWorkspaceFileRecords(snapshot.records);
     setWorkspaceFeatureId(firstFeatureId);
     setWorkspaceTraceBlock("description");
     setWorkspaceExpandedNodeIds(new Set([result.tree.id]));
     if (firstFeatureId) setFeatureId(firstFeatureId);
+  }
+
+  async function initializeWorkspace(result: LocalWorkspaceAnalysis, records: LocalWorkspaceFileRecord[], rootName: string) {
+    const existing = workspaceProjects.find((project) => project.id === result.projectId);
+    const now = new Date().toISOString();
+    const project: LocalWorkspaceProjectSummary = {
+      id: result.projectId,
+      name: result.workspaceName,
+      rootName,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      fileCount: result.fileCount,
+      supportedFileCount: result.supportedFileCount,
+      featureCount: result.features.length,
+    };
+    const snapshot = { project, analysis: result, records } satisfies LocalWorkspaceProjectSnapshot;
+    await saveLocalWorkspaceProject(snapshot);
+    setWorkspaceProjects((current) => [project, ...current.filter((item) => item.id !== project.id)].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
+    activateWorkspaceSnapshot(snapshot, true);
+    setWorkspaceDirectoryName(rootName);
   }
 
   function clearWorkspaceAnalysis() {
@@ -1180,6 +1222,33 @@ export function TraqenProduct() {
     setWorkspaceFeatureId("");
     setWorkspaceTraceBlock("description");
     setWorkspaceExpandedNodeIds(new Set());
+    setWorkspaceFileRecords([]);
+    setWorkspaceRegisteredRootName("");
+  }
+
+  function startNewWorkspace() {
+    setLiveScenario(null);
+    clearWorkspaceAnalysis();
+    setWorkspaceName(t("新 Workspace", "New Workspace"));
+    setWorkspaceProjectId(`PROJECT-LOCAL-${Date.now().toString(36).toUpperCase()}`);
+    setWorkspaceSelectedFiles([]);
+    setWorkspaceDirectoryName("");
+    setWorkspaceRegisteredRootName("");
+    setView("workspace");
+  }
+
+  async function openStoredWorkspace(targetProjectId: string) {
+    setWorkspaceProjectLoading(true);
+    try {
+      const snapshot = await loadLocalWorkspaceProject(targetProjectId);
+      if (snapshot) {
+        setLiveScenario(null);
+        activateWorkspaceSnapshot(snapshot);
+        setView("workspace");
+      }
+    } finally {
+      setWorkspaceProjectLoading(false);
+    }
   }
 
   function selectWorkspaceFeature(nextFeatureId: string) {
@@ -1273,11 +1342,12 @@ export function TraqenProduct() {
             <span className="brand-mark">TQ</span>Traqen
           </div>
           <div>
-            <p className="workspace-label">Workspace</p>
-            <div className="workspace">
+            <div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><button aria-label={t("新建 Workspace", "Create Workspace")} onClick={startNewWorkspace}>＋</button></div>
+            <div className="workspace active-workspace">
               <strong>{workspaceName}</strong>
               <small>{liveScenario ? projectId : workspaceProjectId} · {workspaceAnalysis ? `${workspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
             </div>
+            {workspaceProjects.length > 0 && <div className="workspace-project-list" aria-label={t("本地 Workspace 项目", "Local Workspace projects")}>{workspaceProjects.map((project) => <button key={project.id} className={workspaceAnalysis?.projectId === project.id ? "active" : ""} disabled={workspaceProjectLoading} onClick={() => void openStoredWorkspace(project.id)}><strong>{project.name}</strong><small>{project.featureCount} {t("功能", "features")} · {new Date(project.updatedAt).toLocaleDateString(language)}</small></button>)}</div>}
           </div>
           <nav className="nav" aria-label={t("产品导航", "Product navigation")}>
             <button className={`nav-button ${view === "workspace" ? "active" : ""}`} onClick={() => setView("workspace")}>
@@ -1386,9 +1456,9 @@ export function TraqenProduct() {
             </section>
           )}
 
-          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} analysis={workspaceAnalysis} onInitialize={initializeWorkspace} onClearAnalysis={clearWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} />}
+          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={workspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} />}
           {view === "trace" && (workspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
-          {view === "graph" && <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />}
+          {view === "graph" && (workspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode}><GraphView key={`${workspaceAnalysis.projectId}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={workspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "metrics" && <MetricsView apiBase={apiBase} apiToken={apiToken} projectId={projectId} snapshotId={snapshotId} />}
@@ -1506,13 +1576,14 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
   setSelectedFiles: (files: File[]) => void;
   directoryName: string;
   setDirectoryName: (value: string) => void;
+  registeredRootName: string;
   analysis: LocalWorkspaceAnalysis | null;
-  onInitialize: (analysis: LocalWorkspaceAnalysis) => void;
-  onClearAnalysis: () => void;
+  fileRecords: LocalWorkspaceFileRecord[];
+  onInitialize: (analysis: LocalWorkspaceAnalysis, records: LocalWorkspaceFileRecord[], rootName: string) => Promise<void>;
   onOpenTrace: () => void;
 };
 
-function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, analysis, onInitialize, onClearAnalysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onOpenTrace }: WorkspaceAnalysisViewProps) {
+function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onOpenTrace }: WorkspaceAnalysisViewProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -1526,14 +1597,14 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   function selectDirectory(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files ?? []);
     setSelectedFiles(files);
-    onClearAnalysis();
     setMessage("");
     const root = files[0]?.webkitRelativePath.split("/")[0] ?? "";
     setDirectoryName(root);
-    if (root) {
+    if (root && !analysis) {
       setWorkspaceName(root);
       setProjectId(`PROJECT-${root.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toUpperCase()}`);
     }
+    event.currentTarget.value = "";
   }
 
   async function scanWorkspace() {
@@ -1542,26 +1613,43 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     try {
       const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env|xml|gradle|kts)$/i;
       const ignored = /(^|\/)(?:\.git|node_modules|dist|build|target|out|\.gradle|\.next|\.vinext|coverage|vendor)(\/|$)/;
-      const accumulator = createLocalWorkspaceAnalysisAccumulator({ workspaceName, projectId });
+      if (analysis && registeredRootName && directoryName !== registeredRootName) throw new Error(t(`请选择原工程目录“${registeredRootName}”进行增量扫描。`, `Select the original project directory “${registeredRootName}” for an incremental scan.`));
+      const previousRecords = new Map(fileRecords.map((record) => [record.path, record]));
+      const nextRecords: LocalWorkspaceFileRecord[] = [];
+      const currentPaths = new Set<string>();
+      let added = 0;
+      let modified = 0;
+      let unchanged = 0;
       const batchSize = 120;
       for (let offset = 0; offset < selectedFiles.length; offset += batchSize) {
         const batch = selectedFiles.slice(offset, offset + batchSize);
-        const files: LocalWorkspaceInputFile[] = await Promise.all(batch.map(async (file) => {
+        const records = await Promise.all(batch.map(async (file) => {
           const path = file.webkitRelativePath || file.name;
+          const relativePath = path.split("/").slice(1).join("/") || path;
+          currentPaths.add(relativePath);
+          const previous = previousRecords.get(relativePath);
+          if (previous && previous.scannerVersion === localWorkspaceScannerVersion && previous.size === file.size && previous.lastModified === file.lastModified) {
+            unchanged += 1;
+            return previous;
+          }
           const name = path.split("/").at(-1)?.toLowerCase() ?? "";
           const actualEnvironmentFile = /^\.env(?:\.[^.]+)?$/.test(name) && !/\.(?:example|sample|template)$/.test(name);
           const supportedText = textExtensions.test(path) || /^\.env\.(?:example|sample|template)$/.test(name);
           const readable = !actualEnvironmentFile && !ignored.test(path) && supportedText && file.size <= 768 * 1024;
-          return { path: path.split("/").slice(1).join("/") || path, size: file.size, content: readable ? await file.text() : "" };
+          const input: LocalWorkspaceInputFile = { path: relativePath, size: file.size, lastModified: file.lastModified, content: readable ? await file.text() : "" };
+          if (previous) modified += 1;
+          else added += 1;
+          return scanLocalWorkspaceFile(input);
         }));
-        accumulator.addFiles(files);
+        nextRecords.push(...records);
         const completed = Math.min(offset + batch.length, selectedFiles.length);
-        setMessage(t(`正在分批扫描 ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 个工程文件…`, `Scanning ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} project files in batches…`));
+        setMessage(t(`正在增量比对 ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 个工程文件…`, `Incrementally comparing ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} project files…`));
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
-      const result = accumulator.finish();
-      onInitialize(result);
-      setMessage(result.features.length > 0 ? t(`已发现 ${result.features.length} 个候选功能。`, `Discovered ${result.features.length} candidate features.`) : t("扫描完成，但没有发现可识别的接口、导出能力或工程命令。", "Scan complete, but no recognizable endpoints, exported capabilities, or project commands were found."));
+      const deleted = [...previousRecords.keys()].filter((path) => !currentPaths.has(path)).length;
+      const result = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: nextRecords });
+      await onInitialize(result, nextRecords, directoryName);
+      setMessage(result.features.length > 0 ? t(`已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件。`, `Updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files.`) : t("扫描完成，但没有发现可识别的接口、导出能力或工程命令。", "Scan complete, but no recognizable endpoints, exported capabilities, or project commands were found."));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("Workspace 扫描失败", "Workspace scan failed"));
     } finally {
@@ -1572,12 +1660,12 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Local-first workspace</p><h1>{t("选择工程，建立自己的功能追溯 Workspace", "Select a project and build your own feature-traceability Workspace")}</h1><p>{t("面向十万级文件按批次读取源码，只保留功能索引与必要片段；源码不会上传到 Traqen 站点，刷新后扫描结果消失。", "Source trees with 100,000-scale file counts are read in batches, retaining only the feature index and necessary excerpts. Source is never uploaded to Traqen and results disappear after refresh.")}</p></div><span className="mode-badge">{t("大工程本地扫描", "LARGE LOCAL SCAN")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Local-first workspace</p><h1>{t("选择工程，建立自己的功能追溯 Workspace", "Select a project and build your own feature-traceability Workspace")}</h1><p>{t("面向十万级文件分批扫描；原始源码不会上传或持久化，本机仅保存功能索引、必要代码/测试片段和脱敏配置，用于多项目切换与增量扫描。", "Projects with 100,000-scale file counts are scanned in batches. Raw source is never uploaded or persisted; only the feature index, necessary code/test excerpts, and redacted configuration are stored on this device for multi-project switching and incremental scans.")}</p></div><span className="mode-badge">{t("多项目本地索引", "LOCAL PROJECT INDEX")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
           <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" onClick={() => inputRef.current?.click()}>{t("选择代码工程", "Select code project")}</button><span>{directoryName || t("尚未选择目录", "No directory selected")}</span><small>{selectedFiles.length} {t("个文件", "files")}</small></div>
-          <button className="button primary workspace-scan-button" disabled={scanning || selectedFiles.length === 0} onClick={() => void scanWorkspace()}>{scanning ? t("扫描中…", "Scanning…") : t("开始扫描并生成功能树", "Scan and generate feature tree")}</button>
+          <button className="button primary workspace-scan-button" disabled={scanning || selectedFiles.length === 0} onClick={() => void scanWorkspace()}>{scanning ? t("扫描中…", "Scanning…") : analysis ? t("执行增量扫描", "Run incremental scan") : t("初始化扫描", "Initialize scan")}</button>
         </div>
         {message && <div className="inline-message">{message}</div>}
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
@@ -1585,6 +1673,56 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
       {analysis && <WorkspaceFeatureExplorer analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} selectedBlock={selectedBlock} setSelectedBlock={setSelectedBlock} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />}
     </>
   );
+}
+
+function WorkspaceGraphSurface({ analysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, children }: Pick<WorkspaceFeatureExplorerProps, "analysis" | "selectedFeatureId" | "onSelectFeature" | "expandedNodeIds" | "onToggleNode"> & { children: ReactNode }) {
+  const { t } = useI18n();
+  return (
+    <section className="workspace-graph-shell">
+      <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Workspace graph</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><p className="workspace-graph-help">{t("选择功能后，右侧图谱只使用该 Workspace 的扫描索引生成。", "Select a Feature to build the graph only from this Workspace's scan index.")}</p><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeatureId} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} /></ul></aside>
+      <div className="workspace-graph-main">{children}</div>
+    </section>
+  );
+}
+
+function workspaceGraphForAnalysis(analysis: LocalWorkspaceAnalysis, featureId: string, view: GraphViewPreset): FeatureGraph | null {
+  const feature = analysis.features.find((item) => item.id === featureId) ?? analysis.features[0];
+  if (!feature) return null;
+  const snapshotManifestId = `LOCAL-SCAN-${analysis.scannedAt}`;
+  const nodes: FeatureGraphNode[] = [
+    { id: feature.id, type: "FEATURE", label: feature.name, version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_SCAN", source: { path: feature.sourcePath, line: feature.startLine }, details: { workspace: analysis.workspaceName, module: feature.modulePath } },
+    { id: `${feature.id}:DESCRIPTION`, type: "CLAIM", label: "Candidate feature description", version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_STATIC_DISCOVERY", source: { path: feature.sourcePath, line: feature.startLine }, details: { description: feature.description } },
+    { id: `${feature.id}:IMPLEMENTATION`, type: feature.kind, label: `${feature.sourcePath}:${feature.startLine}`, version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_SOURCE_FACT", source: { path: feature.sourcePath, line: feature.startLine }, details: { module: feature.modulePath } },
+    ...feature.configurations.slice(0, 6).map((configuration, index) => ({ id: `${feature.id}:CONFIG:${index}`, type: "CONFIGURATION", label: configuration.key, version: null, status: "PENDING" as const, risk: null, provenance: "LOCAL_WORKSPACE_CONFIGURATION_CLUE", source: { path: configuration.path }, details: {} })),
+    ...feature.tests.slice(0, 8).map((test, index) => ({ id: `${feature.id}:TEST:${index}`, type: "TEST_SPEC", label: test.title, version: null, status: "PENDING" as const, risk: null, provenance: "LOCAL_WORKSPACE_TEST_CLUE", source: { path: test.path }, details: {} })),
+    { id: `${feature.id}:RESULT`, type: "TEST_EXECUTION", label: "No trusted execution result", version: null, status: "GAP", risk: "BLOCKING", provenance: "LOCAL_WORKSPACE_TRACE_CHAIN_EVALUATION", source: null, details: { verification: feature.dimensions.verification } },
+    ...feature.gaps.map((gap, index) => ({ id: `${feature.id}:GAP:${index}`, type: "TRACE_GAP", label: gap.type, version: null, status: "GAP" as const, risk: gap.severity, provenance: "LOCAL_WORKSPACE_TRACE_CHAIN_EVALUATION", source: null, details: { ownerRole: gap.ownerRole } })),
+  ];
+  const edges: FeatureGraphEdge[] = [];
+  const addEdge = (source: string, target: string, type: string) => edges.push({ id: `${source}:${type}:${target}`, source, target, type, provenance: "LOCAL_WORKSPACE_TRACE_CHAIN", status: "PENDING", snapshotManifestId });
+  addEdge(feature.id, `${feature.id}:DESCRIPTION`, "HAS_RULE");
+  addEdge(`${feature.id}:DESCRIPTION`, `${feature.id}:IMPLEMENTATION`, "CONFORMS_TO");
+  const configurationNodes = nodes.filter((node) => node.type === "CONFIGURATION");
+  const testNodes = nodes.filter((node) => node.type === "TEST_SPEC");
+  for (const node of configurationNodes) addEdge(`${feature.id}:IMPLEMENTATION`, node.id, "CONTROLLED_BY");
+  const testSource = configurationNodes.at(-1)?.id ?? `${feature.id}:IMPLEMENTATION`;
+  for (const node of testNodes) addEdge(testSource, node.id, "VERIFIED_BY");
+  for (const node of testNodes.length > 0 ? testNodes : [{ id: testSource }]) addEdge(node.id, `${feature.id}:RESULT`, "EXECUTED_AS");
+  for (const node of nodes.filter((item) => item.type === "TRACE_GAP")) addEdge(feature.id, node.id, "HAS_GAP");
+  const allowedTypes: Record<GraphViewPreset, Set<string> | null> = {
+    traceability: null,
+    business: new Set(["FEATURE", "CLAIM", "TRACE_GAP"]),
+    implementation: new Set(["FEATURE", feature.kind, "CONFIGURATION", "TRACE_GAP"]),
+    coverage: new Set(["FEATURE", "TEST_SPEC", "TEST_EXECUTION", "TRACE_GAP"]),
+  };
+  const allowed = allowedTypes[view];
+  const visibleNodes = allowed ? nodes.filter((node) => allowed.has(node.type)) : nodes;
+  const visibleIds = new Set(visibleNodes.map((node) => node.id));
+  const visibleEdges = edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
+  for (const node of visibleNodes.filter((item) => item.id !== feature.id && !visibleEdges.some((edge) => edge.target === item.id))) {
+    visibleEdges.push({ id: `${feature.id}:SUPPORTS:${node.id}`, source: feature.id, target: node.id, type: "SUPPORTS", provenance: "LOCAL_WORKSPACE_GRAPH_PROJECTION", status: "PENDING", snapshotManifestId });
+  }
+  return { center: feature.id, snapshotManifestId, view, depth: 8, nodes: visibleNodes, edges: visibleEdges, truncated: feature.configurations.length > 6 || feature.tests.length > 8, availableExpansions: [] };
 }
 
 function localGraphPath(graph: FeatureGraph, fromNodeId: string, toNodeId: string): FeatureGraphPath {
@@ -1629,7 +1767,7 @@ function localGraphPath(graph: FeatureGraph, fromNodeId: string, toNodeId: strin
   };
 }
 
-function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenario, live }: { apiBase: string; apiToken: string; projectId: string; featureId: string; snapshotId: string; scenario: Scenario; live: boolean }) {
+function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenario, live, workspaceAnalysis = null }: { apiBase: string; apiToken: string; projectId: string; featureId: string; snapshotId: string; scenario: Scenario; live: boolean; workspaceAnalysis?: LocalWorkspaceAnalysis | null }) {
   const { language, t, term } = useI18n();
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [preset, setPreset] = useState<GraphViewPreset>("traceability");
@@ -1644,7 +1782,8 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const demoGraph = useMemo(() => demoGraphForScenario(scenario, preset), [scenario, preset]);
-  const graph = remoteGraph ?? demoGraph;
+  const workspaceGraph = useMemo(() => workspaceAnalysis ? workspaceGraphForAnalysis(workspaceAnalysis, featureId, preset) : null, [featureId, preset, workspaceAnalysis]);
+  const graph = remoteGraph ?? workspaceGraph ?? demoGraph;
   const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
   const effectivePathFrom = graph.nodes.some((node) => node.id === pathFrom) ? pathFrom : graph.center;
   const effectivePathTo = graph.nodes.some((node) => node.id === pathTo) ? pathTo : (graph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? graph.nodes.at(-1)?.id ?? graph.center);
@@ -1856,7 +1995,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   }
 
   function changePreset(next: GraphViewPreset) {
-    const nextGraph = demoGraphForScenario(scenario, next);
+    const nextGraph = workspaceAnalysis ? workspaceGraphForAnalysis(workspaceAnalysis, featureId, next) ?? demoGraphForScenario(scenario, next) : demoGraphForScenario(scenario, next);
     setPreset(next);
     setRemoteGraph(null);
     setSelectedId(nextGraph.center);
@@ -1873,7 +2012,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
             <h2>{t("Feature 可交互追溯图谱", "Interactive Feature trace graph")}</h2>
             <p>{t("默认最多 30 个节点；按业务问题渐进披露，而不是展开全量代码“毛线团”。", "Shows at most 30 nodes by default and progressively discloses the graph around a business question.")}</p>
           </div>
-          <span className={`mode-badge ${remoteGraph ? "live" : ""}`}>{remoteGraph ? "LIVE GRAPH" : "SELF WORKSPACE"}</span>
+          <span className={`mode-badge ${remoteGraph || workspaceGraph ? "live" : ""}`}>{remoteGraph ? "LIVE GRAPH" : workspaceGraph ? t("当前 Workspace", "ACTIVE WORKSPACE") : "SELF WORKSPACE"}</span>
         </div>
         <div className="graph-presets" aria-label={t("图谱预设视图", "Graph view presets")}>
           {(["traceability", "business", "implementation", "coverage"] as GraphViewPreset[]).map((item) => (

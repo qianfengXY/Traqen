@@ -10,19 +10,22 @@ A user can define a Workspace, select a source-code directory, scan it without u
 
 1. Enter a Workspace name and stable Project ID.
 2. Select a local code directory through the browser directory chooser.
-3. Traqen reads supported text files in the current browser tab only. Source and results are not persisted and disappear after a full browser refresh.
+3. Traqen reads supported text files locally. Raw source is never uploaded or persisted; a bounded derived index is saved in browser IndexedDB.
 4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, JavaScript/TypeScript exported capabilities, and `package.json` commands.
 5. Results are grouped as Workspace → module → discovery type → candidate Feature.
 6. Selecting a candidate displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
 
 ## Workspace lifecycle and navigation
 
-- Scanning initializes the active Workspace; it is not an isolated report owned by the analysis page.
+- The left Workspace switcher can create and retain multiple local projects. Selecting a project makes it the active data boundary for every product view.
+- The first scan initializes a project; it is not an isolated report owned by the analysis page.
+- A later scan of the same root compares relative path, byte size, last-modified time, and scanner version. Unchanged file records are reused; added or modified supported files are reread; deleted paths are removed before the Feature tree is rebuilt. A scanner upgrade invalidates stale records automatically.
 - The initialized Workspace name, Project ID, Feature tree, selected Feature, selected trace block, and expanded tree nodes are held by the product-level session and survive navigation between product views.
 - Feature traceability reuses the initialized Feature tree directly. Selecting any tree item opens that candidate's five-part trace chain without rescanning.
 - Workspace analysis remains the initialization and rescan surface. Feature traceability is the primary surface for reviewing candidates one by one.
 - The API connection can temporarily show a server-derived Feature. Returning to the self Workspace restores the initialized local tree and selection.
-- This continuity is intentionally limited to the current browser-page session. A full refresh still clears source-derived data because Traqen does not persist local source or excerpts in browser storage.
+- Feature traceability and the trace graph both use the active project's Feature tree and selected Feature. Neither falls back to another Workspace while a local project is active.
+- Project summaries and derived scan records survive a full refresh on the same browser profile. Directory `File` handles are not retained, so the user selects the original root again before an incremental scan.
 
 ## Trust boundary
 
@@ -37,11 +40,11 @@ A user can define a Workspace, select a source-code directory, scan it without u
 
 - Ignore dependency, VCS, build-output, coverage, and vendor directories.
 - Process supported files in bounded batches without a project-wide file-count or total-byte ceiling, so repositories with 100,000-scale file counts do not require an artificial rescan boundary.
-- Retain only discovered Feature indexes, bounded source/test excerpts, and up to 12 redacted configuration clues instead of retaining the full source tree.
+- Persist only file metadata, discovered Feature indexes, bounded source/test excerpts, and redacted configuration clues instead of retaining the full source tree. The persisted snapshot stores scan records once and rebuilds aggregate analysis when loaded.
 - Read individual supported text files only up to 768 KB.
 - Expand the Feature tree on demand so unopened modules and discovery groups do not create all leaf elements in the page at once.
 - Exclude real `.env` variants, allow only environment templates, and redact secret-like configuration values before display.
-- Do not upload source to the hosted Traqen site or write it to browser storage.
+- Do not upload source to the hosted Traqen site. Do not persist complete source files, real `.env` values, or unredacted secret-like configuration.
 
 ## Current discovery coverage
 
