@@ -10,6 +10,7 @@ type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
 type GraphViewPreset = "traceability" | "business" | "implementation" | "coverage";
 type TraceBlockKey = "description" | "design" | "configuration" | "test-case" | "test-result";
+type WorkspaceTraceBlock = TraceBlockKey;
 type TraceDetail = { label: string; value: string };
 type Language = "zh-CN" | "en";
 
@@ -1145,6 +1146,14 @@ export function TraqenProduct() {
   const [projectId, setProjectId] = useState("PROJECT-TRAQEN");
   const [featureId, setFeatureId] = useState("FEATURE-TRACEABILITY-001");
   const [snapshotId, setSnapshotId] = useState("SNAPSHOT-TRAQEN-7D31E8");
+  const [workspaceName, setWorkspaceName] = useState("Traqen Platform");
+  const [workspaceProjectId, setWorkspaceProjectId] = useState("PROJECT-TRAQEN");
+  const [workspaceAnalysis, setWorkspaceAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
+  const [workspaceFeatureId, setWorkspaceFeatureId] = useState("");
+  const [workspaceTraceBlock, setWorkspaceTraceBlock] = useState<WorkspaceTraceBlock>("description");
+  const [workspaceExpandedNodeIds, setWorkspaceExpandedNodeIds] = useState<Set<string>>(() => new Set());
+  const [workspaceSelectedFiles, setWorkspaceSelectedFiles] = useState<File[]>([]);
+  const [workspaceDirectoryName, setWorkspaceDirectoryName] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
@@ -1154,6 +1163,39 @@ export function TraqenProduct() {
   }, [language]);
 
   const scenario = liveScenario ?? (scenarioKey === "current" ? completeScenario : staleScenario);
+  function initializeWorkspace(result: LocalWorkspaceAnalysis) {
+    const firstFeatureId = result.features[0]?.id ?? "";
+    setWorkspaceAnalysis(result);
+    setWorkspaceName(result.workspaceName);
+    setWorkspaceProjectId(result.projectId);
+    setProjectId(result.projectId);
+    setWorkspaceFeatureId(firstFeatureId);
+    setWorkspaceTraceBlock("description");
+    setWorkspaceExpandedNodeIds(new Set([result.tree.id]));
+    if (firstFeatureId) setFeatureId(firstFeatureId);
+  }
+
+  function clearWorkspaceAnalysis() {
+    setWorkspaceAnalysis(null);
+    setWorkspaceFeatureId("");
+    setWorkspaceTraceBlock("description");
+    setWorkspaceExpandedNodeIds(new Set());
+  }
+
+  function selectWorkspaceFeature(nextFeatureId: string) {
+    setWorkspaceFeatureId(nextFeatureId);
+    setWorkspaceTraceBlock("description");
+    setFeatureId(nextFeatureId);
+  }
+
+  function toggleWorkspaceTreeNode(nodeId: string) {
+    setWorkspaceExpandedNodeIds((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }
   async function fetchTraceability(targetFeatureId: string, targetSnapshotId: string) {
     const base = apiBase.replace(/\/$/, "");
     const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(targetFeatureId)}/traceability?snapshotManifestId=${encodeURIComponent(targetSnapshotId)}`;
@@ -1233,8 +1275,8 @@ export function TraqenProduct() {
           <div>
             <p className="workspace-label">Workspace</p>
             <div className="workspace">
-              <strong>Traqen Platform</strong>
-              <small>PROJECT-TRAQEN · SELF</small>
+              <strong>{workspaceName}</strong>
+              <small>{liveScenario ? projectId : workspaceProjectId} · {workspaceAnalysis ? `${workspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
             </div>
           </div>
           <nav className="nav" aria-label={t("产品导航", "Product navigation")}>
@@ -1273,7 +1315,7 @@ export function TraqenProduct() {
         <main className="main">
           <header className="topbar">
             <div className="breadcrumb">
-              Traqen Platform&nbsp; / &nbsp;
+              {workspaceName}&nbsp; / &nbsp;
               <b>
                 {
                   {
@@ -1288,7 +1330,7 @@ export function TraqenProduct() {
               </b>
             </div>
             <div className="top-actions">
-              <span className={`mode-badge ${liveScenario ? "live" : ""}`}>{liveScenario ? "LIVE API" : "SELF WORKSPACE"}</span>
+              <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>{liveScenario ? "LIVE API" : workspaceAnalysis ? t("已初始化", "INITIALIZED") : "SELF WORKSPACE"}</span>
               <div className="language-switch" role="group" aria-label={t("全局语言", "Global language")}>
                 <button aria-pressed={language === "zh-CN"} className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>
                   中文
@@ -1344,8 +1386,8 @@ export function TraqenProduct() {
             </section>
           )}
 
-          {view === "workspace" && <WorkspaceAnalysisView />}
-          {view === "trace" && <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />}
+          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} analysis={workspaceAnalysis} onInitialize={initializeWorkspace} onClearAnalysis={clearWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} />}
+          {view === "trace" && (workspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
@@ -1356,11 +1398,9 @@ export function TraqenProduct() {
   );
 }
 
-type WorkspaceTraceBlock = "description" | "design" | "configuration" | "test-case" | "test-result";
-
-function FeatureTreeBranch({ node, selectedFeatureId, onSelect }: { node: LocalFeatureTreeNode; selectedFeatureId: string; onSelect: (featureId: string) => void }) {
+function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds, onToggleNode }: { node: LocalFeatureTreeNode; selectedFeatureId: string; onSelect: (featureId: string) => void; expandedNodeIds: Set<string>; onToggleNode: (nodeId: string) => void }) {
   const { term } = useI18n();
-  const [open, setOpen] = useState(node.kind === "WORKSPACE");
+  const open = expandedNodeIds.has(node.id);
   const hasChildren = node.children.length > 0;
   if (node.kind === "FEATURE") {
     return (
@@ -1374,12 +1414,12 @@ function FeatureTreeBranch({ node, selectedFeatureId, onSelect }: { node: LocalF
   }
   return (
     <li className={`feature-tree-branch ${node.kind.toLowerCase()}`}>
-      <button className="feature-tree-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+      <button className="feature-tree-toggle" aria-expanded={open} onClick={() => onToggleNode(node.id)}>
         <span>{hasChildren ? (open ? "▾" : "▸") : "·"}</span>
         <b>{node.label}</b>
         <small>{term(node.kind)} · {node.children.length}</small>
       </button>
-      {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} />)}</ul>}
+      {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />)}</ul>}
     </li>
   );
 }
@@ -1421,16 +1461,60 @@ function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFe
   );
 }
 
-function WorkspaceAnalysisView() {
+type WorkspaceFeatureExplorerProps = {
+  analysis: LocalWorkspaceAnalysis;
+  selectedFeatureId: string;
+  onSelectFeature: (featureId: string) => void;
+  selectedBlock: WorkspaceTraceBlock;
+  setSelectedBlock: (block: WorkspaceTraceBlock) => void;
+  expandedNodeIds: Set<string>;
+  onToggleNode: (nodeId: string) => void;
+};
+
+function WorkspaceFeatureExplorer({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode }: WorkspaceFeatureExplorerProps) {
+  const { t } = useI18n();
+  const selectedFeature = analysis.features.find((feature) => feature.id === selectedFeatureId) ?? analysis.features[0];
+  return (
+    <section className="workspace-analysis-shell">
+      <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Feature tree</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeature?.id ?? ""} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} /></ul></aside>
+      <div className="panel workspace-analysis-main">{selectedFeature ? <WorkspaceFeatureDetail feature={selectedFeature} block={selectedBlock} setBlock={setSelectedBlock} /> : <div className="workspace-no-features"><h2>{t("未发现候选功能", "No candidate features discovered")}</h2><p>{t("当前扫描器识别 Spring MVC/WebFlux、JAX-RS、Java 后端组件与接口方法，以及 JavaScript/TypeScript、Python、Go、C#、Rust 能力、OpenAPI 路径和工程命令。", "The scanner recognizes Spring MVC/WebFlux, JAX-RS, Java backend components and interface methods, plus JavaScript/TypeScript, Python, Go, C#, and Rust capabilities, OpenAPI paths, and project commands.")}</p></div>}</div>
+    </section>
+  );
+}
+
+function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onManageWorkspace }: WorkspaceFeatureExplorerProps & { onManageWorkspace: () => void }) {
+  const { t } = useI18n();
+  return (
+    <>
+      <section className="panel workspace-trace-overview">
+        <div className="panel-head">
+          <div><p className="eyebrow">Initialized workspace</p><h1>{t("从功能树逐项查看端到端追溯链", "Inspect each end-to-end trace chain from the Feature tree")}</h1><p>{t(`Workspace 已由 ${analysis.supportedFileCount.toLocaleString()} 个受支持文件初始化。左侧功能树和当前选择在全局导航间保持一致。`, `The Workspace was initialized from ${analysis.supportedFileCount.toLocaleString()} supported files. The Feature tree and current selection remain consistent across global navigation.`)}</p></div>
+          <button className="button" onClick={onManageWorkspace}>{t("管理 / 重新扫描", "Manage / rescan")}</button>
+        </div>
+      </section>
+      <WorkspaceFeatureExplorer analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} selectedBlock={selectedBlock} setSelectedBlock={setSelectedBlock} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />
+    </>
+  );
+}
+
+type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"> & {
+  workspaceName: string;
+  setWorkspaceName: (value: string) => void;
+  projectId: string;
+  setProjectId: (value: string) => void;
+  selectedFiles: File[];
+  setSelectedFiles: (files: File[]) => void;
+  directoryName: string;
+  setDirectoryName: (value: string) => void;
+  analysis: LocalWorkspaceAnalysis | null;
+  onInitialize: (analysis: LocalWorkspaceAnalysis) => void;
+  onClearAnalysis: () => void;
+  onOpenTrace: () => void;
+};
+
+function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, analysis, onInitialize, onClearAnalysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onOpenTrace }: WorkspaceAnalysisViewProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [workspaceName, setWorkspaceName] = useState("My Product Workspace");
-  const [projectId, setProjectId] = useState("PROJECT-MY-PRODUCT");
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [directoryName, setDirectoryName] = useState("");
-  const [analysis, setAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
-  const [selectedFeatureId, setSelectedFeatureId] = useState("");
-  const [selectedBlock, setSelectedBlock] = useState<WorkspaceTraceBlock>("description");
   const [scanning, setScanning] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -1442,7 +1526,7 @@ function WorkspaceAnalysisView() {
   function selectDirectory(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.currentTarget.files ?? []);
     setSelectedFiles(files);
-    setAnalysis(null);
+    onClearAnalysis();
     setMessage("");
     const root = files[0]?.webkitRelativePath.split("/")[0] ?? "";
     setDirectoryName(root);
@@ -1476,9 +1560,7 @@ function WorkspaceAnalysisView() {
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
       const result = accumulator.finish();
-      setAnalysis(result);
-      setSelectedFeatureId(result.features[0]?.id ?? "");
-      setSelectedBlock("description");
+      onInitialize(result);
       setMessage(result.features.length > 0 ? t(`已发现 ${result.features.length} 个候选功能。`, `Discovered ${result.features.length} candidate features.`) : t("扫描完成，但没有发现可识别的接口、导出能力或工程命令。", "Scan complete, but no recognizable endpoints, exported capabilities, or project commands were found."));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("Workspace 扫描失败", "Workspace scan failed"));
@@ -1487,7 +1569,6 @@ function WorkspaceAnalysisView() {
     }
   }
 
-  const selectedFeature = analysis?.features.find((feature) => feature.id === selectedFeatureId) ?? analysis?.features[0];
   return (
     <>
       <section className="panel workspace-onboarding">
@@ -1499,11 +1580,9 @@ function WorkspaceAnalysisView() {
           <button className="button primary workspace-scan-button" disabled={scanning || selectedFiles.length === 0} onClick={() => void scanWorkspace()}>{scanning ? t("扫描中…", "Scanning…") : t("开始扫描并生成功能树", "Scan and generate feature tree")}</button>
         </div>
         {message && <div className="inline-message">{message}</div>}
+        {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
       </section>
-      {analysis && <section className="workspace-analysis-shell">
-        <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Feature tree</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeature?.id ?? ""} onSelect={(featureId) => { setSelectedFeatureId(featureId); setSelectedBlock("description"); }} /></ul></aside>
-        <div className="panel workspace-analysis-main">{selectedFeature ? <WorkspaceFeatureDetail feature={selectedFeature} block={selectedBlock} setBlock={setSelectedBlock} /> : <div className="workspace-no-features"><h2>{t("未发现候选功能", "No candidate features discovered")}</h2><p>{t("当前扫描器识别 Spring MVC/WebFlux、JAX-RS、Java 后端组件与接口方法，以及 JavaScript/TypeScript、Python、Go、C#、Rust 能力、OpenAPI 路径和工程命令。", "The scanner recognizes Spring MVC/WebFlux, JAX-RS, Java backend components and interface methods, plus JavaScript/TypeScript, Python, Go, C#, and Rust capabilities, OpenAPI paths, and project commands.")}</p></div>}</div>
-      </section>}
+      {analysis && <WorkspaceFeatureExplorer analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} selectedBlock={selectedBlock} setSelectedBlock={setSelectedBlock} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />}
     </>
   );
 }

@@ -10,10 +10,19 @@ A user can define a Workspace, select a source-code directory, scan it without u
 
 1. Enter a Workspace name and stable Project ID.
 2. Select a local code directory through the browser directory chooser.
-3. Traqen reads supported text files in the current browser tab only. Source and results are not persisted and disappear after refresh.
+3. Traqen reads supported text files in the current browser tab only. Source and results are not persisted and disappear after a full browser refresh.
 4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, JavaScript/TypeScript exported capabilities, and `package.json` commands.
 5. Results are grouped as Workspace → module → discovery type → candidate Feature.
 6. Selecting a candidate displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
+
+## Workspace lifecycle and navigation
+
+- Scanning initializes the active Workspace; it is not an isolated report owned by the analysis page.
+- The initialized Workspace name, Project ID, Feature tree, selected Feature, selected trace block, and expanded tree nodes are held by the product-level session and survive navigation between product views.
+- Feature traceability reuses the initialized Feature tree directly. Selecting any tree item opens that candidate's five-part trace chain without rescanning.
+- Workspace analysis remains the initialization and rescan surface. Feature traceability is the primary surface for reviewing candidates one by one.
+- The API connection can temporarily show a server-derived Feature. Returning to the self Workspace restores the initialized local tree and selection.
+- This continuity is intentionally limited to the current browser-page session. A full refresh still clears source-derived data because Traqen does not persist local source or excerpts in browser storage.
 
 ## Trust boundary
 

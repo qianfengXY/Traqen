@@ -580,6 +580,11 @@ button { color: inherit; }
 .workspace-directory span { overflow: hidden; font-size: 12px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-directory small { color: #86868b; font-size: 10px; }
 .workspace-scan-button { min-height: 43px; }
+.workspace-initialized-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 13px 15px; border: 1px solid #c9ddd2; border-radius: 12px; background: #edf5f0; color: #315c49; font-size: 11px; font-weight: 650; }
+.workspace-trace-overview { padding: 22px 26px; }
+.workspace-trace-overview .panel-head { align-items: center; }
+.workspace-trace-overview h1 { margin: 4px 0 7px; font-size: 24px; letter-spacing: -.02em; }
+.workspace-trace-overview p:last-child { max-width: 920px; margin: 0; }
 .workspace-analysis-shell { display: grid; grid-template-columns: 330px minmax(0, 1fr); gap: 16px; margin-top: 16px; align-items: start; }
 .feature-tree-panel { position: sticky; top: 78px; max-height: calc(100vh - 98px); overflow: auto; padding: 18px 12px; }
 .feature-tree-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 0 8px 14px; border-bottom: 1px solid var(--line); }
@@ -691,6 +696,7 @@ button { color: inherit; }
   .graph-accessible-list > div { grid-template-columns: 1fr; gap: 4px; }
   .graph-accessible-list b { text-align: left; }
   .workspace-setup-grid, .workspace-analysis-shell { grid-template-columns: 1fr; }
+  .workspace-initialized-actions { align-items: stretch; flex-direction: column; }
   .feature-tree-panel { position: static; max-height: none; }
   .workspace-dimensions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .workspace-trace-tabs { grid-template-columns: 1fr; }

@@ -115,7 +115,16 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
+  assert.match(product, /WorkspaceTraceabilityView/);
+  assert.match(product, /WorkspaceFeatureExplorer/);
   assert.match(product, /FeatureTreeBranch/);
+  assert.match(product, /const \[workspaceAnalysis, setWorkspaceAnalysis\]/);
+  assert.match(product, /const \[workspaceProjectId, setWorkspaceProjectId\]/);
+  assert.match(product, /const \[workspaceFeatureId, setWorkspaceFeatureId\]/);
+  assert.match(product, /const \[workspaceExpandedNodeIds, setWorkspaceExpandedNodeIds\]/);
+  assert.match(product, /workspaceAnalysis && !liveScenario/);
+  assert.match(product, /初始化完成：Workspace 已成为全局导航上下文/);
+  assert.match(product, /从功能树逐项查看端到端追溯链/);
   assert.match(product, /面向十万级文件按批次读取源码/);
   assert.match(analyzer, /export function analyzeLocalWorkspace/);
   assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
@@ -130,7 +139,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /maxFileBytes = 768 \* 1024/);
   assert.doesNotMatch(analyzer, /maxFiles|maxTotalBytes/);
   assert.match(product, /const batchSize = 120/);
-  assert.match(product, /node\.kind === "WORKSPACE"/);
+  assert.match(product, /expandedNodeIds\.has\(node\.id\)/);
   assert.match(layout, /Traqen · 可追溯质量工作台/);
   assert.match(viteConfig, /fileURLToPath\(new URL\("\.\."/);
   assert.match(viteConfig, /fs: \{ allow: \[repositoryRoot\] \}/);
