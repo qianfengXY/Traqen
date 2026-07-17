@@ -39,10 +39,11 @@ test("server-renders the Traqen proof-chain product surface", async () => {
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, analyzer, workspaceStore, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
+  const [page, product, analyzer, workspaceStatistics, workspaceStore, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-analysis.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/local-workspace-statistics.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-store.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/trace-detail-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
@@ -117,6 +118,11 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
+  assert.match(product, /WorkspaceAnalysisDashboard/);
+  assert.match(product, /分层统计/);
+  assert.match(product, /待人工确认/);
+  assert.match(product, /证据链与不符合/);
+  assert.match(product, /下一层统计/);
   assert.match(product, /WorkspaceTraceabilityView/);
   assert.match(product, /WorkspaceGraphSurface/);
   assert.match(product, /workspaceGraphForAnalysis/);
@@ -136,6 +142,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(workspaceStore, /indexedDB\.open/);
   assert.match(workspaceStore, /projects.*snapshots/s);
   assert.doesNotMatch(workspaceStore, /content:/);
+  assert.match(workspaceStatistics, /calculateLocalWorkspaceStatistics/);
+  assert.match(workspaceStatistics, /localWorkspaceStatisticsForNode/);
+  assert.match(workspaceStatistics, /nonconformingFeatureCount/);
+  assert.match(workspaceStatistics, /completeEvidenceChainCount/);
   assert.match(analyzer, /export function analyzeLocalWorkspace/);
   assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
   assert.match(analyzer, /export function scanLocalWorkspaceFile/);

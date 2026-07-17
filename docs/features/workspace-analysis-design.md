@@ -13,7 +13,16 @@ A user can define a Workspace, select a source-code directory, scan it without u
 3. Traqen reads supported text files locally. Raw source is never uploaded or persisted; a bounded derived index is saved in browser IndexedDB.
 4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, JavaScript/TypeScript exported capabilities, and `package.json` commands.
 5. Results are grouped as Workspace → module → discovery type → candidate Feature.
-6. Selecting a candidate displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
+6. Workspace analysis first presents project-wide statistics. Selecting any Workspace, module, discovery group, or Feature node recalculates the same measures for that node and every descendant.
+7. Feature traceability remains the detail surface: selecting a candidate there displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
+
+## Hierarchical analysis statistics
+
+- Statistics include Feature count, located design/implementation, unique module-relevant or project-global configuration clues, unique related test cases, and execution-result distribution.
+- Governance statistics keep pending human confirmation, implementation awaiting review, conflicts, and explicit nonconformance separate.
+- Evidence statistics show complete and incomplete chains plus blocking and warning TraceGaps. There is no composite green score.
+- `PARTIAL`, `UNKNOWN`, and `NOT_RUN` are missing or unverified states, not nonconformance. The nonconformance count includes only an explicit nonconforming state, failed/error execution, or a corresponding violation gap. Conflicts remain a separate measure.
+- The next-level table repeats the measures for each immediate child, allowing the user to drill from Workspace to module, discovery group, and individual Feature without mixing data from another project.
 
 ## Workspace lifecycle and navigation
 

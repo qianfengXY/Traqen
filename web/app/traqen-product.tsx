@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { listLocalWorkspaceProjects, loadLocalWorkspaceProject, saveLocalWorkspaceProject, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
+import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
@@ -1456,7 +1457,7 @@ export function TraqenProduct() {
             </section>
           )}
 
-          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={workspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} />}
+          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={workspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} />}
           {view === "trace" && (workspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && (workspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode}><GraphView key={`${workspaceAnalysis.projectId}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={workspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
@@ -1468,14 +1469,14 @@ export function TraqenProduct() {
   );
 }
 
-function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds, onToggleNode }: { node: LocalFeatureTreeNode; selectedFeatureId: string; onSelect: (featureId: string) => void; expandedNodeIds: Set<string>; onToggleNode: (nodeId: string) => void }) {
+function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds, onToggleNode, selectedNodeId = "", onSelectNode }: { node: LocalFeatureTreeNode; selectedFeatureId: string; onSelect: (featureId: string) => void; expandedNodeIds: Set<string>; onToggleNode: (nodeId: string) => void; selectedNodeId?: string; onSelectNode?: (node: LocalFeatureTreeNode) => void }) {
   const { term } = useI18n();
   const open = expandedNodeIds.has(node.id);
   const hasChildren = node.children.length > 0;
   if (node.kind === "FEATURE") {
     return (
       <li>
-        <button className={`feature-tree-leaf ${selectedFeatureId === node.featureId ? "selected" : ""}`} aria-pressed={selectedFeatureId === node.featureId} onClick={() => node.featureId && onSelect(node.featureId)}>
+        <button className={`feature-tree-leaf ${selectedNodeId === node.id || (!selectedNodeId && selectedFeatureId === node.featureId) ? "selected" : ""}`} aria-pressed={selectedNodeId === node.id || (!selectedNodeId && selectedFeatureId === node.featureId)} onClick={() => { onSelectNode?.(node); if (node.featureId) onSelect(node.featureId); }}>
           <span>◇</span>
           <b>{node.label}</b>
         </button>
@@ -1484,12 +1485,12 @@ function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds,
   }
   return (
     <li className={`feature-tree-branch ${node.kind.toLowerCase()}`}>
-      <button className="feature-tree-toggle" aria-expanded={open} onClick={() => onToggleNode(node.id)}>
+      <button className={`feature-tree-toggle ${selectedNodeId === node.id ? "selected" : ""}`} aria-expanded={open} aria-pressed={selectedNodeId === node.id} onClick={() => { onSelectNode?.(node); onToggleNode(node.id); }}>
         <span>{hasChildren ? (open ? "▾" : "▸") : "·"}</span>
         <b>{node.label}</b>
         <small>{term(node.kind)} · {node.children.length}</small>
       </button>
-      {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />)}</ul>}
+      {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />)}</ul>}
     </li>
   );
 }
@@ -1552,6 +1553,100 @@ function WorkspaceFeatureExplorer({ analysis, selectedFeatureId, onSelectFeature
   );
 }
 
+function percentage(value: number, total: number) {
+  return total > 0 ? `${Math.round((value / total) * 100)}%` : "—";
+}
+
+function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode }: Pick<WorkspaceFeatureExplorerProps, "analysis" | "selectedFeatureId" | "onSelectFeature" | "expandedNodeIds" | "onToggleNode">) {
+  const { t, term } = useI18n();
+  const [selectedNodeId, setSelectedNodeId] = useState(analysis.tree.id);
+  const scope = localWorkspaceStatisticsForNode(analysis, selectedNodeId);
+  const statistics = scope.statistics;
+  const childStatistics = scope.node.children.map((node) => ({ node, statistics: localWorkspaceStatisticsForNode(analysis, node.id).statistics }));
+  const cards: Array<{ label: string; value: string; meta: string; state: "good" | "warn" | "bad" | "neutral" }> = [
+    { label: t("功能点", "Features"), value: statistics.featureCount.toLocaleString(), meta: t("当前层级全部功能", "All Features in scope"), state: "neutral" },
+    { label: t("设计实现", "Design / implementation"), value: statistics.designImplementationCount.toLocaleString(), meta: `${percentage(statistics.designImplementationCount, statistics.featureCount)} ${t("已定位源码", "source located")}`, state: statistics.designImplementationCount === statistics.featureCount ? "good" : "warn" },
+    { label: t("配置", "Configuration"), value: statistics.configurationItemCount.toLocaleString(), meta: `${statistics.configuredFeatureCount.toLocaleString()} / ${statistics.featureCount.toLocaleString()} ${t("个功能有关联", "Features linked")}`, state: statistics.configuredFeatureCount === statistics.featureCount && statistics.featureCount > 0 ? "good" : "warn" },
+    { label: t("测试用例", "Test cases"), value: statistics.testCaseCount.toLocaleString(), meta: `${statistics.testedFeatureCount.toLocaleString()} / ${statistics.featureCount.toLocaleString()} ${t("个功能有关联", "Features linked")}`, state: statistics.testedFeatureCount === statistics.featureCount && statistics.featureCount > 0 ? "good" : "warn" },
+    { label: t("执行结果", "Execution results"), value: `${statistics.executedFeatureCount.toLocaleString()} / ${statistics.featureCount.toLocaleString()}`, meta: `${t("通过", "Passed")} ${statistics.execution.passed} · ${t("失败/错误", "Failed / error")} ${statistics.execution.failed + statistics.execution.error}`, state: statistics.execution.failed + statistics.execution.error > 0 ? "bad" : statistics.execution.notRun > 0 ? "warn" : "good" },
+    { label: t("待人工确认", "Pending human confirmation"), value: statistics.pendingHumanConfirmationCount.toLocaleString(), meta: t("业务权威尚未确认", "Business authority not confirmed"), state: statistics.pendingHumanConfirmationCount > 0 ? "warn" : "good" },
+    { label: t("证据链完整", "Complete evidence chains"), value: `${statistics.completeEvidenceChainCount.toLocaleString()} / ${statistics.featureCount.toLocaleString()}`, meta: `${statistics.incompleteEvidenceChainCount.toLocaleString()} ${t("条链仍不完整", "chains remain incomplete")}`, state: statistics.incompleteEvidenceChainCount > 0 ? "warn" : "good" },
+    { label: t("明确不符合", "Explicitly nonconforming"), value: statistics.nonconformingFeatureCount.toLocaleString(), meta: t("不包含未知、待审核和未执行", "Excludes unknown, unreviewed, and not run"), state: statistics.nonconformingFeatureCount > 0 ? "bad" : "good" },
+  ];
+
+  function selectScope(node: LocalFeatureTreeNode) {
+    setSelectedNodeId(node.id);
+    if (node.children.length > 0 && !expandedNodeIds.has(node.id)) onToggleNode(node.id);
+  }
+
+  return (
+    <section className="workspace-analysis-shell">
+      <aside className="panel feature-tree-panel">
+        <div className="feature-tree-head"><div><p className="eyebrow">Analysis scope</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div>
+        <div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div>
+        <p className="workspace-analysis-tree-help">{t("选择任意层级，右侧重新统计该节点下的全部功能。", "Select any level to recalculate all Features below that node.")}</p>
+        <ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeatureId} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} selectedNodeId={scope.node.id} onSelectNode={selectScope} /></ul>
+      </aside>
+
+      <div className="workspace-statistics-main">
+        <section className="panel workspace-statistics-overview">
+          <header className="workspace-statistics-head">
+            <div><p className="eyebrow">{term(scope.node.kind)} · {t("分层统计", "Hierarchical statistics")}</p><h2>{scope.node.label}</h2><p>{t("统计仅覆盖当前树节点及其全部下级，不会混入其他 Workspace 数据。", "Statistics cover only this tree node and all descendants; data from other Workspaces is never mixed in.")}</p></div>
+            <span className="mode-badge">{statistics.featureCount} FEATURES</span>
+          </header>
+          <div className="workspace-stat-card-grid">
+            {cards.map((card) => <article key={card.label} className={`workspace-stat-card ${card.state}`}><span>{card.label}</span><strong>{card.value}</strong><small>{card.meta}</small></article>)}
+          </div>
+        </section>
+
+        <section className="workspace-statistics-grid">
+          <article className="panel workspace-stat-panel">
+            <div className="workspace-stat-section-head"><div><p className="eyebrow">Coverage</p><h3>{t("功能类型与覆盖", "Feature types and coverage")}</h3></div></div>
+            <div className="workspace-kind-grid">
+              {(["ENDPOINT", "CODE_SYMBOL", "COMMAND"] as const).map((kind) => <div key={kind}><span>{term(kind)}</span><b>{statistics.byKind[kind]}</b><small>{percentage(statistics.byKind[kind], statistics.featureCount)}</small></div>)}
+            </div>
+            <dl className="workspace-stat-list">
+              <div><dt>{t("源码实现覆盖", "Source implementation coverage")}</dt><dd>{statistics.designImplementationCount} / {statistics.featureCount}</dd></div>
+              <div><dt>{t("配置关联覆盖", "Configuration linkage coverage")}</dt><dd>{statistics.configuredFeatureCount} / {statistics.featureCount}</dd></div>
+              <div><dt>{t("测试关联覆盖", "Test linkage coverage")}</dt><dd>{statistics.testedFeatureCount} / {statistics.featureCount}</dd></div>
+            </dl>
+          </article>
+
+          <article className="panel workspace-stat-panel">
+            <div className="workspace-stat-section-head"><div><p className="eyebrow">Execution</p><h3>{t("执行结果分布", "Execution result distribution")}</h3></div><b>{statistics.executedFeatureCount} / {statistics.featureCount}</b></div>
+            <div className="workspace-execution-grid">
+              <div className="pass"><span>{t("通过", "Passed")}</span><b>{statistics.execution.passed}</b></div>
+              <div className="fail"><span>{t("失败", "Failed")}</span><b>{statistics.execution.failed}</b></div>
+              <div className="error"><span>{t("错误", "Error")}</span><b>{statistics.execution.error}</b></div>
+              <div className="skip"><span>{t("跳过", "Skipped")}</span><b>{statistics.execution.skipped}</b></div>
+              <div className="not-run"><span>{t("未执行", "Not run")}</span><b>{statistics.execution.notRun}</b></div>
+            </div>
+            <p className="workspace-stat-note">{t("本地扫描不会执行工程代码；只有可信 Runner 回传的结果才能计入已执行。", "Local scanning never executes project code; only results returned by a trusted Runner count as executed.")}</p>
+          </article>
+
+          <article className="panel workspace-stat-panel workspace-evidence-panel">
+            <div className="workspace-stat-section-head"><div><p className="eyebrow">Evidence & quality</p><h3>{t("证据链与不符合", "Evidence chains and nonconformance")}</h3></div></div>
+            <dl className="workspace-stat-list">
+              <div><dt>{t("完整证据链", "Complete evidence chains")}</dt><dd className="good">{statistics.completeEvidenceChainCount}</dd></div>
+              <div><dt>{t("不完整证据链", "Incomplete evidence chains")}</dt><dd className="warn">{statistics.incompleteEvidenceChainCount}</dd></div>
+              <div><dt>{t("阻断级 TraceGap", "Blocking TraceGaps")}</dt><dd className="bad">{statistics.blockingGapCount}</dd></div>
+              <div><dt>{t("警告级 TraceGap", "Warning TraceGaps")}</dt><dd className="warn">{statistics.warningGapCount}</dd></div>
+              <div><dt>{t("实现待审核", "Implementation awaiting review")}</dt><dd className="warn">{statistics.unreviewedImplementationCount}</dd></div>
+              <div><dt>{t("冲突", "Conflicts")}</dt><dd className={statistics.conflictCount > 0 ? "bad" : "good"}>{statistics.conflictCount}</dd></div>
+              <div><dt>{t("明确不符合功能", "Explicitly nonconforming Features")}</dt><dd className={statistics.nonconformingFeatureCount > 0 ? "bad" : "good"}>{statistics.nonconformingFeatureCount}</dd></div>
+            </dl>
+          </article>
+        </section>
+
+        <section className="panel workspace-layer-statistics">
+          <div className="workspace-stat-section-head"><div><p className="eyebrow">Child scopes</p><h3>{t("下一层统计", "Next-level statistics")}</h3><p>{t("点击层级名称可继续下钻；叶子功能仍可在“功能追溯”查看完整追踪链。", "Select a scope to drill down; leaf Features retain their complete chains in Feature traceability.")}</p></div><span>{childStatistics.length}</span></div>
+          {childStatistics.length === 0 ? <div className="workspace-stat-empty">{t("当前已是功能叶子节点。", "The current scope is a Feature leaf.")}</div> : <div className="workspace-layer-table-wrap"><table className="workspace-layer-table"><thead><tr><th>{t("层级", "Scope")}</th><th>{t("功能", "Features")}</th><th>{t("设计实现", "Implementation")}</th><th>{t("配置", "Config")}</th><th>{t("测试", "Tests")}</th><th>{t("已执行", "Executed")}</th><th>{t("待确认", "Pending")}</th><th>TraceGap</th><th>{t("不符合", "Nonconforming")}</th></tr></thead><tbody>{childStatistics.map(({ node, statistics: child }) => <tr key={node.id}><td><button onClick={() => selectScope(node)}><b>{node.label}</b><small>{term(node.kind)}</small></button></td><td>{child.featureCount}</td><td>{child.designImplementationCount}</td><td>{child.configurationItemCount}</td><td>{child.testCaseCount}</td><td>{child.executedFeatureCount}</td><td>{child.pendingHumanConfirmationCount}</td><td>{child.blockingGapCount + child.warningGapCount}</td><td className={child.nonconformingFeatureCount > 0 ? "bad" : ""}>{child.nonconformingFeatureCount}</td></tr>)}</tbody></table></div>}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onManageWorkspace }: WorkspaceFeatureExplorerProps & { onManageWorkspace: () => void }) {
   const { t } = useI18n();
   return (
@@ -1567,7 +1662,7 @@ function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeatur
   );
 }
 
-type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"> & {
+type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis" | "selectedBlock" | "setSelectedBlock"> & {
   workspaceName: string;
   setWorkspaceName: (value: string) => void;
   projectId: string;
@@ -1583,7 +1678,7 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
   onOpenTrace: () => void;
 };
 
-function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onOpenTrace }: WorkspaceAnalysisViewProps) {
+function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace }: WorkspaceAnalysisViewProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -1670,7 +1765,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         {message && <div className="inline-message">{message}</div>}
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
       </section>
-      {analysis && <WorkspaceFeatureExplorer analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} selectedBlock={selectedBlock} setSelectedBlock={setSelectedBlock} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />}
+      {analysis && <WorkspaceAnalysisDashboard key={`${analysis.projectId}:${analysis.scannedAt}`} analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />}
     </>
   );
 }

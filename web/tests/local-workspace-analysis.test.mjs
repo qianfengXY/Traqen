@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, createLocalWorkspaceAnalysisAccumulator, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
+import { calculateLocalWorkspaceStatistics, localWorkspaceStatisticsForNode } from "../app/local-workspace-statistics.ts";
 
 test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
   const analysis = analyzeLocalWorkspace({
@@ -189,4 +190,41 @@ test("rebuilds an incremental Workspace from reused, changed, added, and deleted
   assert.ok(analysis.features.some((feature) => feature.name === "Added Feature"));
   assert.ok(analysis.features.every((feature) => feature.name !== "Deleted Feature"));
   assert.ok(deleted.candidates.length > 0);
+});
+
+test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Statistics",
+    projectId: "PROJECT-STATISTICS",
+    files: [
+      { path: "orders/src/order.js", size: 100, content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);" },
+      { path: "orders/tests/order.test.js", size: 80, content: "test('submit order', () => submitOrder());" },
+      { path: "orders/config/application.yml", size: 30, content: "orders:\n  enabled: true" },
+      { path: "customers/src/customer.js", size: 60, content: "export function loadCustomer() {}" },
+    ],
+  });
+
+  const workspace = localWorkspaceStatisticsForNode(analysis, analysis.tree.id);
+  assert.equal(workspace.statistics.featureCount, analysis.features.length);
+  assert.equal(workspace.statistics.designImplementationCount, analysis.features.length);
+  assert.equal(workspace.statistics.pendingHumanConfirmationCount, analysis.features.length);
+  assert.equal(workspace.statistics.incompleteEvidenceChainCount, analysis.features.length);
+  assert.equal(workspace.statistics.execution.notRun, analysis.features.length);
+  assert.equal(workspace.statistics.nonconformingFeatureCount, 0);
+  assert.ok(workspace.statistics.configurationItemCount > 0);
+  assert.ok(workspace.statistics.testCaseCount > 0);
+  assert.ok(workspace.statistics.blockingGapCount >= analysis.features.length);
+
+  const orders = analysis.tree.children.find((node) => node.label === "orders");
+  assert.ok(orders);
+  const ordersScope = localWorkspaceStatisticsForNode(analysis, orders.id);
+  assert.ok(ordersScope.statistics.featureCount > 0);
+  assert.ok(ordersScope.statistics.featureCount < workspace.statistics.featureCount);
+  assert.ok(ordersScope.statistics.configurationItemCount > 0);
+  const customers = analysis.tree.children.find((node) => node.label === "customers");
+  assert.ok(customers);
+  assert.equal(localWorkspaceStatisticsForNode(analysis, customers.id).statistics.configurationItemCount, 0);
+  const explicitViolation = structuredClone(analysis.features[0]);
+  explicitViolation.dimensions.conformance = "NON_CONFORMING";
+  assert.equal(calculateLocalWorkspaceStatistics([explicitViolation]).nonconformingFeatureCount, 1);
 });

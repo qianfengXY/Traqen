@@ -438,6 +438,17 @@ function indexedTests(feature: { sourcePath: string; name: string }, testIndex: 
   return [...new Map([...keys].flatMap((key) => testIndex.get(key) ?? []).map((test) => [test.path, test])).values()].slice(0, 20);
 }
 
+function configurationsForFeature(feature: { sourcePath: string }, configurations: Array<{ path: string; key: string; value: string }>) {
+  const sourceModule = modulePath(feature.sourcePath);
+  return configurations.filter((configuration) => {
+    const segments = configuration.path.split("/").filter(Boolean);
+    const globalConfiguration = segments.length === 1
+      || ["config", "configs"].includes(segments[0]?.toLowerCase() ?? "")
+      || (segments[0]?.toLowerCase() === "src" && ["config", "configs"].includes(segments[1]?.toLowerCase() ?? ""));
+    return globalConfiguration || modulePath(configuration.path) === sourceModule;
+  }).slice(0, 12);
+}
+
 function buildTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[]): LocalFeatureTreeNode {
   const modules = new Map<string, LocalFeatureCandidate[]>();
   for (const feature of features) modules.set(feature.modulePath, [...(modules.get(feature.modulePath) ?? []), feature]);
@@ -503,12 +514,12 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
     for (const candidate of record.candidates) rawCandidates.set(candidate.id, candidate);
     if (record.test) indexTest(testIndex, record.test);
   }
-  const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []).slice(0, 12);
+  const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []);
   const features: LocalFeatureCandidate[] = [...rawCandidates.values()].map((feature) => {
     const tests = indexedTests(feature, testIndex);
     return {
       ...feature,
-      configurations,
+      configurations: configurationsForFeature(feature, configurations),
       tests,
       dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
       gaps: [
