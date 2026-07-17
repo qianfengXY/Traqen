@@ -37,6 +37,11 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   IMPLEMENTATION_FACT: { zh: "实现事实", en: "Implementation fact" },
   ENDPOINT: { zh: "接口", en: "Endpoint" },
   CODE_SYMBOL: { zh: "代码符号", en: "Code symbol" },
+  API_SERVICE: { zh: "对外接口服务", en: "External API services" },
+  BUSINESS_CAPABILITY: { zh: "业务处理能力", en: "Business capabilities" },
+  DATA_INTEGRATION: { zh: "数据与外部集成", en: "Data and external integrations" },
+  BACKGROUND_INTEGRATION: { zh: "后台任务与消息", en: "Background jobs and messaging" },
+  PROJECT_OPERATION: { zh: "工程与运行能力", en: "Project and runtime operations" },
   "Data / Config": { zh: "数据 / 配置", en: "Data / Configuration" },
   DATA_OBJECT: { zh: "数据对象", en: "Data object" },
   CONFIGURATION: { zh: "配置", en: "Configuration" },
@@ -1473,22 +1478,24 @@ function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds,
   const { term } = useI18n();
   const open = expandedNodeIds.has(node.id);
   const hasChildren = node.children.length > 0;
+  const displayLabel = node.kind === "GROUP" ? term(node.label) : node.label;
   if (node.kind === "FEATURE") {
     return (
       <li>
         <button className={`feature-tree-leaf ${selectedNodeId === node.id || (!selectedNodeId && selectedFeatureId === node.featureId) ? "selected" : ""}`} aria-pressed={selectedNodeId === node.id || (!selectedNodeId && selectedFeatureId === node.featureId)} onClick={() => { onSelectNode?.(node); if (node.featureId) onSelect(node.featureId); }}>
-          <span>◇</span>
-          <b>{node.label}</b>
+          <span className="feature-tree-leaf-mark">◇</span>
+          <span className="feature-tree-leaf-copy"><b>{displayLabel}</b>{node.detail && <small>{node.detail}</small>}</span>
+          {node.badge && <em>{node.badge}</em>}
         </button>
       </li>
     );
   }
   return (
     <li className={`feature-tree-branch ${node.kind.toLowerCase()}`}>
-      <button className={`feature-tree-toggle ${selectedNodeId === node.id ? "selected" : ""}`} aria-expanded={open} aria-pressed={selectedNodeId === node.id} onClick={() => { onSelectNode?.(node); onToggleNode(node.id); }}>
+      <button title={node.detail} className={`feature-tree-toggle ${selectedNodeId === node.id ? "selected" : ""}`} aria-expanded={open} aria-pressed={selectedNodeId === node.id} onClick={() => { onSelectNode?.(node); onToggleNode(node.id); }}>
         <span>{hasChildren ? (open ? "▾" : "▸") : "·"}</span>
-        <b>{node.label}</b>
-        <small>{term(node.kind)} · {node.children.length}</small>
+        <b>{displayLabel}</b>
+        <small>{term(node.kind)} · {node.featureCount}</small>
       </button>
       {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />)}</ul>}
     </li>
@@ -1509,7 +1516,7 @@ function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFe
       <header className="workspace-feature-head">
         <div>
           <p className="eyebrow">{term(feature.kind)} · {feature.id}</p>
-          <h2>{feature.name}</h2>
+          <h2>{feature.displayName ?? feature.name}</h2>
           <p>{feature.sourcePath}:{feature.startLine} · {feature.modulePath}</p>
         </div>
         <span className="mode-badge">{t("扫描候选", "Discovered candidate")}</span>
@@ -1591,7 +1598,7 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
       <div className="workspace-statistics-main">
         <section className="panel workspace-statistics-overview">
           <header className="workspace-statistics-head">
-            <div><p className="eyebrow">{term(scope.node.kind)} · {t("分层统计", "Hierarchical statistics")}</p><h2>{scope.node.label}</h2><p>{t("统计仅覆盖当前树节点及其全部下级，不会混入其他 Workspace 数据。", "Statistics cover only this tree node and all descendants; data from other Workspaces is never mixed in.")}</p></div>
+            <div><p className="eyebrow">{term(scope.node.kind)} · {t("分层统计", "Hierarchical statistics")}</p><h2>{scope.node.kind === "GROUP" ? term(scope.node.label) : scope.node.label}</h2><p>{t("统计仅覆盖当前树节点及其全部下级，不会混入其他 Workspace 数据。", "Statistics cover only this tree node and all descendants; data from other Workspaces is never mixed in.")}</p></div>
             <span className="mode-badge">{statistics.featureCount} FEATURES</span>
           </header>
           <div className="workspace-stat-card-grid">
@@ -1640,7 +1647,7 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
 
         <section className="panel workspace-layer-statistics">
           <div className="workspace-stat-section-head"><div><p className="eyebrow">Child scopes</p><h3>{t("下一层统计", "Next-level statistics")}</h3><p>{t("点击层级名称可继续下钻；叶子功能仍可在“功能追溯”查看完整追踪链。", "Select a scope to drill down; leaf Features retain their complete chains in Feature traceability.")}</p></div><span>{childStatistics.length}</span></div>
-          {childStatistics.length === 0 ? <div className="workspace-stat-empty">{t("当前已是功能叶子节点。", "The current scope is a Feature leaf.")}</div> : <div className="workspace-layer-table-wrap"><table className="workspace-layer-table"><thead><tr><th>{t("层级", "Scope")}</th><th>{t("功能", "Features")}</th><th>{t("设计实现", "Implementation")}</th><th>{t("配置", "Config")}</th><th>{t("测试", "Tests")}</th><th>{t("已执行", "Executed")}</th><th>{t("待确认", "Pending")}</th><th>TraceGap</th><th>{t("不符合", "Nonconforming")}</th></tr></thead><tbody>{childStatistics.map(({ node, statistics: child }) => <tr key={node.id}><td><button onClick={() => selectScope(node)}><b>{node.label}</b><small>{term(node.kind)}</small></button></td><td>{child.featureCount}</td><td>{child.designImplementationCount}</td><td>{child.configurationItemCount}</td><td>{child.testCaseCount}</td><td>{child.executedFeatureCount}</td><td>{child.pendingHumanConfirmationCount}</td><td>{child.blockingGapCount + child.warningGapCount}</td><td className={child.nonconformingFeatureCount > 0 ? "bad" : ""}>{child.nonconformingFeatureCount}</td></tr>)}</tbody></table></div>}
+          {childStatistics.length === 0 ? <div className="workspace-stat-empty">{t("当前已是功能叶子节点。", "The current scope is a Feature leaf.")}</div> : <div className="workspace-layer-table-wrap"><table className="workspace-layer-table"><thead><tr><th>{t("层级", "Scope")}</th><th>{t("功能", "Features")}</th><th>{t("设计实现", "Implementation")}</th><th>{t("配置", "Config")}</th><th>{t("测试", "Tests")}</th><th>{t("已执行", "Executed")}</th><th>{t("待确认", "Pending")}</th><th>TraceGap</th><th>{t("不符合", "Nonconforming")}</th></tr></thead><tbody>{childStatistics.map(({ node, statistics: child }) => <tr key={node.id}><td><button onClick={() => selectScope(node)}><b>{node.kind === "GROUP" ? term(node.label) : node.label}</b><small>{term(node.kind)} · {node.featureCount}</small></button></td><td>{child.featureCount}</td><td>{child.designImplementationCount}</td><td>{child.configurationItemCount}</td><td>{child.testCaseCount}</td><td>{child.executedFeatureCount}</td><td>{child.pendingHumanConfirmationCount}</td><td>{child.blockingGapCount + child.warningGapCount}</td><td className={child.nonconformingFeatureCount > 0 ? "bad" : ""}>{child.nonconformingFeatureCount}</td></tr>)}</tbody></table></div>}
         </section>
       </div>
     </section>
@@ -1785,7 +1792,7 @@ function workspaceGraphForAnalysis(analysis: LocalWorkspaceAnalysis, featureId: 
   if (!feature) return null;
   const snapshotManifestId = `LOCAL-SCAN-${analysis.scannedAt}`;
   const nodes: FeatureGraphNode[] = [
-    { id: feature.id, type: "FEATURE", label: feature.name, version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_SCAN", source: { path: feature.sourcePath, line: feature.startLine }, details: { workspace: analysis.workspaceName, module: feature.modulePath } },
+    { id: feature.id, type: "FEATURE", label: feature.displayName ?? feature.name, version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_SCAN", source: { path: feature.sourcePath, line: feature.startLine }, details: { workspace: analysis.workspaceName, module: feature.modulePath } },
     { id: `${feature.id}:DESCRIPTION`, type: "CLAIM", label: "Candidate feature description", version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_STATIC_DISCOVERY", source: { path: feature.sourcePath, line: feature.startLine }, details: { description: feature.description } },
     { id: `${feature.id}:IMPLEMENTATION`, type: feature.kind, label: `${feature.sourcePath}:${feature.startLine}`, version: null, status: "PENDING", risk: null, provenance: "LOCAL_WORKSPACE_SOURCE_FACT", source: { path: feature.sourcePath, line: feature.startLine }, details: { module: feature.modulePath } },
     ...feature.configurations.slice(0, 6).map((configuration, index) => ({ id: `${feature.id}:CONFIG:${index}`, type: "CONFIGURATION", label: configuration.key, version: null, status: "PENDING" as const, risk: null, provenance: "LOCAL_WORKSPACE_CONFIGURATION_CLUE", source: { path: configuration.path }, details: {} })),

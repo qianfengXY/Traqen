@@ -613,8 +613,13 @@ button { color: inherit; }
 .feature-tree-toggle.selected { background: #e7f0eb; color: #143f32; }
 .feature-tree-toggle b { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .feature-tree-toggle small { color: #929298; font-size: 8px; text-transform: uppercase; }
-.feature-tree-leaf { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: 6px; margin: 2px 0; padding: 8px; border-radius: 8px !important; }
-.feature-tree-leaf b { overflow: hidden; font-size: 10px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.feature-tree-leaf { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 7px; margin: 3px 0; padding: 8px; border-radius: 8px !important; }
+.feature-tree-leaf-mark { color: #7a9487; }
+.feature-tree-leaf-copy { min-width: 0; display: block; }
+.feature-tree-leaf-copy b, .feature-tree-leaf-copy small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feature-tree-leaf-copy b { font-size: 10px; font-weight: 680; }
+.feature-tree-leaf-copy small { margin-top: 3px; color: #8d8d93; font-family: var(--font-geist-mono); font-size: 8px; }
+.feature-tree-leaf em { padding: 3px 5px; border-radius: 5px; background: #eef1ef; color: #4b6659; font-size: 7px; font-style: normal; font-weight: 760; }
 .feature-tree-leaf.selected { background: #e7f0eb; color: #143f32; }
 .workspace-analysis-main { min-width: 0; overflow: hidden; }
 .workspace-statistics-main { min-width: 0; display: grid; gap: 16px; }

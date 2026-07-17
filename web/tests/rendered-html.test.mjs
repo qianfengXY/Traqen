@@ -150,8 +150,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
   assert.match(analyzer, /export function scanLocalWorkspaceFile/);
   assert.match(analyzer, /export function analyzeLocalWorkspaceRecords/);
-  assert.match(analyzer, /localWorkspaceScannerVersion = 2/);
+  assert.match(analyzer, /localWorkspaceScannerVersion = 3/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
+  assert.match(analyzer, /API_SERVICE.*BUSINESS_CAPABILITY.*DATA_INTEGRATION.*BACKGROUND_INTEGRATION.*PROJECT_OPERATION/s);
+  assert.match(analyzer, /featureCount: features\.length/);
+  assert.match(product, /对外接口服务/);
+  assert.match(product, /业务处理能力/);
   assert.match(analyzer, /discoverJavaCandidates/);
   assert.match(analyzer, /GetMapping.*PostMapping.*RequestMapping/s);
   assert.match(analyzer, /JAX-RS/);

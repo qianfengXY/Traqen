@@ -12,7 +12,7 @@
 2. 通过浏览器目录选择器选择本地代码工程。
 3. Traqen 在本机读取受支持的文本文件；原始源码既不上传也不持久化，仅把有界的派生索引保存到浏览器 IndexedDB。
 4. 本地扫描器发现 Spring MVC/WebFlux 和 JAX-RS 接口、Java 后端组件与接口方法、HTTP 路由、OpenAPI JSON 操作、JavaScript/TypeScript 导出能力和 `package.json` 命令。
-5. 结果按照“Workspace → 模块 → 发现类型 → 候选 Feature”组织成功能树。
+5. 结果按照“Workspace → 可读模块/领域 → 对外接口服务、业务处理能力、数据与外部集成、后台任务与消息或工程与运行能力 → 候选 Feature”组织成功能树。父节点数字始终表示下级功能总数，而不是直接文件夹数。
 6. Workspace 分析首先展示项目全局统计。选择 Workspace、模块、发现类型或功能任意节点后，使用相同口径重新统计该节点及其全部下级。
 7. 功能追溯继续承担详情查看：点击候选功能后，展示功能描述、设计源码、配置线索、关联测试、测试结果、独立可信维度和 TraceGap 责任归属。
 
@@ -57,4 +57,4 @@
 
 ## 当前发现范围
 
-扫描器识别 Spring `@RequestMapping` 和各 HTTP 方法映射，并合并类级与方法级路径；识别 JAX-RS `@Path` 与 HTTP 注解；识别 Java Controller、Service、Repository、Component、定时任务、消息/事件监听方法、接口方法以及公开/受保护的后端方法；关联 Maven/Gradle 与 application 配置线索和 Java 测试源码。同时继续识别常见 JavaScript/TypeScript 导出能力、Python 函数、C# 公共方法、Go 函数、Rust 公共函数、HTTP 路由注册、OpenAPI JSON 路径和 npm scripts。Java 生成目录 `target`、`out` 与 Gradle 缓存仍会被排除。
+扫描器识别 Spring `@RequestMapping` 和各 HTTP 方法映射，并合并类级与方法级路径；识别 JAX-RS `@Path` 与 HTTP 注解；识别 Java Controller、Service、Repository、Component、定时任务、消息/事件监听方法、接口方法以及有意义的公开/受保护后端方法；关联 Maven/Gradle、application 配置线索和 Java 测试源码。普通 getter/setter 与配置工厂方法不会再被提升为功能。接口叶子优先使用 Java 方法名、路由处理器名或 OpenAPI 的 summary/operationId 作为可读名称，同时保留 HTTP 方法和路径作为技术明细。同时继续识别常见 JavaScript/TypeScript 导出能力、Python 函数、C# 公共方法、Go 函数、Rust 公共函数、HTTP 路由注册、OpenAPI JSON 路径和 npm scripts。Java 生成目录 `target`、`out` 与 Gradle 缓存仍会被排除。

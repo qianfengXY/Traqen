@@ -8,6 +8,7 @@ export type LocalWorkspaceInputFile = {
 export type LocalFeatureCandidate = {
   id: string;
   name: string;
+  displayName?: string;
   kind: "ENDPOINT" | "CODE_SYMBOL" | "COMMAND";
   method: string | null;
   modulePath: string;
@@ -32,6 +33,9 @@ export type LocalFeatureTreeNode = {
   label: string;
   kind: "WORKSPACE" | "MODULE" | "GROUP" | "FEATURE";
   featureId?: string;
+  featureCount: number;
+  detail?: string;
+  badge?: string;
   children: LocalFeatureTreeNode[];
 };
 
@@ -57,7 +61,7 @@ export type LocalWorkspaceFileRecord = {
   test: ({ path: string; title: string; code: string } & { keys: string[] }) | null;
 };
 
-export const localWorkspaceScannerVersion = 2;
+export const localWorkspaceScannerVersion = 3;
 
 const supportedExtensions = new Set([
   "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env", "xml", "gradle", "kts",
@@ -219,6 +223,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
     candidates.push({
       id: stableId(identity),
       name: `${httpMethod} ${path}`,
+      displayName: titleFromSymbol(method.name),
       kind: "ENDPOINT",
       method: httpMethod,
       modulePath: javaModule,
@@ -256,7 +261,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
     }
   }
 
-  const componentRoles = new Set(["RestController", "Controller", "Service", "Repository", "Component", "Configuration"]);
+  const componentRoles = new Set(["RestController", "Controller", "Service", "Repository", "Component"]);
   const listenerRoles = new Set(["Scheduled", "KafkaListener", "RabbitListener", "EventListener", "JmsListener"]);
   const trivialMethod = /^(?:get|set|is)[A-Z_]|^(?:equals|hashCode|toString|canEqual)$/;
   for (const method of methods) {
@@ -267,7 +272,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
     const listener = attached.find((annotation) => listenerRoles.has(annotation.name));
     const pathRole = /(?:^|\/)(?:controller|resource|service|repository|handler|usecase|facade|manager|client|gateway|consumer|listener|job|scheduler)(?:\/|$)/i.test(file.path);
     const callable = method.visibility === "public" || method.visibility === "protected" || javaClass?.kind === "interface" || Boolean(component) || pathRole || Boolean(listener);
-    if (!callable || (trivialMethod.test(method.name) && !component && !pathRole)) continue;
+    if (!callable || (trivialMethod.test(method.name) && !listener)) continue;
     const role = listener?.name ?? component?.name ?? (javaClass?.kind === "interface" ? "interface" : "backend");
     const identity = `${file.path}:java:${role}:${method.name}:${method.offset}`;
     candidates.push({
@@ -287,14 +292,16 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
 
 function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
   const candidates: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">> = [];
-  const routePattern = /\b(?:app|router|server)\s*\.\s*(get|post|put|patch|delete|options|head)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
+  const routePattern = /\b(?:app|router|server)\s*\.\s*(get|post|put|patch|delete|options|head)\s*\(\s*["'`]([^"'`]+)["'`](?:\s*,\s*([A-Za-z_$][\w$]*))?/gi;
   for (const match of file.content.matchAll(routePattern)) {
     const method = match[1].toUpperCase();
     const route = match[2];
+    const handler = match[3];
     const identity = `${file.path}:endpoint:${method}:${route}`;
     candidates.push({
       id: stableId(identity),
       name: `${method} ${route}`,
+      displayName: handler ? titleFromSymbol(handler) : undefined,
       kind: "ENDPOINT",
       method,
       modulePath: modulePath(file.path),
@@ -363,13 +370,18 @@ function discoverOpenApiCandidates(file: LocalWorkspaceInputFile) {
   if (!paths || typeof paths !== "object") return [];
   const result: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">> = [];
   for (const [route, operations] of Object.entries(paths)) {
-    for (const method of Object.keys(operations ?? {})) {
+    for (const [method, operationValue] of Object.entries(operations ?? {})) {
       if (!["get", "post", "put", "patch", "delete", "options", "head"].includes(method.toLowerCase())) continue;
       const upperMethod = method.toUpperCase();
+      const operation = operationValue && typeof operationValue === "object" && !Array.isArray(operationValue) ? operationValue as { summary?: unknown; operationId?: unknown } : {};
+      const operationLabel = typeof operation.summary === "string" && operation.summary.trim()
+        ? operation.summary.trim()
+        : typeof operation.operationId === "string" && operation.operationId.trim() ? titleFromSymbol(operation.operationId.trim()) : undefined;
       const identity = `${file.path}:openapi:${upperMethod}:${route}`;
       result.push({
         id: stableId(identity),
         name: `${upperMethod} ${route}`,
+        displayName: operationLabel,
         kind: "ENDPOINT",
         method: upperMethod,
         modulePath: modulePath(file.path),
@@ -449,26 +461,88 @@ function configurationsForFeature(feature: { sourcePath: string }, configuration
   }).slice(0, 12);
 }
 
+function inferredCandidateDisplayName(feature: { kind: LocalFeatureCandidate["kind"]; description: string; code: string }) {
+  if (feature.kind !== "ENDPOINT") return undefined;
+  const javaMethod = feature.description.match(/implemented by\s+([A-Za-z_$][\w$]*)/i)?.[1];
+  if (javaMethod) return titleFromSymbol(javaMethod);
+  const routeHandler = feature.code.match(/["'`]\s*,\s*([A-Za-z_$][\w$]*)/)?.[1];
+  if (routeHandler) return titleFromSymbol(routeHandler);
+  try {
+    const document = JSON.parse(feature.code) as Record<string, Record<string, { summary?: unknown; operationId?: unknown }>>;
+    const operation = Object.values(document).flatMap((operations) => Object.values(operations ?? {}))[0];
+    if (typeof operation?.summary === "string" && operation.summary.trim()) return operation.summary.trim();
+    if (typeof operation?.operationId === "string" && operation.operationId.trim()) return titleFromSymbol(operation.operationId.trim());
+  } catch {
+    // Source excerpts are not expected to be JSON unless the candidate came from OpenAPI.
+  }
+  return undefined;
+}
+
+type FeatureTreeGroup = "API_SERVICE" | "BUSINESS_CAPABILITY" | "DATA_INTEGRATION" | "BACKGROUND_INTEGRATION" | "PROJECT_OPERATION";
+
+function treeModuleIdentity(feature: LocalFeatureCandidate) {
+  const path = feature.sourcePath.replace(/\\/g, "/");
+  const segments = path.split("/").filter(Boolean);
+  const sourceIndex = segments.indexOf("src");
+  if (sourceIndex > 0) return segments.slice(0, sourceIndex).join("/");
+  if (["services", "packages", "modules", "apps"].includes(segments[0] ?? "") && segments[1]) return `${segments[0]}/${segments[1]}`;
+  if (["src", "app", "lib"].includes(segments[0] ?? "") && segments[1]) return `${segments[0]}/${segments[1]}`;
+  return feature.modulePath.split(" · ")[0] || feature.modulePath || "root";
+}
+
+function treeModuleLabel(identity: string) {
+  if (identity === "root") return "Root";
+  const segments = identity.split("/").filter(Boolean);
+  const name = segments.at(-1) ?? identity;
+  if (/^api$/i.test(name)) return "API";
+  const title = titleFromSymbol(name).replace(/\b[a-z]/g, (character) => character.toUpperCase());
+  if (segments[0] === "services") return `${title} Service`;
+  if (segments[0] === "packages") return `${title} Package`;
+  if (segments[0] === "apps") return `${title} App`;
+  if (segments[0] === "modules") return `${title} Module`;
+  return title;
+}
+
+function treeGroup(feature: LocalFeatureCandidate): FeatureTreeGroup {
+  if (feature.kind === "ENDPOINT") return "API_SERVICE";
+  if (feature.kind === "COMMAND") return "PROJECT_OPERATION";
+  const context = `${feature.name} ${feature.description} ${feature.sourcePath}`;
+  if (/(?:listener|consumer|subscriber|scheduled|scheduler|cron|batch|worker|queue|kafka|rabbit|jms|event)/i.test(context)) return "BACKGROUND_INTEGRATION";
+  if (/(?:repository|\bdao\b|gateway|client|connector|adapter|integration)/i.test(context)) return "DATA_INTEGRATION";
+  return "BUSINESS_CAPABILITY";
+}
+
 function buildTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[]): LocalFeatureTreeNode {
+  const groupOrder: FeatureTreeGroup[] = ["API_SERVICE", "BUSINESS_CAPABILITY", "DATA_INTEGRATION", "BACKGROUND_INTEGRATION", "PROJECT_OPERATION"];
   const modules = new Map<string, LocalFeatureCandidate[]>();
-  for (const feature of features) modules.set(feature.modulePath, [...(modules.get(feature.modulePath) ?? []), feature]);
+  for (const feature of features) {
+    const identity = treeModuleIdentity(feature);
+    modules.set(identity, [...(modules.get(identity) ?? []), feature]);
+  }
   return {
     id: projectId,
     label: workspaceName,
     kind: "WORKSPACE",
-    children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([module, items]) => ({
-      id: `${projectId}:${module}`,
-      label: module,
+    featureCount: features.length,
+    children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleIdentity, items]) => ({
+      id: `${projectId}:${moduleIdentity}`,
+      label: treeModuleLabel(moduleIdentity),
       kind: "MODULE",
-      children: (["ENDPOINT", "CODE_SYMBOL", "COMMAND"] as const).map((kind) => ({
-        id: `${projectId}:${module}:${kind}`,
-        label: kind,
+      featureCount: items.length,
+      detail: moduleIdentity,
+      children: groupOrder.map((group) => ({
+        id: `${projectId}:${moduleIdentity}:${group}`,
+        label: group,
         kind: "GROUP" as const,
-        children: items.filter((item) => item.kind === kind).sort((left, right) => left.name.localeCompare(right.name)).map((feature) => ({
+        featureCount: items.filter((item) => treeGroup(item) === group).length,
+        children: items.filter((item) => treeGroup(item) === group).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
           id: feature.id,
-          label: feature.name,
+          label: feature.displayName ?? feature.name,
           kind: "FEATURE" as const,
           featureId: feature.id,
+          featureCount: 1,
+          detail: feature.displayName && feature.displayName !== feature.name ? feature.name : `${feature.sourcePath}:${feature.startLine}`,
+          badge: feature.method ?? undefined,
           children: [],
         })),
       })).filter((group) => group.children.length > 0),
@@ -511,7 +585,11 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   const rawCandidates = new Map<string, Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>();
   const testIndex = new Map<string, RelatedTest[]>();
   for (const record of input.records) {
-    for (const candidate of record.candidates) rawCandidates.set(candidate.id, candidate);
+    for (const candidate of record.candidates) {
+      const legacyTrivialAccessor = candidate.kind === "CODE_SYMBOL" && /^(?:Get|Set|Is)\s+[A-Z0-9_]/.test(candidate.name);
+      const legacyConfigurationFactory = candidate.kind === "CODE_SYMBOL" && /Java Configuration capability/i.test(candidate.description);
+      if (!legacyTrivialAccessor && !legacyConfigurationFactory) rawCandidates.set(candidate.id, candidate);
+    }
     if (record.test) indexTest(testIndex, record.test);
   }
   const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []);
@@ -519,6 +597,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
     const tests = indexedTests(feature, testIndex);
     return {
       ...feature,
+      displayName: feature.displayName ?? inferredCandidateDisplayName(feature),
       configurations: configurationsForFeature(feature, configurations),
       tests,
       dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },

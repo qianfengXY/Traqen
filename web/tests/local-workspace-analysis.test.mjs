@@ -67,7 +67,11 @@ test("discovers a complete local Feature tree without promoting candidates to bu
   assert.ok(capability.gaps.some((gap) => gap.type === "MISSING_AUTHORITY"));
   assert.ok(capability.gaps.some((gap) => gap.type === "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT"));
   assert.equal(analysis.tree.kind, "WORKSPACE");
+  assert.equal(analysis.tree.featureCount, analysis.features.length);
   assert.ok(analysis.tree.children.some((node) => node.kind === "MODULE"));
+  assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.label === "API_SERVICE"));
+  assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.label === "BUSINESS_CAPABILITY"));
+  assert.ok(analysis.tree.children.every((node) => node.featureCount === node.children.reduce((sum, child) => sum + child.featureCount, 0)));
 });
 
 test("accepts a 100,000-file project in batches and skips only oversized files", () => {
@@ -163,11 +167,12 @@ test("discovers Spring, JAX-RS, Java backend, interface, listener, config, and t
   assert.ok(endpoints.some((feature) => feature.name === "POST /api/orders"));
   assert.ok(endpoints.some((feature) => feature.name === "PUT /api/orders"));
   assert.ok(endpoints.some((feature) => feature.name === "GET /v1/customers/{id}"));
+  assert.equal(endpoints.find((feature) => feature.name === "GET /api/orders/{id}").displayName, "Find Order");
   assert.ok(analysis.features.some((feature) => feature.name === "Submit Order" && feature.description.includes("Service")));
   assert.ok(analysis.features.some((feature) => feature.name === "Validate Order"));
   assert.ok(analysis.features.some((feature) => feature.name === "Kafka Listener · Consume Order"));
   assert.ok(analysis.features.some((feature) => feature.name === "Load Order" && feature.description.includes("interface")));
-  assert.ok(analysis.features.every((feature) => feature.name !== "Audit Internally" && feature.name !== "Ignore Me"));
+  assert.ok(analysis.features.every((feature) => feature.name !== "Audit Internally" && feature.name !== "Ignore Me" && feature.name !== "Get Name"));
   assert.ok(analysis.features.some((feature) => feature.modulePath.includes("order-service") && feature.modulePath.includes("com.acme.orders")));
   const findOrder = endpoints.find((feature) => feature.name === "GET /api/orders/{id}");
   assert.ok(findOrder.tests.some((item) => item.path.includes("OrderControllerTest.java")));
@@ -190,6 +195,15 @@ test("rebuilds an incremental Workspace from reused, changed, added, and deleted
   assert.ok(analysis.features.some((feature) => feature.name === "Added Feature"));
   assert.ok(analysis.features.every((feature) => feature.name !== "Deleted Feature"));
   assert.ok(deleted.candidates.length > 0);
+});
+
+test("rebuilds readable endpoint labels from legacy scan records", () => {
+  const record = scanLocalWorkspaceFile({ path: "src/customer.js", size: 100, content: "router.get('/customers/:id', loadCustomer);" });
+  delete record.candidates[0].displayName;
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Legacy", projectId: "PROJECT-LEGACY", records: [record] });
+  const endpoint = analysis.features.find((feature) => feature.kind === "ENDPOINT");
+  assert.equal(endpoint.displayName, "Load Customer");
+  assert.equal(analysis.tree.children[0].children[0].children[0].label, "Load Customer");
 });
 
 test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {
@@ -215,13 +229,13 @@ test("calculates hierarchical Workspace statistics without treating unknown stat
   assert.ok(workspace.statistics.testCaseCount > 0);
   assert.ok(workspace.statistics.blockingGapCount >= analysis.features.length);
 
-  const orders = analysis.tree.children.find((node) => node.label === "orders");
+  const orders = analysis.tree.children.find((node) => node.label === "Orders");
   assert.ok(orders);
   const ordersScope = localWorkspaceStatisticsForNode(analysis, orders.id);
   assert.ok(ordersScope.statistics.featureCount > 0);
   assert.ok(ordersScope.statistics.featureCount < workspace.statistics.featureCount);
   assert.ok(ordersScope.statistics.configurationItemCount > 0);
-  const customers = analysis.tree.children.find((node) => node.label === "customers");
+  const customers = analysis.tree.children.find((node) => node.label === "Customers");
   assert.ok(customers);
   assert.equal(localWorkspaceStatisticsForNode(analysis, customers.id).statistics.configurationItemCount, 0);
   const explicitViolation = structuredClone(analysis.features[0]);
