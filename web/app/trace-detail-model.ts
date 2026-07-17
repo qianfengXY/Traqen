@@ -1,6 +1,7 @@
 import traceChainSource from "../../src/domain/trace-chain.js?raw";
 import featureGraphSource from "../../src/domain/feature-graph.js?raw";
 import featureTraceabilityDesignMarkdown from "../../docs/features/feature-traceability-design.zh-CN.md?raw";
+import featureTraceabilityDesignEnglishMarkdown from "../../docs/features/feature-traceability-design.md?raw";
 
 export type ConfirmationStatus = "PENDING" | "CONFIRMED" | "REJECTED" | "EXCEPTION_RECORDED";
 export type TestResultStatus = "PASS" | "FAIL" | "ERROR" | "NOT_RUN";
@@ -36,7 +37,13 @@ export type DesignDocument = {
   status: "APPROVED" | "DRAFT" | "STALE";
   overview: string;
   markdownFile: { path: string; content: string };
-  sourceFiles: Array<{ path: string; language: string; content: string; factIds: string[] }>;
+  englishMarkdownFile?: { path: string; content: string };
+  sourceFiles: Array<{
+    path: string;
+    language: string;
+    content: string;
+    factIds: string[];
+  }>;
   flow: string[];
   decisions: Array<{ title: string; content: string }>;
   codeBlocks: Array<{
@@ -144,9 +151,24 @@ const testCases: TestCaseDefinition[] = [
     preconditions: ["Feature/Claim/Scope/Decision 已版本化", "Snapshot Manifest 完整", "执行精确绑定当前部署与 TestSpec 版本"],
     testData: ["PROJECT-TRAQEN", "FEATURE-TRACEABILITY-001", "SNAPSHOT-TRAQEN-7D31E8", "DEPLOY-TRAQEN-20260716.4"],
     steps: [
-      { id: "build-complete-input", executor: "FIXTURE", action: "构造包含当前 Claim、Fact、TestSpec、Execution 和 Evidence 的领域输入", expected: "所有不可变身份互相匹配" },
-      { id: "evaluate-chain", executor: "DOMAIN", action: "调用 evaluateTraceChain", expected: "complete=true，gaps=[]" },
-      { id: "verify-dimensions", executor: "CONTRACT", action: "逐项检查六个可信维度与有序 segments", expected: "维度独立，segments 保留来源" },
+      {
+        id: "build-complete-input",
+        executor: "FIXTURE",
+        action: "构造包含当前 Claim、Fact、TestSpec、Execution 和 Evidence 的领域输入",
+        expected: "所有不可变身份互相匹配",
+      },
+      {
+        id: "evaluate-chain",
+        executor: "DOMAIN",
+        action: "调用 evaluateTraceChain",
+        expected: "complete=true，gaps=[]",
+      },
+      {
+        id: "verify-dimensions",
+        executor: "CONTRACT",
+        action: "逐项检查六个可信维度与有序 segments",
+        expected: "维度独立，segments 保留来源",
+      },
     ],
     assertions: ["chain.complete = true", "chain.gaps.length = 0", "verification = PASS", "freshness = FRESH", "conflict = NONE"],
     fixtureProtocol: "FIXTURE-TRACEABILITY-COMPLETE-001",
@@ -165,8 +187,18 @@ const testCases: TestCaseDefinition[] = [
     preconditions: ["输入合法但故意省略一个或多个证明层", "不存在伪造默认值"],
     testData: ["authority=UNREVIEWED", "scope=null", "implementation={} "],
     steps: [
-      { id: "evaluate-incomplete-chain", executor: "DOMAIN", action: "评估不完整输入", expected: "complete=false" },
-      { id: "inspect-gap-owners", executor: "CONTRACT", action: "检查 TraceGap 类型、严重度和 ownerRole", expected: "业务、产品和技术缺口分别归属" },
+      {
+        id: "evaluate-incomplete-chain",
+        executor: "DOMAIN",
+        action: "评估不完整输入",
+        expected: "complete=false",
+      },
+      {
+        id: "inspect-gap-owners",
+        executor: "CONTRACT",
+        action: "检查 TraceGap 类型、严重度和 ownerRole",
+        expected: "业务、产品和技术缺口分别归属",
+      },
     ],
     assertions: ["MISSING_AUTHORITY 可见", "SCOPE_UNKNOWN 可见", "IMPLEMENTATION_UNMAPPED 可见", "不存在综合分数"],
     fixtureProtocol: "FIXTURE-TRACEABILITY-GAPS-002",
@@ -185,8 +217,18 @@ const testCases: TestCaseDefinition[] = [
     preconditions: ["存在上一部署 PASS 执行", "当前 Snapshot 或 deploymentId 已变化"],
     testData: ["DEPLOY-TRAQEN-20260716.4 → .5", "TestSpec version=3"],
     steps: [
-      { id: "change-snapshot-identity", executor: "FIXTURE", action: "保持历史执行并切换当前部署身份", expected: "历史记录不被删除" },
-      { id: "evaluate-current-chain", executor: "DOMAIN", action: "重新评估当前链", expected: "verification=NOT_RUN，freshness=STALE" },
+      {
+        id: "change-snapshot-identity",
+        executor: "FIXTURE",
+        action: "保持历史执行并切换当前部署身份",
+        expected: "历史记录不被删除",
+      },
+      {
+        id: "evaluate-current-chain",
+        executor: "DOMAIN",
+        action: "重新评估当前链",
+        expected: "verification=NOT_RUN，freshness=STALE",
+      },
     ],
     assertions: ["NOT_EXECUTED_ON_CURRENT_DEPLOYMENT 可见", "EVIDENCE_STALE 可见", "历史 PASS 不等于当前 PASS"],
     fixtureProtocol: "FIXTURE-TRACEABILITY-STALE-003",
@@ -205,8 +247,18 @@ const testCases: TestCaseDefinition[] = [
     preconditions: ["完整追溯响应已经生成", "图谱深度和节点上限合法"],
     testData: ["view=traceability", "depth=8", "from=FEATURE-TRACEABILITY-001", "to=EVIDENCE-TRACEABILITY-RESPONSE-001"],
     steps: [
-      { id: "project-graph", executor: "GRAPH", action: "调用 createFeatureGraphProjection", expected: "节点、边、来源和状态被保留" },
-      { id: "query-path", executor: "GRAPH", action: "调用 queryFeatureGraphPath", expected: "返回 Feature → Claim → TestSpec → Execution → Evidence 路径" },
+      {
+        id: "project-graph",
+        executor: "GRAPH",
+        action: "调用 createFeatureGraphProjection",
+        expected: "节点、边、来源和状态被保留",
+      },
+      {
+        id: "query-path",
+        executor: "GRAPH",
+        action: "调用 queryFeatureGraphPath",
+        expected: "返回 Feature → Claim → TestSpec → Execution → Evidence 路径",
+      },
     ],
     assertions: ["center = FEATURE-TRACEABILITY-001", "path.found = true", "所有边保留 relation 与 provenance"],
     fixtureProtocol: "FIXTURE-TRACEABILITY-GRAPH-004",
@@ -225,8 +277,18 @@ const testCases: TestCaseDefinition[] = [
     preconditions: ["文档位于 docs/ 或仓库 README 边界", "文件名遵守 .zh-CN.md 配对约定"],
     testData: ["docs/features/feature-traceability-design.md", "docs/features/feature-traceability-design.zh-CN.md"],
     steps: [
-      { id: "discover-document-pairs", executor: "CONTRACT", action: "扫描需要双语维护的 Markdown 文件", expected: "每个源文件都有对应语言版本" },
-      { id: "verify-language-switch", executor: "CONTRACT", action: "检查文档首行语言切换链接", expected: "两个版本互相链接且目标存在" },
+      {
+        id: "discover-document-pairs",
+        executor: "CONTRACT",
+        action: "扫描需要双语维护的 Markdown 文件",
+        expected: "每个源文件都有对应语言版本",
+      },
+      {
+        id: "verify-language-switch",
+        executor: "CONTRACT",
+        action: "检查文档首行语言切换链接",
+        expected: "两个版本互相链接且目标存在",
+      },
     ],
     assertions: ["英文文档存在", "简体中文文档存在", "语言切换位于文档开头", "链接目标可访问"],
     fixtureProtocol: null,
@@ -240,12 +302,7 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
     title: "功能追溯 / Feature traceability",
     version: 4,
     purpose: "把 Traqen 自己作为一个 Workspace，针对所选 Feature、Snapshot 与部署，展示从完整功能说明到设计源码、环境配置、测试设计和真实执行结果的端到端证明链。",
-    businessLogic: [
-      "追踪链必须从版本化的规范性 Claim 开始，并关联明确 Scope 与授权人工 Decision；代码和 Agent 输出不能替代业务权威。",
-      "服务端分别计算权威、实现符合、验证结果、Evidence 新鲜度与冲突，任何维度都不能通过平均分掩盖另一维度的未知或失败。",
-      "实现 Fact、TestSpec、Execution 与 Evidence 必须绑定同一 Snapshot/部署身份；变更后保留历史，同时只让受影响的派生层变为 STALE。",
-      "页面以功能描述、设计实现、配置、测试用例和测试结果五段呈现数据，并保留其下层 Claim → Scope → Decision → Fact → TestSpec → Execution → Evidence 关系。",
-    ],
+    businessLogic: ["追踪链必须从版本化的规范性 Claim 开始，并关联明确 Scope 与授权人工 Decision；代码和 Agent 输出不能替代业务权威。", "服务端分别计算权威、实现符合、验证结果、Evidence 新鲜度与冲突，任何维度都不能通过平均分掩盖另一维度的未知或失败。", "实现 Fact、TestSpec、Execution 与 Evidence 必须绑定同一 Snapshot/部署身份；变更后保留历史，同时只让受影响的派生层变为 STALE。", "页面以功能描述、设计实现、配置、测试用例和测试结果五段呈现数据，并保留其下层 Claim → Scope → Decision → Fact → TestSpec → Execution → Evidence 关系。"],
     permissions: ["读取生产追溯数据需要有效 API_BEARER_TOKEN", "业务确认只允许 business-owner / product-owner", "实现重分析只允许 technical-owner", "Agent 只能提交候选、执行结果与 Evidence，不能修改人工 Decision"],
     prerequisites: ["Project 与不可变 Snapshot Manifest 已注册", "Feature、Claim、Scope 与 Decision 已建立治理基线", "Scanner Fact 与实现符合分析绑定当前 Snapshot", "已批准 TestSpec 和当前部署执行可用"],
     dependencies: ["Snapshot Manifest 与 Fact Graph", "Claim/Scope/Decision 治理模型", "TestSpec、Runner 与 Evidence 生命周期", "PostgreSQL 或开发期内存存储", "HTTP API 与产品 Web 投影"],
@@ -272,15 +329,38 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
       path: "docs/features/feature-traceability-design.zh-CN.md",
       content: featureTraceabilityDesignMarkdown,
     },
+    englishMarkdownFile: {
+      path: "docs/features/feature-traceability-design.md",
+      content: featureTraceabilityDesignEnglishMarkdown,
+    },
     sourceFiles: [
-      { path: "src/domain/trace-chain.js", language: "javascript", content: traceChainSource, factIds: ["FACT-TRACE-CHAIN-EVALUATOR", "FACT-TRACE-GAP-OWNERSHIP"] },
-      { path: "src/domain/feature-graph.js", language: "javascript", content: featureGraphSource, factIds: ["FACT-FEATURE-GRAPH-PROJECTION", "FACT-FEATURE-GRAPH-PATH"] },
+      {
+        path: "src/domain/trace-chain.js",
+        language: "javascript",
+        content: traceChainSource,
+        factIds: ["FACT-TRACE-CHAIN-EVALUATOR", "FACT-TRACE-GAP-OWNERSHIP"],
+      },
+      {
+        path: "src/domain/feature-graph.js",
+        language: "javascript",
+        content: featureGraphSource,
+        factIds: ["FACT-FEATURE-GRAPH-PROJECTION", "FACT-FEATURE-GRAPH-PATH"],
+      },
     ],
     flow: ["GET /v1/projects/{projectId}/features/{featureId}/traceability", "加载治理基线和 Snapshot-bound Facts", "evaluateTraceChain 派生维度、segments 与 gaps", "createFeatureGraphProjection 生成有界视图", "Web/Agent 消费相同的服务端结果"],
     decisions: [
-      { title: "权威边界", content: "业务 Claim 必须由授权人工 Decision 确认；Scanner、代码和 Agent 不能自动生成规范性事实。" },
-      { title: "可信边界", content: "权威、符合、验证、新鲜度和冲突独立展示，不计算会掩盖缺口的综合绿色分数。" },
-      { title: "时间边界", content: "Execution 必须同时匹配 deploymentId、snapshotManifestId 和 TestSpec 版本，旧 Evidence 自动成为历史证明。" },
+      {
+        title: "权威边界",
+        content: "业务 Claim 必须由授权人工 Decision 确认；Scanner、代码和 Agent 不能自动生成规范性事实。",
+      },
+      {
+        title: "可信边界",
+        content: "权威、符合、验证、新鲜度和冲突独立展示，不计算会掩盖缺口的综合绿色分数。",
+      },
+      {
+        title: "时间边界",
+        content: "Execution 必须同时匹配 deploymentId、snapshotManifestId 和 TestSpec 版本，旧 Evidence 自动成为历史证明。",
+      },
     ],
     codeBlocks: [
       {
@@ -290,27 +370,7 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
         file: "src/domain/trace-chain.js",
         startLine: 376,
         factId: "FACT-TRACE-CHAIN-EVALUATOR",
-        code: [
-          "return Object.freeze({",
-          "  id: chainId,",
-          "  ...identity,",
-          "  dimensions,",
-          "  stages: Object.freeze([",
-          "    { name: \"BUSINESS_INTENT\", status: authority },",
-          "    { name: \"SCOPE\", status: input.scope?.id ? \"DEFINED\" : \"UNKNOWN\" },",
-          "    { name: \"IMPLEMENTATION_CONFORMANCE\", status: conformance },",
-          "    { name: \"TECHNICAL_IMPLEMENTATION\", status: implementationMapped(input.implementation) ? \"MAPPED\" : \"UNMAPPED\" },",
-          "    { name: \"TEST_SPEC\", status: testSpec?.approved ? \"APPROVED\" : testSpec?.id ? \"UNAPPROVED\" : \"MISSING\" },",
-          "    { name: \"EXECUTION\", status: verification },",
-          "    { name: \"EVIDENCE\", status: freshness },",
-          "  ]),",
-          "  segments,",
-          "  conflicts,",
-          "  complete: !uniqueGaps.some((item) => item.severity === GapSeverity.BLOCKING),",
-          "  gaps: Object.freeze(uniqueGaps),",
-          "  computedAt: clock().toISOString(),",
-          "});",
-        ].join("\n"),
+        code: ["return Object.freeze({", "  id: chainId,", "  ...identity,", "  dimensions,", "  stages: Object.freeze([", '    { name: "BUSINESS_INTENT", status: authority },', '    { name: "SCOPE", status: input.scope?.id ? "DEFINED" : "UNKNOWN" },', '    { name: "IMPLEMENTATION_CONFORMANCE", status: conformance },', '    { name: "TECHNICAL_IMPLEMENTATION", status: implementationMapped(input.implementation) ? "MAPPED" : "UNMAPPED" },', '    { name: "TEST_SPEC", status: testSpec?.approved ? "APPROVED" : testSpec?.id ? "UNAPPROVED" : "MISSING" },', '    { name: "EXECUTION", status: verification },', '    { name: "EVIDENCE", status: freshness },', "  ]),", "  segments,", "  conflicts,", "  complete: !uniqueGaps.some((item) => item.severity === GapSeverity.BLOCKING),", "  gaps: Object.freeze(uniqueGaps),", "  computedAt: clock().toISOString(),", "});"].join("\n"),
       },
       {
         id: "CODE-FEATURE-GRAPH-PROJECTION",
@@ -321,17 +381,17 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
         factId: "FACT-FEATURE-GRAPH-PROJECTION",
         code: [
           "export function createFeatureGraphProjection(traceability, options = {}) {",
-          "  if (traceability === null || typeof traceability !== \"object\" || Array.isArray(traceability)) {",
-          "    throw new TypeError(\"traceability must be an object\");",
+          '  if (traceability === null || typeof traceability !== "object" || Array.isArray(traceability)) {',
+          '    throw new TypeError("traceability must be an object");',
           "  }",
-          "  const view = options.view ?? \"traceability\";",
+          '  const view = options.view ?? "traceability";',
           "  if (!Object.hasOwn(graphViews, view)) {",
-          "    throw new TypeError(`view must be one of ${Object.keys(graphViews).join(\", \")}`);",
+          '    throw new TypeError(`view must be one of ${Object.keys(graphViews).join(", ")}`);',
           "  }",
-          "  const depth = positiveInteger(options.depth, 1, \"depth\", 8);",
-          "  const limit = positiveInteger(options.limit, 30, \"limit\", 100);",
-          "  const nodeTypes = requireStringArray(options.nodeTypes, \"nodeTypes\");",
-          "  const relations = requireStringArray(options.relations, \"relations\");",
+          '  const depth = positiveInteger(options.depth, 1, "depth", 8);',
+          '  const limit = positiveInteger(options.limit, 30, "limit", 100);',
+          '  const nodeTypes = requireStringArray(options.nodeTypes, "nodeTypes");',
+          '  const relations = requireStringArray(options.relations, "relations");',
           "  const complete = buildCompleteGraph(traceability);",
           "  const filtered = viewFilteredGraph(complete, view, nodeTypes, relations);",
           "  const bounded = boundedBreadthFirst(filtered, depth, limit);",
@@ -356,28 +416,48 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
       description: "生产 API 访问令牌；页面仅接受用户临时输入，不持久化明文",
       source: "environment / secret manager",
       sensitive: true,
-      values: { DEV: "not required by dev-server", SIT: "required · secret manager reference", UAT: "required · secret manager reference", PROD: "required · secret manager reference" },
+      values: {
+        DEV: "not required by dev-server",
+        SIT: "required · secret manager reference",
+        UAT: "required · secret manager reference",
+        PROD: "required · secret manager reference",
+      },
     },
     {
       key: "CORS_ALLOWED_ORIGINS",
       description: "允许访问 API 的精确 Web 来源列表；拒绝通配符",
       source: "src/api/application-bootstrap.js",
       sensitive: false,
-      values: { DEV: "http://127.0.0.1:3000,http://localhost:3000", SIT: "deployment-specific exact HTTPS origin", UAT: "deployment-specific exact HTTPS origin", PROD: "deployment-specific exact HTTPS origin" },
+      values: {
+        DEV: "http://127.0.0.1:3000,http://localhost:3000",
+        SIT: "deployment-specific exact HTTPS origin",
+        UAT: "deployment-specific exact HTTPS origin",
+        PROD: "deployment-specific exact HTTPS origin",
+      },
     },
     {
       key: "QUALITY_GATE_MODE",
       description: "持续保护质量门禁策略",
       source: "src/api/application-bootstrap.js",
       sensitive: false,
-      values: { DEV: "ADVISORY (default)", SIT: "ADVISORY (default)", UAT: "ADVISORY default · policy may override", PROD: "ADVISORY default · policy may override" },
+      values: {
+        DEV: "ADVISORY (default)",
+        SIT: "ADVISORY (default)",
+        UAT: "ADVISORY default · policy may override",
+        PROD: "ADVISORY default · policy may override",
+      },
     },
     {
       key: "DATABASE_URL",
       description: "生产 PostgreSQL 连接；开发启动器使用内存应用，不需要伪造数据库密钥",
       source: "src/api/production-server.js",
       sensitive: true,
-      values: { DEV: "not required · in-memory store", SIT: "required · secret manager reference", UAT: "required · secret manager reference", PROD: "required · secret manager reference" },
+      values: {
+        DEV: "not required · in-memory store",
+        SIT: "required · secret manager reference",
+        UAT: "required · secret manager reference",
+        PROD: "required · secret manager reference",
+      },
     },
   ],
   testDesign: {
@@ -522,19 +602,23 @@ export const changedTraqenArtifacts: TraceDetailArtifacts = {
     status: "STALE",
     updatedAt: "2026-07-16 19:08 CST",
   },
-  testResults: currentTraqenArtifacts.testResults.map((result) => result.applicability === "HISTORICAL" ? result : ({
-    ...result,
-    id: `${result.id}-STALE`,
-    executionId: `${result.executionId}-HISTORICAL`,
-    status: "NOT_RUN",
-    startedAt: null,
-    durationMs: null,
-    deploymentId: "DEPLOY-TRAQEN-20260716.5",
-    summary: `当前部署尚未执行；上一部署结果 ${result.status} 仅用于审计，不能证明当前版本。`,
-    failedStepId: null,
-    expected: null,
-    actual: null,
-    errorCode: null,
-    errorMessage: null,
-  })),
+  testResults: currentTraqenArtifacts.testResults.map((result) =>
+    result.applicability === "HISTORICAL"
+      ? result
+      : {
+          ...result,
+          id: `${result.id}-STALE`,
+          executionId: `${result.executionId}-HISTORICAL`,
+          status: "NOT_RUN",
+          startedAt: null,
+          durationMs: null,
+          deploymentId: "DEPLOY-TRAQEN-20260716.5",
+          summary: `当前部署尚未执行；上一部署结果 ${result.status} 仅用于审计，不能证明当前版本。`,
+          failedStepId: null,
+          expected: null,
+          actual: null,
+          errorCode: null,
+          errorMessage: null,
+        },
+  ),
 };

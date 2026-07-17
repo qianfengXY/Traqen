@@ -59,6 +59,10 @@ button { color: inherit; }
 .breadcrumb { color: var(--muted); font-size: 13px; }
 .breadcrumb b { color: var(--ink); }
 .top-actions { display: flex; align-items: center; gap: 10px; }
+.language-switch { display: inline-flex; padding: 3px; border: 1px solid rgba(0,0,0,.08); border-radius: 10px; background: #ededf0; }
+.language-switch button { min-height: 31px; padding: 5px 10px; border: 0; border-radius: 7px; background: transparent; color: #6e6e73; font-size: 11px; font-weight: 650; cursor: pointer; }
+.language-switch button:hover, .language-switch button:focus-visible { color: #1d1d1f; outline: none; }
+.language-switch button.active { background: #fff; color: #1d1d1f; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 .mode-badge { padding: 7px 10px; border-radius: 999px; background: #eee9dc; color: #6a665d; font-size: 11px; font-weight: 700; }
 .mode-badge.live { background: var(--mint); color: #245a46; }
 .button { border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; background: var(--panel); font-weight: 680; font-size: 12px; cursor: pointer; }

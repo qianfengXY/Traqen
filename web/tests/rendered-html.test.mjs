@@ -44,6 +44,8 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /TraceGap/);
   assert.match(html, /SELF WORKSPACE/);
   assert.match(html, /Traqen Platform/);
+  assert.match(html, /中文/);
+  assert.match(html, /English/);
   assert.match(html, /功能追溯 \/ Feature traceability/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
@@ -61,8 +63,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
 
   assert.match(page, /<TraqenProduct \/>/);
   assert.match(product, /\/traceability\?snapshotManifestId=/);
-  assert.match(product, /\/features`, \{ headers \}/);
-  assert.match(product, /\/snapshots`, \{ headers \}/);
+  assert.match(product, /\/features`/);
+  assert.match(product, /\/snapshots`/);
   assert.match(product, /自动发现并加载/);
   assert.match(product, /\/graph\?\$\{parameters\}/);
   assert.match(product, /\/graph\/paths\/query/);
@@ -94,6 +96,13 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(detailModel, /"DEV" \| "SIT" \| "UAT" \| "PROD"/);
   assert.match(detailModel, /applicability: "CURRENT" \| "HISTORICAL"/);
   assert.match(detailModel, /feature-traceability-design\.zh-CN\.md\?raw/);
+  assert.match(detailModel, /feature-traceability-design\.md\?raw/);
+  assert.match(product, /LanguageContext/);
+  assert.match(product, /localizedTerms/);
+  assert.match(product, /aria-label=\{t\("全局语言", "Global language"\)\}/);
+  assert.match(product, /term\(gap\.severity\)/);
+  assert.match(product, /role\(gap\.ownerRole\)/);
+  assert.match(product, /term\(selectedResult\.status\)/);
   assert.match(detailModel, /trace-chain\.js\?raw/);
   assert.match(detailModel, /feature-graph\.js\?raw/);
   assert.match(product, /PROJECT-TRAQEN/);
