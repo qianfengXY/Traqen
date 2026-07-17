@@ -4,7 +4,7 @@ import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
-import { analyzeLocalWorkspace, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { createLocalWorkspaceAnalysisAccumulator, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
@@ -1360,7 +1360,7 @@ type WorkspaceTraceBlock = "description" | "design" | "configuration" | "test-ca
 
 function FeatureTreeBranch({ node, selectedFeatureId, onSelect }: { node: LocalFeatureTreeNode; selectedFeatureId: string; onSelect: (featureId: string) => void }) {
   const { term } = useI18n();
-  const [open, setOpen] = useState(node.kind !== "FEATURE");
+  const [open, setOpen] = useState(node.kind === "WORKSPACE");
   const hasChildren = node.children.length > 0;
   if (node.kind === "FEATURE") {
     return (
@@ -1458,21 +1458,24 @@ function WorkspaceAnalysisView() {
     try {
       const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env)$/i;
       const ignored = /(^|\/)(?:\.git|node_modules|dist|build|\.next|\.vinext|coverage|vendor)(\/|$)/;
-      const eligibleFiles = selectedFiles.filter((file) => {
-        const path = file.webkitRelativePath || file.name;
-        const name = path.split("/").at(-1)?.toLowerCase() ?? "";
-        const actualEnvironmentFile = /^\.env(?:\.[^.]+)?$/.test(name) && !/\.(?:example|sample|template)$/.test(name);
-        return !actualEnvironmentFile && !ignored.test(path) && textExtensions.test(path);
-      });
-      if (eligibleFiles.length > 2_000) throw new RangeError(t("所选工程超过 2,000 个受支持文件的本地扫描上限。", "The selected project exceeds the 2,000 supported-file local scan limit."));
-      const totalBytes = eligibleFiles.filter((file) => file.size <= 768 * 1024).reduce((sum, file) => sum + file.size, 0);
-      if (totalBytes > 16 * 1024 * 1024) throw new RangeError(t("所选工程超过 16 MB 的内存扫描上限；请先缩小扫描范围。", "The selected project exceeds the 16 MB in-memory scan limit. Reduce the scan scope first."));
-      const files: LocalWorkspaceInputFile[] = await Promise.all(eligibleFiles.map(async (file) => {
-        const path = file.webkitRelativePath || file.name;
-        const readable = file.size <= 768 * 1024;
-        return { path: path.split("/").slice(1).join("/") || path, size: file.size, content: readable ? await file.text() : "" };
-      }));
-      const result = analyzeLocalWorkspace({ workspaceName, projectId, files });
+      const accumulator = createLocalWorkspaceAnalysisAccumulator({ workspaceName, projectId });
+      const batchSize = 120;
+      for (let offset = 0; offset < selectedFiles.length; offset += batchSize) {
+        const batch = selectedFiles.slice(offset, offset + batchSize);
+        const files: LocalWorkspaceInputFile[] = await Promise.all(batch.map(async (file) => {
+          const path = file.webkitRelativePath || file.name;
+          const name = path.split("/").at(-1)?.toLowerCase() ?? "";
+          const actualEnvironmentFile = /^\.env(?:\.[^.]+)?$/.test(name) && !/\.(?:example|sample|template)$/.test(name);
+          const supportedText = textExtensions.test(path) || /^\.env\.(?:example|sample|template)$/.test(name);
+          const readable = !actualEnvironmentFile && !ignored.test(path) && supportedText && file.size <= 768 * 1024;
+          return { path: path.split("/").slice(1).join("/") || path, size: file.size, content: readable ? await file.text() : "" };
+        }));
+        accumulator.addFiles(files);
+        const completed = Math.min(offset + batch.length, selectedFiles.length);
+        setMessage(t(`正在分批扫描 ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 个工程文件…`, `Scanning ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} project files in batches…`));
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      }
+      const result = accumulator.finish();
       setAnalysis(result);
       setSelectedFeatureId(result.features[0]?.id ?? "");
       setSelectedBlock("description");
@@ -1488,7 +1491,7 @@ function WorkspaceAnalysisView() {
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Local-first workspace</p><h1>{t("选择工程，建立自己的功能追溯 Workspace", "Select a project and build your own feature-traceability Workspace")}</h1><p>{t("源码仅在当前浏览器页面内存中读取和分析，不会上传到 Traqen 站点。刷新页面后扫描结果消失。", "Source is read and analyzed only in this browser tab's memory and is never uploaded to the Traqen site. Scan results disappear after refresh.")}</p></div><span className="mode-badge">{t("本地扫描", "LOCAL SCAN")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Local-first workspace</p><h1>{t("选择工程，建立自己的功能追溯 Workspace", "Select a project and build your own feature-traceability Workspace")}</h1><p>{t("面向十万级文件按批次读取源码，只保留功能索引与必要片段；源码不会上传到 Traqen 站点，刷新后扫描结果消失。", "Source trees with 100,000-scale file counts are read in batches, retaining only the feature index and necessary excerpts. Source is never uploaded to Traqen and results disappear after refresh.")}</p></div><span className="mode-badge">{t("大工程本地扫描", "LARGE LOCAL SCAN")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>

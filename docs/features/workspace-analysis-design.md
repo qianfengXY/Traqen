@@ -27,8 +27,10 @@ A user can define a Workspace, select a source-code directory, scan it without u
 ## Local safety limits
 
 - Ignore dependency, VCS, build-output, coverage, and vendor directories.
-- Scan at most 2,000 selected files and 16 MB in one browser tab.
+- Process supported files in bounded batches without a project-wide file-count or total-byte ceiling, so repositories with 100,000-scale file counts do not require an artificial rescan boundary.
+- Retain only discovered Feature indexes, bounded source/test excerpts, and up to 12 redacted configuration clues instead of retaining the full source tree.
 - Read individual supported text files only up to 768 KB.
+- Expand the Feature tree on demand so unopened modules and discovery groups do not create all leaf elements in the page at once.
 - Exclude real `.env` variants, allow only environment templates, and redact secret-like configuration values before display.
 - Do not upload source to the hosted Traqen site or write it to browser storage.
 

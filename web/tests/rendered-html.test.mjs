@@ -29,7 +29,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /选择工程，建立自己的功能追溯 Workspace/);
   assert.match(html, /选择代码工程/);
   assert.match(html, /开始扫描并生成功能树/);
-  assert.match(html, /源码仅在当前浏览器页面内存中读取和分析/);
+  assert.match(html, /面向十万级文件按批次读取源码/);
   assert.match(html, /SELF WORKSPACE/);
   assert.match(html, /Traqen Platform/);
   assert.match(html, /中文/);
@@ -116,13 +116,16 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
   assert.match(product, /FeatureTreeBranch/);
-  assert.match(product, /源码仅在当前浏览器页面内存中读取和分析/);
+  assert.match(product, /面向十万级文件按批次读取源码/);
   assert.match(analyzer, /export function analyzeLocalWorkspace/);
+  assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
   assert.match(analyzer, /MISSING_AUTHORITY/);
   assert.match(analyzer, /NOT_EXECUTED_ON_CURRENT_DEPLOYMENT/);
-  assert.match(analyzer, /maxFiles = 2_000/);
-  assert.match(analyzer, /maxTotalBytes = 16 \* 1024 \* 1024/);
+  assert.match(analyzer, /maxFileBytes = 768 \* 1024/);
+  assert.doesNotMatch(analyzer, /maxFiles|maxTotalBytes/);
+  assert.match(product, /const batchSize = 120/);
+  assert.match(product, /node\.kind === "WORKSPACE"/);
   assert.match(layout, /Traqen · 可追溯质量工作台/);
   assert.match(viteConfig, /fileURLToPath\(new URL\("\.\."/);
   assert.match(viteConfig, /fs: \{ allow: \[repositoryRoot\] \}/);

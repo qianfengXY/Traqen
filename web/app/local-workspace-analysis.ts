@@ -51,9 +51,7 @@ const supportedExtensions = new Set([
 const ignoredSegments = new Set([".git", "node_modules", "dist", "build", ".next", ".vinext", "coverage", "vendor"]);
 const sourceExtensions = new Set(["js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue"]);
 const configurationExtensions = new Set(["json", "yaml", "yml", "properties", "env"]);
-const maxFiles = 2_000;
 const maxFileBytes = 768 * 1024;
-const maxTotalBytes = 16 * 1024 * 1024;
 
 function extension(path: string) {
   const name = path.split("/").at(-1) ?? path;
@@ -221,7 +219,7 @@ function discoverCommands(file: LocalWorkspaceInputFile) {
   }
 }
 
-function relatedConfigurations(feature: { sourcePath: string }, files: LocalWorkspaceInputFile[]) {
+function configurationClues(files: LocalWorkspaceInputFile[]) {
   return files
     .filter((file) => configurationExtensions.has(extension(file.path)) && !file.path.endsWith("package-lock.json"))
     .slice(0, 12)
@@ -235,14 +233,28 @@ function redactConfiguration(content: string) {
   }).join("\n");
 }
 
-function relatedTests(feature: { sourcePath: string; name: string }, files: LocalWorkspaceInputFile[]) {
-  const sourceName = feature.sourcePath.split("/").at(-1)?.replace(/\.[^.]+$/, "") ?? "";
-  const symbol = feature.name.replace(/^\w+\s+\//, "").split(" ").at(-1) ?? feature.name;
-  return files
-    .filter((file) => /(^|\/)(test|tests|__tests__|spec)(\/|\.)|\.(test|spec)\.[^.]+$/i.test(file.path))
-    .filter((file) => file.content.includes(sourceName) || file.content.includes(symbol) || file.path.includes(sourceName))
-    .slice(0, 20)
-    .map((file) => ({ path: file.path, title: file.path.split("/").at(-1) ?? file.path, code: file.content.slice(0, 4_000) }));
+type RelatedTest = { path: string; title: string; code: string };
+
+function isTestFile(path: string) {
+  return /(^|\/)(test|tests|__tests__|spec)(\/|\.)|\.(test|spec)\.[^.]+$/i.test(path);
+}
+
+function indexTest(testIndex: Map<string, RelatedTest[]>, file: LocalWorkspaceInputFile) {
+  const test = { path: file.path, title: file.path.split("/").at(-1) ?? file.path, code: file.content.slice(0, 4_000) };
+  const identifiers = file.content.match(/[A-Za-z_$][\w$-]{2,}/g) ?? [];
+  const keys = new Set([file.path.split("/").at(-1)?.replace(/\.[^.]+$/, "").toLowerCase() ?? "", ...identifiers.slice(0, 300).map((item) => item.toLowerCase())]);
+  for (const key of keys) {
+    if (!key) continue;
+    const records = testIndex.get(key) ?? [];
+    if (records.length < 20 && !records.some((record) => record.path === test.path)) records.push(test);
+    testIndex.set(key, records);
+  }
+}
+
+function indexedTests(feature: { sourcePath: string; name: string }, testIndex: Map<string, RelatedTest[]>) {
+  const sourceName = feature.sourcePath.split("/").at(-1)?.replace(/\.[^.]+$/, "").toLowerCase() ?? "";
+  const keys = new Set([sourceName, ...feature.name.toLowerCase().split(/[^a-z0-9_$-]+/).filter((item) => item.length > 2)]);
+  return [...new Map([...keys].flatMap((key) => testIndex.get(key) ?? []).map((test) => [test.path, test])).values()].slice(0, 20);
 }
 
 function buildTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[]): LocalFeatureTreeNode {
@@ -278,48 +290,70 @@ export function analyzeLocalWorkspace(input: {
   files: LocalWorkspaceInputFile[];
   now?: Date;
 }): LocalWorkspaceAnalysis {
+  const accumulator = createLocalWorkspaceAnalysisAccumulator({ workspaceName: input.workspaceName, projectId: input.projectId, now: input.now });
+  accumulator.addFiles(input.files);
+  return accumulator.finish();
+}
+
+export function createLocalWorkspaceAnalysisAccumulator(input: { workspaceName: string; projectId: string; now?: Date }) {
   const workspaceName = input.workspaceName.trim();
   const projectId = input.projectId.trim();
   if (!workspaceName) throw new TypeError("Workspace name is required");
   if (!projectId) throw new TypeError("Project ID is required");
-  if (input.files.length === 0) throw new TypeError("Select a source directory first");
-  const supported = input.files.filter(eligible);
-  if (supported.length > maxFiles) throw new RangeError(`The selected directory exceeds the ${maxFiles}-file scan limit`);
-  const files = supported.filter((file) => file.size <= maxFileBytes);
-  const totalBytes = files.reduce((total, file) => total + file.size, 0);
-  if (totalBytes > maxTotalBytes) throw new RangeError("The selected directory exceeds the 16 MB in-memory scan limit");
-  const rawCandidates = files.flatMap((file) => {
-    const type = extension(file.path);
-    return [
-      ...(sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
-      ...discoverOpenApiCandidates(file),
-      ...discoverCommands(file),
-    ];
-  });
-  const unique = [...new Map(rawCandidates.map((candidate) => [candidate.id, candidate])).values()];
-  const features: LocalFeatureCandidate[] = unique.map((feature) => {
-    const tests = relatedTests(feature, files);
-    return {
-      ...feature,
-      configurations: relatedConfigurations(feature, files),
-      tests,
-      dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
-      gaps: [
-        { type: "MISSING_AUTHORITY", severity: "BLOCKING", ownerRole: "product-owner" },
-        { type: "IMPLEMENTATION_UNREVIEWED", severity: "BLOCKING", ownerRole: "technical-owner" },
-        ...(tests.length === 0 ? [{ type: "NO_TEST_SPEC", severity: "BLOCKING" as const, ownerRole: "quality-owner" }] : []),
-        { type: "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT", severity: "BLOCKING", ownerRole: "quality-owner" },
-      ],
-    };
-  });
+  const rawCandidates = new Map<string, Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>();
+  const configurationFiles: LocalWorkspaceInputFile[] = [];
+  const testIndex = new Map<string, RelatedTest[]>();
+  let fileCount = 0;
+  let supportedFileCount = 0;
+  let skippedFileCount = 0;
   return {
-    workspaceName,
-    projectId,
-    scannedAt: (input.now ?? new Date()).toISOString(),
-    fileCount: input.files.length,
-    supportedFileCount: files.length,
-    skippedFileCount: input.files.length - files.length,
-    features,
-    tree: buildTree(workspaceName, projectId, features),
+    addFiles(files: LocalWorkspaceInputFile[]) {
+      fileCount += files.length;
+      for (const file of files) {
+        if (!eligible(file) || file.size > maxFileBytes) {
+          skippedFileCount += 1;
+          continue;
+        }
+        supportedFileCount += 1;
+        const type = extension(file.path);
+        const discovered = [
+          ...(sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
+          ...discoverOpenApiCandidates(file),
+          ...discoverCommands(file),
+        ];
+        for (const feature of discovered) rawCandidates.set(feature.id, feature);
+        if (configurationFiles.length < 12 && configurationExtensions.has(type) && !file.path.endsWith("package-lock.json")) configurationFiles.push(file);
+        if (isTestFile(file.path)) indexTest(testIndex, file);
+      }
+    },
+    finish(): LocalWorkspaceAnalysis {
+      if (fileCount === 0) throw new TypeError("Select a source directory first");
+      const configurations = configurationClues(configurationFiles);
+      const features: LocalFeatureCandidate[] = [...rawCandidates.values()].map((feature) => {
+        const tests = indexedTests(feature, testIndex);
+        return {
+          ...feature,
+          configurations,
+          tests,
+          dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
+          gaps: [
+            { type: "MISSING_AUTHORITY", severity: "BLOCKING", ownerRole: "product-owner" },
+            { type: "IMPLEMENTATION_UNREVIEWED", severity: "BLOCKING", ownerRole: "technical-owner" },
+            ...(tests.length === 0 ? [{ type: "NO_TEST_SPEC", severity: "BLOCKING" as const, ownerRole: "quality-owner" }] : []),
+            { type: "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT", severity: "BLOCKING", ownerRole: "quality-owner" },
+          ],
+        };
+      });
+      return {
+        workspaceName,
+        projectId,
+        scannedAt: (input.now ?? new Date()).toISOString(),
+        fileCount,
+        supportedFileCount,
+        skippedFileCount,
+        features,
+        tree: buildTree(workspaceName, projectId, features),
+      };
+    },
   };
 }

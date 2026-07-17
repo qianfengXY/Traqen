@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeLocalWorkspace } from "../app/local-workspace-analysis.ts";
+import { analyzeLocalWorkspace, createLocalWorkspaceAnalysisAccumulator } from "../app/local-workspace-analysis.ts";
 
 test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
   const analysis = analyzeLocalWorkspace({
@@ -69,13 +69,21 @@ test("discovers a complete local Feature tree without promoting candidates to bu
   assert.ok(analysis.tree.children.some((node) => node.kind === "MODULE"));
 });
 
-test("enforces bounded local-memory scanning", () => {
-  assert.throws(
-    () => analyzeLocalWorkspace({
-      workspaceName: "Too Large",
-      projectId: "PROJECT-TOO-LARGE",
-      files: Array.from({ length: 23 }, (_, index) => ({ path: `src/file-${index}.js`, size: 768 * 1024, content: "export const value = 1;" })),
-    }),
-    /16 MB/,
-  );
+test("accepts a 100,000-file project in batches and skips only oversized files", () => {
+  const accumulator = createLocalWorkspaceAnalysisAccumulator({ workspaceName: "Large Project", projectId: "PROJECT-LARGE" });
+  for (let offset = 0; offset < 100_000; offset += 400) {
+    accumulator.addFiles(Array.from({ length: 400 }, (_, index) => {
+      const sequence = offset + index;
+      return sequence < 2_400
+        ? { path: `src/file-${sequence}.js`, size: 32, content: `export const capability_${sequence} = ${sequence};` }
+        : { path: `docs/file-${sequence}.md`, size: 16, content: `# File ${sequence}` };
+    }));
+  }
+  accumulator.addFiles([{ path: "src/generated.js", size: 769 * 1024, content: "" }]);
+
+  const analysis = accumulator.finish();
+  assert.equal(analysis.fileCount, 100_001);
+  assert.equal(analysis.supportedFileCount, 100_000);
+  assert.equal(analysis.skippedFileCount, 1);
+  assert.equal(analysis.features.length, 2_400);
 });
