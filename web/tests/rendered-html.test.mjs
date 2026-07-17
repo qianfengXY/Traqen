@@ -25,35 +25,23 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /功能追溯/);
   assert.match(html, /追溯图谱/);
   assert.match(html, /效果指标/);
-  assert.match(html, /端到端功能追踪链/);
-  assert.match(html, /功能描述/);
-  assert.match(html, /设计实现/);
-  assert.match(html, /配置与数据约束/);
-  assert.match(html, /测试用例/);
-  assert.match(html, /测试结果/);
-  assert.match(html, /业务功能逻辑/);
-  assert.match(html, /完整功能说明/);
-  assert.match(html, /业务人工确认/);
-  assert.match(html, /权限控制/);
-  assert.match(html, /前置条件/);
-  assert.match(html, /外部依赖/);
-  assert.match(html, /适用范围/);
-  assert.match(html, /编辑确认结果/);
-  assert.match(html, /底层追溯记录/);
-  assert.match(html, /为什么相信/);
-  assert.match(html, /TraceGap/);
+  assert.match(html, /Workspace 分析/);
+  assert.match(html, /选择工程，建立自己的功能追溯 Workspace/);
+  assert.match(html, /选择代码工程/);
+  assert.match(html, /开始扫描并生成功能树/);
+  assert.match(html, /源码仅在当前浏览器页面内存中读取和分析/);
   assert.match(html, /SELF WORKSPACE/);
   assert.match(html, /Traqen Platform/);
   assert.match(html, /中文/);
   assert.match(html, /English/);
-  assert.match(html, /功能追溯 \/ Feature traceability/);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape|react-loading-skeleton/i);
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
+  const [page, product, analyzer, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/local-workspace-analysis.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/trace-detail-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
@@ -125,6 +113,16 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /重建当前实现映射/);
   assert.match(product, /x-traqen-api-token/);
   assert.match(product, /API token（仅保存在当前页面内存）/);
+  assert.match(product, /webkitdirectory/);
+  assert.match(product, /WorkspaceAnalysisView/);
+  assert.match(product, /FeatureTreeBranch/);
+  assert.match(product, /源码仅在当前浏览器页面内存中读取和分析/);
+  assert.match(analyzer, /export function analyzeLocalWorkspace/);
+  assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
+  assert.match(analyzer, /MISSING_AUTHORITY/);
+  assert.match(analyzer, /NOT_EXECUTED_ON_CURRENT_DEPLOYMENT/);
+  assert.match(analyzer, /maxFiles = 2_000/);
+  assert.match(analyzer, /maxTotalBytes = 16 \* 1024 \* 1024/);
   assert.match(layout, /Traqen · 可追溯质量工作台/);
   assert.match(viteConfig, /fileURLToPath\(new URL\("\.\."/);
   assert.match(viteConfig, /fs: \{ allow: \[repositoryRoot\] \}/);

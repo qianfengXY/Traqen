@@ -1,11 +1,12 @@
 "use client";
 
 import cytoscape from "cytoscape";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
+import { analyzeLocalWorkspace, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 
-type View = "trace" | "graph" | "review" | "impact" | "metrics";
+type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
 type GraphViewPreset = "traceability" | "business" | "implementation" | "coverage";
 type TraceBlockKey = "description" | "design" | "configuration" | "test-case" | "test-result";
@@ -204,6 +205,13 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   NO_TEST_SPEC: { zh: "缺少测试规范", en: "No TestSpec" },
   EVIDENCE_STALE: { zh: "证据已过期", en: "Evidence stale" },
   DEFECT_ESCAPE_RATE: { zh: "缺陷逃逸率", en: "Defect escape rate" },
+  MISSING_AUTHORITY: { zh: "缺少业务权威", en: "Missing authority" },
+  IMPLEMENTATION_UNREVIEWED: { zh: "实现尚未审核", en: "Implementation unreviewed" },
+  NOT_EXECUTED_ON_CURRENT_DEPLOYMENT: { zh: "当前部署尚未执行", en: "Not executed on current deployment" },
+  COMMAND: { zh: "运行命令", en: "Command" },
+  WORKSPACE: { zh: "工作空间", en: "Workspace" },
+  MODULE: { zh: "模块", en: "Module" },
+  GROUP: { zh: "分组", en: "Group" },
 
   // Named dimensions and common field categories.
   业务权威: { zh: "业务权威", en: "Business authority" },
@@ -1127,7 +1135,7 @@ function traceBlocksForScenario(scenario: Scenario): TraceBlock[] {
 
 export function TraqenProduct() {
   const [language, setLanguage] = useState<Language>("zh-CN");
-  const [view, setView] = useState<View>("trace");
+  const [view, setView] = useState<View>("workspace");
   const [scenarioKey, setScenarioKey] = useState<"current" | "changed">("current");
   const [liveScenario, setLiveScenario] = useState<Scenario | null>(null);
   const [selectedTraceBlock, setSelectedTraceBlock] = useState<TraceBlockKey>("description");
@@ -1230,6 +1238,10 @@ export function TraqenProduct() {
             </div>
           </div>
           <nav className="nav" aria-label={t("产品导航", "Product navigation")}>
+            <button className={`nav-button ${view === "workspace" ? "active" : ""}`} onClick={() => setView("workspace")}>
+              <span className="nav-icon">⌘</span>
+              {t("Workspace 分析", "Workspace analysis")}
+            </button>
             <button className={`nav-button ${view === "trace" ? "active" : ""}`} onClick={() => setView("trace")}>
               <span className="nav-icon">→</span>
               {t("功能追溯", "Feature traceability")}
@@ -1265,6 +1277,7 @@ export function TraqenProduct() {
               <b>
                 {
                   {
+                    workspace: t("Workspace 分析", "Workspace analysis"),
                     trace: t("功能追溯", "Feature traceability"),
                     graph: t("追溯图谱", "Trace graph"),
                     review: t("声明审核", "Claim review"),
@@ -1331,6 +1344,7 @@ export function TraqenProduct() {
             </section>
           )}
 
+          {view === "workspace" && <WorkspaceAnalysisView />}
           {view === "trace" && <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />}
           {view === "graph" && <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
@@ -1339,6 +1353,155 @@ export function TraqenProduct() {
         </main>
       </div>
     </LanguageContext.Provider>
+  );
+}
+
+type WorkspaceTraceBlock = "description" | "design" | "configuration" | "test-case" | "test-result";
+
+function FeatureTreeBranch({ node, selectedFeatureId, onSelect }: { node: LocalFeatureTreeNode; selectedFeatureId: string; onSelect: (featureId: string) => void }) {
+  const { term } = useI18n();
+  const [open, setOpen] = useState(node.kind !== "FEATURE");
+  const hasChildren = node.children.length > 0;
+  if (node.kind === "FEATURE") {
+    return (
+      <li>
+        <button className={`feature-tree-leaf ${selectedFeatureId === node.featureId ? "selected" : ""}`} aria-pressed={selectedFeatureId === node.featureId} onClick={() => node.featureId && onSelect(node.featureId)}>
+          <span>◇</span>
+          <b>{node.label}</b>
+        </button>
+      </li>
+    );
+  }
+  return (
+    <li className={`feature-tree-branch ${node.kind.toLowerCase()}`}>
+      <button className="feature-tree-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <span>{hasChildren ? (open ? "▾" : "▸") : "·"}</span>
+        <b>{node.label}</b>
+        <small>{term(node.kind)} · {node.children.length}</small>
+      </button>
+      {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} />)}</ul>}
+    </li>
+  );
+}
+
+function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFeatureCandidate; block: WorkspaceTraceBlock; setBlock: (block: WorkspaceTraceBlock) => void }) {
+  const { t, term, role } = useI18n();
+  const blocks: Array<{ key: WorkspaceTraceBlock; label: string; state: string; count: string }> = [
+    { key: "description", label: t("功能描述", "Feature description"), state: feature.dimensions.authority, count: "1" },
+    { key: "design", label: t("设计实现", "Design implementation"), state: feature.dimensions.conformance, count: "1" },
+    { key: "configuration", label: t("配置", "Configuration"), state: feature.configurations.length > 0 ? "ACTIVE" : "UNKNOWN", count: String(feature.configurations.length) },
+    { key: "test-case", label: t("测试用例", "Test cases"), state: feature.tests.length > 0 ? "PARTIAL" : "NOT_RUN", count: String(feature.tests.length) },
+    { key: "test-result", label: t("测试结果", "Test results"), state: feature.dimensions.verification, count: "0" },
+  ];
+  return (
+    <article className="workspace-feature-detail">
+      <header className="workspace-feature-head">
+        <div>
+          <p className="eyebrow">{term(feature.kind)} · {feature.id}</p>
+          <h2>{feature.name}</h2>
+          <p>{feature.sourcePath}:{feature.startLine} · {feature.modulePath}</p>
+        </div>
+        <span className="mode-badge">{t("扫描候选", "Discovered candidate")}</span>
+      </header>
+      <div className="workspace-dimensions" aria-label={t("候选功能可信维度", "Candidate feature trust dimensions")}>
+        {Object.entries(feature.dimensions).map(([key, value]) => <div key={key}><span>{term(({ authority: "业务权威", conformance: "实现符合性", verification: "验证结果", freshness: "证据新鲜度", conflict: "冲突" } as Record<string, string>)[key] ?? key)}</span><b className={tone(value)}>{term(value)}</b></div>)}
+      </div>
+      <nav className="workspace-trace-tabs" aria-label={t("功能追溯五大块", "Five feature trace blocks")}>
+        {blocks.map((item) => <button key={item.key} className={block === item.key ? "active" : ""} aria-pressed={block === item.key} onClick={() => setBlock(item.key)}><span>{item.label}</span><b>{term(item.state)}</b><small>{item.count}</small></button>)}
+      </nav>
+      <div className="workspace-trace-content">
+        {block === "description" && <section className="workspace-document"><div className="artifact-intro"><div><h3>{t("完整功能说明", "Complete feature description")}</h3><p>{t("以下内容由本地源码静态发现形成，是待业务负责人确认的候选说明。", "This description was discovered statically from local source and remains a candidate pending business-owner confirmation.")}</p></div><span>{term(feature.dimensions.authority)}</span></div><dl><dt>{t("候选名称", "Candidate name")}</dt><dd>{feature.name}</dd><dt>{t("发现类型", "Discovery type")}</dt><dd>{term(feature.kind)}</dd><dt>{t("业务逻辑线索", "Business logic clue")}</dt><dd>{feature.description}</dd><dt>{t("适用模块", "Applicable module")}</dt><dd>{feature.modulePath}</dd><dt>{t("前置条件与权限", "Prerequisites and permissions")}</dt><dd>{t("静态扫描无法可靠推断，必须由业务负责人补充并确认。", "Static scanning cannot infer these reliably; a business owner must supply and confirm them.")}</dd></dl></section>}
+        {block === "design" && <section className="workspace-code"><div className="reader-file-head"><div><span className="file-type code">{feature.sourcePath.split(".").at(-1)?.toUpperCase()}</span><div><b>{feature.sourcePath.split("/").at(-1)}</b><small>{feature.sourcePath}:{feature.startLine}</small></div></div><span>{term(feature.kind)}</span></div><SourceCodeViewer content={feature.code} /></section>}
+        {block === "configuration" && <section className="workspace-related-list"><div className="artifact-intro"><div><h3>{t("相关配置线索", "Related configuration clues")}</h3><p>{t("展示工程中发现的配置文件；在形成治理映射前，不声称每一项都控制当前功能。", "Shows configuration files discovered in the project. No item is claimed to control this feature until a governed mapping exists.")}</p></div><span>{feature.configurations.length}</span></div>{feature.configurations.length === 0 ? <div className="gap-empty">{t("未发现受支持的配置文件。", "No supported configuration files were discovered.")}</div> : feature.configurations.map((configuration) => <details key={configuration.path}><summary><b>{configuration.key}</b><span>{configuration.path}</span></summary><SourceCodeViewer content={configuration.value} /></details>)}</section>}
+        {block === "test-case" && <section className="workspace-related-list"><div className="artifact-intro"><div><h3>{t("相关测试用例线索", "Related test-case clues")}</h3><p>{t("根据文件名、源码引用和符号名称建立候选关联；后续仍需生成并批准正式 TestSpec。", "Candidate links are based on filenames, source references, and symbol names. A formal TestSpec must still be generated and approved.")}</p></div><span>{feature.tests.length}</span></div>{feature.tests.length === 0 ? <div className="gap-empty">{t("没有发现关联测试，这是一个阻断级 TraceGap。", "No related tests were discovered; this is a blocking TraceGap.")}</div> : feature.tests.map((test) => <details key={test.path}><summary><b>{test.title}</b><span>{test.path}</span></summary><SourceCodeViewer content={test.code} /></details>)}</section>}
+        {block === "test-result" && <section className="workspace-result-empty"><span className="result-status not_run">{term("NOT_RUN")}</span><h3>{t("当前没有可信执行结果", "No trusted execution result is available")}</h3><p>{t("本地扫描只发现源码事实，不执行工程代码。需要批准的 TestSpec、目标环境、Runner 身份与签名 Evidence 后，结果才能进入追溯链。", "The local scan discovers source Facts but does not execute project code. An approved TestSpec, target environment, Runner identity, and signed Evidence are required before results enter the trace chain.")}</p></section>}
+      </div>
+      <section className="workspace-gaps"><div className="panel-head"><div><h3>TraceGap</h3><p>{t("从扫描候选升级为可信 Feature 仍需完成的工作", "Work required to promote a discovered candidate into a trusted Feature")}</p></div><span className="mode-badge">{feature.gaps.length} OPEN</span></div>{feature.gaps.map((gap) => <div key={gap.type}><span>{term(gap.severity)} · {term(gap.type)}</span><b>{role(gap.ownerRole)}</b></div>)}</section>
+    </article>
+  );
+}
+
+function WorkspaceAnalysisView() {
+  const { t } = useI18n();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [workspaceName, setWorkspaceName] = useState("My Product Workspace");
+  const [projectId, setProjectId] = useState("PROJECT-MY-PRODUCT");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [directoryName, setDirectoryName] = useState("");
+  const [analysis, setAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
+  const [selectedFeatureId, setSelectedFeatureId] = useState("");
+  const [selectedBlock, setSelectedBlock] = useState<WorkspaceTraceBlock>("description");
+  const [scanning, setScanning] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    inputRef.current?.setAttribute("webkitdirectory", "");
+    inputRef.current?.setAttribute("directory", "");
+  }, []);
+
+  function selectDirectory(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.currentTarget.files ?? []);
+    setSelectedFiles(files);
+    setAnalysis(null);
+    setMessage("");
+    const root = files[0]?.webkitRelativePath.split("/")[0] ?? "";
+    setDirectoryName(root);
+    if (root) {
+      setWorkspaceName(root);
+      setProjectId(`PROJECT-${root.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toUpperCase()}`);
+    }
+  }
+
+  async function scanWorkspace() {
+    setScanning(true);
+    setMessage("");
+    try {
+      const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env)$/i;
+      const ignored = /(^|\/)(?:\.git|node_modules|dist|build|\.next|\.vinext|coverage|vendor)(\/|$)/;
+      const eligibleFiles = selectedFiles.filter((file) => {
+        const path = file.webkitRelativePath || file.name;
+        const name = path.split("/").at(-1)?.toLowerCase() ?? "";
+        const actualEnvironmentFile = /^\.env(?:\.[^.]+)?$/.test(name) && !/\.(?:example|sample|template)$/.test(name);
+        return !actualEnvironmentFile && !ignored.test(path) && textExtensions.test(path);
+      });
+      if (eligibleFiles.length > 2_000) throw new RangeError(t("所选工程超过 2,000 个受支持文件的本地扫描上限。", "The selected project exceeds the 2,000 supported-file local scan limit."));
+      const totalBytes = eligibleFiles.filter((file) => file.size <= 768 * 1024).reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > 16 * 1024 * 1024) throw new RangeError(t("所选工程超过 16 MB 的内存扫描上限；请先缩小扫描范围。", "The selected project exceeds the 16 MB in-memory scan limit. Reduce the scan scope first."));
+      const files: LocalWorkspaceInputFile[] = await Promise.all(eligibleFiles.map(async (file) => {
+        const path = file.webkitRelativePath || file.name;
+        const readable = file.size <= 768 * 1024;
+        return { path: path.split("/").slice(1).join("/") || path, size: file.size, content: readable ? await file.text() : "" };
+      }));
+      const result = analyzeLocalWorkspace({ workspaceName, projectId, files });
+      setAnalysis(result);
+      setSelectedFeatureId(result.features[0]?.id ?? "");
+      setSelectedBlock("description");
+      setMessage(result.features.length > 0 ? t(`已发现 ${result.features.length} 个候选功能。`, `Discovered ${result.features.length} candidate features.`) : t("扫描完成，但没有发现可识别的接口、导出能力或工程命令。", "Scan complete, but no recognizable endpoints, exported capabilities, or project commands were found."));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("Workspace 扫描失败", "Workspace scan failed"));
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  const selectedFeature = analysis?.features.find((feature) => feature.id === selectedFeatureId) ?? analysis?.features[0];
+  return (
+    <>
+      <section className="panel workspace-onboarding">
+        <div className="panel-head"><div><p className="eyebrow">Local-first workspace</p><h1>{t("选择工程，建立自己的功能追溯 Workspace", "Select a project and build your own feature-traceability Workspace")}</h1><p>{t("源码仅在当前浏览器页面内存中读取和分析，不会上传到 Traqen 站点。刷新页面后扫描结果消失。", "Source is read and analyzed only in this browser tab's memory and is never uploaded to the Traqen site. Scan results disappear after refresh.")}</p></div><span className="mode-badge">{t("本地扫描", "LOCAL SCAN")}</span></div>
+        <div className="workspace-setup-grid">
+          <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
+          <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
+          <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" onClick={() => inputRef.current?.click()}>{t("选择代码工程", "Select code project")}</button><span>{directoryName || t("尚未选择目录", "No directory selected")}</span><small>{selectedFiles.length} {t("个文件", "files")}</small></div>
+          <button className="button primary workspace-scan-button" disabled={scanning || selectedFiles.length === 0} onClick={() => void scanWorkspace()}>{scanning ? t("扫描中…", "Scanning…") : t("开始扫描并生成功能树", "Scan and generate feature tree")}</button>
+        </div>
+        {message && <div className="inline-message">{message}</div>}
+      </section>
+      {analysis && <section className="workspace-analysis-shell">
+        <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Feature tree</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeature?.id ?? ""} onSelect={(featureId) => { setSelectedFeatureId(featureId); setSelectedBlock("description"); }} /></ul></aside>
+        <div className="panel workspace-analysis-main">{selectedFeature ? <WorkspaceFeatureDetail feature={selectedFeature} block={selectedBlock} setBlock={setSelectedBlock} /> : <div className="workspace-no-features"><h2>{t("未发现候选功能", "No candidate features discovered")}</h2><p>{t("当前扫描器识别常见 JavaScript/TypeScript、Python、Java、Go、C#、Rust 能力，以及 HTTP 路由、OpenAPI JSON 路径和 package.json 命令。", "The current scanner recognizes common JavaScript/TypeScript, Python, Java, Go, C#, and Rust capabilities, plus HTTP routes, OpenAPI JSON paths, and package.json commands.")}</p></div>}</div>
+      </section>}
+    </>
   );
 }
 

@@ -7,6 +7,7 @@ Traqen 的产品与工程文档同时维护英文和简体中文版本。两个�
 ## 文档导航
 
 - [架构与产品设计](architecture/enterprise-traceable-quality-platform-design-v0.2.md) · [English](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md)
+- [本地 Workspace 分析与功能树](features/workspace-analysis-design.zh-CN.md) · [English](features/workspace-analysis-design.md)
 - [实现验证记录](implementation/)
 - [项目概览与运行指南](../README.zh-CN.md) · [English](../README.md)
 
