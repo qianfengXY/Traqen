@@ -8,6 +8,7 @@ Traqen maintains its product and engineering documentation in English and Simpli
 
 - [Architecture and product design](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md) · [中文原文](architecture/enterprise-traceable-quality-platform-design-v0.2.md)
 - [Local Workspace analysis and Feature tree](features/workspace-analysis-design.md) · [简体中文](features/workspace-analysis-design.zh-CN.md)
+- [Clowder AI real-repository Workspace validation](implementation/clowder-ai-workspace-analysis-2026-07-18.md) · [简体中文](implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)
 - [Implementation validation records](implementation/)
 - [Project overview and operating guide](../README.md) · [简体中文](../README.zh-CN.md)
 

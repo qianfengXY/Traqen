@@ -219,6 +219,7 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   COMMAND: { zh: "运行命令", en: "Command" },
   WORKSPACE: { zh: "工作空间", en: "Workspace" },
   MODULE: { zh: "模块", en: "Module" },
+  DOMAIN: { zh: "领域 / 产品区域", en: "Domain / Product area" },
   GROUP: { zh: "分组", en: "Group" },
 
   // Named dimensions and common field categories.

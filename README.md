@@ -8,6 +8,8 @@ The implementation follows one non-negotiable product vision:
 
 > For every governed high-value Feature, present an explainable traceability chain from confirmed business intent to Evidence from the actual deployment, and expose every missing, stale, conflicting, or failed link.
 
+The local Workspace scanner has also been exercised against the real [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo at a pinned commit. The resulting [bilingual validation report](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.md) records the observed scale, false-positive corrections, domain tree, conservative test/configuration associations, and the distinction between implementation candidates and confirmed business Features.
+
 ## Implemented foundation
 
 The first executable slice is the framework-neutral domain kernel. It provides:

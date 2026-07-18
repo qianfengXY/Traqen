@@ -19,7 +19,7 @@ test("discovers a complete local Feature tree without promoting candidates to bu
         ].join("\n"),
       },
       {
-        path: "tests/customer.test.js",
+        path: "src/api/__tests__/customer.test.js",
         size: 120,
         content: "import { loadCustomerProfile } from '../src/api/customer.js';\ntest('profile', () => loadCustomerProfile('1'));",
       },
@@ -39,7 +39,7 @@ test("discovers a complete local Feature tree without promoting candidates to bu
         content: "def calculate_invoice_total(lines):\n    return sum(lines)",
       },
       {
-        path: "config/settings.json",
+        path: "src/api/config/settings.json",
         size: 50,
         content: "{\"apiToken\":\"must-not-render\"}",
       },
@@ -60,7 +60,7 @@ test("discovers a complete local Feature tree without promoting candidates to bu
   const capability = analysis.features.find((feature) => feature.kind === "CODE_SYMBOL");
   assert.equal(capability.dimensions.authority, "PENDING");
   assert.equal(capability.dimensions.verification, "NOT_RUN");
-  assert.ok(capability.tests.some((item) => item.path === "tests/customer.test.js"));
+  assert.ok(capability.tests.some((item) => item.path === "src/api/__tests__/customer.test.js"));
   assert.ok(capability.configurations.some((item) => item.value.includes("<redacted>")));
   assert.ok(capability.configurations.every((item) => !item.value.includes("must-not-render") && !item.value.includes("must-not-be-read")));
   assert.equal(analysis.skippedFileCount, 1);
@@ -69,8 +69,9 @@ test("discovers a complete local Feature tree without promoting candidates to bu
   assert.equal(analysis.tree.kind, "WORKSPACE");
   assert.equal(analysis.tree.featureCount, analysis.features.length);
   assert.ok(analysis.tree.children.some((node) => node.kind === "MODULE"));
-  assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.label === "API_SERVICE"));
-  assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.label === "BUSINESS_CAPABILITY"));
+  assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.kind === "DOMAIN"));
+  assert.ok(analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).some((node) => node.label === "API_SERVICE"));
+  assert.ok(analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).some((node) => node.label === "BUSINESS_CAPABILITY"));
   assert.ok(analysis.tree.children.every((node) => node.featureCount === node.children.reduce((sum, child) => sum + child.featureCount, 0)));
 });
 
@@ -203,7 +204,42 @@ test("rebuilds readable endpoint labels from legacy scan records", () => {
   const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Legacy", projectId: "PROJECT-LEGACY", records: [record] });
   const endpoint = analysis.features.find((feature) => feature.kind === "ENDPOINT");
   assert.equal(endpoint.displayName, "Load Customer");
-  assert.equal(analysis.tree.children[0].children[0].children[0].label, "Load Customer");
+  assert.equal(analysis.tree.children[0].children[0].children[0].children[0].label, "Load Customer");
+});
+
+test("keeps Clowder-style async routes readable and excludes support artifacts from Feature candidates", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Clowder-shaped project",
+    projectId: "PROJECT-CLOWDER-SHAPED",
+    files: [
+      {
+        path: "packages/api/src/routes/accounts.ts",
+        size: 500,
+        content: [
+          "export const APP_HEARTBEAT_MS = 1000;",
+          "export const accountSchema = z.object({ id: z.string() });",
+          "export function clearAccountsForTest() {}",
+          "export async function loadAccounts() { return []; }",
+          "export const accountsRoutes: FastifyPluginAsync = async (app) => {",
+          "  app.get('/api/accounts', async (_request, reply) => reply.send(await loadAccounts()));",
+          "};",
+        ].join("\n"),
+      },
+      { path: "packages/api/test/accounts.test.ts", size: 120, content: "test('loads accounts', async () => loadAccounts());" },
+      { path: "packages/api/test/__fixtures__/plugin.yaml", size: 40, content: "token: must-not-attach" },
+      { path: "packages/api/package.json", size: 100, content: JSON.stringify({ scripts: { test: "node --test" } }) },
+    ],
+  });
+
+  const endpoint = analysis.features.find((feature) => feature.kind === "ENDPOINT");
+  assert.equal(endpoint.name, "GET /api/accounts");
+  assert.notEqual(endpoint.displayName, "Async");
+  assert.ok(endpoint.tests.some((item) => item.path.endsWith("accounts.test.ts")));
+  assert.ok(analysis.features.some((feature) => feature.name === "Load Accounts"));
+  assert.ok(analysis.features.some((feature) => feature.name === "Accounts Routes"));
+  assert.ok(analysis.features.every((feature) => !["APP HEARTBEAT MS", "Account Schema", "Clear Accounts For Test"].includes(feature.name)));
+  assert.ok(analysis.features.every((feature) => feature.configurations.every((configuration) => !configuration.path.includes("__fixtures__"))));
+  assert.equal(analysis.tree.children.find((node) => node.label === "API").children.find((node) => node.label === "Accounts").kind, "DOMAIN");
 });
 
 test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {

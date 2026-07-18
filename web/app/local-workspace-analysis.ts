@@ -31,7 +31,7 @@ export type LocalFeatureCandidate = {
 export type LocalFeatureTreeNode = {
   id: string;
   label: string;
-  kind: "WORKSPACE" | "MODULE" | "GROUP" | "FEATURE";
+  kind: "WORKSPACE" | "MODULE" | "DOMAIN" | "GROUP" | "FEATURE";
   featureId?: string;
   featureCount: number;
   detail?: string;
@@ -61,7 +61,7 @@ export type LocalWorkspaceFileRecord = {
   test: ({ path: string; title: string; code: string } & { keys: string[] }) | null;
 };
 
-export const localWorkspaceScannerVersion = 3;
+export const localWorkspaceScannerVersion = 4;
 
 const supportedExtensions = new Set([
   "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env", "xml", "gradle", "kts",
@@ -113,10 +113,21 @@ function modulePath(path: string) {
 }
 
 function titleFromSymbol(symbol: string) {
-  return symbol
+  const title = symbol
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[_-]+/g, " ")
-    .replace(/^./, (character) => character.toUpperCase());
+    .trim();
+  return title.replace(/^./, (character) => character.toUpperCase());
+}
+
+function isFeatureSupportFile(path: string) {
+  return isTestFile(path)
+    || /(^|\/)(?:__mocks__|__fixtures__|fixtures?|testdata|samples?)(\/|$)/i.test(path)
+    || /\.(?:stories|story)\.[^.]+$/i.test(path);
+}
+
+function callableSymbol(symbol: string) {
+  return !symbol.startsWith("_") && !/(?:ForTests?|TestOnly)$/i.test(symbol);
 }
 
 type RawFeatureCandidate = Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">;
@@ -296,7 +307,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
   for (const match of file.content.matchAll(routePattern)) {
     const method = match[1].toUpperCase();
     const route = match[2];
-    const handler = match[3];
+    const handler = match[3] && !/^(?:async|function)$/i.test(match[3]) ? match[3] : undefined;
     const identity = `${file.path}:endpoint:${method}:${route}`;
     candidates.push({
       id: stableId(identity),
@@ -312,9 +323,14 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
     });
   }
 
-  const exportPattern = /\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class|const|let|var)\s+([A-Za-z_$][\w$]*)/g;
-  for (const match of file.content.matchAll(exportPattern)) {
+  const exportPatterns = [
+    /\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)/g,
+    /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)[^\n;=]*=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g,
+  ];
+  const exportedSymbols = exportPatterns.flatMap((pattern) => [...file.content.matchAll(pattern)]).sort((left, right) => (left.index ?? 0) - (right.index ?? 0));
+  for (const match of exportedSymbols) {
     const symbol = match[1];
+    if (!callableSymbol(symbol)) continue;
     const identity = `${file.path}:symbol:${symbol}`;
     candidates.push({
       id: stableId(identity),
@@ -339,7 +355,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
   for (const pattern of languagePatterns) {
     for (const match of file.content.matchAll(pattern)) {
       const symbol = match[1];
-      if (["if", "for", "while", "switch", "catch"].includes(symbol)) continue;
+      if (["if", "for", "while", "switch", "catch"].includes(symbol) || !callableSymbol(symbol) || (language === "go" && !/^[A-Z]/.test(symbol))) continue;
       const identity = `${file.path}:symbol:${symbol}`;
       candidates.push({
         id: stableId(identity),
@@ -428,11 +444,22 @@ function isTestFile(path: string) {
   return /(^|\/)(test|tests|__tests__|spec)(\/|\.)|\.(test|spec)\.[^.]+$/i.test(path);
 }
 
+const weakAssociationKeys = new Set(["app", "application", "client", "common", "component", "config", "core", "data", "handler", "helper", "index", "main", "model", "route", "routes", "schema", "server", "service", "test", "tests", "type", "types", "util", "utils"]);
+
+function associationKey(value: string) {
+  return value.replace(/\.(?:test|spec)$/i, "").replace(/(?:Test|Tests|Spec|Specs)$/i, "").replace(/[^A-Za-z0-9_$-]+/g, "").toLowerCase();
+}
+
+function fileStem(path: string) {
+  return (path.split("/").at(-1) ?? path).replace(/\.[^.]+$/, "");
+}
+
 function testRecord(file: LocalWorkspaceInputFile) {
   const test = { path: file.path, title: file.path.split("/").at(-1) ?? file.path, code: file.content.slice(0, 4_000) };
   const identifiers = file.content.match(/[A-Za-z_$][\w$-]{2,}/g) ?? [];
-  const keys = new Set([file.path.split("/").at(-1)?.replace(/\.[^.]+$/, "").toLowerCase() ?? "", ...identifiers.slice(0, 300).map((item) => item.toLowerCase())]);
-  return { ...test, keys: [...keys].filter(Boolean) };
+  const testFileKey = associationKey(fileStem(file.path));
+  const symbolKeys = new Set(identifiers.slice(0, 500).map(associationKey).filter((key) => key.length >= 4 && !weakAssociationKeys.has(key)));
+  return { ...test, keys: [...(testFileKey.length >= 4 && !weakAssociationKeys.has(testFileKey) ? [`file:${testFileKey}`] : []), ...[...symbolKeys].map((key) => `symbol:${key}`)] };
 }
 
 function indexTest(testIndex: Map<string, RelatedTest[]>, test: RelatedTest & { keys: string[] }) {
@@ -444,21 +471,48 @@ function indexTest(testIndex: Map<string, RelatedTest[]>, test: RelatedTest & { 
   }
 }
 
-function indexedTests(feature: { sourcePath: string; name: string }, testIndex: Map<string, RelatedTest[]>) {
-  const sourceName = feature.sourcePath.split("/").at(-1)?.replace(/\.[^.]+$/, "").toLowerCase() ?? "";
-  const keys = new Set([sourceName, ...feature.name.toLowerCase().split(/[^a-z0-9_$-]+/).filter((item) => item.length > 2)]);
-  return [...new Map([...keys].flatMap((key) => testIndex.get(key) ?? []).map((test) => [test.path, test])).values()].slice(0, 20);
+function indexedTests(feature: { sourcePath: string; name: string; displayName?: string; modulePath: string }, testIndex: Map<string, RelatedTest[]>) {
+  const sourceName = associationKey(fileStem(feature.sourcePath));
+  const featureName = associationKey(feature.displayName ?? feature.name);
+  const sourceModule = treeModuleIdentity(feature);
+  const sourceMatches = testIndex.get(`file:${sourceName}`) ?? [];
+  const symbolWordCount = feature.name.trim().split(/\s+/).filter(Boolean).length;
+  const symbolMatches = symbolWordCount >= 2 && featureName.length >= 6 && !weakAssociationKeys.has(featureName) ? testIndex.get(`symbol:${featureName}`) ?? [] : [];
+  return [...new Map([...sourceMatches, ...symbolMatches].filter((test) => {
+    const testModule = treeModuleIdentity({ sourcePath: test.path, modulePath: modulePath(test.path) });
+    return sourceModule === testModule;
+  }).map((test) => [test.path, test])).values()].slice(0, 20);
 }
 
 function configurationsForFeature(feature: { sourcePath: string }, configurations: Array<{ path: string; key: string; value: string }>) {
-  const sourceModule = modulePath(feature.sourcePath);
+  const sourcePath = feature.sourcePath.replace(/\\/g, "/");
+  const sourceModule = treeModuleIdentity({ sourcePath, modulePath: modulePath(sourcePath) });
+  const sourceDomain = treeDomainIdentity(sourcePath, sourceModule).identity;
   return configurations.filter((configuration) => {
-    const segments = configuration.path.split("/").filter(Boolean);
-    const globalConfiguration = segments.length === 1
-      || ["config", "configs"].includes(segments[0]?.toLowerCase() ?? "")
-      || (segments[0]?.toLowerCase() === "src" && ["config", "configs"].includes(segments[1]?.toLowerCase() ?? ""));
-    return globalConfiguration || modulePath(configuration.path) === sourceModule;
+    const configurationPath = configuration.path.replace(/\\/g, "/");
+    const configurationModule = treeModuleIdentity({ sourcePath: configurationPath, modulePath: modulePath(configurationPath) });
+    if (configurationModule !== sourceModule) return false;
+    const configurationDomain = treeDomainIdentity(configurationPath, configurationModule).identity;
+    const sameDomain = configurationDomain === sourceDomain;
+    const sameDirectory = sourcePath.slice(0, sourcePath.lastIndexOf("/")) === configurationPath.slice(0, configurationPath.lastIndexOf("/"));
+    const runtimeModuleConfiguration = /(?:^|\/)(?:application(?:-[^.]+)?\.(?:ya?ml|properties)|\.env\.(?:example|sample|template)|pom\.xml|[^/]+\.gradle(?:\.kts)?)$/i.test(configurationPath);
+    return sameDomain || sameDirectory || runtimeModuleConfiguration;
   }).slice(0, 12);
+}
+
+function isConfigurationFile(file: LocalWorkspaceInputFile) {
+  const type = extension(file.path);
+  if (!configurationExtensions.has(type) || /(?:package-lock|pnpm-lock|yarn\.lock)(?:\.[^/]*)?$/i.test(file.path) || isFeatureSupportFile(file.path)) return false;
+  const normalized = file.path.replace(/\\/g, "/");
+  const name = normalized.split("/").at(-1) ?? normalized;
+  if (name === "package.json") return false;
+  return type === "env"
+    || ["yaml", "yml"].includes(type)
+    || ["properties", "gradle", "kts"].includes(type)
+    || /^pom\.xml$/i.test(name)
+    || /(?:^|\/)(?:config|configs)(?:\/|$)/i.test(normalized)
+    || /(?:^|[._-])(?:config|settings|manifest)(?:[._-]|$)/i.test(name)
+    || /^application(?:-[^.]+)?\.(?:ya?ml|properties)$/i.test(name);
 }
 
 function inferredCandidateDisplayName(feature: { kind: LocalFeatureCandidate["kind"]; description: string; code: string }) {
@@ -466,7 +520,7 @@ function inferredCandidateDisplayName(feature: { kind: LocalFeatureCandidate["ki
   const javaMethod = feature.description.match(/implemented by\s+([A-Za-z_$][\w$]*)/i)?.[1];
   if (javaMethod) return titleFromSymbol(javaMethod);
   const routeHandler = feature.code.match(/["'`]\s*,\s*([A-Za-z_$][\w$]*)/)?.[1];
-  if (routeHandler) return titleFromSymbol(routeHandler);
+  if (routeHandler && !/^(?:async|function)$/i.test(routeHandler)) return titleFromSymbol(routeHandler);
   try {
     const document = JSON.parse(feature.code) as Record<string, Record<string, { summary?: unknown; operationId?: unknown }>>;
     const operation = Object.values(document).flatMap((operations) => Object.values(operations ?? {}))[0];
@@ -480,7 +534,7 @@ function inferredCandidateDisplayName(feature: { kind: LocalFeatureCandidate["ki
 
 type FeatureTreeGroup = "API_SERVICE" | "BUSINESS_CAPABILITY" | "DATA_INTEGRATION" | "BACKGROUND_INTEGRATION" | "PROJECT_OPERATION";
 
-function treeModuleIdentity(feature: LocalFeatureCandidate) {
+function treeModuleIdentity(feature: Pick<LocalFeatureCandidate, "sourcePath" | "modulePath">) {
   const path = feature.sourcePath.replace(/\\/g, "/");
   const segments = path.split("/").filter(Boolean);
   const sourceIndex = segments.indexOf("src");
@@ -488,6 +542,38 @@ function treeModuleIdentity(feature: LocalFeatureCandidate) {
   if (["services", "packages", "modules", "apps"].includes(segments[0] ?? "") && segments[1]) return `${segments[0]}/${segments[1]}`;
   if (["src", "app", "lib"].includes(segments[0] ?? "") && segments[1]) return `${segments[0]}/${segments[1]}`;
   return feature.modulePath.split(" · ")[0] || feature.modulePath || "root";
+}
+
+function cleanDomainName(value: string) {
+  return value
+    .replace(/\.[^.]+$/, "")
+    .replace(/(?:[-_.](?:routes?|controller|service|handler|helpers?|types?|schema))$/i, "")
+    .replace(/^\((.+)\)$/, "$1")
+    || "core";
+}
+
+function treeDomainLabel(value: string) {
+  return titleFromSymbol(value)
+    .replace(/\b[a-z]/g, (character) => character.toUpperCase())
+    .replace(/\b(?:Api|Ui|Mcp|Cli|Tts|Ime|A2a)\b/g, (acronym) => acronym.toUpperCase());
+}
+
+function treeDomainIdentity(sourcePath: string, moduleIdentity: string) {
+  const path = sourcePath.replace(/\\/g, "/");
+  const segments = path.split("/").filter(Boolean);
+  const sourceIndex = segments.indexOf("src");
+  const relative = sourceIndex >= 0 ? segments.slice(sourceIndex + 1) : segments.slice(moduleIdentity.split("/").filter(Boolean).length);
+  const layer = (relative[0] ?? "").toLowerCase();
+  let domain = "core";
+  if (layer === "domains") domain = relative[1] ?? "core";
+  else if (layer === "routes") domain = (relative[1] ?? "routes").split(/[-_.]/)[0];
+  else if (layer === "components") domain = relative[1] && !relative[1].includes(".") ? relative[1] : "shared-ui";
+  else if (["app", "games", "plugins", "marketplace"].includes(layer)) domain = relative[1] && !relative[1].includes(".") ? relative[1] : relative[0] ?? "core";
+  else if (["infrastructure", "lib"].includes(layer)) domain = relative[1] ?? relative[0] ?? "core";
+  else if (["services", "skills", "mcp", "hooks", "stores", "utils", "config", "scripts"].includes(layer)) domain = relative[0] ?? "core";
+  else if (relative[0]) domain = relative.length > 1 ? relative[0] : "core";
+  const identity = cleanDomainName(domain).toLowerCase();
+  return { identity, label: treeDomainLabel(cleanDomainName(domain)) };
 }
 
 function treeModuleLabel(identity: string) {
@@ -505,7 +591,7 @@ function treeModuleLabel(identity: string) {
 
 function treeGroup(feature: LocalFeatureCandidate): FeatureTreeGroup {
   if (feature.kind === "ENDPOINT") return "API_SERVICE";
-  if (feature.kind === "COMMAND") return "PROJECT_OPERATION";
+  if (feature.kind === "COMMAND" || /(?:^|\/)(?:scripts?|tools?|cli)(?:\/|$)/i.test(feature.sourcePath)) return "PROJECT_OPERATION";
   const context = `${feature.name} ${feature.description} ${feature.sourcePath}`;
   if (/(?:listener|consumer|subscriber|scheduled|scheduler|cron|batch|worker|queue|kafka|rabbit|jms|event)/i.test(context)) return "BACKGROUND_INTEGRATION";
   if (/(?:repository|\bdao\b|gateway|client|connector|adapter|integration)/i.test(context)) return "DATA_INTEGRATION";
@@ -524,29 +610,45 @@ function buildTree(workspaceName: string, projectId: string, features: LocalFeat
     label: workspaceName,
     kind: "WORKSPACE",
     featureCount: features.length,
-    children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleIdentity, items]) => ({
-      id: `${projectId}:${moduleIdentity}`,
-      label: treeModuleLabel(moduleIdentity),
-      kind: "MODULE",
-      featureCount: items.length,
-      detail: moduleIdentity,
-      children: groupOrder.map((group) => ({
-        id: `${projectId}:${moduleIdentity}:${group}`,
-        label: group,
-        kind: "GROUP" as const,
-        featureCount: items.filter((item) => treeGroup(item) === group).length,
-        children: items.filter((item) => treeGroup(item) === group).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
-          id: feature.id,
-          label: feature.displayName ?? feature.name,
-          kind: "FEATURE" as const,
-          featureId: feature.id,
-          featureCount: 1,
-          detail: feature.displayName && feature.displayName !== feature.name ? feature.name : `${feature.sourcePath}:${feature.startLine}`,
-          badge: feature.method ?? undefined,
-          children: [],
+    children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleIdentity, items]) => {
+      const domains = new Map<string, { label: string; items: LocalFeatureCandidate[] }>();
+      for (const feature of items) {
+        const domain = treeDomainIdentity(feature.sourcePath, moduleIdentity);
+        const current = domains.get(domain.identity) ?? { label: domain.label, items: [] };
+        current.items.push(feature);
+        domains.set(domain.identity, current);
+      }
+      return {
+        id: `${projectId}:${moduleIdentity}`,
+        label: treeModuleLabel(moduleIdentity),
+        kind: "MODULE" as const,
+        featureCount: items.length,
+        detail: moduleIdentity,
+        children: [...domains.entries()].sort(([, left], [, right]) => left.label.localeCompare(right.label)).map(([domainIdentity, domain]) => ({
+          id: `${projectId}:${moduleIdentity}:domain:${domainIdentity}`,
+          label: domain.label,
+          kind: "DOMAIN" as const,
+          featureCount: domain.items.length,
+          detail: domainIdentity,
+          children: groupOrder.map((group) => ({
+            id: `${projectId}:${moduleIdentity}:domain:${domainIdentity}:${group}`,
+            label: group,
+            kind: "GROUP" as const,
+            featureCount: domain.items.filter((item) => treeGroup(item) === group).length,
+            children: domain.items.filter((item) => treeGroup(item) === group).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
+              id: feature.id,
+              label: feature.displayName ?? feature.name,
+              kind: "FEATURE" as const,
+              featureId: feature.id,
+              featureCount: 1,
+              detail: feature.displayName && feature.displayName !== feature.name ? feature.name : `${feature.sourcePath}:${feature.startLine}`,
+              badge: feature.method ?? undefined,
+              children: [],
+            })),
+          })).filter((group) => group.children.length > 0),
         })),
-      })).filter((group) => group.children.length > 0),
-    })),
+      };
+    }),
   };
 }
 
@@ -565,12 +667,13 @@ export function scanLocalWorkspaceFile(file: LocalWorkspaceInputFile): LocalWork
   const supported = eligible(file) && file.size <= maxFileBytes;
   if (!supported) return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: false, candidates: [], configuration: null, test: null };
   const type = extension(file.path);
-  const candidates = [
+  const supportFile = isFeatureSupportFile(file.path);
+  const candidates = supportFile ? [] : [
     ...(type === "java" ? discoverJavaCandidates(file) : sourceExtensions.has(type) ? discoverSourceCandidates(file) : []),
     ...discoverOpenApiCandidates(file),
     ...discoverCommands(file),
   ];
-  const configuration = configurationExtensions.has(type) && !file.path.endsWith("package-lock.json")
+  const configuration = isConfigurationFile(file)
     ? { path: file.path, key: file.path.split("/").at(-1) ?? file.path, value: redactConfiguration(file.content.slice(0, 500)) }
     : null;
   return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: true, candidates, configuration, test: isTestFile(file.path) ? testRecord(file) : null };

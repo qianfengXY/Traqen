@@ -11,9 +11,9 @@
 1. 输入 Workspace 名称与稳定的 Project ID。
 2. 通过浏览器目录选择器选择本地代码工程。
 3. Traqen 在本机读取受支持的文本文件；原始源码既不上传也不持久化，仅把有界的派生索引保存到浏览器 IndexedDB。
-4. 本地扫描器发现 Spring MVC/WebFlux 和 JAX-RS 接口、Java 后端组件与接口方法、HTTP 路由、OpenAPI JSON 操作、JavaScript/TypeScript 导出能力和 `package.json` 命令。
-5. 结果按照“Workspace → 可读模块/领域 → 对外接口服务、业务处理能力、数据与外部集成、后台任务与消息或工程与运行能力 → 候选 Feature”组织成功能树。父节点数字始终表示下级功能总数，而不是直接文件夹数。
-6. Workspace 分析首先展示项目全局统计。选择 Workspace、模块、发现类型或功能任意节点后，使用相同口径重新统计该节点及其全部下级。
+4. 本地扫描器发现 Spring MVC/WebFlux 和 JAX-RS 接口、Java 后端组件与接口方法、HTTP 路由、OpenAPI JSON 操作、公开且可调用的 JavaScript/TypeScript 能力和 `package.json` 命令。
+5. 结果按照“Workspace → 可读模块 → 业务领域或产品区域 → 对外接口服务、业务处理能力、数据与外部集成、后台任务与消息或工程与运行能力 → 候选 Feature”组织成功能树。父节点数字始终表示下级功能总数，而不是直接文件夹数。
+6. Workspace 分析首先展示项目全局统计。选择 Workspace、模块、领域/产品区域、发现类型或功能任意节点后，使用相同口径重新统计该节点及其全部下级。
 7. 功能追溯继续承担详情查看：点击候选功能后，展示功能描述、设计源码、配置线索、关联测试、测试结果、独立可信维度和 TraceGap 责任归属。
 
 ## 分层分析统计
@@ -22,7 +22,7 @@
 - 治理统计分别展示待人工确认、实现待审核、冲突和明确不符合，不能相互替代。
 - 证据统计展示完整链、不完整链、阻断级 TraceGap 和警告级 TraceGap，不生成综合绿色分数。
 - `PARTIAL`、`UNKNOWN` 和 `NOT_RUN` 表示缺失或尚未核验，不属于不符合。“不符合”只统计显式不符合状态、失败/错误执行或对应的违规 Gap；冲突继续单独统计。
-- 下一层统计表对当前节点的每个直接子节点重复上述口径，可以从 Workspace 逐层下钻到模块、发现类型和单个功能，同时不会混入其他项目数据。
+- 下一层统计表对当前节点的每个直接子节点重复上述口径，可以从 Workspace 逐层下钻到模块、领域/产品区域、发现类型和单个功能，同时不会混入其他项目数据。
 
 ## Workspace 生命周期与全局导航
 
@@ -41,7 +41,7 @@
 - 扫描发现项是实现候选，不是规范性 Feature。
 - 在授权人员确认业务说明、权限、前置条件、依赖、适用范围和例外前，业务权威保持 `PENDING`。
 - 在实现映射经过审核前，源码到 Feature 的符合性保持 `PARTIAL`。
-- 关联测试文件只是线索，不是已批准 TestSpec。
+- 关联测试文件只是线索，不是已批准 TestSpec。关联必须来自同一模块内完全匹配的测试/源码文件名或可调用符号名；通用词重合不能作为覆盖证据。
 - 扫描不会执行工程代码。在可信 Runner 针对所选 Snapshot 和部署回传签名 Evidence 前，验证结果保持 `NOT_RUN`。
 - 缺少业务权威、实现审核、TestSpec 或当前执行时，必须保留明确的阻断级 TraceGap。
 
@@ -57,4 +57,6 @@
 
 ## 当前发现范围
 
-扫描器识别 Spring `@RequestMapping` 和各 HTTP 方法映射，并合并类级与方法级路径；识别 JAX-RS `@Path` 与 HTTP 注解；识别 Java Controller、Service、Repository、Component、定时任务、消息/事件监听方法、接口方法以及有意义的公开/受保护后端方法；关联 Maven/Gradle、application 配置线索和 Java 测试源码。普通 getter/setter 与配置工厂方法不会再被提升为功能。接口叶子优先使用 Java 方法名、路由处理器名或 OpenAPI 的 summary/operationId 作为可读名称，同时保留 HTTP 方法和路径作为技术明细。同时继续识别常见 JavaScript/TypeScript 导出能力、Python 函数、C# 公共方法、Go 函数、Rust 公共函数、HTTP 路由注册、OpenAPI JSON 路径和 npm scripts。Java 生成目录 `target`、`out` 与 Gradle 缓存仍会被排除。
+扫描器识别 Spring `@RequestMapping` 和各 HTTP 方法映射，并合并类级与方法级路径；识别 JAX-RS `@Path` 与 HTTP 注解；识别 Java Controller、Service、Repository、Component、定时任务、消息/事件监听方法、接口方法以及有意义的公开/受保护后端方法；关联 Maven/Gradle、application 配置线索和 Java 测试源码。普通 getter/setter 与配置工厂方法不会再被提升为功能。接口叶子优先使用 Java 方法名、路由处理器名或 OpenAPI 的 summary/operationId 作为可读名称，同时保留 HTTP 方法和路径作为技术明细；匿名 `async` 处理器绝不能形成误导性的 `Async` 名称。同时继续识别 JavaScript/TypeScript 导出函数、类与可调用变量、公开 Python 函数、C# 公共方法、Go 导出函数、Rust 公共函数、HTTP 路由注册、OpenAPI JSON 路径和 npm scripts。普通常量和 Schema 不会仅因被导出而晋升为功能。测试、Mock、fixture、sample 和 story 只提供辅助证据，不形成 Feature 候选。配置线索仅来自配置形态文件，排除测试 fixture 与 package manifest，并按模块/领域邻近关系保守关联。Java 生成目录 `target`、`out` 与 Gradle 缓存仍会被排除。
+
+针对真实仓库 `zts212653/clowder-ai` 的验证记录见 [Clowder AI Workspace 扫描验证](../implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)。其中发现的数千项是实现候选，不能解释为该仓库已经拥有同等数量的已确认业务 Feature。

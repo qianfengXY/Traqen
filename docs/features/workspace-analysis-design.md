@@ -11,9 +11,9 @@ A user can define a Workspace, select a source-code directory, scan it without u
 1. Enter a Workspace name and stable Project ID.
 2. Select a local code directory through the browser directory chooser.
 3. Traqen reads supported text files locally. Raw source is never uploaded or persisted; a bounded derived index is saved in browser IndexedDB.
-4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, JavaScript/TypeScript exported capabilities, and `package.json` commands.
-5. Results are grouped as Workspace → readable module/domain → external API services, business capabilities, data/integrations, background jobs/messaging, or project/runtime operations → candidate Feature. Parent counts always mean descendant Features, not direct folders.
-6. Workspace analysis first presents project-wide statistics. Selecting any Workspace, module, discovery group, or Feature node recalculates the same measures for that node and every descendant.
+4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, public/callable JavaScript/TypeScript capabilities, and `package.json` commands.
+5. Results are grouped as Workspace → readable module → business domain or product area → external API services, business capabilities, data/integrations, background jobs/messaging, or project/runtime operations → candidate Feature. Parent counts always mean descendant Features, not direct folders.
+6. Workspace analysis first presents project-wide statistics. Selecting any Workspace, module, domain/product area, discovery group, or Feature node recalculates the same measures for that node and every descendant.
 7. Feature traceability remains the detail surface: selecting a candidate there displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
 
 ## Hierarchical analysis statistics
@@ -22,7 +22,7 @@ A user can define a Workspace, select a source-code directory, scan it without u
 - Governance statistics keep pending human confirmation, implementation awaiting review, conflicts, and explicit nonconformance separate.
 - Evidence statistics show complete and incomplete chains plus blocking and warning TraceGaps. There is no composite green score.
 - `PARTIAL`, `UNKNOWN`, and `NOT_RUN` are missing or unverified states, not nonconformance. The nonconformance count includes only an explicit nonconforming state, failed/error execution, or a corresponding violation gap. Conflicts remain a separate measure.
-- The next-level table repeats the measures for each immediate child, allowing the user to drill from Workspace to module, discovery group, and individual Feature without mixing data from another project.
+- The next-level table repeats the measures for each immediate child, allowing the user to drill from Workspace to module, domain/product area, discovery group, and individual Feature without mixing data from another project.
 
 ## Workspace lifecycle and navigation
 
@@ -41,7 +41,7 @@ A user can define a Workspace, select a source-code directory, scan it without u
 - A discovered item is an implementation candidate, not a normative Feature.
 - Authority remains `PENDING` until an authorized human confirms the business description, permissions, prerequisites, dependencies, scope, and exceptions.
 - Source-to-Feature conformance remains `PARTIAL` until the mapping is reviewed.
-- Related test files are clues, not approved TestSpecs.
+- Related test files are clues, not approved TestSpecs. Association requires an exact test/source basename or callable-symbol match inside the same module; generic word overlap is not coverage evidence.
 - Scanning never executes project code. Verification remains `NOT_RUN` until a trusted Runner returns signed Evidence for the selected Snapshot and deployment.
 - Missing authority, implementation review, TestSpec, or current execution remains an explicit blocking TraceGap.
 
@@ -57,4 +57,6 @@ A user can define a Workspace, select a source-code directory, scan it without u
 
 ## Current discovery coverage
 
-The scanner recognizes Spring `@RequestMapping` and HTTP method mappings with combined class/method paths; JAX-RS `@Path` and HTTP annotations; Java Controller, Service, Repository, Component, scheduled job, and message/event listener methods; Java interfaces and meaningful public/protected backend methods; Maven/Gradle and application configuration clues; and Java test-source associations. Trivial getters/setters and configuration factory methods are not promoted into Features. Endpoint leaves prefer the Java method, router handler, or OpenAPI summary/operation ID as the readable label while retaining the HTTP method and route as technical detail. The scanner also recognizes common JavaScript/TypeScript exports, Python functions, C# public methods, Go functions, Rust public functions, HTTP router registrations, OpenAPI JSON paths, and npm scripts. Generated Java `target`, `out`, and Gradle cache directories remain excluded.
+The scanner recognizes Spring `@RequestMapping` and HTTP method mappings with combined class/method paths; JAX-RS `@Path` and HTTP annotations; Java Controller, Service, Repository, Component, scheduled job, and message/event listener methods; Java interfaces and meaningful public/protected backend methods; Maven/Gradle and application configuration clues; and Java test-source associations. Trivial getters/setters and configuration factory methods are not promoted into Features. Endpoint leaves prefer the Java method, router handler, or OpenAPI summary/operation ID as the readable label while retaining the HTTP method and route as technical detail; anonymous `async` handlers never become a misleading `Async` label. The scanner also recognizes JavaScript/TypeScript exported functions, classes, and callable variables, public Python functions, C# public methods, exported Go functions, Rust public functions, HTTP router registrations, OpenAPI JSON paths, and npm scripts. Plain constants and schemas are not promoted solely because they are exported. Tests, mocks, fixtures, samples, and stories contribute support evidence but do not become Feature candidates. Configuration clues are limited to configuration-shaped files, exclude test fixtures and package manifests, and link conservatively by module/domain proximity. Generated Java `target`, `out`, and Gradle cache directories remain excluded.
+
+The real-repository validation against `zts212653/clowder-ai` is recorded in [Clowder AI Workspace scan validation](../implementation/clowder-ai-workspace-analysis-2026-07-18.md). Its thousands of discovered items are implementation candidates, not a claim that the repository contains the same number of confirmed business Features.
