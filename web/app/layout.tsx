@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Traqen · Analysis Agent",
     description: "可恢复、可增量的软件工程分析与端到端功能追溯。",
-    images: [{ url: "/traqen-analysis-agent.png", width: 1728, height: 896 }],
+    images: [{ url: "/traqen-analysis-agent.png", width: 1731, height: 909 }],
   },
   twitter: {
     card: "summary_large_image",
