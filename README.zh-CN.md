@@ -10,6 +10,8 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 本地 Workspace 扫描器还针对真实的 [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo 固定提交进行了验证。对应的[双语验证报告](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)记录了实际规模、误报修正、领域树、保守的测试/配置关联，以及实现候选与已确认业务 Feature 之间的区别。
 
+初始化后的功能树无需重新扫描即可在两种全局投影间切换：纯业务能力视图排除 API 与工程命令，API 视图只包含 HTTP/OpenAPI 接口。Workspace 统计、功能追溯和追溯图谱始终跟随同一个当前投影。
+
 ## 实施基础
 
 第一个可执行切片是框架中立域内核。它提供：

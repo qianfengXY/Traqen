@@ -10,6 +10,8 @@ The implementation follows one non-negotiable product vision:
 
 The local Workspace scanner has also been exercised against the real [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo at a pinned commit. The resulting [bilingual validation report](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.md) records the observed scale, false-positive corrections, domain tree, conservative test/configuration associations, and the distinction between implementation candidates and confirmed business Features.
 
+The initialized Feature tree offers two global projections without rescanning: a pure business-capability view that excludes APIs and engineering commands, and an API-only view containing HTTP/OpenAPI endpoints. Workspace statistics, Feature traceability, and the trace graph follow the same active projection.
+
 ## Implemented foundation
 
 The first executable slice is the framework-neutral domain kernel. It provides:

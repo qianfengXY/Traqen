@@ -4,7 +4,7 @@ import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
-import { analyzeLocalWorkspaceRecords, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { analyzeLocalWorkspaceRecords, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { listLocalWorkspaceProjects, loadLocalWorkspaceProject, saveLocalWorkspaceProject, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 
@@ -1157,6 +1157,7 @@ export function TraqenProduct() {
   const [workspaceName, setWorkspaceName] = useState("Traqen Platform");
   const [workspaceProjectId, setWorkspaceProjectId] = useState("PROJECT-TRAQEN");
   const [workspaceAnalysis, setWorkspaceAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
+  const [workspaceTreeMode, setWorkspaceTreeMode] = useState<LocalFeatureTreeMode>("BUSINESS");
   const [workspaceFeatureId, setWorkspaceFeatureId] = useState("");
   const [workspaceTraceBlock, setWorkspaceTraceBlock] = useState<WorkspaceTraceBlock>("description");
   const [workspaceExpandedNodeIds, setWorkspaceExpandedNodeIds] = useState<Set<string>>(() => new Set());
@@ -1169,27 +1170,14 @@ export function TraqenProduct() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
-
-  useEffect(() => {
-    document.documentElement.lang = language;
-  }, [language]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void listLocalWorkspaceProjects().then(async (projects) => {
-      if (cancelled) return;
-      setWorkspaceProjects(projects);
-      if (projects.length === 0) return;
-      const snapshot = await loadLocalWorkspaceProject(projects[0].id);
-      if (!cancelled && snapshot) activateWorkspaceSnapshot(snapshot);
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, []);
-
-  const scenario = liveScenario ?? (scenarioKey === "current" ? completeScenario : staleScenario);
-  function activateWorkspaceSnapshot(snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false) {
+  const visibleWorkspaceAnalysis = useMemo(() => workspaceAnalysis ? localWorkspaceAnalysisForTreeMode(workspaceAnalysis, workspaceTreeMode) : null, [workspaceAnalysis, workspaceTreeMode]);
+  const workspaceTreeModeCounts = useMemo(() => ({
+    BUSINESS: workspaceAnalysis?.features.filter((feature) => feature.kind === "CODE_SYMBOL").length ?? 0,
+    API: workspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
+  }), [workspaceAnalysis]);
+  const activateWorkspaceSnapshot = useCallback((snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false, treeMode: LocalFeatureTreeMode = "BUSINESS") => {
     const result = snapshot.analysis;
-    const firstFeatureId = result.features[0]?.id ?? "";
+    const firstFeatureId = localWorkspaceAnalysisForTreeMode(result, treeMode).features[0]?.id ?? "";
     setWorkspaceAnalysis(result);
     setWorkspaceName(result.workspaceName);
     setWorkspaceProjectId(result.projectId);
@@ -1202,8 +1190,25 @@ export function TraqenProduct() {
     setWorkspaceTraceBlock("description");
     setWorkspaceExpandedNodeIds(new Set([result.tree.id]));
     if (firstFeatureId) setFeatureId(firstFeatureId);
-  }
+  }, []);
 
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void listLocalWorkspaceProjects().then(async (projects) => {
+      if (cancelled) return;
+      setWorkspaceProjects(projects);
+      if (projects.length === 0) return;
+      const snapshot = await loadLocalWorkspaceProject(projects[0].id);
+      if (!cancelled && snapshot) activateWorkspaceSnapshot(snapshot, false, "BUSINESS");
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activateWorkspaceSnapshot]);
+
+  const scenario = liveScenario ?? (scenarioKey === "current" ? completeScenario : staleScenario);
   async function initializeWorkspace(result: LocalWorkspaceAnalysis, records: LocalWorkspaceFileRecord[], rootName: string) {
     const existing = workspaceProjects.find((project) => project.id === result.projectId);
     const now = new Date().toISOString();
@@ -1220,7 +1225,7 @@ export function TraqenProduct() {
     const snapshot = { project, analysis: result, records } satisfies LocalWorkspaceProjectSnapshot;
     await saveLocalWorkspaceProject(snapshot);
     setWorkspaceProjects((current) => [project, ...current.filter((item) => item.id !== project.id)].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
-    activateWorkspaceSnapshot(snapshot, true);
+    activateWorkspaceSnapshot(snapshot, true, workspaceTreeMode);
     setWorkspaceDirectoryName(rootName);
   }
 
@@ -1250,7 +1255,7 @@ export function TraqenProduct() {
       const snapshot = await loadLocalWorkspaceProject(targetProjectId);
       if (snapshot) {
         setLiveScenario(null);
-        activateWorkspaceSnapshot(snapshot);
+        activateWorkspaceSnapshot(snapshot, false, workspaceTreeMode);
         setView("workspace");
       }
     } finally {
@@ -1262,6 +1267,17 @@ export function TraqenProduct() {
     setWorkspaceFeatureId(nextFeatureId);
     setWorkspaceTraceBlock("description");
     setFeatureId(nextFeatureId);
+  }
+
+  function changeWorkspaceTreeMode(nextMode: LocalFeatureTreeMode) {
+    setWorkspaceTreeMode(nextMode);
+    if (!workspaceAnalysis) return;
+    const nextAnalysis = localWorkspaceAnalysisForTreeMode(workspaceAnalysis, nextMode);
+    const nextFeatureId = nextAnalysis.features.some((feature) => feature.id === workspaceFeatureId) ? workspaceFeatureId : nextAnalysis.features[0]?.id ?? "";
+    setWorkspaceFeatureId(nextFeatureId);
+    setWorkspaceTraceBlock("description");
+    setWorkspaceExpandedNodeIds(new Set([nextAnalysis.tree.id]));
+    if (nextFeatureId) setFeatureId(nextFeatureId);
   }
 
   function toggleWorkspaceTreeNode(nodeId: string) {
@@ -1352,7 +1368,7 @@ export function TraqenProduct() {
             <div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><button aria-label={t("新建 Workspace", "Create Workspace")} onClick={startNewWorkspace}>＋</button></div>
             <div className="workspace active-workspace">
               <strong>{workspaceName}</strong>
-              <small>{liveScenario ? projectId : workspaceProjectId} · {workspaceAnalysis ? `${workspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
+              <small>{liveScenario ? projectId : workspaceProjectId} · {visibleWorkspaceAnalysis ? `${visibleWorkspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
             </div>
             {workspaceProjects.length > 0 && <div className="workspace-project-list" aria-label={t("本地 Workspace 项目", "Local Workspace projects")}>{workspaceProjects.map((project) => <button key={project.id} className={workspaceAnalysis?.projectId === project.id ? "active" : ""} disabled={workspaceProjectLoading} onClick={() => void openStoredWorkspace(project.id)}><strong>{project.name}</strong><small>{project.featureCount} {t("功能", "features")} · {new Date(project.updatedAt).toLocaleDateString(language)}</small></button>)}</div>}
           </div>
@@ -1463,9 +1479,9 @@ export function TraqenProduct() {
             </section>
           )}
 
-          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={workspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} />}
-          {view === "trace" && (workspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
-          {view === "graph" && (workspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={workspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode}><GraphView key={`${workspaceAnalysis.projectId}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={workspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
+          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} />}
+          {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
+          {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "metrics" && <MetricsView apiBase={apiBase} apiToken={apiToken} projectId={projectId} snapshotId={snapshotId} />}
@@ -1500,6 +1516,25 @@ function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds,
       </button>
       {open && hasChildren && <ul>{node.children.map((child) => <FeatureTreeBranch key={child.id} node={child} selectedFeatureId={selectedFeatureId} onSelect={onSelect} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} selectedNodeId={selectedNodeId} onSelectNode={onSelectNode} />)}</ul>}
     </li>
+  );
+}
+
+type WorkspaceTreeModeProps = {
+  treeMode: LocalFeatureTreeMode;
+  onTreeModeChange: (mode: LocalFeatureTreeMode) => void;
+  treeModeCounts: Record<LocalFeatureTreeMode, number>;
+};
+
+function WorkspaceTreeModeSwitch({ treeMode, onTreeModeChange, treeModeCounts }: WorkspaceTreeModeProps) {
+  const { t } = useI18n();
+  const options: Array<{ mode: LocalFeatureTreeMode; label: string; hint: string }> = [
+    { mode: "BUSINESS", label: t("纯业务功能", "Business features"), hint: t("不含接口与工程命令", "No APIs or commands") },
+    { mode: "API", label: t("API 接口", "API endpoints"), hint: t("仅展示 HTTP 接口", "HTTP endpoints only") },
+  ];
+  return (
+    <div className="feature-tree-mode-switch" role="group" aria-label={t("功能树模式", "Feature tree mode")}>
+      {options.map((option) => <button key={option.mode} type="button" className={treeMode === option.mode ? "active" : ""} aria-pressed={treeMode === option.mode} onClick={() => onTreeModeChange(option.mode)}><span><b>{option.label}</b><small>{option.hint}</small></span><em>{treeModeCounts[option.mode].toLocaleString()}</em></button>)}
+    </div>
   );
 }
 
@@ -1548,14 +1583,14 @@ type WorkspaceFeatureExplorerProps = {
   setSelectedBlock: (block: WorkspaceTraceBlock) => void;
   expandedNodeIds: Set<string>;
   onToggleNode: (nodeId: string) => void;
-};
+} & WorkspaceTreeModeProps;
 
-function WorkspaceFeatureExplorer({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode }: WorkspaceFeatureExplorerProps) {
+function WorkspaceFeatureExplorer({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, treeMode, onTreeModeChange, treeModeCounts }: WorkspaceFeatureExplorerProps) {
   const { t } = useI18n();
   const selectedFeature = analysis.features.find((feature) => feature.id === selectedFeatureId) ?? analysis.features[0];
   return (
     <section className="workspace-analysis-shell">
-      <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Feature tree</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeature?.id ?? ""} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} /></ul></aside>
+      <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Feature tree</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><WorkspaceTreeModeSwitch treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} /><div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeature?.id ?? ""} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} /></ul></aside>
       <div className="panel workspace-analysis-main">{selectedFeature ? <WorkspaceFeatureDetail feature={selectedFeature} block={selectedBlock} setBlock={setSelectedBlock} /> : <div className="workspace-no-features"><h2>{t("未发现候选功能", "No candidate features discovered")}</h2><p>{t("当前扫描器识别 Spring MVC/WebFlux、JAX-RS、Java 后端组件与接口方法，以及 JavaScript/TypeScript、Python、Go、C#、Rust 能力、OpenAPI 路径和工程命令。", "The scanner recognizes Spring MVC/WebFlux, JAX-RS, Java backend components and interface methods, plus JavaScript/TypeScript, Python, Go, C#, and Rust capabilities, OpenAPI paths, and project commands.")}</p></div>}</div>
     </section>
   );
@@ -1565,7 +1600,7 @@ function percentage(value: number, total: number) {
   return total > 0 ? `${Math.round((value / total) * 100)}%` : "—";
 }
 
-function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode }: Pick<WorkspaceFeatureExplorerProps, "analysis" | "selectedFeatureId" | "onSelectFeature" | "expandedNodeIds" | "onToggleNode">) {
+function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, treeMode, onTreeModeChange, treeModeCounts }: Pick<WorkspaceFeatureExplorerProps, "analysis" | "selectedFeatureId" | "onSelectFeature" | "expandedNodeIds" | "onToggleNode" | "treeMode" | "onTreeModeChange" | "treeModeCounts">) {
   const { t, term } = useI18n();
   const [selectedNodeId, setSelectedNodeId] = useState(analysis.tree.id);
   const scope = localWorkspaceStatisticsForNode(analysis, selectedNodeId);
@@ -1591,6 +1626,7 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
     <section className="workspace-analysis-shell">
       <aside className="panel feature-tree-panel">
         <div className="feature-tree-head"><div><p className="eyebrow">Analysis scope</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div>
+        <WorkspaceTreeModeSwitch treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} />
         <div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div>
         <p className="workspace-analysis-tree-help">{t("选择任意层级，右侧重新统计该节点下的全部功能。", "Select any level to recalculate all Features below that node.")}</p>
         <ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeatureId} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} selectedNodeId={scope.node.id} onSelectNode={selectScope} /></ul>
@@ -1655,7 +1691,7 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
   );
 }
 
-function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onManageWorkspace }: WorkspaceFeatureExplorerProps & { onManageWorkspace: () => void }) {
+function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeature, selectedBlock, setSelectedBlock, expandedNodeIds, onToggleNode, onManageWorkspace, treeMode, onTreeModeChange, treeModeCounts }: WorkspaceFeatureExplorerProps & { onManageWorkspace: () => void }) {
   const { t } = useI18n();
   return (
     <>
@@ -1665,7 +1701,7 @@ function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeatur
           <button className="button" onClick={onManageWorkspace}>{t("管理 / 重新扫描", "Manage / rescan")}</button>
         </div>
       </section>
-      <WorkspaceFeatureExplorer analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} selectedBlock={selectedBlock} setSelectedBlock={setSelectedBlock} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />
+      <WorkspaceFeatureExplorer analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} selectedBlock={selectedBlock} setSelectedBlock={setSelectedBlock} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} />
     </>
   );
 }
@@ -1686,7 +1722,7 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
   onOpenTrace: () => void;
 };
 
-function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace }: WorkspaceAnalysisViewProps) {
+function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts }: WorkspaceAnalysisViewProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -1773,16 +1809,16 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         {message && <div className="inline-message">{message}</div>}
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
       </section>
-      {analysis && <WorkspaceAnalysisDashboard key={`${analysis.projectId}:${analysis.scannedAt}`} analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />}
+      {analysis && <WorkspaceAnalysisDashboard key={`${analysis.projectId}:${analysis.scannedAt}:${treeMode}`} analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} />}
     </>
   );
 }
 
-function WorkspaceGraphSurface({ analysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, children }: Pick<WorkspaceFeatureExplorerProps, "analysis" | "selectedFeatureId" | "onSelectFeature" | "expandedNodeIds" | "onToggleNode"> & { children: ReactNode }) {
+function WorkspaceGraphSurface({ analysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, children, treeMode, onTreeModeChange, treeModeCounts }: Pick<WorkspaceFeatureExplorerProps, "analysis" | "selectedFeatureId" | "onSelectFeature" | "expandedNodeIds" | "onToggleNode" | "treeMode" | "onTreeModeChange" | "treeModeCounts"> & { children: ReactNode }) {
   const { t } = useI18n();
   return (
     <section className="workspace-graph-shell">
-      <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Workspace graph</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><p className="workspace-graph-help">{t("选择功能后，右侧图谱只使用该 Workspace 的扫描索引生成。", "Select a Feature to build the graph only from this Workspace's scan index.")}</p><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeatureId} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} /></ul></aside>
+      <aside className="panel feature-tree-panel"><div className="feature-tree-head"><div><p className="eyebrow">Workspace graph</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div><WorkspaceTreeModeSwitch treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} /><p className="workspace-graph-help">{t("选择功能后，右侧图谱只使用该 Workspace 的扫描索引生成。", "Select a Feature to build the graph only from this Workspace's scan index.")}</p><ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeatureId} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} /></ul></aside>
       <div className="workspace-graph-main">{children}</div>
     </section>
   );

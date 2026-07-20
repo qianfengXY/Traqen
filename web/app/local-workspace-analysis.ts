@@ -5,6 +5,8 @@ export type LocalWorkspaceInputFile = {
   lastModified?: number;
 };
 
+export type LocalFeatureTreeMode = "BUSINESS" | "API";
+
 export type LocalFeatureCandidate = {
   id: string;
   name: string;
@@ -649,6 +651,15 @@ function buildTree(workspaceName: string, projectId: string, features: LocalFeat
         })),
       };
     }),
+  };
+}
+
+export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalysis, mode: LocalFeatureTreeMode): LocalWorkspaceAnalysis {
+  const features = analysis.features.filter((feature) => mode === "API" ? feature.kind === "ENDPOINT" : feature.kind === "CODE_SYMBOL");
+  return {
+    ...analysis,
+    features,
+    tree: buildTree(analysis.workspaceName, analysis.projectId, features),
   };
 }
 

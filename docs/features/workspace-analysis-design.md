@@ -12,9 +12,10 @@ A user can define a Workspace, select a source-code directory, scan it without u
 2. Select a local code directory through the browser directory chooser.
 3. Traqen reads supported text files locally. Raw source is never uploaded or persisted; a bounded derived index is saved in browser IndexedDB.
 4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, public/callable JavaScript/TypeScript capabilities, and `package.json` commands.
-5. Results are grouped as Workspace → readable module → business domain or product area → external API services, business capabilities, data/integrations, background jobs/messaging, or project/runtime operations → candidate Feature. Parent counts always mean descendant Features, not direct folders.
-6. Workspace analysis first presents project-wide statistics. Selecting any Workspace, module, domain/product area, discovery group, or Feature node recalculates the same measures for that node and every descendant.
-7. Feature traceability remains the detail surface: selecting a candidate there displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership.
+5. One scan projects into two exclusive Feature-tree modes. **Business features** contains callable business-capability candidates and excludes HTTP endpoints and engineering commands. **API endpoints** contains only discovered HTTP/OpenAPI operations. Switching modes never rescans or duplicates stored records.
+6. Within either mode, results are grouped as Workspace → readable module → business domain or product area → discovery group → candidate Feature. Parent counts always mean descendant Features in the active mode, not direct folders or the unfiltered scan total.
+7. Workspace analysis first presents project-wide statistics for the active tree mode. Selecting any Workspace, module, domain/product area, discovery group, or Feature node recalculates the same measures for that node and every descendant.
+8. Feature traceability remains the detail surface: selecting a candidate there displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership. Workspace analysis, Feature traceability, and the trace graph share one global tree mode and selection.
 
 ## Hierarchical analysis statistics
 
@@ -34,6 +35,7 @@ A user can define a Workspace, select a source-code directory, scan it without u
 - Workspace analysis remains the initialization and rescan surface. Feature traceability is the primary surface for reviewing candidates one by one.
 - The API connection can temporarily show a server-derived Feature. Returning to the self Workspace restores the initialized local tree and selection.
 - Feature traceability and the trace graph both use the active project's Feature tree and selected Feature. Neither falls back to another Workspace while a local project is active.
+- The Business/API tree mode is global across Workspace analysis, Feature traceability, and the trace graph. Changing it selects the first available candidate only when the previous selection is absent from the new mode.
 - Project summaries and derived scan records survive a full refresh on the same browser profile. Directory `File` handles are not retained, so the user selects the original root again before an incremental scan.
 
 ## Trust boundary
@@ -58,5 +60,7 @@ A user can define a Workspace, select a source-code directory, scan it without u
 ## Current discovery coverage
 
 The scanner recognizes Spring `@RequestMapping` and HTTP method mappings with combined class/method paths; JAX-RS `@Path` and HTTP annotations; Java Controller, Service, Repository, Component, scheduled job, and message/event listener methods; Java interfaces and meaningful public/protected backend methods; Maven/Gradle and application configuration clues; and Java test-source associations. Trivial getters/setters and configuration factory methods are not promoted into Features. Endpoint leaves prefer the Java method, router handler, or OpenAPI summary/operation ID as the readable label while retaining the HTTP method and route as technical detail; anonymous `async` handlers never become a misleading `Async` label. The scanner also recognizes JavaScript/TypeScript exported functions, classes, and callable variables, public Python functions, C# public methods, exported Go functions, Rust public functions, HTTP router registrations, OpenAPI JSON paths, and npm scripts. Plain constants and schemas are not promoted solely because they are exported. Tests, mocks, fixtures, samples, and stories contribute support evidence but do not become Feature candidates. Configuration clues are limited to configuration-shaped files, exclude test fixtures and package manifests, and link conservatively by module/domain proximity. Generated Java `target`, `out`, and Gradle cache directories remain excluded.
+
+Project/runtime commands remain available in the underlying scan inventory and statistics model, but are deliberately absent from both user-facing Feature-tree modes so that engineering operations cannot masquerade as pure business functions or API endpoints.
 
 The real-repository validation against `zts212653/clowder-ai` is recorded in [Clowder AI Workspace scan validation](../implementation/clowder-ai-workspace-analysis-2026-07-18.md). Its thousands of discovered items are implementation candidates, not a claim that the repository contains the same number of confirmed business Features.

@@ -128,11 +128,15 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /workspaceGraphForAnalysis/);
   assert.match(product, /WorkspaceFeatureExplorer/);
   assert.match(product, /FeatureTreeBranch/);
+  assert.match(product, /WorkspaceTreeModeSwitch/);
+  assert.match(product, /纯业务功能/);
+  assert.match(product, /API 接口/);
+  assert.match(product, /不含接口与工程命令/);
   assert.match(product, /const \[workspaceAnalysis, setWorkspaceAnalysis\]/);
   assert.match(product, /const \[workspaceProjectId, setWorkspaceProjectId\]/);
   assert.match(product, /const \[workspaceFeatureId, setWorkspaceFeatureId\]/);
   assert.match(product, /const \[workspaceExpandedNodeIds, setWorkspaceExpandedNodeIds\]/);
-  assert.match(product, /workspaceAnalysis && !liveScenario/);
+  assert.match(product, /visibleWorkspaceAnalysis && !liveScenario/);
   assert.match(product, /初始化完成：Workspace 已成为全局导航上下文/);
   assert.match(product, /从功能树逐项查看端到端追溯链/);
   assert.match(product, /面向十万级文件分批扫描/);
@@ -150,6 +154,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /export function createLocalWorkspaceAnalysisAccumulator/);
   assert.match(analyzer, /export function scanLocalWorkspaceFile/);
   assert.match(analyzer, /export function analyzeLocalWorkspaceRecords/);
+  assert.match(analyzer, /export function localWorkspaceAnalysisForTreeMode/);
   assert.match(analyzer, /localWorkspaceScannerVersion = 4/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
   assert.match(analyzer, /API_SERVICE.*BUSINESS_CAPABILITY.*DATA_INTEGRATION.*BACKGROUND_INTEGRATION.*PROJECT_OPERATION/s);

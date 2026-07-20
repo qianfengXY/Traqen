@@ -602,6 +602,15 @@ button { color: inherit; }
 .feature-tree-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; padding: 0 8px 14px; border-bottom: 1px solid var(--line); }
 .feature-tree-head h2 { margin: 3px 0 0; font-size: 18px; }
 .feature-tree-head > b { min-width: 32px; height: 32px; display: grid; place-items: center; border-radius: 10px; background: #143f32; color: white; font-size: 12px; }
+.feature-tree-mode-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 10px 8px 2px; padding: 4px; border: 1px solid var(--line); border-radius: 13px; background: #f2f3f1; }
+.feature-tree-mode-switch button { min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 9px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font: inherit; text-align: left; cursor: pointer; }
+.feature-tree-mode-switch button:hover { background: rgba(255,255,255,.72); color: var(--ink); }
+.feature-tree-mode-switch button.active { background: white; color: var(--ink); box-shadow: 0 1px 4px rgba(20,63,50,.12); }
+.feature-tree-mode-switch button > span { min-width: 0; display: grid; gap: 2px; }
+.feature-tree-mode-switch b { overflow: hidden; color: inherit; font-size: 12px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.feature-tree-mode-switch small { overflow: hidden; font-size: 9px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.feature-tree-mode-switch em { flex: 0 0 auto; min-width: 24px; padding: 3px 5px; border-radius: 7px; background: #e5e9e6; color: #496158; font-size: 9px; font-style: normal; text-align: center; }
+.feature-tree-mode-switch button.active em { background: #143f32; color: white; }
 .workspace-scan-stats { display: flex; flex-wrap: wrap; gap: 6px 10px; padding: 12px 8px; color: #6e6e73; font-size: 10px; }
 .workspace-scan-stats small { width: 100%; font-family: var(--font-geist-mono); }
 .workspace-analysis-tree-help { margin: 0 8px 10px; color: #737379; font-size: 10px; line-height: 1.5; }

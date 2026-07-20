@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, createLocalWorkspaceAnalysisAccumulator, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
+import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, createLocalWorkspaceAnalysisAccumulator, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
 import { calculateLocalWorkspaceStatistics, localWorkspaceStatisticsForNode } from "../app/local-workspace-statistics.ts";
 
 test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
@@ -240,6 +240,28 @@ test("keeps Clowder-style async routes readable and excludes support artifacts f
   assert.ok(analysis.features.every((feature) => !["APP HEARTBEAT MS", "Account Schema", "Clear Accounts For Test"].includes(feature.name)));
   assert.ok(analysis.features.every((feature) => feature.configurations.every((configuration) => !configuration.path.includes("__fixtures__"))));
   assert.equal(analysis.tree.children.find((node) => node.label === "API").children.find((node) => node.label === "Accounts").kind, "DOMAIN");
+});
+
+test("projects one scan into separate pure-business and API Feature trees", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Two-mode tree",
+    projectId: "PROJECT-TWO-MODE-TREE",
+    files: [
+      { path: "src/orders.ts", size: 160, content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);" },
+      { path: "package.json", size: 80, content: JSON.stringify({ scripts: { start: "node src/orders.ts" } }) },
+    ],
+  });
+
+  const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
+  const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
+  assert.deepEqual(business.features.map((feature) => feature.kind), ["CODE_SYMBOL"]);
+  assert.deepEqual(api.features.map((feature) => feature.kind), ["ENDPOINT"]);
+  assert.equal(business.tree.featureCount, 1);
+  assert.equal(api.tree.featureCount, 1);
+  assert.ok(business.tree.children.flatMap((module) => module.children).flatMap((domain) => domain.children).every((group) => group.label !== "API_SERVICE" && group.label !== "PROJECT_OPERATION"));
+  assert.ok(api.tree.children.flatMap((module) => module.children).flatMap((domain) => domain.children).every((group) => group.label === "API_SERVICE"));
+  assert.ok([...business.features, ...api.features].every((feature) => feature.kind !== "COMMAND"));
+  assert.equal(analysis.features.filter((feature) => feature.kind === "COMMAND").length, 1);
 });
 
 test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {
