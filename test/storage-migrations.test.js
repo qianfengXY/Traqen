@@ -41,6 +41,7 @@ async function migratedDatabase() {
     "0010_reverse_run_job",
     "0011_evidence_lifecycle",
     "0012_feature_evolution",
+    "0013_analysis_agent",
   ]);
   return database;
 }
@@ -266,9 +267,33 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "reverse_skill_execution",
     "reverse_conflict",
     "reverse_open_question",
+    "analysis_run_checkpoint",
+    "analysis_result",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }
+});
+
+test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await insertSnapshot(database);
+  const store = new PostgresTraceabilityStore(database);
+  const checkpoint = {
+    request: { id: "ANALYSIS-DB-001", projectId: "PROJECT-001", snapshotManifestId: "SNAPSHOT-MANIFEST-001", sourceComponentId: "SOURCE-001", baselineRunId: null, mode: "FULL", profile: { id: "deterministic", mode: "DETERMINISTIC" }, requestedAt: "2026-07-20T01:00:00.000Z" },
+    run: { id: "ANALYSIS-DB-001", projectId: "PROJECT-001", snapshotManifestId: "SNAPSHOT-MANIFEST-001", baselineRunId: null, requestedMode: "FULL", effectiveMode: "FULL", status: "RUNNING", profile: { id: "deterministic", mode: "DETERMINISTIC" }, plannedWorkUnitCount: 1, unchangedWorkUnitCount: 0, changedFactCount: 1, completedWorkUnitCount: 0, failedWorkUnitCount: 0, startedAt: "2026-07-20T01:00:00.000Z", updatedAt: "2026-07-20T01:00:00.000Z", completedAt: null },
+    factFingerprint: {}, changedStableIds: [], workUnits: [], result: null,
+  };
+  await store.saveAnalysisCheckpoint("PROJECT-001", checkpoint);
+  await store.saveAnalysisCheckpoint("PROJECT-001", { ...checkpoint, run: { ...checkpoint.run, status: "PAUSED", updatedAt: "2026-07-20T01:01:00.000Z" } });
+  assert.equal((await store.getAnalysisCheckpoint("PROJECT-001", "ANALYSIS-DB-001")).run.status, "PAUSED");
+
+  const result = { id: "ANALYSIS-DB-001", projectId: "PROJECT-001", snapshotManifestId: "SNAPSHOT-MANIFEST-001", baselineRunId: null, mode: "FULL", profile: checkpoint.run.profile, status: "COMPLETED", coverage: {}, factFingerprint: {}, features: [], retiredFeatures: [], completedAt: "2026-07-20T01:02:00.000Z" };
+  await store.appendAnalysisResult("PROJECT-001", result);
+  assert.deepEqual(await store.getLatestAnalysisResult("PROJECT-001"), result);
+  await assert.rejects(store.appendAnalysisResult("PROJECT-001", { ...result, status: "COMPLETED_WITH_GAPS" }), /conflicts with an existing immutable result/);
+  await assert.rejects(database.query("DELETE FROM analysis_result WHERE project_id = $1", ["PROJECT-001"]), /append-only; UPDATE and DELETE are forbidden/);
 });
 
 test("PostgreSQL persists authorized business process models against a Feature version", async (t) => {

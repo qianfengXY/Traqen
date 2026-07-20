@@ -776,6 +776,71 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const analysisRunsCollectionMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs$/.exec(url.pathname);
+      if (request.method === "POST" && analysisRunsCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(analysisRunsCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        if (input.projectId !== undefined && input.projectId !== projectId) {
+          throw new HttpError(400, "PROJECT_MISMATCH", "Request projectId must match the route");
+        }
+        const requestInput = { ...input, projectId };
+        const respondAsync = url.searchParams.get("async") !== "false";
+        if (respondAsync) {
+          sendJson(response, 202, await application.submitAnalysisRun(requestInput), id);
+        } else {
+          sendJson(response, 201, await application.executeAnalysisRun(requestInput), id);
+        }
+        return;
+      }
+
+      const analysisRunMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && analysisRunMatch) {
+        const projectId = decodePathSegment(analysisRunMatch[1]);
+        const runId = decodePathSegment(analysisRunMatch[2]);
+        const run = await application.getAnalysisRun(projectId, runId);
+        if (!run) throw new HttpError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run was not found");
+        sendJson(response, 200, run, id);
+        return;
+      }
+
+      const analysisPauseMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/pause$/.exec(url.pathname);
+      if (request.method === "POST" && analysisPauseMatch) {
+        const projectId = decodePathSegment(analysisPauseMatch[1]);
+        const runId = decodePathSegment(analysisPauseMatch[2]);
+        const run = await application.pauseAnalysisRun(projectId, runId);
+        if (!run) throw new HttpError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run was not found");
+        sendJson(response, 202, run, id);
+        return;
+      }
+
+      const analysisResumeMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/resume$/.exec(url.pathname);
+      if (request.method === "POST" && analysisResumeMatch) {
+        const projectId = decodePathSegment(analysisResumeMatch[1]);
+        const runId = decodePathSegment(analysisResumeMatch[2]);
+        const run = await application.resumeAnalysisRun(projectId, runId);
+        if (!run) throw new HttpError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run was not found");
+        sendJson(response, 202, run, id);
+        return;
+      }
+
+      const latestAnalysisMatch = /^\/v1\/projects\/([^/]+)\/analysis-results\/latest$/.exec(url.pathname);
+      if (request.method === "GET" && latestAnalysisMatch) {
+        const projectId = decodePathSegment(latestAnalysisMatch[1]);
+        const result = await application.getLatestAnalysisResult(projectId);
+        if (!result) throw new HttpError(404, "ANALYSIS_RESULT_NOT_FOUND", "No completed analysis result was found");
+        sendJson(response, 200, result, id);
+        return;
+      }
+
+      const analyzedFeatureHistoryMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/analysis-history$/.exec(url.pathname);
+      if (request.method === "GET" && analyzedFeatureHistoryMatch) {
+        const projectId = decodePathSegment(analyzedFeatureHistoryMatch[1]);
+        const featureId = decodePathSegment(analyzedFeatureHistoryMatch[2]);
+        sendJson(response, 200, { history: await application.getAnalyzedFeatureHistory(projectId, featureId) }, id);
+        return;
+      }
+
       if (url.pathname === "/v1/reverse-runs" && request.method === "POST") {
         requireJson(request);
         const input = await readJson(request, maxBodyBytes);

@@ -27,6 +27,8 @@
     "@electric-sql/pglite": "0.5.4"
   },
   "dependencies": {
+    "@ast-grep/lang-java": "0.0.7",
+    "@ast-grep/napi": "0.44.1",
     "acorn": "^8.15.0",
     "acorn-walk": "^8.3.4",
     "pg": "8.22.0"

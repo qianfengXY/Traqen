@@ -264,6 +264,26 @@ test("projects one scan into separate pure-business and API Feature trees", () =
   assert.equal(analysis.features.filter((feature) => feature.kind === "COMMAND").length, 1);
 });
 
+test("business projection suppresses technical symbols while API projection links design to implementation blocks", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Readable Agent output",
+    projectId: "PROJECT-READABLE",
+    files: [
+      { path: "src/orders/service.ts", size: 180, content: "export function submitOrder() { return persistOrder(); }\nrouter.post('/orders', submitOrder);" },
+      { path: "src/orders/repository.ts", size: 100, content: "export function persistOrder() { return db.save(); }" },
+      { path: "src/utils/parser.ts", size: 80, content: "export function parsePayload() {}" },
+    ],
+  });
+
+  const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
+  const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
+  assert.deepEqual(business.features.map((feature) => feature.name), ["Submit Order"]);
+  assert.equal(api.features.length, 1);
+  assert.equal(api.features[0].apiDesign.method, "POST");
+  assert.equal(api.features[0].apiDesign.path, "/orders");
+  assert.ok(api.features[0].implementationBlocks.some((block) => block.symbol === "Submit Order"));
+});
+
 test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Statistics",

@@ -4,15 +4,15 @@
 
 ## Vision
 
-A user can define a Workspace, select a source-code directory, scan it without uploading source, see every discovered capability in a Feature tree, and inspect the five-part trace view for each capability. Discovery must never silently promote implementation observations into confirmed business truth.
+A user can define a Workspace, select a source-code directory, analyze it without uploading source, see evidence-backed current capabilities in a Feature tree, and inspect the five-part trace view for each capability. Discovery must never silently promote implementation observations into confirmed business truth. The server-side architecture and authority-preserving incremental rules are defined in the [Analysis Agent design](analysis-agent-design.md).
 
 ## User flow
 
 1. Enter a Workspace name and stable Project ID.
 2. Select a local code directory through the browser directory chooser.
 3. Traqen reads supported text files locally. Raw source is never uploaded or persisted; a bounded derived index is saved in browser IndexedDB.
-4. The local scanner discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, public/callable JavaScript/TypeScript capabilities, and `package.json` commands.
-5. One scan projects into two exclusive Feature-tree modes. **Business features** contains callable business-capability candidates and excludes HTTP endpoints and engineering commands. **API endpoints** contains only discovered HTTP/OpenAPI operations. Switching modes never rescans or duplicates stored records.
+4. The local deterministic Analysis Agent discovers Spring MVC/WebFlux and JAX-RS endpoints, Java backend components and interface methods, HTTP routes, OpenAPI JSON operations, public/callable JavaScript/TypeScript capabilities, and `package.json` commands.
+5. One analysis projects into two exclusive Feature-tree modes. **Business features** suppresses HTTP endpoints, commands, repositories, adapters, interfaces, utilities, and configuration support code. **API endpoints** contains only discovered HTTP/OpenAPI operations and shows protocol, method, path, handler, and matched implementation blocks. Switching modes never reanalyzes or duplicates stored records.
 6. Within either mode, results are grouped as Workspace → readable module → business domain or product area → discovery group → candidate Feature. Parent counts always mean descendant Features in the active mode, not direct folders or the unfiltered scan total.
 7. Workspace analysis first presents project-wide statistics for the active tree mode. Selecting any Workspace, module, domain/product area, discovery group, or Feature node recalculates the same measures for that node and every descendant.
 8. Feature traceability remains the detail surface: selecting a candidate there displays Feature description, design/source, configuration clues, related tests, test results, independent trust dimensions, and TraceGap ownership. Workspace analysis, Feature traceability, and the trace graph share one global tree mode and selection.
@@ -29,14 +29,15 @@ A user can define a Workspace, select a source-code directory, scan it without u
 
 - The left Workspace switcher can create and retain multiple local projects. Selecting a project makes it the active data boundary for every product view.
 - The first scan initializes a project; it is not an isolated report owned by the analysis page.
-- A later scan of the same root compares relative path, byte size, last-modified time, and scanner version. Unchanged file records are reused; added or modified supported files are reread; deleted paths are removed before the Feature tree is rebuilt. A scanner upgrade invalidates stale records automatically.
+- A later analysis of the same root compares relative path, byte size, last-modified time, and scanner version. Unchanged file records are reused; added or modified supported files are reread; deleted paths are removed before the Feature tree is rebuilt. A scanner upgrade invalidates stale records automatically.
+- The browser writes an active-run checkpoint after bounded groups of file batches and whenever pause is requested. If the page, browser, or machine interrupts the job, selecting the same directory resumes from compatible file records instead of rereading completed work. Compact completed-result summaries are retained separately for a later history-query surface.
 - The initialized Workspace name, Project ID, Feature tree, selected Feature, selected trace block, and expanded tree nodes are held by the product-level session and survive navigation between product views.
 - Feature traceability reuses the initialized Feature tree directly. Selecting any tree item opens that candidate's five-part trace chain without rescanning.
 - Workspace analysis remains the initialization and rescan surface. Feature traceability is the primary surface for reviewing candidates one by one.
 - The API connection can temporarily show a server-derived Feature. Returning to the self Workspace restores the initialized local tree and selection.
 - Feature traceability and the trace graph both use the active project's Feature tree and selected Feature. Neither falls back to another Workspace while a local project is active.
 - The Business/API tree mode is global across Workspace analysis, Feature traceability, and the trace graph. Changing it selects the first available candidate only when the previous selection is absent from the new mode.
-- Project summaries and derived scan records survive a full refresh on the same browser profile. Directory `File` handles are not retained, so the user selects the original root again before an incremental scan.
+- Project summaries and derived analysis records survive a full refresh on the same browser profile. Directory `File` handles are not retained, so the user selects the original root again before an incremental or resumed analysis.
 
 ## Trust boundary
 

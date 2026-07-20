@@ -4,13 +4,17 @@ import path from "node:path";
 
 import { parse } from "acorn";
 import { ancestor, simple } from "acorn-walk";
+import { parse as parseSyntaxTree, registerDynamicLanguage } from "@ast-grep/napi";
+import javaLanguage from "@ast-grep/lang-java";
 
 import { canonicalJson, createFactBundle, deepFreeze, stableFactNodeId } from "../domain/index.js";
 
-const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "coverage", ".next", ".cache"]);
-const supportedExtensions = new Set([".js", ".mjs", ".cjs", ".json", ".sql", ".yaml", ".yml", ".properties"]);
+registerDynamicLanguage({ java: javaLanguage });
+
+const ignoredDirectories = new Set([".git", "node_modules", "dist", "build", "target", "out", ".gradle", "coverage", ".next", ".cache", "vendor"]);
+const supportedExtensions = new Set([".js", ".mjs", ".cjs", ".java", ".json", ".sql", ".yaml", ".yml", ".properties", ".xml", ".gradle", ".kts"]);
 const unsupportedSourceExtensions = new Set([
-  ".ts", ".tsx", ".jsx", ".java", ".kt", ".kts", ".go", ".py", ".rb", ".php", ".cs", ".fs",
+  ".ts", ".tsx", ".jsx", ".kt", ".go", ".py", ".rb", ".php", ".cs", ".fs",
 ]);
 const httpMethods = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
 
@@ -133,9 +137,9 @@ export class JavaScriptProjectScanner {
   constructor({
     extractor = { id: "javascript-node-scanner", version: "0.1.0" },
     clock = () => new Date(),
-    maxFiles = 10_000,
+    maxFiles = 250_000,
     maxFileBytes = 1024 * 1024,
-    maxTotalBytes = 64 * 1024 * 1024,
+    maxTotalBytes = 4 * 1024 * 1024 * 1024,
   } = {}) {
     for (const [name, value] of Object.entries({ maxFiles, maxFileBytes, maxTotalBytes })) {
       if (!Number.isInteger(value) || value < 1) throw new TypeError(`${name} must be a positive integer`);
@@ -170,6 +174,7 @@ export class JavaScriptProjectScanner {
     const edges = new Map();
     const fileRecords = [];
     const localReferences = [];
+    const javaCallReferences = [];
 
     const addNode = (type, naturalKey, name, attributes, factSource) => {
       const id = stableFactNodeId(projectId, type, naturalKey);
@@ -265,6 +270,18 @@ export class JavaScriptProjectScanner {
           localReferences,
         });
       }
+      if (path.extname(file.relativePath).toLowerCase() === ".java") {
+        this.#scanJava({
+          content,
+          contentHash,
+          relativePath: file.relativePath,
+          addNode,
+          addEdge,
+          artifactId,
+          diagnostics,
+          javaCallReferences,
+        });
+      }
       if (isTestArtifact(file.relativePath)) {
         const testAssetId = addNode(
           "TEST_ASSET",
@@ -307,6 +324,18 @@ export class JavaScriptProjectScanner {
             reference.source,
           );
         }
+      }
+    }
+
+    const javaMethods = [...nodes.entries()]
+      .filter(([, node]) => node.type === "CODE_SYMBOL" && node.attributes?.language === "java" && node.attributes?.symbolKind === "method")
+      .map(([id, node]) => ({ node, id }));
+    for (const reference of javaCallReferences) {
+      const candidates = javaMethods.filter((candidate) => candidate.node.attributes.methodName === reference.methodName);
+      const samePackage = candidates.filter((candidate) => candidate.node.attributes.packageName === reference.packageName);
+      const selected = samePackage.length === 1 ? samePackage[0] : candidates.length === 1 ? candidates[0] : null;
+      if (selected && selected.id !== reference.callerId) {
+        addEdge(reference.callerId, "CALLS", selected.id, { basis: "JAVA_AST_METHOD_INVOCATION", qualifier: reference.qualifier }, reference.source);
       }
     }
 
@@ -610,6 +639,168 @@ export class JavaScriptProjectScanner {
         );
       },
     });
+  }
+
+  #scanJava({ content, contentHash, relativePath, addNode, addEdge, artifactId, diagnostics, javaCallReferences }) {
+    let root;
+    try {
+      root = parseSyntaxTree("java", content).root();
+    } catch (error) {
+      diagnostics.push({ severity: "ERROR", artifact: relativePath, message: `Java AST parse failed: ${error.message}` });
+      return;
+    }
+    const packageName = root.find({ rule: { kind: "package_declaration" } })?.text()
+      .replace(/^\s*package\s+/, "").replace(/\s*;\s*$/, "") ?? "";
+    const classNodes = ["class_declaration", "interface_declaration", "record_declaration", "enum_declaration"]
+      .flatMap((kind) => root.findAll({ rule: { kind } }));
+    const classInfo = new Map();
+    const methodByAstId = new Map();
+    const annotationNames = (text) => [...text.matchAll(/@([A-Za-z_$][\w$]*)/g)].map((match) => match[1]);
+    const annotationValue = (text, name) => {
+      const match = new RegExp(`@${name}\\s*(?:\\(\\s*(?:value\\s*=\\s*|path\\s*=\\s*)?[\"']([^\"']*)[\"'][\\s\\S]*?\\))?`).exec(text);
+      return match?.[1] ?? "";
+    };
+    const lineSource = (node) => {
+      const range = node.range();
+      return source(relativePath, contentHash, range.start.line + 1, range.end.line + 1);
+    };
+    const classRole = (name, annotations, artifact) => {
+      const context = `${name} ${annotations.join(" ")} ${artifact}`;
+      if (/(?:RestController|Controller|Resource)/i.test(context)) return "controller";
+      if (/(?:Service|UseCase|Facade|Manager)/i.test(context)) return "service";
+      if (/(?:Repository|Mapper|Dao)/i.test(context)) return "repository";
+      if (/(?:Entity|Document)/i.test(context)) return "entity";
+      if (/(?:Dto|Request|Response)$/i.test(name)) return "dto";
+      return "class";
+    };
+    for (const classNode of classNodes) {
+      const name = classNode.field("name")?.text();
+      if (!name) continue;
+      const modifiers = classNode.children().find((child) => child.kind() === "modifiers")?.text() ?? classNode.text().slice(0, 500);
+      const annotations = annotationNames(modifiers);
+      const role = classRole(name, annotations, relativePath);
+      const naturalKey = `java:${packageName}:${name}`;
+      const classId = addNode(
+        "CODE_SYMBOL",
+        naturalKey,
+        name,
+        { language: "java", symbolKind: "class", kind: role, packageName, annotations },
+        lineSource(classNode),
+      );
+      addEdge(artifactId, "CONTAINS", classId, {}, lineSource(classNode));
+      classInfo.set(classNode.id(), { id: classId, name, role, annotations, naturalKey, node: classNode });
+      if (["entity", "dto"].includes(role) || classNode.kind() === "record_declaration") {
+        const dataId = addNode(
+          "DATA_OBJECT",
+          `java-type:${packageName}:${name}`,
+          name,
+          { kind: role === "entity" ? "entity" : "dto", language: "java", packageName },
+          lineSource(classNode),
+        );
+        addEdge(classId, "CONTAINS", dataId, { relation: "JAVA_DATA_TYPE" }, lineSource(classNode));
+      }
+    }
+
+    const methods = root.findAll({ rule: { kind: "method_declaration" } });
+    for (const methodNode of methods) {
+      const methodName = methodNode.field("name")?.text();
+      if (!methodName) continue;
+      const ownerNode = methodNode.ancestors().find((ancestorNode) => classInfo.has(ancestorNode.id()));
+      const owner = ownerNode ? classInfo.get(ownerNode.id()) : null;
+      const modifiers = methodNode.children().find((child) => child.kind() === "modifiers")?.text() ?? "";
+      const annotations = annotationNames(modifiers);
+      const visibility = /\bpublic\b/.test(modifiers) ? "public" : /\bprotected\b/.test(modifiers) ? "protected" : /\bprivate\b/.test(modifiers) ? "private" : "package";
+      const returnType = methodNode.field("type")?.text() ?? "void";
+      const parameters = methodNode.field("parameters")?.text() ?? "()";
+      const naturalKey = `java:${packageName}:${owner?.name ?? "Unknown"}#${methodName}:${parameters}`;
+      const methodId = addNode(
+        "CODE_SYMBOL",
+        naturalKey,
+        `${owner?.name ?? "Java"}#${methodName}`,
+        {
+          language: "java",
+          symbolKind: "method",
+          kind: owner?.role === "service" ? "service" : owner?.role === "controller" ? "handler" : owner?.role ?? "method",
+          owner: owner?.name ?? null,
+          methodName,
+          visibility,
+          returnType,
+          parameters,
+          packageName,
+          annotations,
+        },
+        lineSource(methodNode),
+      );
+      methodByAstId.set(methodNode.id(), methodId);
+      if (owner) addEdge(owner.id, "CONTAINS", methodId, {}, lineSource(methodNode));
+      else addEdge(artifactId, "CONTAINS", methodId, {}, lineSource(methodNode));
+
+      const classText = owner?.node.children().find((child) => child.kind() === "modifiers")?.text() ?? "";
+      const basePath = annotationValue(classText, "RequestMapping") || annotationValue(classText, "Path");
+      const endpointAnnotations = [
+        ["GetMapping", "GET"], ["PostMapping", "POST"], ["PutMapping", "PUT"], ["PatchMapping", "PATCH"], ["DeleteMapping", "DELETE"],
+        ["GET", "GET"], ["POST", "POST"], ["PUT", "PUT"], ["PATCH", "PATCH"], ["DELETE", "DELETE"],
+      ];
+      for (const [annotation, httpMethod] of endpointAnnotations) {
+        if (!annotations.includes(annotation)) continue;
+        const childPath = annotationValue(modifiers, annotation) || annotationValue(modifiers, "Path");
+        const endpointPath = `/${basePath}/${childPath}`.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+        const endpointId = addNode(
+          "ENDPOINT",
+          `http:${httpMethod} ${endpointPath}`,
+          `${httpMethod} ${endpointPath}`,
+          {
+            protocol: annotations.some((name) => ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(name)) ? "JAX-RS" : "Spring",
+            method: httpMethod,
+            path: endpointPath,
+            handler: `${owner?.name ?? "Java"}#${methodName}`,
+            returnType,
+            parameters,
+            validationAnnotations: annotationNames(parameters).filter((name) => /Valid|Not|Size|Min|Max|Pattern/i.test(name)),
+            securityAnnotations: [...new Set([...annotationNames(classText), ...annotations])].filter((name) => /PreAuthorize|Secured|RolesAllowed|PermitAll|DenyAll/i.test(name)),
+          },
+          lineSource(methodNode),
+        );
+        addEdge(endpointId, "IMPLEMENTED_BY", methodId, {}, lineSource(methodNode));
+      }
+      if (annotations.includes("RequestMapping")) {
+        const annotationText = modifiers.match(/@RequestMapping\s*\([\s\S]*?\)/)?.[0] ?? "";
+        const verbs = [...annotationText.matchAll(/RequestMethod\s*\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)/g)].map((match) => match[1]);
+        for (const httpMethod of verbs.length > 0 ? verbs : ["REQUEST"]) {
+          const childPath = annotationValue(modifiers, "RequestMapping");
+          const endpointPath = `/${basePath}/${childPath}`.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+          const endpointId = addNode("ENDPOINT", `http:${httpMethod} ${endpointPath}`, `${httpMethod} ${endpointPath}`, {
+            protocol: "Spring", method: httpMethod, path: endpointPath, handler: `${owner?.name ?? "Java"}#${methodName}`, returnType, parameters,
+          }, lineSource(methodNode));
+          addEdge(endpointId, "IMPLEMENTED_BY", methodId, {}, lineSource(methodNode));
+        }
+      }
+
+      const security = [...new Set([...annotationNames(classText), ...annotations])].filter((name) => /PreAuthorize|Secured|RolesAllowed|PermitAll|DenyAll/i.test(name));
+      for (const annotation of security) {
+        const permissionId = addNode("CODE_SYMBOL", `${naturalKey}:security:${annotation}`, `${annotation} on ${methodName}`, {
+          language: "java", symbolKind: "guard", kind: "permission-check", annotation,
+        }, lineSource(methodNode));
+        addEdge(methodId, "CONTAINS", permissionId, { relation: "PERMISSION_GUARD" }, lineSource(methodNode));
+      }
+      for (const invocation of methodNode.findAll({ rule: { kind: "method_invocation" } })) {
+        const calledName = invocation.field("name")?.text();
+        if (!calledName) continue;
+        javaCallReferences.push({
+          callerId: methodId,
+          methodName: calledName,
+          qualifier: invocation.field("object")?.text() ?? null,
+          packageName,
+          source: lineSource(invocation),
+        });
+      }
+      const methodText = methodNode.text();
+      for (const match of methodText.matchAll(/(?:@Value\s*\(\s*["']\$\{([^}:]+)|getProperty\s*\(\s*["']([^"']+))/g)) {
+        const key = match[1] ?? match[2];
+        const configurationId = addNode("CONFIGURATION", `java-config:${key}`, key, { category: "java-configuration", referencedBy: relativePath }, lineSource(methodNode));
+        addEdge(methodId, "CONTROLLED_BY", configurationId, {}, lineSource(methodNode));
+      }
+    }
   }
 
   #scanOpenApi({ content, contentHash, relativePath, addNode, addEdge, artifactId, diagnostics }) {

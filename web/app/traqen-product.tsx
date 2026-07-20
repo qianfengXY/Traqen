@@ -4,8 +4,8 @@ import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
-import { analyzeLocalWorkspaceRecords, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
-import { listLocalWorkspaceProjects, loadLocalWorkspaceProject, saveLocalWorkspaceProject, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
+import { analyzeLocalWorkspaceRecords, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
@@ -37,6 +37,9 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   IMPLEMENTATION_FACT: { zh: "实现事实", en: "Implementation fact" },
   ENDPOINT: { zh: "接口", en: "Endpoint" },
   CODE_SYMBOL: { zh: "代码符号", en: "Code symbol" },
+  HANDLER: { zh: "处理入口", en: "Handler" },
+  CALLS: { zh: "调用实现", en: "Calls" },
+  MATCHED_IMPLEMENTATION: { zh: "匹配实现", en: "Matched implementation" },
   API_SERVICE: { zh: "对外接口服务", en: "External API services" },
   BUSINESS_CAPABILITY: { zh: "业务处理能力", en: "Business capabilities" },
   DATA_INTEGRATION: { zh: "数据与外部集成", en: "Data and external integrations" },
@@ -1172,7 +1175,7 @@ export function TraqenProduct() {
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
   const visibleWorkspaceAnalysis = useMemo(() => workspaceAnalysis ? localWorkspaceAnalysisForTreeMode(workspaceAnalysis, workspaceTreeMode) : null, [workspaceAnalysis, workspaceTreeMode]);
   const workspaceTreeModeCounts = useMemo(() => ({
-    BUSINESS: workspaceAnalysis?.features.filter((feature) => feature.kind === "CODE_SYMBOL").length ?? 0,
+    BUSINESS: workspaceAnalysis?.features.filter(isLocalBusinessFeature).length ?? 0,
     API: workspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
   }), [workspaceAnalysis]);
   const activateWorkspaceSnapshot = useCallback((snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false, treeMode: LocalFeatureTreeMode = "BUSINESS") => {
@@ -1565,7 +1568,7 @@ function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFe
       </nav>
       <div className="workspace-trace-content">
         {block === "description" && <section className="workspace-document"><div className="artifact-intro"><div><h3>{t("完整功能说明", "Complete feature description")}</h3><p>{t("以下内容由本地源码静态发现形成，是待业务负责人确认的候选说明。", "This description was discovered statically from local source and remains a candidate pending business-owner confirmation.")}</p></div><span>{term(feature.dimensions.authority)}</span></div><dl><dt>{t("候选名称", "Candidate name")}</dt><dd>{feature.name}</dd><dt>{t("发现类型", "Discovery type")}</dt><dd>{term(feature.kind)}</dd><dt>{t("业务逻辑线索", "Business logic clue")}</dt><dd>{feature.description}</dd><dt>{t("适用模块", "Applicable module")}</dt><dd>{feature.modulePath}</dd><dt>{t("前置条件与权限", "Prerequisites and permissions")}</dt><dd>{t("静态扫描无法可靠推断，必须由业务负责人补充并确认。", "Static scanning cannot infer these reliably; a business owner must supply and confirm them.")}</dd></dl></section>}
-        {block === "design" && <section className="workspace-code"><div className="reader-file-head"><div><span className="file-type code">{feature.sourcePath.split(".").at(-1)?.toUpperCase()}</span><div><b>{feature.sourcePath.split("/").at(-1)}</b><small>{feature.sourcePath}:{feature.startLine}</small></div></div><span>{term(feature.kind)}</span></div><SourceCodeViewer content={feature.code} /></section>}
+        {block === "design" && <section className="workspace-code">{feature.apiDesign && <div className="workspace-api-design"><div><span>{t("接口协议", "Protocol")}</span><b>{feature.apiDesign.protocol}</b></div><div><span>{t("方法与路径", "Method and path")}</span><b>{feature.apiDesign.method} {feature.apiDesign.path}</b></div><div><span>{t("处理逻辑入口", "Handler")}</span><b>{feature.apiDesign.handler ?? t("尚未匹配", "Not matched")}</b></div><div><span>{t("接口设计来源", "Design source")}</span><b>{feature.apiDesign.source}</b></div></div>}{(feature.implementationBlocks ?? [{ path: feature.sourcePath, symbol: feature.name, startLine: feature.startLine, relation: "HANDLER" as const, code: feature.code }]).map((implementation, index) => <details key={`${implementation.path}:${implementation.startLine}:${index}`} open={index === 0}><summary><div className="reader-file-head"><div><span className="file-type code">{implementation.path.split(".").at(-1)?.toUpperCase()}</span><div><b>{implementation.symbol}</b><small>{implementation.path}:{implementation.startLine}</small></div></div><span>{term(implementation.relation)}</span></div></summary><SourceCodeViewer content={implementation.code} /></details>)}</section>}
         {block === "configuration" && <section className="workspace-related-list"><div className="artifact-intro"><div><h3>{t("相关配置线索", "Related configuration clues")}</h3><p>{t("展示工程中发现的配置文件；在形成治理映射前，不声称每一项都控制当前功能。", "Shows configuration files discovered in the project. No item is claimed to control this feature until a governed mapping exists.")}</p></div><span>{feature.configurations.length}</span></div>{feature.configurations.length === 0 ? <div className="gap-empty">{t("未发现受支持的配置文件。", "No supported configuration files were discovered.")}</div> : feature.configurations.map((configuration) => <details key={configuration.path}><summary><b>{configuration.key}</b><span>{configuration.path}</span></summary><SourceCodeViewer content={configuration.value} /></details>)}</section>}
         {block === "test-case" && <section className="workspace-related-list"><div className="artifact-intro"><div><h3>{t("相关测试用例线索", "Related test-case clues")}</h3><p>{t("根据文件名、源码引用和符号名称建立候选关联；后续仍需生成并批准正式 TestSpec。", "Candidate links are based on filenames, source references, and symbol names. A formal TestSpec must still be generated and approved.")}</p></div><span>{feature.tests.length}</span></div>{feature.tests.length === 0 ? <div className="gap-empty">{t("没有发现关联测试，这是一个阻断级 TraceGap。", "No related tests were discovered; this is a blocking TraceGap.")}</div> : feature.tests.map((test) => <details key={test.path}><summary><b>{test.title}</b><span>{test.path}</span></summary><SourceCodeViewer content={test.code} /></details>)}</section>}
         {block === "test-result" && <section className="workspace-result-empty"><span className="result-status not_run">{term("NOT_RUN")}</span><h3>{t("当前没有可信执行结果", "No trusted execution result is available")}</h3><p>{t("本地扫描只发现源码事实，不执行工程代码。需要批准的 TestSpec、目标环境、Runner 身份与签名 Evidence 后，结果才能进入追溯链。", "The local scan discovers source Facts but does not execute project code. An approved TestSpec, target environment, Runner identity, and signed Evidence are required before results enter the trace chain.")}</p></section>}
@@ -1725,7 +1728,9 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
 function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts }: WorkspaceAnalysisViewProps) {
   const { t } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const pauseRequestedRef = useRef(false);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ completed: number; total: number } | null>(null);
   const [message, setMessage] = useState("");
 
   useEffect(() => {
@@ -1748,17 +1753,25 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
 
   async function scanWorkspace() {
     setScanning(true);
+    pauseRequestedRef.current = false;
     setMessage("");
     try {
       const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env|xml|gradle|kts)$/i;
       const ignored = /(^|\/)(?:\.git|node_modules|dist|build|target|out|\.gradle|\.next|\.vinext|coverage|vendor)(\/|$)/;
       if (analysis && registeredRootName && directoryName !== registeredRootName) throw new Error(t(`请选择原工程目录“${registeredRootName}”进行增量扫描。`, `Select the original project directory “${registeredRootName}” for an incremental scan.`));
+      const activeRun = await loadLocalWorkspaceAnalysisRun(projectId);
+      const canResume = activeRun?.rootName === directoryName
+        && activeRun.scannerVersion === localWorkspaceScannerVersion
+        && activeRun.plannedFileCount === selectedFiles.length;
+      const resumedRecords = new Map((canResume ? activeRun.records : []).map((record) => [record.path, record]));
       const previousRecords = new Map(fileRecords.map((record) => [record.path, record]));
       const nextRecords: LocalWorkspaceFileRecord[] = [];
       const currentPaths = new Set<string>();
-      let added = 0;
-      let modified = 0;
-      let unchanged = 0;
+      let added = canResume ? activeRun.counters.added : 0;
+      let modified = canResume ? activeRun.counters.modified : 0;
+      let unchanged = canResume ? activeRun.counters.unchanged : 0;
+      const startedAt = canResume ? activeRun.startedAt : new Date().toISOString();
+      const runId = `${projectId}:ACTIVE`;
       const batchSize = 120;
       for (let offset = 0; offset < selectedFiles.length; offset += batchSize) {
         const batch = selectedFiles.slice(offset, offset + batchSize);
@@ -1766,6 +1779,8 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
           const path = file.webkitRelativePath || file.name;
           const relativePath = path.split("/").slice(1).join("/") || path;
           currentPaths.add(relativePath);
+          const resumed = resumedRecords.get(relativePath);
+          if (resumed && resumed.scannerVersion === localWorkspaceScannerVersion && resumed.size === file.size && resumed.lastModified === file.lastModified) return resumed;
           const previous = previousRecords.get(relativePath);
           if (previous && previous.scannerVersion === localWorkspaceScannerVersion && previous.size === file.size && previous.lastModified === file.lastModified) {
             unchanged += 1;
@@ -1782,30 +1797,58 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         }));
         nextRecords.push(...records);
         const completed = Math.min(offset + batch.length, selectedFiles.length);
-        setMessage(t(`正在增量比对 ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 个工程文件…`, `Incrementally comparing ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} project files…`));
+        const checkpoint: LocalWorkspaceAnalysisRunCheckpoint = {
+          id: runId,
+          projectId,
+          rootName: directoryName,
+          mode: analysis ? "INCREMENTAL" : "FULL",
+          engine: "DETERMINISTIC",
+          status: pauseRequestedRef.current ? "PAUSED" : "RUNNING",
+          scannerVersion: localWorkspaceScannerVersion,
+          plannedFileCount: selectedFiles.length,
+          completedFileCount: completed,
+          records: nextRecords,
+          currentPaths: [...currentPaths],
+          counters: { added, modified, unchanged },
+          startedAt,
+          updatedAt: new Date().toISOString(),
+        };
+        const shouldCheckpoint = pauseRequestedRef.current || completed === selectedFiles.length || Math.ceil(completed / batchSize) % 40 === 0;
+        if (shouldCheckpoint) await saveLocalWorkspaceAnalysisRun(checkpoint);
+        setScanProgress({ completed, total: selectedFiles.length });
+        setMessage(t(`${canResume ? "正在续跑" : "正在分析"} ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 个工程文件${shouldCheckpoint ? "；检查点已保存" : ""}。`, `${canResume ? "Resuming" : "Analyzing"} ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} project files${shouldCheckpoint ? "; checkpoint saved" : ""}.`));
+        if (pauseRequestedRef.current) {
+          setMessage(t(`分析已暂停在 ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()}；重新选择同一目录后可从检查点继续。`, `Analysis paused at ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()}; reselect the same directory to resume from the checkpoint.`));
+          return;
+        }
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
       const deleted = [...previousRecords.keys()].filter((path) => !currentPaths.has(path)).length;
       const result = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: nextRecords });
       await onInitialize(result, nextRecords, directoryName);
-      setMessage(result.features.length > 0 ? t(`已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件。`, `Updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files.`) : t("扫描完成，但没有发现可识别的接口、导出能力或工程命令。", "Scan complete, but no recognizable endpoints, exported capabilities, or project commands were found."));
+      await clearLocalWorkspaceAnalysisRun(projectId);
+      setMessage(result.features.length > 0 ? t(`分析 Agent 已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件。`, `The Analysis Agent updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files.`) : t("分析完成，但没有发现有证据支持的接口或业务能力候选。", "Analysis completed, but no evidence-backed API or business-capability candidates were found."));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t("Workspace 扫描失败", "Workspace scan failed"));
+      const activeRun = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
+      if (activeRun) await saveLocalWorkspaceAnalysisRun({ ...activeRun, status: "PAUSED", updatedAt: new Date().toISOString() }).catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : t("Workspace 分析失败；检查点已保留", "Workspace analysis failed; its checkpoint was preserved"));
     } finally {
       setScanning(false);
+      setScanProgress(null);
     }
   }
 
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Local-first workspace</p><h1>{t("选择工程，建立自己的功能追溯 Workspace", "Select a project and build your own feature-traceability Workspace")}</h1><p>{t("面向十万级文件分批扫描；原始源码不会上传或持久化，本机仅保存功能索引、必要代码/测试片段和脱敏配置，用于多项目切换与增量扫描。", "Projects with 100,000-scale file counts are scanned in batches. Raw source is never uploaded or persisted; only the feature index, necessary code/test excerpts, and redacted configuration are stored on this device for multi-project switching and incremental scans.")}</p></div><span className="mode-badge">{t("多项目本地索引", "LOCAL PROJECT INDEX")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · deterministic profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("面向十万级文件进行有界分批分析；每批保存检查点，首次全量、后续增量。原始源码不会上传或持久化，仅保存功能索引、必要代码/测试片段和脱敏配置。", "The Agent analyzes 100,000-scale projects in bounded batches with a checkpoint after each batch: full on first run and incremental thereafter. Raw source is never uploaded or persisted; only the feature index, necessary code/test excerpts, and redacted configuration are stored.")}</p></div><span className="mode-badge">{t("确定性分析 · 可续跑", "DETERMINISTIC · RESUMABLE")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
           <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" onClick={() => inputRef.current?.click()}>{t("选择代码工程", "Select code project")}</button><span>{directoryName || t("尚未选择目录", "No directory selected")}</span><small>{selectedFiles.length} {t("个文件", "files")}</small></div>
-          <button className="button primary workspace-scan-button" disabled={scanning || selectedFiles.length === 0} onClick={() => void scanWorkspace()}>{scanning ? t("扫描中…", "Scanning…") : analysis ? t("执行增量扫描", "Run incremental scan") : t("初始化扫描", "Initialize scan")}</button>
+          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || selectedFiles.length === 0} onClick={() => void scanWorkspace()}>{scanning ? t("分析中…", "Analyzing…") : analysis ? t("执行增量分析", "Run incremental analysis") : t("初始化分析", "Initialize analysis")}</button>{scanning && <button className="button" onClick={() => { pauseRequestedRef.current = true; setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…")); }}>{t("暂停", "Pause")}</button>}</div>
         </div>
+        {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
       </section>

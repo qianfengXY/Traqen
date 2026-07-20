@@ -8,7 +8,7 @@ The implementation follows one non-negotiable product vision:
 
 > For every governed high-value Feature, present an explainable traceability chain from confirmed business intent to Evidence from the actual deployment, and expose every missing, stale, conflicting, or failed link.
 
-The local Workspace scanner has also been exercised against the real [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo at a pinned commit. The resulting [bilingual validation report](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.md) records the observed scale, false-positive corrections, domain tree, conservative test/configuration associations, and the distinction between implementation candidates and confirmed business Features.
+The local Workspace Analysis Agent has also been exercised against the real [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo at a pinned commit. The resulting [bilingual validation report](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.md) records the observed scale, false-positive corrections, domain tree, conservative test/configuration associations, and the distinction between implementation candidates and confirmed business Features.
 
 The initialized Feature tree offers two global projections without rescanning: a pure business-capability view that excludes APIs and engineering commands, and an API-only view containing HTTP/OpenAPI endpoints. Workspace statistics, Feature traceability, and the trace graph follow the same active projection.
 
@@ -114,13 +114,24 @@ The controlled Runner slice adds:
 The deterministic fact-foundation slice adds:
 
 - a language-neutral, immutable `FactNode`/`FactEdge`/`FactBundle` contract with stable entity IDs and snapshot-specific fact IDs;
-- a bounded JavaScript/Node scanner for modules, symbols, state enums/transitions, condition and permission guards, exception paths, Express-style routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
+- a bounded JavaScript/Node and Java AST scanner for modules, symbols, state enums/transitions, condition and permission guards, exception paths, Express/Spring/JAX-RS routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
 - source artifact, line range, and SHA-256 location data on every fact and relation;
 - explicit incomplete results for parser failures, oversized files, unsupported source languages, and unsupported OpenAPI formats;
 - a deterministic source fingerprint API used as the Source Snapshot digest;
 - HMAC-SHA256 Scanner attestation plus exact Snapshot Manifest, Source component ID, and Source component digest binding before ingestion;
 - append-only memory and PostgreSQL storage plus a filtered one-hop fact graph API;
 - a self-scan command and a checked-in scanner validation report.
+
+The Analysis Agent slice adds:
+
+- deterministic and configurable hybrid model modes over the same immutable Fact graph;
+- graph-partitioned WorkUnits with explicit context budgets, reserved model headroom, bounded evidence packages, and per-unit checkpoints;
+- asynchronous start, immediate pause, persisted resume, full-first and later incremental execution;
+- exact evidence-boundary validation for model and Skill outputs, including stable-node references;
+- stable Feature reconciliation that preserves human authority across implementation remapping and near-full rescans, while requiring review for business-semantic changes;
+- separate latest business/API projections, immutable result history, retirement events, and per-Feature history queries;
+- PostgreSQL checkpoint/result storage and a browser-local deterministic workflow with resumable IndexedDB batches;
+- a configurable OpenAI-compatible model adapter whose credentials stay in server environment variables, plus bounded reference Skill adapters.
 
 The Reverse Skill Framework slice adds:
 
@@ -190,7 +201,7 @@ The continuous-protection slice adds:
 
 The product-effectiveness metrics slice adds a Snapshot-bound dashboard and API for high-value valid-chain rate, Claim confirmation, confirmed-rule TestSpec coverage, meaningful assertions, Evidence freshness, TraceGap type/severity/owner, and per-Feature layer presence. Every ratio keeps its numerator and denominator, every Feature keeps its independent trust dimensions, and metrics that require external longitudinal, CI/CD, or defect data are explicitly unavailable instead of estimated. `HIGH_VALUE_FEATURE_IDS` optionally narrows the north-star population; without it, all governed Features are included.
 
-The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision review, candidate-review, TestSpec-approval, and business-process confirmation routes additionally fail closed unless a reviewer identity is configured. Use legacy `REVIEWER_ID`/`REVIEWER_ROLE` with an optional `REVIEWER_BEARER_TOKEN`, or `REVIEWER_IDENTITIES_JSON` for multiple token-bound actor/role identities; direct Decision creation is disabled by default and requires the review-case API unless `ALLOW_DIRECT_DECISIONS=true` is explicitly set. Decision proposer/approver/business/compliance/Break-glass/lifecycle roles and maximum emergency minutes are independently configurable. Implementation reanalysis has the distinct `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
+The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision review, candidate-review, TestSpec-approval, and business-process confirmation routes additionally fail closed unless a reviewer identity is configured. Use legacy `REVIEWER_ID`/`REVIEWER_ROLE` with an optional `REVIEWER_BEARER_TOKEN`, or `REVIEWER_IDENTITIES_JSON` for multiple token-bound actor/role identities; direct Decision creation is disabled by default and requires the review-case API unless `ALLOW_DIRECT_DECISIONS=true` is explicitly set. Decision proposer/approver/business/compliance/Break-glass/lifecycle roles and maximum emergency minutes are independently configurable. Implementation reanalysis has the distinct `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Configured Analysis Agent model adapters use bounded evidence and server-resolved secrets; third-party Skills, isolated Skill workers, additional deterministic language AST adapters, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
 
 ## Quick start
 
@@ -244,6 +255,8 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 ```
 
 The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
+
+Start the Analysis Agent after the selected Snapshot has deterministic Facts with `POST /v1/projects/{projectId}/analysis-runs`. Runs are asynchronous by default and can be queried, paused, and resumed under the same `/analysis-runs/{analysisRunId}` resource. Read the latest current projection from `/analysis-results/latest` and immutable Feature evolution from `/features/{featureId}/analysis-history`. Configure optional hybrid profiles through `ANALYSIS_MODEL_PROFILES_JSON`; see the [bilingual Analysis Agent design](docs/features/analysis-agent-design.md) for the profile format, context boundaries, incremental behavior, and authority-inheritance rules.
 
 `npm run pilot:order-submit` is the reproducible in-repository MVP proof. It uses only synthetic data and the same generic Scanner, Skill, review, TestSpec, Runner, Evidence, impact, and repair paths that a real pilot uses; no order-specific behavior exists in the Traqen core.
 

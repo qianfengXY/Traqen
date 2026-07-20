@@ -8,7 +8,7 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 > 对于每个纳入治理的高价值 Feature，展示一条从已确认业务意图到实际部署 Evidence 的可解释追踪链，并显式暴露每个缺失、陈旧、冲突或失败的环节。
 
-本地 Workspace 扫描器还针对真实的 [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo 固定提交进行了验证。对应的[双语验证报告](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)记录了实际规模、误报修正、领域树、保守的测试/配置关联，以及实现候选与已确认业务 Feature 之间的区别。
+本地 Workspace 分析 Agent 还针对真实的 [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo 固定提交进行了验证。对应的[双语验证报告](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)记录了实际规模、误报修正、领域树、保守的测试/配置关联，以及实现候选与已确认业务 Feature 之间的区别。
 
 初始化后的功能树无需重新扫描即可在两种全局投影间切换：纯业务能力视图排除 API 与工程命令，API 视图只包含 HTTP/OpenAPI 接口。Workspace 统计、功能追溯和追溯图谱始终跟随同一个当前投影。
 
@@ -114,13 +114,24 @@ Evidence-生命周期切片添加：
 确定性事实基础切片添加：
 
 - 具有稳定实体 ID 和快照特定事实 ID 的语言中立、不可变的 `FactNode`/`FactEdge`/`FactBundle` 合约；
-- 用于模块、符号、状态 enums/transitions、条件和权限保护、异常路径、Express 样式路由、OpenAPI JSON、PostgreSQL DDL 和文字查询、配置引用、依赖项和测试资产的有界 JavaScript/Node 扫描器；
+- 用于模块、符号、状态 enums/transitions、条件和权限保护、异常路径、Express/Spring/JAX-RS 路由、OpenAPI JSON、PostgreSQL DDL 和文字查询、配置引用、依赖项和测试资产的有界 JavaScript/Node 与 Java AST 扫描器；
 - 每个事实和关系的源工件、线路范围和 SHA-256 位置数据；
 - 解析器失败、文件过大、源语言不受支持以及 OpenAPI 格式不受支持的显式不完整结果；
 - 用作源 Snapshot 摘要的确定性源指纹 API；
 - HMAC-SHA256 Scanner 证明加上准确的 Snapshot 清单、源组件 ID 和摄取前的源组件摘要绑定；
 - 仅附加内存和 PostgreSQL 存储以及经过过滤的一跳事实图 API；
 - 自扫描命令和签入的扫描仪验证报告。
+
+分析 Agent 切片添加：
+
+- 在同一不可变 Fact 图上运行的确定性模式和可配置 Hybrid 模型模式；
+- 具有明确上下文预算、模型余量、有界证据包和逐单元检查点的图分区 WorkUnit；
+- 异步启动、立即暂停、持久化续跑、首次全量与后续增量执行；
+- 对模型和 Skill 输出执行严格证据边界校验，包括稳定节点引用；
+- 稳定 Feature 对账：实现重映射和接近全量重扫时保留人工权威，业务语义变化时要求复核；
+- 独立的最新业务/API 投影、不可变结果历史、退役事件和按 Feature 查询历史；
+- PostgreSQL 检查点/结果存储，以及使用 IndexedDB 可续跑批次的浏览器本地确定性流程；
+- 凭据只存在服务端环境变量中的可配置 OpenAI-compatible 模型适配器，以及有界参考 Skill 适配器。
 
 Reverse Skill 框架切片添加：
 
@@ -190,7 +201,7 @@ Reverse Skill 框架切片添加：
 
 产品有效性指标切片添加了 Snapshot 绑定仪表板和 API 用于高价值有效链率、Claim 确认、确认规则 TestSpec 覆盖范围、有意义的断言、Evidence 新鲜度、TraceGap type/severity/owner 和每 Feature 层的存在。每个比率都保留其分子和分母，每个 Feature 都保留其独立的信任维度，并且需要外部纵向、CI/CD 或缺陷数据的指标明确不可用，而不是估计。 `HIGH_VALUE_FEATURE_IDS` 可选择缩小北极星数量；如果没有它，所有受管理的 Features 都将包括在内。
 
-开发服务器仍然位于本地且位于内存中。生产过程需要 PostgreSQL 和全局 API 代币。除非配置了审阅者身份，否则 Decision 审阅、候选人审阅、TestSpec-批准和业务流程确认路由也会无法关闭。将旧版 `REVIEWER_ID`/`REVIEWER_ROLE` 与可选的 `REVIEWER_BEARER_TOKEN` 或 `REVIEWER_IDENTITIES_JSON` 结合使用以获取多个令牌绑定的 actor/role 身份；默认情况下禁用直接 Decision 创建，并且需要审查用例 API ，除非显式设置 `ALLOW_DIRECT_DECISIONS=true` 。 Decision proposer/approver/business/compliance/Break-glass/lifecycle 角色和最长紧急分钟数可独立配置。实现重新分析具有明显的 `IMPLEMENTATION_REVIEWER_*` 边界。将 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 设置为摄取匹配 Runner 签名的捆绑包，将 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 设置为 Scanner 签名的 Fact Bundles，将 `SKILL_PUBLISHER=TRAQEN` 加上 `SKILL_PUBLISHER_SHARED_SECRET` 设置为Skill 注册。 HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。 CONTROLLED_WRITE 保持禁用状态，除非签名的目标策略明确允许操作和路由、绑定每个 Snapshot 组件、命名受信任的固定装置和清理协议，并且 Runner 具有匹配的本地处理程序。 DELETE、破坏性执行、任务编写的 commands/SQL/fixture 代码、外部副作用和跨源重定向仍然被阻止。仅编译后的、摘要匹配的参考 Skill 适配器在进程内执行；官方外部 Specone/GSD 集成、模型支持或第三方 Skills、独立的 Skill 工作人员、其他语言扫描程序和 OpenAPI YAML 提取仍然位于存储库控制的 MVP 之外。
+开发服务器仍然仅限本地并使用内存存储。生产进程需要 PostgreSQL 和全局 API token。Decision 审核、候选审核、TestSpec 批准和业务流程确认路由在没有配置审核人身份时会失败关闭。可以使用旧式 `REVIEWER_ID`/`REVIEWER_ROLE` 和可选 `REVIEWER_BEARER_TOKEN`，也可以通过 `REVIEWER_IDENTITIES_JSON` 配置多个 token 绑定的参与者/角色身份；默认禁止直接创建 Decision，除非显式设置 `ALLOW_DIRECT_DECISIONS=true`，否则必须使用审核案例 API。Decision 提议人、批准人、业务、合规、Break-glass、生命周期角色和最大紧急时长均可独立配置。实现再分析具有独立的 `IMPLEMENTATION_REVIEWER_*` 边界。设置 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 以接收匹配 Runner 的签名 Bundle，设置 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 以接收 Scanner 签名 Fact Bundle，并设置 `SKILL_PUBLISHER=TRAQEN` 与 `SKILL_PUBLISHER_SHARED_SECRET` 以注册 Skill。HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。只有签名目标策略显式允许操作与路由、绑定全部 Snapshot 组件、指定可信 fixture 与 cleanup 协议，且 Runner 具有匹配本地处理器时，CONTROLLED_WRITE 才能启用。DELETE、破坏性执行、任务自带命令/SQL/fixture 代码、外部副作用和跨域重定向始终被阻止。已配置的分析 Agent 模型适配器只接收有界证据并通过服务端解析密钥；第三方 Skills、隔离 Skill Worker、更多确定性语言 AST 适配器与 OpenAPI YAML 提取仍在仓库控制的 MVP 范围之外。
 
 ## 快速启动
 
@@ -244,6 +255,8 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 ```
 
 Fact API 接受 `POST /v1/projects/{projectId}/fact-scans` 处的签名包，并从 `GET /v1/projects/{projectId}/facts` 返回过滤后的一跳图。其 `type`、`predicate`、`q`、`snapshotManifestId` 和 `limit` 查询参数是可选的。
+
+当所选 Snapshot 已具有确定性 Facts 后，通过 `POST /v1/projects/{projectId}/analysis-runs` 启动分析 Agent。运行默认异步，并可在同一个 `/analysis-runs/{analysisRunId}` 资源下查询、暂停和续跑。从 `/analysis-results/latest` 读取最新当前投影，从 `/features/{featureId}/analysis-history` 查询不可变 Feature 演进历史。可选 Hybrid 模型通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置；配置格式、上下文边界、增量行为与权威继承规则见[双语分析 Agent 设计](docs/features/analysis-agent-design.zh-CN.md)。
 
 `npm run pilot:order-submit` 是可复制的存储库内 MVP 证明。它仅使用合成数据以及真实飞行员使用的相同通用Scanner、Skill、审查、TestSpec、Runner、Evidence、影响和修复路径； Traqen 核心中不存在特定于订单的行为。
 

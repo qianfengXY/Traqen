@@ -18,6 +18,8 @@ export type LocalFeatureCandidate = {
   startLine: number;
   description: string;
   code: string;
+  apiDesign?: { protocol: string; method: string; path: string; handler: string | null; source: string };
+  implementationBlocks?: Array<{ path: string; symbol: string; startLine: number; relation: "HANDLER" | "CALLS" | "MATCHED_IMPLEMENTATION"; code: string }>;
   configurations: Array<{ path: string; key: string; value: string }>;
   tests: Array<{ path: string; title: string; code: string }>;
   dimensions: {
@@ -655,12 +657,23 @@ function buildTree(workspaceName: string, projectId: string, features: LocalFeat
 }
 
 export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalysis, mode: LocalFeatureTreeMode): LocalWorkspaceAnalysis {
-  const features = analysis.features.filter((feature) => mode === "API" ? feature.kind === "ENDPOINT" : feature.kind === "CODE_SYMBOL");
+  const features = analysis.features.filter((feature) => mode === "API" ? feature.kind === "ENDPOINT" : isLocalBusinessFeature(feature));
   return {
     ...analysis,
     features,
     tree: buildTree(analysis.workspaceName, analysis.projectId, features),
   };
+}
+
+export function isLocalBusinessFeature(feature: LocalFeatureCandidate) {
+  if (feature.kind !== "CODE_SYMBOL") return false;
+  const group = treeGroup(feature);
+  if (!["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION"].includes(group)) return false;
+  const context = `${feature.name} ${feature.description} ${feature.sourcePath}`;
+  if (/(?:\brepository\b|\bdao\b|\bgateway\b|\bconnector\b|\badapter\b|Java interface capability)/i.test(context)) return false;
+  if (/(?:^|\/)(?:config|configs|types|schemas|utils?|helpers?|infrastructure)(?:\/|$)/i.test(feature.sourcePath)) return false;
+  if (/(?:Routes?|Router|Plugin|Configuration|Factory)$/i.test(feature.name.replace(/\s+/g, ""))) return false;
+  return true;
 }
 
 export function analyzeLocalWorkspace(input: {
@@ -707,11 +720,40 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
     if (record.test) indexTest(testIndex, record.test);
   }
   const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []);
-  const features: LocalFeatureCandidate[] = [...rawCandidates.values()].map((feature) => {
+  const candidateValues = [...rawCandidates.values()];
+  const features: LocalFeatureCandidate[] = candidateValues.map((feature) => {
     const tests = indexedTests(feature, testIndex);
+    const normalizedCode = associationKey(feature.code);
+    const implementationMatches = feature.kind === "ENDPOINT" ? candidateValues.filter((candidate) => {
+      if (candidate.kind !== "CODE_SYMBOL" || candidate.id === feature.id) return false;
+      if (treeModuleIdentity(candidate) !== treeModuleIdentity(feature)) return false;
+      const symbolKey = associationKey(candidate.name);
+      const displayKey = associationKey(candidate.displayName ?? candidate.name);
+      return (symbolKey.length >= 4 && normalizedCode.includes(symbolKey))
+        || (displayKey.length >= 4 && associationKey(feature.displayName ?? "") === displayKey);
+    }).slice(0, 8) : [];
+    const implementationBlocks = [
+      { path: feature.sourcePath, symbol: feature.displayName ?? feature.name, startLine: feature.startLine, relation: "HANDLER" as const, code: feature.code },
+      ...implementationMatches.map((candidate) => ({
+        path: candidate.sourcePath,
+        symbol: candidate.displayName ?? candidate.name,
+        startLine: candidate.startLine,
+        relation: (normalizedCode.includes(associationKey(candidate.name)) ? "CALLS" : "MATCHED_IMPLEMENTATION") as "CALLS" | "MATCHED_IMPLEMENTATION",
+        code: candidate.code,
+      })),
+    ];
+    const endpointIdentity = feature.kind === "ENDPOINT" ? /^(\S+)\s+(.+)$/.exec(feature.name) : null;
     return {
       ...feature,
       displayName: feature.displayName ?? inferredCandidateDisplayName(feature),
+      apiDesign: endpointIdentity ? {
+        protocol: /JAX-RS/i.test(feature.description) ? "JAX-RS" : /Spring/i.test(feature.description) ? "Spring" : /OpenAPI/i.test(feature.description) ? "OpenAPI" : "HTTP",
+        method: endpointIdentity[1],
+        path: endpointIdentity[2],
+        handler: feature.displayName ?? inferredCandidateDisplayName(feature) ?? null,
+        source: feature.sourcePath,
+      } : undefined,
+      implementationBlocks,
       configurations: configurationsForFeature(feature, configurations),
       tests,
       dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },

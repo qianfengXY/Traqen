@@ -117,6 +117,54 @@ test("scanner produces locatable code, API, SQL, config, dependency, and test fa
   assert.equal(repeated.id, bundle.id);
 });
 
+test("scanner uses the Java AST to connect Spring API design, implementation, configuration, and calls", async () => {
+  const rootPath = await mkdtemp(path.join(os.tmpdir(), "traqen-java-scanner-"));
+  await mkdir(path.join(rootPath, "src", "main", "java", "com", "example", "orders"), { recursive: true });
+  await Promise.all([
+    writeFile(path.join(rootPath, "src", "main", "java", "com", "example", "orders", "OrderController.java"), [
+      "package com.example.orders;",
+      "@RestController",
+      '@RequestMapping("/orders")',
+      "@PreAuthorize(\"hasRole('CUSTOMER')\")",
+      "public class OrderController {",
+      "  private final OrderService service;",
+      "  @GetMapping(\"/{id}\")",
+      "  public OrderResponse getOrder(@Valid OrderRequest request) {",
+      "    return service.loadOrder(request.id());",
+      "  }",
+      "}",
+    ].join("\n")),
+    writeFile(path.join(rootPath, "src", "main", "java", "com", "example", "orders", "OrderService.java"), [
+      "package com.example.orders;",
+      "@Service",
+      "public class OrderService {",
+      "  public OrderResponse loadOrder(String id) {",
+      '    String region = getProperty("orders.region");',
+      "    return new OrderResponse(id, region);",
+      "  }",
+      "}",
+      "record OrderRequest(String id) {}",
+      "record OrderResponse(String id, String region) {}",
+    ].join("\n")),
+  ]);
+
+  const scanner = new JavaScriptProjectScanner({ clock: fixedClock });
+  const bundle = await scanner.scan({ projectId: "PROJECT-JAVA", snapshotManifestId: "SNAPSHOT-JAVA", sourceComponentId: "SOURCE-JAVA", rootPath });
+  const endpoint = bundle.nodes.find((node) => node.type === "ENDPOINT" && node.name === "GET /orders/{id}");
+  const handler = bundle.nodes.find((node) => node.type === "CODE_SYMBOL" && node.attributes.methodName === "getOrder");
+  const service = bundle.nodes.find((node) => node.type === "CODE_SYMBOL" && node.attributes.methodName === "loadOrder");
+
+  assert.equal(bundle.complete, true);
+  assert.equal(endpoint?.attributes.protocol, "Spring");
+  assert.equal(endpoint?.attributes.returnType, "OrderResponse");
+  assert.deepEqual(endpoint?.attributes.securityAnnotations, ["PreAuthorize"]);
+  assert.ok(bundle.edges.some((edge) => edge.subjectId === endpoint?.id && edge.predicate === "IMPLEMENTED_BY" && edge.objectId === handler?.id));
+  assert.ok(bundle.edges.some((edge) => edge.subjectId === handler?.id && edge.predicate === "CALLS" && edge.objectId === service?.id));
+  assert.ok(bundle.nodes.some((node) => node.type === "CONFIGURATION" && node.name === "orders.region"));
+  assert.ok(bundle.nodes.some((node) => node.type === "DATA_OBJECT" && node.name === "OrderResponse"));
+  assert.ok(bundle.nodes.some((node) => node.type === "CODE_SYMBOL" && node.attributes.kind === "permission-check"));
+});
+
 test("scanner reports parser failures instead of presenting an incomplete scan as complete", async () => {
   const rootPath = await mkdtemp(path.join(os.tmpdir(), "traqen-scanner-broken-"));
   await writeFile(path.join(rootPath, "broken.js"), "function broken( {");

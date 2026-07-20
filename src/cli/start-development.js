@@ -49,7 +49,7 @@ export function webDevelopmentCommand({
     args: [
       path.join(root, "web/node_modules/vinext/dist/cli.js"),
       "dev",
-      "--host", config.webHost,
+      "--hostname", config.webHost,
       "--port", String(config.webPort),
     ],
     cwd: path.join(root, "web"),
@@ -82,6 +82,8 @@ export async function startDevelopment({ env = process.env, root = repositoryRoo
       cwd: web.cwd,
       env: {
         ...env,
+        TRAQEN_WEB_HOST: config.webHost,
+        TRAQEN_WEB_PORT: String(config.webPort),
         WRANGLER_LOG_PATH: env.WRANGLER_LOG_PATH ?? ".wrangler/wrangler.log",
       },
       stdio: "inherit",

@@ -934,6 +934,98 @@
         }
       }
     },
+    "/v1/projects/{projectId}/analysis-runs": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "startAnalysisRun",
+        "parameters": [{
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "schema": { "type": "boolean", "default": true },
+          "description": "Runs asynchronously by default so large Workspaces can checkpoint and resume. Set false for bounded synchronous execution."
+        }],
+        "requestBody": { "$ref": "#/components/requestBodies/AnalysisRun" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/AnalysisRunResult" },
+          "202": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "analysisRunId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getAnalysisRun",
+        "responses": {
+          "200": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/pause": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "analysisRunId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "pauseAnalysisRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/resume": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "analysisRunId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "resumeAnalysisRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-results/latest": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getLatestAnalysisResult",
+        "responses": {
+          "200": { "$ref": "#/components/responses/AnalysisRunResult" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/analysis-history": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/FeatureId" }
+      ],
+      "get": {
+        "operationId": "getAnalyzedFeatureHistory",
+        "responses": {
+          "200": {
+            "description": "Immutable analyzed Feature versions and retirement events ordered from oldest to newest",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["history"],
+              "properties": { "history": { "type": "array", "items": { "type": "object" } },
+              "additionalProperties": false
+            } } } }
+          }
+        }
+      }
+    },
     "/v1/reverse-runs": {
       "post": {
         "operationId": "executeReverseRun",
@@ -1195,6 +1287,12 @@
         "required": true,
         "content": {
           "application/json": { "schema": { "$ref": "./reverse-run.schema.json" } }
+        }
+      },
+      "AnalysisRun": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./analysis-agent.schema.json" } }
         }
       },
       "CandidateReview": {
@@ -1512,6 +1610,18 @@
         "description": "Durable asynchronous Reverse Run job projection with ordered status and cancellation events",
         "content": {
           "application/json": { "schema": { "$ref": "./reverse-run-job.schema.json" } }
+        }
+      },
+      "AnalysisRunCheckpoint": {
+        "description": "Durable Analysis Agent checkpoint with bounded WorkUnits and restart-safe progress",
+        "content": {
+          "application/json": { "schema": { "$ref": "./analysis-agent.schema.json#/$defs/Checkpoint" } }
+        }
+      },
+      "AnalysisRunResult": {
+        "description": "Latest Feature projection produced from deterministic Facts and optional evidence-bounded model/Skill analysis",
+        "content": {
+          "application/json": { "schema": { "$ref": "./analysis-agent.schema.json#/$defs/Result" } }
         }
       },
       "CandidateReviewed": {

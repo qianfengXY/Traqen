@@ -34,6 +34,7 @@ async function startServer(t, options = {}) {
     implementationPolicyResolver,
     continuousProtectionPolicyResolver,
     productMetricsPolicyResolver,
+    analysisAgent,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -52,6 +53,7 @@ async function startServer(t, options = {}) {
     implementationPolicyResolver,
     continuousProtectionPolicyResolver,
     productMetricsPolicyResolver,
+    analysisAgent,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -90,6 +92,34 @@ test("health endpoint returns a request correlation ID", async (t) => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-request-id"), "request-health-001");
   assert.deepEqual(await response.json(), { status: "ok" });
+});
+
+test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes latest/history projections", async (t) => {
+  const calls = [];
+  const checkpoint = { run: { id: "ANALYSIS-HTTP", status: "PAUSED" }, workUnits: [] };
+  const application = {
+    async submitAnalysisRun(input) { calls.push(["start", input]); return checkpoint; },
+    async getAnalysisRun(projectId, runId) { calls.push(["get", projectId, runId]); return checkpoint; },
+    async pauseAnalysisRun(projectId, runId) { calls.push(["pause", projectId, runId]); return checkpoint; },
+    async resumeAnalysisRun(projectId, runId) { calls.push(["resume", projectId, runId]); return checkpoint; },
+    async getLatestAnalysisResult(projectId) { calls.push(["latest", projectId]); return { id: "ANALYSIS-HTTP", projectId, features: [] }; },
+    async getAnalyzedFeatureHistory(projectId, featureId) { calls.push(["history", projectId, featureId]); return [{ runId: "ANALYSIS-HTTP" }]; },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const started = await postJson(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs`, {
+    id: "ANALYSIS-HTTP",
+    snapshotManifestId: "SNAPSHOT-HTTP",
+    sourceComponentId: "SOURCE-HTTP",
+    profile: { id: "deterministic", mode: "DETERMINISTIC" },
+  });
+  assert.equal(started.response.status, 202);
+  assert.equal(calls[0][1].projectId, "PROJECT-HTTP");
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP`)).status, 200);
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP/pause`, { method: "POST" })).status, 202);
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP/resume`, { method: "POST" })).status, 202);
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-results/latest`)).status, 200);
+  const history = await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/features/FEATURE-HTTP/analysis-history`);
+  assert.deepEqual((await history.json()).history, [{ runId: "ANALYSIS-HTTP" }]);
 });
 
 test("production API authentication protects every non-health route", async (t) => {

@@ -41,7 +41,7 @@ test("Web startup executes the JavaScript CLI directly on every operating system
   assert.deepEqual(command.args, [
     path.join(root, "web/node_modules/vinext/dist/cli.js"),
     "dev",
-    "--host", "127.0.0.1",
+    "--hostname", "127.0.0.1",
     "--port", "3000",
   ]);
   assert.equal(command.cwd, path.join(root, "web"));

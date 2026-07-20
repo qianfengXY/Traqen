@@ -17,8 +17,25 @@ export type LocalWorkspaceProjectSnapshot = {
   records: LocalWorkspaceFileRecord[];
 };
 
+export type LocalWorkspaceAnalysisRunCheckpoint = {
+  id: string;
+  projectId: string;
+  rootName: string;
+  mode: "FULL" | "INCREMENTAL";
+  engine: "DETERMINISTIC";
+  status: "RUNNING" | "PAUSED";
+  scannerVersion: number;
+  plannedFileCount: number;
+  completedFileCount: number;
+  records: LocalWorkspaceFileRecord[];
+  currentPaths: string[];
+  counters: { added: number; modified: number; unchanged: number };
+  startedAt: string;
+  updatedAt: string;
+};
+
 const databaseName = "traqen-local-workspaces";
-const databaseVersion = 1;
+const databaseVersion = 2;
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -27,6 +44,11 @@ function openDatabase() {
       const database = request.result;
       if (!database.objectStoreNames.contains("projects")) database.createObjectStore("projects", { keyPath: "id" });
       if (!database.objectStoreNames.contains("snapshots")) database.createObjectStore("snapshots", { keyPath: "projectId" });
+      if (!database.objectStoreNames.contains("analysisRuns")) database.createObjectStore("analysisRuns", { keyPath: "id" });
+      if (!database.objectStoreNames.contains("analysisResults")) {
+        const results = database.createObjectStore("analysisResults", { keyPath: "id" });
+        results.createIndex("projectId", "projectId", { unique: false });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Unable to open the local Workspace database"));
@@ -77,10 +99,61 @@ export async function loadLocalWorkspaceProject(projectId: string) {
 export async function saveLocalWorkspaceProject(snapshot: LocalWorkspaceProjectSnapshot) {
   const database = await openDatabase();
   try {
-    const transaction = database.transaction(["projects", "snapshots"], "readwrite");
+    const transaction = database.transaction(["projects", "snapshots", "analysisResults"], "readwrite");
     transaction.objectStore("projects").put(snapshot.project);
     transaction.objectStore("snapshots").put({ projectId: snapshot.project.id, scannedAt: snapshot.analysis.scannedAt, records: snapshot.records });
+    transaction.objectStore("analysisResults").put({
+      id: `${snapshot.project.id}:${snapshot.analysis.scannedAt}`,
+      projectId: snapshot.project.id,
+      scannedAt: snapshot.analysis.scannedAt,
+      fileCount: snapshot.analysis.fileCount,
+      supportedFileCount: snapshot.analysis.supportedFileCount,
+      featureCount: snapshot.analysis.features.length,
+      features: snapshot.analysis.features.map((feature) => ({ id: feature.id, name: feature.name, displayName: feature.displayName, kind: feature.kind, sourcePath: feature.sourcePath, startLine: feature.startLine })),
+    });
     await transactionComplete(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function loadLocalWorkspaceAnalysisRun(projectId: string) {
+  const database = await openDatabase();
+  try {
+    return await requestResult(database.transaction("analysisRuns", "readonly").objectStore("analysisRuns").get(`${projectId}:ACTIVE`)) as LocalWorkspaceAnalysisRunCheckpoint | undefined;
+  } finally {
+    database.close();
+  }
+}
+
+export async function saveLocalWorkspaceAnalysisRun(checkpoint: LocalWorkspaceAnalysisRunCheckpoint) {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("analysisRuns", "readwrite");
+    transaction.objectStore("analysisRuns").put(checkpoint);
+    await transactionComplete(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function clearLocalWorkspaceAnalysisRun(projectId: string) {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("analysisRuns", "readwrite");
+    transaction.objectStore("analysisRuns").delete(`${projectId}:ACTIVE`);
+    await transactionComplete(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function listLocalWorkspaceAnalysisHistory(projectId: string) {
+  const database = await openDatabase();
+  try {
+    const index = database.transaction("analysisResults", "readonly").objectStore("analysisResults").index("projectId");
+    const results = await requestResult(index.getAll(projectId)) as Array<{ id: string; projectId: string; scannedAt: string; fileCount: number; supportedFileCount: number; featureCount: number; features: unknown[] }>;
+    return results.sort((left, right) => right.scannedAt.localeCompare(left.scannedAt));
   } finally {
     database.close();
   }

@@ -1,5 +1,6 @@
 import { TraceabilityApplication } from "../application/traceability-application.js";
 import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
+import { AnalysisAgent, configuredAnalysisModels, createReverseSkillAnalysisAdapter } from "../analysis/index.js";
 
 function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
@@ -47,6 +48,11 @@ export function createConfiguredApplication({ store, env = process.env }) {
   }
   const corsAllowedOrigins = commaSeparated(env.CORS_ALLOWED_ORIGINS, "http://localhost:3000");
   const referenceSkills = createReferenceSkillSet();
+  const analysisModels = configuredAnalysisModels(env.ANALYSIS_MODEL_PROFILES_JSON, env);
+  const analysisSkills = new Map(referenceSkills.map(({ adapter }) => {
+    const analysisAdapter = createReverseSkillAnalysisAdapter(adapter);
+    return [`${analysisAdapter.id}\u0000${analysisAdapter.version}`, analysisAdapter];
+  }));
   const installedSkills = new Map(
     referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
   );
@@ -71,6 +77,11 @@ export function createConfiguredApplication({ store, env = process.env }) {
     }),
     reverseOrchestrator: new ReverseSkillOrchestrator({
       adapters: referenceSkills.map(({ adapter }) => adapter),
+    }),
+    analysisAgent: new AnalysisAgent({
+      repository: store,
+      modelResolver: (profileId) => analysisModels.get(profileId) ?? null,
+      skillResolver: (skillId, version) => analysisSkills.get(`${skillId}\u0000${version}`) ?? null,
     }),
     reviewerResolver: (_projectId, context) => {
       if (configuredReviewers.length > 0) {

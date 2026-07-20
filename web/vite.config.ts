@@ -51,6 +51,8 @@ export default defineConfig(async () => {
 
   return {
     server: {
+      host: process.env.TRAQEN_WEB_HOST ?? "127.0.0.1",
+      port: Number(process.env.TRAQEN_WEB_PORT ?? 3000),
       // The self-Workspace intentionally renders repository-backed design and
       // source files from ../docs and ../src. Vite otherwise treats web/ as
       // the filesystem boundary on standalone Windows clones and rejects the
