@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { AnalysisModelConnectionError } from "../analysis/index.js";
 import {
   PersistenceConflictError,
   ReviewAuthenticationError,
@@ -132,6 +133,12 @@ function errorResponse(error, id) {
     return {
       status: 400,
       body: { error: { code: "INVALID_REQUEST", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof AnalysisModelConnectionError) {
+    return {
+      status: 502,
+      body: { error: { code: "ANALYSIS_MODEL_UNAVAILABLE", message: error.message, requestId: id } },
     };
   }
   if (error instanceof PersistenceConflictError) {
@@ -773,6 +780,35 @@ export function createTraceabilityHttpHandler({
 
       if (url.pathname === "/v1/skills" && request.method === "GET") {
         sendJson(response, 200, { skills: await application.listReverseSkills() }, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/analysis-model-profiles" && request.method === "GET") {
+        sendJson(response, 200, { profiles: application.listAnalysisModelProfiles() }, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/analysis-model-profiles" && request.method === "POST") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, application.configureAnalysisModelProfile(input), id);
+        return;
+      }
+
+      const analysisModelVerifyMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/verify$/.exec(url.pathname);
+      if (request.method === "POST" && analysisModelVerifyMatch) {
+        const profileId = decodePathSegment(analysisModelVerifyMatch[1]);
+        sendJson(response, 200, await application.verifyAnalysisModelProfile(profileId), id);
+        return;
+      }
+
+      const workspaceModelAnalysisMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/workspace-enrichment$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceModelAnalysisMatch) {
+        requireJson(request);
+        const profileId = decodePathSegment(workspaceModelAnalysisMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const candidates = await application.enrichWorkspaceCandidates(profileId, input);
+        sendJson(response, 200, { profileId, candidates }, id);
         return;
       }
 

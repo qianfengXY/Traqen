@@ -12,6 +12,8 @@ The local Workspace Analysis Agent has also been exercised against the real [`zt
 
 The initialized Feature tree offers two global projections without rescanning: a pure business-capability view that excludes APIs and engineering commands, and an API-only view containing HTTP/OpenAPI endpoints. Workspace statistics, Feature traceability, and the trace graph follow the same active projection.
 
+Before starting a local Workspace analysis, open **Configure model** in the global header and provide an OpenAI-compatible Chat Completions URL, model name, and API key. Traqen verifies the connection and keeps the runtime secret only in API process memory. Deterministic candidates are then enriched in resumable batches of at most 24. Workspace visibility management lets you remove projects from the sidebar without deleting their scan results; hidden projects do not load their source index, Feature tree, or traceability snapshot.
+
 ## Implemented foundation
 
 The first executable slice is the framework-neutral domain kernel. It provides:
@@ -256,7 +258,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
 
-Start the Analysis Agent after the selected Snapshot has deterministic Facts with `POST /v1/projects/{projectId}/analysis-runs`. Runs are asynchronous by default and can be queried, paused, and resumed under the same `/analysis-runs/{analysisRunId}` resource. Read the latest current projection from `/analysis-results/latest` and immutable Feature evolution from `/features/{featureId}/analysis-history`. Configure optional hybrid profiles through `ANALYSIS_MODEL_PROFILES_JSON`; see the [bilingual Analysis Agent design](docs/features/analysis-agent-design.md) for the profile format, context boundaries, incremental behavior, and authority-inheritance rules.
+Start the Analysis Agent after the selected Snapshot has deterministic Facts with `POST /v1/projects/{projectId}/analysis-runs`. Runs are asynchronous by default and can be queried, paused, and resumed under the same `/analysis-runs/{analysisRunId}` resource. Read the latest current projection from `/analysis-results/latest` and immutable Feature evolution from `/features/{featureId}/analysis-history`. Configure and verify a runtime model through `/v1/analysis-model-profiles` or provision managed profiles through `ANALYSIS_MODEL_PROFILES_JSON`; see the [bilingual Analysis Agent design](docs/features/analysis-agent-design.md) for credentials, bounded Workspace enrichment, incremental behavior, and authority-inheritance rules.
 
 `npm run pilot:order-submit` is the reproducible in-repository MVP proof. It uses only synthetic data and the same generic Scanner, Skill, review, TestSpec, Runner, Evidence, impact, and repair paths that a real pilot uses; no order-specific behavior exists in the Traqen core.
 

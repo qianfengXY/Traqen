@@ -20,6 +20,46 @@ function responseText(payload) {
   throw new TypeError("analysis model response does not contain message content");
 }
 
+function jsonResponse(payload) {
+  const value = responseText(payload).trim();
+  const unfenced = value.startsWith("```")
+    ? value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+    : value;
+  try {
+    return JSON.parse(unfenced);
+  } catch (error) {
+    throw new TypeError("analysis model response is not valid JSON", { cause: error });
+  }
+}
+
+function boundedWorkspaceCandidates(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 24) {
+    throw new TypeError("workspace model batch must contain between 1 and 24 candidates");
+  }
+  const candidates = value.map((candidate, index) => {
+    if (!candidate || typeof candidate !== "object") throw new TypeError(`workspace candidate ${index} must be an object`);
+    return {
+      id: requiredString(candidate.id, `workspace candidate ${index} id`),
+      name: requiredString(candidate.name, `workspace candidate ${index} name`).slice(0, 300),
+      kind: requiredString(candidate.kind, `workspace candidate ${index} kind`).slice(0, 40),
+      method: typeof candidate.method === "string" ? candidate.method.slice(0, 20) : null,
+      modulePath: typeof candidate.modulePath === "string" ? candidate.modulePath.slice(0, 300) : "",
+      sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "",
+      description: typeof candidate.description === "string" ? candidate.description.slice(0, 1_200) : "",
+      code: typeof candidate.code === "string" ? candidate.code.slice(0, 2_000) : "",
+    };
+  });
+  if (JSON.stringify(candidates).length > 72_000) throw new RangeError("workspace model batch exceeds the bounded context size");
+  return candidates;
+}
+
+export class AnalysisModelConnectionError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = "AnalysisModelConnectionError";
+  }
+}
+
 export class OpenAICompatibleAnalysisModelAdapter {
   constructor({ id, endpoint, model, apiKeyResolver = () => null, fetchImpl = globalThis.fetch, timeoutMs = 120_000 }) {
     this.id = requiredString(id, "analysis model profile id");
@@ -33,7 +73,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
     this.timeoutMs = timeoutMs;
   }
 
-  async analyze(input, { signal = null } = {}) {
+  async #request({ messages, maxOutputTokens }, { signal = null } = {}) {
     const apiKey = await this.apiKeyResolver(this.id);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("Analysis model request timed out")), this.timeoutMs);
@@ -49,9 +89,114 @@ export class OpenAICompatibleAnalysisModelAdapter {
         body: JSON.stringify({
           model: this.model,
           temperature: 0,
-          max_tokens: input.context.maxOutputTokens,
+          max_tokens: maxOutputTokens,
           response_format: { type: "json_object" },
-          messages: [
+          messages,
+        }),
+      });
+      if (!response.ok) {
+        const detail = typeof response.text === "function" ? await response.text().catch(() => "") : "";
+        throw new AnalysisModelConnectionError(`Analysis model request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+      }
+      try {
+        return jsonResponse(await response.json());
+      } catch (error) {
+        throw new AnalysisModelConnectionError("Analysis model returned an invalid structured JSON response", { cause: error });
+      }
+    } catch (error) {
+      if (error instanceof AnalysisModelConnectionError) throw error;
+      if (controller.signal.aborted) throw new AnalysisModelConnectionError("Analysis model request timed out or was cancelled", { cause: error });
+      throw new AnalysisModelConnectionError("Unable to reach the configured analysis model", { cause: error });
+    } finally {
+      clearTimeout(timeout);
+      if (signal) signal.removeEventListener("abort", abort);
+    }
+  }
+
+  async verify(options = {}) {
+    const startedAt = Date.now();
+    const result = await this.#request({
+      maxOutputTokens: 32,
+      messages: [
+        { role: "system", content: "Return JSON only." },
+        { role: "user", content: "Reply with exactly {\"ok\":true}." },
+      ],
+    }, options);
+    if (result?.ok !== true) throw new AnalysisModelConnectionError("Analysis model verification returned an unexpected structured response");
+    return { ok: true, latencyMs: Date.now() - startedAt };
+  }
+
+  async enrichWorkspaceCandidates(value, options = {}) {
+    const candidates = boundedWorkspaceCandidates(value);
+    const inputIds = new Set(candidates.map((candidate) => candidate.id));
+    const result = await this.#request({
+      maxOutputTokens: Math.min(4_096, Math.max(800, candidates.length * 160)),
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Traqen's bounded Workspace analysis agent.",
+            "Classify implementation candidates using only the supplied paths, descriptions, and code excerpts.",
+            "Do not invent permissions, business rules, dependencies, tests, or authority.",
+            "Return JSON only with candidates[]. Preserve every input id exactly.",
+            "businessFeature is true only for a user-recognizable business capability or background business process; repositories, DTOs, adapters, configuration, utilities, and framework plumbing are false.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: "Improve readable feature names and distinguish business capabilities from technical symbols.",
+            candidates,
+            outputContract: {
+              candidates: [{
+                id: "input id",
+                displayName: "concise user-recognizable name",
+                description: "evidence-bounded behavior description",
+                businessFeature: true,
+                domain: "short business domain",
+                group: "BUSINESS_CAPABILITY | BACKGROUND_INTEGRATION | DATA_INTEGRATION | PROJECT_OPERATION | API_SERVICE",
+                confidence: "LOW | MEDIUM | HIGH",
+                rationale: "short evidence-based reason",
+              }],
+            },
+          }),
+        },
+      ],
+    }, options);
+    try {
+      if (!Array.isArray(result?.candidates)) throw new TypeError("analysis model workspace response requires candidates[]");
+      const allowedGroups = new Set(["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION", "DATA_INTEGRATION", "PROJECT_OPERATION", "API_SERVICE"]);
+      const allowedConfidence = new Set(["LOW", "MEDIUM", "HIGH"]);
+      const seen = new Set();
+      return result.candidates.map((candidate, index) => {
+        const id = requiredString(candidate?.id, `workspace response candidate ${index} id`);
+        if (!inputIds.has(id) || seen.has(id)) throw new TypeError(`analysis model returned an unknown or duplicate candidate id ${id}`);
+        seen.add(id);
+        const group = requiredString(candidate.group, `workspace response candidate ${index} group`);
+        const confidence = requiredString(candidate.confidence, `workspace response candidate ${index} confidence`);
+        if (!allowedGroups.has(group)) throw new TypeError(`analysis model returned unsupported group ${group}`);
+        if (!allowedConfidence.has(confidence)) throw new TypeError(`analysis model returned unsupported confidence ${confidence}`);
+        if (typeof candidate.businessFeature !== "boolean") throw new TypeError(`workspace response candidate ${index} businessFeature must be boolean`);
+        return {
+          id,
+          displayName: requiredString(candidate.displayName, `workspace response candidate ${index} displayName`).slice(0, 200),
+          description: requiredString(candidate.description, `workspace response candidate ${index} description`).slice(0, 2_000),
+          businessFeature: candidate.businessFeature,
+          domain: requiredString(candidate.domain, `workspace response candidate ${index} domain`).slice(0, 120),
+          group,
+          confidence,
+          rationale: requiredString(candidate.rationale, `workspace response candidate ${index} rationale`).slice(0, 1_000),
+        };
+      });
+    } catch (error) {
+      throw new AnalysisModelConnectionError("Analysis model returned an invalid Workspace enrichment response", { cause: error });
+    }
+  }
+
+  async analyze(input, { signal = null } = {}) {
+    return this.#request({
+      maxOutputTokens: input.context.maxOutputTokens,
+      messages: [
             {
               role: "system",
               content: [
@@ -85,21 +230,74 @@ export class OpenAICompatibleAnalysisModelAdapter {
               }),
             },
           ],
-        }),
-      });
-      if (!response.ok) throw new Error(`Analysis model request failed with HTTP ${response.status}`);
-      const payload = await response.json();
-      let parsed;
-      try {
-        parsed = JSON.parse(responseText(payload));
-      } catch (error) {
-        throw new TypeError("analysis model response is not valid JSON", { cause: error });
-      }
-      return parsed;
-    } finally {
-      clearTimeout(timeout);
-      if (signal) signal.removeEventListener("abort", abort);
+    }, { signal });
+  }
+}
+
+export class AnalysisModelRegistry {
+  #profiles = new Map();
+  #clock;
+  #fetchImpl;
+
+  constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch } = {}) {
+    if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
+    if (typeof clock !== "function") throw new TypeError("analysis model registry clock must be a function");
+    if (typeof fetchImpl !== "function") throw new TypeError("analysis model registry fetchImpl must be a function");
+    this.#clock = clock;
+    this.#fetchImpl = fetchImpl;
+    for (const [id, adapter] of adapters) {
+      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter });
     }
+  }
+
+  #public(profile) {
+    return {
+      id: profile.id,
+      endpoint: profile.endpoint,
+      model: profile.model,
+      timeoutMs: profile.timeoutMs,
+      source: profile.source,
+      configuredAt: profile.configuredAt,
+      verifiedAt: profile.verifiedAt,
+      ready: Boolean(profile.verifiedAt),
+    };
+  }
+
+  list() {
+    return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  resolve(id) {
+    const profile = this.#profiles.get(id);
+    return profile?.verifiedAt ? profile.adapter : null;
+  }
+
+  configure(input) {
+    if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
+    const id = requiredString(input.id, "analysis model profile id");
+    const endpoint = endpointUrl(input.endpoint);
+    const model = requiredString(input.model, "analysis model name");
+    const apiKey = requiredString(input.apiKey, "analysis model API key");
+    const timeoutMs = input.timeoutMs ?? 120_000;
+    const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter };
+    this.#profiles.set(id, profile);
+    return this.#public(profile);
+  }
+
+  async verify(id) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    const verification = await profile.adapter.verify();
+    profile.verifiedAt = this.#clock().toISOString();
+    return { ...this.#public(profile), latencyMs: verification.latencyMs };
+  }
+
+  async enrichWorkspaceCandidates(id, candidates, options = {}) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
+    return profile.adapter.enrichWorkspaceCandidates(candidates, options);
   }
 }
 

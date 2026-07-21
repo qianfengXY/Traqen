@@ -12,6 +12,8 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 初始化后的功能树无需重新扫描即可在两种全局投影间切换：纯业务能力视图排除 API 与工程命令，API 视图只包含 HTTP/OpenAPI 接口。Workspace 统计、功能追溯和追溯图谱始终跟随同一个当前投影。
 
+开始本地 Workspace 分析前，先在全局顶部打开“配置分析模型”，填写 OpenAI-compatible Chat Completions 地址、模型名称和 API Key。Traqen 会验证连接，并只在 API 进程内存中保存运行时密钥。确定性候选随后按每批最多 24 个进行可续跑的模型增强。Workspace 展示管理可以把项目移出侧栏而不删除扫描结果；隐藏项目不会加载源码索引、功能树或追溯快照。
+
 ## 实施基础
 
 第一个可执行切片是框架中立域内核。它提供：
@@ -256,7 +258,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 Fact API 接受 `POST /v1/projects/{projectId}/fact-scans` 处的签名包，并从 `GET /v1/projects/{projectId}/facts` 返回过滤后的一跳图。其 `type`、`predicate`、`q`、`snapshotManifestId` 和 `limit` 查询参数是可选的。
 
-当所选 Snapshot 已具有确定性 Facts 后，通过 `POST /v1/projects/{projectId}/analysis-runs` 启动分析 Agent。运行默认异步，并可在同一个 `/analysis-runs/{analysisRunId}` 资源下查询、暂停和续跑。从 `/analysis-results/latest` 读取最新当前投影，从 `/features/{featureId}/analysis-history` 查询不可变 Feature 演进历史。可选 Hybrid 模型通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置；配置格式、上下文边界、增量行为与权威继承规则见[双语分析 Agent 设计](docs/features/analysis-agent-design.zh-CN.md)。
+当所选 Snapshot 已具有确定性 Facts 后，通过 `POST /v1/projects/{projectId}/analysis-runs` 启动分析 Agent。运行默认异步，并可在同一个 `/analysis-runs/{analysisRunId}` 资源下查询、暂停和续跑。从 `/analysis-results/latest` 读取最新当前投影，从 `/features/{featureId}/analysis-history` 查询不可变 Feature 演进历史。运行时模型可通过 `/v1/analysis-model-profiles` 配置并验证，托管模型仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 预置；凭据、有界 Workspace 增强、增量行为与权威继承规则见[双语分析 Agent 设计](docs/features/analysis-agent-design.zh-CN.md)。
 
 `npm run pilot:order-submit` 是可复制的存储库内 MVP 证明。它仅使用合成数据以及真实飞行员使用的相同通用Scanner、Skill、审查、TestSpec、Runner、Evidence、影响和修复路径； Traqen 核心中不存在特定于订单的行为。
 

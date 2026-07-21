@@ -15,7 +15,7 @@
 5. Feature 身份先按精确候选键匹配，再按稳定证据重合度与语义名称相似度匹配。接近全量的重扫本身不能使人工确认失效。
 6. 业务语义变化必须复核。实现重新映射和证据刷新会继承业务权威，同时以独立变化类型展示。
 7. 当前功能树只包含最新且仍存在的 Feature。已移除实现进入不可变退役/历史事件，不继续占据当前树。
-8. 模型凭据只通过服务端环境变量引用解析，绝不写入运行、结果、提示词记录或浏览器数据库。
+8. 模型凭据通过服务端环境变量引用解析，或仅由运行时配置保存在服务端进程内存中。API 不会返回密钥，密钥也绝不写入运行、结果、提示词记录或浏览器数据库。
 
 ## 处理流水线
 
@@ -30,7 +30,9 @@ WorkUnit 以接口和有意义的业务实现根节点为入口。图邻域采�
 - `DETERMINISTIC`：不调用外部模型，适合私有/离线环境和可复现基线。
 - `HYBRID`：先运行确定性分析，再调用已配置的 OpenAI-compatible 模型和可选 Skills。扩展可以优化聚合与说明，但不能引用当前 WorkUnit 之外的 Fact 或稳定节点。
 
-服务端通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置模型。每项包含 `id`、HTTPS `endpoint`（HTTP 仅允许回环地址）、`model`、可选 `timeoutMs` 和 `apiKeyEnvironment`；真正密钥保存在后者指定的环境变量中。
+开始分析前，可以在全局“配置分析模型”面板中设置 Profile ID、准确的 OpenAI-compatible Chat Completions 地址、模型名称和 API Key。Traqen 会先发起一次真实的结构化输出验证请求，只有成功后才把该配置标记为可分析。运行时输入的 API Key 只保存在 Traqen API 进程内存中，API 进程重启后需要重新配置。
+
+对于托管部署，仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置服务端模型。每项包含 `id`、HTTPS `endpoint`（HTTP 仅允许回环地址）、`model`、可选 `timeoutMs` 和 `apiKeyEnvironment`；真正密钥保存在后者指定的环境变量中。
 
 示例：
 
@@ -70,15 +72,20 @@ PostgreSQL 将可更新的运行检查点与不可变的完成结果分开存储
 - `POST .../{analysisRunId}/resume`
 - `GET /v1/projects/{projectId}/analysis-results/latest`
 - `GET /v1/projects/{projectId}/features/{featureId}/analysis-history`
+- `GET/POST /v1/analysis-model-profiles` —— 获取不含密钥的配置，或配置运行时模型。
+- `POST /v1/analysis-model-profiles/{profileId}/verify`
+- `POST /v1/analysis-model-profiles/{profileId}/workspace-enrichment` —— 每个模型批次最多接收 24 个确定性候选。
 
 每次运行严格绑定一个项目、Snapshot Manifest 和 Source component。没有确定性 Fact 图或 Source component 不匹配时，应用会拒绝分析。
 
 ## 本地 Workspace 体验
 
-浏览器使用确定性配置，并通过 IndexedDB 保存多个项目。数据库分别保存最新项目索引、可续跑的活动检查点和紧凑历史结果摘要。项目原始源码不会持久化，只保存提取后的候选记录、必要的代码/测试片段和脱敏配置线索。
+浏览器必须先取得一个已验证模型配置，才能开始新的 Workspace 分析。它先在本地完成确定性提取，再通过 Traqen API 按每批最多 24 个候选发送候选名称、路径、说明和必要代码片段。每个模型批次完成后都会保存检查点；增量分析时，使用同一模型配置且未变化的已分类候选不会再次消耗模型调用。项目原始文件不会持久化，IndexedDB 只保存提取后的候选记录、必要代码/测试片段、脱敏配置线索、活动检查点和紧凑历史摘要。
+
+可以保留多个已扫描项目，同时只在侧栏展示选中的项目。从展示中移出是非破坏操作：Workspace 管理仍会读取其轻量摘要，但不会加载源码索引、功能树和追溯快照；重新勾选即可按需打开，无需重扫。
 
 功能树提供两种投影。纯业务模式会过滤接口、命令、Repository、Adapter、Interface、Utils、配置代码和其他技术支持符号；API 模式展示接口设计数据以及匹配到的入口/调用实现代码块。两种投影都来自同一个 Workspace 最新分析结果。
 
 ## 明确边界
 
-分析 Agent 不批准 Claim、不执行测试，也不会把 LLM 说法转成业务事实。浏览器端刻意不实现 Hybrid 推断，因为密钥不能放在浏览器；Hybrid 分析应通过带认证的服务端 API 执行。多实例 Worker 租约和分布式队列属于部署基础设施。OpenAPI YAML 与更多语言的确定性 AST 适配器仍是明确的后续扩展，不会伪装成“已完整分析”。
+分析 Agent 不批准 Claim、不执行测试，也不会把 LLM 说法转成业务事实。浏览器只编排 Hybrid 进度，所有模型调用和凭据仍位于带认证的 Traqen API 后面。模型生成的名称、业务分组、置信度和依据在受治理的人工确认前都只是候选元数据。多实例 Worker 租约和分布式队列属于部署基础设施。OpenAPI YAML 与更多语言的确定性 AST 适配器仍是明确的后续扩展，不会伪装成“已完整分析”。

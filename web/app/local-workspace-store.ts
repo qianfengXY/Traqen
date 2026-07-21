@@ -9,6 +9,7 @@ export type LocalWorkspaceProjectSummary = {
   fileCount: number;
   supportedFileCount: number;
   featureCount: number;
+  visible: boolean;
 };
 
 export type LocalWorkspaceProjectSnapshot = {
@@ -22,8 +23,12 @@ export type LocalWorkspaceAnalysisRunCheckpoint = {
   projectId: string;
   rootName: string;
   mode: "FULL" | "INCREMENTAL";
-  engine: "DETERMINISTIC";
+  engine: "HYBRID";
   status: "RUNNING" | "PAUSED";
+  phase: "SCANNING" | "MODEL_ENRICHMENT";
+  modelProfileId: string;
+  completedModelBatchCount: number;
+  totalModelBatchCount: number;
   scannerVersion: number;
   plannedFileCount: number;
   completedFileCount: number;
@@ -70,11 +75,15 @@ function transactionComplete(transaction: IDBTransaction) {
   });
 }
 
-export async function listLocalWorkspaceProjects() {
+function normalizedProject(project: LocalWorkspaceProjectSummary) {
+  return { ...project, visible: project.visible !== false };
+}
+
+export async function listLocalWorkspaceProjects({ includeHidden = false }: { includeHidden?: boolean } = {}) {
   const database = await openDatabase();
   try {
     const projects = await requestResult(database.transaction("projects", "readonly").objectStore("projects").getAll()) as LocalWorkspaceProjectSummary[];
-    return projects.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+    return projects.map(normalizedProject).filter((project) => includeHidden || project.visible).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   } finally {
     database.close();
   }
@@ -89,8 +98,25 @@ export async function loadLocalWorkspaceProject(projectId: string) {
       requestResult(transaction.objectStore("snapshots").get(projectId)) as Promise<{ projectId: string; scannedAt: string; records: LocalWorkspaceFileRecord[] } | undefined>,
     ]);
     if (!project || !storedSnapshot) return null;
+    const normalized = normalizedProject(project);
     const analysis = analyzeLocalWorkspaceRecords({ workspaceName: project.name, projectId: project.id, records: storedSnapshot.records, now: new Date(storedSnapshot.scannedAt) });
-    return { project, analysis, records: storedSnapshot.records } satisfies LocalWorkspaceProjectSnapshot;
+    return { project: normalized, analysis, records: storedSnapshot.records } satisfies LocalWorkspaceProjectSnapshot;
+  } finally {
+    database.close();
+  }
+}
+
+export async function setLocalWorkspaceProjectVisibility(projectId: string, visible: boolean) {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("projects", "readwrite");
+    const store = transaction.objectStore("projects");
+    const project = await requestResult(store.get(projectId)) as LocalWorkspaceProjectSummary | undefined;
+    if (!project) throw new Error(`Local Workspace project ${projectId} was not found`);
+    const updated = { ...normalizedProject(project), visible };
+    store.put(updated);
+    await transactionComplete(transaction);
+    return updated;
   } finally {
     database.close();
   }

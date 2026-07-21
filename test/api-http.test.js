@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
+import { AnalysisModelConnectionError } from "../src/analysis/index.js";
 import {
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -35,6 +36,7 @@ async function startServer(t, options = {}) {
     continuousProtectionPolicyResolver,
     productMetricsPolicyResolver,
     analysisAgent,
+    analysisModelRegistry,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -54,6 +56,7 @@ async function startServer(t, options = {}) {
     continuousProtectionPolicyResolver,
     productMetricsPolicyResolver,
     analysisAgent,
+    analysisModelRegistry,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -120,6 +123,45 @@ test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes late
   assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-results/latest`)).status, 200);
   const history = await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/features/FEATURE-HTTP/analysis-history`);
   assert.deepEqual((await history.json()).history, [{ runId: "ANALYSIS-HTTP" }]);
+});
+
+test("analysis model profiles can be configured, verified, and used for bounded Workspace enrichment without returning secrets", async (t) => {
+  const calls = [];
+  const application = {
+    listAnalysisModelProfiles() { return [{ id: "workspace-default", ready: false }]; },
+    configureAnalysisModelProfile(input) { calls.push(["configure", input]); return { id: input.id, endpoint: input.endpoint, model: input.model, ready: false }; },
+    async verifyAnalysisModelProfile(profileId) { calls.push(["verify", profileId]); return { id: profileId, ready: true, latencyMs: 12 }; },
+    async enrichWorkspaceCandidates(profileId, input) { calls.push(["enrich", profileId, input]); return [{ id: input.candidates[0].id, businessFeature: true }]; },
+  };
+  const baseUrl = await startStubServer(t, application);
+
+  const listed = await fetch(`${baseUrl}/v1/analysis-model-profiles`);
+  assert.deepEqual((await listed.json()).profiles, [{ id: "workspace-default", ready: false }]);
+  const configured = await postJson(`${baseUrl}/v1/analysis-model-profiles`, {
+    id: "workspace-default",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    apiKey: "not-returned",
+  });
+  assert.equal(configured.response.status, 201);
+  assert.equal(JSON.stringify(configured.body).includes("not-returned"), false);
+  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" })).status, 200);
+  const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, { candidates: [{ id: "FEATURE-1" }] });
+  assert.equal(enriched.response.status, 200);
+  assert.equal(enriched.body.candidates[0].businessFeature, true);
+  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "enrich"]);
+});
+
+test("analysis model connectivity failures use a distinct gateway error", async (t) => {
+  const application = {
+    async verifyAnalysisModelProfile() {
+      throw new AnalysisModelConnectionError("Unable to reach the configured analysis model");
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const response = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" });
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error.code, "ANALYSIS_MODEL_UNAVAILABLE");
 });
 
 test("production API authentication protects every non-health route", async (t) => {

@@ -15,7 +15,7 @@ The Analysis Agent is Traqen's core source-understanding capability and the succ
 5. Feature identity is matched by exact candidate key, then stable evidence overlap and semantic-name similarity. A near-full rescan does not by itself invalidate human confirmation.
 6. Business semantic changes require review. Implementation remapping and evidence refresh preserve inherited business authority while remaining visible as distinct change types.
 7. The current Feature tree contains only the latest current Features. Removed implementations become immutable retirement/history events and do not remain in the current tree.
-8. Model credentials are resolved from server environment references and are never persisted in a run, result, prompt record, or browser database.
+8. Model credentials are resolved from server environment references or held in process memory for a runtime-configured profile. They are never returned by the API or persisted in a run, result, prompt record, or browser database.
 
 ## Pipeline
 
@@ -30,7 +30,9 @@ WorkUnit roots are endpoints and meaningful business implementation roots. Bread
 - `DETERMINISTIC`: no external model call. Suitable for private/offline use and reproducible baselines.
 - `HYBRID`: runs deterministic analysis first, then a configured OpenAI-compatible model and optional registered Skills. Extensions may refine grouping and descriptions, but cannot cite evidence or stable nodes outside their WorkUnit.
 
-`ANALYSIS_MODEL_PROFILES_JSON` configures server-side profiles. Each entry contains `id`, HTTPS `endpoint` (HTTP is accepted only for loopback), `model`, optional `timeoutMs`, and `apiKeyEnvironment`. The named environment variable holds the secret.
+Profiles can be configured before analysis from the global **Configure model** panel. The user enters a profile ID, exact OpenAI-compatible Chat Completions endpoint, model name, and API key. Traqen sends a live structured-output verification request before marking the profile ready. Runtime API keys remain only in the Traqen API process memory and must be reconfigured after that process restarts.
+
+For managed deployments, `ANALYSIS_MODEL_PROFILES_JSON` configures server-side profiles. Each entry contains `id`, HTTPS `endpoint` (HTTP is accepted only for loopback), `model`, optional `timeoutMs`, and `apiKeyEnvironment`. The named environment variable holds the secret.
 
 Example:
 
@@ -70,15 +72,20 @@ PostgreSQL stores mutable run checkpoints separately from immutable completed re
 - `POST .../{analysisRunId}/resume`
 - `GET /v1/projects/{projectId}/analysis-results/latest`
 - `GET /v1/projects/{projectId}/features/{featureId}/analysis-history`
+- `GET/POST /v1/analysis-model-profiles` — list secret-free profiles or configure a runtime profile.
+- `POST /v1/analysis-model-profiles/{profileId}/verify`
+- `POST /v1/analysis-model-profiles/{profileId}/workspace-enrichment` — accept at most 24 deterministic candidates per bounded model batch.
 
 Every run is bound to one project, Snapshot Manifest, and Source component. The application refuses analysis without a deterministic Fact graph or with a mismatched Source component.
 
 ## Local Workspace experience
 
-The browser uses the deterministic profile and keeps multiple projects in IndexedDB. It stores the latest project index, resumable active-run checkpoints, and compact historical result summaries. Raw project source is not persisted; only extracted candidate records, necessary code/test excerpts, and redacted configuration clues are stored.
+The browser requires a verified model profile before starting a new Workspace analysis. It performs deterministic extraction locally, then sends candidate names, paths, descriptions, and necessary code excerpts through the Traqen API in batches of at most 24 candidates. A checkpoint is stored after every model batch. On an incremental run, unchanged candidates already classified by the same profile do not consume another model call. Raw project files are not persisted; IndexedDB contains extracted candidate records, necessary code/test excerpts, redacted configuration clues, active checkpoints, and compact history summaries.
+
+Multiple projects can remain stored while only selected projects appear in the sidebar. Removing a Workspace from display is non-destructive: its lightweight summary remains available in Workspace visibility management, but its source index, Feature tree, and traceability snapshot are not loaded. Re-enabling it restores on-demand access without rescanning.
 
 The Feature tree has two projections. Pure business mode suppresses endpoints, commands, repositories, adapters, interfaces, utilities, configuration code, and other technical support symbols. API mode shows endpoint design data and matched handler/call implementation blocks. Both projections come from the same latest Workspace analysis.
 
 ## Deliberate boundaries
 
-The Agent does not approve Claims, execute tests, or turn an LLM statement into business truth. Browser-side hybrid inference is intentionally absent because secrets must not be stored in the browser; hybrid runs use the authenticated server API. Multi-instance worker leasing and a distributed queue remain deployment infrastructure concerns. OpenAPI YAML and additional deterministic language AST adapters remain explicit future extensions rather than silently incomplete analysis.
+The Agent does not approve Claims, execute tests, or turn an LLM statement into business truth. The browser orchestrates hybrid progress, but all model calls and credentials remain behind the authenticated Traqen API. Model names, business grouping, confidence, and rationale remain candidate metadata until governed human confirmation. Multi-instance worker leasing and a distributed queue remain deployment infrastructure concerns. OpenAPI YAML and additional deterministic language AST adapters remain explicit future extensions rather than silently incomplete analysis.

@@ -176,6 +176,7 @@ export class TraceabilityApplication {
   #continuousProtectionPolicyResolver;
   #productMetricsPolicyResolver;
   #analysisAgent;
+  #analysisModelRegistry;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -195,6 +196,7 @@ export class TraceabilityApplication {
     continuousProtectionPolicyResolver = () => ({ mode: "ADVISORY" }),
     productMetricsPolicyResolver = () => ({}),
     analysisAgent = null,
+    analysisModelRegistry = null,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -231,6 +233,7 @@ export class TraceabilityApplication {
     this.#continuousProtectionPolicyResolver = continuousProtectionPolicyResolver;
     this.#productMetricsPolicyResolver = productMetricsPolicyResolver;
     this.#analysisAgent = analysisAgent;
+    this.#analysisModelRegistry = analysisModelRegistry;
   }
 
   async createProject(input) {
@@ -1206,6 +1209,30 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(runId, "runId");
     return this.#store.getReverseRun(projectId, runId);
+  }
+
+  listAnalysisModelProfiles() {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.list();
+  }
+
+  configureAnalysisModelProfile(input) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.configure(input);
+  }
+
+  async verifyAnalysisModelProfile(profileId) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.verify(requireId(profileId, "analysisModelProfileId"));
+  }
+
+  async enrichWorkspaceCandidates(profileId, input) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    if (!input || typeof input !== "object") throw new TypeError("workspace analysis input must be an object");
+    return this.#analysisModelRegistry.enrichWorkspaceCandidates(
+      requireId(profileId, "analysisModelProfileId"),
+      input.candidates,
+    );
   }
 
   async #analysisInputs(input) {

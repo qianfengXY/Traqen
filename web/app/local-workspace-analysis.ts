@@ -7,6 +7,15 @@ export type LocalWorkspaceInputFile = {
 
 export type LocalFeatureTreeMode = "BUSINESS" | "API";
 
+export type LocalModelClassification = {
+  profileId: string;
+  businessFeature: boolean;
+  domain: string;
+  group: "BUSINESS_CAPABILITY" | "BACKGROUND_INTEGRATION" | "DATA_INTEGRATION" | "PROJECT_OPERATION" | "API_SERVICE";
+  confidence: "LOW" | "MEDIUM" | "HIGH";
+  rationale: string;
+};
+
 export type LocalFeatureCandidate = {
   id: string;
   name: string;
@@ -20,6 +29,7 @@ export type LocalFeatureCandidate = {
   code: string;
   apiDesign?: { protocol: string; method: string; path: string; handler: string | null; source: string };
   implementationBlocks?: Array<{ path: string; symbol: string; startLine: number; relation: "HANDLER" | "CALLS" | "MATCHED_IMPLEMENTATION"; code: string }>;
+  modelClassification?: LocalModelClassification;
   configurations: Array<{ path: string; key: string; value: string }>;
   tests: Array<{ path: string; title: string; code: string }>;
   dimensions: {
@@ -562,7 +572,11 @@ function treeDomainLabel(value: string) {
     .replace(/\b(?:Api|Ui|Mcp|Cli|Tts|Ime|A2a)\b/g, (acronym) => acronym.toUpperCase());
 }
 
-function treeDomainIdentity(sourcePath: string, moduleIdentity: string) {
+function treeDomainIdentity(sourcePath: string, moduleIdentity: string, modelDomain = "") {
+  if (modelDomain.trim()) {
+    const identity = cleanDomainName(modelDomain).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "core";
+    return { identity, label: treeDomainLabel(cleanDomainName(modelDomain)) };
+  }
   const path = sourcePath.replace(/\\/g, "/");
   const segments = path.split("/").filter(Boolean);
   const sourceIndex = segments.indexOf("src");
@@ -594,6 +608,7 @@ function treeModuleLabel(identity: string) {
 }
 
 function treeGroup(feature: LocalFeatureCandidate): FeatureTreeGroup {
+  if (feature.modelClassification) return feature.modelClassification.group;
   if (feature.kind === "ENDPOINT") return "API_SERVICE";
   if (feature.kind === "COMMAND" || /(?:^|\/)(?:scripts?|tools?|cli)(?:\/|$)/i.test(feature.sourcePath)) return "PROJECT_OPERATION";
   const context = `${feature.name} ${feature.description} ${feature.sourcePath}`;
@@ -617,7 +632,7 @@ function buildTree(workspaceName: string, projectId: string, features: LocalFeat
     children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleIdentity, items]) => {
       const domains = new Map<string, { label: string; items: LocalFeatureCandidate[] }>();
       for (const feature of items) {
-        const domain = treeDomainIdentity(feature.sourcePath, moduleIdentity);
+        const domain = treeDomainIdentity(feature.sourcePath, moduleIdentity, feature.modelClassification?.domain);
         const current = domains.get(domain.identity) ?? { label: domain.label, items: [] };
         current.items.push(feature);
         domains.set(domain.identity, current);
@@ -667,6 +682,7 @@ export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalys
 
 export function isLocalBusinessFeature(feature: LocalFeatureCandidate) {
   if (feature.kind !== "CODE_SYMBOL") return false;
+  if (feature.modelClassification) return feature.modelClassification.businessFeature;
   const group = treeGroup(feature);
   if (!["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION"].includes(group)) return false;
   const context = `${feature.name} ${feature.description} ${feature.sourcePath}`;
@@ -701,6 +717,39 @@ export function scanLocalWorkspaceFile(file: LocalWorkspaceInputFile): LocalWork
     ? { path: file.path, key: file.path.split("/").at(-1) ?? file.path, value: redactConfiguration(file.content.slice(0, 500)) }
     : null;
   return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: true, candidates, configuration, test: isTestFile(file.path) ? testRecord(file) : null };
+}
+
+export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], profileId: string, values: Array<{
+  id: string;
+  displayName: string;
+  description: string;
+  businessFeature: boolean;
+  domain: string;
+  group: LocalModelClassification["group"];
+  confidence: LocalModelClassification["confidence"];
+  rationale: string;
+}>) {
+  const enrichments = new Map(values.map((value) => [value.id, value]));
+  return records.map((record) => ({
+    ...record,
+    candidates: record.candidates.map((candidate) => {
+      const value = enrichments.get(candidate.id);
+      if (!value) return candidate;
+      return {
+        ...candidate,
+        displayName: value.displayName,
+        description: value.description,
+        modelClassification: {
+          profileId,
+          businessFeature: value.businessFeature,
+          domain: value.domain,
+          group: value.group,
+          confidence: value.confidence,
+          rationale: value.rationale,
+        },
+      };
+    }),
+  }));
 }
 
 export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; projectId: string; records: LocalWorkspaceFileRecord[]; now?: Date }): LocalWorkspaceAnalysis {

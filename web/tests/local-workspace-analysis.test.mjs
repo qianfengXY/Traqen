@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, createLocalWorkspaceAnalysisAccumulator, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
+import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, createLocalWorkspaceAnalysisAccumulator, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
 import { calculateLocalWorkspaceStatistics, localWorkspaceStatisticsForNode } from "../app/local-workspace-statistics.ts";
 
 test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
@@ -282,6 +282,29 @@ test("business projection suppresses technical symbols while API projection link
   assert.equal(api.features[0].apiDesign.method, "POST");
   assert.equal(api.features[0].apiDesign.path, "/orders");
   assert.ok(api.features[0].implementationBlocks.some((block) => block.symbol === "Submit Order"));
+});
+
+test("model enrichment persists readable business classification without changing stable candidate identity", () => {
+  const service = scanLocalWorkspaceFile({ path: "src/technical/processor.ts", size: 90, content: "export function execute() { return issueRefund(); }" });
+  const candidate = service.candidates[0];
+  const records = applyLocalModelEnrichment([service], "workspace-default", [{
+    id: candidate.id,
+    displayName: "Issue customer refund",
+    description: "Issues a customer refund through the discovered processor.",
+    businessFeature: true,
+    domain: "Customer refunds",
+    group: "BUSINESS_CAPABILITY",
+    confidence: "HIGH",
+    rationale: "The implementation invokes the refund operation.",
+  }]);
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Payments", projectId: "PROJECT-PAYMENTS", records });
+  const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
+
+  assert.equal(business.features.length, 1);
+  assert.equal(business.features[0].id, candidate.id);
+  assert.equal(business.features[0].displayName, "Issue customer refund");
+  assert.equal(business.features[0].modelClassification.profileId, "workspace-default");
+  assert.equal(business.tree.children[0].children[0].label, "Customer Refunds");
 });
 
 test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {
