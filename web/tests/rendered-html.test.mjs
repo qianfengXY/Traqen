@@ -144,6 +144,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /本地确定性扫描十万级文件/);
   assert.match(product, /执行增量分析/);
   assert.match(product, /configureAndVerifyAnalysisModel/);
+  assert.match(product, /API Base URL \/ Chat Completions URL/);
   assert.match(product, /workspaceModelCandidateBatches/);
   assert.match(product, /applyLocalModelEnrichment/);
   assert.match(product, /先配置模型/);
@@ -151,6 +152,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /setLocalWorkspaceProjectVisibility/);
   assert.match(product, /visibleWorkspaceProjects/);
   assert.match(modelClient, /Web 与 API 使用同一代码版本/);
+  assert.match(modelClient, /normalizeChatCompletionsEndpoint/);
+  assert.match(modelClient, /配置已保存，但模型连接验证失败/);
   assert.match(product, /previous\.size === file\.size && previous\.lastModified === file\.lastModified/);
   assert.match(product, /workspaceProjects\.map/);
   assert.match(workspaceStore, /indexedDB\.open/);

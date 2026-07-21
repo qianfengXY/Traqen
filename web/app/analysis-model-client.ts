@@ -51,6 +51,19 @@ function baseUrl(value: string) {
   return value.trim().replace(/\/$/, "");
 }
 
+export function normalizeChatCompletionsEndpoint(value: string) {
+  const input = value.trim();
+  const url = new URL(input);
+  const path = url.pathname.replace(/\/+$/, "");
+  if (!path) url.pathname = "/v1/chat/completions";
+  else if (/\/v1$/i.test(path)) url.pathname = `${path}/chat/completions`;
+  return url.toString();
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export async function listAnalysisModelProfiles(apiBase: string, apiToken: string) {
   const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles`, { headers: headers(apiToken) });
   return (await responseJson<{ profiles: AnalysisModelProfile[] }>(response)).profiles;
@@ -58,17 +71,26 @@ export async function listAnalysisModelProfiles(apiBase: string, apiToken: strin
 
 export async function configureAndVerifyAnalysisModel(apiBase: string, apiToken: string, settings: AnalysisModelSettings) {
   const base = baseUrl(apiBase);
-  const configured = await fetch(`${base}/v1/analysis-model-profiles`, {
-    method: "POST",
-    headers: headers(apiToken, true),
-    body: JSON.stringify(settings),
-  });
-  await responseJson<AnalysisModelProfile>(configured);
-  const verified = await fetch(`${base}/v1/analysis-model-profiles/${encodeURIComponent(settings.id)}/verify`, {
-    method: "POST",
-    headers: headers(apiToken),
-  });
-  return responseJson<AnalysisModelProfile>(verified);
+  const normalized = { ...settings, endpoint: normalizeChatCompletionsEndpoint(settings.endpoint) };
+  try {
+    const configured = await fetch(`${base}/v1/analysis-model-profiles`, {
+      method: "POST",
+      headers: headers(apiToken, true),
+      body: JSON.stringify(normalized),
+    });
+    await responseJson<AnalysisModelProfile>(configured);
+  } catch (error) {
+    throw new Error(`Traqen 保存模型配置失败 / Failed to save the model profile: ${errorMessage(error)}`, { cause: error });
+  }
+  try {
+    const verified = await fetch(`${base}/v1/analysis-model-profiles/${encodeURIComponent(settings.id)}/verify`, {
+      method: "POST",
+      headers: headers(apiToken),
+    });
+    return await responseJson<AnalysisModelProfile>(verified);
+  } catch (error) {
+    throw new Error(`配置已保存，但模型连接验证失败。实际请求地址：${normalized.endpoint}。请确认供应商支持 OpenAI-compatible Chat Completions。 / Profile saved, but model verification failed at ${normalized.endpoint}: ${errorMessage(error)}`, { cause: error });
+  }
 }
 
 export async function verifyConfiguredAnalysisModel(apiBase: string, apiToken: string, profileId: string) {
