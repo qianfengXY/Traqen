@@ -10,6 +10,7 @@ export type AnalysisModelProfile = {
   configuredAt: string;
   verifiedAt: string | null;
   ready: boolean;
+  active: boolean;
   latencyMs?: number;
 };
 
@@ -17,7 +18,7 @@ export type AnalysisModelSettings = {
   id: string;
   endpoint: string;
   model: string;
-  apiKey: string;
+  apiKey?: string;
   stream: boolean;
   timeoutMs?: number;
 };
@@ -74,11 +75,13 @@ export async function listAnalysisModelProfiles(apiBase: string, apiToken: strin
 export async function configureAndVerifyAnalysisModel(apiBase: string, apiToken: string, settings: AnalysisModelSettings) {
   const base = baseUrl(apiBase);
   const normalized = { ...settings, endpoint: normalizeChatCompletionsEndpoint(settings.endpoint) };
+  const requestBody = { ...normalized, ...(settings.apiKey?.trim() ? { apiKey: settings.apiKey.trim() } : {}) };
+  if (!settings.apiKey?.trim()) delete requestBody.apiKey;
   try {
     const configured = await fetch(`${base}/v1/analysis-model-profiles`, {
       method: "POST",
       headers: headers(apiToken, true),
-      body: JSON.stringify(normalized),
+      body: JSON.stringify(requestBody),
     });
     await responseJson<AnalysisModelProfile>(configured);
   } catch (error) {
@@ -93,6 +96,22 @@ export async function configureAndVerifyAnalysisModel(apiBase: string, apiToken:
   } catch (error) {
     throw new Error(`配置已保存，但模型连接验证失败。实际请求地址：${normalized.endpoint}。请确认供应商支持 OpenAI-compatible Chat Completions。 / Profile saved, but model verification failed at ${normalized.endpoint}: ${errorMessage(error)}`, { cause: error });
   }
+}
+
+export async function selectAnalysisModelProfile(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles/${encodeURIComponent(profileId)}/select`, {
+    method: "POST",
+    headers: headers(apiToken),
+  });
+  return responseJson<AnalysisModelProfile>(response);
+}
+
+export async function removeAnalysisModelProfile(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles/${encodeURIComponent(profileId)}`, {
+    method: "DELETE",
+    headers: headers(apiToken),
+  });
+  return responseJson<AnalysisModelProfile>(response);
 }
 
 export async function verifyConfiguredAnalysisModel(apiBase: string, apiToken: string, profileId: string) {

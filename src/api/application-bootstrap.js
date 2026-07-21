@@ -1,6 +1,6 @@
 import { TraceabilityApplication } from "../application/traceability-application.js";
 import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
-import { AnalysisAgent, AnalysisModelRegistry, configuredAnalysisModels, createReverseSkillAnalysisAdapter } from "../analysis/index.js";
+import { AnalysisAgent, AnalysisModelRegistry, configuredAnalysisModels, createReverseSkillAnalysisAdapter, defaultAnalysisModelProfileStorePath, EncryptedAnalysisModelProfileStore } from "../analysis/index.js";
 
 function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
@@ -49,7 +49,11 @@ export function createConfiguredApplication({ store, env = process.env }) {
   const corsAllowedOrigins = commaSeparated(env.CORS_ALLOWED_ORIGINS, "http://localhost:3000");
   const referenceSkills = createReferenceSkillSet();
   const analysisModels = configuredAnalysisModels(env.ANALYSIS_MODEL_PROFILES_JSON, env);
-  const analysisModelRegistry = new AnalysisModelRegistry({ adapters: analysisModels });
+  const analysisModelStorePath = env.ANALYSIS_MODEL_STORE_PATH ?? (env === process.env ? defaultAnalysisModelProfileStorePath() : null);
+  const analysisModelRegistry = new AnalysisModelRegistry({
+    adapters: analysisModels,
+    profileStore: analysisModelStorePath ? new EncryptedAnalysisModelProfileStore({ filePath: analysisModelStorePath }) : null,
+  });
   const analysisSkills = new Map(referenceSkills.map(({ adapter }) => {
     const analysisAdapter = createReverseSkillAnalysisAdapter(adapter);
     return [`${analysisAdapter.id}\u0000${analysisAdapter.version}`, analysisAdapter];

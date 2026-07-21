@@ -27,7 +27,7 @@
           "required": ["enabled"],
           "properties": {
             "enabled": { "type": "boolean" },
-            "profileId": { "type": ["string", "null"], "minLength": 1 },
+            "profileId": { "type": ["string", "null"], "minLength": 1, "description": "Explicit verified model profile; null uses the currently selected server profile" },
             "contextWindow": { "type": "integer", "minimum": 1 },
             "maxInputTokens": { "type": "integer", "minimum": 1 },
             "maxOutputTokens": { "type": "integer", "minimum": 1 }

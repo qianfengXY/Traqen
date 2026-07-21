@@ -3,7 +3,7 @@
 import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, type AnalysisModelProfile } from "./analysis-model-client";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, type AnalysisModelProfile } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
@@ -138,6 +138,13 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   WARN: { zh: "告警", en: "Warn" },
   REQUIRE_APPROVAL: { zh: "需要批准", en: "Require approval" },
   WAITING_REVIEW: { zh: "等待审核", en: "Waiting review" },
+  RUNNING: { zh: "执行中", en: "Running" },
+  SCANNING: { zh: "工程扫描", en: "Scanning" },
+  MODEL_ENRICHMENT: { zh: "模型分析", en: "Model analysis" },
+  FINALIZING: { zh: "整理结果", en: "Finalizing" },
+  PAUSED: { zh: "已暂停", en: "Paused" },
+  COMPLETED: { zh: "已完成", en: "Completed" },
+  FAILED: { zh: "失败", en: "Failed" },
   CREATE: { zh: "新建", en: "Create" },
   EXISTING: { zh: "关联既有", en: "Existing" },
 
@@ -1162,7 +1169,7 @@ export function TraqenProduct() {
   const [analysisModelName, setAnalysisModelName] = useState("");
   const [analysisModelApiKey, setAnalysisModelApiKey] = useState("");
   const [analysisModelStream, setAnalysisModelStream] = useState(false);
-  const [analysisModelProfile, setAnalysisModelProfile] = useState<AnalysisModelProfile | null>(null);
+  const [analysisModelProfiles, setAnalysisModelProfiles] = useState<AnalysisModelProfile[]>([]);
   const [analysisModelStatus, setAnalysisModelStatus] = useState<"IDLE" | "CHECKING" | "READY" | "ERROR">("IDLE");
   const [analysisModelMessage, setAnalysisModelMessage] = useState("");
   const [apiBase, setApiBase] = useState("http://127.0.0.1:3100");
@@ -1189,7 +1196,16 @@ export function TraqenProduct() {
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
   const visibleWorkspaceAnalysis = useMemo(() => workspaceAnalysis ? localWorkspaceAnalysisForTreeMode(workspaceAnalysis, workspaceTreeMode) : null, [workspaceAnalysis, workspaceTreeMode]);
   const visibleWorkspaceProjects = useMemo(() => workspaceProjects.filter((project) => project.visible), [workspaceProjects]);
-  const analysisModelReady = analysisModelStatus === "READY" && Boolean(analysisModelProfile?.ready);
+  const activeAnalysisModelProfile = useMemo(() => analysisModelProfiles.find((profile) => profile.active) ?? null, [analysisModelProfiles]);
+  const analysisModelReady = Boolean(activeAnalysisModelProfile?.ready);
+  const editedAnalysisModelProfile = useMemo(() => analysisModelProfiles.find((profile) => profile.id === analysisModelProfileId) ?? null, [analysisModelProfileId, analysisModelProfiles]);
+  const canReuseAnalysisModelCredential = Boolean(editedAnalysisModelProfile && (
+    editedAnalysisModelProfile.source === "RUNTIME" || (
+      editedAnalysisModelProfile.endpoint === analysisModelEndpoint
+      && editedAnalysisModelProfile.model === analysisModelName
+      && editedAnalysisModelProfile.stream === analysisModelStream
+    )
+  ));
   const workspaceTreeModeCounts = useMemo(() => ({
     BUSINESS: workspaceAnalysis?.features.filter(isLocalBusinessFeature).length ?? 0,
     API: workspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
@@ -1229,8 +1245,8 @@ export function TraqenProduct() {
       }
       try {
         const profiles = await listAnalysisModelProfiles("http://127.0.0.1:3100", "");
-        const selected = profiles.find((profile) => profile.id === selectedId) ?? profiles.find((profile) => profile.ready) ?? null;
-        setAnalysisModelProfile(selected);
+        setAnalysisModelProfiles(profiles);
+        const selected = profiles.find((profile) => profile.active) ?? profiles.find((profile) => profile.id === selectedId) ?? profiles.find((profile) => profile.ready) ?? null;
         setAnalysisModelStatus(selected?.ready ? "READY" : "IDLE");
         if (selected) {
           setAnalysisModelProfileId(selected.id);
@@ -1239,7 +1255,7 @@ export function TraqenProduct() {
           setAnalysisModelStream(selected.stream);
         }
       } catch {
-        setAnalysisModelProfile(null);
+        setAnalysisModelProfiles([]);
       }
     }, 0);
     return () => window.clearTimeout(timer);
@@ -1248,8 +1264,8 @@ export function TraqenProduct() {
   const refreshAnalysisModelProfile = useCallback(async () => {
     try {
       const profiles = await listAnalysisModelProfiles(apiBase, apiToken);
-      const selected = profiles.find((profile) => profile.id === analysisModelProfileId) ?? profiles.find((profile) => profile.ready) ?? null;
-      setAnalysisModelProfile(selected);
+      setAnalysisModelProfiles(profiles);
+      const selected = profiles.find((profile) => profile.id === analysisModelProfileId) ?? profiles.find((profile) => profile.active) ?? profiles.find((profile) => profile.ready) ?? null;
       setAnalysisModelStatus(selected?.ready ? "READY" : "IDLE");
       if (selected) {
         setAnalysisModelProfileId(selected.id);
@@ -1258,7 +1274,7 @@ export function TraqenProduct() {
         setAnalysisModelStream(selected.stream);
       }
     } catch {
-      setAnalysisModelProfile(null);
+      setAnalysisModelProfiles([]);
       setAnalysisModelStatus("IDLE");
     }
   }, [analysisModelProfileId, apiBase, apiToken]);
@@ -1336,7 +1352,9 @@ export function TraqenProduct() {
     setAnalysisModelStatus("CHECKING");
     setAnalysisModelMessage("");
     try {
-      const verifyExistingEnvironmentProfile = analysisModelProfile?.id === analysisModelProfileId && analysisModelProfile.source === "ENVIRONMENT" && !analysisModelApiKey.trim();
+      const existingProfile = analysisModelProfiles.find((profile) => profile.id === analysisModelProfileId);
+      const verifyExistingEnvironmentProfile = existingProfile?.source === "ENVIRONMENT" && !analysisModelApiKey.trim()
+        && existingProfile.endpoint === analysisModelEndpoint && existingProfile.model === analysisModelName && existingProfile.stream === analysisModelStream;
       const profile = verifyExistingEnvironmentProfile
         ? await verifyConfiguredAnalysisModel(apiBase, apiToken, analysisModelProfileId)
         : await configureAndVerifyAnalysisModel(apiBase, apiToken, {
@@ -1346,17 +1364,63 @@ export function TraqenProduct() {
             apiKey: analysisModelApiKey,
             stream: analysisModelStream,
           });
-      setAnalysisModelProfile(profile);
       setAnalysisModelStatus("READY");
       setAnalysisModelEndpoint(profile.endpoint);
       setAnalysisModelStream(profile.stream);
       setAnalysisModelApiKey("");
       localStorage.setItem("traqen-analysis-model-settings", JSON.stringify({ id: profile.id, endpoint: profile.endpoint, model: profile.model, stream: profile.stream }));
+      await refreshAnalysisModelProfile();
       setAnalysisModelMessage(t(`模型连接成功，延迟 ${profile.latencyMs ?? "—"} ms。`, `Model connected successfully in ${profile.latencyMs ?? "—"} ms.`));
     } catch (error) {
-      setAnalysisModelProfile(null);
       setAnalysisModelStatus("ERROR");
       setAnalysisModelMessage(error instanceof Error ? error.message : t("模型连接失败", "Unable to connect the model"));
+    }
+  }
+
+  function editAnalysisModel(profile: AnalysisModelProfile) {
+    setAnalysisModelProfileId(profile.id);
+    setAnalysisModelEndpoint(profile.endpoint);
+    setAnalysisModelName(profile.model);
+    setAnalysisModelStream(profile.stream);
+    setAnalysisModelApiKey("");
+    setAnalysisModelStatus(profile.ready ? "READY" : "IDLE");
+    setAnalysisModelMessage("");
+  }
+
+  function newAnalysisModel() {
+    setAnalysisModelProfileId(`workspace-model-${analysisModelProfiles.length + 1}`);
+    setAnalysisModelEndpoint("https://api.openai.com/v1/chat/completions");
+    setAnalysisModelName("");
+    setAnalysisModelStream(false);
+    setAnalysisModelApiKey("");
+    setAnalysisModelStatus("IDLE");
+    setAnalysisModelMessage("");
+  }
+
+  async function chooseAnalysisModel(profileId: string) {
+    setAnalysisModelStatus("CHECKING");
+    try {
+      await selectAnalysisModelProfile(apiBase, apiToken, profileId);
+      await refreshAnalysisModelProfile();
+      setAnalysisModelStatus("READY");
+      setAnalysisModelMessage(t(`已选择 ${profileId} 作为当前分析模型。`, `${profileId} is now the active analysis model.`));
+    } catch (error) {
+      setAnalysisModelStatus("ERROR");
+      setAnalysisModelMessage(error instanceof Error ? error.message : t("无法选择模型", "Unable to select model"));
+    }
+  }
+
+  async function deleteAnalysisModel(profile: AnalysisModelProfile) {
+    if (profile.source === "ENVIRONMENT") return;
+    if (!window.confirm(t(`删除模型配置“${profile.id}”？该操作会删除本机加密保存的凭据。`, `Delete model profile “${profile.id}”? This removes its locally encrypted credential.`))) return;
+    try {
+      await removeAnalysisModelProfile(apiBase, apiToken, profile.id);
+      if (analysisModelProfileId === profile.id) newAnalysisModel();
+      await refreshAnalysisModelProfile();
+      setAnalysisModelMessage(t(`已删除模型配置 ${profile.id}。`, `Deleted model profile ${profile.id}.`));
+    } catch (error) {
+      setAnalysisModelStatus("ERROR");
+      setAnalysisModelMessage(error instanceof Error ? error.message : t("无法删除模型", "Unable to delete model"));
     }
   }
 
@@ -1547,7 +1611,7 @@ export function TraqenProduct() {
                 </button>
               )}
               <button className={`button model-connection-button ${analysisModelReady ? "ready" : ""}`} onClick={() => { setAnalysisSettingsOpen((value) => !value); setConnectionOpen(false); }}>
-                <span aria-hidden="true">{analysisModelReady ? "●" : "○"}</span>{analysisModelReady ? t("模型已连接", "Model connected") : t("配置分析模型", "Configure model")}
+                <span aria-hidden="true">{analysisModelReady ? "●" : "○"}</span>{analysisModelReady ? activeAnalysisModelProfile?.model : t("配置分析模型", "Configure model")}
               </button>
               <button className="button" onClick={() => { setConnectionOpen((value) => !value); setAnalysisSettingsOpen(false); }}>
                 {t("连接 Traqen API", "Connect Traqen API")}
@@ -1566,15 +1630,18 @@ export function TraqenProduct() {
 
           {analysisSettingsOpen && (
             <section className="panel analysis-model-panel" aria-label={t("分析模型配置", "Analysis model configuration")}>
-              <div className="panel-head"><div><p className="eyebrow">Analysis Agent · LLM</p><h2>{t("先连接模型，再启动工程分析", "Connect a model before analyzing a project")}</h2><p>{t("Traqen API 在服务端内存中保管 API Key，并以有界候选批次调用 OpenAI-compatible Chat Completions 接口。密钥不会返回浏览器、写入 Workspace 或进入分析历史。", "The Traqen API keeps the API key in server memory and calls an OpenAI-compatible Chat Completions endpoint with bounded candidate batches. The secret is never returned to the browser, written into a Workspace, or added to analysis history.")}</p></div><span className={`model-status ${analysisModelStatus.toLowerCase()}`}>{analysisModelStatus === "READY" ? t("已验证", "Verified") : analysisModelStatus === "CHECKING" ? t("验证中", "Verifying") : analysisModelStatus === "ERROR" ? t("连接失败", "Connection failed") : t("未连接", "Not connected")}</span></div>
-              <div className="analysis-model-grid">
-                <div className="field"><label htmlFor="analysis-profile-id">Profile ID</label><input id="analysis-profile-id" value={analysisModelProfileId} onChange={(event) => { setAnalysisModelProfileId(event.target.value); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /></div>
-                <div className="field"><label htmlFor="analysis-model-name">Model</label><input id="analysis-model-name" placeholder="gpt-5-mini / qwen / local model" value={analysisModelName} onChange={(event) => { setAnalysisModelName(event.target.value); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /></div>
-                <div className="field full"><label htmlFor="analysis-model-endpoint">API Base URL / Chat Completions URL</label><input id="analysis-model-endpoint" placeholder="https://api.example.com/v1 或 /v1/chat/completions" value={analysisModelEndpoint} onChange={(event) => { setAnalysisModelEndpoint(event.target.value); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /><small>{t("填写服务根地址或以 /v1 结尾的地址时，会自动补全 /chat/completions；也可以直接填写完整接口地址。", "A root URL or URL ending in /v1 is completed to /chat/completions automatically; you may also enter the full endpoint.")}</small></div>
-                <div className="field full"><label htmlFor="analysis-model-key">API Key</label><input id="analysis-model-key" type="password" autoComplete="off" placeholder={analysisModelProfile?.source === "ENVIRONMENT" ? t("环境变量配置；如需替换请输入新 Key", "Configured by environment; enter a new key to replace") : "sk-…"} value={analysisModelApiKey} onChange={(event) => setAnalysisModelApiKey(event.target.value)} /></div>
-                <label className="model-stream-toggle full" htmlFor="analysis-model-stream"><input id="analysis-model-stream" type="checkbox" checked={analysisModelStream} onChange={(event) => { setAnalysisModelStream(event.currentTarget.checked); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /><span><b>Stream / SSE</b><small>{t("为只支持流式响应的模型网关发送 stream: true，并在服务端合并增量 JSON。", "Send stream: true for gateways that require streaming responses and merge incremental JSON on the server.")}</small></span></label>
+              <div className="panel-head"><div><p className="eyebrow">Analysis Agent · LLM</p><h2>{t("管理模型并选择当前分析模型", "Manage models and select the active analysis model")}</h2><p>{t("运行时模型及 API Key 会加密保存在当前设备的 Traqen 配置目录，只需配置一次。浏览器、Workspace 和分析历史都不会保存密钥。", "Runtime models and API keys are encrypted in this device's Traqen configuration directory, so setup is required only once. Secrets are never stored in the browser, Workspace, or analysis history.")}</p></div><div className="model-panel-actions"><span className={`model-status ${analysisModelStatus.toLowerCase()}`}>{analysisModelStatus === "READY" ? t("已验证", "Verified") : analysisModelStatus === "CHECKING" ? t("处理中", "Working") : analysisModelStatus === "ERROR" ? t("操作失败", "Failed") : t("待配置", "Not configured")}</span><button className="button" onClick={newAnalysisModel}>{t("新增模型", "Add model")}</button></div></div>
+              <div className="analysis-model-list" aria-label={t("已保存模型", "Saved models")}>
+                {analysisModelProfiles.length === 0 ? <div className="workspace-stat-empty">{t("尚未保存模型配置。", "No model profiles saved yet.")}</div> : analysisModelProfiles.map((profile) => <article className={`analysis-model-card ${profile.active ? "active" : ""}`} key={profile.id}><div><span className="model-card-state">{profile.active ? t("当前使用", "ACTIVE") : profile.ready ? t("已验证", "VERIFIED") : t("待验证", "VERIFY")}</span><strong>{profile.model}</strong><small>{profile.id} · {profile.stream ? "Stream/SSE" : "JSON"} · {profile.endpoint}</small></div><div className="model-card-actions">{!profile.active && <button className="button primary" disabled={!profile.ready} onClick={() => void chooseAnalysisModel(profile.id)}>{t("设为当前", "Use")}</button>}<button className="button" onClick={() => editAnalysisModel(profile)}>{t("编辑", "Edit")}</button><button className="button danger" disabled={profile.source === "ENVIRONMENT"} title={profile.source === "ENVIRONMENT" ? t("环境变量模型不能在页面删除", "Environment profiles cannot be deleted here") : undefined} onClick={() => void deleteAnalysisModel(profile)}>{t("删除", "Delete")}</button></div></article>)}
               </div>
-              <div className="connection-actions"><button className="button primary" disabled={analysisModelStatus === "CHECKING" || !analysisModelProfileId.trim() || !analysisModelEndpoint.trim() || !analysisModelName.trim() || (!analysisModelApiKey.trim() && !(analysisModelProfile?.id === analysisModelProfileId && analysisModelProfile.source === "ENVIRONMENT"))} onClick={() => void connectAnalysisModel()}>{analysisModelStatus === "CHECKING" ? t("正在验证…", "Verifying…") : !analysisModelApiKey.trim() && analysisModelProfile?.source === "ENVIRONMENT" ? t("验证环境配置", "Verify environment profile") : t("保存并验证连接", "Save and verify")}</button><button className="button" onClick={() => void refreshAnalysisModelProfile()}>{t("刷新服务端状态", "Refresh server status")}</button>{analysisModelMessage && <span className={`form-message ${analysisModelStatus === "ERROR" ? "error" : ""}`}>{analysisModelMessage}</span>}</div>
+              <div className="analysis-model-grid">
+                <div className="field"><label htmlFor="analysis-profile-id">Profile ID</label><input id="analysis-profile-id" value={analysisModelProfileId} onChange={(event) => { setAnalysisModelProfileId(event.target.value); setAnalysisModelStatus("IDLE"); }} /></div>
+                <div className="field"><label htmlFor="analysis-model-name">Model</label><input id="analysis-model-name" placeholder="gpt-5-mini / qwen / local model" value={analysisModelName} onChange={(event) => { setAnalysisModelName(event.target.value); setAnalysisModelStatus("IDLE"); }} /></div>
+                <div className="field full"><label htmlFor="analysis-model-endpoint">API Base URL / Chat Completions URL</label><input id="analysis-model-endpoint" placeholder="https://api.example.com/v1 或 /v1/chat/completions" value={analysisModelEndpoint} onChange={(event) => { setAnalysisModelEndpoint(event.target.value); setAnalysisModelStatus("IDLE"); }} /><small>{t("填写服务根地址或以 /v1 结尾的地址时，会自动补全 /chat/completions；也可以直接填写完整接口地址。", "A root URL or URL ending in /v1 is completed to /chat/completions automatically; you may also enter the full endpoint.")}</small></div>
+                <div className="field full"><label htmlFor="analysis-model-key">API Key</label><input id="analysis-model-key" type="password" autoComplete="off" placeholder={editedAnalysisModelProfile?.source === "ENVIRONMENT" ? t("环境变量管理；配置未变时可留空验证", "Environment-managed; leave blank to verify unchanged settings") : editedAnalysisModelProfile ? t("留空则保留已加密保存的 Key", "Leave blank to keep the encrypted saved key") : "sk-…"} value={analysisModelApiKey} onChange={(event) => setAnalysisModelApiKey(event.target.value)} /></div>
+                <label className="model-stream-toggle full" htmlFor="analysis-model-stream"><input id="analysis-model-stream" type="checkbox" checked={analysisModelStream} onChange={(event) => { setAnalysisModelStream(event.currentTarget.checked); setAnalysisModelStatus("IDLE"); }} /><span><b>Stream / SSE</b><small>{t("为只支持流式响应的模型网关发送 stream: true，并在服务端合并增量 JSON。", "Send stream: true for gateways that require streaming responses and merge incremental JSON on the server.")}</small></span></label>
+              </div>
+              <div className="connection-actions"><button className="button primary" disabled={analysisModelStatus === "CHECKING" || !analysisModelProfileId.trim() || !analysisModelEndpoint.trim() || !analysisModelName.trim() || (!analysisModelApiKey.trim() && !canReuseAnalysisModelCredential)} onClick={() => void connectAnalysisModel()}>{analysisModelStatus === "CHECKING" ? t("正在验证…", "Verifying…") : editedAnalysisModelProfile ? t("保存修改并验证", "Save changes and verify") : t("保存并验证连接", "Save and verify")}</button><button className="button" onClick={() => void refreshAnalysisModelProfile()}>{t("刷新服务端状态", "Refresh server status")}</button>{analysisModelMessage && <span className={`form-message ${analysisModelStatus === "ERROR" ? "error" : ""}`}>{analysisModelMessage}</span>}</div>
             </section>
           )}
 
@@ -1614,7 +1681,7 @@ export function TraqenProduct() {
             </section>
           )}
 
-          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? analysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
+          {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
           {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
@@ -1861,13 +1928,59 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
   onRequireModel: () => void;
 };
 
+type LocalAnalysisTaskPhase = "READY" | "SCANNING" | "MODEL_ENRICHMENT" | "FINALIZING" | "PAUSED" | "COMPLETED" | "FAILED";
+type LocalAnalysisTask = {
+  id: string;
+  phase: LocalAnalysisTaskPhase;
+  status: "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED";
+  model: string;
+  profileId: string;
+  stream: boolean;
+  startedAt: number;
+  endedAt: number | null;
+  overallProgress: number;
+  phaseCompleted: number;
+  phaseTotal: number;
+  currentWork: string;
+  events: Array<{ id: string; at: number; phase: LocalAnalysisTaskPhase; message: string }>;
+};
+
+function analysisDuration(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
 function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts, analysisModelProfile, apiBase, apiToken, onRequireModel }: WorkspaceAnalysisViewProps) {
-  const { t } = useI18n();
+  const { t, term } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pauseRequestedRef = useRef(false);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ completed: number; total: number } | null>(null);
   const [message, setMessage] = useState("");
+  const [analysisTask, setAnalysisTask] = useState<LocalAnalysisTask | null>(null);
+  const [taskClock, setTaskClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (analysisTask?.status !== "RUNNING") return;
+    const timer = window.setInterval(() => setTaskClock(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [analysisTask?.status]);
+
+  function updateAnalysisTask(update: Partial<LocalAnalysisTask>) {
+    setAnalysisTask((current) => current ? { ...current, ...update } : current);
+  }
+
+  function appendAnalysisTaskEvent(phase: LocalAnalysisTaskPhase, eventMessage: string, update: Partial<LocalAnalysisTask> = {}) {
+    const at = Date.now();
+    setTaskClock(at);
+    setAnalysisTask((current) => current ? {
+      ...current,
+      ...update,
+      events: [...current.events, { id: `${at}:${current.events.length}`, at, phase, message: eventMessage }].slice(-180),
+    } : current);
+  }
 
   useEffect(() => {
     inputRef.current?.setAttribute("webkitdirectory", "");
@@ -1896,6 +2009,26 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     setScanning(true);
     pauseRequestedRef.current = false;
     setMessage("");
+    const taskStartedAt = Date.now();
+    setTaskClock(taskStartedAt);
+    setAnalysisTask({
+      id: `LOCAL-ANALYSIS-${taskStartedAt}`,
+      phase: "SCANNING",
+      status: "RUNNING",
+      model: analysisModelProfile.model,
+      profileId: analysisModelProfile.id,
+      stream: analysisModelProfile.stream,
+      startedAt: taskStartedAt,
+      endedAt: null,
+      overallProgress: 0,
+      phaseCompleted: 0,
+      phaseTotal: selectedFiles.length,
+      currentWork: t("准备工程文件清单", "Preparing the project file manifest"),
+      events: [
+        { id: `${taskStartedAt}:0`, at: taskStartedAt, phase: "READY", message: t(`任务已创建：确定性扫描 → ${analysisModelProfile.model} 语义分析 → 结构校验 → 功能树持久化。`, `Task created: deterministic scan → ${analysisModelProfile.model} semantic analysis → structure validation → Feature tree persistence.`) },
+        { id: `${taskStartedAt}:1`, at: taskStartedAt, phase: "SCANNING", message: t(`开始扫描 ${selectedFiles.length.toLocaleString()} 个文件；忽略构建产物、依赖目录、真实 .env 和超大文件。`, `Scanning ${selectedFiles.length.toLocaleString()} files; build output, dependency folders, real .env files, and oversized files are excluded.`) },
+      ],
+    });
     try {
       const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env|xml|gradle|kts)$/i;
       const ignored = /(^|\/)(?:\.git|node_modules|dist|build|target|out|\.gradle|\.next|\.vinext|coverage|vendor)(\/|$)/;
@@ -1962,8 +2095,19 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         const shouldCheckpoint = pauseRequestedRef.current || completed === selectedFiles.length || Math.ceil(completed / batchSize) % 40 === 0;
         if (shouldCheckpoint) await saveLocalWorkspaceAnalysisRun(checkpoint);
         setScanProgress({ completed, total: selectedFiles.length });
+        const scanUpdate = {
+          phase: "SCANNING" as const,
+          phaseCompleted: completed,
+          phaseTotal: selectedFiles.length,
+          overallProgress: Math.min(55, Math.round((completed / Math.max(1, selectedFiles.length)) * 55)),
+          currentWork: t(`确定性提取：${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 文件`, `Deterministic extraction: ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} files`),
+        };
+        if (shouldCheckpoint || completed === batch.length || Math.ceil(completed / batchSize) % 10 === 0) {
+          appendAnalysisTaskEvent("SCANNING", t(`已处理 ${completed.toLocaleString()} 个文件${shouldCheckpoint ? "，检查点已保存" : ""}。`, `Processed ${completed.toLocaleString()} files${shouldCheckpoint ? "; checkpoint saved" : ""}.`), scanUpdate);
+        } else updateAnalysisTask(scanUpdate);
         setMessage(t(`${canResume ? "正在续跑" : "正在分析"} ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} 个工程文件${shouldCheckpoint ? "；检查点已保存" : ""}。`, `${canResume ? "Resuming" : "Analyzing"} ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()} project files${shouldCheckpoint ? "; checkpoint saved" : ""}.`));
         if (pauseRequestedRef.current) {
+          appendAnalysisTaskEvent("PAUSED", t("任务已在文件批次边界暂停，可重新选择同一目录继续。", "Task paused at a file-batch boundary and can resume after selecting the same directory."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
           setMessage(t(`分析已暂停在 ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()}；重新选择同一目录后可从检查点继续。`, `Analysis paused at ${completed.toLocaleString()} / ${selectedFiles.length.toLocaleString()}; reselect the same directory to resume from the checkpoint.`));
           return;
         }
@@ -1972,7 +2116,11 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
       const deleted = [...previousRecords.keys()].filter((path) => !currentPaths.has(path)).length;
       let enrichedRecords = nextRecords;
       const modelBatches = workspaceModelCandidateBatches(enrichedRecords, analysisModelProfile.id);
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`确定性扫描完成，发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待模型理解的候选，拆分为 ${modelBatches.length} 个有界批次。`, `Deterministic scan complete. ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates require model interpretation across ${modelBatches.length} bounded batches.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: 0, phaseTotal: modelBatches.length, overallProgress: 55, currentWork: t("准备模型批次", "Preparing model batches") });
       for (let index = 0; index < modelBatches.length; index += 1) {
+        const modelBatchStartedAt = Date.now();
+        const candidatePreview = modelBatches[index].slice(0, 3).map((candidate) => candidate.name).join("、");
+        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`调用 ${analysisModelProfile.model}（${analysisModelProfile.stream ? "Stream/SSE" : "JSON"}）分析第 ${index + 1} 批 ${modelBatches[index].length} 个候选：${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`, `Calling ${analysisModelProfile.model} (${analysisModelProfile.stream ? "Stream/SSE" : "JSON"}) for batch ${index + 1} with ${modelBatches[index].length} candidates: ${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`), { phase: "MODEL_ENRICHMENT", phaseCompleted: index, phaseTotal: modelBatches.length, overallProgress: 55 + Math.round((index / Math.max(1, modelBatches.length)) * 40), currentWork: t(`模型批次 ${index + 1} / ${modelBatches.length}：发送 ${modelBatches[index].length} 个候选`, `Model batch ${index + 1} / ${modelBatches.length}: sending ${modelBatches[index].length} candidates`) });
         const enrichments = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, modelBatches[index]);
         enrichedRecords = applyLocalModelEnrichment(enrichedRecords, analysisModelProfile.id, enrichments);
         const completedModelBatchCount = index + 1;
@@ -1997,30 +2145,47 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
           updatedAt: new Date().toISOString(),
         });
         setScanProgress({ completed: completedModelBatchCount, total: modelBatches.length });
+        const domains = new Set(enrichments.map((item) => item.domain)).size;
+        const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
+        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`批次 ${completedModelBatchCount}/${modelBatches.length} 已通过结构校验：${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术候选、${domains} 个业务域，耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}；检查点已保存。`, `Batch ${completedModelBatchCount}/${modelBatches.length} passed structure validation: ${businessFeatures} business candidates, ${enrichments.length - businessFeatures} technical candidates, and ${domains} domains in ${analysisDuration(Date.now() - modelBatchStartedAt)}; checkpoint saved.`), { phaseCompleted: completedModelBatchCount, phaseTotal: modelBatches.length, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, modelBatches.length)) * 40), currentWork: t(`已验证模型批次 ${completedModelBatchCount} / ${modelBatches.length}`, `Validated model batch ${completedModelBatchCount} / ${modelBatches.length}`) });
         setMessage(t(`模型正在理解功能语义 ${completedModelBatchCount} / ${modelBatches.length}；检查点已保存。`, `The model is resolving feature semantics ${completedModelBatchCount} / ${modelBatches.length}; checkpoint saved.`));
         if (pauseRequestedRef.current) {
+          appendAnalysisTaskEvent("PAUSED", t("任务已在模型批次边界暂停，已完成的模型结果不会重复调用。", "Task paused at a model-batch boundary; completed model results will not be requested again."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
           setMessage(t(`模型分析已暂停在 ${completedModelBatchCount} / ${modelBatches.length}；重新选择同一目录后可继续。`, `Model analysis paused at ${completedModelBatchCount} / ${modelBatches.length}; reselect the same directory to resume.`));
           return;
         }
       }
+      appendAnalysisTaskEvent("FINALIZING", t("模型阶段完成，正在构建最新功能树、统计追溯证据并持久化 Workspace。", "Model phase complete. Building the latest Feature tree, calculating trace evidence, and persisting the Workspace."), { phase: "FINALIZING", phaseCompleted: 0, phaseTotal: 1, overallProgress: 96, currentWork: t("构建并保存 Workspace", "Building and saving Workspace") });
       const result = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
       await onInitialize(result, enrichedRecords, directoryName);
       await clearLocalWorkspaceAnalysisRun(projectId);
+      appendAnalysisTaskEvent("COMPLETED", t(`任务完成：生成 ${result.features.length} 个候选功能，总耗时 ${analysisDuration(Date.now() - taskStartedAt)}。`, `Task complete: produced ${result.features.length} candidate Features in ${analysisDuration(Date.now() - taskStartedAt)}.`), { status: "COMPLETED", phase: "COMPLETED", endedAt: Date.now(), overallProgress: 100, phaseCompleted: 1, phaseTotal: 1, currentWork: t("分析完成", "Analysis complete") });
       setMessage(result.features.length > 0 ? t(`混合分析已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件；模型处理 ${modelBatches.length} 个有界批次。`, `Hybrid analysis updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files; the model processed ${modelBatches.length} bounded batches.`) : t("分析完成，但没有发现有证据支持的接口或业务能力候选。", "Analysis completed, but no evidence-backed API or business-capability candidates were found."));
     } catch (error) {
       const activeRun = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
       if (activeRun) await saveLocalWorkspaceAnalysisRun({ ...activeRun, status: "PAUSED", updatedAt: new Date().toISOString() }).catch(() => undefined);
-      setMessage(error instanceof Error ? error.message : t("Workspace 分析失败；检查点已保留", "Workspace analysis failed; its checkpoint was preserved"));
+      const errorMessage = error instanceof Error ? error.message : t("Workspace 分析失败；检查点已保留", "Workspace analysis failed; its checkpoint was preserved");
+      appendAnalysisTaskEvent("FAILED", t(`任务失败：${errorMessage}。已完成的检查点仍保留。`, `Task failed: ${errorMessage}. Completed checkpoints remain available.`), { status: "FAILED", phase: "FAILED", endedAt: Date.now(), currentWork: t("等待处理错误", "Waiting for error resolution") });
+      setMessage(errorMessage);
     } finally {
       setScanning(false);
       setScanProgress(null);
     }
   }
 
+  const taskElapsed = analysisTask ? (analysisTask.endedAt ?? taskClock) - analysisTask.startedAt : 0;
+  const taskStepDefinitions: Array<{ phase: LocalAnalysisTaskPhase; label: string; detail: string }> = [
+    { phase: "SCANNING", label: t("确定性工程扫描", "Deterministic project scan"), detail: t("文件过滤、语言解析、源码证据与候选提取", "File filtering, language parsing, source evidence, and candidate extraction") },
+    { phase: "MODEL_ENRICHMENT", label: t("模型语义分析", "Model semantic analysis"), detail: t("有界候选批次、业务分类与结构校验", "Bounded candidate batches, business classification, and structure validation") },
+    { phase: "FINALIZING", label: t("功能树与追溯统计", "Feature tree and trace statistics"), detail: t("稳定身份匹配、分层统计与 Workspace 保存", "Stable identity matching, hierarchical statistics, and Workspace persistence") },
+  ];
+  const taskPhaseOrder = ["SCANNING", "MODEL_ENRICHMENT", "FINALIZING"] as LocalAnalysisTaskPhase[];
+  const activeTaskPhaseIndex = analysisTask ? taskPhaseOrder.indexOf(analysisTask.phase) : -1;
+
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先在本地确定性扫描十万级文件，再将候选名称、路径及必要代码片段按有界批次发送给已配置模型理解业务语义；每批保存检查点，首次全量、后续增量。API Key 只保存在 Traqen API 进程内存中。", "The Agent first scans 100,000-scale projects deterministically, then sends candidate names, paths, and necessary code excerpts to the configured model in bounded batches for semantic interpretation. Every batch is checkpointed; the first run is full and later runs are incremental. The API key stays only in Traqen API process memory.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("已连接", "CONNECTED")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先在本地确定性扫描十万级文件，再将候选名称、路径及必要代码片段按有界批次发送给当前模型理解业务语义；每批保存检查点，首次全量、后续增量。模型凭据由 Traqen API 在当前设备加密保存。", "The Agent first scans 100,000-scale projects deterministically, then sends candidate names, paths, and necessary code excerpts to the active model in bounded batches for semantic interpretation. Every batch is checkpointed; the first run is full and later runs are incremental. Model credentials are encrypted by the Traqen API on this device.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
@@ -2029,6 +2194,16 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}
+        <section className={`analysis-task-console ${analysisTask?.status.toLowerCase() ?? "ready"}`} aria-label={t("分析任务执行台", "Analysis task console")}>
+          <header><div><p className="eyebrow">Analysis task</p><h3>{analysisTask?.id ?? t("等待创建分析任务", "Ready to create an analysis task")}</h3><small>{analysisTask ? `${analysisTask.model} · ${analysisTask.stream ? "Stream/SSE" : "JSON"} · ${analysisTask.profileId}` : t("选择工程和当前模型后，点击初始化或增量分析。", "Select a project and active model, then start initial or incremental analysis.")}</small></div><span className={`task-status ${analysisTask?.status.toLowerCase() ?? "ready"}`}>{analysisTask ? term(analysisTask.status) : t("就绪", "READY")}</span></header>
+          <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("阶段进度", "Phase progress")}</small><b>{analysisTask ? `${analysisTask.phaseCompleted.toLocaleString()} / ${analysisTask.phaseTotal.toLocaleString()}` : "—"}</b></div></div>
+          <div className="analysis-task-overall"><span style={{ width: `${analysisTask?.overallProgress ?? 0}%` }} /></div>
+          <ol className="analysis-task-plan">{taskStepDefinitions.map((step, index) => { const done = analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index; const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.phase}><i>{done ? "✓" : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>; })}</ol>
+          <div className="analysis-task-current"><span className="task-pulse" />{analysisTask?.currentWork ?? t("任务尚未启动", "Task has not started")}</div>
+          <div className="analysis-task-log" role="log" aria-live="polite">
+            {analysisTask?.events.length ? analysisTask.events.map((event) => <div key={event.id}><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time><span>{term(event.phase)}</span><p>{event.message}</p></div>) : <p className="task-log-empty">{t("执行后将在这里显示可审计的任务步骤、模型批次、结构校验、检查点与耗时；不会展示模型隐藏思维链。", "Execution will show auditable task steps, model batches, structure validation, checkpoints, and timing here; hidden model chain-of-thought is not exposed.")}</p>}
+          </div>
+        </section>
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
       </section>
       {analysis && <WorkspaceAnalysisDashboard key={`${analysis.projectId}:${analysis.scannedAt}:${treeMode}`} analysis={analysis} selectedFeatureId={selectedFeatureId} onSelectFeature={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} />}

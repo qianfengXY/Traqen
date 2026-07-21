@@ -31,6 +31,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /先配置模型/);
   assert.match(html, /本地确定性扫描十万级文件/);
   assert.match(html, /配置分析模型/);
+  assert.match(html, /等待创建分析任务/);
   assert.match(html, /新建 Workspace/);
   assert.match(html, /SELF WORKSPACE/);
   assert.match(html, /Traqen Platform/);
@@ -146,6 +147,13 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /configureAndVerifyAnalysisModel/);
   assert.match(product, /API Base URL \/ Chat Completions URL/);
   assert.match(product, /Stream \/ SSE/);
+  assert.match(product, /selectAnalysisModelProfile/);
+  assert.match(product, /管理模型并选择当前分析模型/);
+  assert.match(product, /removeAnalysisModelProfile/);
+  assert.match(product, /analysis-task-console/);
+  assert.match(product, /总执行进度/);
+  assert.match(product, /累计耗时/);
+  assert.match(product, /不会展示模型隐藏思维链/);
   assert.match(product, /workspaceModelCandidateBatches/);
   assert.match(product, /applyLocalModelEnrichment/);
   assert.match(product, /先配置模型/);

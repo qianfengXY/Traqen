@@ -37,9 +37,12 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/analysis-model-profiles"].get.operationId, "listAnalysisModelProfiles");
   assert.equal(contract.paths["/v1/analysis-model-profiles"].post.operationId, "configureAnalysisModelProfile");
   assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/verify"].post.operationId, "verifyAnalysisModelProfile");
+  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/select"].post.operationId, "selectAnalysisModelProfile");
+  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}"].delete.operationId, "removeAnalysisModelProfile");
   assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.operationId, "enrichWorkspaceCandidates");
   assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.apiKey.writeOnly, true);
   assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.stream.default, false);
+  assert.ok(contract.components.schemas.AnalysisModelProfile.required.includes("active"));
   assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.requestBody.content["application/json"].schema.properties.candidates.maxItems, 24);
   assert.equal(contract.paths["/v1/projects"].post.operationId, "createProject");
   assert.equal(contract.paths["/v1/projects/{projectId}"].get.operationId, "getProject");

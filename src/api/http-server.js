@@ -201,7 +201,7 @@ function applyCors(request, response, allowedOrigins) {
   const origin = request.headers.origin;
   if (typeof origin !== "string" || !allowedOrigins.has(origin)) return false;
   response.setHeader("access-control-allow-origin", origin);
-  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  response.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
   response.setHeader(
     "access-control-allow-headers",
     "authorization, content-type, x-request-id, x-traqen-api-token",
@@ -799,6 +799,20 @@ export function createTraceabilityHttpHandler({
       if (request.method === "POST" && analysisModelVerifyMatch) {
         const profileId = decodePathSegment(analysisModelVerifyMatch[1]);
         sendJson(response, 200, await application.verifyAnalysisModelProfile(profileId), id);
+        return;
+      }
+
+      const analysisModelSelectMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/select$/.exec(url.pathname);
+      if (request.method === "POST" && analysisModelSelectMatch) {
+        const profileId = decodePathSegment(analysisModelSelectMatch[1]);
+        sendJson(response, 200, application.selectAnalysisModelProfile(profileId), id);
+        return;
+      }
+
+      const analysisModelDeleteMatch = /^\/v1\/analysis-model-profiles\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "DELETE" && analysisModelDeleteMatch) {
+        const profileId = decodePathSegment(analysisModelDeleteMatch[1]);
+        sendJson(response, 200, application.removeAnalysisModelProfile(profileId), id);
         return;
       }
 

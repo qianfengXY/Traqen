@@ -131,6 +131,8 @@ test("analysis model profiles can be configured, verified, and used for bounded 
     listAnalysisModelProfiles() { return [{ id: "workspace-default", ready: false }]; },
     configureAnalysisModelProfile(input) { calls.push(["configure", input]); return { id: input.id, endpoint: input.endpoint, model: input.model, ready: false }; },
     async verifyAnalysisModelProfile(profileId) { calls.push(["verify", profileId]); return { id: profileId, ready: true, latencyMs: 12 }; },
+    selectAnalysisModelProfile(profileId) { calls.push(["select", profileId]); return { id: profileId, ready: true, active: true }; },
+    removeAnalysisModelProfile(profileId) { calls.push(["remove", profileId]); return { id: profileId, ready: true, active: false }; },
     async enrichWorkspaceCandidates(profileId, input) { calls.push(["enrich", profileId, input]); return [{ id: input.candidates[0].id, businessFeature: true }]; },
   };
   const baseUrl = await startStubServer(t, application);
@@ -146,10 +148,12 @@ test("analysis model profiles can be configured, verified, and used for bounded 
   assert.equal(configured.response.status, 201);
   assert.equal(JSON.stringify(configured.body).includes("not-returned"), false);
   assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" })).status, 200);
+  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/select`, { method: "POST" })).status, 200);
   const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, { candidates: [{ id: "FEATURE-1" }] });
   assert.equal(enriched.response.status, 200);
   assert.equal(enriched.body.candidates[0].businessFeature, true);
-  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "enrich"]);
+  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default`, { method: "DELETE" })).status, 200);
+  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "select", "enrich", "remove"]);
 });
 
 test("analysis model connectivity failures use a distinct gateway error", async (t) => {
@@ -640,6 +644,7 @@ test("browser product origins are explicit and preflight never grants an unknown
   });
   assert.equal(preflight.status, 204);
   assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
+  assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /DELETE/);
 
   const unknown = await fetch(`${baseUrl}/health`, {
     headers: { origin: "https://unknown.example" },

@@ -15,7 +15,7 @@
 5. Feature 身份先按精确候选键匹配，再按稳定证据重合度与语义名称相似度匹配。接近全量的重扫本身不能使人工确认失效。
 6. 业务语义变化必须复核。实现重新映射和证据刷新会继承业务权威，同时以独立变化类型展示。
 7. 当前功能树只包含最新且仍存在的 Feature。已移除实现进入不可变退役/历史事件，不继续占据当前树。
-8. 模型凭据通过服务端环境变量引用解析，或仅由运行时配置保存在服务端进程内存中。API 不会返回密钥，密钥也绝不写入运行、结果、提示词记录或浏览器数据库。
+8. 模型凭据通过服务端环境变量引用解析，或静态加密保存在设备本地的 Traqen Profile 存储中。API 不会返回密钥，密钥也绝不写入运行、结果、提示词记录、Workspace 或浏览器数据库。
 
 ## 处理流水线
 
@@ -30,7 +30,7 @@ WorkUnit 以接口和有意义的业务实现根节点为入口。图邻域采�
 - `DETERMINISTIC`：不调用外部模型，适合私有/离线环境和可复现基线。
 - `HYBRID`：先运行确定性分析，再调用已配置的 OpenAI-compatible 模型和可选 Skills。扩展可以优化聚合与说明，但不能引用当前 WorkUnit 之外的 Fact 或稳定节点。
 
-开始分析前，可以在全局“配置分析模型”面板中设置 Profile ID、OpenAI-compatible API Base 或 Chat Completions 地址、模型名称、API Key，以及可选的 Stream/SSE 策略。Traqen 会先发起一次真实的结构化输出验证请求，只有成功后才把该配置标记为可分析。流式 Profile 会发送 `stream: true`，在服务端合并有界文本增量，并执行与非流式响应相同的最终 JSON 与证据校验。运行时输入的 API Key 只保存在 Traqen API 进程内存中，API 进程重启后需要重新配置。
+开始分析前，可以在全局“配置分析模型”面板中添加多个 Profile，编辑时无需重复输入未变化的密钥，可删除运行时 Profile，并选择一个已验证 Profile 作为当前分析模型。Traqen 会先发起一次真实的结构化输出验证请求，只有成功后才把 Profile 标记为可分析。流式 Profile 会发送 `stream: true`，在服务端合并有界文本增量，并执行与非流式响应相同的最终 JSON 与证据校验。运行时 Profile 使用 AES-256-GCM 加密保存在设备本地 Traqen 配置目录，独立密钥文件只允许当前用户访问；可通过 `ANALYSIS_MODEL_STORE_PATH` 覆盖加密存储位置。
 
 对于托管部署，仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置服务端模型。每项包含 `id`、HTTPS `endpoint`（HTTP 仅允许回环地址）、`model`、可选 `timeoutMs`、可选 `stream` 和 `apiKeyEnvironment`；真正密钥保存在后者指定的环境变量中。
 
@@ -75,6 +75,8 @@ PostgreSQL 将可更新的运行检查点与不可变的完成结果分开存储
 - `GET /v1/projects/{projectId}/features/{featureId}/analysis-history`
 - `GET/POST /v1/analysis-model-profiles` —— 获取不含密钥的配置，或配置运行时模型。
 - `POST /v1/analysis-model-profiles/{profileId}/verify`
+- `POST /v1/analysis-model-profiles/{profileId}/select` —— 选择一个已验证 Profile 作为当前模型。
+- `DELETE /v1/analysis-model-profiles/{profileId}` —— 删除持久化的运行时 Profile；环境变量 Profile 仍由部署配置管理。
 - `POST /v1/analysis-model-profiles/{profileId}/workspace-enrichment` —— 每个模型批次最多接收 24 个确定性候选。
 
 每次运行严格绑定一个项目、Snapshot Manifest 和 Source component。没有确定性 Fact 图或 Source component 不匹配时，应用会拒绝分析。
@@ -82,6 +84,8 @@ PostgreSQL 将可更新的运行检查点与不可变的完成结果分开存储
 ## 本地 Workspace 体验
 
 浏览器必须先取得一个已验证模型配置，才能开始新的 Workspace 分析。它先在本地完成确定性提取，再通过 Traqen API 按每批最多 24 个候选发送候选名称、路径、说明和必要代码片段。每个模型批次完成后都会保存检查点；增量分析时，使用同一模型配置且未变化的已分类候选不会再次消耗模型调用。项目原始文件不会持久化，IndexedDB 只保存提取后的候选记录、必要代码/测试片段、脱敏配置线索、活动检查点和紧凑历史摘要。
+
+分析任务执行台在执行前展示计划，执行中持续报告当前 Profile、传输策略、当前阶段、文件与模型批次计数、加权总进度、累计耗时、检查点、结构校验摘要以及完成、暂停或失败事件。它展示可审计操作和证据范围，不展示模型私有思维链。
 
 可以保留多个已扫描项目，同时只在侧栏展示选中的项目。从展示中移出是非破坏操作：Workspace 管理仍会读取其轻量摘要，但不会加载源码索引、功能树和追溯快照；重新勾选即可按需打开，无需重扫。
 

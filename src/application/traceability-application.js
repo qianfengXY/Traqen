@@ -1226,6 +1226,16 @@ export class TraceabilityApplication {
     return this.#analysisModelRegistry.verify(requireId(profileId, "analysisModelProfileId"));
   }
 
+  selectAnalysisModelProfile(profileId) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.select(requireId(profileId, "analysisModelProfileId"));
+  }
+
+  removeAnalysisModelProfile(profileId) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.remove(requireId(profileId, "analysisModelProfileId"));
+  }
+
   async enrichWorkspaceCandidates(profileId, input) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
     if (!input || typeof input !== "object") throw new TypeError("workspace analysis input must be an object");
@@ -1281,9 +1291,19 @@ export class TraceabilityApplication {
     return { projectId, snapshotManifestId, factGraph, baselineResult: governedBaseline };
   }
 
+  #withActiveAnalysisModel(input) {
+    if (!input?.profile?.model?.enabled || input.profile.model.profileId) return input;
+    const active = this.#analysisModelRegistry?.active();
+    if (!active?.ready) throw new TypeError("No verified active analysis model profile is selected");
+    const request = structuredClone(input);
+    request.profile.model.profileId = active.id;
+    return request;
+  }
+
   async executeAnalysisRun(input, options = {}) {
-    const context = await this.#analysisInputs(input);
-    return this.#analysisAgent.execute(input, {
+    const request = this.#withActiveAnalysisModel(input);
+    const context = await this.#analysisInputs(request);
+    return this.#analysisAgent.execute(request, {
       factGraph: context.factGraph,
       baselineResult: context.baselineResult,
       signal: options.signal ?? null,
@@ -1292,17 +1312,18 @@ export class TraceabilityApplication {
   }
 
   async submitAnalysisRun(input) {
-    const runId = requireId(input?.id, "analysisRequest.id");
-    const projectId = requireId(input?.projectId, "analysisRequest.projectId");
+    const request = this.#withActiveAnalysisModel(input);
+    const runId = requireId(request?.id, "analysisRequest.id");
+    const projectId = requireId(request?.projectId, "analysisRequest.projectId");
     const identity = `${projectId}\u0000${runId}`;
     const existing = await this.#analysisAgent?.getRun(projectId, runId);
     if (existing) return existing;
-    const planned = await this.executeAnalysisRun(input, { maximumCompletedWorkUnits: 0 });
+    const planned = await this.executeAnalysisRun(request, { maximumCompletedWorkUnits: 0 });
     if (planned?.status === "COMPLETED" || planned?.status === "COMPLETED_WITH_GAPS") return planned;
     const controller = new AbortController();
     this.#analysisControllers.set(identity, controller);
     Promise.resolve()
-      .then(() => this.executeAnalysisRun(input, { signal: controller.signal }))
+      .then(() => this.executeAnalysisRun(request, { signal: controller.signal }))
       .catch(() => {})
       .finally(() => this.#analysisControllers.delete(identity));
     return planned;

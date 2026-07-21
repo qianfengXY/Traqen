@@ -344,16 +344,44 @@ export class AnalysisModelRegistry {
   #profiles = new Map();
   #clock;
   #fetchImpl;
+  #profileStore;
+  #activeProfileId = null;
 
-  constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch } = {}) {
+  constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
     if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
     if (typeof clock !== "function") throw new TypeError("analysis model registry clock must be a function");
     if (typeof fetchImpl !== "function") throw new TypeError("analysis model registry fetchImpl must be a function");
+    if (profileStore && (typeof profileStore.load !== "function" || typeof profileStore.save !== "function")) throw new TypeError("analysis model profileStore requires load and save functions");
     this.#clock = clock;
     this.#fetchImpl = fetchImpl;
+    this.#profileStore = profileStore;
     for (const [id, adapter] of adapters) {
-      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter });
+      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter });
     }
+    const stored = this.#profileStore?.load() ?? { activeProfileId: null, profiles: [] };
+    for (const value of stored.profiles) {
+      const id = requiredString(value?.id, "stored analysis model profile id");
+      if (this.#profiles.has(id)) continue;
+      const endpoint = endpointUrl(value.endpoint);
+      const model = requiredString(value.model, "stored analysis model name");
+      const apiKey = requiredString(value.apiKey, "stored analysis model API key");
+      const timeoutMs = value.timeoutMs ?? 120_000;
+      const stream = value.stream ?? false;
+      const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+      this.#profiles.set(id, {
+        id,
+        endpoint: adapter.endpoint,
+        model,
+        timeoutMs,
+        stream,
+        source: "RUNTIME",
+        configuredAt: typeof value.configuredAt === "string" ? value.configuredAt : this.#clock().toISOString(),
+        verifiedAt: typeof value.verifiedAt === "string" ? value.verifiedAt : null,
+        apiKey,
+        adapter,
+      });
+    }
+    if (stored.activeProfileId && this.#profiles.get(stored.activeProfileId)?.verifiedAt) this.#activeProfileId = stored.activeProfileId;
   }
 
   #public(profile) {
@@ -367,29 +395,61 @@ export class AnalysisModelRegistry {
       configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt,
       ready: Boolean(profile.verifiedAt),
+      active: profile.id === this.#activeProfileId,
     };
+  }
+
+  #persist() {
+    if (!this.#profileStore) return;
+    this.#profileStore.save({
+      activeProfileId: this.#activeProfileId,
+      profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => ({
+        id: profile.id,
+        endpoint: profile.endpoint,
+        model: profile.model,
+        timeoutMs: profile.timeoutMs,
+        stream: profile.stream,
+        configuredAt: profile.configuredAt,
+        verifiedAt: profile.verifiedAt,
+        apiKey: profile.apiKey,
+      })),
+    });
   }
 
   list() {
     return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
   }
 
+  active() {
+    const profile = this.#profiles.get(this.#activeProfileId);
+    return profile ? this.#public(profile) : null;
+  }
+
   resolve(id) {
-    const profile = this.#profiles.get(id);
+    const profile = this.#profiles.get(id ?? this.#activeProfileId);
     return profile?.verifiedAt ? profile.adapter : null;
   }
 
   configure(input) {
     if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
     const id = requiredString(input.id, "analysis model profile id");
+    const existing = this.#profiles.get(id);
     const endpoint = endpointUrl(input.endpoint);
     const model = requiredString(input.model, "analysis model name");
-    const apiKey = requiredString(input.apiKey, "analysis model API key");
+    const hasNewApiKey = typeof input.apiKey === "string" && input.apiKey.trim() !== "";
+    const apiKey = hasNewApiKey
+      ? requiredString(input.apiKey, "analysis model API key")
+      : existing?.source === "RUNTIME"
+        ? existing.apiKey
+        : requiredString(input.apiKey, "analysis model API key");
     const timeoutMs = input.timeoutMs ?? 120_000;
     const stream = input.stream ?? false;
     const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
-    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, stream, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter };
+    const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
+    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, stream, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
     this.#profiles.set(id, profile);
+    if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
+    this.#persist();
     return this.#public(profile);
   }
 
@@ -398,7 +458,31 @@ export class AnalysisModelRegistry {
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     const verification = await profile.adapter.verify();
     profile.verifiedAt = this.#clock().toISOString();
+    if (!this.#activeProfileId) this.#activeProfileId = profile.id;
+    this.#persist();
     return { ...this.#public(profile), latencyMs: verification.latencyMs };
+  }
+
+  select(id) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before selection`);
+    this.#activeProfileId = profile.id;
+    this.#persist();
+    return this.#public(profile);
+  }
+
+  remove(id) {
+    const profileId = requiredString(id, "analysis model profile id");
+    const profile = this.#profiles.get(profileId);
+    if (!profile) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
+    if (profile.source === "ENVIRONMENT") throw new TypeError(`Environment model profile ${profileId} cannot be deleted at runtime`);
+    this.#profiles.delete(profileId);
+    if (this.#activeProfileId === profileId) {
+      this.#activeProfileId = this.list().find((candidate) => candidate.ready)?.id ?? null;
+    }
+    this.#persist();
+    return this.#public(profile);
   }
 
   async enrichWorkspaceCandidates(id, candidates, options = {}) {
