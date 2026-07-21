@@ -1161,6 +1161,7 @@ export function TraqenProduct() {
   const [analysisModelEndpoint, setAnalysisModelEndpoint] = useState("https://api.openai.com/v1/chat/completions");
   const [analysisModelName, setAnalysisModelName] = useState("");
   const [analysisModelApiKey, setAnalysisModelApiKey] = useState("");
+  const [analysisModelStream, setAnalysisModelStream] = useState(false);
   const [analysisModelProfile, setAnalysisModelProfile] = useState<AnalysisModelProfile | null>(null);
   const [analysisModelStatus, setAnalysisModelStatus] = useState<"IDLE" | "CHECKING" | "READY" | "ERROR">("IDLE");
   const [analysisModelMessage, setAnalysisModelMessage] = useState("");
@@ -1218,10 +1219,11 @@ export function TraqenProduct() {
     const timer = window.setTimeout(async () => {
       let selectedId = "workspace-default";
       try {
-        const stored = JSON.parse(localStorage.getItem("traqen-analysis-model-settings") ?? "null") as { id?: string; endpoint?: string; model?: string } | null;
+        const stored = JSON.parse(localStorage.getItem("traqen-analysis-model-settings") ?? "null") as { id?: string; endpoint?: string; model?: string; stream?: boolean } | null;
         if (stored?.id) { selectedId = stored.id; setAnalysisModelProfileId(stored.id); }
         if (stored?.endpoint) setAnalysisModelEndpoint(stored.endpoint);
         if (stored?.model) setAnalysisModelName(stored.model);
+        if (typeof stored?.stream === "boolean") setAnalysisModelStream(stored.stream);
       } catch {
         localStorage.removeItem("traqen-analysis-model-settings");
       }
@@ -1234,6 +1236,7 @@ export function TraqenProduct() {
           setAnalysisModelProfileId(selected.id);
           setAnalysisModelEndpoint(selected.endpoint);
           setAnalysisModelName(selected.model);
+          setAnalysisModelStream(selected.stream);
         }
       } catch {
         setAnalysisModelProfile(null);
@@ -1252,6 +1255,7 @@ export function TraqenProduct() {
         setAnalysisModelProfileId(selected.id);
         setAnalysisModelEndpoint(selected.endpoint);
         setAnalysisModelName(selected.model);
+        setAnalysisModelStream(selected.stream);
       }
     } catch {
       setAnalysisModelProfile(null);
@@ -1340,12 +1344,14 @@ export function TraqenProduct() {
             endpoint: analysisModelEndpoint,
             model: analysisModelName,
             apiKey: analysisModelApiKey,
+            stream: analysisModelStream,
           });
       setAnalysisModelProfile(profile);
       setAnalysisModelStatus("READY");
       setAnalysisModelEndpoint(profile.endpoint);
+      setAnalysisModelStream(profile.stream);
       setAnalysisModelApiKey("");
-      localStorage.setItem("traqen-analysis-model-settings", JSON.stringify({ id: profile.id, endpoint: profile.endpoint, model: profile.model }));
+      localStorage.setItem("traqen-analysis-model-settings", JSON.stringify({ id: profile.id, endpoint: profile.endpoint, model: profile.model, stream: profile.stream }));
       setAnalysisModelMessage(t(`模型连接成功，延迟 ${profile.latencyMs ?? "—"} ms。`, `Model connected successfully in ${profile.latencyMs ?? "—"} ms.`));
     } catch (error) {
       setAnalysisModelProfile(null);
@@ -1566,6 +1572,7 @@ export function TraqenProduct() {
                 <div className="field"><label htmlFor="analysis-model-name">Model</label><input id="analysis-model-name" placeholder="gpt-5-mini / qwen / local model" value={analysisModelName} onChange={(event) => { setAnalysisModelName(event.target.value); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /></div>
                 <div className="field full"><label htmlFor="analysis-model-endpoint">API Base URL / Chat Completions URL</label><input id="analysis-model-endpoint" placeholder="https://api.example.com/v1 或 /v1/chat/completions" value={analysisModelEndpoint} onChange={(event) => { setAnalysisModelEndpoint(event.target.value); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /><small>{t("填写服务根地址或以 /v1 结尾的地址时，会自动补全 /chat/completions；也可以直接填写完整接口地址。", "A root URL or URL ending in /v1 is completed to /chat/completions automatically; you may also enter the full endpoint.")}</small></div>
                 <div className="field full"><label htmlFor="analysis-model-key">API Key</label><input id="analysis-model-key" type="password" autoComplete="off" placeholder={analysisModelProfile?.source === "ENVIRONMENT" ? t("环境变量配置；如需替换请输入新 Key", "Configured by environment; enter a new key to replace") : "sk-…"} value={analysisModelApiKey} onChange={(event) => setAnalysisModelApiKey(event.target.value)} /></div>
+                <label className="model-stream-toggle full" htmlFor="analysis-model-stream"><input id="analysis-model-stream" type="checkbox" checked={analysisModelStream} onChange={(event) => { setAnalysisModelStream(event.currentTarget.checked); setAnalysisModelProfile(null); setAnalysisModelStatus("IDLE"); }} /><span><b>Stream / SSE</b><small>{t("为只支持流式响应的模型网关发送 stream: true，并在服务端合并增量 JSON。", "Send stream: true for gateways that require streaming responses and merge incremental JSON on the server.")}</small></span></label>
               </div>
               <div className="connection-actions"><button className="button primary" disabled={analysisModelStatus === "CHECKING" || !analysisModelProfileId.trim() || !analysisModelEndpoint.trim() || !analysisModelName.trim() || (!analysisModelApiKey.trim() && !(analysisModelProfile?.id === analysisModelProfileId && analysisModelProfile.source === "ENVIRONMENT"))} onClick={() => void connectAnalysisModel()}>{analysisModelStatus === "CHECKING" ? t("正在验证…", "Verifying…") : !analysisModelApiKey.trim() && analysisModelProfile?.source === "ENVIRONMENT" ? t("验证环境配置", "Verify environment profile") : t("保存并验证连接", "Save and verify")}</button><button className="button" onClick={() => void refreshAnalysisModelProfile()}>{t("刷新服务端状态", "Refresh server status")}</button>{analysisModelMessage && <span className={`form-message ${analysisModelStatus === "ERROR" ? "error" : ""}`}>{analysisModelMessage}</span>}</div>
             </section>

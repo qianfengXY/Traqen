@@ -597,6 +597,10 @@ button { color: inherit; }
 .analysis-model-panel .panel-head > div, .workspace-manager-panel .panel-head > div { max-width: 920px; }
 .analysis-model-grid { display: grid; grid-template-columns: minmax(180px, .6fr) minmax(260px, 1fr); gap: 13px; }
 .analysis-model-grid .full { grid-column: 1 / -1; }
+.model-stream-toggle { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, .58); cursor: pointer; }
+.model-stream-toggle input { margin-top: 3px; accent-color: var(--accent); }
+.model-stream-toggle span { display: grid; gap: 3px; }
+.model-stream-toggle small { color: var(--muted); line-height: 1.45; }
 .model-status { flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; background: #eee9dc; color: #756c5e; font-size: 10px; font-weight: 750; }
 .model-status.ready { background: #e7f4eb; color: #286047; }
 .model-status.checking { background: #edf3fa; color: #315e86; }

@@ -30,9 +30,9 @@ WorkUnit roots are endpoints and meaningful business implementation roots. Bread
 - `DETERMINISTIC`: no external model call. Suitable for private/offline use and reproducible baselines.
 - `HYBRID`: runs deterministic analysis first, then a configured OpenAI-compatible model and optional registered Skills. Extensions may refine grouping and descriptions, but cannot cite evidence or stable nodes outside their WorkUnit.
 
-Profiles can be configured before analysis from the global **Configure model** panel. The user enters a profile ID, exact OpenAI-compatible Chat Completions endpoint, model name, and API key. Traqen sends a live structured-output verification request before marking the profile ready. Runtime API keys remain only in the Traqen API process memory and must be reconfigured after that process restarts.
+Profiles can be configured before analysis from the global **Configure model** panel. The user enters a profile ID, OpenAI-compatible API base or Chat Completions endpoint, model name, API key, and optional Stream/SSE strategy. Traqen sends a live structured-output verification request before marking the profile ready. Stream profiles send `stream: true`, merge bounded text deltas on the server, and apply the same final JSON and evidence validation as non-streaming responses. Runtime API keys remain only in the Traqen API process memory and must be reconfigured after that process restarts.
 
-For managed deployments, `ANALYSIS_MODEL_PROFILES_JSON` configures server-side profiles. Each entry contains `id`, HTTPS `endpoint` (HTTP is accepted only for loopback), `model`, optional `timeoutMs`, and `apiKeyEnvironment`. The named environment variable holds the secret.
+For managed deployments, `ANALYSIS_MODEL_PROFILES_JSON` configures server-side profiles. Each entry contains `id`, HTTPS `endpoint` (HTTP is accepted only for loopback), `model`, optional `timeoutMs`, optional `stream`, and `apiKeyEnvironment`. The named environment variable holds the secret.
 
 Example:
 
@@ -43,6 +43,7 @@ Example:
     "endpoint": "https://model-gateway.example/v1/chat/completions",
     "model": "source-analysis-model",
     "timeoutMs": 120000,
+    "stream": true,
     "apiKeyEnvironment": "PRIVATE_MODEL_API_KEY"
   }
 ]

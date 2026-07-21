@@ -35,6 +35,53 @@ function responseText(payload) {
   throw new TypeError(`analysis model response does not contain supported message text (top-level fields: ${fields || "none"})`);
 }
 
+function sseResponseText(value) {
+  if (value.length > 2_000_000) throw new TypeError("analysis model stream exceeds the bounded response size");
+  const pieces = [];
+  const fields = new Set();
+  for (const event of value.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]") continue;
+    let payload;
+    try {
+      payload = JSON.parse(data);
+    } catch (error) {
+      throw new TypeError("analysis model stream contains a non-JSON data event", { cause: error });
+    }
+    if (payload && typeof payload === "object") Object.keys(payload).slice(0, 8).forEach((field) => fields.add(field));
+    const delta = payload?.choices?.[0]?.delta?.content;
+    if (typeof delta === "string") pieces.push(delta);
+    else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
+    else if (typeof payload?.delta === "string" && /output_text\.delta|content_block_delta/i.test(payload?.type ?? "")) pieces.push(payload.delta);
+    else if (typeof payload?.delta?.text === "string") pieces.push(payload.delta.text);
+    else {
+      try {
+        pieces.push(responseText(payload));
+      } catch {
+        // Metadata-only stream events do not contribute output text.
+      }
+    }
+  }
+  if (pieces.length === 0) throw new TypeError(`analysis model stream does not contain supported text deltas (event fields: ${[...fields].join(", ") || "none"})`);
+  return pieces.join("");
+}
+
+function structuredResponse(value, contentType = "") {
+  const stream = /text\/event-stream/i.test(contentType) || /^\s*(?:event:.*\r?\n)?data:/m.test(value);
+  if (stream) return jsonResponse({ choices: [{ message: { content: sseResponseText(value) } }] });
+  let payload;
+  try {
+    payload = JSON.parse(value);
+  } catch (error) {
+    throw new TypeError("analysis model HTTP response body is not valid JSON", { cause: error });
+  }
+  return jsonResponse(payload);
+}
+
 function firstJsonFragment(value) {
   for (let start = 0; start < value.length; start += 1) {
     if (value[start] !== "{" && value[start] !== "[") continue;
@@ -114,16 +161,18 @@ export class AnalysisModelConnectionError extends Error {
 }
 
 export class OpenAICompatibleAnalysisModelAdapter {
-  constructor({ id, endpoint, model, apiKeyResolver = () => null, fetchImpl = globalThis.fetch, timeoutMs = 120_000 }) {
+  constructor({ id, endpoint, model, apiKeyResolver = () => null, fetchImpl = globalThis.fetch, timeoutMs = 120_000, stream = false }) {
     this.id = requiredString(id, "analysis model profile id");
     this.endpoint = endpointUrl(endpoint);
     this.model = requiredString(model, "analysis model name");
     if (typeof apiKeyResolver !== "function") throw new TypeError("apiKeyResolver must be a function");
     if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl must be a function");
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) throw new TypeError("timeoutMs must be between 1 and 600000");
+    if (typeof stream !== "boolean") throw new TypeError("analysis model stream must be a boolean");
     this.apiKeyResolver = apiKeyResolver;
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
+    this.stream = stream;
   }
 
   async #request({ messages, maxOutputTokens }, { signal = null } = {}) {
@@ -144,6 +193,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
           temperature: 0,
           max_tokens: maxOutputTokens,
           response_format: { type: "json_object" },
+          ...(this.stream ? { stream: true } : {}),
           messages,
         }),
       });
@@ -152,7 +202,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
         throw new AnalysisModelConnectionError(`Analysis model request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
       }
       try {
-        return jsonResponse(await response.json());
+        return structuredResponse(await response.text(), response.headers?.get?.("content-type") ?? "");
       } catch (error) {
         const reason = error instanceof TypeError && error.message.startsWith("analysis model ")
           ? error.message
@@ -302,7 +352,7 @@ export class AnalysisModelRegistry {
     this.#clock = clock;
     this.#fetchImpl = fetchImpl;
     for (const [id, adapter] of adapters) {
-      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter });
+      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter });
     }
   }
 
@@ -312,6 +362,7 @@ export class AnalysisModelRegistry {
       endpoint: profile.endpoint,
       model: profile.model,
       timeoutMs: profile.timeoutMs,
+      stream: profile.stream,
       source: profile.source,
       configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt,
@@ -335,8 +386,9 @@ export class AnalysisModelRegistry {
     const model = requiredString(input.model, "analysis model name");
     const apiKey = requiredString(input.apiKey, "analysis model API key");
     const timeoutMs = input.timeoutMs ?? 120_000;
-    const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
-    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter };
+    const stream = input.stream ?? false;
+    const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, stream, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: null, adapter };
     this.#profiles.set(id, profile);
     return this.#public(profile);
   }
@@ -378,6 +430,7 @@ export function configuredAnalysisModels(value, env = process.env) {
       endpoint: profile.endpoint,
       model: profile.model,
       timeoutMs: profile.timeoutMs ?? 120_000,
+      stream: profile.stream ?? false,
       apiKeyResolver: () => secretEnvironment ? env[secretEnvironment] ?? null : null,
     }));
   }

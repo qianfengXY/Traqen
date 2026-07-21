@@ -12,7 +12,7 @@ The local Workspace Analysis Agent has also been exercised against the real [`zt
 
 The initialized Feature tree offers two global projections without rescanning: a pure business-capability view that excludes APIs and engineering commands, and an API-only view containing HTTP/OpenAPI endpoints. Workspace statistics, Feature traceability, and the trace graph follow the same active projection.
 
-Before starting a local Workspace analysis, open **Configure model** in the global header and provide an OpenAI-compatible Chat Completions URL, model name, and API key. Traqen verifies the connection and keeps the runtime secret only in API process memory. The Web and API processes must run from the same repository revision; an older API does not expose the model-profile routes. Deterministic candidates are then enriched in resumable batches of at most 24. Workspace visibility management lets you remove projects from the sidebar without deleting their scan results; hidden projects do not load their source index, Feature tree, or traceability snapshot.
+Before starting a local Workspace analysis, open **Configure model** in the global header and provide an OpenAI-compatible API URL, model name, API key, and optional Stream/SSE strategy. Traqen verifies the connection and keeps the runtime secret only in API process memory. The Web and API processes must run from the same repository revision; an older API does not expose the model-profile routes. Deterministic candidates are then enriched in resumable batches of at most 24. Workspace visibility management lets you remove projects from the sidebar without deleting their scan results; hidden projects do not load their source index, Feature tree, or traceability snapshot.
 
 ## Implemented foundation
 

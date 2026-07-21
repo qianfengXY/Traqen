@@ -145,6 +145,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /执行增量分析/);
   assert.match(product, /configureAndVerifyAnalysisModel/);
   assert.match(product, /API Base URL \/ Chat Completions URL/);
+  assert.match(product, /Stream \/ SSE/);
   assert.match(product, /workspaceModelCandidateBatches/);
   assert.match(product, /applyLocalModelEnrichment/);
   assert.match(product, /先配置模型/);

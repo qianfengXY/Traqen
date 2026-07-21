@@ -5,6 +5,7 @@ export type AnalysisModelProfile = {
   endpoint: string;
   model: string;
   timeoutMs: number;
+  stream: boolean;
   source: "ENVIRONMENT" | "RUNTIME";
   configuredAt: string;
   verifiedAt: string | null;
@@ -17,6 +18,7 @@ export type AnalysisModelSettings = {
   endpoint: string;
   model: string;
   apiKey: string;
+  stream: boolean;
   timeoutMs?: number;
 };
 

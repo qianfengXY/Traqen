@@ -24,10 +24,12 @@ test("distinguishes a saved profile from a model endpoint verification failure",
         endpoint: "https://api.example.com/v1",
         model: "source-model",
         apiKey: "secret",
+        stream: true,
       }),
       /配置已保存，但模型连接验证失败.*https:\/\/api\.example\.com\/v1\/chat\/completions/s,
     );
     assert.equal(JSON.parse(requests[0].options.body).endpoint, "https://api.example.com/v1/chat/completions");
+    assert.equal(JSON.parse(requests[0].options.body).stream, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

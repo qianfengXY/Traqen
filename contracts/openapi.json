@@ -949,7 +949,7 @@
         "operationId": "configureAnalysisModelProfile",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["id", "endpoint", "model", "apiKey"], "properties": { "id": { "type": "string", "minLength": 1 }, "endpoint": { "type": "string", "format": "uri" }, "model": { "type": "string", "minLength": 1 }, "apiKey": { "type": "string", "minLength": 1, "writeOnly": true }, "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 } }, "additionalProperties": false } } }
+          "content": { "application/json": { "schema": { "type": "object", "required": ["id", "endpoint", "model", "apiKey"], "properties": { "id": { "type": "string", "minLength": 1 }, "endpoint": { "type": "string", "format": "uri" }, "model": { "type": "string", "minLength": 1 }, "apiKey": { "type": "string", "minLength": 1, "writeOnly": true }, "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 }, "stream": { "type": "boolean", "default": false, "description": "Request and merge OpenAI-compatible Server-Sent Events" } }, "additionalProperties": false } } }
         },
         "responses": {
           "201": { "description": "Runtime model profile configured in server memory; the API key is not returned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
@@ -1409,12 +1409,13 @@
     "schemas": {
       "AnalysisModelProfile": {
         "type": "object",
-        "required": ["id", "endpoint", "model", "timeoutMs", "source", "configuredAt", "verifiedAt", "ready"],
+        "required": ["id", "endpoint", "model", "timeoutMs", "stream", "source", "configuredAt", "verifiedAt", "ready"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "endpoint": { "type": "string", "format": "uri" },
           "model": { "type": "string", "minLength": 1 },
           "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+          "stream": { "type": "boolean" },
           "source": { "enum": ["ENVIRONMENT", "RUNTIME"] },
           "configuredAt": { "type": "string", "format": "date-time" },
           "verifiedAt": { "type": ["string", "null"], "format": "date-time" },

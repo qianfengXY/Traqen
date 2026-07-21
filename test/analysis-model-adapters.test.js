@@ -34,6 +34,44 @@ test("Analysis Agent model endpoints require HTTPS except for loopback developme
   assert.doesNotThrow(() => new OpenAICompatibleAnalysisModelAdapter({ id: "local", endpoint: "http://127.0.0.1:11434/v1/chat/completions", model: "x" }));
 });
 
+test("stream profiles send stream true and merge OpenAI-compatible SSE deltas before validation", async () => {
+  let request;
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "stream-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    stream: true,
+    apiKeyResolver: () => "secret",
+    fetchImpl: async (_url, options) => {
+      request = JSON.parse(options.body);
+      const events = [
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "{\"ok\":" } }] })}`,
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "true}" } }] })}`,
+        "data: [DONE]",
+      ].join("\n\n");
+      return new Response(events, { status: 200, headers: { "content-type": "text/event-stream" } });
+    },
+  });
+  assert.equal((await adapter.verify()).ok, true);
+  assert.equal(request.stream, true);
+});
+
+test("stream profiles accept Responses-style output_text delta events", async () => {
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "responses-stream-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    stream: true,
+    apiKeyResolver: () => "secret",
+    fetchImpl: async () => new Response([
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "{\"ok\":" })}`,
+      `data: ${JSON.stringify({ type: "response.output_text.delta", delta: "true}" })}`,
+      "data: [DONE]",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } }),
+  });
+  assert.equal((await adapter.verify()).ok, true);
+});
+
 test("runtime model profiles keep API keys private, require verification, and enrich bounded Workspace candidates", async () => {
   const requests = [];
   const registry = new AnalysisModelRegistry({

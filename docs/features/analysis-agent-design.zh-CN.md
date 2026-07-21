@@ -30,9 +30,9 @@ WorkUnit 以接口和有意义的业务实现根节点为入口。图邻域采�
 - `DETERMINISTIC`：不调用外部模型，适合私有/离线环境和可复现基线。
 - `HYBRID`：先运行确定性分析，再调用已配置的 OpenAI-compatible 模型和可选 Skills。扩展可以优化聚合与说明，但不能引用当前 WorkUnit 之外的 Fact 或稳定节点。
 
-开始分析前，可以在全局“配置分析模型”面板中设置 Profile ID、准确的 OpenAI-compatible Chat Completions 地址、模型名称和 API Key。Traqen 会先发起一次真实的结构化输出验证请求，只有成功后才把该配置标记为可分析。运行时输入的 API Key 只保存在 Traqen API 进程内存中，API 进程重启后需要重新配置。
+开始分析前，可以在全局“配置分析模型”面板中设置 Profile ID、OpenAI-compatible API Base 或 Chat Completions 地址、模型名称、API Key，以及可选的 Stream/SSE 策略。Traqen 会先发起一次真实的结构化输出验证请求，只有成功后才把该配置标记为可分析。流式 Profile 会发送 `stream: true`，在服务端合并有界文本增量，并执行与非流式响应相同的最终 JSON 与证据校验。运行时输入的 API Key 只保存在 Traqen API 进程内存中，API 进程重启后需要重新配置。
 
-对于托管部署，仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置服务端模型。每项包含 `id`、HTTPS `endpoint`（HTTP 仅允许回环地址）、`model`、可选 `timeoutMs` 和 `apiKeyEnvironment`；真正密钥保存在后者指定的环境变量中。
+对于托管部署，仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 配置服务端模型。每项包含 `id`、HTTPS `endpoint`（HTTP 仅允许回环地址）、`model`、可选 `timeoutMs`、可选 `stream` 和 `apiKeyEnvironment`；真正密钥保存在后者指定的环境变量中。
 
 示例：
 
@@ -43,6 +43,7 @@ WorkUnit 以接口和有意义的业务实现根节点为入口。图邻域采�
     "endpoint": "https://model-gateway.example/v1/chat/completions",
     "model": "source-analysis-model",
     "timeoutMs": 120000,
+    "stream": true,
     "apiKeyEnvironment": "PRIVATE_MODEL_API_KEY"
   }
 ]
