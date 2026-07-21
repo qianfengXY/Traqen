@@ -40,9 +40,10 @@ test("server-renders the Traqen proof-chain product surface", async () => {
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, analyzer, workspaceStatistics, workspaceStore, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
+  const [page, product, modelClient, analyzer, workspaceStatistics, workspaceStore, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/analysis-model-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-analysis.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-statistics.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-store.ts", import.meta.url), "utf8"),
@@ -149,6 +150,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /从展示中移出/);
   assert.match(product, /setLocalWorkspaceProjectVisibility/);
   assert.match(product, /visibleWorkspaceProjects/);
+  assert.match(modelClient, /Web 与 API 使用同一代码版本/);
   assert.match(product, /previous\.size === file\.size && previous\.lastModified === file\.lastModified/);
   assert.match(product, /workspaceProjects\.map/);
   assert.match(workspaceStore, /indexedDB\.open/);

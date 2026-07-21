@@ -39,7 +39,10 @@ function headers(apiToken: string, json = false) {
 }
 
 async function responseJson<T>(response: Response) {
-  const body = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
+  const body = await response.json().catch(() => ({})) as T & { error?: { code?: string; message?: string } };
+  if (response.status === 404 && body.error?.code === "ROUTE_NOT_FOUND") {
+    throw new Error("当前 Traqen API 版本不支持模型配置。请确保 Web 与 API 使用同一代码版本，并重启 npm run dev。 / This Traqen API version does not support model configuration. Run Web and API from the same revision, then restart npm run dev.");
+  }
   if (!response.ok) throw new Error(body.error?.message ?? `Traqen API returned ${response.status}`);
   return body;
 }
