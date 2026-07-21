@@ -71,6 +71,7 @@ test("runtime model profiles keep API keys private, require verification, and en
 
   const verified = await registry.verify("workspace-default");
   assert.equal(verified.ready, true);
+  assert.equal(JSON.parse(requests[0].body).max_tokens, 512);
   assert.ok(registry.resolve("workspace-default"));
   const enriched = await registry.enrichWorkspaceCandidates("workspace-default", [{
     id: "FEATURE-ORDER",
@@ -106,4 +107,42 @@ test("model transport and structured output failures are reported as model avail
     fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ ok: false }) } }] }), { status: 200 }),
   });
   await assert.rejects(() => malformed.verify(), AnalysisModelConnectionError);
+});
+
+test("model verification accepts compatible text arrays, reasoning prefixes, and Responses-style output text", async () => {
+  const arrayContent = new OpenAICompatibleAnalysisModelAdapter({
+    id: "array-content-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    apiKeyResolver: () => "secret",
+    fetchImpl: async () => new Response(JSON.stringify({
+      choices: [{ message: { content: [{ type: "output_text", text: { value: "<think>done</think>\n```json\n{\"ok\":true}\n```" } }] } }],
+    }), { status: 200 }),
+  });
+  assert.equal((await arrayContent.verify()).ok, true);
+
+  const responsesStyle = new OpenAICompatibleAnalysisModelAdapter({
+    id: "responses-style-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    apiKeyResolver: () => "secret",
+    fetchImpl: async () => new Response(JSON.stringify({ output_text: "Result: {\"ok\":true}" }), { status: 200 }),
+  });
+  assert.equal((await responsesStyle.verify()).ok, true);
+});
+
+test("invalid model structures report the unsupported response shape without echoing response content", async () => {
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "unsupported-shape",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    apiKeyResolver: () => "secret",
+    fetchImpl: async () => new Response(JSON.stringify({ result: { privateContent: "do-not-echo" } }), { status: 200 }),
+  });
+  await assert.rejects(
+    () => adapter.verify(),
+    (error) => error instanceof AnalysisModelConnectionError
+      && /top-level fields: result/.test(error.message)
+      && !error.message.includes("do-not-echo"),
+  );
 });

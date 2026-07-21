@@ -14,10 +14,61 @@ function responseText(payload) {
   const content = payload?.choices?.[0]?.message?.content;
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
-    const joined = content.filter((item) => item?.type === "text" && typeof item.text === "string").map((item) => item.text).join("\n");
+    const joined = content.map((item) => {
+      if (typeof item === "string") return item;
+      if (typeof item?.text === "string") return item.text;
+      if (typeof item?.text?.value === "string") return item.text.value;
+      if (typeof item?.content === "string") return item.content;
+      return "";
+    }).filter(Boolean).join("\n");
     if (joined) return joined;
   }
-  throw new TypeError("analysis model response does not contain message content");
+  if (content && typeof content === "object") return JSON.stringify(content);
+  if (typeof payload?.choices?.[0]?.text === "string") return payload.choices[0].text;
+  if (typeof payload?.output_text === "string") return payload.output_text;
+  const outputText = payload?.output?.flatMap?.((item) => item?.content ?? [])
+    ?.map?.((item) => typeof item?.text === "string" ? item.text : typeof item?.text?.value === "string" ? item.text.value : "")
+    ?.filter?.(Boolean)
+    ?.join?.("\n");
+  if (outputText) return outputText;
+  const fields = payload && typeof payload === "object" ? Object.keys(payload).slice(0, 8).join(", ") : "none";
+  throw new TypeError(`analysis model response does not contain supported message text (top-level fields: ${fields || "none"})`);
+}
+
+function firstJsonFragment(value) {
+  for (let start = 0; start < value.length; start += 1) {
+    if (value[start] !== "{" && value[start] !== "[") continue;
+    const stack = [];
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < value.length; index += 1) {
+      const character = value[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') {
+        quoted = true;
+        continue;
+      }
+      if (character === "{" || character === "[") stack.push(character);
+      else if (character === "}" || character === "]") {
+        const opening = stack.pop();
+        if ((opening === "{" && character !== "}") || (opening === "[" && character !== "]")) break;
+        if (stack.length === 0) {
+          const candidate = value.slice(start, index + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+  }
+  return null;
 }
 
 function jsonResponse(payload) {
@@ -28,7 +79,9 @@ function jsonResponse(payload) {
   try {
     return JSON.parse(unfenced);
   } catch (error) {
-    throw new TypeError("analysis model response is not valid JSON", { cause: error });
+    const fragment = firstJsonFragment(unfenced);
+    if (fragment !== null) return fragment;
+    throw new TypeError("analysis model message text does not contain a complete JSON object or array", { cause: error });
   }
 }
 
@@ -101,7 +154,10 @@ export class OpenAICompatibleAnalysisModelAdapter {
       try {
         return jsonResponse(await response.json());
       } catch (error) {
-        throw new AnalysisModelConnectionError("Analysis model returned an invalid structured JSON response", { cause: error });
+        const reason = error instanceof TypeError && error.message.startsWith("analysis model ")
+          ? error.message
+          : "HTTP response body is not valid JSON";
+        throw new AnalysisModelConnectionError(`Analysis model returned an invalid structured JSON response: ${reason}`, { cause: error });
       }
     } catch (error) {
       if (error instanceof AnalysisModelConnectionError) throw error;
@@ -116,7 +172,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
   async verify(options = {}) {
     const startedAt = Date.now();
     const result = await this.#request({
-      maxOutputTokens: 32,
+      maxOutputTokens: 512,
       messages: [
         { role: "system", content: "Return JSON only." },
         { role: "user", content: "Reply with exactly {\"ok\":true}." },
