@@ -517,7 +517,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
             "Create exactly three parallel child-agent assignments from the supplied repository source manifest.",
             "The manifest is independent of scanner candidates. Balance source volume and languages while keeping related modules together. Use only supplied module names.",
             "Return JSON only with agentMessage and taskAssignments.",
-            "agentMessage is a concise user-visible plan, not private reasoning. Do not quote prompts or source code.",
+            "agentMessage is a concise user-visible execution update, not private reasoning. Use short lines for Goal, Plan, Evidence basis, Risks, and Next action. Do not quote prompts or source code.",
           ].join(" "),
         },
         {
@@ -566,7 +566,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
             "Your confidence must never exceed each candidate evidence.confidenceCap. Keep uncertainty explicit when evidence is single-source or incomplete.",
             "Do not invent permissions, business rules, dependencies, tests, or authority.",
             "Return JSON only with agentMessage and candidates[]. Preserve every input id exactly.",
-            "agentMessage is a concise user-visible progress conclusion: summarize what this bounded batch contains, what was classified, and the most important uncertainty. It is not private reasoning and must not quote raw source or prompts.",
+            "agentMessage is a concise user-visible execution update, not private reasoning. Use short lines for Goal, Action, Findings, Evidence, Uncertainty, and Next action. Do not quote raw source or prompts.",
             "businessFeature is true only for a user-recognizable business capability or background business process; repositories, DTOs, adapters, configuration, utilities, and framework plumbing are false.",
           ].join(" "),
         },

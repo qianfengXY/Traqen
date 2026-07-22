@@ -62,7 +62,7 @@ export type WorkspaceEvidenceAssessment = {
 };
 
 export type AnalysisModelTelemetryEvent = {
-  type: "REQUEST_PREPARED" | "HTTP_CONNECTED" | "RESPONSE_PROGRESS" | "STRUCTURED_RESPONSE_PARSED" | "OUTPUT_VALIDATED" | "OUTPUT_REJECTED" | "REQUEST_FAILED" | "BATCH_RETRYING";
+  type: "REQUEST_PREPARED" | "HTTP_CONNECTED" | "RESPONSE_PROGRESS" | "STRUCTURED_RESPONSE_PARSED" | "OUTPUT_VALIDATED" | "OUTPUT_REJECTED" | "REQUEST_FAILED" | "BATCH_RETRYING" | "BATCH_SKIPPED";
   at: string;
   requestId?: string;
   profileId?: string;
@@ -352,10 +352,17 @@ export async function enrichWorkspaceCandidateBatch(apiBase: string, apiToken: s
     return await requestWorkspaceCandidateBatch(apiBase, apiToken, profileId, candidates, options);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown model error";
-    const retryable = /truncated|max_(?:output_)?tokens|complete JSON object or array|invalid structured JSON response/i.test(message);
+    const retryable = /truncated|max_(?:output_)?tokens|complete JSON object or array|invalid structured JSON response|must return exactly|preserve every input id/i.test(message);
     if (!retryable) throw error;
     if (candidates.length <= 1 || retryDepth >= 5) {
-      throw new Error("模型对最小工作单元仍返回了不完整的结构化结果。已保留检查点，请检查模型的输出长度、JSON 模式支持或切换模型后继续分析。 / The model still returned incomplete structured output for the smallest work unit. The checkpoint is preserved; check the output limit or JSON-mode support, or switch models and resume.", { cause: error });
+      options.onTelemetry?.({
+        type: "BATCH_SKIPPED",
+        at: new Date().toISOString(),
+        message: "The smallest model work unit still returned invalid structured output. Scanner evidence is retained, this candidate remains pending model classification, and the Workspace run will continue.",
+        retryDepth,
+        batchSize: candidates.length,
+      });
+      return [];
     }
     const middle = Math.ceil(candidates.length / 2);
     options.onTelemetry?.({

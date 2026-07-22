@@ -339,6 +339,46 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
     });
   }
 
+  // Some TypeScript systems expose an RPC registry instead of HTTP-style
+  // router calls. The descriptor is API design evidence; the matching handler
+  // remains a separate source block that can be linked to the endpoint.
+  if (/\bGatewayMethod(?:Descriptor|Spec)/.test(file.content)) {
+    const descriptorPattern = /\{\s*name:\s*["'`]([A-Za-z][\w.-]*)["'`]\s*,\s*scope:\s*["'`]([^"'`]+)["'`]/g;
+    for (const match of file.content.matchAll(descriptorPattern)) {
+      const rpcMethod = match[1];
+      const scope = match[2];
+      candidates.push({
+        id: stableId(`${file.path}:gateway-rpc:${rpcMethod}`),
+        name: `RPC ${rpcMethod}`,
+        displayName: titleFromSymbol(rpcMethod.replace(/\./g, " ")),
+        kind: "ENDPOINT",
+        method: "RPC",
+        modulePath: modulePath(file.path),
+        sourcePath: file.path,
+        startLine: lineNumber(file.content, match.index ?? 0),
+        description: `Discovered Gateway RPC descriptor ${rpcMethod} with authorization scope ${scope}.`,
+        code: excerpt(file.content, match.index ?? 0),
+      });
+    }
+  }
+  if (/\bGatewayRequestHandlers\b/.test(file.content)) {
+    const gatewayHandlerPattern = /^[\t ]*["'`]([A-Za-z][\w-]*(?:\.[\w-]+)+)["'`]\s*:\s*(?:async\s*)?(?:function\s*)?\(/gm;
+    for (const match of file.content.matchAll(gatewayHandlerPattern)) {
+      const rpcMethod = match[1];
+      candidates.push({
+        id: stableId(`${file.path}:gateway-rpc-handler:${rpcMethod}`),
+        name: titleFromSymbol(rpcMethod.replace(/\./g, " ")),
+        kind: "CODE_SYMBOL",
+        method: null,
+        modulePath: modulePath(file.path),
+        sourcePath: file.path,
+        startLine: lineNumber(file.content, match.index ?? 0),
+        description: `Discovered Gateway RPC handler ${rpcMethod}.`,
+        code: excerpt(file.content, match.index ?? 0),
+      });
+    }
+  }
+
   const exportPatterns = [
     /\bexport\s+(?:default\s+)?(?:async\s+)?(?:function|class)\s+([A-Za-z_$][\w$]*)/g,
     /\bexport\s+(?:const|let|var)\s+([A-Za-z_$][\w$]*)[^\n;=]*=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)/g,
@@ -457,7 +497,7 @@ function redactConfiguration(content: string) {
 type RelatedTest = { path: string; title: string; code: string };
 
 function isTestFile(path: string) {
-  return /(^|\/)(test|tests|__tests__|spec)(\/|\.)|\.(test|spec)\.[^.]+$/i.test(path);
+  return /(^|\/)(test|tests|__tests__|spec)(\/|\.)|(?:^|[._-])(?:test|spec)(?:[._-](?:helpers?|support|utils?|fixtures?))?\.[^.]+$/i.test(path);
 }
 
 const weakAssociationKeys = new Set(["app", "application", "client", "common", "component", "config", "core", "data", "handler", "helper", "index", "main", "model", "route", "routes", "schema", "server", "service", "test", "tests", "type", "types", "util", "utils"]);
@@ -691,7 +731,8 @@ export function isLocalBusinessFeature(feature: LocalFeatureCandidate) {
   if (/(?:\brepository\b|\bdao\b|\bgateway\b|\bconnector\b|\badapter\b|Java interface capability)/i.test(context)) return false;
   if (/(?:^|\/)(?:config|configs|types|schemas|utils?|helpers?|infrastructure)(?:\/|$)/i.test(feature.sourcePath)) return false;
   if (/(?:Routes?|Router|Plugin|Configuration|Factory)$/i.test(feature.name.replace(/\s+/g, ""))) return false;
-  return true;
+  if (group === "BACKGROUND_INTEGRATION") return /(?:handle|consume|dispatch|schedule|process|deliver|receive)/i.test(feature.name);
+  return /(?:submit|approve|reject|cancel|refund|checkout|purchase|enroll|book|fulfill|ship|invoice|settle|withdraw|deposit|authenticate|authorize|sign\s*in|sign\s*out)/i.test(feature.name);
 }
 
 export function analyzeLocalWorkspace(input: {
@@ -776,9 +817,11 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   const features: LocalFeatureCandidate[] = candidateValues.map((feature) => {
     const tests = indexedTests(feature, testIndex);
     const normalizedCode = associationKey(feature.code);
+    const gatewayRpcMethod = feature.description.match(/Gateway RPC descriptor\s+([^\s]+)/i)?.[1];
     const implementationMatches = feature.kind === "ENDPOINT" ? candidateValues.filter((candidate) => {
       if (candidate.kind !== "CODE_SYMBOL" || candidate.id === feature.id) return false;
       if (treeModuleIdentity(candidate) !== treeModuleIdentity(feature)) return false;
+      if (gatewayRpcMethod) return candidate.description === `Discovered Gateway RPC handler ${gatewayRpcMethod}.`;
       const symbolKey = associationKey(candidate.name);
       const displayKey = associationKey(candidate.displayName ?? candidate.name);
       return (symbolKey.length >= 4 && normalizedCode.includes(symbolKey))
@@ -799,7 +842,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
       ...feature,
       displayName: feature.displayName ?? inferredCandidateDisplayName(feature),
       apiDesign: endpointIdentity ? {
-        protocol: /JAX-RS/i.test(feature.description) ? "JAX-RS" : /Spring/i.test(feature.description) ? "Spring" : /OpenAPI/i.test(feature.description) ? "OpenAPI" : "HTTP",
+        protocol: /Gateway RPC/i.test(feature.description) ? "Gateway RPC" : /JAX-RS/i.test(feature.description) ? "JAX-RS" : /Spring/i.test(feature.description) ? "Spring" : /OpenAPI/i.test(feature.description) ? "OpenAPI" : "HTTP",
         method: endpointIdentity[1],
         path: endpointIdentity[2],
         handler: feature.displayName ?? inferredCandidateDisplayName(feature) ?? null,

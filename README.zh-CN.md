@@ -10,9 +10,11 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 本地 Workspace 分析 Agent 还针对真实的 [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo 固定提交进行了验证。对应的[双语验证报告](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)记录了实际规模、误报修正、领域树、保守的测试/配置关联，以及实现候选与已确认业务 Feature 之间的区别。
 
+扫描器还针对真实的 [`openclaw/openclaw`](https://github.com/openclaw/openclaw) 仓库进行了验证。[OpenClaw 验证报告](docs/implementation/openclaw-workspace-analysis-2026-07-22.zh-CN.md)记录了完整仓库规模、完整核心 `src` 树的有界扫描、OpenClaw 自定义 Gateway/RPC 描述模型的识别修正、实现源码关联，以及仍存在的语言与语义分析缺口。
+
 初始化后的功能树无需重新扫描即可在两种全局投影间切换：纯业务能力视图排除 API 与工程命令，API 视图只包含 HTTP/OpenAPI 接口。Workspace 统计、功能追溯和追溯图谱始终跟随同一个当前投影。
 
-开始本地 Workspace 分析前，先在全局顶部打开“配置分析模型”，添加一个或多个 OpenAI-compatible Profile，填写 API 地址、模型名称、API Key，以及可选的 Stream/SSE 策略。运行时 Profile 与凭据会加密保存在当前设备的 Traqen 配置目录；未变更密钥时，可直接编辑、验证、选择或删除模型，无需重复输入。Web 与 API 进程必须来自同一个仓库版本；旧版 API 不包含模型配置路由。Agent 会话顶部固定一个流式主 Agent 对话，下面固定三个子 Agent 对话；四个窗口高度固定，长会话在窗口内部滚动。主 Agent 的任务地图来自独立 Source Manifest，而不是扫描候选；目标架构让确定性扫描、ECC 类源码 Skill 和 Specone 类规格 Skill 从同一 Snapshot 独立工作后再对账。外部 Skill 未配置时必须明确显示缺席，内置参考适配器不能冒充真实集成。子 Agent 达到上下文安全阈值后，会先完成当前工作单元、保存交接摘要，再在同一槽位启动下一代实例。原始提示词、JSON、请求标识和 Token 诊断只位于默认关闭的“技术诊断”中，绝不展示模型私有推理。模型 JSON 不完整时会识别为截断并自动缩小有界批次重试，不会靠臆造内容补齐。提取器观察会携带独立旁证、诊断、完整性和置信度上限；AST 或规则匹配绝不会被直接当成业务真相。Workspace 展示管理可以把项目移出侧栏而不删除扫描结果；隐藏项目不会加载源码索引、功能树或追溯快照。
+开始本地 Workspace 分析前，先在全局顶部打开“配置分析模型”，添加一个或多个 OpenAI-compatible Profile，填写 API 地址、模型名称、API Key，以及可选的 Stream/SSE 策略。运行时 Profile 与凭据会加密保存在当前设备的 Traqen 配置目录；未变更密钥时，可直接编辑、验证、选择或删除模型，无需重复输入。Web 与 API 进程必须来自同一个仓库版本；旧版 API 不包含模型配置路由。Agent 会话顶部固定一个流式主 Agent 对话，下面固定三个子 Agent 对话；四个窗口高度固定，长会话在窗口内部滚动。公开 Agent 消息采用类似 Codex 的精炼结构，持续展示目标、动作、发现、证据、不确定性、检查点和下一步；原始传输细节只保留在诊断区。主 Agent 的任务地图来自独立 Source Manifest，而不是扫描候选；目标架构让确定性扫描、ECC 类源码 Skill 和 Specone 类规格 Skill 从同一 Snapshot 独立工作后再对账。外部 Skill 未配置时必须明确显示缺席，内置参考适配器不能冒充真实集成。子 Agent 达到上下文安全阈值后，会先完成当前工作单元、保存交接摘要，再在同一槽位启动下一代实例。原始提示词、JSON、请求标识和 Token 诊断只位于默认关闭的“技术诊断”中，绝不展示模型私有推理。模型 JSON 不完整时会识别为截断并自动缩小有界批次重试，不会靠臆造内容补齐。如果最小有界单元仍然无效，Traqen 会保留确定性证据，只把该单元标记为“待模型判定”，保存检查点并继续整轮分析。提取器观察会携带独立旁证、诊断、完整性和置信度上限；AST 或规则匹配绝不会被直接当成业务真相。Workspace 展示管理可以把项目移出侧栏而不删除扫描结果；隐藏项目不会加载源码索引、功能树或追溯快照。
 
 ## 实施基础
 

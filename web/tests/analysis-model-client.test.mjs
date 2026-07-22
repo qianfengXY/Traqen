@@ -124,6 +124,21 @@ test("automatically bisects an incomplete model batch and preserves input order"
   }
 });
 
+test("keeps the Workspace running when the smallest model unit still returns invalid JSON", async () => {
+  const records = [{ scannerVersion: 4, path: "src/unstable.ts", size: 100, lastModified: 1, supported: true, candidates: [{ id: "FEATURE-UNSTABLE", name: "Unstable", kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: "src/unstable.ts", startLine: 1, description: "Candidate", code: "export function unstable(){}" }], configuration: null, test: null }];
+  const candidate = workspaceModelCandidateBatches(records, "model-a")[0];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(`${JSON.stringify({ kind: "error", error: { message: "analysis model message text does not contain a complete JSON object or array" } })}\n`, { status: 200, headers: { "content-type": "application/x-ndjson" } });
+  try {
+    const telemetry = [];
+    const result = await enrichWorkspaceCandidateBatch("http://127.0.0.1:3100", "", "model-a", candidate, { onTelemetry: (event) => telemetry.push(event) });
+    assert.deepEqual(result, []);
+    assert.equal(telemetry.at(-1).type, "BATCH_SKIPPED");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("streams a validated Main Agent plan with exactly three child assignments", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response([

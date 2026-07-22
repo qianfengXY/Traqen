@@ -264,6 +264,60 @@ test("projects one scan into separate pure-business and API Feature trees", () =
   assert.equal(analysis.features.filter((feature) => feature.kind === "COMMAND").length, 1);
 });
 
+test("does not turn generic exported symbols from a large agent repository into business Features", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Agent repository",
+    projectId: "PROJECT-AGENT-REPOSITORY",
+    files: [
+      { path: "src/agents/control-plane.ts", size: 300, content: "export function resolveBackendCandidatePlan() {}\nexport function markTurnActive() {}\nexport function createBackgroundTaskRecord() {}" },
+      { path: "src/agents/control-plane.test-helpers.ts", size: 100, content: "export function expectRejectedRecord() {}" },
+      { path: "src/orders/service.ts", size: 100, content: "export function submitOrder() {}" },
+    ],
+  });
+  assert.equal(analysis.features.some((feature) => feature.name === "Expect Rejected Record"), false);
+  const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
+  assert.deepEqual(business.features.map((feature) => feature.name), ["Submit Order"]);
+});
+
+test("discovers OpenClaw-style Gateway RPC design and links handler logic", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "OpenClaw-shaped Gateway",
+    projectId: "PROJECT-OPENCLAW-GATEWAY",
+    files: [
+      {
+        path: "src/gateway/methods/core-descriptors.ts",
+        size: 220,
+        content: [
+          "type CoreGatewayMethodSpec = GatewayMethodDescriptorInput & { since: string };",
+          "const CORE_GATEWAY_METHOD_SPECS: readonly CoreGatewayMethodSpec[] = [",
+          "  { name: \"sessions.list\", scope: \"operator.read\", since: \"2026.7\" },",
+          "];",
+        ].join("\n"),
+      },
+      {
+        path: "src/gateway/server-methods/sessions.ts",
+        size: 260,
+        content: [
+          "import type { GatewayRequestHandlers } from './types.js';",
+          "export const sessionsHandlers: GatewayRequestHandlers = {",
+          "  \"sessions.list\": async ({ params, respond }) => {",
+          "    const sessions = await loadSessions(params);",
+          "    respond(true, { sessions });",
+          "  },",
+          "};",
+        ].join("\n"),
+      },
+    ],
+  });
+
+  const endpoint = analysis.features.find((feature) => feature.name === "RPC sessions.list");
+  assert.ok(endpoint);
+  assert.equal(endpoint.apiDesign.protocol, "Gateway RPC");
+  assert.equal(endpoint.apiDesign.method, "RPC");
+  assert.equal(endpoint.apiDesign.path, "sessions.list");
+  assert.ok(endpoint.implementationBlocks.some((block) => block.path.endsWith("sessions.ts") && block.code.includes("loadSessions")));
+});
+
 test("business projection suppresses technical symbols while API projection links design to implementation blocks", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Readable Agent output",
