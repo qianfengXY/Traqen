@@ -637,17 +637,26 @@ button { color: inherit; }
 .analysis-task-console header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
 .analysis-task-console header h3 { margin: 3px 0 4px; color: #f8fafc; font: 650 15px/1.3 var(--font-geist-mono); }
 .analysis-task-console header small, .analysis-task-console .eyebrow { color: #8f9bae; }
+.analysis-task-header-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.task-diagnostics-toggle { padding: 6px 9px; border: 1px solid #354156; border-radius: 8px; color: #9eabbf; background: rgba(255,255,255,.025); font: 650 9px/1 var(--font-geist-mono); cursor: pointer; }
+.task-diagnostics-toggle:hover, .task-diagnostics-toggle.active { border-color: #5076ad; color: #b9d3ff; background: rgba(69,116,203,.12); }
 .task-status { padding: 5px 9px; border: 1px solid #354156; border-radius: 999px; color: #aab5c6; font: 700 9px/1 var(--font-geist-mono); letter-spacing: .08em; }
 .task-status.running, .task-status.completed { border-color: rgba(93, 214, 153, .42); color: #7ce2ae; background: rgba(41, 151, 97, .12); }
 .task-status.failed { border-color: rgba(255, 120, 120, .42); color: #ff9a9a; }
 .task-status.paused { color: #f5c977; }
-.analysis-task-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
-.analysis-task-metrics > div { display: grid; gap: 4px; padding: 10px 11px; border: 1px solid #252f40; border-radius: 11px; background: rgba(255,255,255,.025); }
-.analysis-task-metrics small { color: #7f8ba0; font-size: 10px; }
-.analysis-task-metrics b { overflow: hidden; color: #eef3fa; font: 650 13px/1.2 var(--font-geist-mono); text-overflow: ellipsis; white-space: nowrap; }
+.analysis-task-metrics, .analysis-task-technical-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.analysis-task-technical-metrics { margin-top: 8px; }
+.analysis-task-metrics > div, .analysis-task-technical-metrics > div { display: grid; gap: 4px; padding: 10px 11px; border: 1px solid #252f40; border-radius: 11px; background: rgba(255,255,255,.025); }
+.analysis-task-technical-metrics > div { border-style: dashed; background: rgba(69,116,203,.04); }
+.analysis-task-metrics small, .analysis-task-technical-metrics small { color: #7f8ba0; font-size: 10px; }
+.analysis-task-metrics b, .analysis-task-technical-metrics b { overflow: hidden; color: #eef3fa; font: 650 13px/1.2 var(--font-geist-mono); text-overflow: ellipsis; white-space: nowrap; }
 .analysis-task-overall { height: 5px; margin: 13px 0 15px; overflow: hidden; border-radius: 999px; background: #222b38; }
 .analysis-task-overall span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #4b8cff, #67d5ae); transition: width .25s ease; }
-.analysis-task-plan { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.analysis-task-hierarchy { display: grid; grid-template-columns: minmax(220px, .7fr) minmax(0, 1.3fr); gap: 12px; align-items: stretch; }
+.analysis-task-tree-title { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 16px; border: 1px solid #34425a; border-radius: 12px; background: linear-gradient(145deg, rgba(69,116,203,.14), rgba(255,255,255,.025)); }
+.analysis-task-tree-title span { color: #77a8ef; font: 700 9px/1 var(--font-geist-mono); letter-spacing: .08em; text-transform: uppercase; }
+.analysis-task-tree-title b { color: #f0f4fa; font-size: 13px; line-height: 1.55; }
+.analysis-task-plan { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .analysis-task-plan li { display: flex; gap: 9px; padding: 10px; border: 1px solid #252f40; border-radius: 11px; opacity: .58; }
 .analysis-task-plan li.active, .analysis-task-plan li.done { opacity: 1; }
 .analysis-task-plan li.active { border-color: #496b9f; background: rgba(68, 114, 181, .12); }
@@ -657,17 +666,28 @@ button { color: inherit; }
 .analysis-task-plan span { display: grid; gap: 3px; }
 .analysis-task-plan b { font-size: 11px; color: #e4eaf3; }
 .analysis-task-plan small { color: #7f8ba0; font-size: 9px; line-height: 1.35; }
-.analysis-task-current { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: #b8c3d3; font: 11px/1.4 var(--font-geist-mono); }
+.analysis-task-plan em { margin-top: 3px; color: #8fc1ff; font-size: 9px; font-style: normal; line-height: 1.45; }
+.analysis-task-current { display: flex; gap: 9px; align-items: center; margin-top: 12px; padding: 10px 12px; border: 1px solid #283347; border-radius: 10px; color: #d5deea; font: 11px/1.4 var(--font-geist-mono); background: rgba(255,255,255,.02); }
+.analysis-task-current > span:last-child { display: grid; gap: 2px; }
+.analysis-task-current small { color: #6f7d91; font-size: 8px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .task-pulse { width: 7px; height: 7px; border-radius: 50%; background: #62d69b; box-shadow: 0 0 0 4px rgba(98,214,155,.1); }
 .analysis-task-console.ready .task-pulse, .analysis-task-console.completed .task-pulse, .analysis-task-console.failed .task-pulse, .analysis-task-console.paused .task-pulse { background: #6e7889; box-shadow: none; }
-.analysis-task-log { max-height: 290px; margin-top: 12px; overflow: auto; border: 1px solid #252f40; border-radius: 11px; background: #090d14; font-family: var(--font-geist-mono); }
-.analysis-task-log > div { display: grid; grid-template-columns: 52px 92px 1fr; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #1c2431; font-size: 10px; }
+.analysis-task-log-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 0 2px; }
+.analysis-task-log-head > div { display: grid; gap: 3px; }
+.analysis-task-log-head b { color: #e9eef6; font-size: 11px; }
+.analysis-task-log-head small { color: #728095; font-size: 9px; }
+.analysis-task-log-head > span { min-width: 24px; padding: 4px 6px; border-radius: 7px; color: #8fa0b7; background: #202a39; font: 700 9px/1 var(--font-geist-mono); text-align: center; }
+.analysis-task-log { max-height: 330px; margin-top: 8px; overflow: auto; border: 1px solid #252f40; border-radius: 11px; background: #090d14; font-family: var(--font-geist-mono); }
+.analysis-task-log > div { display: grid; grid-template-columns: 52px 104px 1fr; gap: 8px; padding: 10px; border-bottom: 1px solid #1c2431; font-size: 10px; }
 .analysis-task-log > div:last-child { border-bottom: 0; }
-.analysis-task-log > div.llm-interaction { background: rgba(69, 116, 203, .055); }
+.analysis-task-log > div.activity-result { background: rgba(44, 140, 91, .055); }
+.analysis-task-log > div.activity-warning { background: rgba(181, 117, 42, .07); }
+.analysis-task-log > div.technical-event { background: rgba(69, 116, 203, .055); }
 .analysis-task-log time { color: #68758a; }
-.analysis-task-log span { color: #69a4ff; }
+.analysis-task-log > div > span { color: #69a4ff; }
 .analysis-task-log p { margin: 0; color: #b8c3d3; line-height: 1.45; }
 .task-log-copy { min-width: 0; }
+.task-log-copy > small { display: block; margin-bottom: 4px; color: #69788d; font-size: 8px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
 .task-log-copy details { margin-top: 7px; }
 .task-log-copy summary { width: fit-content; color: #86b6ff; font-size: 9px; cursor: pointer; }
 .task-log-copy pre { max-height: 320px; margin: 8px 0 0; padding: 10px; overflow: auto; border: 1px solid #263248; border-radius: 8px; color: #b7c7dc; background: #06090f; font: 9px/1.55 var(--font-geist-mono); white-space: pre-wrap; word-break: break-word; }
@@ -863,7 +883,9 @@ button { color: inherit; }
   .analysis-model-grid .full { grid-column: auto; }
   .analysis-model-panel .panel-head, .workspace-manager-panel .panel-head { align-items: flex-start; flex-direction: column; }
   .analysis-model-card { align-items: flex-start; flex-direction: column; }
-  .analysis-task-metrics, .analysis-task-plan { grid-template-columns: 1fr; }
+  .analysis-task-metrics, .analysis-task-technical-metrics, .analysis-task-plan, .analysis-task-hierarchy { grid-template-columns: 1fr; }
+  .analysis-task-console header { flex-direction: column; }
+  .analysis-task-header-actions { width: 100%; justify-content: space-between; }
   .analysis-task-log > div { grid-template-columns: 48px 78px minmax(0, 1fr); }
   .inline-form, .inline-form.impact-form, .review-fields { grid-template-columns: 1fr; }
   .field.full { grid-column: auto; }

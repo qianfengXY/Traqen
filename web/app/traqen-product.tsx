@@ -139,6 +139,13 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   REQUIRE_APPROVAL: { zh: "需要批准", en: "Require approval" },
   WAITING_REVIEW: { zh: "等待审核", en: "Waiting review" },
   RUNNING: { zh: "执行中", en: "Running" },
+  FULL: { zh: "全量分析", en: "Full analysis" },
+  INCREMENTAL: { zh: "增量分析", en: "Incremental analysis" },
+  PLAN: { zh: "计划", en: "Plan" },
+  ACTION: { zh: "执行", en: "Action" },
+  DISCOVERY: { zh: "发现", en: "Discovery" },
+  RESULT: { zh: "结果", en: "Result" },
+  TECHNICAL: { zh: "技术诊断", en: "Technical" },
   SCANNING: { zh: "工程扫描", en: "Scanning" },
   MODEL_ENRICHMENT: { zh: "模型分析", en: "Model analysis" },
   FINALIZING: { zh: "整理结果", en: "Finalizing" },
@@ -1929,8 +1936,12 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
 };
 
 type LocalAnalysisTaskPhase = "READY" | "SCANNING" | "MODEL_ENRICHMENT" | "FINALIZING" | "PAUSED" | "COMPLETED" | "FAILED";
+type LocalAnalysisActivityRole = "AGENT" | "SCANNER" | "MODEL" | "VALIDATOR" | "WORKSPACE";
+type LocalAnalysisActivityKind = "PLAN" | "ACTION" | "DISCOVERY" | "RESULT" | "WARNING" | "TECHNICAL";
 type LocalAnalysisTask = {
   id: string;
+  title: string;
+  mode: "FULL" | "INCREMENTAL";
   phase: LocalAnalysisTaskPhase;
   status: "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED";
   model: string;
@@ -1948,7 +1959,8 @@ type LocalAnalysisTask = {
   outputCharacters: number;
   totalTokens: number | null;
   currentWork: string;
-  events: Array<{ id: string; at: number; phase: LocalAnalysisTaskPhase; message: string; interactionType?: AnalysisModelTelemetryEvent["type"]; detail?: string; requestId?: string }>;
+  activeSubtask: string | null;
+  events: Array<{ id: string; at: number; phase: LocalAnalysisTaskPhase; role: LocalAnalysisActivityRole; kind: LocalAnalysisActivityKind; message: string; interactionType?: AnalysisModelTelemetryEvent["type"]; detail?: string; requestId?: string; technicalOnly?: boolean }>;
 };
 
 function analysisDuration(milliseconds: number) {
@@ -1966,6 +1978,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   const [scanProgress, setScanProgress] = useState<{ completed: number; total: number } | null>(null);
   const [message, setMessage] = useState("");
   const [analysisTask, setAnalysisTask] = useState<LocalAnalysisTask | null>(null);
+  const [showTechnicalDiagnostics, setShowTechnicalDiagnostics] = useState(false);
   const [taskClock, setTaskClock] = useState(() => Date.now());
 
   useEffect(() => {
@@ -1978,57 +1991,57 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     setAnalysisTask((current) => current ? { ...current, ...update } : current);
   }
 
-  function appendAnalysisTaskEvent(phase: LocalAnalysisTaskPhase, eventMessage: string, update: Partial<LocalAnalysisTask> = {}, interaction: { type?: AnalysisModelTelemetryEvent["type"]; detail?: string; requestId?: string } = {}) {
+  function appendAnalysisTaskEvent(phase: LocalAnalysisTaskPhase, eventMessage: string, update: Partial<LocalAnalysisTask> = {}, interaction: { role?: LocalAnalysisActivityRole; kind?: LocalAnalysisActivityKind; type?: AnalysisModelTelemetryEvent["type"]; detail?: string; requestId?: string; technicalOnly?: boolean } = {}) {
     const at = Date.now();
     setTaskClock(at);
     setAnalysisTask((current) => current ? {
       ...current,
       ...update,
-      events: [...current.events, { id: `${at}:${current.events.length}`, at, phase, message: eventMessage, interactionType: interaction.type, detail: interaction.detail, requestId: interaction.requestId }].slice(-180),
+      events: [...current.events, { id: `${at}:${current.events.length}`, at, phase, role: interaction.role ?? "AGENT", kind: interaction.kind ?? "ACTION", message: eventMessage, interactionType: interaction.type, detail: interaction.detail, requestId: interaction.requestId, technicalOnly: interaction.technicalOnly }].slice(-180),
     } : current);
   }
 
   function recordModelTelemetry(event: AnalysisModelTelemetryEvent) {
     if (event.type === "REQUEST_PREPARED") {
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
-        `已向模型发送请求 ${event.requestId ?? "—"}：${event.inputCharacters?.toLocaleString() ?? 0} 字符，输出上限 ${event.maxOutputTokens?.toLocaleString() ?? "—"} Token。`,
-        `Sent model request ${event.requestId ?? "—"}: ${event.inputCharacters?.toLocaleString() ?? 0} input characters and an output limit of ${event.maxOutputTokens?.toLocaleString() ?? "—"} tokens.`,
-      ), { activeRequestId: event.requestId ?? null, inputCharacters: event.inputCharacters ?? 0, outputCharacters: 0, currentWork: t("模型已接收提示，等待首个响应字节", "Prompt sent; waiting for the first response byte") }, { type: event.type, requestId: event.requestId, detail: event.promptPreview });
+        `技术诊断：模型请求 ${event.requestId ?? "—"} 已发送。`,
+        `Technical diagnostics: model request ${event.requestId ?? "—"} was sent.`,
+      ), { activeRequestId: event.requestId ?? null, inputCharacters: event.inputCharacters ?? 0, outputCharacters: 0, currentWork: t("分析模型正在理解当前子任务", "The analysis model is resolving the current subtask") }, { role: "MODEL", kind: "TECHNICAL", type: event.type, requestId: event.requestId, detail: event.promptPreview, technicalOnly: true });
       return;
     }
     if (event.type === "HTTP_CONNECTED") {
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `模型网关已响应 HTTP ${event.status ?? "—"}，首字节等待 ${event.timeToFirstByteMs ?? 0}ms，内容类型 ${event.contentType || "unknown"}。`,
         `The model gateway responded with HTTP ${event.status ?? "—"}; time to first byte ${event.timeToFirstByteMs ?? 0}ms, content type ${event.contentType || "unknown"}.`,
-      ), { currentWork: t("正在接收模型输出", "Receiving model output") }, { type: event.type, requestId: event.requestId });
+      ), { currentWork: t("分析模型正在返回阶段结果", "The analysis model is returning a stage result") }, { role: "MODEL", kind: "TECHNICAL", type: event.type, requestId: event.requestId, technicalOnly: true });
       return;
     }
     if (event.type === "RESPONSE_PROGRESS") {
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `正在接收模型输出：${event.chunkCount ?? 0} 个数据块、${event.receivedCharacters?.toLocaleString() ?? 0} 字符，已耗时 ${analysisDuration(event.elapsedMs ?? 0)}${event.complete ? "，传输完成" : ""}。`,
         `Receiving model output: ${event.chunkCount ?? 0} chunks and ${event.receivedCharacters?.toLocaleString() ?? 0} characters after ${analysisDuration(event.elapsedMs ?? 0)}${event.complete ? "; transfer complete" : ""}.`,
-      ), { outputCharacters: event.receivedCharacters ?? 0, currentWork: event.complete ? t("传输完成，正在解析结构化结果", "Transfer complete; parsing structured output") : t("模型正在流式返回数据", "The model is streaming output") }, { type: event.type, requestId: event.requestId, detail: event.outputPreview });
+      ), { outputCharacters: event.receivedCharacters ?? 0, currentWork: event.complete ? t("正在整理模型阶段结论", "Organizing the model's stage result") : t("分析模型正在处理当前子任务", "The analysis model is working on the current subtask") }, { role: "MODEL", kind: "TECHNICAL", type: event.type, requestId: event.requestId, detail: event.outputPreview, technicalOnly: true });
       return;
     }
     if (event.type === "STRUCTURED_RESPONSE_PARSED") {
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `结构化响应已解析：${event.outputCharacters?.toLocaleString() ?? 0} 字符，模型调用耗时 ${analysisDuration(event.elapsedMs ?? 0)}${event.usage?.totalTokens != null ? `，使用 ${event.usage.totalTokens.toLocaleString()} Token` : ""}。`,
         `Structured response parsed: ${event.outputCharacters?.toLocaleString() ?? 0} characters in ${analysisDuration(event.elapsedMs ?? 0)}${event.usage?.totalTokens != null ? ` using ${event.usage.totalTokens.toLocaleString()} tokens` : ""}.`,
-      ), { outputCharacters: event.outputCharacters ?? 0, totalTokens: event.usage?.totalTokens ?? null, currentWork: t("正在验证候选 ID、字段和证据置信度上限", "Validating candidate IDs, fields, and evidence confidence caps") }, { type: event.type, requestId: event.requestId, detail: event.outputPreview });
+      ), { outputCharacters: event.outputCharacters ?? 0, totalTokens: event.usage?.totalTokens ?? null, currentWork: t("验证 Agent 正在核对阶段结论与源码证据", "The validation Agent is checking the stage result against source evidence") }, { role: "MODEL", kind: "TECHNICAL", type: event.type, requestId: event.requestId, detail: event.outputPreview, technicalOnly: true });
       return;
     }
     if (event.type === "OUTPUT_VALIDATED") {
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `输出校验通过：${event.candidateCount ?? 0} 个候选，其中业务 ${event.businessCandidateCount ?? 0}、技术 ${event.technicalCandidateCount ?? 0}；没有超出证据置信度上限。`,
         `Output validation passed for ${event.candidateCount ?? 0} candidates: ${event.businessCandidateCount ?? 0} business and ${event.technicalCandidateCount ?? 0} technical; no evidence confidence cap was exceeded.`,
-      ), { currentWork: t("保存已验证的模型结果", "Saving validated model results") }, { type: event.type, requestId: event.requestId, detail: JSON.stringify({ confidence: event.confidence ?? {} }, null, 2) });
+      ), { currentWork: t("当前子任务已通过证据校验，正在保存检查点", "The current subtask passed evidence validation; saving its checkpoint") }, { role: "VALIDATOR", kind: "RESULT", type: event.type, requestId: event.requestId, detail: JSON.stringify({ confidence: event.confidence ?? {} }, null, 2) });
       return;
     }
     if (event.type === "OUTPUT_REJECTED") {
-      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`模型输出被证据校验拒绝：${event.message ?? "unknown validation error"}`, `Model output was rejected by evidence validation: ${event.message ?? "unknown validation error"}`), { currentWork: t("结构化输出未通过证据校验", "Structured output failed evidence validation") }, { type: event.type, requestId: event.requestId });
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`验证 Agent 拒绝了当前阶段结论：${event.message ?? "unknown validation error"}`, `The validation Agent rejected the current stage result: ${event.message ?? "unknown validation error"}`), { currentWork: t("当前子任务未通过证据校验", "The current subtask failed evidence validation") }, { role: "VALIDATOR", kind: "WARNING", type: event.type, requestId: event.requestId });
       return;
     }
-    appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`模型请求失败：${event.message ?? "unknown error"}`, `Model request failed: ${event.message ?? "unknown error"}`), { currentWork: t("模型调用失败", "Model call failed") }, { type: event.type, requestId: event.requestId });
+    appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`当前模型子任务失败：${event.message ?? "unknown error"}`, `The current model subtask failed: ${event.message ?? "unknown error"}`), { currentWork: t("模型子任务执行失败", "The model subtask failed") }, { role: "MODEL", kind: "WARNING", type: event.type, requestId: event.requestId });
   }
 
   useEffect(() => {
@@ -2062,6 +2075,8 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     setTaskClock(taskStartedAt);
     setAnalysisTask({
       id: `LOCAL-ANALYSIS-${taskStartedAt}`,
+      title: t(`分析 Workspace“${workspaceName}”并建立最新功能追溯`, `Analyze Workspace “${workspaceName}” and build its latest feature traceability`),
+      mode: analysis ? "INCREMENTAL" : "FULL",
       phase: "SCANNING",
       status: "RUNNING",
       model: analysisModelProfile.model,
@@ -2079,9 +2094,10 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
       outputCharacters: 0,
       totalTokens: null,
       currentWork: t("准备工程文件清单", "Preparing the project file manifest"),
+      activeSubtask: t(`提取 ${selectedFiles.length.toLocaleString()} 个工程文件的可定位证据`, `Extract locatable evidence from ${selectedFiles.length.toLocaleString()} project files`),
       events: [
-        { id: `${taskStartedAt}:0`, at: taskStartedAt, phase: "READY", message: t(`任务已创建：确定性扫描 → ${analysisModelProfile.model} 语义分析 → 结构校验 → 功能树持久化。`, `Task created: deterministic scan → ${analysisModelProfile.model} semantic analysis → structure validation → Feature tree persistence.`) },
-        { id: `${taskStartedAt}:1`, at: taskStartedAt, phase: "SCANNING", message: t(`开始扫描 ${selectedFiles.length.toLocaleString()} 个文件；忽略构建产物、依赖目录、真实 .env 和超大文件。`, `Scanning ${selectedFiles.length.toLocaleString()} files; build output, dependency folders, real .env files, and oversized files are excluded.`) },
+        { id: `${taskStartedAt}:0`, at: taskStartedAt, phase: "READY", role: "AGENT", kind: "PLAN", message: t(`主任务已建立：先提取源码事实，再由 ${analysisModelProfile.model} 分批理解业务与 API 语义，最后校验证据并更新功能树。`, `Main task created: extract source facts, let ${analysisModelProfile.model} resolve business and API semantics in batches, then validate evidence and update the Feature tree.`) },
+        { id: `${taskStartedAt}:1`, at: taskStartedAt, phase: "SCANNING", role: "SCANNER", kind: "ACTION", message: t(`子任务开始：处理 ${selectedFiles.length.toLocaleString()} 个工程文件；构建产物、依赖目录、真实 .env 和超大文件不进入分析。`, `Subtask started: process ${selectedFiles.length.toLocaleString()} project files; build output, dependency folders, real .env files, and oversized files are excluded.`) },
       ],
     });
     try {
@@ -2176,11 +2192,15 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         if (candidate.evidence.diagnostics.length > 0) summary.heuristic += 1;
         return summary;
       }, { LOW: 0, MEDIUM: 0, HIGH: 0, heuristic: 0 });
-      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`确定性提取完成，发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待模型理解的候选，拆分为 ${modelBatches.length} 个有界批次。证据置信度上限：低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；其中 ${evidenceSummary.heuristic} 个含启发式提取诊断。`, `Deterministic extraction complete. ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates require model interpretation across ${modelBatches.length} bounded batches. Evidence confidence caps: ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} include heuristic-extraction diagnostics.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: 0, phaseTotal: modelBatches.length, modelCallsCompleted: 0, modelCallsTotal: modelBatches.length, overallProgress: 55, currentWork: t("准备模型批次与证据评估", "Preparing model batches and evidence assessments") });
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`源码证据提取完成：发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待理解候选，已拆分为 ${modelBatches.length} 个有界子任务。证据上限分布为低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；${evidenceSummary.heuristic} 个候选需要额外旁证。`, `Source-evidence extraction completed: ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates require interpretation across ${modelBatches.length} bounded subtasks. Evidence caps are ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, and ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} candidates need additional corroboration.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: 0, phaseTotal: modelBatches.length, modelCallsCompleted: 0, modelCallsTotal: modelBatches.length, overallProgress: 55, currentWork: t("为模型子任务整理源码证据", "Preparing source evidence for model subtasks"), activeSubtask: t(`准备 ${modelBatches.length} 个语义分析子任务`, `Prepare ${modelBatches.length} semantic-analysis subtasks`) }, { role: "SCANNER", kind: "DISCOVERY" });
       for (let index = 0; index < modelBatches.length; index += 1) {
         const modelBatchStartedAt = Date.now();
         const candidatePreview = modelBatches[index].slice(0, 3).map((candidate) => candidate.name).join("、");
-        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`调用 ${analysisModelProfile.model}（${analysisModelProfile.stream ? "Stream/SSE" : "JSON"}）分析第 ${index + 1} 批 ${modelBatches[index].length} 个候选：${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`, `Calling ${analysisModelProfile.model} (${analysisModelProfile.stream ? "Stream/SSE" : "JSON"}) for batch ${index + 1} with ${modelBatches[index].length} candidates: ${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`), { phase: "MODEL_ENRICHMENT", phaseCompleted: index, phaseTotal: modelBatches.length, overallProgress: 55 + Math.round((index / Math.max(1, modelBatches.length)) * 40), currentWork: t(`模型批次 ${index + 1} / ${modelBatches.length}：发送 ${modelBatches[index].length} 个候选`, `Model batch ${index + 1} / ${modelBatches.length}: sending ${modelBatches[index].length} candidates`) });
+        const moduleCounts = new Map<string, number>();
+        for (const candidate of modelBatches[index]) moduleCounts.set(candidate.modulePath || t("根模块", "root module"), (moduleCounts.get(candidate.modulePath || t("根模块", "root module")) ?? 0) + 1);
+        const moduleScope = [...moduleCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? t("当前模块", "current module");
+        const activeSubtask = t(`理解“${moduleScope}”中的 ${modelBatches[index].length} 个候选（${index + 1}/${modelBatches.length}）`, `Resolve ${modelBatches[index].length} candidates in “${moduleScope}” (${index + 1}/${modelBatches.length})`);
+        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`子任务 ${index + 1}/${modelBatches.length}：理解“${moduleScope}”中的业务能力与 API 边界。代表候选：${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`, `Subtask ${index + 1}/${modelBatches.length}: resolve business capabilities and API boundaries in “${moduleScope}”. Representative candidates: ${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`), { phase: "MODEL_ENRICHMENT", phaseCompleted: index, phaseTotal: modelBatches.length, overallProgress: 55 + Math.round((index / Math.max(1, modelBatches.length)) * 40), currentWork: activeSubtask, activeSubtask }, { role: "MODEL", kind: "ACTION" });
         const enrichments = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, modelBatches[index], { onTelemetry: recordModelTelemetry });
         enrichedRecords = applyLocalModelEnrichment(enrichedRecords, analysisModelProfile.id, enrichments);
         const completedModelBatchCount = index + 1;
@@ -2207,7 +2227,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         setScanProgress({ completed: completedModelBatchCount, total: modelBatches.length });
         const domains = new Set(enrichments.map((item) => item.domain)).size;
         const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
-        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`批次 ${completedModelBatchCount}/${modelBatches.length} 已通过结构校验：${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术候选、${domains} 个业务域，耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}；检查点已保存。`, `Batch ${completedModelBatchCount}/${modelBatches.length} passed structure validation: ${businessFeatures} business candidates, ${enrichments.length - businessFeatures} technical candidates, and ${domains} domains in ${analysisDuration(Date.now() - modelBatchStartedAt)}; checkpoint saved.`), { phaseCompleted: completedModelBatchCount, phaseTotal: modelBatches.length, modelCallsCompleted: completedModelBatchCount, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, modelBatches.length)) * 40), currentWork: t(`已验证模型批次 ${completedModelBatchCount} / ${modelBatches.length}`, `Validated model batch ${completedModelBatchCount} / ${modelBatches.length}`) });
+        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`子任务 ${completedModelBatchCount}/${modelBatches.length} 完成：识别 ${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术支撑，归入 ${domains} 个业务域；结果已通过结构校验并保存检查点，耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}。`, `Subtask ${completedModelBatchCount}/${modelBatches.length} completed: identified ${businessFeatures} business candidates and ${enrichments.length - businessFeatures} technical supports across ${domains} domains; the result passed structure validation and its checkpoint was saved in ${analysisDuration(Date.now() - modelBatchStartedAt)}.`), { phaseCompleted: completedModelBatchCount, phaseTotal: modelBatches.length, modelCallsCompleted: completedModelBatchCount, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, modelBatches.length)) * 40), currentWork: t(`已完成 ${completedModelBatchCount} / ${modelBatches.length} 个语义分析子任务`, `Completed ${completedModelBatchCount} / ${modelBatches.length} semantic-analysis subtasks`), activeSubtask: null }, { role: "AGENT", kind: "RESULT" });
         setMessage(t(`模型正在理解功能语义 ${completedModelBatchCount} / ${modelBatches.length}；检查点已保存。`, `The model is resolving feature semantics ${completedModelBatchCount} / ${modelBatches.length}; checkpoint saved.`));
         if (pauseRequestedRef.current) {
           appendAnalysisTaskEvent("PAUSED", t("任务已在模型批次边界暂停，已完成的模型结果不会重复调用。", "Task paused at a model-batch boundary; completed model results will not be requested again."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
@@ -2215,11 +2235,11 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
           return;
         }
       }
-      appendAnalysisTaskEvent("FINALIZING", t("模型阶段完成，正在构建最新功能树、统计追溯证据并持久化 Workspace。", "Model phase complete. Building the latest Feature tree, calculating trace evidence, and persisting the Workspace."), { phase: "FINALIZING", phaseCompleted: 0, phaseTotal: 1, overallProgress: 96, currentWork: t("构建并保存 Workspace", "Building and saving Workspace") });
+      appendAnalysisTaskEvent("FINALIZING", t("全部语义分析子任务已完成。Workspace Agent 正在校验稳定身份、构建最新功能树并汇总追溯证据。", "All semantic-analysis subtasks are complete. The Workspace Agent is validating stable identities, building the latest Feature tree, and summarizing trace evidence."), { phase: "FINALIZING", phaseCompleted: 0, phaseTotal: 1, overallProgress: 96, currentWork: t("校验并保存最新 Workspace", "Validate and save the latest Workspace"), activeSubtask: t("生成最新功能树与追溯统计", "Generate the latest Feature tree and trace statistics") }, { role: "WORKSPACE", kind: "ACTION" });
       const result = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
       await onInitialize(result, enrichedRecords, directoryName);
       await clearLocalWorkspaceAnalysisRun(projectId);
-      appendAnalysisTaskEvent("COMPLETED", t(`任务完成：生成 ${result.features.length} 个候选功能，总耗时 ${analysisDuration(Date.now() - taskStartedAt)}。`, `Task complete: produced ${result.features.length} candidate Features in ${analysisDuration(Date.now() - taskStartedAt)}.`), { status: "COMPLETED", phase: "COMPLETED", endedAt: Date.now(), overallProgress: 100, phaseCompleted: 1, phaseTotal: 1, currentWork: t("分析完成", "Analysis complete") });
+      appendAnalysisTaskEvent("COMPLETED", t(`主任务完成：最新功能树包含 ${result.features.length} 个候选功能，Workspace 追溯上下文已更新，总耗时 ${analysisDuration(Date.now() - taskStartedAt)}。`, `Main task completed: the latest Feature tree contains ${result.features.length} candidate Features, the Workspace traceability context was updated, and the run took ${analysisDuration(Date.now() - taskStartedAt)}.`), { status: "COMPLETED", phase: "COMPLETED", endedAt: Date.now(), overallProgress: 100, phaseCompleted: 1, phaseTotal: 1, currentWork: t("主任务已完成", "Main task completed"), activeSubtask: null }, { role: "WORKSPACE", kind: "RESULT" });
       setMessage(result.features.length > 0 ? t(`混合分析已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件；模型处理 ${modelBatches.length} 个有界批次。`, `Hybrid analysis updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files; the model processed ${modelBatches.length} bounded batches.`) : t("分析完成，但没有发现有证据支持的接口或业务能力候选。", "Analysis completed, but no evidence-backed API or business-capability candidates were found."));
     } catch (error) {
       const activeRun = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
@@ -2234,18 +2254,21 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   }
 
   const taskElapsed = analysisTask ? (analysisTask.endedAt ?? taskClock) - analysisTask.startedAt : 0;
-  const taskStepDefinitions: Array<{ phase: LocalAnalysisTaskPhase; label: string; detail: string }> = [
-    { phase: "SCANNING", label: t("确定性工程提取", "Deterministic project extraction"), detail: t("标明 AST / 规则 / 契约来源，记录诊断与源码证据", "Label AST, pattern, or contract origin and record diagnostics and source evidence") },
-    { phase: "MODEL_ENRICHMENT", label: t("模型语义分析", "Model semantic analysis"), detail: t("有界候选批次、业务分类与结构校验", "Bounded candidate batches, business classification, and structure validation") },
-    { phase: "FINALIZING", label: t("功能树与追溯统计", "Feature tree and trace statistics"), detail: t("稳定身份匹配、分层统计与 Workspace 保存", "Stable identity matching, hierarchical statistics, and Workspace persistence") },
+  const taskStepDefinitions = [
+    { id: "manifest", label: t("建立源码清单", "Build source manifest"), detail: t("确定分析范围、排除项与全量/增量策略", "Determine analysis scope, exclusions, and full/incremental strategy"), activePhase: "READY" as LocalAnalysisTaskPhase },
+    { id: "evidence", label: t("提取可定位证据", "Extract locatable evidence"), detail: t("从 AST、规则、契约、测试与配置形成源码事实", "Build source facts from AST, rules, contracts, tests, and configuration"), activePhase: "SCANNING" as LocalAnalysisTaskPhase },
+    { id: "semantics", label: t("理解业务与 API 语义", "Resolve business and API semantics"), detail: t("按模块拆分有界子任务，区分业务能力与技术支撑", "Split bounded subtasks by module and separate capabilities from technical support"), activePhase: "MODEL_ENRICHMENT" as LocalAnalysisTaskPhase },
+    { id: "workspace", label: t("校验并更新 Workspace", "Validate and update Workspace"), detail: t("约束证据置信度、匹配稳定身份并生成最新功能树", "Constrain evidence confidence, match stable identities, and generate the latest Feature tree"), activePhase: "FINALIZING" as LocalAnalysisTaskPhase },
   ];
-  const taskPhaseOrder = ["SCANNING", "MODEL_ENRICHMENT", "FINALIZING"] as LocalAnalysisTaskPhase[];
-  const activeTaskPhaseIndex = analysisTask ? taskPhaseOrder.indexOf(analysisTask.phase) : -1;
+  const taskPhaseOrder = ["READY", "SCANNING", "MODEL_ENRICHMENT", "FINALIZING"] as LocalAnalysisTaskPhase[];
+  const activeTaskPhaseIndex = analysisTask ? analysisTask.phase === "COMPLETED" ? taskStepDefinitions.length : taskPhaseOrder.indexOf(analysisTask.phase) : -1;
+  const visibleTaskEvents = analysisTask?.events.filter((event) => showTechnicalDiagnostics || !event.technicalOnly) ?? [];
+  const activityRoleLabel = (role: LocalAnalysisActivityRole) => ({ AGENT: t("分析 Agent", "Analysis Agent"), SCANNER: t("扫描 Agent", "Scanner Agent"), MODEL: t("模型 Agent", "Model Agent"), VALIDATOR: t("验证 Agent", "Validation Agent"), WORKSPACE: t("Workspace Agent", "Workspace Agent") })[role];
 
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先对十万级工程做有界确定性提取，明确标注 AST、规则或契约来源，并用 OpenAPI、实现与测试等独立证据交叉验证；随后按有界批次调用当前模型。执行台会实时展示每次请求与结构化响应。每批保存检查点，首次全量、后续增量。", "The Agent first performs bounded deterministic extraction across 100,000-scale projects, explicitly labels AST, pattern, or contract origins, and cross-checks them with independent OpenAPI, implementation, and test evidence. It then calls the active model in bounded batches while the console streams each request and structured response. Every batch is checkpointed; the first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先对十万级工程做有界确定性提取，明确标注 AST、规则或契约来源，并用 OpenAPI、实现与测试等独立证据交叉验证；随后按有界子任务调用当前模型。Agent 会话会像开发助手一样展示主任务、子任务、当前动作、阶段发现和结果；每批保存检查点，首次全量、后续增量。", "The Agent first performs bounded deterministic extraction across 100,000-scale projects, explicitly labels AST, pattern, or contract origins, and cross-checks them with independent OpenAPI, implementation, and test evidence. It then calls the active model through bounded subtasks. The Agent session shows the main task, subtasks, current actions, stage discoveries, and results like a development assistant. Every batch is checkpointed; the first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
@@ -2254,14 +2277,16 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}
-        <section className={`analysis-task-console ${analysisTask?.status.toLowerCase() ?? "ready"}`} aria-label={t("分析任务执行台", "Analysis task console")}>
-          <header><div><p className="eyebrow">Analysis task</p><h3>{analysisTask?.id ?? t("等待创建分析任务", "Ready to create an analysis task")}</h3><small>{analysisTask ? `${analysisTask.model} · ${analysisTask.stream ? "Stream/SSE" : "JSON"} · ${analysisTask.profileId}` : t("选择工程和当前模型后，点击初始化或增量分析。", "Select a project and active model, then start initial or incremental analysis.")}</small></div><span className={`task-status ${analysisTask?.status.toLowerCase() ?? "ready"}`}>{analysisTask ? term(analysisTask.status) : t("就绪", "READY")}</span></header>
-          <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("阶段进度", "Phase progress")}</small><b>{analysisTask ? `${analysisTask.phaseCompleted.toLocaleString()} / ${analysisTask.phaseTotal.toLocaleString()}` : "—"}</b></div><div><small>{t("LLM 调用", "LLM calls")}</small><b>{analysisTask ? `${analysisTask.modelCallsCompleted} / ${analysisTask.modelCallsTotal}` : "—"}</b></div><div><small>{t("当前请求 I/O", "Current request I/O")}</small><b>{analysisTask ? `${analysisTask.inputCharacters.toLocaleString()} / ${analysisTask.outputCharacters.toLocaleString()}` : "—"}</b></div><div><small>Token</small><b>{analysisTask?.totalTokens != null ? analysisTask.totalTokens.toLocaleString() : "—"}</b></div><div><small>Request ID</small><b title={analysisTask?.activeRequestId ?? ""}>{analysisTask?.activeRequestId?.split(":").at(-1) ?? "—"}</b></div></div>
+        <section className={`analysis-task-console ${analysisTask?.status.toLowerCase() ?? "ready"}`} aria-label={t("分析 Agent 会话", "Analysis Agent session")}>
+          <header><div><p className="eyebrow">Analysis Agent session</p><h3>{analysisTask?.title ?? t("等待创建主任务", "Ready to create the main task")}</h3><small>{analysisTask ? `${term(analysisTask.mode)} · ${analysisTask.model} · ${analysisTask.id}` : t("选择工程和当前模型后，Agent 会自动规划并执行主任务。", "Select a project and active model; the Agent will plan and execute the main task automatically.")}</small></div><div className="analysis-task-header-actions"><button className={`task-diagnostics-toggle ${showTechnicalDiagnostics ? "active" : ""}`} type="button" onClick={() => setShowTechnicalDiagnostics((current) => !current)}>{showTechnicalDiagnostics ? t("关闭技术诊断", "Hide technical diagnostics") : t("技术诊断", "Technical diagnostics")}</button><span className={`task-status ${analysisTask?.status.toLowerCase() ?? "ready"}`}>{analysisTask ? term(analysisTask.status) : t("就绪", "READY")}</span></div></header>
+          <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("模型子任务", "Model subtasks")}</small><b>{analysisTask ? `${analysisTask.modelCallsCompleted} / ${analysisTask.modelCallsTotal}` : "—"}</b></div></div>
+          {showTechnicalDiagnostics && <div className="analysis-task-technical-metrics"><div><small>{t("阶段计数", "Phase count")}</small><b>{analysisTask ? `${analysisTask.phaseCompleted.toLocaleString()} / ${analysisTask.phaseTotal.toLocaleString()}` : "—"}</b></div><div><small>{t("请求 I/O", "Request I/O")}</small><b>{analysisTask ? `${analysisTask.inputCharacters.toLocaleString()} / ${analysisTask.outputCharacters.toLocaleString()}` : "—"}</b></div><div><small>Token</small><b>{analysisTask?.totalTokens != null ? analysisTask.totalTokens.toLocaleString() : "—"}</b></div><div><small>Request ID</small><b title={analysisTask?.activeRequestId ?? ""}>{analysisTask?.activeRequestId?.split(":").at(-1) ?? "—"}</b></div></div>}
           <div className="analysis-task-overall"><span style={{ width: `${analysisTask?.overallProgress ?? 0}%` }} /></div>
-          <ol className="analysis-task-plan">{taskStepDefinitions.map((step, index) => { const done = analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index; const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.phase}><i>{done ? "✓" : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small></span></li>; })}</ol>
-          <div className="analysis-task-current"><span className="task-pulse" />{analysisTask?.currentWork ?? t("任务尚未启动", "Task has not started")}</div>
+          <section className="analysis-task-hierarchy"><div className="analysis-task-tree-title"><span>{t("主任务", "Main task")}</span><b>{analysisTask?.title ?? t("尚未启动", "Not started")}</b></div><ol className="analysis-task-plan">{taskStepDefinitions.map((step, index) => { const done = Boolean(analysisTask) && (analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index); const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.id}><i>{done ? "✓" : active ? "●" : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small>{active && analysisTask?.activeSubtask && <em>{t("当前子任务", "Active child task")} · {analysisTask.activeSubtask}</em>}</span></li>; })}</ol></section>
+          <div className="analysis-task-current"><span className="task-pulse" /><span><small>{t("当前动作", "Current action")}</small>{analysisTask?.currentWork ?? t("任务尚未启动", "Task has not started")}</span></div>
+          <div className="analysis-task-log-head"><div><b>{t("Agent 活动", "Agent activity")}</b><small>{t("只展示任务动作与阶段结论，不展示内部隐藏推理", "Shows task actions and stage conclusions, not hidden internal reasoning")}</small></div><span>{visibleTaskEvents.length}</span></div>
           <div className="analysis-task-log" role="log" aria-live="polite">
-            {analysisTask?.events.length ? analysisTask.events.map((event) => <div className={event.interactionType ? "llm-interaction" : ""} key={event.id}><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time><span>{event.interactionType ?? term(event.phase)}</span><section className="task-log-copy"><p>{event.message}</p>{event.detail && <details><summary>{event.interactionType === "REQUEST_PREPARED" ? t("查看发给模型的提示与证据", "View the prompt and evidence sent to the model") : event.interactionType === "STRUCTURED_RESPONSE_PARSED" ? t("查看模型结构化响应", "View the model's structured response") : t("查看交互详情", "View interaction details")}</summary><pre>{event.detail}</pre></details>}</section></div>) : <p className="task-log-empty">{t("执行后将在这里逐次显示发给 LLM 的提示与证据、网关响应、流式数据块、结构化输出、校验、检查点及耗时；API Key 与模型隐藏思维链不会展示。", "Execution will show each prompt and evidence package sent to the LLM, gateway response, streamed chunks, structured output, validation, checkpoints, and timing. API keys and hidden model chain-of-thought are never exposed.")}</p>}
+            {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <div className={`activity-${event.kind.toLowerCase()} ${event.technicalOnly ? "technical-event" : ""}`} key={event.id}><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time><span>{activityRoleLabel(event.role)}</span><section className="task-log-copy"><small>{term(event.kind)}</small><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</section></div>) : <p className="task-log-empty">{t("任务启动后，Agent 会在这里说明已建立的计划、正在执行的子任务、从证据中得到的阶段发现以及最终结果。原始模型请求与响应仅在“技术诊断”中按需查看。", "After the task starts, the Agent will report its plan, active subtasks, evidence-backed stage discoveries, and final result. Raw model requests and responses are available only on demand under Technical diagnostics.")}</p>}
           </div>
         </section>
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}

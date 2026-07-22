@@ -31,7 +31,9 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /先配置模型/);
   assert.match(html, /十万级工程做有界确定性提取/);
   assert.match(html, /配置分析模型/);
-  assert.match(html, /等待创建分析任务/);
+  assert.match(html, /等待创建主任务/);
+  assert.match(html, /主任务/);
+  assert.match(html, /技术诊断/);
   assert.match(html, /新建 Workspace/);
   assert.match(html, /SELF WORKSPACE/);
   assert.match(html, /Traqen Platform/);
@@ -122,7 +124,14 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
   assert.match(product, /REQUEST_PREPARED/);
-  assert.match(product, /查看发给模型的提示与证据/);
+  assert.match(product, /分析 Agent 会话/);
+  assert.match(product, /建立源码清单/);
+  assert.match(product, /提取可定位证据/);
+  assert.match(product, /理解业务与 API 语义/);
+  assert.match(product, /当前子任务/);
+  assert.match(product, /Agent 活动/);
+  assert.match(product, /只展示任务动作与阶段结论，不展示内部隐藏推理/);
+  assert.match(product, /原始模型请求与响应仅在“技术诊断”中按需查看/);
   assert.match(product, /模型网关已响应/);
   assert.match(product, /证据置信度上限/);
   assert.match(modelClient, /application\/x-ndjson/);
@@ -159,7 +168,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /analysis-task-console/);
   assert.match(product, /总执行进度/);
   assert.match(product, /累计耗时/);
-  assert.match(product, /模型隐藏思维链不会展示/);
+  assert.match(product, /技术诊断/);
   assert.match(product, /workspaceModelCandidateBatches/);
   assert.match(product, /applyLocalModelEnrichment/);
   assert.match(product, /先配置模型/);
