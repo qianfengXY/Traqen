@@ -122,6 +122,17 @@ export async function setLocalWorkspaceProjectVisibility(projectId: string, visi
   }
 }
 
+export async function saveLocalWorkspaceProjectSummary(project: LocalWorkspaceProjectSummary) {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("projects", "readwrite");
+    transaction.objectStore("projects").put(normalizedProject(project));
+    await transactionComplete(transaction);
+  } finally {
+    database.close();
+  }
+}
+
 export async function saveLocalWorkspaceProject(snapshot: LocalWorkspaceProjectSnapshot) {
   const database = await openDatabase();
   try {

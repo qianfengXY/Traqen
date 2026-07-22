@@ -592,9 +592,13 @@ button { color: inherit; }
 
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .workspace-onboarding { padding: 26px; }
-.analysis-model-panel, .workspace-manager-panel { padding: 0 22px 22px; }
-.analysis-model-panel .panel-head, .workspace-manager-panel .panel-head { margin: 0 -22px 18px; }
-.analysis-model-panel .panel-head > div, .workspace-manager-panel .panel-head > div { max-width: 920px; }
+.analysis-model-panel, .workspace-manager-panel, .workspace-create-panel { padding: 0 22px 22px; }
+.analysis-model-panel .panel-head, .workspace-manager-panel .panel-head, .workspace-create-panel .panel-head { margin: 0 -22px 18px; }
+.analysis-model-panel .panel-head > div, .workspace-manager-panel .panel-head > div, .workspace-create-panel .panel-head > div { max-width: 920px; }
+.workspace-create-grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr); gap: 16px; }
+.workspace-create-panel .connection-actions { margin-top: 16px; }
+.workspace-create-panel .form-message { display: block; margin-top: 12px; }
+.workspace-setup-grid input[readonly] { background: var(--surface-muted); color: var(--text-secondary); cursor: default; }
 .analysis-model-grid { display: grid; grid-template-columns: minmax(180px, .6fr) minmax(260px, 1fr); gap: 13px; }
 .analysis-model-grid .full { grid-column: 1 / -1; }
 .model-panel-actions, .model-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -935,7 +939,8 @@ button { color: inherit; }
   .connection-grid { grid-template-columns: 1fr; }
   .analysis-model-grid { grid-template-columns: 1fr; }
   .analysis-model-grid .full { grid-column: auto; }
-  .analysis-model-panel .panel-head, .workspace-manager-panel .panel-head { align-items: flex-start; flex-direction: column; }
+  .analysis-model-panel .panel-head, .workspace-manager-panel .panel-head, .workspace-create-panel .panel-head { align-items: flex-start; flex-direction: column; }
+  .workspace-create-grid { grid-template-columns: 1fr; }
   .analysis-model-card { align-items: flex-start; flex-direction: column; }
   .analysis-task-metrics, .analysis-task-technical-metrics, .analysis-task-plan, .analysis-task-hierarchy { grid-template-columns: 1fr; }
   .analysis-task-console header { flex-direction: column; }

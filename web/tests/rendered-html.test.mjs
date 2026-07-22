@@ -27,8 +27,8 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /效果指标/);
   assert.match(html, /Workspace 分析/);
   assert.match(html, /选择工程，由分析 Agent 建立功能追溯 Workspace/);
-  assert.match(html, /选择代码工程/);
-  assert.match(html, /先配置模型/);
+  assert.match(html, /先创建 Workspace/);
+  assert.match(html, /尚未创建项目/);
   assert.match(html, /十万级工程做有界确定性提取/);
   assert.match(html, /配置分析模型/);
   assert.match(html, /等待创建主任务/);
@@ -127,6 +127,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.doesNotMatch(product, /\{view === "workspace" && <WorkspaceAnalysisView/);
   assert.match(product, /已恢复持久化检查点/);
   assert.match(product, /current\?\.projectId === projectId/);
+  assert.match(product, /先创建项目，再启动首次分析/);
+  assert.match(product, /saveLocalWorkspaceProjectSummary/);
+  assert.match(product, /workspaceAnalysisRunning && workspaceProjectId !== project\.id/);
+  assert.match(product, /创建并留在当前任务/);
+  assert.match(product, /启动首次全量分析/);
+  assert.match(workspaceStore, /export async function saveLocalWorkspaceProjectSummary/);
   assert.match(product, /REQUEST_PREPARED/);
   assert.match(product, /分析 Agent 会话/);
   assert.match(product, /建立源码清单/);

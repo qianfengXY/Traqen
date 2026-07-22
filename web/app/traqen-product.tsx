@@ -6,7 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
-import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
+import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
@@ -1200,6 +1200,10 @@ export function TraqenProduct() {
   const [workspaceProjects, setWorkspaceProjects] = useState<LocalWorkspaceProjectSummary[]>([]);
   const [workspaceProjectLoading, setWorkspaceProjectLoading] = useState(false);
   const [workspaceManagerOpen, setWorkspaceManagerOpen] = useState(false);
+  const [workspaceCreationOpen, setWorkspaceCreationOpen] = useState(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [newWorkspaceProjectId, setNewWorkspaceProjectId] = useState("");
+  const [workspaceAnalysisRunning, setWorkspaceAnalysisRunning] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
@@ -1219,6 +1223,7 @@ export function TraqenProduct() {
     BUSINESS: workspaceAnalysis?.features.filter(isLocalBusinessFeature).length ?? 0,
     API: workspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
   }), [workspaceAnalysis]);
+  const workspaceProjectCreated = useMemo(() => workspaceProjects.some((project) => project.id === workspaceProjectId), [workspaceProjectId, workspaceProjects]);
   const activateWorkspaceSnapshot = useCallback((snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false, treeMode: LocalFeatureTreeMode = "BUSINESS") => {
     const result = snapshot.analysis;
     const firstFeatureId = localWorkspaceAnalysisForTreeMode(result, treeMode).features[0]?.id ?? "";
@@ -1296,7 +1301,20 @@ export function TraqenProduct() {
       const firstVisible = projects.find((project) => project.visible);
       if (!firstVisible) return;
       const snapshot = await loadLocalWorkspaceProject(firstVisible.id);
-      if (!cancelled && snapshot) activateWorkspaceSnapshot(snapshot, false, "BUSINESS");
+      if (cancelled) return;
+      if (snapshot) activateWorkspaceSnapshot(snapshot, false, "BUSINESS");
+      else {
+        setWorkspaceAnalysis(null);
+        setWorkspaceName(firstVisible.name);
+        setWorkspaceProjectId(firstVisible.id);
+        setProjectId(firstVisible.id);
+        setWorkspaceSelectedFiles([]);
+        setWorkspaceDirectoryName(firstVisible.rootName);
+        setWorkspaceRegisteredRootName(firstVisible.rootName);
+        setWorkspaceFileRecords([]);
+        setWorkspaceFeatureId("");
+        setWorkspaceExpandedNodeIds(new Set());
+      }
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [activateWorkspaceSnapshot]);
@@ -1332,15 +1350,41 @@ export function TraqenProduct() {
     setWorkspaceRegisteredRootName("");
   }
 
-  function startNewWorkspace() {
+  function activateWorkspaceProject(project: LocalWorkspaceProjectSummary) {
     setLiveScenario(null);
     clearWorkspaceAnalysis();
-    setWorkspaceName(t("新 Workspace", "New Workspace"));
-    setWorkspaceProjectId("PROJECT-LOCAL-NEW");
+    setWorkspaceName(project.name);
+    setWorkspaceProjectId(project.id);
+    setProjectId(project.id);
     setWorkspaceSelectedFiles([]);
-    setWorkspaceDirectoryName("");
-    setWorkspaceRegisteredRootName("");
+    setWorkspaceDirectoryName(project.rootName);
+    setWorkspaceRegisteredRootName(project.rootName);
     setView("workspace");
+  }
+
+  function startNewWorkspace() {
+    setNewWorkspaceName("");
+    setNewWorkspaceProjectId("");
+    setWorkspaceCreationOpen(true);
+    setWorkspaceManagerOpen(false);
+    setView("workspace");
+  }
+
+  function updateNewWorkspaceName(value: string) {
+    setNewWorkspaceName(value);
+    setNewWorkspaceProjectId(`PROJECT-${value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toUpperCase()}`);
+  }
+
+  async function createWorkspaceProject() {
+    const name = newWorkspaceName.trim();
+    const id = newWorkspaceProjectId.trim();
+    if (!name || !id || workspaceProjects.some((project) => project.id === id)) return;
+    const now = new Date().toISOString();
+    const project: LocalWorkspaceProjectSummary = { id, name, rootName: "", createdAt: now, updatedAt: now, fileCount: 0, supportedFileCount: 0, featureCount: 0, visible: true };
+    await saveLocalWorkspaceProjectSummary(project);
+    setWorkspaceProjects((current) => [project, ...current].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
+    setWorkspaceCreationOpen(false);
+    if (!workspaceAnalysisRunning) activateWorkspaceProject(project);
   }
 
   async function openStoredWorkspace(targetProjectId: string) {
@@ -1351,6 +1395,9 @@ export function TraqenProduct() {
         setLiveScenario(null);
         activateWorkspaceSnapshot(snapshot, false, workspaceTreeMode);
         setView("workspace");
+      } else {
+        const project = workspaceProjects.find((item) => item.id === targetProjectId);
+        if (project) activateWorkspaceProject(project);
       }
     } finally {
       setWorkspaceProjectLoading(false);
@@ -1437,7 +1484,7 @@ export function TraqenProduct() {
     const updated = await setLocalWorkspaceProjectVisibility(targetProjectId, visible);
     const nextProjects = workspaceProjects.map((project) => project.id === targetProjectId ? updated : project);
     setWorkspaceProjects(nextProjects);
-    if (!visible && workspaceAnalysis?.projectId === targetProjectId) {
+    if (!visible && workspaceProjectId === targetProjectId) {
       clearWorkspaceAnalysis();
       const nextVisible = nextProjects.find((project) => project.visible && project.id !== targetProjectId);
       if (nextVisible) await openStoredWorkspace(nextVisible.id);
@@ -1552,7 +1599,7 @@ export function TraqenProduct() {
               <strong>{workspaceName}</strong>
               <small>{liveScenario ? projectId : workspaceProjectId} · {visibleWorkspaceAnalysis ? `${visibleWorkspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
             </div>
-            {visibleWorkspaceProjects.length > 0 && <div className="workspace-project-list" aria-label={t("显示中的本地 Workspace 项目", "Visible local Workspace projects")}>{visibleWorkspaceProjects.map((project) => <div className={`workspace-project-row ${workspaceAnalysis?.projectId === project.id ? "active" : ""}`} key={project.id}><button className="workspace-project-open" disabled={workspaceProjectLoading} onClick={() => void openStoredWorkspace(project.id)}><strong>{project.name}</strong><small>{project.featureCount} {t("功能", "features")} · {new Date(project.updatedAt).toLocaleDateString(language)}</small></button><button className="workspace-project-remove" aria-label={t(`从展示中移出 ${project.name}`, `Remove ${project.name} from display`)} title={t("移出展示（保留分析数据）", "Remove from display (keep analysis data)")} onClick={() => void changeWorkspaceVisibility(project.id, false)}>{t("移出", "Hide")}</button></div>)}</div>}
+            {visibleWorkspaceProjects.length > 0 && <div className="workspace-project-list" aria-label={t("显示中的本地 Workspace 项目", "Visible local Workspace projects")}>{visibleWorkspaceProjects.map((project) => <div className={`workspace-project-row ${workspaceProjectId === project.id ? "active" : ""}`} key={project.id}><button className="workspace-project-open" disabled={workspaceProjectLoading || (workspaceAnalysisRunning && workspaceProjectId !== project.id)} title={workspaceAnalysisRunning && workspaceProjectId !== project.id ? t("当前分析完成或暂停后可切换项目", "Switch projects after the active analysis completes or pauses") : undefined} onClick={() => void openStoredWorkspace(project.id)}><strong>{project.name}</strong><small>{project.featureCount > 0 ? `${project.featureCount} ${t("功能", "features")}` : t("待首次分析", "Awaiting first analysis")} · {new Date(project.updatedAt).toLocaleDateString(language)}</small></button><button className="workspace-project-remove" disabled={workspaceAnalysisRunning && workspaceProjectId === project.id} aria-label={t(`从展示中移出 ${project.name}`, `Remove ${project.name} from display`)} title={t("移出展示（保留分析数据）", "Remove from display (keep analysis data)")} onClick={() => void changeWorkspaceVisibility(project.id, false)}>{t("移出", "Hide")}</button></div>)}</div>}
           </div>
           <nav className="nav" aria-label={t("产品导航", "Product navigation")}>
             <button className={`nav-button ${view === "workspace" ? "active" : ""}`} onClick={() => setView("workspace")}>
@@ -1628,11 +1675,23 @@ export function TraqenProduct() {
             </div>
           </header>
 
+          {workspaceCreationOpen && (
+            <section className="panel workspace-create-panel" aria-label={t("创建 Workspace 项目", "Create Workspace project")}>
+              <div className="panel-head"><div><p className="eyebrow">Create Workspace</p><h2>{t("先创建项目，再启动首次分析", "Create the project before its first analysis")}</h2><p>{workspaceAnalysisRunning ? t("新项目会先加入 Workspace 列表；当前分析继续运行，不会切换或清空。任务完成或暂停后再打开新项目。", "The new project is added to the Workspace list while the current analysis keeps running without switching or clearing. Open it after the task completes or pauses.") : t("项目身份会立即保存在当前设备。创建成功后，再为它选择代码目录并启动首次全量分析。", "The project identity is saved on this device immediately. After creation, select its code directory and start the first full analysis.")}</p></div><button className="button" onClick={() => setWorkspaceCreationOpen(false)}>{t("取消", "Cancel")}</button></div>
+              <div className="workspace-create-grid">
+                <div className="field"><label htmlFor="new-workspace-name">Workspace Name</label><input id="new-workspace-name" autoFocus value={newWorkspaceName} onChange={(event) => updateNewWorkspaceName(event.target.value)} /></div>
+                <div className="field"><label htmlFor="new-workspace-project-id">Project ID</label><input id="new-workspace-project-id" value={newWorkspaceProjectId} onChange={(event) => setNewWorkspaceProjectId(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "-"))} /></div>
+              </div>
+              {newWorkspaceProjectId && workspaceProjects.some((project) => project.id === newWorkspaceProjectId) && <p className="form-message error">{t("Project ID 已存在，请更换。", "This Project ID already exists.")}</p>}
+              <div className="connection-actions"><button className="button primary" disabled={!newWorkspaceName.trim() || !newWorkspaceProjectId.trim() || workspaceProjects.some((project) => project.id === newWorkspaceProjectId.trim())} onClick={() => void createWorkspaceProject()}>{workspaceAnalysisRunning ? t("创建并留在当前任务", "Create and keep current task") : t("创建并进入项目", "Create and open project")}</button></div>
+            </section>
+          )}
+
           {workspaceManagerOpen && (
             <section className="panel workspace-manager-panel" aria-label={t("Workspace 展示管理", "Workspace visibility management")}>
               <div className="panel-head"><div><p className="eyebrow">Workspace visibility</p><h2>{t("选择要在侧栏展示的项目", "Choose projects shown in the sidebar")}</h2><p>{t("移出仅隐藏项目并保留扫描结果。隐藏项目只读取轻量摘要，不加载源码索引、功能树和追溯数据；重新勾选后可再次打开。", "Removing only hides a project and keeps its scan results. Hidden projects load only lightweight summaries, not source indexes, Feature trees, or traceability data; select them again to restore access.")}</p></div><button className="button" onClick={() => setWorkspaceManagerOpen(false)}>{t("完成", "Done")}</button></div>
               <div className="workspace-visibility-list">
-                {workspaceProjects.length === 0 ? <div className="workspace-stat-empty">{t("尚无已扫描项目。", "No scanned projects yet.")}</div> : workspaceProjects.map((project) => <label key={project.id} className={project.visible ? "visible" : ""}><input type="checkbox" checked={project.visible} onChange={(event) => void changeWorkspaceVisibility(project.id, event.currentTarget.checked)} /><span><b>{project.name}</b><small>{project.id} · {project.featureCount} {t("功能", "features")} · {project.rootName}</small></span><em>{project.visible ? t("展示", "Shown") : t("已移出", "Hidden")}</em></label>)}
+                {workspaceProjects.length === 0 ? <div className="workspace-stat-empty">{t("尚无 Workspace 项目。", "No Workspace projects yet.")}</div> : workspaceProjects.map((project) => <label key={project.id} className={project.visible ? "visible" : ""}><input type="checkbox" checked={project.visible} disabled={workspaceAnalysisRunning && workspaceProjectId === project.id} onChange={(event) => void changeWorkspaceVisibility(project.id, event.currentTarget.checked)} /><span><b>{project.name}</b><small>{project.id} · {project.featureCount > 0 ? `${project.featureCount} ${t("功能", "features")}` : t("待首次分析", "Awaiting first analysis")} {project.rootName ? `· ${project.rootName}` : ""}</small></span><em>{project.visible ? t("展示", "Shown") : t("已移出", "Hidden")}</em></label>)}
               </div>
             </section>
           )}
@@ -1691,7 +1750,7 @@ export function TraqenProduct() {
           )}
 
           <div className="workspace-view-state" hidden={view !== "workspace"}>
-            <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />
+            <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />
           </div>
           {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
@@ -1921,9 +1980,10 @@ function WorkspaceTraceabilityView({ analysis, selectedFeatureId, onSelectFeatur
 
 type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis" | "selectedBlock" | "setSelectedBlock"> & {
   workspaceName: string;
-  setWorkspaceName: (value: string) => void;
   projectId: string;
-  setProjectId: (value: string) => void;
+  projectCreated: boolean;
+  onRequireWorkspace: () => void;
+  onRunningChange: (running: boolean) => void;
   selectedFiles: File[];
   setSelectedFiles: (files: File[]) => void;
   directoryName: string;
@@ -1992,7 +2052,7 @@ function analysisDuration(milliseconds: number) {
   return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
 }
 
-function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, setProjectId, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts, analysisModelProfile, apiBase, apiToken, onRequireModel }: WorkspaceAnalysisViewProps) {
+function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onRequireWorkspace, onRunningChange, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts, analysisModelProfile, apiBase, apiToken, onRequireModel }: WorkspaceAnalysisViewProps) {
   const { t, term } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pauseRequestedRef = useRef(false);
@@ -2075,6 +2135,11 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   useEffect(() => {
     analysisTaskRef.current = analysisTask;
   }, [analysisTask]);
+
+  useEffect(() => {
+    onRunningChange(scanning);
+    return () => onRunningChange(false);
+  }, [onRunningChange, scanning]);
 
   useEffect(() => {
     if (analysisTask?.status !== "RUNNING") return;
@@ -2230,14 +2295,15 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     setMessage("");
     const root = files[0]?.webkitRelativePath.split("/")[0] ?? "";
     setDirectoryName(root);
-    if (root && !analysis) {
-      setWorkspaceName(root);
-      setProjectId(`PROJECT-${root.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toUpperCase()}`);
-    }
     event.currentTarget.value = "";
   }
 
   async function scanWorkspace() {
+    if (!projectCreated) {
+      setMessage(t("请先创建 Workspace 项目，再选择代码工程并启动分析。", "Create the Workspace project before selecting its code project and starting analysis."));
+      onRequireWorkspace();
+      return;
+    }
     if (!analysisModelProfile?.ready) {
       setMessage(t("请先在全局“配置分析模型”中填写 API URL、模型和 API Key，并通过连接验证。", "Configure the API URL, model, and API key in the global model settings and verify the connection before analysis."));
       onRequireModel();
@@ -2537,10 +2603,10 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
       <section className="panel workspace-onboarding">
         <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先对十万级工程做有界确定性提取，再由主 Agent 调用当前模型规划三路任务，并启动三个并行子 Agent。顶部主对话流式展示规划、分派与汇总，下面三个独立窗口流式展示各自与模型的公开对话、进度、校验和上下文交接；首次全量、后续增量。", "The Agent first performs bounded deterministic extraction across 100,000-scale projects. The Main Agent then asks the active model to plan three work queues and starts three parallel child Agents. The top conversation streams planning, assignment, and summaries, while three independent windows stream each child's public model conversation, progress, validation, and context handoff. The first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
         <div className="workspace-setup-grid">
-          <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
-          <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
-          <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" onClick={() => inputRef.current?.click()}>{t("选择代码工程", "Select code project")}</button><span>{directoryName || t("尚未选择目录", "No directory selected")}</span><small>{selectedFiles.length} {t("个文件", "files")}</small></div>
-          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || (Boolean(analysisModelProfile?.ready) && selectedFiles.length === 0)} onClick={() => analysisModelProfile?.ready ? void scanWorkspace() : onRequireModel()}>{scanning ? t("分析中…", "Analyzing…") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : analysis ? t("执行增量分析", "Run incremental analysis") : t("初始化分析", "Initialize analysis")}</button>{scanning && <button className="button" onClick={() => { pauseRequestedRef.current = true; setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…")); }}>{t("暂停", "Pause")}</button>}</div>
+          <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} readOnly aria-readonly="true" /></div>
+          <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} readOnly aria-readonly="true" /></div>
+          <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" onClick={() => projectCreated ? inputRef.current?.click() : onRequireWorkspace()}>{projectCreated ? t("选择代码工程", "Select code project") : t("先创建 Workspace", "Create Workspace first")}</button><span>{directoryName || (projectCreated ? t("尚未选择目录", "No directory selected") : t("尚未创建项目", "No project created"))}</span><small>{selectedFiles.length} {t("个文件", "files")}</small></div>
+          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || (projectCreated && Boolean(analysisModelProfile?.ready) && selectedFiles.length === 0)} onClick={() => !projectCreated ? onRequireWorkspace() : analysisModelProfile?.ready ? void scanWorkspace() : onRequireModel()}>{scanning ? t("分析中…", "Analyzing…") : !projectCreated ? t("先创建 Workspace", "Create Workspace first") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : analysis ? t("执行增量分析", "Run incremental analysis") : t("启动首次全量分析", "Start first full analysis")}</button>{scanning && <button className="button" onClick={() => { pauseRequestedRef.current = true; setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…")); }}>{t("暂停", "Pause")}</button>}</div>
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}
