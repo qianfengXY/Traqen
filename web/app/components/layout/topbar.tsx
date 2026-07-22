@@ -1,5 +1,4 @@
 import { Button } from "../ui/button";
-import { Badge } from "../ui/badge";
 import type { AnalysisModelProfile } from "../../analysis-model-client";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
@@ -61,28 +60,28 @@ export function Topbar({
         <b>{labels.breadcrumb[view]}</b>
       </div>
       <div className="top-actions">
-        <Badge variant={liveScenario || workspaceAnalysis ? "success" : "muted"}>
+        <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>
           {modeLabel}
-        </Badge>
+        </span>
         <div
           className="language-switch"
           role="group"
           aria-label={languageGroupAriaLabel}
         >
-          <Button
+          <button
             aria-pressed={language === "zh-CN"}
             className={language === "zh-CN" ? "active" : ""}
             onClick={() => onSetLanguage("zh-CN")}
           >
             {labels.chinese}
-          </Button>
-          <Button
+          </button>
+          <button
             aria-pressed={language === "en"}
             className={language === "en" ? "active" : ""}
             onClick={() => onSetLanguage("en")}
           >
             {labels.english}
-          </Button>
+          </button>
         </div>
         {liveScenario && (
           <Button variant="ghost" onClick={onClearLiveScenario}>

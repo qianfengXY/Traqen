@@ -1,4 +1,3 @@
-import { Button } from "../ui/button";
 import type { LocalWorkspaceAnalysis, LocalWorkspaceProjectSummary } from "../../local-workspace-store";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
@@ -61,15 +60,15 @@ export function Sidebar({
         <div className="workspace-switcher-head">
           <p className="workspace-label">{labels.workspaceLabel}</p>
           <div>
-            <Button
+            <button
               aria-label={labels.manageVisibilityAriaLabel}
               onClick={onToggleWorkspaceManager}
             >
               ☷
-            </Button>
-            <Button aria-label={labels.createWorkspaceAriaLabel} onClick={onStartNewWorkspace}>
+            </button>
+            <button aria-label={labels.createWorkspaceAriaLabel} onClick={onStartNewWorkspace}>
               ＋
-            </Button>
+            </button>
           </div>
         </div>
         <div className="workspace active-workspace">
