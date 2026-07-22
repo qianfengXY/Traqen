@@ -8,6 +8,8 @@ import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, ty
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
+import { ThemeSwitcher } from "./components/ui/theme-switcher";
+import { ThemeProvider } from "./theme-context";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
@@ -1587,8 +1589,9 @@ export function TraqenProduct() {
   }
 
   return (
-    <LanguageContext.Provider value={language}>
-      <div className="app-shell">
+    <ThemeProvider>
+      <LanguageContext.Provider value={language}>
+        <div className="app-shell">
         <aside className="sidebar">
           <div className="brand">
             <span className="brand-mark">TQ</span>Traqen
@@ -1653,6 +1656,7 @@ export function TraqenProduct() {
             </div>
             <div className="top-actions">
               <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>{liveScenario ? "LIVE API" : workspaceAnalysis ? t("已初始化", "INITIALIZED") : "SELF WORKSPACE"}</span>
+              <ThemeSwitcher ariaLabel={t("全局主题配色", "Global color theme")} />
               <div className="language-switch" role="group" aria-label={t("全局语言", "Global language")}>
                 <button aria-pressed={language === "zh-CN"} className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>
                   中文
@@ -1758,8 +1762,9 @@ export function TraqenProduct() {
           {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "metrics" && <MetricsView apiBase={apiBase} apiToken={apiToken} projectId={projectId} snapshotId={snapshotId} />}
         </main>
-      </div>
-    </LanguageContext.Provider>
+        </div>
+      </LanguageContext.Provider>
+    </ThemeProvider>
   );
 }
 

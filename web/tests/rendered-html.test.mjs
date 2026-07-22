@@ -94,6 +94,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(detailModel, /feature-traceability-design\.zh-CN\.md\?raw/);
   assert.match(detailModel, /feature-traceability-design\.md\?raw/);
   assert.match(product, /LanguageContext/);
+  assert.match(product, /ThemeProvider/);
+  assert.match(product, /ThemeSwitcher/);
+  assert.match(layout, /"enterprise","apple","warm","fresh","minimal"/);
+  assert.match(product, /全局主题配色/);
   assert.match(product, /localizedTerms/);
   assert.match(product, /aria-label=\{t\("全局语言", "Global language"\)\}/);
   assert.match(product, /term\(gap\.severity\)/);
