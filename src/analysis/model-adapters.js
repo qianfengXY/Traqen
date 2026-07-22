@@ -75,6 +75,55 @@ function observableStreamOutput(value, contentType = "") {
   return boundedPreview(output.slice(jsonStart), 8_000).text;
 }
 
+function visibleAgentMessage(value) {
+  const marker = /"agentMessage"\s*:\s*"/g;
+  const match = marker.exec(value);
+  if (!match) return null;
+  let result = "";
+  let escaped = false;
+  for (let index = marker.lastIndex; index < value.length && result.length < 4_000; index += 1) {
+    const character = value[index];
+    if (!escaped && character === '"') return result;
+    if (!escaped && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (escaped) {
+      const simpleEscape = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", '"': '"', "\\": "\\", "/": "/" }[character];
+      if (simpleEscape !== undefined) result += simpleEscape;
+      else if (character === "u" && /^[0-9a-f]{4}$/i.test(value.slice(index + 1, index + 5))) {
+        result += String.fromCharCode(Number.parseInt(value.slice(index + 1, index + 5), 16));
+        index += 4;
+      }
+      escaped = false;
+      continue;
+    }
+    result += character;
+  }
+  return result || null;
+}
+
+function observableAgentMessage(value, contentType = "") {
+  if (!/text\/event-stream/i.test(contentType) && !/^\s*(?:event:.*\r?\n)?data:/m.test(value)) return null;
+  const pieces = [];
+  for (const event of value.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const payload = JSON.parse(data);
+      const delta = payload?.choices?.[0]?.delta?.content;
+      if (typeof delta === "string") pieces.push(delta);
+      else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
+      else if (typeof payload?.delta === "string" && /output_text\.delta|content_block_delta/i.test(payload?.type ?? "")) pieces.push(payload.delta);
+      else if (typeof payload?.delta?.text === "string") pieces.push(payload.delta.text);
+    } catch {
+      // The strict decoder reports malformed events after the stream ends.
+    }
+  }
+  return visibleAgentMessage(pieces.join(""));
+}
+
 async function responseBodyText(response, { onTelemetry, requestId, startedAt, contentType }) {
   const reader = response.body?.getReader?.();
   if (!reader) return response.text();
@@ -100,6 +149,7 @@ async function responseBodyText(response, { onTelemetry, requestId, startedAt, c
         receivedCharacters: value.length,
         elapsedMs: now - startedAt,
         outputPreview: observableStreamOutput(value, contentType),
+        assistantMessage: observableAgentMessage(value, contentType),
       });
     }
   }
@@ -112,6 +162,7 @@ async function responseBodyText(response, { onTelemetry, requestId, startedAt, c
     elapsedMs: Date.now() - startedAt,
     complete: true,
     outputPreview: observableStreamOutput(value, contentType),
+    assistantMessage: observableAgentMessage(value, contentType),
   });
   return value;
 }
@@ -130,6 +181,10 @@ function responseText(payload) {
     if (joined) return joined;
   }
   if (content && typeof content === "object") return JSON.stringify(content);
+  const parsed = payload?.choices?.[0]?.message?.parsed;
+  if (parsed && typeof parsed === "object") return JSON.stringify(parsed);
+  const toolArguments = payload?.choices?.[0]?.message?.tool_calls?.find?.((call) => typeof call?.function?.arguments === "string")?.function?.arguments;
+  if (toolArguments) return toolArguments;
   if (typeof payload?.choices?.[0]?.text === "string") return payload.choices[0].text;
   if (typeof payload?.output_text === "string") return payload.output_text;
   const outputText = payload?.output?.flatMap?.((item) => item?.content ?? [])
@@ -145,6 +200,7 @@ function sseResponseText(value) {
   if (value.length > 2_000_000) throw new TypeError("analysis model stream exceeds the bounded response size");
   const pieces = [];
   const fields = new Set();
+  let terminalReason = null;
   for (const event of value.split(/\r?\n\r?\n/)) {
     const data = event.split(/\r?\n/)
       .filter((line) => line.startsWith("data:"))
@@ -159,6 +215,10 @@ function sseResponseText(value) {
       throw new TypeError("analysis model stream contains a non-JSON data event", { cause: error });
     }
     if (payload && typeof payload === "object") Object.keys(payload).slice(0, 8).forEach((field) => fields.add(field));
+    terminalReason = payload?.choices?.[0]?.finish_reason
+      ?? payload?.stop_reason
+      ?? payload?.incomplete_details?.reason
+      ?? (payload?.type === "response.incomplete" ? payload?.response?.incomplete_details?.reason ?? "incomplete" : terminalReason);
     const delta = payload?.choices?.[0]?.delta?.content;
     if (typeof delta === "string") pieces.push(delta);
     else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
@@ -171,6 +231,11 @@ function sseResponseText(value) {
         // Metadata-only stream events do not contribute output text.
       }
     }
+  }
+  if (["length", "max_tokens", "max_output_tokens", "incomplete"].includes(terminalReason)) {
+    const error = new TypeError(`analysis model output was truncated (${terminalReason})`);
+    error.code = "MODEL_OUTPUT_TRUNCATED";
+    throw error;
   }
   if (pieces.length === 0) throw new TypeError(`analysis model stream does not contain supported text deltas (event fields: ${[...fields].join(", ") || "none"})`);
   return pieces.join("");
@@ -220,6 +285,7 @@ function firstJsonFragment(value) {
         }
       }
     }
+    if (stack.length > 0) return null;
   }
   return null;
 }
@@ -234,6 +300,12 @@ function jsonResponse(payload) {
   } catch (error) {
     const fragment = firstJsonFragment(unfenced);
     if (fragment !== null) return fragment;
+    const terminalReason = payload?.choices?.[0]?.finish_reason ?? payload?.incomplete_details?.reason ?? payload?.stop_reason;
+    if (["length", "max_tokens", "max_output_tokens", "incomplete"].includes(terminalReason)) {
+      const truncated = new TypeError(`analysis model output was truncated (${terminalReason})`, { cause: error });
+      truncated.code = "MODEL_OUTPUT_TRUNCATED";
+      throw truncated;
+    }
     throw new TypeError("analysis model message text does not contain a complete JSON object or array", { cause: error });
   }
 }
@@ -290,6 +362,23 @@ function boundedWorkspaceCandidates(value) {
   });
   if (JSON.stringify(candidates).length > 72_000) throw new RangeError("workspace model batch exceeds the bounded context size");
   return candidates;
+}
+
+function boundedWorkspacePlan(value) {
+  if (!value || typeof value !== "object") throw new TypeError("workspace plan input must be an object");
+  const modules = Array.isArray(value.modules) ? value.modules.slice(0, 120).map((module, index) => ({
+    name: requiredString(module?.name, `workspace plan module ${index} name`).slice(0, 300),
+    candidateCount: Number.isSafeInteger(module?.candidateCount) && module.candidateCount >= 0 ? module.candidateCount : 0,
+    apiCount: Number.isSafeInteger(module?.apiCount) && module.apiCount >= 0 ? module.apiCount : 0,
+    evidenceRisk: ["LOW", "MEDIUM", "HIGH"].includes(module?.evidenceRisk) ? module.evidenceRisk : "MEDIUM",
+  })) : [];
+  return {
+    workspaceName: requiredString(value.workspaceName, "workspace plan workspaceName").slice(0, 200),
+    mode: value.mode === "INCREMENTAL" ? "INCREMENTAL" : "FULL",
+    fileCount: Number.isSafeInteger(value.fileCount) && value.fileCount >= 0 ? value.fileCount : 0,
+    candidateCount: Number.isSafeInteger(value.candidateCount) && value.candidateCount >= 0 ? value.candidateCount : 0,
+    modules,
+  };
 }
 
 export class AnalysisModelConnectionError extends Error {
@@ -375,6 +464,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
           outputCharacters: JSON.stringify(result).length,
           outputPreview: output.text,
           outputTruncated: output.truncated,
+          assistantMessage: typeof result?.agentMessage === "string" ? result.agentMessage.slice(0, 4_000) : null,
           usage: responseUsage(responseTextValue, contentType),
         });
         return result;
@@ -413,11 +503,58 @@ export class OpenAICompatibleAnalysisModelAdapter {
     return { ok: true, latencyMs: Date.now() - startedAt };
   }
 
+  async planWorkspaceAnalysis(value, options = {}) {
+    const input = boundedWorkspacePlan(value);
+    const moduleNames = new Set(input.modules.map((module) => module.name));
+    const result = await this.#request({
+      maxOutputTokens: 2_048,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Traqen's main Workspace orchestration agent.",
+            "Create exactly three parallel child-agent assignments from the supplied module summary.",
+            "Balance candidate volume while keeping related modules together. Use only supplied module names.",
+            "Return JSON only with agentMessage and taskAssignments.",
+            "agentMessage is a concise user-visible plan, not private reasoning. Do not quote prompts or source code.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: "Plan three bounded child-agent queues for Workspace semantic analysis.",
+            workspace: input,
+            outputContract: {
+              agentMessage: "public orchestration plan",
+              taskAssignments: [
+                { agentId: "SUB_AGENT_1", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
+                { agentId: "SUB_AGENT_2", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
+                { agentId: "SUB_AGENT_3", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
+              ],
+            },
+          }),
+        },
+      ],
+    }, options);
+    if (typeof result?.agentMessage !== "string" || !result.agentMessage.trim()) throw new AnalysisModelConnectionError("Analysis model orchestration plan requires agentMessage");
+    if (!Array.isArray(result.taskAssignments) || result.taskAssignments.length !== 3) throw new AnalysisModelConnectionError("Analysis model orchestration plan requires exactly three task assignments");
+    const expectedIds = new Set(["SUB_AGENT_1", "SUB_AGENT_2", "SUB_AGENT_3"]);
+    const assignments = result.taskAssignments.map((assignment, index) => {
+      const agentId = requiredString(assignment?.agentId, `task assignment ${index} agentId`);
+      if (!expectedIds.delete(agentId)) throw new AnalysisModelConnectionError(`Analysis model orchestration plan returned unsupported or duplicate agent ${agentId}`);
+      const moduleScopes = Array.isArray(assignment.moduleScopes)
+        ? [...new Set(assignment.moduleScopes.filter((scope) => typeof scope === "string" && moduleNames.has(scope)))].slice(0, 120)
+        : [];
+      return { agentId, objective: requiredString(assignment.objective, `task assignment ${index} objective`).slice(0, 500), moduleScopes };
+    });
+    return { agentMessage: result.agentMessage.trim().slice(0, 4_000), taskAssignments: assignments };
+  }
+
   async enrichWorkspaceCandidates(value, options = {}) {
     const candidates = boundedWorkspaceCandidates(value);
     const inputIds = new Set(candidates.map((candidate) => candidate.id));
     const result = await this.#request({
-      maxOutputTokens: Math.min(4_096, Math.max(800, candidates.length * 160)),
+      maxOutputTokens: Math.min(8_192, Math.max(1_200, candidates.length * 480)),
       messages: [
         {
           role: "system",
@@ -427,7 +564,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
             "Treat extractor output as an observation, never as truth. Weigh independent corroborations, contradictions, parser diagnostics, completeness, and the supplied confidenceCap.",
             "Your confidence must never exceed each candidate evidence.confidenceCap. Keep uncertainty explicit when evidence is single-source or incomplete.",
             "Do not invent permissions, business rules, dependencies, tests, or authority.",
-            "Return JSON only with candidates[]. Preserve every input id exactly.",
+            "Return JSON only with agentMessage and candidates[]. Preserve every input id exactly.",
+            "agentMessage is a concise user-visible progress conclusion: summarize what this bounded batch contains, what was classified, and the most important uncertainty. It is not private reasoning and must not quote raw source or prompts.",
             "businessFeature is true only for a user-recognizable business capability or background business process; repositories, DTOs, adapters, configuration, utilities, and framework plumbing are false.",
           ].join(" "),
         },
@@ -437,6 +575,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
             task: "Improve readable feature names and distinguish business capabilities from technical symbols.",
             candidates,
             outputContract: {
+              agentMessage: "concise public conclusion for this bounded analysis task",
               candidates: [{
                 id: "input id",
                 displayName: "concise user-recognizable name",
@@ -692,6 +831,13 @@ export class AnalysisModelRegistry {
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
     return profile.adapter.enrichWorkspaceCandidates(candidates, options);
+  }
+
+  async planWorkspaceAnalysis(id, input, options = {}) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
+    return profile.adapter.planWorkspaceAnalysis(input, options);
   }
 }
 

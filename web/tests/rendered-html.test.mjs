@@ -129,9 +129,13 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /提取可定位证据/);
   assert.match(product, /理解业务与 API 语义/);
   assert.match(product, /当前子任务/);
-  assert.match(product, /Agent 活动/);
-  assert.match(product, /只展示任务动作与阶段结论，不展示内部隐藏推理/);
-  assert.match(product, /原始模型请求与响应仅在“技术诊断”中按需查看/);
+  assert.match(product, /主 Agent 对话/);
+  assert.match(product, /三个子 Agent 对话/);
+  assert.match(product, /sub-agent-deck/);
+  assert.match(product, /公开执行过程，不展示隐藏思维链/);
+  assert.match(product, /planWorkspaceAnalysis/);
+  assert.match(product, /Promise\.allSettled/);
+  assert.match(product, /上下文达到安全阈值/);
   assert.match(product, /模型网关已响应/);
   assert.match(product, /证据置信度上限/);
   assert.match(modelClient, /application\/x-ndjson/);

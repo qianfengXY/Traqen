@@ -34,6 +34,11 @@ export type WorkspaceModelEnrichment = {
   rationale: string;
 };
 
+export type WorkspaceAnalysisPlan = {
+  agentMessage: string;
+  taskAssignments: Array<{ agentId: "SUB_AGENT_1" | "SUB_AGENT_2" | "SUB_AGENT_3"; objective: string; moduleScopes: string[] }>;
+};
+
 export type WorkspaceEvidenceAssessment = {
   observations: Array<{
     extractor: string;
@@ -50,7 +55,7 @@ export type WorkspaceEvidenceAssessment = {
 };
 
 export type AnalysisModelTelemetryEvent = {
-  type: "REQUEST_PREPARED" | "HTTP_CONNECTED" | "RESPONSE_PROGRESS" | "STRUCTURED_RESPONSE_PARSED" | "OUTPUT_VALIDATED" | "OUTPUT_REJECTED" | "REQUEST_FAILED";
+  type: "REQUEST_PREPARED" | "HTTP_CONNECTED" | "RESPONSE_PROGRESS" | "STRUCTURED_RESPONSE_PARSED" | "OUTPUT_VALIDATED" | "OUTPUT_REJECTED" | "REQUEST_FAILED" | "BATCH_RETRYING";
   at: string;
   requestId?: string;
   profileId?: string;
@@ -72,12 +77,15 @@ export type AnalysisModelTelemetryEvent = {
   outputCharacters?: number;
   outputPreview?: string;
   outputTruncated?: boolean;
+  assistantMessage?: string | null;
   usage?: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null } | null;
   candidateCount?: number;
   businessCandidateCount?: number;
   technicalCandidateCount?: number;
   confidence?: Record<string, number>;
   message?: string;
+  retryDepth?: number;
+  batchSize?: number;
 };
 
 function headers(apiToken: string, json = false) {
@@ -237,7 +245,7 @@ function candidateEvidenceAssessment(candidate: LocalWorkspaceFileRecord["candid
   };
 }
 
-export function workspaceModelCandidateBatches(records: LocalWorkspaceFileRecord[], profileId: string, batchSize = 24) {
+export function workspaceModelCandidateBatches(records: LocalWorkspaceFileRecord[], profileId: string, batchSize = 10) {
   const evidenceIndex = workspaceEvidenceIndex(records);
   const candidates = records.flatMap((record) => record.candidates).filter((candidate) => candidate.modelClassification?.profileId !== profileId || candidate.modelClassification.evidencePolicyVersion !== localWorkspaceEvidencePolicyVersion).map((candidate) => ({
     id: candidate.id,
@@ -263,7 +271,7 @@ export function workspaceModelCandidateBatches(records: LocalWorkspaceFileRecord
   return batches;
 }
 
-export async function enrichWorkspaceCandidateBatch(apiBase: string, apiToken: string, profileId: string, candidates: ReturnType<typeof workspaceModelCandidateBatches>[number], options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {
+async function requestWorkspaceCandidateBatch(apiBase: string, apiToken: string, profileId: string, candidates: ReturnType<typeof workspaceModelCandidateBatches>[number], options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {
   const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles/${encodeURIComponent(profileId)}/workspace-enrichment`, {
     method: "POST",
     headers: { ...headers(apiToken, true), accept: "application/x-ndjson, application/json" },
@@ -298,5 +306,68 @@ export async function enrichWorkspaceCandidateBatch(apiBase: string, apiToken: s
   buffer += decoder.decode();
   consumeLine(buffer);
   if (!result) throw new Error("Analysis model interaction ended without a validated result");
+  return result;
+}
+
+export async function enrichWorkspaceCandidateBatch(apiBase: string, apiToken: string, profileId: string, candidates: ReturnType<typeof workspaceModelCandidateBatches>[number], options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}, retryDepth = 0): Promise<WorkspaceModelEnrichment[]> {
+  try {
+    return await requestWorkspaceCandidateBatch(apiBase, apiToken, profileId, candidates, options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown model error";
+    const retryable = /truncated|max_(?:output_)?tokens|complete JSON object or array|invalid structured JSON response/i.test(message);
+    if (!retryable) throw error;
+    if (candidates.length <= 1 || retryDepth >= 5) {
+      throw new Error("模型对最小工作单元仍返回了不完整的结构化结果。已保留检查点，请检查模型的输出长度、JSON 模式支持或切换模型后继续分析。 / The model still returned incomplete structured output for the smallest work unit. The checkpoint is preserved; check the output limit or JSON-mode support, or switch models and resume.", { cause: error });
+    }
+    const middle = Math.ceil(candidates.length / 2);
+    options.onTelemetry?.({
+      type: "BATCH_RETRYING",
+      at: new Date().toISOString(),
+      message: `The model response was incomplete; retrying this bounded task as ${middle} and ${candidates.length - middle} candidates.`,
+      retryDepth: retryDepth + 1,
+      batchSize: candidates.length,
+    });
+    const left = await enrichWorkspaceCandidateBatch(apiBase, apiToken, profileId, candidates.slice(0, middle), options, retryDepth + 1);
+    const right = await enrichWorkspaceCandidateBatch(apiBase, apiToken, profileId, candidates.slice(middle), options, retryDepth + 1);
+    const byId = new Map([...left, ...right].map((candidate) => [candidate.id, candidate]));
+    return candidates.map((candidate) => byId.get(candidate.id)).filter((candidate): candidate is WorkspaceModelEnrichment => Boolean(candidate));
+  }
+}
+
+export async function planWorkspaceAnalysis(apiBase: string, apiToken: string, profileId: string, input: { workspaceName: string; mode: "FULL" | "INCREMENTAL"; fileCount: number; candidateCount: number; modules: Array<{ name: string; candidateCount: number; apiCount: number; evidenceRisk: "LOW" | "MEDIUM" | "HIGH" }> }, options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {
+  const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles/${encodeURIComponent(profileId)}/workspace-plan`, {
+    method: "POST",
+    headers: { ...headers(apiToken, true), accept: "application/x-ndjson, application/json" },
+    body: JSON.stringify(input),
+  });
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/x-ndjson") || !response.body) {
+    return (await responseJson<{ profileId: string; plan: WorkspaceAnalysisPlan }>(response)).plan;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: WorkspaceAnalysisPlan | null = null;
+  const consumeLine = (line: string) => {
+    if (!line.trim()) return;
+    const message = JSON.parse(line) as { kind: "telemetry" | "result" | "error"; event?: AnalysisModelTelemetryEvent; plan?: WorkspaceAnalysisPlan; error?: { message?: string } };
+    if (message.kind === "telemetry" && message.event) options.onTelemetry?.(message.event);
+    else if (message.kind === "result") result = message.plan ?? null;
+    else if (message.kind === "error") throw new Error(message.error?.message ?? "Analysis model orchestration failed");
+  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let newline = buffer.indexOf("\n");
+    while (newline >= 0) {
+      consumeLine(buffer.slice(0, newline));
+      buffer = buffer.slice(newline + 1);
+      newline = buffer.indexOf("\n");
+    }
+  }
+  buffer += decoder.decode();
+  consumeLine(buffer);
+  if (!result) throw new Error("Main Agent interaction ended without a validated plan");
   return result;
 }

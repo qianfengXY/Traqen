@@ -3,7 +3,7 @@
 import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, type AnalysisModelProfile, type AnalysisModelTelemetryEvent } from "./analysis-model-client";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
@@ -139,6 +139,8 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   REQUIRE_APPROVAL: { zh: "需要批准", en: "Require approval" },
   WAITING_REVIEW: { zh: "等待审核", en: "Waiting review" },
   RUNNING: { zh: "执行中", en: "Running" },
+  IDLE: { zh: "等待中", en: "Idle" },
+  ROTATING: { zh: "交接中", en: "Handing off" },
   FULL: { zh: "全量分析", en: "Full analysis" },
   INCREMENTAL: { zh: "增量分析", en: "Incremental analysis" },
   PLAN: { zh: "计划", en: "Plan" },
@@ -1962,6 +1964,23 @@ type LocalAnalysisTask = {
   activeSubtask: string | null;
   events: Array<{ id: string; at: number; phase: LocalAnalysisTaskPhase; role: LocalAnalysisActivityRole; kind: LocalAnalysisActivityKind; message: string; interactionType?: AnalysisModelTelemetryEvent["type"]; detail?: string; requestId?: string; technicalOnly?: boolean }>;
 };
+type LocalAgentMessage = { id: string; at: number; actor: "AGENT" | "MODEL" | "VALIDATOR" | "SYSTEM"; text: string; streaming?: boolean; warning?: boolean };
+type LocalSubAgent = {
+  id: "SUB_AGENT_1" | "SUB_AGENT_2" | "SUB_AGENT_3";
+  slot: 1 | 2 | 3;
+  generation: number;
+  status: "IDLE" | "RUNNING" | "ROTATING" | "COMPLETED" | "PAUSED" | "FAILED";
+  objective: string;
+  moduleScopes: string[];
+  currentTask: string;
+  completedTasks: number;
+  totalTasks: number;
+  contextCharacters: number;
+  contextLimit: number;
+  requestInputCharacters: number;
+  requestOutputCharacters: number;
+  messages: LocalAgentMessage[];
+};
 
 function analysisDuration(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
@@ -1978,6 +1997,11 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   const [scanProgress, setScanProgress] = useState<{ completed: number; total: number } | null>(null);
   const [message, setMessage] = useState("");
   const [analysisTask, setAnalysisTask] = useState<LocalAnalysisTask | null>(null);
+  const [mainModelMessage, setMainModelMessage] = useState("");
+  const [mainModelStreaming, setMainModelStreaming] = useState(false);
+  const [subAgents, setSubAgents] = useState<LocalSubAgent[]>(() => ([1, 2, 3] as const).map((slot) => ({
+    id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+  })));
   const [showTechnicalDiagnostics, setShowTechnicalDiagnostics] = useState(false);
   const [taskClock, setTaskClock] = useState(() => Date.now());
 
@@ -2001,7 +2025,67 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     } : current);
   }
 
+  function updateSubAgent(agentId: LocalSubAgent["id"], updater: (agent: LocalSubAgent) => LocalSubAgent) {
+    setSubAgents((current) => current.map((agent) => agent.id === agentId ? updater(agent) : agent));
+  }
+
+  function appendSubAgentMessage(agentId: LocalSubAgent["id"], actor: LocalAgentMessage["actor"], text: string, options: { id?: string; streaming?: boolean; warning?: boolean; replace?: boolean } = {}) {
+    const at = Date.now();
+    updateSubAgent(agentId, (agent) => {
+      const id = options.id ?? `${agentId}:${at}:${agent.messages.length}`;
+      const existing = agent.messages.findIndex((message) => message.id === id);
+      const nextMessage = { id, at, actor, text, streaming: options.streaming, warning: options.warning };
+      const messages = existing >= 0
+        ? agent.messages.map((message, index) => index === existing ? { ...message, ...nextMessage } : message)
+        : [...agent.messages, nextMessage];
+      return { ...agent, messages: messages.slice(-120) };
+    });
+  }
+
+  function recordSubAgentTelemetry(agentId: LocalSubAgent["id"], event: AnalysisModelTelemetryEvent) {
+    if (event.type === "REQUEST_PREPARED") {
+      updateSubAgent(agentId, (agent) => ({ ...agent, requestInputCharacters: event.inputCharacters ?? 0, requestOutputCharacters: 0, currentTask: t("模型正在理解当前工作单元", "The model is resolving the current work unit") }));
+      appendSubAgentMessage(agentId, "AGENT", t("我已把当前工作单元和可定位证据交给模型，等待公开阶段结论。", "I sent the current work unit and locatable evidence to the model and am waiting for its public stage conclusion."));
+      return;
+    }
+    if (event.type === "RESPONSE_PROGRESS") {
+      updateSubAgent(agentId, (agent) => ({ ...agent, requestOutputCharacters: event.receivedCharacters ?? agent.requestOutputCharacters, currentTask: event.complete ? t("正在校验模型结论", "Validating the model conclusion") : t("模型正在流式回复", "The model is streaming its response") }));
+      if (event.assistantMessage) appendSubAgentMessage(agentId, "MODEL", event.assistantMessage, { id: `${agentId}:${event.requestId ?? "active"}:model`, streaming: !event.complete, replace: true });
+      return;
+    }
+    if (event.type === "STRUCTURED_RESPONSE_PARSED") {
+      updateSubAgent(agentId, (agent) => ({ ...agent, contextCharacters: agent.contextCharacters + agent.requestInputCharacters + (event.outputCharacters ?? agent.requestOutputCharacters), requestOutputCharacters: event.outputCharacters ?? agent.requestOutputCharacters, currentTask: t("验证 Agent 正在核对证据边界", "The Validation Agent is checking evidence boundaries") }));
+      if (event.assistantMessage) appendSubAgentMessage(agentId, "MODEL", event.assistantMessage, { id: `${agentId}:${event.requestId ?? "active"}:model`, streaming: false, replace: true });
+      return;
+    }
+    if (event.type === "OUTPUT_VALIDATED") {
+      appendSubAgentMessage(agentId, "VALIDATOR", t(`证据校验通过：业务候选 ${event.businessCandidateCount ?? 0} 个，技术支撑 ${event.technicalCandidateCount ?? 0} 个。`, `Evidence validation passed: ${event.businessCandidateCount ?? 0} business candidates and ${event.technicalCandidateCount ?? 0} technical supports.`));
+      return;
+    }
+    if (event.type === "BATCH_RETRYING") {
+      appendSubAgentMessage(agentId, "SYSTEM", t("模型输出在 JSON 闭合前被截断，当前工作单元已自动拆小后重试。", "The model output was truncated before its JSON closed; this work unit was automatically split and retried."), { warning: true });
+      return;
+    }
+    if (event.type === "OUTPUT_REJECTED" || event.type === "REQUEST_FAILED") appendSubAgentMessage(agentId, "SYSTEM", event.message ?? t("当前模型调用失败", "The current model call failed"), { warning: true });
+  }
+
+  function recordMainAgentTelemetry(event: AnalysisModelTelemetryEvent) {
+    if (event.type === "REQUEST_PREPARED") {
+      setMainModelMessage("");
+      setMainModelStreaming(true);
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("主 Agent 正在向模型请求三路并行任务规划。", "The Main Agent is asking the model to plan three parallel work queues."), { currentWork: t("主 Agent 正在规划三个子 Agent", "The Main Agent is planning three child Agents") }, { role: "AGENT", kind: "ACTION" });
+    } else if (event.type === "RESPONSE_PROGRESS" && event.assistantMessage) setMainModelMessage(event.assistantMessage);
+    else if (event.type === "STRUCTURED_RESPONSE_PARSED") {
+      if (event.assistantMessage) setMainModelMessage(event.assistantMessage);
+      setMainModelStreaming(false);
+    } else if (event.type === "REQUEST_FAILED") setMainModelStreaming(false);
+  }
+
   function recordModelTelemetry(event: AnalysisModelTelemetryEvent) {
+    if (event.type === "BATCH_RETRYING") {
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("模型输出在 JSON 闭合前被截断；该工作单元已自动拆小并重试。", "The model output was truncated before its JSON closed; the work unit was automatically split and retried."), { currentWork: t("正在重试缩小后的工作单元", "Retrying the smaller work unit") }, { role: "VALIDATOR", kind: "WARNING", type: event.type });
+      return;
+    }
     if (event.type === "REQUEST_PREPARED") {
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `技术诊断：模型请求 ${event.requestId ?? "—"} 已发送。`,
@@ -2017,6 +2101,10 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
       return;
     }
     if (event.type === "RESPONSE_PROGRESS") {
+      if (!event.complete) {
+        updateAnalysisTask({ outputCharacters: event.receivedCharacters ?? 0, currentWork: t("三个子 Agent 正在接收模型流式回复", "Three child Agents are receiving streamed model replies") });
+        return;
+      }
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `正在接收模型输出：${event.chunkCount ?? 0} 个数据块、${event.receivedCharacters?.toLocaleString() ?? 0} 字符，已耗时 ${analysisDuration(event.elapsedMs ?? 0)}${event.complete ? "，传输完成" : ""}。`,
         `Receiving model output: ${event.chunkCount ?? 0} chunks and ${event.receivedCharacters?.toLocaleString() ?? 0} characters after ${analysisDuration(event.elapsedMs ?? 0)}${event.complete ? "; transfer complete" : ""}.`,
@@ -2073,6 +2161,11 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     setMessage("");
     const taskStartedAt = Date.now();
     setTaskClock(taskStartedAt);
+    setMainModelMessage("");
+    setMainModelStreaming(false);
+    setSubAgents(([1, 2, 3] as const).map((slot) => ({
+      id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+    })));
     setAnalysisTask({
       id: `LOCAL-ANALYSIS-${taskStartedAt}`,
       title: t(`分析 Workspace“${workspaceName}”并建立最新功能追溯`, `Analyze Workspace “${workspaceName}” and build its latest feature traceability`),
@@ -2193,47 +2286,115 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         return summary;
       }, { LOW: 0, MEDIUM: 0, HIGH: 0, heuristic: 0 });
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`源码证据提取完成：发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待理解候选，已拆分为 ${modelBatches.length} 个有界子任务。证据上限分布为低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；${evidenceSummary.heuristic} 个候选需要额外旁证。`, `Source-evidence extraction completed: ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates require interpretation across ${modelBatches.length} bounded subtasks. Evidence caps are ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, and ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} candidates need additional corroboration.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: 0, phaseTotal: modelBatches.length, modelCallsCompleted: 0, modelCallsTotal: modelBatches.length, overallProgress: 55, currentWork: t("为模型子任务整理源码证据", "Preparing source evidence for model subtasks"), activeSubtask: t(`准备 ${modelBatches.length} 个语义分析子任务`, `Prepare ${modelBatches.length} semantic-analysis subtasks`) }, { role: "SCANNER", kind: "DISCOVERY" });
-      for (let index = 0; index < modelBatches.length; index += 1) {
-        const modelBatchStartedAt = Date.now();
-        const candidatePreview = modelBatches[index].slice(0, 3).map((candidate) => candidate.name).join("、");
-        const moduleCounts = new Map<string, number>();
-        for (const candidate of modelBatches[index]) moduleCounts.set(candidate.modulePath || t("根模块", "root module"), (moduleCounts.get(candidate.modulePath || t("根模块", "root module")) ?? 0) + 1);
-        const moduleScope = [...moduleCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ?? t("当前模块", "current module");
-        const activeSubtask = t(`理解“${moduleScope}”中的 ${modelBatches[index].length} 个候选（${index + 1}/${modelBatches.length}）`, `Resolve ${modelBatches[index].length} candidates in “${moduleScope}” (${index + 1}/${modelBatches.length})`);
-        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`子任务 ${index + 1}/${modelBatches.length}：理解“${moduleScope}”中的业务能力与 API 边界。代表候选：${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`, `Subtask ${index + 1}/${modelBatches.length}: resolve business capabilities and API boundaries in “${moduleScope}”. Representative candidates: ${candidatePreview}${modelBatches[index].length > 3 ? "…" : ""}`), { phase: "MODEL_ENRICHMENT", phaseCompleted: index, phaseTotal: modelBatches.length, overallProgress: 55 + Math.round((index / Math.max(1, modelBatches.length)) * 40), currentWork: activeSubtask, activeSubtask }, { role: "MODEL", kind: "ACTION" });
-        const enrichments = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, modelBatches[index], { onTelemetry: recordModelTelemetry });
-        enrichedRecords = applyLocalModelEnrichment(enrichedRecords, analysisModelProfile.id, enrichments);
-        const completedModelBatchCount = index + 1;
-        await saveLocalWorkspaceAnalysisRun({
-          id: runId,
-          projectId,
-          rootName: directoryName,
-          mode: analysis ? "INCREMENTAL" : "FULL",
-          engine: "HYBRID",
-          status: pauseRequestedRef.current ? "PAUSED" : "RUNNING",
-          phase: "MODEL_ENRICHMENT",
-          modelProfileId: analysisModelProfile.id,
-          completedModelBatchCount,
-          totalModelBatchCount: modelBatches.length,
-          scannerVersion: localWorkspaceScannerVersion,
-          plannedFileCount: selectedFiles.length,
-          completedFileCount: selectedFiles.length,
-          records: enrichedRecords,
-          currentPaths: [...currentPaths],
-          counters: { added, modified, unchanged },
-          startedAt,
-          updatedAt: new Date().toISOString(),
-        });
-        setScanProgress({ completed: completedModelBatchCount, total: modelBatches.length });
-        const domains = new Set(enrichments.map((item) => item.domain)).size;
-        const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
-        appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`子任务 ${completedModelBatchCount}/${modelBatches.length} 完成：识别 ${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术支撑，归入 ${domains} 个业务域；结果已通过结构校验并保存检查点，耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}。`, `Subtask ${completedModelBatchCount}/${modelBatches.length} completed: identified ${businessFeatures} business candidates and ${enrichments.length - businessFeatures} technical supports across ${domains} domains; the result passed structure validation and its checkpoint was saved in ${analysisDuration(Date.now() - modelBatchStartedAt)}.`), { phaseCompleted: completedModelBatchCount, phaseTotal: modelBatches.length, modelCallsCompleted: completedModelBatchCount, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, modelBatches.length)) * 40), currentWork: t(`已完成 ${completedModelBatchCount} / ${modelBatches.length} 个语义分析子任务`, `Completed ${completedModelBatchCount} / ${modelBatches.length} semantic-analysis subtasks`), activeSubtask: null }, { role: "AGENT", kind: "RESULT" });
-        setMessage(t(`模型正在理解功能语义 ${completedModelBatchCount} / ${modelBatches.length}；检查点已保存。`, `The model is resolving feature semantics ${completedModelBatchCount} / ${modelBatches.length}; checkpoint saved.`));
-        if (pauseRequestedRef.current) {
-          appendAnalysisTaskEvent("PAUSED", t("任务已在模型批次边界暂停，已完成的模型结果不会重复调用。", "Task paused at a model-batch boundary; completed model results will not be requested again."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
-          setMessage(t(`模型分析已暂停在 ${completedModelBatchCount} / ${modelBatches.length}；重新选择同一目录后可继续。`, `Model analysis paused at ${completedModelBatchCount} / ${modelBatches.length}; reselect the same directory to resume.`));
-          return;
+      const moduleStats = new Map<string, { candidateCount: number; apiCount: number; lowEvidenceCount: number }>();
+      for (const candidate of modelBatches.flat()) {
+        const name = candidate.modulePath || "root";
+        const current = moduleStats.get(name) ?? { candidateCount: 0, apiCount: 0, lowEvidenceCount: 0 };
+        current.candidateCount += 1;
+        if (candidate.kind === "ENDPOINT") current.apiCount += 1;
+        if (candidate.evidence.confidenceCap === "LOW") current.lowEvidenceCount += 1;
+        moduleStats.set(name, current);
+      }
+      const defaultAssignments: WorkspaceAnalysisPlan["taskAssignments"] = ([1, 2, 3] as const).map((slot) => ({ agentId: `SUB_AGENT_${slot}` as LocalSubAgent["id"], objective: t(`并行分析第 ${slot} 组模块的业务与 API 语义`, `Analyze business and API semantics for module group ${slot} in parallel`), moduleScopes: [] }));
+      let orchestrationPlan: WorkspaceAnalysisPlan = { agentMessage: t("我会把有界工作单元分配给三个子 Agent 并行分析，并在每个结果返回后校验证据、保存检查点。", "I will assign bounded work units to three child Agents in parallel, validate evidence after every result, and save checkpoints."), taskAssignments: defaultAssignments };
+      if (modelBatches.length > 0) {
+        try {
+          orchestrationPlan = await planWorkspaceAnalysis(apiBase, apiToken, analysisModelProfile.id, {
+            workspaceName,
+            mode: analysis ? "INCREMENTAL" : "FULL",
+            fileCount: selectedFiles.length,
+            candidateCount: modelBatches.flat().length,
+            modules: [...moduleStats.entries()].map(([name, stats]) => ({ name, candidateCount: stats.candidateCount, apiCount: stats.apiCount, evidenceRisk: stats.lowEvidenceCount > stats.candidateCount / 2 ? "HIGH" as const : stats.lowEvidenceCount > 0 ? "MEDIUM" as const : "LOW" as const })),
+          }, { onTelemetry: recordMainAgentTelemetry });
+        } catch {
+          appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("主 Agent 的模型规划未通过结构校验，已切换到确定性的三路均衡分配；源码分析仍会继续。", "The Main Agent's model plan failed structure validation, so deterministic three-way balancing is being used and source analysis will continue."), {}, { role: "AGENT", kind: "WARNING" });
         }
+      }
+      setMainModelMessage(orchestrationPlan.agentMessage);
+      setMainModelStreaming(false);
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("主 Agent 已确认模型规划，并启动三个并行子 Agent 会话。", "The Main Agent accepted the model plan and started three parallel child-Agent sessions."), { currentWork: t("主 Agent 已启动三个子 Agent", "The Main Agent started three child Agents") }, { role: "AGENT", kind: "PLAN" });
+      const queues = new Map<LocalSubAgent["id"], number[]>(defaultAssignments.map((assignment) => [assignment.agentId, []]));
+      for (let index = 0; index < modelBatches.length; index += 1) {
+        const batchScope = modelBatches[index].map((candidate) => candidate.modulePath || "root").sort((left, right) => left.localeCompare(right))[0] ?? "root";
+        const matching = orchestrationPlan.taskAssignments.filter((assignment) => assignment.moduleScopes.includes(batchScope));
+        const candidates = matching.length > 0 ? matching : orchestrationPlan.taskAssignments;
+        const selected = [...candidates].sort((left, right) => (queues.get(left.agentId)?.length ?? 0) - (queues.get(right.agentId)?.length ?? 0))[0] ?? defaultAssignments[index % 3];
+        queues.get(selected.agentId)?.push(index);
+      }
+      setSubAgents([...orchestrationPlan.taskAssignments].sort((left, right) => left.agentId.localeCompare(right.agentId)).map((assignment) => ({
+        id: assignment.agentId, slot: Number(assignment.agentId.at(-1)) as LocalSubAgent["slot"], generation: 1, status: (queues.get(assignment.agentId)?.length ?? 0) > 0 ? "RUNNING" : "COMPLETED", objective: assignment.objective, moduleScopes: assignment.moduleScopes, currentTask: t("等待领取第一个工作单元", "Waiting to claim the first work unit"), completedTasks: 0, totalTasks: queues.get(assignment.agentId)?.length ?? 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [{ id: `${assignment.agentId}:assignment`, at: Date.now(), actor: "SYSTEM", text: t(`主 Agent 已分配：${assignment.objective}`, `Assigned by Main Agent: ${assignment.objective}`) }],
+      })));
+      let completedModelBatchCount = 0;
+      let checkpointQueue = Promise.resolve();
+      const runSubAgent = async (assignment: WorkspaceAnalysisPlan["taskAssignments"][number]) => {
+        const agentId = assignment.agentId;
+        const batchIndexes = queues.get(agentId) ?? [];
+        let generation = 1;
+        let contextCharacters = 0;
+        let completedInGeneration = 0;
+        for (const index of batchIndexes) {
+          if (pauseRequestedRef.current) break;
+          if (completedInGeneration > 0 && contextCharacters >= 112_000) {
+            generation += 1;
+            contextCharacters = 0;
+            completedInGeneration = 0;
+            updateSubAgent(agentId, (agent) => ({ ...agent, generation, status: "ROTATING", contextCharacters: 0, messages: [...agent.messages, { id: `${agentId}:handoff:${generation}`, at: Date.now(), actor: "SYSTEM", text: t(`上下文达到安全阈值；第 ${generation - 1} 代已完成当前工作单元并保存交接摘要，第 ${generation} 代继续后续任务。`, `Context reached its safety threshold. Generation ${generation - 1} completed its current work unit and saved a handoff summary; generation ${generation} will continue.`) }].slice(-120) }));
+            appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`${agentId} 完成上下文交接并启动第 ${generation} 代实例；已完成结果不会重复分析。`, `${agentId} completed a context handoff and started generation ${generation}; completed results will not be analyzed again.`), {}, { role: "AGENT", kind: "ACTION" });
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
+          }
+          const batch = modelBatches[index];
+          const moduleScope = batch.map((candidate) => candidate.modulePath || "root").sort((left, right) => left.localeCompare(right))[0] ?? "root";
+          const modelBatchStartedAt = Date.now();
+          let requestInput = 0;
+          let currentRequestId = "request";
+          const requestOutput = new Map<string, number>();
+          const workLabel = t(`分析“${moduleScope}”中的 ${batch.length} 个候选`, `Analyze ${batch.length} candidates in “${moduleScope}”`);
+          updateSubAgent(agentId, (agent) => ({ ...agent, generation, status: "RUNNING", currentTask: workLabel }));
+          appendSubAgentMessage(agentId, "AGENT", t(`开始工作单元 ${index + 1}/${modelBatches.length}：${workLabel}。`, `Starting work unit ${index + 1}/${modelBatches.length}: ${workLabel}.`));
+          const enrichments = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, batch, { onTelemetry: (event) => {
+            if (event.type === "REQUEST_PREPARED") {
+              currentRequestId = event.requestId ?? `request-${requestOutput.size + 1}`;
+              requestInput += event.inputCharacters ?? 0;
+            }
+            if (event.type === "RESPONSE_PROGRESS" || event.type === "STRUCTURED_RESPONSE_PARSED") {
+              const outputCharacters = event.outputCharacters ?? event.receivedCharacters ?? 0;
+              const requestId = event.requestId ?? currentRequestId;
+              requestOutput.set(requestId, Math.max(requestOutput.get(requestId) ?? 0, outputCharacters));
+            }
+            recordSubAgentTelemetry(agentId, event);
+            recordModelTelemetry(event);
+          } });
+          contextCharacters += requestInput + [...requestOutput.values()].reduce((total, characters) => total + characters, 0);
+          completedInGeneration += 1;
+          enrichedRecords = applyLocalModelEnrichment(enrichedRecords, analysisModelProfile.id, enrichments);
+          completedModelBatchCount += 1;
+          const checkpoint = {
+            id: runId, projectId, rootName: directoryName, mode: analysis ? "INCREMENTAL" as const : "FULL" as const, engine: "HYBRID" as const, status: pauseRequestedRef.current ? "PAUSED" as const : "RUNNING" as const, phase: "MODEL_ENRICHMENT" as const, modelProfileId: analysisModelProfile.id, completedModelBatchCount, totalModelBatchCount: modelBatches.length, scannerVersion: localWorkspaceScannerVersion, plannedFileCount: selectedFiles.length, completedFileCount: selectedFiles.length, records: enrichedRecords, currentPaths: [...currentPaths], counters: { added, modified, unchanged }, startedAt, updatedAt: new Date().toISOString(),
+          };
+          checkpointQueue = checkpointQueue.then(() => saveLocalWorkspaceAnalysisRun(checkpoint));
+          await checkpointQueue;
+          const domains = new Set(enrichments.map((item) => item.domain)).size;
+          const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
+          updateSubAgent(agentId, (agent) => ({ ...agent, status: "RUNNING", contextCharacters, completedTasks: agent.completedTasks + 1, currentTask: t("检查点已保存，准备下一工作单元", "Checkpoint saved; preparing the next work unit") }));
+          appendSubAgentMessage(agentId, "AGENT", t(`工作单元完成：${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术支撑、${domains} 个业务域；耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}。`, `Work unit completed: ${businessFeatures} business candidates, ${enrichments.length - businessFeatures} technical supports, and ${domains} domains in ${analysisDuration(Date.now() - modelBatchStartedAt)}.`));
+          setScanProgress({ completed: completedModelBatchCount, total: modelBatches.length });
+          updateAnalysisTask({ phaseCompleted: completedModelBatchCount, phaseTotal: modelBatches.length, modelCallsCompleted: completedModelBatchCount, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, modelBatches.length)) * 40), currentWork: t(`三个子 Agent 已完成 ${completedModelBatchCount} / ${modelBatches.length} 个工作单元`, `Three child Agents completed ${completedModelBatchCount} / ${modelBatches.length} work units`) });
+        }
+        updateSubAgent(agentId, (agent) => ({ ...agent, status: pauseRequestedRef.current ? "PAUSED" : "COMPLETED", currentTask: pauseRequestedRef.current ? t("已在工作单元边界暂停", "Paused at a work-unit boundary") : t("分配队列已完成", "Assigned queue completed") }));
+      };
+      const agentResults = await Promise.allSettled(orchestrationPlan.taskAssignments.map((assignment) => runSubAgent(assignment)));
+      agentResults.forEach((result, index) => {
+        if (result.status !== "rejected") return;
+        const agentId = orchestrationPlan.taskAssignments[index].agentId;
+        updateSubAgent(agentId, (agent) => ({ ...agent, status: "FAILED", currentTask: t("当前工作单元失败；检查点已保留", "The current work unit failed; its checkpoint is preserved") }));
+        appendSubAgentMessage(agentId, "SYSTEM", result.reason instanceof Error ? result.reason.message : t("子 Agent 执行失败", "Child Agent execution failed"), { warning: true });
+      });
+      const failedAgent = agentResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failedAgent) throw failedAgent.reason;
+      if (pauseRequestedRef.current) {
+        appendAnalysisTaskEvent("PAUSED", t("三个子 Agent 已在工作单元边界暂停，所有完成结果和上下文交接均已保存。", "All three child Agents paused at work-unit boundaries; completed results and context handoffs were saved."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
+        setMessage(t(`模型分析已暂停在 ${completedModelBatchCount} / ${modelBatches.length}；重新选择同一目录后可继续。`, `Model analysis paused at ${completedModelBatchCount} / ${modelBatches.length}; reselect the same directory to resume.`));
+        return;
       }
       appendAnalysisTaskEvent("FINALIZING", t("全部语义分析子任务已完成。Workspace Agent 正在校验稳定身份、构建最新功能树并汇总追溯证据。", "All semantic-analysis subtasks are complete. The Workspace Agent is validating stable identities, building the latest Feature tree, and summarizing trace evidence."), { phase: "FINALIZING", phaseCompleted: 0, phaseTotal: 1, overallProgress: 96, currentWork: t("校验并保存最新 Workspace", "Validate and save the latest Workspace"), activeSubtask: t("生成最新功能树与追溯统计", "Generate the latest Feature tree and trace statistics") }, { role: "WORKSPACE", kind: "ACTION" });
       const result = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
@@ -2268,7 +2429,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先对十万级工程做有界确定性提取，明确标注 AST、规则或契约来源，并用 OpenAPI、实现与测试等独立证据交叉验证；随后按有界子任务调用当前模型。Agent 会话会像开发助手一样展示主任务、子任务、当前动作、阶段发现和结果；每批保存检查点，首次全量、后续增量。", "The Agent first performs bounded deterministic extraction across 100,000-scale projects, explicitly labels AST, pattern, or contract origins, and cross-checks them with independent OpenAPI, implementation, and test evidence. It then calls the active model through bounded subtasks. The Agent session shows the main task, subtasks, current actions, stage discoveries, and results like a development assistant. Every batch is checkpointed; the first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立功能追溯 Workspace", "Select a project and let the Analysis Agent build its traceability Workspace")}</h1><p>{t("先对十万级工程做有界确定性提取，再由主 Agent 调用当前模型规划三路任务，并启动三个并行子 Agent。顶部主对话流式展示规划、分派与汇总，下面三个独立窗口流式展示各自与模型的公开对话、进度、校验和上下文交接；首次全量、后续增量。", "The Agent first performs bounded deterministic extraction across 100,000-scale projects. The Main Agent then asks the active model to plan three work queues and starts three parallel child Agents. The top conversation streams planning, assignment, and summaries, while three independent windows stream each child's public model conversation, progress, validation, and context handoff. The first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} onChange={(event) => setWorkspaceName(event.target.value)} /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} /></div>
@@ -2282,11 +2443,27 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
           <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("模型子任务", "Model subtasks")}</small><b>{analysisTask ? `${analysisTask.modelCallsCompleted} / ${analysisTask.modelCallsTotal}` : "—"}</b></div></div>
           {showTechnicalDiagnostics && <div className="analysis-task-technical-metrics"><div><small>{t("阶段计数", "Phase count")}</small><b>{analysisTask ? `${analysisTask.phaseCompleted.toLocaleString()} / ${analysisTask.phaseTotal.toLocaleString()}` : "—"}</b></div><div><small>{t("请求 I/O", "Request I/O")}</small><b>{analysisTask ? `${analysisTask.inputCharacters.toLocaleString()} / ${analysisTask.outputCharacters.toLocaleString()}` : "—"}</b></div><div><small>Token</small><b>{analysisTask?.totalTokens != null ? analysisTask.totalTokens.toLocaleString() : "—"}</b></div><div><small>Request ID</small><b title={analysisTask?.activeRequestId ?? ""}>{analysisTask?.activeRequestId?.split(":").at(-1) ?? "—"}</b></div></div>}
           <div className="analysis-task-overall"><span style={{ width: `${analysisTask?.overallProgress ?? 0}%` }} /></div>
-          <section className="analysis-task-hierarchy"><div className="analysis-task-tree-title"><span>{t("主任务", "Main task")}</span><b>{analysisTask?.title ?? t("尚未启动", "Not started")}</b></div><ol className="analysis-task-plan">{taskStepDefinitions.map((step, index) => { const done = Boolean(analysisTask) && (analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index); const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.id}><i>{done ? "✓" : active ? "●" : index + 1}</i><span><b>{step.label}</b><small>{step.detail}</small>{active && analysisTask?.activeSubtask && <em>{t("当前子任务", "Active child task")} · {analysisTask.activeSubtask}</em>}</span></li>; })}</ol></section>
-          <div className="analysis-task-current"><span className="task-pulse" /><span><small>{t("当前动作", "Current action")}</small>{analysisTask?.currentWork ?? t("任务尚未启动", "Task has not started")}</span></div>
-          <div className="analysis-task-log-head"><div><b>{t("Agent 活动", "Agent activity")}</b><small>{t("只展示任务动作与阶段结论，不展示内部隐藏推理", "Shows task actions and stage conclusions, not hidden internal reasoning")}</small></div><span>{visibleTaskEvents.length}</span></div>
-          <div className="analysis-task-log" role="log" aria-live="polite">
-            {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <div className={`activity-${event.kind.toLowerCase()} ${event.technicalOnly ? "technical-event" : ""}`} key={event.id}><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time><span>{activityRoleLabel(event.role)}</span><section className="task-log-copy"><small>{term(event.kind)}</small><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</section></div>) : <p className="task-log-empty">{t("任务启动后，Agent 会在这里说明已建立的计划、正在执行的子任务、从证据中得到的阶段发现以及最终结果。原始模型请求与响应仅在“技术诊断”中按需查看。", "After the task starts, the Agent will report its plan, active subtasks, evidence-backed stage discoveries, and final result. Raw model requests and responses are available only on demand under Technical diagnostics.")}</p>}
+          <div className="agent-conversation-layout">
+            <section className="agent-conversation-window main-agent-window">
+              <header><div><span className="agent-live-dot" /><p><b>{t("主 Agent 对话", "Main Agent conversation")}</b><small>{t("规划 · 分派 · 生命周期控制 · 汇总", "Plan · assign · lifecycle control · summarize")}</small></p></div><em>{analysisTask?.status ? term(analysisTask.status) : t("等待", "Waiting")}</em></header>
+              <ol className="analysis-task-plan compact">{taskStepDefinitions.map((step, index) => { const done = Boolean(analysisTask) && (analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index); const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.id}><i>{done ? "✓" : active ? "●" : index + 1}</i><span><b>{step.label}</b></span></li>; })}</ol>
+              <div className="agent-transcript main-transcript" role="log" aria-live="polite">
+                {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <article className={`agent-message actor-${event.role.toLowerCase()} ${event.kind === "WARNING" ? "warning" : ""}`} key={event.id}><div><b>{activityRoleLabel(event.role)}</b><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time></div><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</article>) : <p className="task-log-empty">{t("主任务启动后，这里会流式显示主 Agent 与模型的公开对话、任务分配和三个子 Agent 的汇总。", "After the main task starts, this window streams the public Main-Agent/model conversation, task assignments, and summaries from all three child Agents.")}</p>}
+                {mainModelMessage && <article className={`agent-message actor-model ${mainModelStreaming ? "streaming" : ""}`}><div><b>{t("模型", "Model")}</b><span>{mainModelStreaming ? t("流式回复", "Streaming") : t("阶段结论", "Stage result")}</span></div><p>{mainModelMessage}</p></article>}
+              </div>
+              <footer><span className="task-pulse" /><small>{analysisTask?.currentWork ?? t("等待主任务启动", "Waiting for the main task to start")}</small><em>{t("公开执行过程，不展示隐藏思维链", "Public execution only; hidden chain-of-thought is not shown")}</em></footer>
+            </section>
+            <div className="sub-agent-deck" aria-label={t("三个子 Agent 对话", "Three child-Agent conversations")}>
+              {subAgents.map((agent) => <section className={`agent-conversation-window sub-agent-window status-${agent.status.toLowerCase()}`} key={agent.id}>
+                <header><div><span className="agent-live-dot" /><p><b>{t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`)}</b><small>{agent.id} · Generation {agent.generation}</small></p></div><em>{term(agent.status)}</em></header>
+                <div className="sub-agent-objective"><b>{agent.objective}</b><small>{agent.currentTask}</small></div>
+                <div className="sub-agent-progress"><span style={{ width: `${Math.round((agent.completedTasks / Math.max(1, agent.totalTasks)) * 100)}%` }} /><small>{agent.completedTasks} / {agent.totalTasks}</small></div>
+                <div className="agent-transcript" role="log" aria-live="polite">
+                  {agent.messages.length ? agent.messages.map((item) => <article className={`agent-message actor-${item.actor.toLowerCase()} ${item.warning ? "warning" : ""} ${item.streaming ? "streaming" : ""}`} key={item.id}><div><b>{item.actor === "AGENT" ? t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`) : item.actor === "MODEL" ? t("模型", "Model") : item.actor === "VALIDATOR" ? t("验证器", "Validator") : t("系统", "System")}</b><time>{new Date(item.at).toLocaleTimeString()}</time></div><p>{item.text}</p></article>) : <p className="task-log-empty">{t("等待主 Agent 分配工作单元。", "Waiting for the Main Agent to assign a work unit.")}</p>}
+                </div>
+                <footer><span>{t("上下文", "Context")} {Math.min(100, Math.round((agent.contextCharacters / agent.contextLimit) * 100))}%</span><span>{t("任务", "Tasks")} {agent.completedTasks}/{agent.totalTasks}</span><span>G{agent.generation}</span></footer>
+              </section>)}
+            </div>
           </div>
         </section>
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}

@@ -1003,6 +1003,21 @@
         }
       }
     },
+    "/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-plan": {
+      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
+      "post": {
+        "operationId": "planWorkspaceAnalysis",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["workspaceName", "mode", "fileCount", "candidateCount", "modules"], "properties": { "workspaceName": { "type": "string", "minLength": 1 }, "mode": { "enum": ["FULL", "INCREMENTAL"] }, "fileCount": { "type": "integer", "minimum": 0 }, "candidateCount": { "type": "integer", "minimum": 0 }, "modules": { "type": "array", "maxItems": 120, "items": { "type": "object", "required": ["name", "candidateCount", "apiCount", "evidenceRisk"], "properties": { "name": { "type": "string", "minLength": 1 }, "candidateCount": { "type": "integer", "minimum": 0 }, "apiCount": { "type": "integer", "minimum": 0 }, "evidenceRisk": { "enum": ["LOW", "MEDIUM", "HIGH"] } }, "additionalProperties": false } } }, "additionalProperties": false } } }
+        },
+        "responses": {
+          "200": { "description": "A public Main Agent message and exactly three bounded child-Agent assignments. Send Accept: application/x-ndjson for live public model-message telemetry followed by the validated plan.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "plan"], "properties": { "profileId": { "type": "string" }, "plan": { "$ref": "#/components/schemas/WorkspaceAnalysisPlan" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "description": "Configured model endpoint was unavailable or returned an invalid orchestration plan" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/analysis-runs": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
@@ -1499,6 +1514,15 @@
           "group": { "enum": ["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION", "DATA_INTEGRATION", "PROJECT_OPERATION", "API_SERVICE"] },
           "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },
           "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceAnalysisPlan": {
+        "type": "object",
+        "required": ["agentMessage", "taskAssignments"],
+        "properties": {
+          "agentMessage": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "taskAssignments": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "object", "required": ["agentId", "objective", "moduleScopes"], "properties": { "agentId": { "enum": ["SUB_AGENT_1", "SUB_AGENT_2", "SUB_AGENT_3"] }, "objective": { "type": "string", "minLength": 1, "maxLength": 500 }, "moduleScopes": { "type": "array", "maxItems": 120, "items": { "type": "string", "minLength": 1, "maxLength": 300 } } }, "additionalProperties": false } }
         },
         "additionalProperties": false
       },

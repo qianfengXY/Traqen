@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches } from "../app/analysis-model-client.ts";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches } from "../app/analysis-model-client.ts";
 
 test("normalizes common OpenAI-compatible API base URLs without changing full endpoints", () => {
   assert.equal(normalizeChatCompletionsEndpoint("https://api.example.com/v1"), "https://api.example.com/v1/chat/completions");
@@ -97,5 +97,45 @@ test("indexes evidence once and keeps large model batches bounded by count and s
   });
   const batches = workspaceModelCandidateBatches(records, "model-a");
   assert.equal(batches.flat().length, 5_000);
-  assert.equal(batches.every((batch) => batch.length <= 24 && JSON.stringify(batch).length <= 60_000), true);
+  assert.equal(batches.every((batch) => batch.length <= 10 && JSON.stringify(batch).length <= 60_000), true);
+});
+
+test("automatically bisects an incomplete model batch and preserves input order", async () => {
+  const records = ["A", "B"].map((suffix) => ({ scannerVersion: 4, path: `src/${suffix}.ts`, size: 100, lastModified: 1, supported: true, candidates: [{ id: `FEATURE-${suffix}`, name: suffix, kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: `src/${suffix}.ts`, startLine: 1, description: suffix, code: `export function ${suffix}(){}` }], configuration: null, test: null }));
+  const candidates = workspaceModelCandidateBatches(records, "model-a").flat();
+  const originalFetch = globalThis.fetch;
+  let call = 0;
+  globalThis.fetch = async (_url, options) => {
+    call += 1;
+    const input = JSON.parse(options.body).candidates;
+    const message = call === 1
+      ? { kind: "error", error: { message: "analysis model output was truncated (length)" } }
+      : { kind: "result", candidates: input.map((candidate) => ({ id: candidate.id, displayName: candidate.name, description: candidate.description, businessFeature: true, domain: "Test", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Evidence bounded" })) };
+    return new Response(`${JSON.stringify(message)}\n`, { status: 200, headers: { "content-type": "application/x-ndjson" } });
+  };
+  try {
+    const telemetry = [];
+    const result = await enrichWorkspaceCandidateBatch("http://127.0.0.1:3100", "", "model-a", candidates, { onTelemetry: (event) => telemetry.push(event) });
+    assert.deepEqual(result.map((candidate) => candidate.id), ["FEATURE-A", "FEATURE-B"]);
+    assert.equal(call, 3);
+    assert.ok(telemetry.some((event) => event.type === "BATCH_RETRYING"));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("streams a validated Main Agent plan with exactly three child assignments", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response([
+    { kind: "telemetry", event: { type: "RESPONSE_PROGRESS", at: "2026-07-22T01:00:00.000Z", assistantMessage: "Planning three queues" } },
+    { kind: "result", plan: { agentMessage: "Planning three queues", taskAssignments: [1, 2, 3].map((slot) => ({ agentId: `SUB_AGENT_${slot}`, objective: `Queue ${slot}`, moduleScopes: [] })) } },
+  ].map((message) => `${JSON.stringify(message)}\n`).join(""), { status: 200, headers: { "content-type": "application/x-ndjson" } });
+  try {
+    const telemetry = [];
+    const plan = await planWorkspaceAnalysis("http://127.0.0.1:3100", "", "model-a", { workspaceName: "Traqen", mode: "FULL", fileCount: 10, candidateCount: 3, modules: [] }, { onTelemetry: (event) => telemetry.push(event) });
+    assert.equal(plan.taskAssignments.length, 3);
+    assert.equal(telemetry[0].assistantMessage, "Planning three queues");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

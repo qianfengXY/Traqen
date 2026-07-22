@@ -1246,6 +1246,15 @@ export class TraceabilityApplication {
     );
   }
 
+  async planWorkspaceAnalysis(profileId, input, options = {}) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.planWorkspaceAnalysis(
+      requireId(profileId, "analysisModelProfileId"),
+      input,
+      { onTelemetry: options.onTelemetry ?? null },
+    );
+  }
+
   async #analysisInputs(input) {
     if (!this.#analysisAgent) throw new TypeError("Analysis Agent is not configured");
     const projectId = requireId(input?.projectId, "analysisRequest.projectId");

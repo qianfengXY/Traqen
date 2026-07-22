@@ -72,6 +72,58 @@ test("stream profiles accept Responses-style output_text delta events", async ()
   assert.equal((await adapter.verify()).ok, true);
 });
 
+test("stream profiles report output-token truncation instead of a generic incomplete JSON error", async () => {
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "truncated-stream-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    stream: true,
+    fetchImpl: async () => new Response([
+      `data: ${JSON.stringify({ choices: [{ delta: { content: "{\"ok\":" } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}`,
+      "data: [DONE]",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } }),
+  });
+  await assert.rejects(() => adapter.verify(), /output was truncated \(length\)/);
+});
+
+test("Main Agent creates exactly three evidence-bounded child assignments with a public streamed message", async () => {
+  const telemetry = [];
+  const plan = {
+    agentMessage: "I will run three balanced module queues and validate each result.",
+    taskAssignments: [
+      { agentId: "SUB_AGENT_1", objective: "Analyze orders", moduleScopes: ["orders"] },
+      { agentId: "SUB_AGENT_2", objective: "Analyze billing", moduleScopes: ["billing"] },
+      { agentId: "SUB_AGENT_3", objective: "Analyze shared APIs", moduleScopes: ["api"] },
+    ],
+  };
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "main-agent-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    stream: true,
+    fetchImpl: async () => new Response([
+      `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify(plan) } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "stop" }] })}`,
+      "data: [DONE]",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } }),
+  });
+  const result = await adapter.planWorkspaceAnalysis({
+    workspaceName: "Traqen",
+    mode: "FULL",
+    fileCount: 100,
+    candidateCount: 30,
+    modules: [
+      { name: "orders", candidateCount: 10, apiCount: 2, evidenceRisk: "LOW" },
+      { name: "billing", candidateCount: 10, apiCount: 1, evidenceRisk: "MEDIUM" },
+      { name: "api", candidateCount: 10, apiCount: 10, evidenceRisk: "LOW" },
+    ],
+  }, { onTelemetry: (event) => telemetry.push(event) });
+  assert.equal(result.taskAssignments.length, 3);
+  assert.equal(result.agentMessage, plan.agentMessage);
+  assert.ok(telemetry.some((event) => event.type === "RESPONSE_PROGRESS" && event.assistantMessage === plan.agentMessage));
+});
+
 test("runtime model profiles keep API keys private, require verification, and enrich bounded Workspace candidates", async () => {
   const requests = [];
   const registry = new AnalysisModelRegistry({

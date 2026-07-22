@@ -855,6 +855,30 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const workspaceModelPlanMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/workspace-plan$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceModelPlanMatch) {
+        requireJson(request);
+        const profileId = decodePathSegment(workspaceModelPlanMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
+        if (!observable) {
+          sendJson(response, 200, { profileId, plan: await application.planWorkspaceAnalysis(profileId, input) }, id);
+          return;
+        }
+        startNdjson(response, id);
+        try {
+          const plan = await application.planWorkspaceAnalysis(profileId, input, {
+            onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
+          });
+          writeNdjson(response, { kind: "result", profileId, plan });
+        } catch (error) {
+          const failure = errorResponse(error, id);
+          writeNdjson(response, { kind: "error", error: failure.body.error });
+        }
+        response.end();
+        return;
+      }
+
       const analysisRunsCollectionMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs$/.exec(url.pathname);
       if (request.method === "POST" && analysisRunsCollectionMatch) {
         requireJson(request);
