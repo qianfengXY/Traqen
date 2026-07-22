@@ -3,7 +3,7 @@
 import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
@@ -2286,15 +2286,16 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         return summary;
       }, { LOW: 0, MEDIUM: 0, HIGH: 0, heuristic: 0 });
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`源码证据提取完成：发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待理解候选，已拆分为 ${modelBatches.length} 个有界子任务。证据上限分布为低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；${evidenceSummary.heuristic} 个候选需要额外旁证。`, `Source-evidence extraction completed: ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates require interpretation across ${modelBatches.length} bounded subtasks. Evidence caps are ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, and ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} candidates need additional corroboration.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: 0, phaseTotal: modelBatches.length, modelCallsCompleted: 0, modelCallsTotal: modelBatches.length, overallProgress: 55, currentWork: t("为模型子任务整理源码证据", "Preparing source evidence for model subtasks"), activeSubtask: t(`准备 ${modelBatches.length} 个语义分析子任务`, `Prepare ${modelBatches.length} semantic-analysis subtasks`) }, { role: "SCANNER", kind: "DISCOVERY" });
-      const moduleStats = new Map<string, { candidateCount: number; apiCount: number; lowEvidenceCount: number }>();
-      for (const candidate of modelBatches.flat()) {
-        const name = candidate.modulePath || "root";
-        const current = moduleStats.get(name) ?? { candidateCount: 0, apiCount: 0, lowEvidenceCount: 0 };
-        current.candidateCount += 1;
-        if (candidate.kind === "ENDPOINT") current.apiCount += 1;
-        if (candidate.evidence.confidenceCap === "LOW") current.lowEvidenceCount += 1;
-        moduleStats.set(name, current);
-      }
+      const sourceFiles = selectedFiles.map((file) => {
+        const path = file.webkitRelativePath || file.name;
+        const relativePath = path.split("/").slice(1).join("/") || path;
+        return { path: relativePath, size: file.size };
+      }).filter((file) => {
+        const name = file.path.split("/").at(-1)?.toLowerCase() ?? "";
+        const actualEnvironmentFile = /^\.env(?:\.[^.]+)?$/.test(name) && !/\.(?:example|sample|template)$/.test(name);
+        return !actualEnvironmentFile && !ignored.test(file.path) && textExtensions.test(file.path) && file.size <= 768 * 1024;
+      });
+      const sourceManifest = workspaceSourceManifest(sourceFiles);
       const defaultAssignments: WorkspaceAnalysisPlan["taskAssignments"] = ([1, 2, 3] as const).map((slot) => ({ agentId: `SUB_AGENT_${slot}` as LocalSubAgent["id"], objective: t(`并行分析第 ${slot} 组模块的业务与 API 语义`, `Analyze business and API semantics for module group ${slot} in parallel`), moduleScopes: [] }));
       let orchestrationPlan: WorkspaceAnalysisPlan = { agentMessage: t("我会把有界工作单元分配给三个子 Agent 并行分析，并在每个结果返回后校验证据、保存检查点。", "I will assign bounded work units to three child Agents in parallel, validate evidence after every result, and save checkpoints."), taskAssignments: defaultAssignments };
       if (modelBatches.length > 0) {
@@ -2303,8 +2304,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
             workspaceName,
             mode: analysis ? "INCREMENTAL" : "FULL",
             fileCount: selectedFiles.length,
-            candidateCount: modelBatches.flat().length,
-            modules: [...moduleStats.entries()].map(([name, stats]) => ({ name, candidateCount: stats.candidateCount, apiCount: stats.apiCount, evidenceRisk: stats.lowEvidenceCount > stats.candidateCount / 2 ? "HIGH" as const : stats.lowEvidenceCount > 0 ? "MEDIUM" as const : "LOW" as const })),
+            modules: sourceManifest,
           }, { onTelemetry: recordMainAgentTelemetry });
         } catch {
           appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("主 Agent 的模型规划未通过结构校验，已切换到确定性的三路均衡分配；源码分析仍会继续。", "The Main Agent's model plan failed structure validation, so deterministic three-way balancing is being used and source analysis will continue."), {}, { role: "AGENT", kind: "WARNING" });
@@ -2315,7 +2315,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("主 Agent 已确认模型规划，并启动三个并行子 Agent 会话。", "The Main Agent accepted the model plan and started three parallel child-Agent sessions."), { currentWork: t("主 Agent 已启动三个子 Agent", "The Main Agent started three child Agents") }, { role: "AGENT", kind: "PLAN" });
       const queues = new Map<LocalSubAgent["id"], number[]>(defaultAssignments.map((assignment) => [assignment.agentId, []]));
       for (let index = 0; index < modelBatches.length; index += 1) {
-        const batchScope = modelBatches[index].map((candidate) => candidate.modulePath || "root").sort((left, right) => left.localeCompare(right))[0] ?? "root";
+        const batchScope = modelBatches[index].map((candidate) => workspaceSourceModule(candidate.sourcePath)).sort((left, right) => left.localeCompare(right))[0] ?? "root";
         const matching = orchestrationPlan.taskAssignments.filter((assignment) => assignment.moduleScopes.includes(batchScope));
         const candidates = matching.length > 0 ? matching : orchestrationPlan.taskAssignments;
         const selected = [...candidates].sort((left, right) => (queues.get(left.agentId)?.length ?? 0) - (queues.get(right.agentId)?.length ?? 0))[0] ?? defaultAssignments[index % 3];
@@ -2438,6 +2438,12 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}
+        <section className="analysis-source-strategy" aria-label={t("分析来源状态", "Analysis source status")}>
+          <div><span>{t("任务地图", "Task map")}</span><b>Source Manifest</b><small>{t("按路径、语言和源码体积分区，不使用扫描候选拆任务", "Partitioned by path, language, and source size; scanner candidates do not define tasks")}</small></div>
+          <div className="active"><span>{t("确定性提取", "Deterministic extraction")}</span><b>{t("已启用", "ENABLED")}</b><small>{t("独立生成可定位 Fact 与候选", "Independently emits locatable Facts and candidates")}</small></div>
+          <div className="missing"><span>ECC · {t("直接源码 Skill", "direct-source Skill")}</span><b>{t("未配置", "NOT CONFIGURED")}</b><small>{t("当前运行时未安装；不会用扫描结果冒充", "Not installed in this runtime; scanner output is never used to impersonate it")}</small></div>
+          <div className="missing"><span>Specone · {t("规格逆向 Skill", "specification Skill")}</span><b>{t("未配置", "NOT CONFIGURED")}</b><small>{t("内置 reference 仅验证协议，不算真实集成", "The built-in reference only validates the protocol and is not a real integration")}</small></div>
+        </section>
         <section className={`analysis-task-console ${analysisTask?.status.toLowerCase() ?? "ready"}`} aria-label={t("分析 Agent 会话", "Analysis Agent session")}>
           <header><div><p className="eyebrow">Analysis Agent session</p><h3>{analysisTask?.title ?? t("等待创建主任务", "Ready to create the main task")}</h3><small>{analysisTask ? `${term(analysisTask.mode)} · ${analysisTask.model} · ${analysisTask.id}` : t("选择工程和当前模型后，Agent 会自动规划并执行主任务。", "Select a project and active model; the Agent will plan and execute the main task automatically.")}</small></div><div className="analysis-task-header-actions"><button className={`task-diagnostics-toggle ${showTechnicalDiagnostics ? "active" : ""}`} type="button" onClick={() => setShowTechnicalDiagnostics((current) => !current)}>{showTechnicalDiagnostics ? t("关闭技术诊断", "Hide technical diagnostics") : t("技术诊断", "Technical diagnostics")}</button><span className={`task-status ${analysisTask?.status.toLowerCase() ?? "ready"}`}>{analysisTask ? term(analysisTask.status) : t("就绪", "READY")}</span></div></header>
           <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("模型子任务", "Model subtasks")}</small><b>{analysisTask ? `${analysisTask.modelCallsCompleted} / ${analysisTask.modelCallsTotal}` : "—"}</b></div></div>

@@ -39,6 +39,13 @@ export type WorkspaceAnalysisPlan = {
   taskAssignments: Array<{ agentId: "SUB_AGENT_1" | "SUB_AGENT_2" | "SUB_AGENT_3"; objective: string; moduleScopes: string[] }>;
 };
 
+export type WorkspaceSourceModule = {
+  name: string;
+  fileCount: number;
+  sourceBytes: number;
+  languages: string[];
+};
+
 export type WorkspaceEvidenceAssessment = {
   observations: Array<{
     extractor: string;
@@ -178,6 +185,37 @@ export async function verifyConfiguredAnalysisModel(apiBase: string, apiToken: s
 
 function evidenceKey(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function sourceLanguage(path: string) {
+  const name = path.split("/").at(-1) ?? path;
+  if (name.startsWith(".env")) return "env";
+  return name.includes(".") ? name.split(".").at(-1)?.toLowerCase() ?? "other" : "other";
+}
+
+export function workspaceSourceModule(path: string) {
+  const segments = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.length <= 1) return "root";
+  if (["src", "app", "lib", "packages", "services", "modules"].includes(segments[0]) && segments[1]) return `${segments[0]}/${segments[1]}`;
+  return segments[0];
+}
+
+export function workspaceSourceManifest(files: Array<{ path: string; size: number }>) {
+  const modules = new Map<string, { fileCount: number; sourceBytes: number; languages: Set<string> }>();
+  for (const file of files) {
+    const name = workspaceSourceModule(file.path);
+    const current = modules.get(name) ?? { fileCount: 0, sourceBytes: 0, languages: new Set<string>() };
+    current.fileCount += 1;
+    current.sourceBytes += Math.max(0, file.size);
+    current.languages.add(sourceLanguage(file.path));
+    modules.set(name, current);
+  }
+  return [...modules.entries()].map(([name, summary]) => ({
+    name,
+    fileCount: summary.fileCount,
+    sourceBytes: summary.sourceBytes,
+    languages: [...summary.languages].sort(),
+  })).sort((left, right) => right.sourceBytes - left.sourceBytes || left.name.localeCompare(right.name));
 }
 
 function extractorFor(candidate: LocalWorkspaceFileRecord["candidates"][number]) {
@@ -334,7 +372,7 @@ export async function enrichWorkspaceCandidateBatch(apiBase: string, apiToken: s
   }
 }
 
-export async function planWorkspaceAnalysis(apiBase: string, apiToken: string, profileId: string, input: { workspaceName: string; mode: "FULL" | "INCREMENTAL"; fileCount: number; candidateCount: number; modules: Array<{ name: string; candidateCount: number; apiCount: number; evidenceRisk: "LOW" | "MEDIUM" | "HIGH" }> }, options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {
+export async function planWorkspaceAnalysis(apiBase: string, apiToken: string, profileId: string, input: { workspaceName: string; mode: "FULL" | "INCREMENTAL"; fileCount: number; modules: WorkspaceSourceModule[] }, options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {
   const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles/${encodeURIComponent(profileId)}/workspace-plan`, {
     method: "POST",
     headers: { ...headers(apiToken, true), accept: "application/x-ndjson, application/json" },

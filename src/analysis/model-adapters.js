@@ -368,15 +368,16 @@ function boundedWorkspacePlan(value) {
   if (!value || typeof value !== "object") throw new TypeError("workspace plan input must be an object");
   const modules = Array.isArray(value.modules) ? value.modules.slice(0, 120).map((module, index) => ({
     name: requiredString(module?.name, `workspace plan module ${index} name`).slice(0, 300),
-    candidateCount: Number.isSafeInteger(module?.candidateCount) && module.candidateCount >= 0 ? module.candidateCount : 0,
-    apiCount: Number.isSafeInteger(module?.apiCount) && module.apiCount >= 0 ? module.apiCount : 0,
-    evidenceRisk: ["LOW", "MEDIUM", "HIGH"].includes(module?.evidenceRisk) ? module.evidenceRisk : "MEDIUM",
+    fileCount: Number.isSafeInteger(module?.fileCount) && module.fileCount >= 0 ? module.fileCount : 0,
+    sourceBytes: Number.isSafeInteger(module?.sourceBytes) && module.sourceBytes >= 0 ? module.sourceBytes : 0,
+    languages: Array.isArray(module?.languages)
+      ? [...new Set(module.languages.filter((language) => typeof language === "string" && language.trim()).map((language) => language.trim().slice(0, 40)))].slice(0, 24)
+      : [],
   })) : [];
   return {
     workspaceName: requiredString(value.workspaceName, "workspace plan workspaceName").slice(0, 200),
     mode: value.mode === "INCREMENTAL" ? "INCREMENTAL" : "FULL",
     fileCount: Number.isSafeInteger(value.fileCount) && value.fileCount >= 0 ? value.fileCount : 0,
-    candidateCount: Number.isSafeInteger(value.candidateCount) && value.candidateCount >= 0 ? value.candidateCount : 0,
     modules,
   };
 }
@@ -513,8 +514,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
           role: "system",
           content: [
             "You are Traqen's main Workspace orchestration agent.",
-            "Create exactly three parallel child-agent assignments from the supplied module summary.",
-            "Balance candidate volume while keeping related modules together. Use only supplied module names.",
+            "Create exactly three parallel child-agent assignments from the supplied repository source manifest.",
+            "The manifest is independent of scanner candidates. Balance source volume and languages while keeping related modules together. Use only supplied module names.",
             "Return JSON only with agentMessage and taskAssignments.",
             "agentMessage is a concise user-visible plan, not private reasoning. Do not quote prompts or source code.",
           ].join(" "),
@@ -522,7 +523,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
         {
           role: "user",
           content: JSON.stringify({
-            task: "Plan three bounded child-agent queues for Workspace semantic analysis.",
+            task: "Plan three bounded source-analysis queues without using deterministic scanner candidates as the task map.",
             workspace: input,
             outputContract: {
               agentMessage: "public orchestration plan",

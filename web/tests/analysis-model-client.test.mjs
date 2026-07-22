@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches } from "../app/analysis-model-client.ts";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule } from "../app/analysis-model-client.ts";
 
 test("normalizes common OpenAI-compatible API base URLs without changing full endpoints", () => {
   assert.equal(normalizeChatCompletionsEndpoint("https://api.example.com/v1"), "https://api.example.com/v1/chat/completions");
@@ -132,10 +132,23 @@ test("streams a validated Main Agent plan with exactly three child assignments",
   ].map((message) => `${JSON.stringify(message)}\n`).join(""), { status: 200, headers: { "content-type": "application/x-ndjson" } });
   try {
     const telemetry = [];
-    const plan = await planWorkspaceAnalysis("http://127.0.0.1:3100", "", "model-a", { workspaceName: "Traqen", mode: "FULL", fileCount: 10, candidateCount: 3, modules: [] }, { onTelemetry: (event) => telemetry.push(event) });
+    const plan = await planWorkspaceAnalysis("http://127.0.0.1:3100", "", "model-a", { workspaceName: "Traqen", mode: "FULL", fileCount: 10, modules: [] }, { onTelemetry: (event) => telemetry.push(event) });
     assert.equal(plan.taskAssignments.length, 3);
     assert.equal(telemetry[0].assistantMessage, "Planning three queues");
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("builds Main Agent partitions from the repository source manifest rather than scanner candidates", () => {
+  const manifest = workspaceSourceManifest([
+    { path: "services/orders/src/OrderService.java", size: 800 },
+    { path: "services/orders/src/OrderController.java", size: 500 },
+    { path: "packages/web/app/page.tsx", size: 300 },
+  ]);
+  assert.equal(workspaceSourceModule("services/orders/src/OrderService.java"), "services/orders");
+  assert.deepEqual(manifest, [
+    { name: "services/orders", fileCount: 2, sourceBytes: 1300, languages: ["java"] },
+    { name: "packages/web", fileCount: 1, sourceBytes: 300, languages: ["tsx"] },
+  ]);
 });

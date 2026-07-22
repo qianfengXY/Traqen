@@ -8,7 +8,7 @@ The Analysis Agent is Traqen's core source-understanding capability and the succ
 
 ## Non-negotiable invariants
 
-1. Deterministic extraction precedes semantic inference. Every model or Skill conclusion cites Facts from one bounded WorkUnit.
+1. Freeze one Source Snapshot, then run deterministic extraction and source-analysis Skills independently. Scanner candidates cannot become a Skill's input answers or decide which capabilities the Skill is allowed to see; the lanes meet only during reconciliation.
 2. Context is bounded per WorkUnit. A repository can contain 100,000 or more files without placing the whole project into one model context.
 3. A checkpoint is persisted after every server WorkUnit. The local browser workflow checkpoints bounded file batches and can reuse them after the same directory is selected again.
 4. The first run is full. Later `AUTO` runs use the latest completed result as the incremental baseline; callers can also explicitly request `FULL` or `INCREMENTAL`.
@@ -20,7 +20,11 @@ The Analysis Agent is Traqen's core source-understanding capability and the succ
 
 ## Pipeline
 
-`Source snapshot → deterministic Fact graph → bounded WorkUnits → deterministic candidates → optional model/Skills → evidence validation → stable Feature reconciliation → current result + immutable history`
+`Source snapshot → [deterministic Fact extraction || direct-source Skills] → multi-source candidate reconciliation → preliminary conclusions → evidence validation → stable Feature reconciliation → current result + immutable history`
+
+The Main Agent's task map comes only from a scanner-independent Source Manifest: paths, modules, languages, file sizes, dependency manifests, and the incremental change set. Planning Skills from scanner-discovered “features” would turn every scanner miss into an Agent blind spot. The deterministic scanner, ECC-class repository-understanding Skills, and Specone-class specification-reverse Skills start independently from the same Snapshot. The Main Agent then labels their relationship as `CORROBORATED`, `SCANNER_ONLY`, `SKILL_ONLY`, `CONFLICT`, or `INSUFFICIENT_EVIDENCE`.
+
+A direct-source Skill does not receive arbitrary filesystem access. Traqen first supplies a bounded Source Manifest; the Skill requests specific `SourceSlice` objects through a controlled read protocol. Every slice is path/line locatable, budgeted, and Snapshot-bound. This lets a Skill discover code the scanner missed without placing 100,000 files in one context. Two Skills backed by the same model or prompt family are correlated sources, not independent corroboration, and that relationship remains explicit in provenance.
 
 The server-side deterministic scanner currently extracts JavaScript/Node and Java source. Java uses a Tree-sitter-compatible AST through ast-grep and recognizes Spring and JAX-RS endpoints, controller/service/repository roles, methods, DTO/entity types, security and validation annotations, method calls, and configuration references. JavaScript extraction preserves routes, symbols, guards, state changes, SQL relations, configuration, and tests. Both produce the same language-neutral Fact contract. The browser directory workflow is a separate lightweight path: its current Java and multi-language discovery includes declaration patterns and must identify them as heuristic rather than claiming AST verification.
 
@@ -52,7 +56,7 @@ Example:
 ]
 ```
 
-The built-in Specone- and GSD-compatible reference adapters can be selected as bounded Analysis Skills. Their output remains provenance-bearing candidate knowledge, not a Claim or confirmation.
+The built-in `specone-reference` and `gsd-reference` adapters only exercise the common protocol and still consume deterministic Fact packages. They are not external Specone/GSD integrations and do not count as independent source analysis. Real ECC, Specone, or other repository-analysis capabilities must be registered as signed, version-pinned external Skill/Agent Runtime adapters with declared source-read, model, network, and incremental capabilities. When an adapter is unavailable or unauthorized, the UI reports `NOT_CONFIGURED`; it must not pretend that a fallback executed that Skill. All outputs remain provenance-bearing candidate knowledge, never Claims or confirmations.
 
 ## Incremental and authority behavior
 
@@ -91,7 +95,7 @@ The browser requires a verified model profile before starting a new Workspace an
 
 Model classifications carry an evidence-policy version. When confidence or validation rules change, older classifications are re-enriched even if the source file and model profile are unchanged; legacy results cannot silently bypass the current evidence policy.
 
-The analysis surface is a real bounded Agent session rather than a relabeled sequential log. A streaming Main Agent conversation sits above exactly three child-Agent windows. After deterministic extraction, the Main Agent calls the selected model for a public three-way plan, validates exactly three assignments, distributes module-oriented work units, controls pause/completion, and summarizes results. The three child queues call the selected model concurrently; each window independently shows its assignment, progress, current work unit, public model-authored `agentMessage`, evidence validation, checkpoint, and errors.
+The analysis surface is a real bounded Agent session rather than a relabeled sequential log. A streaming Main Agent conversation sits above exactly three child-Agent windows. All four windows have a fixed visible height and scroll internally, so long runs never grow the page without bound. The child tasks are `deterministic Fact extraction`, `repository source-understanding Skill (ECC class)`, and `specification-reverse Skill (Specone class)`. They work independently from the same Source Manifest; the Main Agent controls their lifecycle, pause, generation handoff, and final reconciliation. If an external Skill is not configured, its window explicitly reports that absence instead of substituting scanner candidates.
 
 Every child slot has a generation and a context-character safety budget. At 70% of the configured local budget, the worker stops claiming new work after its current atomic unit, saves a compact handoff/checkpoint, retires that generation, and starts the next generation in the same visual slot. Completed work units retain their model classification and are not repeated. This local orchestration is native Traqen behavior; Claude Code or Codex CLI can later be added behind the same runtime/event boundary but are not required to obtain the interaction model.
 

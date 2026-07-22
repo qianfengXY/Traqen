@@ -112,11 +112,10 @@ test("Main Agent creates exactly three evidence-bounded child assignments with a
     workspaceName: "Traqen",
     mode: "FULL",
     fileCount: 100,
-    candidateCount: 30,
     modules: [
-      { name: "orders", candidateCount: 10, apiCount: 2, evidenceRisk: "LOW" },
-      { name: "billing", candidateCount: 10, apiCount: 1, evidenceRisk: "MEDIUM" },
-      { name: "api", candidateCount: 10, apiCount: 10, evidenceRisk: "LOW" },
+      { name: "orders", fileCount: 10, sourceBytes: 12_000, languages: ["java"] },
+      { name: "billing", fileCount: 10, sourceBytes: 16_000, languages: ["java", "xml"] },
+      { name: "api", fileCount: 10, sourceBytes: 9_000, languages: ["ts"] },
     ],
   }, { onTelemetry: (event) => telemetry.push(event) });
   assert.equal(result.taskAssignments.length, 3);
