@@ -3,6 +3,7 @@
 import { useTheme, type Theme } from "../../theme-context";
 
 const themes: Array<{ key: Theme; label: string; dot: string }> = [
+  { key: "enterprise", label: "Enterprise", dot: "#2563eb" },
   { key: "apple", label: "Apple", dot: "#007aff" },
   { key: "warm", label: "Warm", dot: "#d97706" },
   { key: "fresh", label: "Fresh", dot: "#10b981" },

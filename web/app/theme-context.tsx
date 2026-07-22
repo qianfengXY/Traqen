@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 
-export type Theme = "apple" | "warm" | "fresh" | "minimal";
+export type Theme = "enterprise" | "apple" | "warm" | "fresh" | "minimal";
 
 const ThemeContext = createContext<{
   theme: Theme;
@@ -18,7 +18,7 @@ function getInitialTheme(): Theme {
   if (typeof window === "undefined") return "apple";
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored && ["apple", "warm", "fresh", "minimal"].includes(stored)) return stored;
+    if (stored && ["enterprise", "apple", "warm", "fresh", "minimal"].includes(stored)) return stored;
   } catch {
     // ignore
   }

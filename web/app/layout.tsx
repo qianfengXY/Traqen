@@ -33,7 +33,7 @@ const themeInitScript = `
   (function() {
     try {
       var theme = window.localStorage.getItem("traqen-theme");
-      if (theme && ["apple","warm","fresh","minimal"].includes(theme)) {
+      if (theme && ["enterprise","apple","warm","fresh","minimal"].includes(theme)) {
         document.documentElement.setAttribute("data-theme", theme);
       }
     } catch (e) {}
