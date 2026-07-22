@@ -8,6 +8,11 @@ import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, ty
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
+import { Sidebar } from "./components/layout/sidebar";
+import { Topbar } from "./components/layout/topbar";
+import { WorkspaceManagerPanel } from "./components/layout/workspace-manager-panel";
+import { AnalysisModelPanel } from "./components/layout/analysis-model-panel";
+import { ApiConnectionPanel } from "./components/layout/api-connection-panel";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
@@ -1539,155 +1544,202 @@ export function TraqenProduct() {
     }
   }
 
+  const sidebarLabels = {
+    manageVisibilityAriaLabel: t("管理 Workspace 展示", "Manage Workspace visibility"),
+    createWorkspaceAriaLabel: t("新建 Workspace", "Create Workspace"),
+    workspaceLabel: "Workspace",
+    featuresSuffix: t("功能", "features"),
+    self: "SELF",
+    shownProjectsAriaLabel: t("显示中的本地 Workspace 项目", "Visible local Workspace projects"),
+    removeProjectAriaLabel: (name: string) => t(`从展示中移出 ${name}`, `Remove ${name} from display`),
+    removeProjectTitle: t("移出展示（保留分析数据）", "Remove from display (keep analysis data)"),
+    hide: t("移出", "Hide"),
+    navAriaLabel: t("产品导航", "Product navigation"),
+    northStarTitle: t("北极星", "North star"),
+    northStarBody: t("从当前部署证据反向证明业务规则，而不是统计生成了多少文档或测试。", "Prove business rules from current-deployment evidence, rather than counting generated documents or tests."),
+    navItems: [
+      { key: "workspace" as const, icon: "⌘", label: t("Workspace 分析", "Workspace analysis") },
+      { key: "trace" as const, icon: "→", label: t("功能追溯", "Feature traceability") },
+      { key: "graph" as const, icon: "◎", label: t("追溯图谱", "Trace graph") },
+      { key: "review" as const, icon: "✓", label: t("声明审核", "Claim review") },
+      { key: "impact" as const, icon: "△", label: t("变更影响", "Change impact") },
+      { key: "metrics" as const, icon: "▦", label: t("效果指标", "Effectiveness metrics") },
+    ],
+  };
+
+  const topbarLabels = {
+    breadcrumb: {
+      workspace: t("Workspace 分析", "Workspace analysis"),
+      trace: t("功能追溯", "Feature traceability"),
+      graph: t("追溯图谱", "Trace graph"),
+      review: t("声明审核", "Claim review"),
+      impact: t("变更影响", "Change impact"),
+      metrics: t("效果指标", "Effectiveness metrics"),
+    },
+    selfWorkspace: "SELF WORKSPACE",
+    initialized: t("已初始化", "INITIALIZED"),
+    liveApi: "LIVE API",
+    backToSelfWorkspace: t("返回自 Workspace", "Back to self Workspace"),
+    configureModel: t("配置分析模型", "Configure model"),
+    connectApi: t("连接 Traqen API", "Connect Traqen API"),
+    chinese: "中文",
+    english: "English",
+  };
+
+  const workspaceManagerLabels = {
+    panelAriaLabel: t("Workspace 展示管理", "Workspace visibility management"),
+    eyebrow: "Workspace visibility",
+    title: t("选择要在侧栏展示的项目", "Choose projects shown in the sidebar"),
+    description: t("移出仅隐藏项目并保留扫描结果。隐藏项目只读取轻量摘要，不加载源码索引、功能树和追溯数据；重新勾选后可再次打开。", "Removing only hides a project and keeps its scan results. Hidden projects load only lightweight summaries, not source indexes, Feature trees, or traceability data; select them again to restore access."),
+    done: t("完成", "Done"),
+    noProjects: t("尚无已扫描项目。", "No scanned projects yet."),
+    shown: t("展示", "Shown"),
+    hidden: t("已移出", "Hidden"),
+    featuresSuffix: t("功能", "features"),
+  };
+
+  const analysisModelLabels = {
+    panelAriaLabel: t("分析模型配置", "Analysis model configuration"),
+    eyebrow: "Analysis Agent · LLM",
+    title: t("管理模型并选择当前分析模型", "Manage models and select the active analysis model"),
+    description: t("运行时模型及 API Key 会加密保存在当前设备的 Traqen 配置目录，只需配置一次。浏览器、Workspace 和分析历史都不会保存密钥。", "Runtime models and API keys are encrypted in this device's Traqen configuration directory, so setup is required only once. Secrets are never stored in the browser, Workspace, or analysis history."),
+    statusLabel: (status: typeof analysisModelStatus) =>
+      status === "READY" ? t("已验证", "Verified") :
+      status === "CHECKING" ? t("处理中", "Working") :
+      status === "ERROR" ? t("操作失败", "Failed") :
+      t("待配置", "Not configured"),
+    addModel: t("新增模型", "Add model"),
+    savedModelsAriaLabel: t("已保存模型", "Saved models"),
+    noProfiles: t("尚未保存模型配置。", "No model profiles saved yet."),
+    activeState: t("当前使用", "ACTIVE"),
+    verifiedState: t("已验证", "VERIFIED"),
+    verifyState: t("待验证", "VERIFY"),
+    use: t("设为当前", "Use"),
+    edit: t("编辑", "Edit"),
+    delete: t("删除", "Delete"),
+    environmentDeleteTitle: t("环境变量模型不能在页面删除", "Environment profiles cannot be deleted here"),
+    profileIdLabel: "Profile ID",
+    modelLabel: "Model",
+    modelPlaceholder: "gpt-5-mini / qwen / local model",
+    endpointLabel: "API Base URL / Chat Completions URL",
+    endpointPlaceholder: "https://api.example.com/v1 或 /v1/chat/completions",
+    endpointHint: t("填写服务根地址或以 /v1 结尾的地址时，会自动补全 /chat/completions；也可以直接填写完整接口地址。", "A root URL or URL ending in /v1 is completed to /chat/completions automatically; you may also enter the full endpoint."),
+    apiKeyLabel: "API Key",
+    apiKeyPlaceholderEnvironment: t("环境变量管理；配置未变时可留空验证", "Environment-managed; leave blank to verify unchanged settings"),
+    apiKeyPlaceholderExisting: t("留空则保留已加密保存的 Key", "Leave blank to keep the encrypted saved key"),
+    apiKeyPlaceholderNew: "sk-…",
+    streamLabel: "Stream / SSE",
+    streamHint: t("为只支持流式响应的模型网关发送 stream: true，并在服务端合并增量 JSON。", "Send stream: true for gateways that require streaming responses and merge incremental JSON on the server."),
+    verifying: t("正在验证…", "Verifying…"),
+    saveChangesAndVerify: t("保存修改并验证", "Save changes and verify"),
+    saveAndVerify: t("保存并验证连接", "Save and verify"),
+    refreshServerStatus: t("刷新服务端状态", "Refresh server status"),
+  };
+
+  const apiConnectionLabels = {
+    panelAriaLabel: t("API 连接", "API connection"),
+    apiBaseLabel: "API Base URL",
+    projectIdLabel: "Project ID",
+    featureIdLabel: "Feature ID",
+    snapshotIdLabel: "Snapshot Manifest ID",
+    apiTokenLabel: t("API token（仅保存在当前页面内存）", "API token (kept only in page memory)"),
+    loading: t("加载中…", "Loading…"),
+    discoverAndLoad: t("自动发现并加载", "Discover and load"),
+    loadSpecifiedIds: t("按指定 ID 加载", "Load specified IDs"),
+    loadedMessagePrefixes: ["已加载", "Loaded"] as [string, string],
+  };
+
   return (
     <LanguageContext.Provider value={language}>
       <div className="app-shell">
-        <aside className="sidebar">
-          <div className="brand">
-            <span className="brand-mark">TQ</span>Traqen
-          </div>
-          <div>
-            <div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button aria-label={t("管理 Workspace 展示", "Manage Workspace visibility")} onClick={() => setWorkspaceManagerOpen((value) => !value)}>☷</button><button aria-label={t("新建 Workspace", "Create Workspace")} onClick={startNewWorkspace}>＋</button></div></div>
-            <div className="workspace active-workspace">
-              <strong>{workspaceName}</strong>
-              <small>{liveScenario ? projectId : workspaceProjectId} · {visibleWorkspaceAnalysis ? `${visibleWorkspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
-            </div>
-            {visibleWorkspaceProjects.length > 0 && <div className="workspace-project-list" aria-label={t("显示中的本地 Workspace 项目", "Visible local Workspace projects")}>{visibleWorkspaceProjects.map((project) => <div className={`workspace-project-row ${workspaceAnalysis?.projectId === project.id ? "active" : ""}`} key={project.id}><button className="workspace-project-open" disabled={workspaceProjectLoading} onClick={() => void openStoredWorkspace(project.id)}><strong>{project.name}</strong><small>{project.featureCount} {t("功能", "features")} · {new Date(project.updatedAt).toLocaleDateString(language)}</small></button><button className="workspace-project-remove" aria-label={t(`从展示中移出 ${project.name}`, `Remove ${project.name} from display`)} title={t("移出展示（保留分析数据）", "Remove from display (keep analysis data)")} onClick={() => void changeWorkspaceVisibility(project.id, false)}>{t("移出", "Hide")}</button></div>)}</div>}
-          </div>
-          <nav className="nav" aria-label={t("产品导航", "Product navigation")}>
-            <button className={`nav-button ${view === "workspace" ? "active" : ""}`} onClick={() => setView("workspace")}>
-              <span className="nav-icon">⌘</span>
-              {t("Workspace 分析", "Workspace analysis")}
-            </button>
-            <button className={`nav-button ${view === "trace" ? "active" : ""}`} onClick={() => setView("trace")}>
-              <span className="nav-icon">→</span>
-              {t("功能追溯", "Feature traceability")}
-            </button>
-            <button className={`nav-button ${view === "graph" ? "active" : ""}`} onClick={() => setView("graph")}>
-              <span className="nav-icon">◎</span>
-              {t("追溯图谱", "Trace graph")}
-            </button>
-            <button className={`nav-button ${view === "review" ? "active" : ""}`} onClick={() => setView("review")}>
-              <span className="nav-icon">✓</span>
-              {t("声明审核", "Claim review")}
-            </button>
-            <button className={`nav-button ${view === "impact" ? "active" : ""}`} onClick={() => setView("impact")}>
-              <span className="nav-icon">△</span>
-              {t("变更影响", "Change impact")}
-            </button>
-            <button className={`nav-button ${view === "metrics" ? "active" : ""}`} onClick={() => setView("metrics")}>
-              <span className="nav-icon">▦</span>
-              {t("效果指标", "Effectiveness metrics")}
-            </button>
-          </nav>
-          <div className="sidebar-note">
-            <b>{t("北极星", "North star")}</b>
-            <br />
-            {t("从当前部署证据反向证明业务规则，而不是统计生成了多少文档或测试。", "Prove business rules from current-deployment evidence, rather than counting generated documents or tests.")}
-          </div>
-        </aside>
+        <Sidebar
+          labels={sidebarLabels}
+          language={language}
+          workspaceName={workspaceName}
+          currentProjectId={liveScenario ? projectId : workspaceProjectId}
+          visibleWorkspaceAnalysis={visibleWorkspaceAnalysis}
+          visibleWorkspaceProjects={visibleWorkspaceProjects}
+          workspaceAnalysis={workspaceAnalysis}
+          workspaceProjectLoading={workspaceProjectLoading}
+          view={view}
+          onSetView={setView}
+          onToggleWorkspaceManager={() => setWorkspaceManagerOpen((value) => !value)}
+          onStartNewWorkspace={startNewWorkspace}
+          onOpenStoredWorkspace={openStoredWorkspace}
+          onChangeWorkspaceVisibility={changeWorkspaceVisibility}
+        />
 
         <main className="main">
-          <header className="topbar">
-            <div className="breadcrumb">
-              {workspaceName}&nbsp; / &nbsp;
-              <b>
-                {
-                  {
-                    workspace: t("Workspace 分析", "Workspace analysis"),
-                    trace: t("功能追溯", "Feature traceability"),
-                    graph: t("追溯图谱", "Trace graph"),
-                    review: t("声明审核", "Claim review"),
-                    impact: t("变更影响", "Change impact"),
-                    metrics: t("效果指标", "Effectiveness metrics"),
-                  }[view]
-                }
-              </b>
-            </div>
-            <div className="top-actions">
-              <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>{liveScenario ? "LIVE API" : workspaceAnalysis ? t("已初始化", "INITIALIZED") : "SELF WORKSPACE"}</span>
-              <div className="language-switch" role="group" aria-label={t("全局语言", "Global language")}>
-                <button aria-pressed={language === "zh-CN"} className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>
-                  中文
-                </button>
-                <button aria-pressed={language === "en"} className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>
-                  English
-                </button>
-              </div>
-              {liveScenario && (
-                <button className="button ghost" onClick={() => setLiveScenario(null)}>
-                  {t("返回自 Workspace", "Back to self Workspace")}
-                </button>
-              )}
-              <button className={`button model-connection-button ${analysisModelReady ? "ready" : ""}`} onClick={() => { setAnalysisSettingsOpen((value) => !value); setConnectionOpen(false); }}>
-                <span aria-hidden="true">{analysisModelReady ? "●" : "○"}</span>{analysisModelReady ? activeAnalysisModelProfile?.model : t("配置分析模型", "Configure model")}
-              </button>
-              <button className="button" onClick={() => { setConnectionOpen((value) => !value); setAnalysisSettingsOpen(false); }}>
-                {t("连接 Traqen API", "Connect Traqen API")}
-              </button>
-            </div>
-          </header>
+          <Topbar
+            labels={topbarLabels}
+            workspaceName={workspaceName}
+            view={view}
+            language={language}
+            liveScenario={liveScenario}
+            workspaceAnalysis={workspaceAnalysis}
+            analysisModelReady={analysisModelReady}
+            activeAnalysisModelProfile={activeAnalysisModelProfile}
+            onSetLanguage={setLanguage}
+            onClearLiveScenario={() => setLiveScenario(null)}
+            onToggleAnalysisSettings={() => { setAnalysisSettingsOpen((value) => !value); setConnectionOpen(false); }}
+            onToggleConnection={() => { setConnectionOpen((value) => !value); setAnalysisSettingsOpen(false); }}
+            aria-label={t("全局语言", "Global language")}
+          />
 
           {workspaceManagerOpen && (
-            <section className="panel workspace-manager-panel" aria-label={t("Workspace 展示管理", "Workspace visibility management")}>
-              <div className="panel-head"><div><p className="eyebrow">Workspace visibility</p><h2>{t("选择要在侧栏展示的项目", "Choose projects shown in the sidebar")}</h2><p>{t("移出仅隐藏项目并保留扫描结果。隐藏项目只读取轻量摘要，不加载源码索引、功能树和追溯数据；重新勾选后可再次打开。", "Removing only hides a project and keeps its scan results. Hidden projects load only lightweight summaries, not source indexes, Feature trees, or traceability data; select them again to restore access.")}</p></div><button className="button" onClick={() => setWorkspaceManagerOpen(false)}>{t("完成", "Done")}</button></div>
-              <div className="workspace-visibility-list">
-                {workspaceProjects.length === 0 ? <div className="workspace-stat-empty">{t("尚无已扫描项目。", "No scanned projects yet.")}</div> : workspaceProjects.map((project) => <label key={project.id} className={project.visible ? "visible" : ""}><input type="checkbox" checked={project.visible} onChange={(event) => void changeWorkspaceVisibility(project.id, event.currentTarget.checked)} /><span><b>{project.name}</b><small>{project.id} · {project.featureCount} {t("功能", "features")} · {project.rootName}</small></span><em>{project.visible ? t("展示", "Shown") : t("已移出", "Hidden")}</em></label>)}
-              </div>
-            </section>
+            <WorkspaceManagerPanel
+              labels={workspaceManagerLabels}
+              workspaceProjects={workspaceProjects}
+              onChangeVisibility={changeWorkspaceVisibility}
+              onClose={() => setWorkspaceManagerOpen(false)}
+            />
           )}
 
           {analysisSettingsOpen && (
-            <section className="panel analysis-model-panel" aria-label={t("分析模型配置", "Analysis model configuration")}>
-              <div className="panel-head"><div><p className="eyebrow">Analysis Agent · LLM</p><h2>{t("管理模型并选择当前分析模型", "Manage models and select the active analysis model")}</h2><p>{t("运行时模型及 API Key 会加密保存在当前设备的 Traqen 配置目录，只需配置一次。浏览器、Workspace 和分析历史都不会保存密钥。", "Runtime models and API keys are encrypted in this device's Traqen configuration directory, so setup is required only once. Secrets are never stored in the browser, Workspace, or analysis history.")}</p></div><div className="model-panel-actions"><span className={`model-status ${analysisModelStatus.toLowerCase()}`}>{analysisModelStatus === "READY" ? t("已验证", "Verified") : analysisModelStatus === "CHECKING" ? t("处理中", "Working") : analysisModelStatus === "ERROR" ? t("操作失败", "Failed") : t("待配置", "Not configured")}</span><button className="button" onClick={newAnalysisModel}>{t("新增模型", "Add model")}</button></div></div>
-              <div className="analysis-model-list" aria-label={t("已保存模型", "Saved models")}>
-                {analysisModelProfiles.length === 0 ? <div className="workspace-stat-empty">{t("尚未保存模型配置。", "No model profiles saved yet.")}</div> : analysisModelProfiles.map((profile) => <article className={`analysis-model-card ${profile.active ? "active" : ""}`} key={profile.id}><div><span className="model-card-state">{profile.active ? t("当前使用", "ACTIVE") : profile.ready ? t("已验证", "VERIFIED") : t("待验证", "VERIFY")}</span><strong>{profile.model}</strong><small>{profile.id} · {profile.stream ? "Stream/SSE" : "JSON"} · {profile.endpoint}</small></div><div className="model-card-actions">{!profile.active && <button className="button primary" disabled={!profile.ready} onClick={() => void chooseAnalysisModel(profile.id)}>{t("设为当前", "Use")}</button>}<button className="button" onClick={() => editAnalysisModel(profile)}>{t("编辑", "Edit")}</button><button className="button danger" disabled={profile.source === "ENVIRONMENT"} title={profile.source === "ENVIRONMENT" ? t("环境变量模型不能在页面删除", "Environment profiles cannot be deleted here") : undefined} onClick={() => void deleteAnalysisModel(profile)}>{t("删除", "Delete")}</button></div></article>)}
-              </div>
-              <div className="analysis-model-grid">
-                <div className="field"><label htmlFor="analysis-profile-id">Profile ID</label><input id="analysis-profile-id" value={analysisModelProfileId} onChange={(event) => { setAnalysisModelProfileId(event.target.value); setAnalysisModelStatus("IDLE"); }} /></div>
-                <div className="field"><label htmlFor="analysis-model-name">Model</label><input id="analysis-model-name" placeholder="gpt-5-mini / qwen / local model" value={analysisModelName} onChange={(event) => { setAnalysisModelName(event.target.value); setAnalysisModelStatus("IDLE"); }} /></div>
-                <div className="field full"><label htmlFor="analysis-model-endpoint">API Base URL / Chat Completions URL</label><input id="analysis-model-endpoint" placeholder="https://api.example.com/v1 或 /v1/chat/completions" value={analysisModelEndpoint} onChange={(event) => { setAnalysisModelEndpoint(event.target.value); setAnalysisModelStatus("IDLE"); }} /><small>{t("填写服务根地址或以 /v1 结尾的地址时，会自动补全 /chat/completions；也可以直接填写完整接口地址。", "A root URL or URL ending in /v1 is completed to /chat/completions automatically; you may also enter the full endpoint.")}</small></div>
-                <div className="field full"><label htmlFor="analysis-model-key">API Key</label><input id="analysis-model-key" type="password" autoComplete="off" placeholder={editedAnalysisModelProfile?.source === "ENVIRONMENT" ? t("环境变量管理；配置未变时可留空验证", "Environment-managed; leave blank to verify unchanged settings") : editedAnalysisModelProfile ? t("留空则保留已加密保存的 Key", "Leave blank to keep the encrypted saved key") : "sk-…"} value={analysisModelApiKey} onChange={(event) => setAnalysisModelApiKey(event.target.value)} /></div>
-                <label className="model-stream-toggle full" htmlFor="analysis-model-stream"><input id="analysis-model-stream" type="checkbox" checked={analysisModelStream} onChange={(event) => { setAnalysisModelStream(event.currentTarget.checked); setAnalysisModelStatus("IDLE"); }} /><span><b>Stream / SSE</b><small>{t("为只支持流式响应的模型网关发送 stream: true，并在服务端合并增量 JSON。", "Send stream: true for gateways that require streaming responses and merge incremental JSON on the server.")}</small></span></label>
-              </div>
-              <div className="connection-actions"><button className="button primary" disabled={analysisModelStatus === "CHECKING" || !analysisModelProfileId.trim() || !analysisModelEndpoint.trim() || !analysisModelName.trim() || (!analysisModelApiKey.trim() && !canReuseAnalysisModelCredential)} onClick={() => void connectAnalysisModel()}>{analysisModelStatus === "CHECKING" ? t("正在验证…", "Verifying…") : editedAnalysisModelProfile ? t("保存修改并验证", "Save changes and verify") : t("保存并验证连接", "Save and verify")}</button><button className="button" onClick={() => void refreshAnalysisModelProfile()}>{t("刷新服务端状态", "Refresh server status")}</button>{analysisModelMessage && <span className={`form-message ${analysisModelStatus === "ERROR" ? "error" : ""}`}>{analysisModelMessage}</span>}</div>
-            </section>
+            <AnalysisModelPanel
+              labels={analysisModelLabels}
+              analysisModelProfiles={analysisModelProfiles}
+              analysisModelProfileId={analysisModelProfileId}
+              analysisModelName={analysisModelName}
+              analysisModelEndpoint={analysisModelEndpoint}
+              analysisModelApiKey={analysisModelApiKey}
+              analysisModelStream={analysisModelStream}
+              analysisModelStatus={analysisModelStatus}
+              analysisModelMessage={analysisModelMessage}
+              editedAnalysisModelProfile={editedAnalysisModelProfile}
+              canReuseAnalysisModelCredential={canReuseAnalysisModelCredential}
+              onProfileIdChange={(value) => { setAnalysisModelProfileId(value); setAnalysisModelStatus("IDLE"); }}
+              onNameChange={(value) => { setAnalysisModelName(value); setAnalysisModelStatus("IDLE"); }}
+              onEndpointChange={(value) => { setAnalysisModelEndpoint(value); setAnalysisModelStatus("IDLE"); }}
+              onApiKeyChange={setAnalysisModelApiKey}
+              onStreamChange={(value) => { setAnalysisModelStream(value); setAnalysisModelStatus("IDLE"); }}
+              onConnect={connectAnalysisModel}
+              onRefresh={refreshAnalysisModelProfile}
+              onNew={newAnalysisModel}
+              onEdit={editAnalysisModel}
+              onChoose={chooseAnalysisModel}
+              onDelete={deleteAnalysisModel}
+            />
           )}
 
           {connectionOpen && (
-            <section className="panel connection-panel" aria-label={t("API 连接", "API connection")}>
-              <div className="connection-grid">
-                <div className="field full">
-                  <label htmlFor="api-base">API Base URL</label>
-                  <input id="api-base" value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
-                </div>
-                <div className="field">
-                  <label htmlFor="project-id">Project ID</label>
-                  <input id="project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} />
-                </div>
-                <div className="field">
-                  <label htmlFor="feature-id">Feature ID</label>
-                  <input id="feature-id" value={featureId} onChange={(event) => setFeatureId(event.target.value)} />
-                </div>
-                <div className="field full">
-                  <label htmlFor="snapshot-id">Snapshot Manifest ID</label>
-                  <input id="snapshot-id" value={snapshotId} onChange={(event) => setSnapshotId(event.target.value)} />
-                </div>
-                <div className="field full">
-                  <label htmlFor="api-token">{t("API token（仅保存在当前页面内存）", "API token (kept only in page memory)")}</label>
-                  <input id="api-token" type="password" autoComplete="off" value={apiToken} onChange={(event) => setApiToken(event.target.value)} />
-                </div>
-              </div>
-              <div className="connection-actions">
-                <button className="button primary" disabled={loading} onClick={() => void discoverAndLoadTraceability()}>
-                  {loading ? t("加载中…", "Loading…") : t("自动发现并加载", "Discover and load")}
-                </button>
-                <button className="button" disabled={loading} onClick={() => void loadTraceability()}>
-                  {t("按指定 ID 加载", "Load specified IDs")}
-                </button>
-                {message && <span className={`form-message ${message.startsWith("已加载") || message.startsWith("Loaded") ? "" : "error"}`}>{message}</span>}
-              </div>
-            </section>
+            <ApiConnectionPanel
+              labels={apiConnectionLabels}
+              apiBase={apiBase}
+              projectId={projectId}
+              featureId={featureId}
+              snapshotId={snapshotId}
+              apiToken={apiToken}
+              loading={loading}
+              message={message}
+              onApiBaseChange={setApiBase}
+              onProjectIdChange={setProjectId}
+              onFeatureIdChange={setFeatureId}
+              onSnapshotIdChange={setSnapshotId}
+              onApiTokenChange={setApiToken}
+              onDiscoverAndLoad={discoverAndLoadTraceability}
+              onLoad={loadTraceability}
+            />
           )}
 
           {view === "workspace" && <WorkspaceAnalysisView workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} projectId={workspaceProjectId} setProjectId={setWorkspaceProjectId} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
