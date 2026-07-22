@@ -2055,6 +2055,7 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
     id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
   })));
   const [showTechnicalDiagnostics, setShowTechnicalDiagnostics] = useState(false);
+  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
   const [taskClock, setTaskClock] = useState(() => Date.now());
 
   useEffect(() => {
@@ -2497,32 +2498,36 @@ function WorkspaceAnalysisView({ workspaceName, setWorkspaceName, projectId, set
           <div className="missing"><span>Specone · {t("规格逆向 Skill", "specification Skill")}</span><b>{t("未配置", "NOT CONFIGURED")}</b><small>{t("内置 reference 仅验证协议，不算真实集成", "The built-in reference only validates the protocol and is not a real integration")}</small></div>
         </section>
         <section className={`analysis-task-console ${analysisTask?.status.toLowerCase() ?? "ready"}`} aria-label={t("分析 Agent 会话", "Analysis Agent session")}>
-          <header><div><p className="eyebrow">Analysis Agent session</p><h3>{analysisTask?.title ?? t("等待创建主任务", "Ready to create the main task")}</h3><small>{analysisTask ? `${term(analysisTask.mode)} · ${analysisTask.model} · ${analysisTask.id}` : t("选择工程和当前模型后，Agent 会自动规划并执行主任务。", "Select a project and active model; the Agent will plan and execute the main task automatically.")}</small></div><div className="analysis-task-header-actions"><button className={`task-diagnostics-toggle ${showTechnicalDiagnostics ? "active" : ""}`} type="button" onClick={() => setShowTechnicalDiagnostics((current) => !current)}>{showTechnicalDiagnostics ? t("关闭技术诊断", "Hide technical diagnostics") : t("技术诊断", "Technical diagnostics")}</button><span className={`task-status ${analysisTask?.status.toLowerCase() ?? "ready"}`}>{analysisTask ? term(analysisTask.status) : t("就绪", "READY")}</span></div></header>
-          <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("模型子任务", "Model subtasks")}</small><b>{analysisTask ? `${analysisTask.modelCallsCompleted} / ${analysisTask.modelCallsTotal}` : "—"}</b></div></div>
-          {showTechnicalDiagnostics && <div className="analysis-task-technical-metrics"><div><small>{t("阶段计数", "Phase count")}</small><b>{analysisTask ? `${analysisTask.phaseCompleted.toLocaleString()} / ${analysisTask.phaseTotal.toLocaleString()}` : "—"}</b></div><div><small>{t("请求 I/O", "Request I/O")}</small><b>{analysisTask ? `${analysisTask.inputCharacters.toLocaleString()} / ${analysisTask.outputCharacters.toLocaleString()}` : "—"}</b></div><div><small>Token</small><b>{analysisTask?.totalTokens != null ? analysisTask.totalTokens.toLocaleString() : "—"}</b></div><div><small>Request ID</small><b title={analysisTask?.activeRequestId ?? ""}>{analysisTask?.activeRequestId?.split(":").at(-1) ?? "—"}</b></div></div>}
-          <div className="analysis-task-overall"><span style={{ width: `${analysisTask?.overallProgress ?? 0}%` }} /></div>
-          <div className="agent-conversation-layout">
-            <section className="agent-conversation-window main-agent-window">
-              <header><div><span className="agent-live-dot" /><p><b>{t("主 Agent 对话", "Main Agent conversation")}</b><small>{t("规划 · 分派 · 生命周期控制 · 汇总", "Plan · assign · lifecycle control · summarize")}</small></p></div><em>{analysisTask?.status ? term(analysisTask.status) : t("等待", "Waiting")}</em></header>
-              <ol className="analysis-task-plan compact">{taskStepDefinitions.map((step, index) => { const done = Boolean(analysisTask) && (analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index); const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.id}><i>{done ? "✓" : active ? "●" : index + 1}</i><span><b>{step.label}</b></span></li>; })}</ol>
-              <div className="agent-transcript main-transcript" role="log" aria-live="polite">
-                {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <article className={`agent-message actor-${event.role.toLowerCase()} ${event.kind === "WARNING" ? "warning" : ""}`} key={event.id}><div><b>{activityRoleLabel(event.role)}</b><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time></div><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</article>) : <p className="task-log-empty">{t("主任务启动后，这里会流式显示主 Agent 与模型的公开对话、任务分配和三个子 Agent 的汇总。", "After the main task starts, this window streams the public Main-Agent/model conversation, task assignments, and summaries from all three child Agents.")}</p>}
-                {mainModelMessage && <article className={`agent-message actor-model ${mainModelStreaming ? "streaming" : ""}`}><div><b>{t("模型", "Model")}</b><span>{mainModelStreaming ? t("流式回复", "Streaming") : t("阶段结论", "Stage result")}</span></div><p>{mainModelMessage}</p></article>}
-              </div>
-              <footer><span className="task-pulse" /><small>{analysisTask?.currentWork ?? t("等待主任务启动", "Waiting for the main task to start")}</small><em>{t("公开执行过程，不展示隐藏思维链", "Public execution only; hidden chain-of-thought is not shown")}</em></footer>
-            </section>
-            <div className="sub-agent-deck" aria-label={t("三个子 Agent 对话", "Three child-Agent conversations")}>
-              {subAgents.map((agent) => <section className={`agent-conversation-window sub-agent-window status-${agent.status.toLowerCase()}`} key={agent.id}>
-                <header><div><span className="agent-live-dot" /><p><b>{t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`)}</b><small>{agent.id} · Generation {agent.generation}</small></p></div><em>{term(agent.status)}</em></header>
-                <div className="sub-agent-objective"><b>{agent.objective}</b><small>{agent.currentTask}</small></div>
-                <div className="sub-agent-progress"><span style={{ width: `${Math.round((agent.completedTasks / Math.max(1, agent.totalTasks)) * 100)}%` }} /><small>{agent.completedTasks} / {agent.totalTasks}</small></div>
-                <div className="agent-transcript" role="log" aria-live="polite">
-                  {agent.messages.length ? agent.messages.map((item) => <article className={`agent-message actor-${item.actor.toLowerCase()} ${item.warning ? "warning" : ""} ${item.streaming ? "streaming" : ""}`} key={item.id}><div><b>{item.actor === "AGENT" ? t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`) : item.actor === "MODEL" ? t("模型", "Model") : item.actor === "VALIDATOR" ? t("验证器", "Validator") : t("系统", "System")}</b><time>{new Date(item.at).toLocaleTimeString()}</time></div><p>{item.text}</p></article>) : <p className="task-log-empty">{t("等待主 Agent 分配工作单元。", "Waiting for the Main Agent to assign a work unit.")}</p>}
+          <header><div><p className="eyebrow">Analysis Agent session</p><h3>{analysisTask?.title ?? t("等待创建主任务", "Ready to create the main task")}</h3><small>{analysisTask ? `${term(analysisTask.mode)} · ${analysisTask.model} · ${analysisTask.id}` : t("选择工程和当前模型后，Agent 会自动规划并执行主任务。", "Select a project and active model; the Agent will plan and execute the main task automatically.")}</small></div><div className="analysis-task-header-actions"><button className={`task-diagnostics-toggle ${showTechnicalDiagnostics ? "active" : ""}`} type="button" onClick={() => setShowTechnicalDiagnostics((current) => !current)}>{showTechnicalDiagnostics ? t("关闭技术诊断", "Hide technical diagnostics") : t("技术诊断", "Technical diagnostics")}</button><button className="task-diagnostics-toggle" type="button" aria-expanded={!consoleCollapsed} onClick={() => setConsoleCollapsed((current) => !current)}>{consoleCollapsed ? t("展开会话", "Expand session") : t("收起会话", "Collapse session")}</button><span className={`task-status ${analysisTask?.status.toLowerCase() ?? "ready"}`}>{analysisTask ? term(analysisTask.status) : t("就绪", "READY")}</span></div></header>
+          {!consoleCollapsed && (
+            <>
+              <div className="analysis-task-metrics"><div><small>{t("总执行进度", "Overall progress")}</small><b>{analysisTask?.overallProgress ?? 0}%</b></div><div><small>{t("累计耗时", "Elapsed")}</small><b>{analysisDuration(taskElapsed)}</b></div><div><small>{t("当前阶段", "Current phase")}</small><b>{analysisTask ? term(analysisTask.phase) : "—"}</b></div><div><small>{t("模型子任务", "Model subtasks")}</small><b>{analysisTask ? `${analysisTask.modelCallsCompleted} / ${analysisTask.modelCallsTotal}` : "—"}</b></div></div>
+              {showTechnicalDiagnostics && <div className="analysis-task-technical-metrics"><div><small>{t("阶段计数", "Phase count")}</small><b>{analysisTask ? `${analysisTask.phaseCompleted.toLocaleString()} / ${analysisTask.phaseTotal.toLocaleString()}` : "—"}</b></div><div><small>{t("请求 I/O", "Request I/O")}</small><b>{analysisTask ? `${analysisTask.inputCharacters.toLocaleString()} / ${analysisTask.outputCharacters.toLocaleString()}` : "—"}</b></div><div><small>Token</small><b>{analysisTask?.totalTokens != null ? analysisTask.totalTokens.toLocaleString() : "—"}</b></div><div><small>Request ID</small><b title={analysisTask?.activeRequestId ?? ""}>{analysisTask?.activeRequestId?.split(":").at(-1) ?? "—"}</b></div></div>}
+              <div className="analysis-task-overall"><span style={{ width: `${analysisTask?.overallProgress ?? 0}%` }} /></div>
+              <div className="agent-conversation-layout">
+                <section className="agent-conversation-window main-agent-window">
+                  <header><div><span className="agent-live-dot" /><p><b>{t("主 Agent 对话", "Main Agent conversation")}</b><small>{t("规划 · 分派 · 生命周期控制 · 汇总", "Plan · assign · lifecycle control · summarize")}</small></p></div><em>{analysisTask?.status ? term(analysisTask.status) : t("等待", "Waiting")}</em></header>
+                  <ol className="analysis-task-plan compact">{taskStepDefinitions.map((step, index) => { const done = Boolean(analysisTask) && (analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index); const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.id}><i>{done ? "✓" : active ? "●" : index + 1}</i><span><b>{step.label}</b></span></li>; })}</ol>
+                  <div className="agent-transcript main-transcript" role="log" aria-live="polite">
+                    {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <article className={`agent-message actor-${event.role.toLowerCase()} ${event.kind === "WARNING" ? "warning" : ""}`} key={event.id}><div><b>{activityRoleLabel(event.role)}</b><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time></div><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</article>) : <p className="task-log-empty">{t("主任务启动后，这里会流式显示主 Agent 与模型的公开对话、任务分配和三个子 Agent 的汇总。", "After the main task starts, this window streams the public Main-Agent/model conversation, task assignments, and summaries from all three child Agents.")}</p>}
+                    {mainModelMessage && <article className={`agent-message actor-model ${mainModelStreaming ? "streaming" : ""}`}><div><b>{t("模型", "Model")}</b><span>{mainModelStreaming ? t("流式回复", "Streaming") : t("阶段结论", "Stage result")}</span></div><p>{mainModelMessage}</p></article>}
+                  </div>
+                  <footer><span className="task-pulse" /><small>{analysisTask?.currentWork ?? t("等待主任务启动", "Waiting for the main task to start")}</small><em>{t("公开执行过程，不展示隐藏思维链", "Public execution only; hidden chain-of-thought is not shown")}</em></footer>
+                </section>
+                <div className="sub-agent-deck" aria-label={t("三个子 Agent 对话", "Three child-Agent conversations")}>
+                  {subAgents.map((agent) => <section className={`agent-conversation-window sub-agent-window status-${agent.status.toLowerCase()}`} key={agent.id}>
+                    <header><div><span className="agent-live-dot" /><p><b>{t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`)}</b><small>{agent.id} · Generation {agent.generation}</small></p></div><em>{term(agent.status)}</em></header>
+                    <div className="sub-agent-objective"><b>{agent.objective}</b><small>{agent.currentTask}</small></div>
+                    <div className="sub-agent-progress"><span style={{ width: `${Math.round((agent.completedTasks / Math.max(1, agent.totalTasks)) * 100)}%` }} /><small>{agent.completedTasks} / {agent.totalTasks}</small></div>
+                    <div className="agent-transcript" role="log" aria-live="polite">
+                      {agent.messages.length ? agent.messages.map((item) => <article className={`agent-message actor-${item.actor.toLowerCase()} ${item.warning ? "warning" : ""} ${item.streaming ? "streaming" : ""}`} key={item.id}><div><b>{item.actor === "AGENT" ? t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`) : item.actor === "MODEL" ? t("模型", "Model") : item.actor === "VALIDATOR" ? t("验证器", "Validator") : t("系统", "System")}</b><time>{new Date(item.at).toLocaleTimeString()}</time></div><p>{item.text}</p></article>) : <p className="task-log-empty">{t("等待主 Agent 分配工作单元。", "Waiting for the Main Agent to assign a work unit.")}</p>}
+                    </div>
+                    <footer><span>{t("上下文", "Context")} {Math.min(100, Math.round((agent.contextCharacters / agent.contextLimit) * 100))}%</span><span>{t("任务", "Tasks")} {agent.completedTasks}/{agent.totalTasks}</span><span>G{agent.generation}</span></footer>
+                  </section>)}
                 </div>
-                <footer><span>{t("上下文", "Context")} {Math.min(100, Math.round((agent.contextCharacters / agent.contextLimit) * 100))}%</span><span>{t("任务", "Tasks")} {agent.completedTasks}/{agent.totalTasks}</span><span>G{agent.generation}</span></footer>
-              </section>)}
-            </div>
-          </div>
+              </div>
+            </>
+          )}
         </section>
         {analysis && <div className="workspace-initialized-actions"><span>{t("初始化完成：Workspace 已成为全局导航上下文。", "Initialization complete: this Workspace is now the global navigation context.")}</span><button className="button primary" onClick={onOpenTrace}>{t("进入功能追溯", "Open feature traceability")}</button></div>}
       </section>
@@ -2870,43 +2875,47 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
           </div>
           <span className={`mode-badge ${remoteGraph || workspaceGraph ? "live" : ""}`}>{remoteGraph ? "LIVE GRAPH" : workspaceGraph ? t("当前 Workspace", "ACTIVE WORKSPACE") : "SELF WORKSPACE"}</span>
         </div>
-        <div className="graph-presets" aria-label={t("图谱预设视图", "Graph view presets")}>
-          {(["traceability", "business", "implementation", "coverage"] as GraphViewPreset[]).map((item) => (
-            <button key={item} className={preset === item ? "active" : ""} onClick={() => changePreset(item)}>
-              {
-                (
-                  {
-                    traceability: t("产品追溯", "Traceability"),
-                    business: t("业务流程", "Business flow"),
-                    implementation: t("实现依赖", "Implementation"),
-                    coverage: t("测试覆盖", "Test coverage"),
-                  } as Record<GraphViewPreset, string>
-                )[item]
-              }
+        <div className="graph-toolbar-body">
+          <div className="graph-presets" aria-label={t("图谱预设视图", "Graph view presets")}>
+            <span className="graph-toolbar-label">{t("视图", "View")}</span>
+            {(["traceability", "business", "implementation", "coverage"] as GraphViewPreset[]).map((item) => (
+              <button key={item} className={preset === item ? "active" : ""} onClick={() => changePreset(item)}>
+                {
+                  (
+                    {
+                      traceability: t("产品追溯", "Traceability"),
+                      business: t("业务流程", "Business flow"),
+                      implementation: t("实现依赖", "Implementation"),
+                      coverage: t("测试覆盖", "Test coverage"),
+                    } as Record<GraphViewPreset, string>
+                  )[item]
+                }
+              </button>
+            ))}
+          </div>
+          <div className="graph-filter-row">
+            <span className="graph-toolbar-label">{t("过滤", "Filter")}</span>
+            <div className="field">
+              <label htmlFor="graph-depth">{t("展开深度", "Expansion depth")}</label>
+              <select id="graph-depth" value={depth} onChange={(event) => setDepth(Number(event.target.value))}>
+                <option value={1}>{t("1 层", "1 level")}</option>
+                <option value={2}>{t("2 层", "2 levels")}</option>
+                <option value={4}>{t("4 层", "4 levels")}</option>
+                <option value={8}>{t("8 层（完整路径上限）", "8 levels (full-path limit)")}</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="graph-node-types">{t("节点类型过滤（逗号分隔）", "Node type filter (comma-separated)")}</label>
+              <input id="graph-node-types" placeholder="CLAIM,TEST_SPEC,EVIDENCE" value={nodeTypes} onChange={(event) => setNodeTypes(event.target.value)} />
+            </div>
+            <div className="field">
+              <label htmlFor="graph-relations">{t("关系过滤（逗号分隔）", "Relationship filter (comma-separated)")}</label>
+              <input id="graph-relations" placeholder="VERIFIED_BY,PROVED_BY" value={relations} onChange={(event) => setRelations(event.target.value)} />
+            </div>
+            <button className="button primary" disabled={loading} onClick={() => void loadGraph()}>
+              {loading ? t("加载中…", "Loading…") : live ? t("加载服务端图谱", "Load server graph") : t("尝试连接服务端", "Try server connection")}
             </button>
-          ))}
-        </div>
-        <div className="graph-filter-row">
-          <div className="field">
-            <label htmlFor="graph-depth">{t("展开深度", "Expansion depth")}</label>
-            <select id="graph-depth" value={depth} onChange={(event) => setDepth(Number(event.target.value))}>
-              <option value={1}>{t("1 层", "1 level")}</option>
-              <option value={2}>{t("2 层", "2 levels")}</option>
-              <option value={4}>{t("4 层", "4 levels")}</option>
-              <option value={8}>{t("8 层（完整路径上限）", "8 levels (full-path limit)")}</option>
-            </select>
           </div>
-          <div className="field">
-            <label htmlFor="graph-node-types">{t("节点类型过滤（逗号分隔）", "Node type filter (comma-separated)")}</label>
-            <input id="graph-node-types" placeholder="CLAIM,TEST_SPEC,EVIDENCE" value={nodeTypes} onChange={(event) => setNodeTypes(event.target.value)} />
-          </div>
-          <div className="field">
-            <label htmlFor="graph-relations">{t("关系过滤（逗号分隔）", "Relationship filter (comma-separated)")}</label>
-            <input id="graph-relations" placeholder="VERIFIED_BY,PROVED_BY" value={relations} onChange={(event) => setRelations(event.target.value)} />
-          </div>
-          <button className="button primary" disabled={loading} onClick={() => void loadGraph()}>
-            {loading ? t("加载中…", "Loading…") : live ? t("加载服务端图谱", "Load server graph") : t("尝试连接服务端", "Try server connection")}
-          </button>
         </div>
         {message && <div className="inline-message">{message}</div>}
       </section>
@@ -4170,6 +4179,7 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
           <h2>{t("最小声明审核", "Minimal claim review")}</h2>
           <p>{t("候选不能自行晋升为业务真相。正式提交由服务端鉴权、校验冲突并记录不可变 Decision。", "A candidate cannot promote itself to business truth. Formal submission is authorized by the server, checked for conflicts, and recorded as an immutable Decision.")}</p>
           <div className="review-fields">
+            <div className="review-section-title">{t("声明与范围", "Statement and scope")}</div>
             <div className="field full">
               <label htmlFor="normative-statement">{t("规范性表述", "Normative statement")}</label>
               <textarea id="normative-statement" value={statement} onChange={(event) => setStatement(event.target.value)} />
@@ -4178,6 +4188,7 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
               <label htmlFor="scope-json">Scope JSON</label>
               <textarea id="scope-json" value={scopeJson} onChange={(event) => setScopeJson(event.target.value)} />
             </div>
+            <div className="review-section-title">{t("目标标识", "Target identifiers")}</div>
             <div className="field">
               <label htmlFor="feature-mode">{t("Feature 模式", "Feature mode")}</label>
               <select id="feature-mode" value={featureMode} onChange={(event) => setFeatureMode(event.target.value as "CREATE" | "EXISTING")}>
@@ -4211,6 +4222,7 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
                 <textarea id="association-rationale" value={associationRationale} onChange={(event) => setAssociationRationale(event.target.value)} />
               </div>
             )}
+            <div className="review-section-title">{t("审核与授权", "Review and authorization")}</div>
             <div className="field full">
               <label htmlFor="review-rationale">{t("审核理由", "Review rationale")}</label>
               <textarea id="review-rationale" value={rationale} onChange={(event) => setRationale(event.target.value)} />
@@ -4484,6 +4496,11 @@ function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: st
             <h2>{t("Feature 追溯维度", "Feature traceability dimensions")}</h2>
             <p>{t("逐项显示产品、规则、实现、数据、配置、测试、断言、执行与 Evidence。", "Show product, rules, implementation, data, configuration, tests, assertions, execution, and Evidence separately.")}</p>
           </div>
+        </div>
+        <div className="feature-metric-row feature-metric-header">
+          <span>{t("Feature", "Feature")}</span>
+          <span>{t("状态", "Status")}</span>
+          <span>{t("覆盖维度", "Coverage dimensions")}</span>
         </div>
         {current.features.map((feature) => (
           <div className="feature-metric-row" key={feature.featureId}>
@@ -4814,6 +4831,7 @@ function ImpactView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
             <h2>重建当前实现映射</h2>
             <p>先对新 Snapshot 执行 Reverse Run，再由开发/架构角色把候选 Fact 重新关联到既有 Claim；不会创建或改写业务 Decision。</p>
             <div className="review-fields">
+              <div className="review-section-title">{t("目标与来源", "Target and source")}</div>
               <div className="field">
                 <label htmlFor="repair-feature">Feature ID</label>
                 <input id="repair-feature" value={repairFeatureId} onChange={(event) => setRepairFeatureId(event.target.value)} />
@@ -4830,21 +4848,22 @@ function ImpactView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
                 <label htmlFor="repair-candidate">Candidate ID</label>
                 <input id="repair-candidate" value={repairCandidateId} onChange={(event) => setRepairCandidateId(event.target.value)} />
               </div>
+              <div className="review-section-title">{t("授权", "Authorization")}</div>
               <div className="field full">
                 <label htmlFor="repair-analysis">Analysis ID</label>
                 <input id="repair-analysis" value={repairAnalysisId} onChange={(event) => setRepairAnalysisId(event.target.value)} />
               </div>
               <div className="field full">
-                <label htmlFor="repair-rationale">重分析理由</label>
+                <label htmlFor="repair-rationale">{t("重分析理由", "Reanalysis rationale")}</label>
                 <textarea id="repair-rationale" value={repairRationale} onChange={(event) => setRepairRationale(event.target.value)} />
               </div>
               <div className="field full">
-                <label htmlFor="repair-token">Implementation reviewer bearer token（成功后清空）</label>
+                <label htmlFor="repair-token">{t("Implementation reviewer bearer token（成功后清空）", "Implementation reviewer bearer token (cleared after success)")}</label>
                 <input id="repair-token" type="password" autoComplete="off" value={repairToken} onChange={(event) => setRepairToken(event.target.value)} />
               </div>
             </div>
             <button className="button primary repair-button" disabled={loading} onClick={reanalyzeAffectedImplementation}>
-              提交实现重分析
+              {t("提交实现重分析", "Submit implementation reanalysis")}
             </button>
             {repairMessage && <div className="review-notice">{repairMessage}</div>}
           </div>

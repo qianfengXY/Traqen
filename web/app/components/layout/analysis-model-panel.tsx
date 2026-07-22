@@ -206,22 +206,22 @@ export function AnalysisModelPanel({
             onChange={(event) => onApiKeyChange(event.target.value)}
           />
         </div>
-        <label
-          className="model-stream-toggle full"
-          htmlFor="analysis-model-stream"
-        >
-          <input
-            id="analysis-model-stream"
-            type="checkbox"
-            checked={analysisModelStream}
-            onChange={(event) => onStreamChange(event.currentTarget.checked)}
-          />
-          <span>
-            <b>{labels.streamLabel}</b>
-            <small>{labels.streamHint}</small>
-          </span>
-        </label>
       </div>
+      <label
+        className="model-stream-toggle full"
+        htmlFor="analysis-model-stream"
+      >
+        <input
+          id="analysis-model-stream"
+          type="checkbox"
+          checked={analysisModelStream}
+          onChange={(event) => onStreamChange(event.currentTarget.checked)}
+        />
+        <span>
+          <b>{labels.streamLabel}</b>
+          <small>{labels.streamHint}</small>
+        </span>
+      </label>
       <div className="connection-actions">
         <Button
           variant="primary"

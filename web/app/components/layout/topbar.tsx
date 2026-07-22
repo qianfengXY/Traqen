@@ -63,39 +63,41 @@ export function Topbar({
         <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>
           {modeLabel}
         </span>
-        <div
-          className="language-switch"
-          role="group"
-          aria-label={languageGroupAriaLabel}
-        >
-          <button
-            aria-pressed={language === "zh-CN"}
-            className={language === "zh-CN" ? "active" : ""}
-            onClick={() => onSetLanguage("zh-CN")}
+        <div className="top-action-group">
+          <div
+            className="language-switch"
+            role="group"
+            aria-label={languageGroupAriaLabel}
           >
-            {labels.chinese}
-          </button>
-          <button
-            aria-pressed={language === "en"}
-            className={language === "en" ? "active" : ""}
-            onClick={() => onSetLanguage("en")}
+            <button
+              aria-pressed={language === "zh-CN"}
+              className={language === "zh-CN" ? "active" : ""}
+              onClick={() => onSetLanguage("zh-CN")}
+            >
+              {labels.chinese}
+            </button>
+            <button
+              aria-pressed={language === "en"}
+              className={language === "en" ? "active" : ""}
+              onClick={() => onSetLanguage("en")}
+            >
+              {labels.english}
+            </button>
+          </div>
+          {liveScenario && (
+            <Button variant="ghost" onClick={onClearLiveScenario}>
+              {labels.backToSelfWorkspace}
+            </Button>
+          )}
+          <Button
+            className={`model-connection-button ${analysisModelReady ? "ready" : ""}`}
+            onClick={onToggleAnalysisSettings}
           >
-            {labels.english}
-          </button>
-        </div>
-        {liveScenario && (
-          <Button variant="ghost" onClick={onClearLiveScenario}>
-            {labels.backToSelfWorkspace}
+            <span aria-hidden="true">{analysisModelReady ? "●" : "○"}</span>
+            {analysisModelReady ? activeAnalysisModelProfile?.model : labels.configureModel}
           </Button>
-        )}
-        <Button
-          className={`model-connection-button ${analysisModelReady ? "ready" : ""}`}
-          onClick={onToggleAnalysisSettings}
-        >
-          <span aria-hidden="true">{analysisModelReady ? "●" : "○"}</span>
-          {analysisModelReady ? activeAnalysisModelProfile?.model : labels.configureModel}
-        </Button>
-        <Button onClick={onToggleConnection}>{labels.connectApi}</Button>
+          <Button onClick={onToggleConnection}>{labels.connectApi}</Button>
+        </div>
       </div>
     </header>
   );

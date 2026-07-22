@@ -123,8 +123,8 @@ export function Sidebar({
             className={`nav-button ${view === item.key ? "active" : ""}`}
             onClick={() => onSetView(item.key)}
           >
-            <span className="nav-icon">{item.icon}</span>
-            {item.label}
+            <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+            <span>{item.label}</span>
           </button>
         ))}
       </nav>
