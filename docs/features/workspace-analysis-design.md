@@ -27,6 +27,8 @@ A user can define a Workspace, select a source-code directory, analyze it withou
 
 ## Workspace lifecycle and navigation
 
+- With no local project, the Workspace route shows only a focused onboarding surface. The analysis form, Agent sessions, Feature tree, and statistics are not mounted until a project identity has been created.
+- Workspace creation is a route-scoped dialog opened from the compact `+` control beside the Workspace heading. Navigating to any other product view closes the dialog, so creation state cannot leak across pages.
 - The left Workspace switcher can create and retain multiple local projects. Selecting a project makes it the active data boundary for every product view.
 - The first scan initializes a project; it is not an isolated report owned by the analysis page.
 - A later analysis of the same root compares relative path, byte size, last-modified time, and scanner version. Unchanged file records are reused; added or modified supported files are reread; deleted paths are removed before the Feature tree is rebuilt. A scanner upgrade invalidates stale records automatically.
@@ -38,6 +40,7 @@ A user can define a Workspace, select a source-code directory, analyze it withou
 - Feature traceability and the trace graph both use the active project's Feature tree and selected Feature. Neither falls back to another Workspace while a local project is active.
 - The Business/API tree mode is global across Workspace analysis, Feature traceability, and the trace graph. Changing it selects the first available candidate only when the previous selection is absent from the new mode.
 - Project summaries and derived analysis records survive a full refresh on the same browser profile. Directory `File` handles are not retained, so the user selects the original root again before an incremental or resumed analysis.
+- The analysis Agent uses the same global theme tokens and bounded desktop layout as the rest of the product. Main- and child-Agent transcripts scroll inside fixed-height surfaces instead of creating an unbounded terminal-style page.
 
 ## Trust boundary
 

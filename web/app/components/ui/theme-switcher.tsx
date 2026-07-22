@@ -12,26 +12,14 @@ const themes: Array<{ key: Theme; label: string; dot: string }> = [
 
 export function ThemeSwitcher({ ariaLabel }: { ariaLabel?: string }) {
   const { theme, setTheme } = useTheme();
+  const activeTheme = themes.find((item) => item.key === theme) ?? themes[0];
 
   return (
-    <div
-      className="theme-switch"
-      role="group"
-      aria-label={ariaLabel ?? "Color theme"}
-      title={ariaLabel ?? "Color theme"}
-    >
-      {themes.map((item) => (
-        <button
-          key={item.key}
-          type="button"
-          aria-pressed={theme === item.key}
-          className={theme === item.key ? "active" : ""}
-          onClick={() => setTheme(item.key)}
-        >
-          <span className="theme-dot" style={{ background: item.dot }} />
-          <span>{item.label}</span>
-        </button>
-      ))}
-    </div>
+    <label className="theme-switch" title={ariaLabel ?? "Color theme"}>
+      <span className="theme-dot" style={{ background: activeTheme.dot }} aria-hidden="true" />
+      <select aria-label={ariaLabel ?? "Color theme"} value={theme} onChange={(event) => setTheme(event.currentTarget.value as Theme)}>
+        {themes.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+      </select>
+    </label>
   );
 }

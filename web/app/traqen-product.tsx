@@ -1372,6 +1372,12 @@ export function TraqenProduct() {
     setView("workspace");
   }
 
+  function navigateToView(nextView: View) {
+    setWorkspaceCreationOpen(false);
+    setWorkspaceManagerOpen(false);
+    setView(nextView);
+  }
+
   function updateNewWorkspaceName(value: string) {
     setNewWorkspaceName(value);
     setNewWorkspaceProjectId(`PROJECT-${value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toUpperCase()}`);
@@ -1597,35 +1603,35 @@ export function TraqenProduct() {
             <span className="brand-mark">TQ</span>Traqen
           </div>
           <div>
-            <div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button aria-label={t("管理 Workspace 展示", "Manage Workspace visibility")} onClick={() => setWorkspaceManagerOpen((value) => !value)}>☷</button><button aria-label={t("新建 Workspace", "Create Workspace")} onClick={startNewWorkspace}>＋</button></div></div>
-            <div className="workspace active-workspace">
-              <strong>{workspaceName}</strong>
-              <small>{liveScenario ? projectId : workspaceProjectId} · {visibleWorkspaceAnalysis ? `${visibleWorkspaceAnalysis.features.length} FEATURES` : "SELF"}</small>
+            <div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button className="workspace-manage-button" aria-label={t("管理 Workspace 展示", "Manage Workspace visibility")} title={t("管理展示项目", "Manage visible projects")} onClick={() => setWorkspaceManagerOpen((value) => !value)}>☷</button><button className="workspace-add-button" aria-label={t("新建 Workspace", "Create Workspace")} title={t("创建 Workspace", "Create Workspace")} onClick={startNewWorkspace}>＋</button></div></div>
+            <div className={`workspace active-workspace ${workspaceProjectCreated ? "" : "empty-workspace"}`}>
+              <strong>{workspaceProjectCreated ? workspaceName : t("尚未创建项目", "No project yet")}</strong>
+              <small>{workspaceProjectCreated ? `${liveScenario ? projectId : workspaceProjectId} · ${visibleWorkspaceAnalysis ? `${visibleWorkspaceAnalysis.features.length} FEATURES` : t("待首次分析", "AWAITING ANALYSIS")}` : t("点击右上角＋创建 Workspace", "Use + above to create a Workspace")}</small>
             </div>
             {visibleWorkspaceProjects.length > 0 && <div className="workspace-project-list" aria-label={t("显示中的本地 Workspace 项目", "Visible local Workspace projects")}>{visibleWorkspaceProjects.map((project) => <div className={`workspace-project-row ${workspaceProjectId === project.id ? "active" : ""}`} key={project.id}><button className="workspace-project-open" disabled={workspaceProjectLoading || (workspaceAnalysisRunning && workspaceProjectId !== project.id)} title={workspaceAnalysisRunning && workspaceProjectId !== project.id ? t("当前分析完成或暂停后可切换项目", "Switch projects after the active analysis completes or pauses") : undefined} onClick={() => void openStoredWorkspace(project.id)}><strong>{project.name}</strong><small>{project.featureCount > 0 ? `${project.featureCount} ${t("功能", "features")}` : t("待首次分析", "Awaiting first analysis")} · {new Date(project.updatedAt).toLocaleDateString(language)}</small></button><button className="workspace-project-remove" disabled={workspaceAnalysisRunning && workspaceProjectId === project.id} aria-label={t(`从展示中移出 ${project.name}`, `Remove ${project.name} from display`)} title={t("移出展示（保留分析数据）", "Remove from display (keep analysis data)")} onClick={() => void changeWorkspaceVisibility(project.id, false)}>{t("移出", "Hide")}</button></div>)}</div>}
           </div>
           <nav className="nav" aria-label={t("产品导航", "Product navigation")}>
-            <button className={`nav-button ${view === "workspace" ? "active" : ""}`} onClick={() => setView("workspace")}>
+            <button className={`nav-button ${view === "workspace" ? "active" : ""}`} onClick={() => navigateToView("workspace")}>
               <span className="nav-icon">⌘</span>
               {t("Workspace 分析", "Workspace analysis")}
             </button>
-            <button className={`nav-button ${view === "trace" ? "active" : ""}`} onClick={() => setView("trace")}>
+            <button className={`nav-button ${view === "trace" ? "active" : ""}`} onClick={() => navigateToView("trace")}>
               <span className="nav-icon">→</span>
               {t("功能追溯", "Feature traceability")}
             </button>
-            <button className={`nav-button ${view === "graph" ? "active" : ""}`} onClick={() => setView("graph")}>
+            <button className={`nav-button ${view === "graph" ? "active" : ""}`} onClick={() => navigateToView("graph")}>
               <span className="nav-icon">◎</span>
               {t("追溯图谱", "Trace graph")}
             </button>
-            <button className={`nav-button ${view === "review" ? "active" : ""}`} onClick={() => setView("review")}>
+            <button className={`nav-button ${view === "review" ? "active" : ""}`} onClick={() => navigateToView("review")}>
               <span className="nav-icon">✓</span>
               {t("声明审核", "Claim review")}
             </button>
-            <button className={`nav-button ${view === "impact" ? "active" : ""}`} onClick={() => setView("impact")}>
+            <button className={`nav-button ${view === "impact" ? "active" : ""}`} onClick={() => navigateToView("impact")}>
               <span className="nav-icon">△</span>
               {t("变更影响", "Change impact")}
             </button>
-            <button className={`nav-button ${view === "metrics" ? "active" : ""}`} onClick={() => setView("metrics")}>
+            <button className={`nav-button ${view === "metrics" ? "active" : ""}`} onClick={() => navigateToView("metrics")}>
               <span className="nav-icon">▦</span>
               {t("效果指标", "Effectiveness metrics")}
             </button>
@@ -1640,7 +1646,7 @@ export function TraqenProduct() {
         <main className="main">
           <header className="topbar">
             <div className="breadcrumb">
-              {workspaceName}&nbsp; / &nbsp;
+              {workspaceProjectCreated ? workspaceName : "Workspace"}&nbsp; / &nbsp;
               <b>
                 {
                   {
@@ -1655,7 +1661,7 @@ export function TraqenProduct() {
               </b>
             </div>
             <div className="top-actions">
-              <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>{liveScenario ? "LIVE API" : workspaceAnalysis ? t("已初始化", "INITIALIZED") : "SELF WORKSPACE"}</span>
+              <span className={`mode-badge ${liveScenario || workspaceAnalysis ? "live" : ""}`}>{liveScenario ? "LIVE API" : workspaceAnalysis ? t("已初始化", "INITIALIZED") : workspaceProjectCreated ? t("待分析", "AWAITING ANALYSIS") : t("待创建", "NOT CREATED")}</span>
               <ThemeSwitcher ariaLabel={t("全局主题配色", "Global color theme")} />
               <div className="language-switch" role="group" aria-label={t("全局语言", "Global language")}>
                 <button aria-pressed={language === "zh-CN"} className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>
@@ -1679,16 +1685,18 @@ export function TraqenProduct() {
             </div>
           </header>
 
-          {workspaceCreationOpen && (
-            <section className="panel workspace-create-panel" aria-label={t("创建 Workspace 项目", "Create Workspace project")}>
-              <div className="panel-head"><div><p className="eyebrow">Create Workspace</p><h2>{t("先创建项目，再启动首次分析", "Create the project before its first analysis")}</h2><p>{workspaceAnalysisRunning ? t("新项目会先加入 Workspace 列表；当前分析继续运行，不会切换或清空。任务完成或暂停后再打开新项目。", "The new project is added to the Workspace list while the current analysis keeps running without switching or clearing. Open it after the task completes or pauses.") : t("项目身份会立即保存在当前设备。创建成功后，再为它选择代码目录并启动首次全量分析。", "The project identity is saved on this device immediately. After creation, select its code directory and start the first full analysis.")}</p></div><button className="button" onClick={() => setWorkspaceCreationOpen(false)}>{t("取消", "Cancel")}</button></div>
-              <div className="workspace-create-grid">
-                <div className="field"><label htmlFor="new-workspace-name">Workspace Name</label><input id="new-workspace-name" autoFocus value={newWorkspaceName} onChange={(event) => updateNewWorkspaceName(event.target.value)} /></div>
-                <div className="field"><label htmlFor="new-workspace-project-id">Project ID</label><input id="new-workspace-project-id" value={newWorkspaceProjectId} onChange={(event) => setNewWorkspaceProjectId(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "-"))} /></div>
-              </div>
-              {newWorkspaceProjectId && workspaceProjects.some((project) => project.id === newWorkspaceProjectId) && <p className="form-message error">{t("Project ID 已存在，请更换。", "This Project ID already exists.")}</p>}
-              <div className="connection-actions"><button className="button primary" disabled={!newWorkspaceName.trim() || !newWorkspaceProjectId.trim() || workspaceProjects.some((project) => project.id === newWorkspaceProjectId.trim())} onClick={() => void createWorkspaceProject()}>{workspaceAnalysisRunning ? t("创建并留在当前任务", "Create and keep current task") : t("创建并进入项目", "Create and open project")}</button></div>
-            </section>
+          {view === "workspace" && workspaceCreationOpen && (
+            <div className="workspace-create-backdrop">
+              <section className="panel workspace-create-panel" role="dialog" aria-modal="true" aria-labelledby="workspace-create-title">
+                <div className="workspace-create-heading"><div><p className="eyebrow">Create Workspace</p><h2 id="workspace-create-title">{t("创建新的 Workspace", "Create a new Workspace")}</h2><p>{workspaceAnalysisRunning ? t("新项目会加入列表，当前分析不会被中断。", "The new project is added to the list without interrupting the active analysis.") : t("先建立项目身份，随后选择代码工程并启动首次全量分析。", "Create the project identity first, then select its codebase and start the initial full analysis.")}</p></div><button className="workspace-create-close" aria-label={t("关闭创建窗口", "Close creation dialog")} onClick={() => setWorkspaceCreationOpen(false)}>×</button></div>
+                <div className="workspace-create-grid">
+                  <div className="field"><label htmlFor="new-workspace-name">Workspace Name</label><input id="new-workspace-name" autoFocus value={newWorkspaceName} onChange={(event) => updateNewWorkspaceName(event.target.value)} /></div>
+                  <div className="field"><label htmlFor="new-workspace-project-id">Project ID</label><input id="new-workspace-project-id" value={newWorkspaceProjectId} onChange={(event) => setNewWorkspaceProjectId(event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, "-"))} /></div>
+                </div>
+                {newWorkspaceProjectId && workspaceProjects.some((project) => project.id === newWorkspaceProjectId) && <p className="form-message error">{t("Project ID 已存在，请更换。", "This Project ID already exists.")}</p>}
+                <div className="workspace-create-actions"><button className="button" onClick={() => setWorkspaceCreationOpen(false)}>{t("取消", "Cancel")}</button><button className="button primary" disabled={!newWorkspaceName.trim() || !newWorkspaceProjectId.trim() || workspaceProjects.some((project) => project.id === newWorkspaceProjectId.trim())} onClick={() => void createWorkspaceProject()}>{workspaceAnalysisRunning ? t("创建项目", "Create project") : t("创建并进入项目", "Create and open project")}</button></div>
+              </section>
+            </div>
           )}
 
           {workspaceManagerOpen && (
@@ -1753,8 +1761,24 @@ export function TraqenProduct() {
             </section>
           )}
 
-          <div className="workspace-view-state" hidden={view !== "workspace"}>
-            <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => setView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />
+          {view === "workspace" && !workspaceProjectCreated && (
+            <section className="workspace-empty-state" aria-labelledby="workspace-empty-title">
+              <div className="workspace-empty-main">
+                <span className="workspace-empty-icon" aria-hidden="true">W</span>
+                <p className="eyebrow">Workspace foundation</p>
+                <h1 id="workspace-empty-title">{t("创建第一个 Workspace", "Create your first Workspace")}</h1>
+                <p>{t("Workspace 是功能追溯的项目边界。创建项目后，才会加载工程选择、分析 Agent、功能树与追溯统计。", "A Workspace is the project boundary for traceability. Code selection, the Analysis Agent, Feature tree, and trace statistics load only after the project is created.")}</p>
+                <button className="button primary workspace-empty-action" onClick={startNewWorkspace}>{t("创建 Workspace", "Create Workspace")}</button>
+              </div>
+              <div className="workspace-empty-steps" aria-label={t("初始化流程", "Initialization flow")}>
+                <article><b>01</b><div><strong>{t("创建项目", "Create project")}</strong><small>{t("确定名称和唯一 Project ID", "Set its name and unique Project ID")}</small></div></article>
+                <article><b>02</b><div><strong>{t("选择工程", "Select codebase")}</strong><small>{t("授权读取本机代码目录", "Grant access to a local code directory")}</small></div></article>
+                <article><b>03</b><div><strong>{t("启动分析", "Start analysis")}</strong><small>{t("建立功能树与端到端证据链", "Build the Feature tree and evidence chain")}</small></div></article>
+              </div>
+            </section>
+          )}
+          <div className="workspace-view-state" hidden={view !== "workspace" || !workspaceProjectCreated}>
+            {workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
           </div>
           {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
