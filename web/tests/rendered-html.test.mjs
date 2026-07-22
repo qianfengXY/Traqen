@@ -123,6 +123,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
+  assert.match(product, /className="workspace-view-state" hidden=\{view !== "workspace"\}/);
+  assert.doesNotMatch(product, /\{view === "workspace" && <WorkspaceAnalysisView/);
+  assert.match(product, /已恢复持久化检查点/);
+  assert.match(product, /current\?\.projectId === projectId/);
   assert.match(product, /REQUEST_PREPARED/);
   assert.match(product, /分析 Agent 会话/);
   assert.match(product, /建立源码清单/);
