@@ -13,6 +13,7 @@ import { Topbar } from "./components/layout/topbar";
 import { WorkspaceManagerPanel } from "./components/layout/workspace-manager-panel";
 import { AnalysisModelPanel } from "./components/layout/analysis-model-panel";
 import { ApiConnectionPanel } from "./components/layout/api-connection-panel";
+import { ThemeProvider } from "./theme-context";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
 type NodeStatus = "ACTIVE" | "STALE" | "PENDING";
@@ -1584,6 +1585,7 @@ export function TraqenProduct() {
     connectApi: t("连接 Traqen API", "Connect Traqen API"),
     chinese: "中文",
     english: "English",
+    theme: t("主题", "Theme"),
   };
 
   const workspaceManagerLabels = {
@@ -1650,8 +1652,9 @@ export function TraqenProduct() {
   };
 
   return (
-    <LanguageContext.Provider value={language}>
-      <div className="app-shell">
+    <ThemeProvider>
+      <LanguageContext.Provider value={language}>
+        <div className="app-shell">
         <Sidebar
           labels={sidebarLabels}
           language={language}
@@ -1751,6 +1754,7 @@ export function TraqenProduct() {
         </main>
       </div>
     </LanguageContext.Provider>
+    </ThemeProvider>
   );
 }
 

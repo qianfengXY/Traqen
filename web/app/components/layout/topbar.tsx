@@ -1,4 +1,5 @@
 import { Button } from "../ui/button";
+import { ThemeSwitcher } from "../ui/theme-switcher";
 import type { AnalysisModelProfile } from "../../analysis-model-client";
 
 type View = "workspace" | "trace" | "graph" | "review" | "impact" | "metrics";
@@ -14,6 +15,7 @@ export interface TopbarLabels {
   connectApi: string;
   chinese: string;
   english: string;
+  theme: string;
 }
 
 export interface TopbarProps {
@@ -64,6 +66,7 @@ export function Topbar({
           {modeLabel}
         </span>
         <div className="top-action-group">
+          <ThemeSwitcher aria-label={labels.theme} />
           <div
             className="language-switch"
             role="group"

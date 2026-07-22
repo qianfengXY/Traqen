@@ -29,9 +29,23 @@ export const metadata: Metadata = {
   },
 };
 
+const themeInitScript = `
+  (function() {
+    try {
+      var theme = window.localStorage.getItem("traqen-theme");
+      if (theme && ["apple","warm","fresh","minimal"].includes(theme)) {
+        document.documentElement.setAttribute("data-theme", theme);
+      }
+    } catch (e) {}
+  })();
+`;
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>{children}</body>
     </html>
   );
