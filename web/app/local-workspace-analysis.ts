@@ -9,6 +9,7 @@ export type LocalFeatureTreeMode = "BUSINESS" | "API";
 
 export type LocalModelClassification = {
   profileId: string;
+  evidencePolicyVersion: number;
   businessFeature: boolean;
   domain: string;
   group: "BUSINESS_CAPABILITY" | "BACKGROUND_INTEGRATION" | "DATA_INTEGRATION" | "PROJECT_OPERATION" | "API_SERVICE";
@@ -76,6 +77,7 @@ export type LocalWorkspaceFileRecord = {
 };
 
 export const localWorkspaceScannerVersion = 4;
+export const localWorkspaceEvidencePolicyVersion = 1;
 
 const supportedExtensions = new Set([
   "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env", "xml", "gradle", "kts",
@@ -741,6 +743,7 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
         description: value.description,
         modelClassification: {
           profileId,
+          evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
           businessFeature: value.businessFeature,
           domain: value.domain,
           group: value.group,

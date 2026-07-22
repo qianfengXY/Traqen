@@ -133,7 +133,7 @@ test("analysis model profiles can be configured, verified, and used for bounded 
     async verifyAnalysisModelProfile(profileId) { calls.push(["verify", profileId]); return { id: profileId, ready: true, latencyMs: 12 }; },
     selectAnalysisModelProfile(profileId) { calls.push(["select", profileId]); return { id: profileId, ready: true, active: true }; },
     removeAnalysisModelProfile(profileId) { calls.push(["remove", profileId]); return { id: profileId, ready: true, active: false }; },
-    async enrichWorkspaceCandidates(profileId, input) { calls.push(["enrich", profileId, input]); return [{ id: input.candidates[0].id, businessFeature: true }]; },
+    async enrichWorkspaceCandidates(profileId, input, options = {}) { calls.push(["enrich", profileId, input]); options.onTelemetry?.({ type: "REQUEST_PREPARED", requestId: "REQ-1" }); return [{ id: input.candidates[0].id, businessFeature: true }]; },
   };
   const baseUrl = await startStubServer(t, application);
 
@@ -152,8 +152,18 @@ test("analysis model profiles can be configured, verified, and used for bounded 
   const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, { candidates: [{ id: "FEATURE-1" }] });
   assert.equal(enriched.response.status, 200);
   assert.equal(enriched.body.candidates[0].businessFeature, true);
+  const observable = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+    body: JSON.stringify({ candidates: [{ id: "FEATURE-2" }] }),
+  });
+  assert.match(observable.headers.get("content-type") ?? "", /^application\/x-ndjson/);
+  const messages = (await observable.text()).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(messages.map((message) => message.kind), ["telemetry", "result"]);
+  assert.equal(messages[0].event.requestId, "REQ-1");
+  assert.equal(messages[1].candidates[0].id, "FEATURE-2");
   assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default`, { method: "DELETE" })).status, 200);
-  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "select", "enrich", "remove"]);
+  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "select", "enrich", "enrich", "remove"]);
 });
 
 test("analysis model connectivity failures use a distinct gateway error", async (t) => {

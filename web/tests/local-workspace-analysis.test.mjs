@@ -304,6 +304,7 @@ test("model enrichment persists readable business classification without changin
   assert.equal(business.features[0].id, candidate.id);
   assert.equal(business.features[0].displayName, "Issue customer refund");
   assert.equal(business.features[0].modelClassification.profileId, "workspace-default");
+  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 1);
   assert.equal(business.tree.children[0].children[0].label, "Customer Refunds");
 });
 

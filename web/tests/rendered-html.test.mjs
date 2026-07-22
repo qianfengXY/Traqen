@@ -29,7 +29,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /选择工程，由分析 Agent 建立功能追溯 Workspace/);
   assert.match(html, /选择代码工程/);
   assert.match(html, /先配置模型/);
-  assert.match(html, /本地确定性扫描十万级文件/);
+  assert.match(html, /十万级工程做有界确定性提取/);
   assert.match(html, /配置分析模型/);
   assert.match(html, /等待创建分析任务/);
   assert.match(html, /新建 Workspace/);
@@ -121,6 +121,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
+  assert.match(product, /REQUEST_PREPARED/);
+  assert.match(product, /查看发给模型的提示与证据/);
+  assert.match(product, /模型网关已响应/);
+  assert.match(product, /证据置信度上限/);
+  assert.match(modelClient, /application\/x-ndjson/);
+  assert.match(modelClient, /JAVA_DECLARATION_PATTERN/);
   assert.match(product, /WorkspaceAnalysisDashboard/);
   assert.match(product, /分层统计/);
   assert.match(product, /待人工确认/);
@@ -142,7 +148,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /visibleWorkspaceAnalysis && !liveScenario/);
   assert.match(product, /初始化完成：Workspace 已成为全局导航上下文/);
   assert.match(product, /从功能树逐项查看端到端追溯链/);
-  assert.match(product, /本地确定性扫描十万级文件/);
+  assert.match(product, /十万级工程做有界确定性提取/);
   assert.match(product, /执行增量分析/);
   assert.match(product, /configureAndVerifyAnalysisModel/);
   assert.match(product, /API Base URL \/ Chat Completions URL/);
@@ -153,7 +159,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /analysis-task-console/);
   assert.match(product, /总执行进度/);
   assert.match(product, /累计耗时/);
-  assert.match(product, /不会展示模型隐藏思维链/);
+  assert.match(product, /模型隐藏思维链不会展示/);
   assert.match(product, /workspaceModelCandidateBatches/);
   assert.match(product, /applyLocalModelEnrichment/);
   assert.match(product, /先配置模型/);

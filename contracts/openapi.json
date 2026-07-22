@@ -997,7 +997,7 @@
           "content": { "application/json": { "schema": { "type": "object", "required": ["candidates"], "properties": { "candidates": { "type": "array", "minItems": 1, "maxItems": 24, "items": { "$ref": "#/components/schemas/WorkspaceModelCandidate" } } }, "additionalProperties": false } } }
         },
         "responses": {
-          "200": { "description": "Evidence-bounded semantic enrichments for the supplied candidate batch", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "candidates"], "properties": { "profileId": { "type": "string" }, "candidates": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceModelEnrichment" } } }, "additionalProperties": false } } } },
+          "200": { "description": "Evidence-bounded semantic enrichments. Send Accept: application/x-ndjson to receive live, secret-free model request, transport, response-progress, structured-output, and validation events followed by the result.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "candidates"], "properties": { "profileId": { "type": "string" }, "candidates": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceModelEnrichment" } } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string", "description": "Newline-delimited telemetry envelopes followed by one result or error envelope." } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
         }
@@ -1447,7 +1447,7 @@
       },
       "WorkspaceModelCandidate": {
         "type": "object",
-        "required": ["id", "name", "kind", "method", "modulePath", "sourcePath", "description", "code"],
+        "required": ["id", "name", "kind", "method", "modulePath", "sourcePath", "description", "code", "evidence"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "name": { "type": "string", "minLength": 1, "maxLength": 300 },
@@ -1456,7 +1456,34 @@
           "modulePath": { "type": "string", "maxLength": 300 },
           "sourcePath": { "type": "string", "maxLength": 800 },
           "description": { "type": "string", "maxLength": 1200 },
-          "code": { "type": "string", "maxLength": 2000 }
+          "code": { "type": "string", "maxLength": 2000 },
+          "evidence": { "$ref": "#/components/schemas/WorkspaceEvidenceAssessment" }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceEvidenceAssessment": {
+        "type": "object",
+        "required": ["observations", "corroborations", "contradictions", "diagnostics", "completeness", "confidenceCap"],
+        "properties": {
+          "observations": {
+            "type": "array", "minItems": 1, "maxItems": 8,
+            "items": {
+              "type": "object", "required": ["extractor", "basis", "sourcePath", "startLine", "excerpt"],
+              "properties": {
+                "extractor": { "type": "string", "minLength": 1, "maxLength": 80 },
+                "basis": { "type": "string", "minLength": 1, "maxLength": 160 },
+                "sourcePath": { "type": "string", "minLength": 1, "maxLength": 800 },
+                "startLine": { "type": "integer", "minimum": 1 },
+                "excerpt": { "type": "string", "maxLength": 1200 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "corroborations": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 800 } },
+          "contradictions": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 800 } },
+          "diagnostics": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 800 } },
+          "completeness": { "enum": ["COMPLETE", "PARTIAL", "UNKNOWN"] },
+          "confidenceCap": { "enum": ["LOW", "MEDIUM", "HIGH"] }
         },
         "additionalProperties": false
       },

@@ -1236,12 +1236,13 @@ export class TraceabilityApplication {
     return this.#analysisModelRegistry.remove(requireId(profileId, "analysisModelProfileId"));
   }
 
-  async enrichWorkspaceCandidates(profileId, input) {
+  async enrichWorkspaceCandidates(profileId, input, options = {}) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
     if (!input || typeof input !== "object") throw new TypeError("workspace analysis input must be an object");
     return this.#analysisModelRegistry.enrichWorkspaceCandidates(
       requireId(profileId, "analysisModelProfileId"),
       input.candidates,
+      { onTelemetry: options.onTelemetry ?? null },
     );
   }
 

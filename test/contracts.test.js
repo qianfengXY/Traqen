@@ -44,6 +44,9 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.stream.default, false);
   assert.ok(contract.components.schemas.AnalysisModelProfile.required.includes("active"));
   assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.requestBody.content["application/json"].schema.properties.candidates.maxItems, 24);
+  assert.ok(contract.components.schemas.WorkspaceModelCandidate.required.includes("evidence"));
+  assert.equal(contract.components.schemas.WorkspaceEvidenceAssessment.properties.confidenceCap.enum.includes("HIGH"), true);
+  assert.ok(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.responses["200"].content["application/x-ndjson"]);
   assert.equal(contract.paths["/v1/projects"].post.operationId, "createProject");
   assert.equal(contract.paths["/v1/projects/{projectId}"].get.operationId, "getProject");
   assert.equal(

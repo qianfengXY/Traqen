@@ -37,6 +37,20 @@ function sendJson(response, status, body, id) {
   response.end(payload);
 }
 
+function startNdjson(response, id) {
+  response.writeHead(200, {
+    "content-type": "application/x-ndjson; charset=utf-8",
+    "cache-control": "no-store, no-transform",
+    "x-content-type-options": "nosniff",
+    "x-request-id": id,
+  });
+  response.flushHeaders?.();
+}
+
+function writeNdjson(response, value) {
+  response.write(`${JSON.stringify(value)}\n`);
+}
+
 function readJson(request, maxBodyBytes) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -821,8 +835,23 @@ export function createTraceabilityHttpHandler({
         requireJson(request);
         const profileId = decodePathSegment(workspaceModelAnalysisMatch[1]);
         const input = await readJson(request, maxBodyBytes);
-        const candidates = await application.enrichWorkspaceCandidates(profileId, input);
-        sendJson(response, 200, { profileId, candidates }, id);
+        const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
+        if (!observable) {
+          const candidates = await application.enrichWorkspaceCandidates(profileId, input);
+          sendJson(response, 200, { profileId, candidates }, id);
+          return;
+        }
+        startNdjson(response, id);
+        try {
+          const candidates = await application.enrichWorkspaceCandidates(profileId, input, {
+            onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
+          });
+          writeNdjson(response, { kind: "result", profileId, candidates });
+        } catch (error) {
+          const failure = errorResponse(error, id);
+          writeNdjson(response, { kind: "error", error: failure.body.error });
+        }
+        response.end();
         return;
       }
 

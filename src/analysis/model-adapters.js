@@ -10,6 +10,112 @@ function endpointUrl(value) {
   return url.toString();
 }
 
+function telemetryTimestamp() {
+  return new Date().toISOString();
+}
+
+function boundedPreview(value, maximum = 24_000) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  if (text.length <= maximum) return { text, truncated: false, originalCharacters: text.length };
+  return { text: `${text.slice(0, maximum)}\n… [truncated by Traqen]`, truncated: true, originalCharacters: text.length };
+}
+
+function emitTelemetry(callback, event) {
+  if (typeof callback !== "function") return;
+  try {
+    callback({ at: telemetryTimestamp(), ...event });
+  } catch {
+    // Observability must never change model execution semantics.
+  }
+}
+
+function responseUsage(value, contentType = "") {
+  const payloads = [];
+  if (/text\/event-stream/i.test(contentType) || /^\s*(?:event:.*\r?\n)?data:/m.test(value)) {
+    for (const event of value.split(/\r?\n\r?\n/)) {
+      const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart()).join("\n").trim();
+      if (!data || data === "[DONE]") continue;
+      try { payloads.push(JSON.parse(data)); } catch { /* Parsed by the strict response decoder later. */ }
+    }
+  } else {
+    try { payloads.push(JSON.parse(value)); } catch { /* Parsed by the strict response decoder later. */ }
+  }
+  const usage = [...payloads].reverse().find((payload) => payload?.usage)?.usage;
+  if (!usage || typeof usage !== "object") return null;
+  const number = (candidate) => Number.isFinite(candidate) && candidate >= 0 ? Number(candidate) : null;
+  return {
+    inputTokens: number(usage.prompt_tokens ?? usage.input_tokens),
+    outputTokens: number(usage.completion_tokens ?? usage.output_tokens),
+    totalTokens: number(usage.total_tokens),
+  };
+}
+
+function observableStreamOutput(value, contentType = "") {
+  if (!/text\/event-stream/i.test(contentType) && !/^\s*(?:event:.*\r?\n)?data:/m.test(value)) return null;
+  const pieces = [];
+  for (const event of value.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const payload = JSON.parse(data);
+      const delta = payload?.choices?.[0]?.delta?.content;
+      if (typeof delta === "string") pieces.push(delta);
+      else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
+      else if (typeof payload?.delta === "string" && /output_text\.delta|content_block_delta/i.test(payload?.type ?? "")) pieces.push(payload.delta);
+      else if (typeof payload?.delta?.text === "string") pieces.push(payload.delta.text);
+    } catch {
+      // Strict parsing remains the responsibility of the final response decoder.
+    }
+  }
+  const output = pieces.join("");
+  const jsonStart = [output.indexOf("{"), output.indexOf("[")].filter((index) => index >= 0).sort((left, right) => left - right)[0];
+  if (jsonStart === undefined) return null;
+  return boundedPreview(output.slice(jsonStart), 8_000).text;
+}
+
+async function responseBodyText(response, { onTelemetry, requestId, startedAt, contentType }) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return response.text();
+  const decoder = new TextDecoder();
+  let value = "";
+  let chunkCount = 0;
+  let lastEmittedAt = 0;
+  let lastEmittedCharacters = 0;
+  while (true) {
+    const { done, value: chunk } = await reader.read();
+    if (done) break;
+    chunkCount += 1;
+    value += decoder.decode(chunk, { stream: true });
+    if (value.length > 2_000_000) throw new TypeError("analysis model response exceeds the bounded response size");
+    const now = Date.now();
+    if (value.length - lastEmittedCharacters >= 4_096 || now - lastEmittedAt >= 500) {
+      lastEmittedAt = now;
+      lastEmittedCharacters = value.length;
+      emitTelemetry(onTelemetry, {
+        type: "RESPONSE_PROGRESS",
+        requestId,
+        chunkCount,
+        receivedCharacters: value.length,
+        elapsedMs: now - startedAt,
+        outputPreview: observableStreamOutput(value, contentType),
+      });
+    }
+  }
+  value += decoder.decode();
+  emitTelemetry(onTelemetry, {
+    type: "RESPONSE_PROGRESS",
+    requestId,
+    chunkCount,
+    receivedCharacters: value.length,
+    elapsedMs: Date.now() - startedAt,
+    complete: true,
+    outputPreview: observableStreamOutput(value, contentType),
+  });
+  return value;
+}
+
 function responseText(payload) {
   const content = payload?.choices?.[0]?.message?.content;
   if (typeof content === "string") return content;
@@ -138,6 +244,31 @@ function boundedWorkspaceCandidates(value) {
   }
   const candidates = value.map((candidate, index) => {
     if (!candidate || typeof candidate !== "object") throw new TypeError(`workspace candidate ${index} must be an object`);
+    const evidence = candidate.evidence && typeof candidate.evidence === "object" ? candidate.evidence : {};
+    const allowedConfidence = new Set(["LOW", "MEDIUM", "HIGH"]);
+    const confidenceCap = allowedConfidence.has(evidence.confidenceCap) ? evidence.confidenceCap : "LOW";
+    const stringList = (items, maximumItems, maximumLength) => Array.isArray(items)
+      ? items.slice(0, maximumItems).filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim().slice(0, maximumLength))
+      : [];
+    const observations = Array.isArray(evidence.observations) ? evidence.observations.slice(0, 8).map((observation, observationIndex) => {
+      if (!observation || typeof observation !== "object") throw new TypeError(`workspace candidate ${index} evidence observation ${observationIndex} must be an object`);
+      return {
+        extractor: requiredString(observation.extractor, `workspace candidate ${index} evidence observation ${observationIndex} extractor`).slice(0, 80),
+        basis: requiredString(observation.basis, `workspace candidate ${index} evidence observation ${observationIndex} basis`).slice(0, 160),
+        sourcePath: requiredString(observation.sourcePath, `workspace candidate ${index} evidence observation ${observationIndex} sourcePath`).slice(0, 800),
+        startLine: Number.isSafeInteger(observation.startLine) && observation.startLine > 0 ? observation.startLine : 1,
+        excerpt: typeof observation.excerpt === "string" ? observation.excerpt.slice(0, 1_200) : "",
+      };
+    }) : [];
+    if (observations.length === 0) {
+      observations.push({
+        extractor: "UNDECLARED_LEGACY_EXTRACTOR",
+        basis: "Legacy candidate without an explicit extraction basis",
+        sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "unknown",
+        startLine: 1,
+        excerpt: typeof candidate.code === "string" ? candidate.code.slice(0, 1_200) : "",
+      });
+    }
     return {
       id: requiredString(candidate.id, `workspace candidate ${index} id`),
       name: requiredString(candidate.name, `workspace candidate ${index} name`).slice(0, 300),
@@ -147,6 +278,14 @@ function boundedWorkspaceCandidates(value) {
       sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "",
       description: typeof candidate.description === "string" ? candidate.description.slice(0, 1_200) : "",
       code: typeof candidate.code === "string" ? candidate.code.slice(0, 2_000) : "",
+      evidence: {
+        observations,
+        corroborations: stringList(evidence.corroborations, 16, 800),
+        contradictions: stringList(evidence.contradictions, 16, 800),
+        diagnostics: stringList(evidence.diagnostics, 16, 800),
+        completeness: ["COMPLETE", "PARTIAL", "UNKNOWN"].includes(evidence.completeness) ? evidence.completeness : "UNKNOWN",
+        confidenceCap,
+      },
     };
   });
   if (JSON.stringify(candidates).length > 72_000) throw new RangeError("workspace model batch exceeds the bounded context size");
@@ -175,7 +314,23 @@ export class OpenAICompatibleAnalysisModelAdapter {
     this.stream = stream;
   }
 
-  async #request({ messages, maxOutputTokens }, { signal = null } = {}) {
+  async #request({ messages, maxOutputTokens }, { signal = null, onTelemetry = null } = {}) {
+    const requestId = `${this.id}:${Date.now()}:${Math.random().toString(16).slice(2, 10)}`;
+    const startedAt = Date.now();
+    const prompt = boundedPreview(messages);
+    emitTelemetry(onTelemetry, {
+      type: "REQUEST_PREPARED",
+      requestId,
+      profileId: this.id,
+      model: this.model,
+      endpoint: this.endpoint,
+      transport: this.stream ? "STREAM_SSE" : "JSON",
+      maxOutputTokens,
+      inputCharacters: JSON.stringify(messages).length,
+      promptPreview: prompt.text,
+      promptTruncated: prompt.truncated,
+      promptOriginalCharacters: prompt.originalCharacters,
+    });
     const apiKey = await this.apiKeyResolver(this.id);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new Error("Analysis model request timed out")), this.timeoutMs);
@@ -197,12 +352,32 @@ export class OpenAICompatibleAnalysisModelAdapter {
           messages,
         }),
       });
+      emitTelemetry(onTelemetry, {
+        type: "HTTP_CONNECTED",
+        requestId,
+        status: response.status,
+        contentType: response.headers?.get?.("content-type") ?? "",
+        timeToFirstByteMs: Date.now() - startedAt,
+      });
       if (!response.ok) {
         const detail = typeof response.text === "function" ? await response.text().catch(() => "") : "";
         throw new AnalysisModelConnectionError(`Analysis model request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
       }
       try {
-        return structuredResponse(await response.text(), response.headers?.get?.("content-type") ?? "");
+        const contentType = response.headers?.get?.("content-type") ?? "";
+        const responseTextValue = await responseBodyText(response, { onTelemetry, requestId, startedAt, contentType });
+        const result = structuredResponse(responseTextValue, contentType);
+        const output = boundedPreview(result);
+        emitTelemetry(onTelemetry, {
+          type: "STRUCTURED_RESPONSE_PARSED",
+          requestId,
+          elapsedMs: Date.now() - startedAt,
+          outputCharacters: JSON.stringify(result).length,
+          outputPreview: output.text,
+          outputTruncated: output.truncated,
+          usage: responseUsage(responseTextValue, contentType),
+        });
+        return result;
       } catch (error) {
         const reason = error instanceof TypeError && error.message.startsWith("analysis model ")
           ? error.message
@@ -210,6 +385,12 @@ export class OpenAICompatibleAnalysisModelAdapter {
         throw new AnalysisModelConnectionError(`Analysis model returned an invalid structured JSON response: ${reason}`, { cause: error });
       }
     } catch (error) {
+      emitTelemetry(onTelemetry, {
+        type: "REQUEST_FAILED",
+        requestId,
+        elapsedMs: Date.now() - startedAt,
+        message: error instanceof Error ? error.message : "Unknown analysis model error",
+      });
       if (error instanceof AnalysisModelConnectionError) throw error;
       if (controller.signal.aborted) throw new AnalysisModelConnectionError("Analysis model request timed out or was cancelled", { cause: error });
       throw new AnalysisModelConnectionError("Unable to reach the configured analysis model", { cause: error });
@@ -243,6 +424,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
           content: [
             "You are Traqen's bounded Workspace analysis agent.",
             "Classify implementation candidates using only the supplied paths, descriptions, and code excerpts.",
+            "Treat extractor output as an observation, never as truth. Weigh independent corroborations, contradictions, parser diagnostics, completeness, and the supplied confidenceCap.",
+            "Your confidence must never exceed each candidate evidence.confidenceCap. Keep uncertainty explicit when evidence is single-source or incomplete.",
             "Do not invent permissions, business rules, dependencies, tests, or authority.",
             "Return JSON only with candidates[]. Preserve every input id exactly.",
             "businessFeature is true only for a user-recognizable business capability or background business process; repositories, DTOs, adapters, configuration, utilities, and framework plumbing are false.",
@@ -274,7 +457,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
       const allowedGroups = new Set(["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION", "DATA_INTEGRATION", "PROJECT_OPERATION", "API_SERVICE"]);
       const allowedConfidence = new Set(["LOW", "MEDIUM", "HIGH"]);
       const seen = new Set();
-      return result.candidates.map((candidate, index) => {
+      const confidenceRank = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+      const validated = result.candidates.map((candidate, index) => {
         const id = requiredString(candidate?.id, `workspace response candidate ${index} id`);
         if (!inputIds.has(id) || seen.has(id)) throw new TypeError(`analysis model returned an unknown or duplicate candidate id ${id}`);
         seen.add(id);
@@ -282,6 +466,10 @@ export class OpenAICompatibleAnalysisModelAdapter {
         const confidence = requiredString(candidate.confidence, `workspace response candidate ${index} confidence`);
         if (!allowedGroups.has(group)) throw new TypeError(`analysis model returned unsupported group ${group}`);
         if (!allowedConfidence.has(confidence)) throw new TypeError(`analysis model returned unsupported confidence ${confidence}`);
+        const input = candidates.find((item) => item.id === id);
+        if (confidenceRank[confidence] > confidenceRank[input.evidence.confidenceCap]) {
+          throw new TypeError(`analysis model confidence ${confidence} exceeds evidence cap ${input.evidence.confidenceCap} for ${id}`);
+        }
         if (typeof candidate.businessFeature !== "boolean") throw new TypeError(`workspace response candidate ${index} businessFeature must be boolean`);
         return {
           id,
@@ -294,7 +482,21 @@ export class OpenAICompatibleAnalysisModelAdapter {
           rationale: requiredString(candidate.rationale, `workspace response candidate ${index} rationale`).slice(0, 1_000),
         };
       });
+      const missing = candidates.filter((candidate) => !seen.has(candidate.id)).map((candidate) => candidate.id);
+      if (missing.length > 0) throw new TypeError(`analysis model omitted ${missing.length} input candidate ids`);
+      emitTelemetry(options.onTelemetry, {
+        type: "OUTPUT_VALIDATED",
+        candidateCount: validated.length,
+        businessCandidateCount: validated.filter((candidate) => candidate.businessFeature).length,
+        technicalCandidateCount: validated.filter((candidate) => !candidate.businessFeature).length,
+        confidence: validated.reduce((counts, candidate) => ({ ...counts, [candidate.confidence]: (counts[candidate.confidence] ?? 0) + 1 }), {}),
+      });
+      return validated;
     } catch (error) {
+      emitTelemetry(options.onTelemetry, {
+        type: "OUTPUT_REJECTED",
+        message: error instanceof Error ? error.message : "Unknown Workspace output validation error",
+      });
       throw new AnalysisModelConnectionError("Analysis model returned an invalid Workspace enrichment response", { cause: error });
     }
   }

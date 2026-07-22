@@ -120,11 +120,49 @@ test("runtime model profiles keep API keys private, require verification, and en
     sourcePath: "src/orders/service.ts",
     description: "Discovered source capability.",
     code: "export function submitOrder() {}",
+    evidence: {
+      observations: [
+        { extractor: "TYPESCRIPT_AST", basis: "exported function", sourcePath: "src/orders/service.ts", startLine: 1, excerpt: "export function submitOrder() {}" },
+        { extractor: "OPENAPI_DOCUMENT", basis: "declared operation", sourcePath: "openapi.json", startLine: 1, excerpt: "POST /orders" },
+      ],
+      corroborations: ["Related test clue submit order at test/orders.test.ts"],
+      contradictions: [],
+      diagnostics: [],
+      completeness: "PARTIAL",
+      confidenceCap: "HIGH",
+    },
   }]);
   assert.equal(enriched[0].businessFeature, true);
   assert.equal(enriched[0].displayName, "Submit order");
   assert.equal(requests.every((request) => request.headers.authorization === "Bearer runtime-secret"), true);
   assert.equal(JSON.stringify(registry.list()).includes("runtime-secret"), false);
+});
+
+test("Workspace model telemetry exposes the auditable request lifecycle and enforces evidence confidence caps", async () => {
+  const telemetry = [];
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "observable-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    stream: true,
+    fetchImpl: async () => new Response([
+      `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ candidates: [{ id: "CANDIDATE-1", displayName: "Candidate", description: "Observed candidate.", businessFeature: false, domain: "Technical", group: "PROJECT_OPERATION", confidence: "HIGH", rationale: "Single heuristic observation." }] }) } }] })}`,
+      "data: [DONE]",
+    ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } }),
+  });
+  await assert.rejects(() => adapter.enrichWorkspaceCandidates([{
+    id: "CANDIDATE-1", name: "candidate", kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: "src/candidate.js", description: "candidate", code: "export function candidate() {}",
+    evidence: {
+      observations: [{ extractor: "SOURCE_PATTERN", basis: "heuristic", sourcePath: "src/candidate.js", startLine: 1, excerpt: "export function candidate() {}" }],
+      corroborations: [], contradictions: [], diagnostics: ["heuristic"], completeness: "UNKNOWN", confidenceCap: "LOW",
+    },
+  }], { onTelemetry: (event) => telemetry.push(event) }), /invalid Workspace enrichment response/);
+  assert.deepEqual(telemetry.slice(0, 3).map((event) => event.type), ["REQUEST_PREPARED", "HTTP_CONNECTED", "RESPONSE_PROGRESS"]);
+  assert.ok(telemetry.some((event) => event.type === "STRUCTURED_RESPONSE_PARSED"));
+  assert.ok(telemetry.some((event) => event.type === "OUTPUT_REJECTED"));
+  assert.match(telemetry.find((event) => event.type === "RESPONSE_PROGRESS").outputPreview, /^\{"candidates"/);
+  assert.equal(telemetry[0].promptPreview.includes("SOURCE_PATTERN"), true);
+  assert.equal(JSON.stringify(telemetry).includes("authorization"), false);
 });
 
 test("model transport and structured output failures are reported as model availability errors", async () => {
