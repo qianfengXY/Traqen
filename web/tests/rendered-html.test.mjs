@@ -128,6 +128,9 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /WorkspaceAnalysisView/);
   assert.match(product, /taskName: string/);
   assert.match(product, /当前工作任务/);
+  assert.match(product, /公开推理摘要/);
+  assert.match(product, /反证检查/);
+  assert.match(product, /展示公开推理摘要，不展示私有思维链/);
   assert.match(product, /完成标准：模型结论通过源码范围、候选 ID 和置信度上限校验/);
   assert.doesNotMatch(product, /并行分析第 \$\{slot\} 组模块/);
   assert.match(product, /view === "workspace" && !workspaceCreationOpen && !workspaceProjectCreated/);
@@ -154,7 +157,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /主 Agent 对话/);
   assert.match(product, /三个子 Agent 对话/);
   assert.match(product, /sub-agent-deck/);
-  assert.match(product, /公开执行过程，不展示隐藏思维链/);
+  assert.match(product, /展示公开推理摘要，不展示私有思维链/);
   assert.match(product, /planWorkspaceAnalysis/);
   assert.match(product, /Promise\.allSettled/);
   assert.match(product, /上下文达到安全阈值/);
