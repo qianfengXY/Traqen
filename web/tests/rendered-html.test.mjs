@@ -126,6 +126,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
+  assert.match(product, /taskName: string/);
+  assert.match(product, /当前工作任务/);
+  assert.match(product, /完成标准：模型结论通过源码范围、候选 ID 和置信度上限校验/);
+  assert.doesNotMatch(product, /并行分析第 \$\{slot\} 组模块/);
   assert.match(product, /view === "workspace" && !workspaceCreationOpen && !workspaceProjectCreated/);
   assert.match(product, /hidden=\{view !== "workspace" \|\| workspaceCreationOpen \|\| !workspaceProjectCreated\}/);
   assert.match(product, /!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView/);

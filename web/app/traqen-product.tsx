@@ -2062,6 +2062,7 @@ type LocalSubAgent = {
   slot: 1 | 2 | 3;
   generation: number;
   status: "IDLE" | "RUNNING" | "ROTATING" | "COMPLETED" | "PAUSED" | "FAILED";
+  taskName: string;
   objective: string;
   moduleScopes: string[];
   currentTask: string;
@@ -2092,7 +2093,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const [mainModelMessage, setMainModelMessage] = useState("");
   const [mainModelStreaming, setMainModelStreaming] = useState(false);
   const [subAgents, setSubAgents] = useState<LocalSubAgent[]>(() => ([1, 2, 3] as const).map((slot) => ({
-    id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+    id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
   })));
   const [showTechnicalDiagnostics, setShowTechnicalDiagnostics] = useState(false);
   const [taskClock, setTaskClock] = useState(() => Date.now());
@@ -2113,7 +2114,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       setScanProgress(null);
       setMessage("");
       setSubAgents(([1, 2, 3] as const).map((slot) => ({
-        id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+        id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
       })));
     }
     void loadLocalWorkspaceAnalysisRun(projectId).then((checkpoint) => {
@@ -2223,16 +2224,14 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     }
     if (event.type === "RESPONSE_PROGRESS") {
       updateSubAgent(agentId, (agent) => ({ ...agent, requestOutputCharacters: event.receivedCharacters ?? agent.requestOutputCharacters, currentTask: event.complete ? t("正在校验模型结论", "Validating the model conclusion") : t("模型正在流式回复", "The model is streaming its response") }));
-      if (event.assistantMessage) appendSubAgentMessage(agentId, "MODEL", event.assistantMessage, { id: `${agentId}:${event.requestId ?? "active"}:model`, streaming: !event.complete, replace: true });
       return;
     }
     if (event.type === "STRUCTURED_RESPONSE_PARSED") {
       updateSubAgent(agentId, (agent) => ({ ...agent, contextCharacters: agent.contextCharacters + agent.requestInputCharacters + (event.outputCharacters ?? agent.requestOutputCharacters), requestOutputCharacters: event.outputCharacters ?? agent.requestOutputCharacters, currentTask: t("验证 Agent 正在核对证据边界", "The Validation Agent is checking evidence boundaries") }));
-      if (event.assistantMessage) appendSubAgentMessage(agentId, "MODEL", event.assistantMessage, { id: `${agentId}:${event.requestId ?? "active"}:model`, streaming: false, replace: true });
       return;
     }
     if (event.type === "OUTPUT_VALIDATED") {
-      appendSubAgentMessage(agentId, "VALIDATOR", t(`证据校验通过：业务候选 ${event.businessCandidateCount ?? 0} 个，技术支撑 ${event.technicalCandidateCount ?? 0} 个。`, `Evidence validation passed: ${event.businessCandidateCount ?? 0} business candidates and ${event.technicalCandidateCount ?? 0} technical supports.`));
+      updateSubAgent(agentId, (agent) => ({ ...agent, currentTask: t("模型结论已通过证据校验", "The model conclusion passed evidence validation") }));
       return;
     }
     if (event.type === "BATCH_RETRYING") {
@@ -2346,7 +2345,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     setMainModelMessage("");
     setMainModelStreaming(false);
     setSubAgents(([1, 2, 3] as const).map((slot) => ({
-      id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+      id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
     })));
     const nextAnalysisTask: LocalAnalysisTask = {
       id: `LOCAL-ANALYSIS-${taskStartedAt}`,
@@ -2481,7 +2480,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         return !actualEnvironmentFile && !ignored.test(file.path) && textExtensions.test(file.path) && file.size <= 768 * 1024;
       });
       const sourceManifest = workspaceSourceManifest(sourceFiles);
-      const defaultAssignments: WorkspaceAnalysisPlan["taskAssignments"] = ([1, 2, 3] as const).map((slot) => ({ agentId: `SUB_AGENT_${slot}` as LocalSubAgent["id"], objective: t(`并行分析第 ${slot} 组模块的业务与 API 语义`, `Analyze business and API semantics for module group ${slot} in parallel`), moduleScopes: [] }));
+      const defaultAssignments: WorkspaceAnalysisPlan["taskAssignments"] = ([1, 2, 3] as const).map((slot) => ({ agentId: `SUB_AGENT_${slot}` as LocalSubAgent["id"], objective: t("识别所分配源码范围内的业务功能、API 行为与支撑实现，并核验证据边界", "Identify business capabilities, API behavior, and supporting implementation in the assigned source scope, then validate the evidence boundary"), moduleScopes: [] }));
       let orchestrationPlan: WorkspaceAnalysisPlan = { agentMessage: t("我会把有界工作单元分配给三个子 Agent 并行分析，并在每个结果返回后校验证据、保存检查点。", "I will assign bounded work units to three child Agents in parallel, validate evidence after every result, and save checkpoints."), taskAssignments: defaultAssignments };
       if (modelBatches.length > 0) {
         try {
@@ -2506,9 +2505,16 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         const selected = [...candidates].sort((left, right) => (queues.get(left.agentId)?.length ?? 0) - (queues.get(right.agentId)?.length ?? 0))[0] ?? defaultAssignments[index % 3];
         queues.get(selected.agentId)?.push(index);
       }
-      setSubAgents([...orchestrationPlan.taskAssignments].sort((left, right) => left.agentId.localeCompare(right.agentId)).map((assignment) => ({
-        id: assignment.agentId, slot: Number(assignment.agentId.at(-1)) as LocalSubAgent["slot"], generation: 1, status: (queues.get(assignment.agentId)?.length ?? 0) > 0 ? "RUNNING" : "COMPLETED", objective: assignment.objective, moduleScopes: assignment.moduleScopes, currentTask: t("等待领取第一个工作单元", "Waiting to claim the first work unit"), completedTasks: 0, totalTasks: queues.get(assignment.agentId)?.length ?? 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [{ id: `${assignment.agentId}:assignment`, at: Date.now(), actor: "SYSTEM", text: t(`主 Agent 已分配：${assignment.objective}`, `Assigned by Main Agent: ${assignment.objective}`) }],
-      })));
+      setSubAgents([...orchestrationPlan.taskAssignments].sort((left, right) => left.agentId.localeCompare(right.agentId)).map((assignment) => {
+        const batchIndexes = queues.get(assignment.agentId) ?? [];
+        const actualScopes = [...new Set(batchIndexes.flatMap((index) => modelBatches[index].map((candidate) => workspaceSourceModule(candidate.sourcePath))))].sort();
+        const visibleScopes = actualScopes.slice(0, 3);
+        const scopeLabel = visibleScopes.length > 0 ? `${visibleScopes.join("、")}${actualScopes.length > visibleScopes.length ? t(` 等 ${actualScopes.length} 个模块`, ` and ${actualScopes.length - visibleScopes.length} more modules`) : ""}` : t("待补充源码范围", "pending source scope");
+        const taskName = t(`分析 ${scopeLabel} 的功能与接口`, `Analyze capabilities and APIs in ${scopeLabel}`);
+        return {
+          id: assignment.agentId, slot: Number(assignment.agentId.at(-1)) as LocalSubAgent["slot"], generation: 1, status: batchIndexes.length > 0 ? "RUNNING" : "COMPLETED", taskName, objective: assignment.objective, moduleScopes: actualScopes, currentTask: batchIndexes.length > 0 ? t("等待领取第一个工作单元", "Waiting to claim the first work unit") : t("当前没有可执行工作单元", "No executable work units assigned"), completedTasks: 0, totalTasks: batchIndexes.length, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [{ id: `${assignment.agentId}:assignment`, at: Date.now(), actor: "SYSTEM", text: t(`任务：${taskName}\n目标：${assignment.objective}\n范围：${scopeLabel}\n完成标准：模型结论通过源码范围、候选 ID 和置信度上限校验，并保存检查点\n下一步：领取第一个有界工作单元`, `Task: ${taskName}\nGoal: ${assignment.objective}\nScope: ${scopeLabel}\nDone when: the model conclusion passes source-scope, candidate-ID, and confidence-cap validation and a checkpoint is saved\nNext: claim the first bounded work unit`) }],
+        };
+      }));
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
         `执行计划已建立：\n${orchestrationPlan.taskAssignments.map((assignment) => `• ${assignment.agentId}：${assignment.objective}；范围 ${assignment.moduleScopes.length > 0 ? assignment.moduleScopes.slice(0, 4).join("、") : "由 Source Manifest 均衡分配"}`).join("\n")}\n调度原则：三个队列并发，每个工作单元完成后校验证据并保存检查点。`,
         `Execution plan established:\n${orchestrationPlan.taskAssignments.map((assignment) => `• ${assignment.agentId}: ${assignment.objective}; scope ${assignment.moduleScopes.length > 0 ? assignment.moduleScopes.slice(0, 4).join(", ") : "balanced from the Source Manifest"}`).join("\n")}\nScheduling: three queues run concurrently; every completed work unit is evidence-validated and checkpointed.`,
@@ -2540,10 +2546,11 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           const requestOutput = new Map<string, number>();
           const workLabel = t(`分析“${moduleScope}”中的 ${batch.length} 个候选`, `Analyze ${batch.length} candidates in “${moduleScope}”`);
           const evidenceCounts = batch.reduce((counts, candidate) => ({ ...counts, [candidate.evidence.confidenceCap]: counts[candidate.evidence.confidenceCap] + 1 }), { LOW: 0, MEDIUM: 0, HIGH: 0 });
-          updateSubAgent(agentId, (agent) => ({ ...agent, generation, status: "RUNNING", currentTask: workLabel }));
+          const activeTaskName = t(`分析 ${moduleScope} 的功能与接口`, `Analyze capabilities and APIs in ${moduleScope}`);
+          updateSubAgent(agentId, (agent) => ({ ...agent, generation, status: "RUNNING", taskName: activeTaskName, currentTask: workLabel }));
           appendSubAgentMessage(agentId, "AGENT", t(
-            `目标：${workLabel}\n输入：${batch.length} 个可定位候选，证据上限低 ${evidenceCounts.LOW} / 中 ${evidenceCounts.MEDIUM} / 高 ${evidenceCounts.HIGH}\n动作：区分用户可识别能力、API 行为与技术支撑；不得提高证据置信度上限\n下一步：接收模型公开结论后执行结构与证据校验`,
-            `Goal: ${workLabel}\nInput: ${batch.length} locatable candidates; evidence caps ${evidenceCounts.LOW} low / ${evidenceCounts.MEDIUM} medium / ${evidenceCounts.HIGH} high\nAction: separate user-recognizable capabilities, API behavior, and technical support without raising evidence caps\nNext: validate structure and evidence after the public model conclusion arrives`,
+            `我开始处理：${activeTaskName}\n\n目标：${workLabel}\n依据：${batch.length} 个可定位候选；证据上限低 ${evidenceCounts.LOW} / 中 ${evidenceCounts.MEDIUM} / 高 ${evidenceCounts.HIGH}\n正在做：区分用户可识别能力、API 行为与技术支撑，不提高证据置信度上限\n下一步：取得模型结论后核对结构与证据边界`,
+            `Starting: ${activeTaskName}\n\nGoal: ${workLabel}\nEvidence basis: ${batch.length} locatable candidates; evidence caps ${evidenceCounts.LOW} low / ${evidenceCounts.MEDIUM} medium / ${evidenceCounts.HIGH} high\nWorking on: separate user-recognizable capabilities, API behavior, and technical support without raising evidence caps\nNext: validate structure and evidence boundaries after the model conclusion`,
           ));
           const enrichments = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, batch, { onTelemetry: (event) => {
             if (event.type === "REQUEST_PREPARED") {
@@ -2570,6 +2577,11 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           await checkpointQueue;
           const domains = new Set(enrichments.map((item) => item.domain)).size;
           const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
+          if (enrichments.length > 0) {
+            const highlights = enrichments.slice(0, 4).map((item) => `• ${item.displayName} · ${item.domain} · ${term(item.confidence)}\n  ${item.rationale}`).join("\n");
+            appendSubAgentMessage(agentId, "MODEL", t(`本轮形成 ${enrichments.length} 条可校验结论：\n${highlights}${enrichments.length > 4 ? `\n• 另有 ${enrichments.length - 4} 条结论已收起` : ""}`, `This work unit produced ${enrichments.length} validatable conclusions:\n${highlights}${enrichments.length > 4 ? `\n• ${enrichments.length - 4} additional conclusions collapsed` : ""}`));
+            appendSubAgentMessage(agentId, "VALIDATOR", t(`证据校验通过：业务候选 ${businessFeatures} 个，技术支撑 ${enrichments.length - businessFeatures} 个；没有引用工作单元之外的源码证据。`, `Evidence validation passed: ${businessFeatures} business candidates and ${enrichments.length - businessFeatures} technical supports; no source evidence outside the work unit was cited.`));
+          }
           updateSubAgent(agentId, (agent) => ({ ...agent, status: "RUNNING", contextCharacters, completedTasks: agent.completedTasks + 1, currentTask: t("检查点已保存，准备下一工作单元", "Checkpoint saved; preparing the next work unit") }));
           appendSubAgentMessage(agentId, "AGENT", enrichments.length > 0 ? t(
             `发现：${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术支撑、${domains} 个业务域\n证据：所有结论已通过 ID、源码范围和置信度上限校验\n检查点：本工作单元结果已保存；耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}\n下一步：领取队列中的下一个工作单元`,
@@ -2663,7 +2675,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
             <div className="sub-agent-deck" aria-label={t("三个子 Agent 对话", "Three child-Agent conversations")}>
               {subAgents.map((agent) => <section className={`agent-conversation-window sub-agent-window status-${agent.status.toLowerCase()}`} key={agent.id}>
                 <header><div><span className="agent-live-dot" /><p><b>{t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`)}</b><small>{agent.id} · Generation {agent.generation}</small></p></div><em>{term(agent.status)}</em></header>
-                <div className="sub-agent-objective"><b>{agent.objective}</b><small>{agent.currentTask}</small></div>
+                <div className="sub-agent-objective"><span>{t("当前工作任务", "Current task")}</span><b>{agent.taskName}</b><small>{agent.currentTask}</small></div>
                 <div className="sub-agent-progress"><span style={{ width: `${Math.round((agent.completedTasks / Math.max(1, agent.totalTasks)) * 100)}%` }} /><small>{agent.completedTasks} / {agent.totalTasks}</small></div>
                 <div className="agent-transcript" ref={(node) => { subAgentTranscriptRefs.current[agent.id] = node; }} role="log" aria-live="polite">
                   {agent.messages.length ? agent.messages.map((item) => <article className={`agent-message actor-${item.actor.toLowerCase()} ${item.warning ? "warning" : ""} ${item.streaming ? "streaming" : ""}`} key={item.id}><div><b>{item.actor === "AGENT" ? t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`) : item.actor === "MODEL" ? t("模型", "Model") : item.actor === "VALIDATOR" ? t("验证器", "Validator") : t("系统", "System")}</b><time>{new Date(item.at).toLocaleTimeString()}</time></div><p>{item.text}</p></article>) : <p className="task-log-empty">{t("等待主 Agent 分配工作单元。", "Waiting for the Main Agent to assign a work unit.")}</p>}
