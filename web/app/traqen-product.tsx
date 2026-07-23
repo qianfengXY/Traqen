@@ -2158,6 +2158,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const [resumableCheckpoint, setResumableCheckpoint] = useState<LocalWorkspaceAnalysisRunCheckpoint | null>(null);
   const [progressAnalysis, setProgressAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
   const [directoryAccessRestoring, setDirectoryAccessRestoring] = useState(false);
+  const [checkpointRestoring, setCheckpointRestoring] = useState(false);
   const [savedDirectoryHandleProjectId, setSavedDirectoryHandleProjectId] = useState("");
   const hasSavedDirectoryHandle = savedDirectoryHandleProjectId === projectId;
   const [mainModelMessage, setMainModelMessage] = useState("");
@@ -2489,6 +2490,17 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       onRequireModel();
       return;
     }
+    setCheckpointRestoring(true);
+    const checkpoint = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
+    setCheckpointRestoring(false);
+    const canResumeSavedScanSnapshot = Boolean(checkpoint
+      && checkpoint.scannerVersion === localWorkspaceScannerVersion
+      && checkpoint.completedFileCount >= checkpoint.plannedFileCount
+      && checkpoint.records.length > 0);
+    if (checkpoint && canResumeSavedScanSnapshot) {
+      await scanWorkspace([], checkpoint.rootName, checkpoint);
+      return;
+    }
     let files = selectedFilesRef.current;
     let rootName = directoryNameRef.current;
     if (files.length === 0) {
@@ -2505,7 +2517,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     await scanWorkspace(files, rootName);
   }
 
-  async function scanWorkspace(analysisFiles = selectedFilesRef.current, analysisDirectoryName = directoryNameRef.current) {
+  async function scanWorkspace(analysisFiles = selectedFilesRef.current, analysisDirectoryName = directoryNameRef.current, resumeCheckpoint?: LocalWorkspaceAnalysisRunCheckpoint) {
     if (!projectCreated) {
       setMessage(t("请先创建 Workspace 项目，再选择代码工程并启动分析。", "Create the Workspace project before selecting its code project and starting analysis."));
       onRequireWorkspace();
@@ -2520,6 +2532,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     pauseRequestedRef.current = false;
     setMessage("");
     const taskStartedAt = Date.now();
+    const analysisFileCount = resumeCheckpoint?.plannedFileCount ?? analysisFiles.length;
     setTaskClock(taskStartedAt);
     setMainModelMessage("");
     setMainModelStreaming(false);
@@ -2540,7 +2553,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       endedAt: null,
       overallProgress: 0,
       phaseCompleted: 0,
-      phaseTotal: analysisFiles.length,
+      phaseTotal: analysisFileCount,
       modelCallsCompleted: 0,
       modelCallsTotal: 0,
       activeRequestId: null,
@@ -2548,10 +2561,14 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       outputCharacters: 0,
       totalTokens: null,
       currentWork: t("准备工程文件清单", "Preparing the project file manifest"),
-      activeSubtask: t(`提取 ${analysisFiles.length.toLocaleString()} 个工程文件的可定位证据`, `Extract locatable evidence from ${analysisFiles.length.toLocaleString()} project files`),
+      activeSubtask: resumeCheckpoint
+        ? t("从已保存的分析快照恢复未完成任务", "Resume unfinished work from the saved analysis snapshot")
+        : t(`提取 ${analysisFileCount.toLocaleString()} 个工程文件的可定位证据`, `Extract locatable evidence from ${analysisFileCount.toLocaleString()} project files`),
       events: [
         { id: `${taskStartedAt}:0`, at: taskStartedAt, phase: "READY", role: "AGENT", kind: "PLAN", message: t(`主任务已建立：先提取源码事实，再由 ${analysisModelProfile.model} 分批理解业务与 API 语义，最后校验证据并更新功能树。`, `Main task created: extract source facts, let ${analysisModelProfile.model} resolve business and API semantics in batches, then validate evidence and update the Feature tree.`) },
-        { id: `${taskStartedAt}:1`, at: taskStartedAt, phase: "SCANNING", role: "SCANNER", kind: "ACTION", message: t(`子任务开始：处理 ${analysisFiles.length.toLocaleString()} 个工程文件；构建产物、依赖目录、真实 .env 和超大文件不进入分析。`, `Subtask started: process ${analysisFiles.length.toLocaleString()} project files; build output, dependency folders, real .env files, and oversized files are excluded.`) },
+        { id: `${taskStartedAt}:1`, at: taskStartedAt, phase: "SCANNING", role: "SCANNER", kind: "ACTION", message: resumeCheckpoint
+          ? t("检测到完整扫描快照检查点；直接恢复扫描结果和剩余模型工作单元，不再遍历原工程目录。", "A complete scan-snapshot checkpoint was found. Its scan results and remaining model work units will resume without traversing the source directory.")
+          : t(`子任务开始：处理 ${analysisFileCount.toLocaleString()} 个工程文件；构建产物、依赖目录、真实 .env 和超大文件不进入分析。`, `Subtask started: process ${analysisFileCount.toLocaleString()} project files; build output, dependency folders, real .env files, and oversized files are excluded.`) },
       ],
     };
     analysisTaskRef.current = nextAnalysisTask;
@@ -2560,19 +2577,25 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       const textExtensions = /\.(?:[cm]?[jt]sx?|py|java|go|cs|rs|vue|json|md|ya?ml|sql|properties|env|xml|gradle|kts)$/i;
       const ignored = /(^|\/)(?:\.git|node_modules|dist|build|target|out|\.gradle|\.next|\.vinext|coverage|vendor)(\/|$)/;
       if (analysis && registeredRootName && analysisDirectoryName !== registeredRootName) throw new Error(t(`当前 Workspace 绑定的工程目录是“${registeredRootName}”。`, `This Workspace is bound to the project directory “${registeredRootName}”.`));
-      const activeRun = await loadLocalWorkspaceAnalysisRun(projectId);
+      const activeRun = resumeCheckpoint ?? await loadLocalWorkspaceAnalysisRun(projectId);
       if (activeRun && activeRun.rootName !== analysisDirectoryName) throw new Error(t(`当前检查点绑定的工程目录是“${activeRun.rootName}”。`, `The active checkpoint is bound to “${activeRun.rootName}”.`));
       const canResume = activeRun?.rootName === analysisDirectoryName && activeRun.scannerVersion === localWorkspaceScannerVersion;
+      const resumeSavedScanSnapshot = Boolean(resumeCheckpoint
+        && canResume
+        && activeRun.completedFileCount >= activeRun.plannedFileCount
+        && activeRun.records.length > 0);
       if (activeRun && canResume) setResumableCheckpoint(activeRun);
       const selectedEntries = analysisFiles.map((file) => {
         const path = workspaceFilePath(file);
         const relativePath = path.split("/").slice(1).join("/") || path;
         return { file, path, relativePath };
       });
-      const checkpointResumePlan = planLocalWorkspaceCheckpointResume(
-        selectedEntries.map((entry) => ({ path: entry.relativePath, size: entry.file.size, lastModified: entry.file.lastModified })),
-        canResume ? activeRun.records : [],
-      );
+      const checkpointResumePlan = resumeSavedScanSnapshot
+        ? { reusableRecords: activeRun.records, exactMatch: true }
+        : planLocalWorkspaceCheckpointResume(
+          selectedEntries.map((entry) => ({ path: entry.relativePath, size: entry.file.size, lastModified: entry.file.lastModified })),
+          canResume ? activeRun.records : [],
+        );
       const reusableCheckpointRecords = checkpointResumePlan.reusableRecords;
       const reusableCheckpointPaths = new Set(reusableCheckpointRecords.map((record) => record.path));
       const checkpointFilesUnchanged = Boolean(canResume && checkpointResumePlan.exactMatch);
@@ -2580,10 +2603,12 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         && activeRun.phase === "MODEL_ENRICHMENT"
         && activeRun.modelProfileId === analysisModelProfile.id
         && activeRun.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion);
-      const persistedFileRecords = fileRecords.length > 0 ? fileRecords : await loadLocalWorkspaceProjectRecords(projectId);
+      const persistedFileRecords = resumeSavedScanSnapshot
+        ? activeRun.records
+        : fileRecords.length > 0 ? fileRecords : await loadLocalWorkspaceProjectRecords(projectId);
       const previousRecords = new Map(persistedFileRecords.map((record) => [record.path, record]));
       const nextRecords: LocalWorkspaceFileRecord[] = [...reusableCheckpointRecords];
-      const currentPaths = new Set(selectedEntries.map((entry) => entry.relativePath));
+      const currentPaths = new Set(resumeSavedScanSnapshot ? activeRun.currentPaths : selectedEntries.map((entry) => entry.relativePath));
       const remainingEntries = selectedEntries.filter((entry) => !reusableCheckpointPaths.has(entry.relativePath));
       let added = canResume ? activeRun.counters.added : 0;
       let modified = canResume ? activeRun.counters.modified : 0;
@@ -2595,7 +2620,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       if (completedFileBase > 0) {
         const restoredPhase = resumeModelPhase ? "MODEL_ENRICHMENT" : "SCANNING";
         const restoredCompleted = resumeModelPhase ? activeRun.completedModelBatchCount : completedFileBase;
-        const restoredTotal = resumeModelPhase ? activeRun.totalModelBatchCount : analysisFiles.length;
+        const restoredTotal = resumeModelPhase ? activeRun.totalModelBatchCount : analysisFileCount;
         const restoredOverall = resumeModelPhase
           ? 55 + Math.round((restoredCompleted / Math.max(1, restoredTotal)) * 40)
           : Math.min(55, Math.round((restoredCompleted / Math.max(1, restoredTotal)) * 55));
@@ -2611,10 +2636,12 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           overallProgress: restoredOverall,
           currentWork: resumeModelPhase
             ? t(`从模型检查点继续：${restoredCompleted} / ${restoredTotal}`, `Resume from model checkpoint: ${restoredCompleted} / ${restoredTotal}`)
-            : t(`从文件检查点继续：${completedFileBase.toLocaleString()} / ${analysisFiles.length.toLocaleString()}`, `Resume from file checkpoint: ${completedFileBase.toLocaleString()} / ${analysisFiles.length.toLocaleString()}`),
+            : t(`从文件检查点继续：${completedFileBase.toLocaleString()} / ${analysisFileCount.toLocaleString()}`, `Resume from file checkpoint: ${completedFileBase.toLocaleString()} / ${analysisFileCount.toLocaleString()}`),
         });
         appendAnalysisTaskEvent(restoredPhase, resumeModelPhase
-          ? t(`工程文件与检查点完全一致，跳过确定性扫描；模型任务从 ${restoredCompleted} / ${restoredTotal} 继续。`, `The project files exactly match the checkpoint. Deterministic scanning was skipped and model work resumes at ${restoredCompleted} / ${restoredTotal}.`)
+          ? resumeSavedScanSnapshot
+            ? t(`已直接恢复保存的扫描快照，不再遍历原目录；模型任务从 ${restoredCompleted} / ${restoredTotal} 继续。`, `The saved scan snapshot was restored directly without traversing the source directory; model work resumes at ${restoredCompleted} / ${restoredTotal}.`)
+            : t(`工程文件与检查点完全一致，跳过确定性扫描；模型任务从 ${restoredCompleted} / ${restoredTotal} 继续。`, `The project files exactly match the checkpoint. Deterministic scanning was skipped and model work resumes at ${restoredCompleted} / ${restoredTotal}.`)
           : t(`已从检查点恢复 ${completedFileBase.toLocaleString()} 个文件，只处理剩余 ${remainingEntries.length.toLocaleString()} 个文件。`, `Restored ${completedFileBase.toLocaleString()} files from the checkpoint; only ${remainingEntries.length.toLocaleString()} remaining files will be processed.`),
           {}, { role: "WORKSPACE", kind: "ACTION" });
         setScanProgress({ completed: resumeModelPhase ? restoredCompleted : completedFileBase, total: restoredTotal });
@@ -2637,8 +2664,8 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           return scanLocalWorkspaceFile(input);
         }));
         nextRecords.push(...records);
-        const completed = Math.min(completedFileBase + offset + batch.length, analysisFiles.length);
-        const shouldCheckpoint = pauseRequestedRef.current || completed === analysisFiles.length || Math.ceil(completed / batchSize) % 10 === 0;
+        const completed = Math.min(completedFileBase + offset + batch.length, analysisFileCount);
+        const shouldCheckpoint = pauseRequestedRef.current || completed === analysisFileCount || Math.ceil(completed / batchSize) % 10 === 0;
         const shouldPublishProgress = shouldCheckpoint || completed === batch.length || Math.ceil(completed / batchSize) % 5 === 0;
         let preview: LocalWorkspaceAnalysis | undefined;
         if (shouldPublishProgress) {
@@ -2661,7 +2688,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           totalModelBatchCount: 0,
           scannerVersion: localWorkspaceScannerVersion,
           evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
-          plannedFileCount: analysisFiles.length,
+          plannedFileCount: analysisFileCount,
           completedFileCount: completed,
           analysis: preview,
           records: [...nextRecords],
@@ -2674,21 +2701,21 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           await saveLocalWorkspaceAnalysisRun(checkpoint);
           setResumableCheckpoint(checkpoint);
         }
-        setScanProgress({ completed, total: analysisFiles.length });
+        setScanProgress({ completed, total: analysisFileCount });
         const scanUpdate = {
           phase: "SCANNING" as const,
           phaseCompleted: completed,
-          phaseTotal: analysisFiles.length,
-          overallProgress: Math.min(55, Math.round((completed / Math.max(1, analysisFiles.length)) * 55)),
-          currentWork: t(`确定性提取：${completed.toLocaleString()} / ${analysisFiles.length.toLocaleString()} 文件`, `Deterministic extraction: ${completed.toLocaleString()} / ${analysisFiles.length.toLocaleString()} files`),
+          phaseTotal: analysisFileCount,
+          overallProgress: Math.min(55, Math.round((completed / Math.max(1, analysisFileCount)) * 55)),
+          currentWork: t(`确定性提取：${completed.toLocaleString()} / ${analysisFileCount.toLocaleString()} 文件`, `Deterministic extraction: ${completed.toLocaleString()} / ${analysisFileCount.toLocaleString()} files`),
         };
         if (shouldCheckpoint || completed === batch.length || Math.ceil(completed / batchSize) % 10 === 0) {
           appendAnalysisTaskEvent("SCANNING", t(`已处理 ${completed.toLocaleString()} 个文件${shouldCheckpoint ? "，检查点已保存" : ""}。`, `Processed ${completed.toLocaleString()} files${shouldCheckpoint ? "; checkpoint saved" : ""}.`), scanUpdate);
         } else updateAnalysisTask(scanUpdate);
-        setMessage(t(`${canResume ? "正在续跑" : "正在分析"} ${completed.toLocaleString()} / ${analysisFiles.length.toLocaleString()} 个工程文件${shouldCheckpoint ? "；检查点已保存" : ""}。`, `${canResume ? "Resuming" : "Analyzing"} ${completed.toLocaleString()} / ${analysisFiles.length.toLocaleString()} project files${shouldCheckpoint ? "; checkpoint saved" : ""}.`));
+        setMessage(t(`${canResume ? "正在续跑" : "正在分析"} ${completed.toLocaleString()} / ${analysisFileCount.toLocaleString()} 个工程文件${shouldCheckpoint ? "；检查点已保存" : ""}。`, `${canResume ? "Resuming" : "Analyzing"} ${completed.toLocaleString()} / ${analysisFileCount.toLocaleString()} project files${shouldCheckpoint ? "; checkpoint saved" : ""}.`));
         if (pauseRequestedRef.current) {
           appendAnalysisTaskEvent("PAUSED", t("任务已在文件批次边界暂停；目录权限和检查点均已保存，点击“继续分析”即可恢复。", "The task paused at a file-batch boundary. Directory access and the checkpoint are saved; select Continue analysis to resume."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
-          setMessage(t(`分析已暂停在 ${completed.toLocaleString()} / ${analysisFiles.length.toLocaleString()}；点击“继续分析”即可恢复。`, `Analysis paused at ${completed.toLocaleString()} / ${analysisFiles.length.toLocaleString()}; select Continue analysis to resume.`));
+          setMessage(t(`分析已暂停在 ${completed.toLocaleString()} / ${analysisFileCount.toLocaleString()}；点击“继续分析”即可恢复。`, `Analysis paused at ${completed.toLocaleString()} / ${analysisFileCount.toLocaleString()}; select Continue analysis to resume.`));
           return;
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -2710,12 +2737,39 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         if (candidate.evidence.diagnostics.length > 0) summary.heuristic += 1;
         return summary;
       }, { LOW: 0, MEDIUM: 0, HIGH: 0, heuristic: 0 });
+      const modelPhasePreview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
+      const modelPhaseCheckpoint: LocalWorkspaceAnalysisRunCheckpoint = {
+        id: runId,
+        projectId,
+        rootName: analysisDirectoryName,
+        mode: activeRun?.mode ?? (analysis ? "INCREMENTAL" : "FULL"),
+        engine: "HYBRID",
+        status: "RUNNING",
+        phase: "MODEL_ENRICHMENT",
+        modelProfileId: analysisModelProfile.id,
+        completedModelBatchCount: priorCompletedModelBatchCount,
+        totalModelBatchCount,
+        scannerVersion: localWorkspaceScannerVersion,
+        evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
+        plannedFileCount: analysisFileCount,
+        completedFileCount: analysisFileCount,
+        analysis: modelPhasePreview,
+        records: enrichedRecords,
+        currentPaths: [...currentPaths],
+        counters: { added, modified, unchanged },
+        startedAt,
+        updatedAt: new Date().toISOString(),
+      };
+      await saveLocalWorkspaceAnalysisRun(modelPhaseCheckpoint);
+      setResumableCheckpoint(modelPhaseCheckpoint);
+      setProgressAnalysis(modelPhasePreview);
+      onProgressAnalysis(modelPhasePreview);
       appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`源码证据提取完成：发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待理解候选，剩余 ${modelBatches.length} 个有界子任务；历史已完成 ${priorCompletedModelBatchCount} / ${totalModelBatchCount}。证据上限分布为低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；${evidenceSummary.heuristic} 个候选需要额外旁证。`, `Source-evidence extraction completed: ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates remain across ${modelBatches.length} bounded subtasks; ${priorCompletedModelBatchCount} / ${totalModelBatchCount} were already completed. Evidence caps are ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, and ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} candidates need additional corroboration.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: priorCompletedModelBatchCount, phaseTotal: totalModelBatchCount, modelCallsCompleted: priorCompletedModelBatchCount, modelCallsTotal: totalModelBatchCount, overallProgress: 55 + Math.round((priorCompletedModelBatchCount / Math.max(1, totalModelBatchCount)) * 40), currentWork: t("为剩余模型子任务整理源码证据", "Preparing source evidence for remaining model subtasks"), activeSubtask: t(`剩余 ${modelBatches.length} 个语义分析子任务`, `${modelBatches.length} semantic-analysis subtasks remain`) }, { role: "SCANNER", kind: "DISCOVERY" });
-      const sourceFiles = analysisFiles.map((file) => {
+      const sourceFiles = (resumeSavedScanSnapshot ? activeRun.records.map((record) => ({ path: record.path, size: record.size })) : analysisFiles.map((file) => {
         const path = workspaceFilePath(file);
         const relativePath = path.split("/").slice(1).join("/") || path;
         return { path: relativePath, size: file.size };
-      }).filter((file) => {
+      })).filter((file) => {
         const name = file.path.split("/").at(-1)?.toLowerCase() ?? "";
         const actualEnvironmentFile = /^\.env(?:\.[^.]+)?$/.test(name) && !/\.(?:example|sample|template)$/.test(name);
         return !actualEnvironmentFile && !ignored.test(file.path) && textExtensions.test(file.path) && file.size <= 768 * 1024;
@@ -2728,7 +2782,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           orchestrationPlan = await planWorkspaceAnalysis(apiBase, apiToken, analysisModelProfile.id, {
             workspaceName,
             mode: analysis ? "INCREMENTAL" : "FULL",
-            fileCount: analysisFiles.length,
+            fileCount: analysisFileCount,
             modules: sourceManifest,
           }, { onTelemetry: recordMainAgentTelemetry });
         } catch {
@@ -2813,7 +2867,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           completedModelBatchCount += 1;
           const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
           const checkpoint = {
-            id: runId, projectId, rootName: analysisDirectoryName, mode: activeRun?.mode ?? (analysis ? "INCREMENTAL" as const : "FULL" as const), engine: "HYBRID" as const, status: pauseRequestedRef.current ? "PAUSED" as const : "RUNNING" as const, phase: "MODEL_ENRICHMENT" as const, modelProfileId: analysisModelProfile.id, completedModelBatchCount, totalModelBatchCount, scannerVersion: localWorkspaceScannerVersion, evidencePolicyVersion: localWorkspaceEvidencePolicyVersion, plannedFileCount: analysisFiles.length, completedFileCount: analysisFiles.length, analysis: preview, records: enrichedRecords, currentPaths: [...currentPaths], counters: { added, modified, unchanged }, startedAt, updatedAt: new Date().toISOString(),
+            id: runId, projectId, rootName: analysisDirectoryName, mode: activeRun?.mode ?? (analysis ? "INCREMENTAL" as const : "FULL" as const), engine: "HYBRID" as const, status: pauseRequestedRef.current ? "PAUSED" as const : "RUNNING" as const, phase: "MODEL_ENRICHMENT" as const, modelProfileId: analysisModelProfile.id, completedModelBatchCount, totalModelBatchCount, scannerVersion: localWorkspaceScannerVersion, evidencePolicyVersion: localWorkspaceEvidencePolicyVersion, plannedFileCount: analysisFileCount, completedFileCount: analysisFileCount, analysis: preview, records: enrichedRecords, currentPaths: [...currentPaths], counters: { added, modified, unchanged }, startedAt, updatedAt: new Date().toISOString(),
           };
           checkpointQueue = checkpointQueue.then(() => saveLocalWorkspaceAnalysisRun(checkpoint));
           await checkpointQueue;
@@ -2922,7 +2976,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} readOnly aria-readonly="true" /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} readOnly aria-readonly="true" /></div>
           <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" disabled={directoryAccessRestoring} onClick={() => void chooseWorkspaceDirectory()}>{projectCreated ? t("选择代码工程", "Select code project") : t("先创建 Workspace", "Create Workspace first")}</button><span>{directoryName || (hasSavedDirectoryHandle ? t("已保存工程目录", "Saved project directory") : projectCreated ? t("尚未选择目录", "No directory selected") : t("尚未创建项目", "No project created"))}</span><small>{selectedFiles.length > 0 ? `${selectedFiles.length} ${t("个文件", "files")}` : hasSavedDirectoryHandle ? t("目录权限已保存", "Directory access saved") : ""}</small></div>
-          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || directoryAccessRestoring} onClick={() => void continueWorkspaceAnalysis()}>{scanning ? t("分析中…", "Analyzing…") : directoryAccessRestoring ? t("正在恢复工程目录…", "Restoring project directory…") : !projectCreated ? t("先创建 Workspace", "Create Workspace first") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : hasResumableRun ? t("继续分析", "Continue analysis") : analysis ? t("执行增量分析", "Run incremental analysis") : t("启动首次全量分析", "Start first full analysis")}</button>{scanning && <button className="button" onClick={() => { pauseRequestedRef.current = true; setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…")); }}>{t("暂停", "Pause")}</button>}</div>
+          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || directoryAccessRestoring || checkpointRestoring} onClick={() => void continueWorkspaceAnalysis()}>{scanning ? t("分析中…", "Analyzing…") : checkpointRestoring ? t("正在恢复检查点…", "Restoring checkpoint…") : directoryAccessRestoring ? t("正在恢复工程目录…", "Restoring project directory…") : !projectCreated ? t("先创建 Workspace", "Create Workspace first") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : hasResumableRun ? t("继续分析", "Continue analysis") : analysis ? t("执行增量分析", "Run incremental analysis") : t("启动首次全量分析", "Start first full analysis")}</button>{scanning && <button className="button" onClick={() => { pauseRequestedRef.current = true; setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…")); }}>{t("暂停", "Pause")}</button>}</div>
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}

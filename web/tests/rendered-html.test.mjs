@@ -147,6 +147,14 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /saveLocalWorkspaceDirectoryHandle/);
   assert.match(product, /showDirectoryPicker/);
   assert.match(product, /filesFromWorkspaceDirectory/);
+  assert.match(product, /canResumeSavedScanSnapshot/);
+  assert.match(product, /checkpoint\.completedFileCount >= checkpoint\.plannedFileCount/);
+  assert.match(product, /await scanWorkspace\(\[\], checkpoint\.rootName, checkpoint\)/);
+  assert.match(product, /resumeSavedScanSnapshot \? activeRun\.records/);
+  assert.match(product, /const modelPhaseCheckpoint: LocalWorkspaceAnalysisRunCheckpoint/);
+  assert.match(product, /await saveLocalWorkspaceAnalysisRun\(modelPhaseCheckpoint\)/);
+  assert.match(product, /正在恢复检查点…/);
+  assert.match(product, /不再遍历原目录/);
   assert.match(product, /const resumeModelPhase = Boolean\(checkpointFilesUnchanged/);
   assert.match(product, /planLocalWorkspaceCheckpointResume/);
   assert.match(product, /const priorCompletedModelBatchCount = resumeModelPhase/);
