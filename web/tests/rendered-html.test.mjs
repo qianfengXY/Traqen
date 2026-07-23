@@ -141,9 +141,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.doesNotMatch(product, /className="workspace-create-backdrop"/);
   assert.match(product, /navigateToView/);
   assert.match(product, /已恢复持久化检查点/);
-  assert.match(product, /选择原目录并继续/);
-  assert.match(product, /从检查点继续/);
-  assert.match(product, /hasResumableRun && selectedFiles\.length === 0/);
+  assert.match(product, /继续分析/);
+  assert.doesNotMatch(product, /选择原目录并继续/);
+  assert.match(product, /loadLocalWorkspaceDirectoryHandle/);
+  assert.match(product, /saveLocalWorkspaceDirectoryHandle/);
+  assert.match(product, /showDirectoryPicker/);
+  assert.match(product, /filesFromWorkspaceDirectory/);
   assert.match(product, /const resumeModelPhase = Boolean\(checkpointFilesUnchanged/);
   assert.match(product, /planLocalWorkspaceCheckpointResume/);
   assert.match(product, /const priorCompletedModelBatchCount = resumeModelPhase/);
@@ -162,6 +165,11 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /新项目会加入列表，当前分析不会被中断/);
   assert.match(product, /启动首次全量分析/);
   assert.match(workspaceStore, /export async function saveLocalWorkspaceProjectSummary/);
+  assert.match(workspaceStore, /directoryHandles/);
+  assert.match(workspaceStore, /snapshotRecords/);
+  assert.match(workspaceStore, /analysisRunSummaries/);
+  assert.match(workspaceStore, /cachedAnalysisIsCurrent/);
+  assert.match(workspaceStore, /const migration = database\.transaction/);
   assert.match(product, /REQUEST_PREPARED/);
   assert.match(product, /分析 Agent 会话/);
   assert.match(product, /建立源码清单/);
