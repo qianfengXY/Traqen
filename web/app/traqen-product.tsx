@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
-import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
@@ -1191,6 +1191,7 @@ export function TraqenProduct() {
   const [workspaceName, setWorkspaceName] = useState("Traqen Platform");
   const [workspaceProjectId, setWorkspaceProjectId] = useState("PROJECT-TRAQEN");
   const [workspaceAnalysis, setWorkspaceAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
+  const [workspaceProgressAnalysis, setWorkspaceProgressAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
   const [workspaceTreeMode, setWorkspaceTreeMode] = useState<LocalFeatureTreeMode>("BUSINESS");
   const [workspaceFeatureId, setWorkspaceFeatureId] = useState("");
   const [workspaceTraceBlock, setWorkspaceTraceBlock] = useState<WorkspaceTraceBlock>("description");
@@ -1209,7 +1210,9 @@ export function TraqenProduct() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const t = (zh: string, en: string) => (language === "zh-CN" ? zh : en);
-  const visibleWorkspaceAnalysis = useMemo(() => workspaceAnalysis ? localWorkspaceAnalysisForTreeMode(workspaceAnalysis, workspaceTreeMode) : null, [workspaceAnalysis, workspaceTreeMode]);
+  const effectiveWorkspaceAnalysis = workspaceProgressAnalysis ?? workspaceAnalysis;
+  const visibleWorkspaceAnalysis = useMemo(() => effectiveWorkspaceAnalysis ? localWorkspaceAnalysisForTreeMode(effectiveWorkspaceAnalysis, workspaceTreeMode) : null, [effectiveWorkspaceAnalysis, workspaceTreeMode]);
+  const visibleCompletedWorkspaceAnalysis = useMemo(() => workspaceAnalysis ? localWorkspaceAnalysisForTreeMode(workspaceAnalysis, workspaceTreeMode) : null, [workspaceAnalysis, workspaceTreeMode]);
   const visibleWorkspaceProjects = useMemo(() => workspaceProjects.filter((project) => project.visible), [workspaceProjects]);
   const activeAnalysisModelProfile = useMemo(() => analysisModelProfiles.find((profile) => profile.active) ?? null, [analysisModelProfiles]);
   const analysisModelReady = Boolean(activeAnalysisModelProfile?.ready);
@@ -1222,13 +1225,14 @@ export function TraqenProduct() {
     )
   ));
   const workspaceTreeModeCounts = useMemo(() => ({
-    BUSINESS: workspaceAnalysis?.features.filter(isLocalBusinessFeature).length ?? 0,
-    API: workspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
-  }), [workspaceAnalysis]);
+    BUSINESS: effectiveWorkspaceAnalysis?.features.filter(isLocalBusinessFeature).length ?? 0,
+    API: effectiveWorkspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
+  }), [effectiveWorkspaceAnalysis]);
   const workspaceProjectCreated = useMemo(() => workspaceProjects.some((project) => project.id === workspaceProjectId), [workspaceProjectId, workspaceProjects]);
   const activateWorkspaceSnapshot = useCallback((snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false, treeMode: LocalFeatureTreeMode = "BUSINESS") => {
     const result = snapshot.analysis;
     const firstFeatureId = localWorkspaceAnalysisForTreeMode(result, treeMode).features[0]?.id ?? "";
+    setWorkspaceProgressAnalysis(null);
     setWorkspaceAnalysis(result);
     setWorkspaceName(result.workspaceName);
     setWorkspaceProjectId(result.projectId);
@@ -1306,6 +1310,7 @@ export function TraqenProduct() {
       if (cancelled) return;
       if (snapshot) activateWorkspaceSnapshot(snapshot, false, "BUSINESS");
       else {
+        setWorkspaceProgressAnalysis(null);
         setWorkspaceAnalysis(null);
         setWorkspaceName(firstVisible.name);
         setWorkspaceProjectId(firstVisible.id);
@@ -1344,6 +1349,7 @@ export function TraqenProduct() {
   }
 
   function clearWorkspaceAnalysis() {
+    setWorkspaceProgressAnalysis(null);
     setWorkspaceAnalysis(null);
     setWorkspaceFeatureId("");
     setWorkspaceTraceBlock("description");
@@ -1363,6 +1369,19 @@ export function TraqenProduct() {
     setWorkspaceRegisteredRootName(project.rootName);
     setView("workspace");
   }
+
+  const publishWorkspaceProgress = useCallback((result: LocalWorkspaceAnalysis | null) => {
+    setWorkspaceProgressAnalysis(result);
+    if (!result) return;
+    const projected = localWorkspaceAnalysisForTreeMode(result, workspaceTreeMode);
+    setWorkspaceExpandedNodeIds((current) => current.has(projected.tree.id) ? current : new Set([...current, projected.tree.id]));
+    setWorkspaceFeatureId((current) => {
+      if (projected.features.some((feature) => feature.id === current)) return current;
+      const firstFeatureId = projected.features[0]?.id ?? "";
+      if (firstFeatureId) setFeatureId(firstFeatureId);
+      return firstFeatureId;
+    });
+  }, [workspaceTreeMode]);
 
   function startNewWorkspace() {
     setNewWorkspaceName("");
@@ -1778,7 +1797,7 @@ export function TraqenProduct() {
             </section>
           )}
           <div className="workspace-view-state" hidden={view !== "workspace" || workspaceCreationOpen || !workspaceProjectCreated}>
-            {!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
+            {!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleCompletedWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} onProgressAnalysis={publishWorkspaceProgress} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
           </div>
           {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
@@ -2021,6 +2040,7 @@ type WorkspaceAnalysisViewProps = Omit<WorkspaceFeatureExplorerProps, "analysis"
   analysis: LocalWorkspaceAnalysis | null;
   fileRecords: LocalWorkspaceFileRecord[];
   onInitialize: (analysis: LocalWorkspaceAnalysis, records: LocalWorkspaceFileRecord[], rootName: string) => Promise<void>;
+  onProgressAnalysis: (analysis: LocalWorkspaceAnalysis | null) => void;
   onOpenTrace: () => void;
   analysisModelProfile: AnalysisModelProfile | null;
   apiBase: string;
@@ -2082,7 +2102,7 @@ function analysisDuration(milliseconds: number) {
   return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
 }
 
-function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onRequireWorkspace, onRunningChange, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts, analysisModelProfile, apiBase, apiToken, onRequireModel }: WorkspaceAnalysisViewProps) {
+function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onRequireWorkspace, onRunningChange, selectedFiles, setSelectedFiles, directoryName, setDirectoryName, registeredRootName, analysis, fileRecords, onInitialize, onProgressAnalysis, selectedFeatureId, onSelectFeature, expandedNodeIds, onToggleNode, onOpenTrace, treeMode, onTreeModeChange, treeModeCounts, analysisModelProfile, apiBase, apiToken, onRequireModel }: WorkspaceAnalysisViewProps) {
   const { t, term } = useI18n();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pauseRequestedRef = useRef(false);
@@ -2117,6 +2137,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       setMessage("");
       setResumableCheckpoint(null);
       setProgressAnalysis(null);
+      onProgressAnalysis(null);
       setSubAgents(([1, 2, 3] as const).map((slot) => ({
         id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
       })));
@@ -2164,11 +2185,13 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       setResumableCheckpoint(checkpoint);
       const previewRecords = new Map(fileRecords.map((record) => [record.path, record]));
       for (const record of checkpoint.records) previewRecords.set(record.path, record);
-      setProgressAnalysis(analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] }));
+      const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] });
+      setProgressAnalysis(preview);
+      onProgressAnalysis(preview);
       setMessage(t(`已恢复分析进度 ${completed.toLocaleString()} / ${total.toLocaleString()}；重新选择同一工程目录后可继续。`, `Restored analysis progress ${completed.toLocaleString()} / ${total.toLocaleString()}; reselect the same project directory to continue.`));
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [analysisModelProfile?.id, analysisModelProfile?.model, analysisModelProfile?.stream, fileRecords, projectId, t, workspaceName]);
+  }, [analysisModelProfile?.id, analysisModelProfile?.model, analysisModelProfile?.stream, fileRecords, onProgressAnalysis, projectId, t, workspaceName]);
 
   useEffect(() => {
     analysisTaskRef.current = analysisTask;
@@ -2397,24 +2420,60 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       if (activeRun && activeRun.rootName !== directoryName) throw new Error(t(`请选择原工程目录“${activeRun.rootName}”从检查点继续。`, `Select the original project directory “${activeRun.rootName}” to continue from the checkpoint.`));
       const canResume = activeRun?.rootName === directoryName && activeRun.scannerVersion === localWorkspaceScannerVersion;
       if (activeRun && canResume) setResumableCheckpoint(activeRun);
-      const resumedRecords = new Map((canResume ? activeRun.records : []).map((record) => [record.path, record]));
+      const selectedEntries = selectedFiles.map((file) => {
+        const path = file.webkitRelativePath || file.name;
+        const relativePath = path.split("/").slice(1).join("/") || path;
+        return { file, path, relativePath };
+      });
+      const checkpointResumePlan = planLocalWorkspaceCheckpointResume(
+        selectedEntries.map((entry) => ({ path: entry.relativePath, size: entry.file.size, lastModified: entry.file.lastModified })),
+        canResume ? activeRun.records : [],
+      );
+      const reusableCheckpointRecords = checkpointResumePlan.reusableRecords;
+      const reusableCheckpointPaths = new Set(reusableCheckpointRecords.map((record) => record.path));
+      const checkpointFilesUnchanged = Boolean(canResume && checkpointResumePlan.exactMatch);
+      const resumeModelPhase = Boolean(checkpointFilesUnchanged && activeRun.phase === "MODEL_ENRICHMENT" && activeRun.modelProfileId === analysisModelProfile.id);
       const previousRecords = new Map(fileRecords.map((record) => [record.path, record]));
-      const nextRecords: LocalWorkspaceFileRecord[] = [];
-      const currentPaths = new Set<string>();
+      const nextRecords: LocalWorkspaceFileRecord[] = [...reusableCheckpointRecords];
+      const currentPaths = new Set(selectedEntries.map((entry) => entry.relativePath));
+      const remainingEntries = selectedEntries.filter((entry) => !reusableCheckpointPaths.has(entry.relativePath));
       let added = canResume ? activeRun.counters.added : 0;
       let modified = canResume ? activeRun.counters.modified : 0;
       let unchanged = canResume ? activeRun.counters.unchanged : 0;
       const startedAt = canResume ? activeRun.startedAt : new Date().toISOString();
       const runId = `${projectId}:ACTIVE`;
       const batchSize = 120;
-      for (let offset = 0; offset < selectedFiles.length; offset += batchSize) {
-        const batch = selectedFiles.slice(offset, offset + batchSize);
-        const records = await Promise.all(batch.map(async (file) => {
-          const path = file.webkitRelativePath || file.name;
-          const relativePath = path.split("/").slice(1).join("/") || path;
-          currentPaths.add(relativePath);
-          const resumed = resumedRecords.get(relativePath);
-          if (resumed && resumed.scannerVersion === localWorkspaceScannerVersion && resumed.size === file.size && resumed.lastModified === file.lastModified) return resumed;
+      const completedFileBase = reusableCheckpointRecords.length;
+      if (completedFileBase > 0) {
+        const restoredPhase = resumeModelPhase ? "MODEL_ENRICHMENT" : "SCANNING";
+        const restoredCompleted = resumeModelPhase ? activeRun.completedModelBatchCount : completedFileBase;
+        const restoredTotal = resumeModelPhase ? activeRun.totalModelBatchCount : selectedFiles.length;
+        const restoredOverall = resumeModelPhase
+          ? 55 + Math.round((restoredCompleted / Math.max(1, restoredTotal)) * 40)
+          : Math.min(55, Math.round((restoredCompleted / Math.max(1, restoredTotal)) * 55));
+        updateAnalysisTask({
+          id: activeRun.id,
+          mode: activeRun.mode,
+          startedAt: Date.parse(activeRun.startedAt) || taskStartedAt,
+          phase: restoredPhase,
+          phaseCompleted: restoredCompleted,
+          phaseTotal: restoredTotal,
+          modelCallsCompleted: resumeModelPhase ? restoredCompleted : 0,
+          modelCallsTotal: resumeModelPhase ? restoredTotal : 0,
+          overallProgress: restoredOverall,
+          currentWork: resumeModelPhase
+            ? t(`从模型检查点继续：${restoredCompleted} / ${restoredTotal}`, `Resume from model checkpoint: ${restoredCompleted} / ${restoredTotal}`)
+            : t(`从文件检查点继续：${completedFileBase.toLocaleString()} / ${selectedFiles.length.toLocaleString()}`, `Resume from file checkpoint: ${completedFileBase.toLocaleString()} / ${selectedFiles.length.toLocaleString()}`),
+        });
+        appendAnalysisTaskEvent(restoredPhase, resumeModelPhase
+          ? t(`工程文件与检查点完全一致，跳过确定性扫描；模型任务从 ${restoredCompleted} / ${restoredTotal} 继续。`, `The project files exactly match the checkpoint. Deterministic scanning was skipped and model work resumes at ${restoredCompleted} / ${restoredTotal}.`)
+          : t(`已从检查点恢复 ${completedFileBase.toLocaleString()} 个文件，只处理剩余 ${remainingEntries.length.toLocaleString()} 个文件。`, `Restored ${completedFileBase.toLocaleString()} files from the checkpoint; only ${remainingEntries.length.toLocaleString()} remaining files will be processed.`),
+          {}, { role: "WORKSPACE", kind: "ACTION" });
+        setScanProgress({ completed: resumeModelPhase ? restoredCompleted : completedFileBase, total: restoredTotal });
+      }
+      for (let offset = 0; offset < remainingEntries.length; offset += batchSize) {
+        const batch = remainingEntries.slice(offset, offset + batchSize);
+        const records = await Promise.all(batch.map(async ({ file, path, relativePath }) => {
           const previous = previousRecords.get(relativePath);
           if (previous && previous.scannerVersion === localWorkspaceScannerVersion && previous.size === file.size && previous.lastModified === file.lastModified) {
             unchanged += 1;
@@ -2430,12 +2489,12 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           return scanLocalWorkspaceFile(input);
         }));
         nextRecords.push(...records);
-        const completed = Math.min(offset + batch.length, selectedFiles.length);
+        const completed = Math.min(completedFileBase + offset + batch.length, selectedFiles.length);
         const checkpoint: LocalWorkspaceAnalysisRunCheckpoint = {
           id: runId,
           projectId,
           rootName: directoryName,
-          mode: analysis ? "INCREMENTAL" : "FULL",
+          mode: activeRun?.mode ?? (analysis ? "INCREMENTAL" : "FULL"),
           engine: "HYBRID",
           status: pauseRequestedRef.current ? "PAUSED" : "RUNNING",
           phase: "SCANNING",
@@ -2445,19 +2504,24 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           scannerVersion: localWorkspaceScannerVersion,
           plannedFileCount: selectedFiles.length,
           completedFileCount: completed,
-          records: nextRecords,
+          records: [...nextRecords],
           currentPaths: [...currentPaths],
           counters: { added, modified, unchanged },
           startedAt,
           updatedAt: new Date().toISOString(),
         };
-        const shouldCheckpoint = pauseRequestedRef.current || completed === selectedFiles.length || Math.ceil(completed / batchSize) % 40 === 0;
+        const shouldCheckpoint = pauseRequestedRef.current || completed === selectedFiles.length || Math.ceil(completed / batchSize) % 10 === 0;
         if (shouldCheckpoint) {
           await saveLocalWorkspaceAnalysisRun(checkpoint);
           setResumableCheckpoint(checkpoint);
+        }
+        const shouldPublishProgress = shouldCheckpoint || completed === batch.length || Math.ceil(completed / batchSize) % 5 === 0;
+        if (shouldPublishProgress) {
           const previewRecords = new Map(previousRecords);
           for (const record of nextRecords) previewRecords.set(record.path, record);
-          setProgressAnalysis(analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] }));
+          const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] });
+          setProgressAnalysis(preview);
+          onProgressAnalysis(preview);
         }
         setScanProgress({ completed, total: selectedFiles.length });
         const scanUpdate = {
@@ -2478,15 +2542,24 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         }
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
+      if (remainingEntries.length === 0 && checkpointFilesUnchanged) {
+        const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: nextRecords });
+        setProgressAnalysis(preview);
+        onProgressAnalysis(preview);
+      }
       const deleted = [...previousRecords.keys()].filter((path) => !currentPaths.has(path)).length;
       let enrichedRecords = nextRecords;
       const modelBatches = workspaceModelCandidateBatches(enrichedRecords, analysisModelProfile.id);
+      const priorCompletedModelBatchCount = resumeModelPhase ? activeRun.completedModelBatchCount : 0;
+      const totalModelBatchCount = resumeModelPhase
+        ? Math.max(activeRun.totalModelBatchCount, priorCompletedModelBatchCount + modelBatches.length)
+        : modelBatches.length;
       const evidenceSummary = modelBatches.flat().reduce((summary, candidate) => {
         summary[candidate.evidence.confidenceCap] += 1;
         if (candidate.evidence.diagnostics.length > 0) summary.heuristic += 1;
         return summary;
       }, { LOW: 0, MEDIUM: 0, HIGH: 0, heuristic: 0 });
-      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`源码证据提取完成：发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待理解候选，已拆分为 ${modelBatches.length} 个有界子任务。证据上限分布为低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；${evidenceSummary.heuristic} 个候选需要额外旁证。`, `Source-evidence extraction completed: ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates require interpretation across ${modelBatches.length} bounded subtasks. Evidence caps are ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, and ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} candidates need additional corroboration.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: 0, phaseTotal: modelBatches.length, modelCallsCompleted: 0, modelCallsTotal: modelBatches.length, overallProgress: 55, currentWork: t("为模型子任务整理源码证据", "Preparing source evidence for model subtasks"), activeSubtask: t(`准备 ${modelBatches.length} 个语义分析子任务`, `Prepare ${modelBatches.length} semantic-analysis subtasks`) }, { role: "SCANNER", kind: "DISCOVERY" });
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(`源码证据提取完成：发现 ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} 个待理解候选，剩余 ${modelBatches.length} 个有界子任务；历史已完成 ${priorCompletedModelBatchCount} / ${totalModelBatchCount}。证据上限分布为低 ${evidenceSummary.LOW}、中 ${evidenceSummary.MEDIUM}、高 ${evidenceSummary.HIGH}；${evidenceSummary.heuristic} 个候选需要额外旁证。`, `Source-evidence extraction completed: ${modelBatches.reduce((sum, batch) => sum + batch.length, 0)} candidates remain across ${modelBatches.length} bounded subtasks; ${priorCompletedModelBatchCount} / ${totalModelBatchCount} were already completed. Evidence caps are ${evidenceSummary.LOW} low, ${evidenceSummary.MEDIUM} medium, and ${evidenceSummary.HIGH} high; ${evidenceSummary.heuristic} candidates need additional corroboration.`), { phase: "MODEL_ENRICHMENT", phaseCompleted: priorCompletedModelBatchCount, phaseTotal: totalModelBatchCount, modelCallsCompleted: priorCompletedModelBatchCount, modelCallsTotal: totalModelBatchCount, overallProgress: 55 + Math.round((priorCompletedModelBatchCount / Math.max(1, totalModelBatchCount)) * 40), currentWork: t("为剩余模型子任务整理源码证据", "Preparing source evidence for remaining model subtasks"), activeSubtask: t(`剩余 ${modelBatches.length} 个语义分析子任务`, `${modelBatches.length} semantic-analysis subtasks remain`) }, { role: "SCANNER", kind: "DISCOVERY" });
       const sourceFiles = selectedFiles.map((file) => {
         const path = file.webkitRelativePath || file.name;
         const relativePath = path.split("/").slice(1).join("/") || path;
@@ -2536,7 +2609,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         `执行计划已建立：\n${orchestrationPlan.taskAssignments.map((assignment) => `• ${assignment.agentId}：${assignment.objective}；范围 ${assignment.moduleScopes.length > 0 ? assignment.moduleScopes.slice(0, 4).join("、") : "由 Source Manifest 均衡分配"}`).join("\n")}\n调度原则：三个队列并发，每个工作单元完成后校验证据并保存检查点。`,
         `Execution plan established:\n${orchestrationPlan.taskAssignments.map((assignment) => `• ${assignment.agentId}: ${assignment.objective}; scope ${assignment.moduleScopes.length > 0 ? assignment.moduleScopes.slice(0, 4).join(", ") : "balanced from the Source Manifest"}`).join("\n")}\nScheduling: three queues run concurrently; every completed work unit is evidence-validated and checkpointed.`,
       ), {}, { role: "AGENT", kind: "PLAN" });
-      let completedModelBatchCount = 0;
+      let completedModelBatchCount = priorCompletedModelBatchCount;
       let skippedModelCandidateCount = 0;
       let checkpointQueue = Promise.resolve();
       const runSubAgent = async (assignment: WorkspaceAnalysisPlan["taskAssignments"][number]) => {
@@ -2588,12 +2661,14 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           enrichedRecords = applyLocalModelEnrichment(enrichedRecords, analysisModelProfile.id, enrichments);
           completedModelBatchCount += 1;
           const checkpoint = {
-            id: runId, projectId, rootName: directoryName, mode: analysis ? "INCREMENTAL" as const : "FULL" as const, engine: "HYBRID" as const, status: pauseRequestedRef.current ? "PAUSED" as const : "RUNNING" as const, phase: "MODEL_ENRICHMENT" as const, modelProfileId: analysisModelProfile.id, completedModelBatchCount, totalModelBatchCount: modelBatches.length, scannerVersion: localWorkspaceScannerVersion, plannedFileCount: selectedFiles.length, completedFileCount: selectedFiles.length, records: enrichedRecords, currentPaths: [...currentPaths], counters: { added, modified, unchanged }, startedAt, updatedAt: new Date().toISOString(),
+            id: runId, projectId, rootName: directoryName, mode: activeRun?.mode ?? (analysis ? "INCREMENTAL" as const : "FULL" as const), engine: "HYBRID" as const, status: pauseRequestedRef.current ? "PAUSED" as const : "RUNNING" as const, phase: "MODEL_ENRICHMENT" as const, modelProfileId: analysisModelProfile.id, completedModelBatchCount, totalModelBatchCount, scannerVersion: localWorkspaceScannerVersion, plannedFileCount: selectedFiles.length, completedFileCount: selectedFiles.length, records: enrichedRecords, currentPaths: [...currentPaths], counters: { added, modified, unchanged }, startedAt, updatedAt: new Date().toISOString(),
           };
           checkpointQueue = checkpointQueue.then(() => saveLocalWorkspaceAnalysisRun(checkpoint));
           await checkpointQueue;
           setResumableCheckpoint(checkpoint);
-          setProgressAnalysis(analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords }));
+          const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
+          setProgressAnalysis(preview);
+          onProgressAnalysis(preview);
           const domains = new Set(enrichments.map((item) => item.domain)).size;
           const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
           if (enrichments.length > 0) {
@@ -2616,8 +2691,8 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
             `发现：模型没有产生可校验结论\n证据：原始扫描候选和源码定位继续保留，不标记为通过或业务事实\n检查点：本单元已记录为待补模型分类；耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}\n下一步：继续后续任务，不让单点 JSON 错误阻断 Workspace`,
             `Finding: the model produced no validatable conclusion\nEvidence: scanner candidates and source locations remain; nothing is marked passed or promoted to business truth\nCheckpoint: this unit is recorded as pending model classification after ${analysisDuration(Date.now() - modelBatchStartedAt)}\nNext: continue so one JSON failure cannot block the Workspace`,
           ));
-          setScanProgress({ completed: completedModelBatchCount, total: modelBatches.length });
-          updateAnalysisTask({ phaseCompleted: completedModelBatchCount, phaseTotal: modelBatches.length, modelCallsCompleted: completedModelBatchCount, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, modelBatches.length)) * 40), currentWork: t(`三个子 Agent 已完成 ${completedModelBatchCount} / ${modelBatches.length} 个工作单元`, `Three child Agents completed ${completedModelBatchCount} / ${modelBatches.length} work units`) });
+          setScanProgress({ completed: completedModelBatchCount, total: totalModelBatchCount });
+          updateAnalysisTask({ phaseCompleted: completedModelBatchCount, phaseTotal: totalModelBatchCount, modelCallsCompleted: completedModelBatchCount, modelCallsTotal: totalModelBatchCount, overallProgress: 55 + Math.round((completedModelBatchCount / Math.max(1, totalModelBatchCount)) * 40), currentWork: t(`三个子 Agent 累计完成 ${completedModelBatchCount} / ${totalModelBatchCount} 个工作单元`, `Three child Agents cumulatively completed ${completedModelBatchCount} / ${totalModelBatchCount} work units`) });
         }
         updateSubAgent(agentId, (agent) => ({ ...agent, status: pauseRequestedRef.current ? "PAUSED" : "COMPLETED", currentTask: pauseRequestedRef.current ? t("已在工作单元边界暂停", "Paused at a work-unit boundary") : t("分配队列已完成", "Assigned queue completed") }));
       };
@@ -2632,7 +2707,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       if (failedAgent) throw failedAgent.reason;
       if (pauseRequestedRef.current) {
         appendAnalysisTaskEvent("PAUSED", t("三个子 Agent 已在工作单元边界暂停，所有完成结果和上下文交接均已保存。", "All three child Agents paused at work-unit boundaries; completed results and context handoffs were saved."), { status: "PAUSED", phase: "PAUSED", endedAt: Date.now(), currentWork: t("等待继续", "Waiting to resume") });
-        setMessage(t(`模型分析已暂停在 ${completedModelBatchCount} / ${modelBatches.length}；重新选择同一目录后可继续。`, `Model analysis paused at ${completedModelBatchCount} / ${modelBatches.length}; reselect the same directory to resume.`));
+        setMessage(t(`模型分析已暂停在 ${completedModelBatchCount} / ${totalModelBatchCount}；重新选择同一目录后可继续。`, `Model analysis paused at ${completedModelBatchCount} / ${totalModelBatchCount}; reselect the same directory to resume.`));
         return;
       }
       appendAnalysisTaskEvent("FINALIZING", t("全部语义分析子任务已完成。Workspace Agent 正在校验稳定身份、构建最新功能树并汇总追溯证据。", "All semantic-analysis subtasks are complete. The Workspace Agent is validating stable identities, building the latest Feature tree, and summarizing trace evidence."), { phase: "FINALIZING", phaseCompleted: 0, phaseTotal: 1, overallProgress: 96, currentWork: t("校验并保存最新 Workspace", "Validate and save the latest Workspace"), activeSubtask: t("生成最新功能树与追溯统计", "Generate the latest Feature tree and trace statistics") }, { role: "WORKSPACE", kind: "ACTION" });
@@ -2641,6 +2716,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       await clearLocalWorkspaceAnalysisRun(projectId);
       setResumableCheckpoint(null);
       setProgressAnalysis(null);
+      onProgressAnalysis(null);
       appendAnalysisTaskEvent("COMPLETED", t(`主任务完成：最新功能树包含 ${result.features.length} 个候选功能，${skippedModelCandidateCount} 个候选因模型 JSON 无效保留为待补分类；Workspace 追溯上下文已更新，总耗时 ${analysisDuration(Date.now() - taskStartedAt)}。`, `Main task completed: the latest Feature tree contains ${result.features.length} candidate Features; ${skippedModelCandidateCount} candidates remain pending classification because of invalid model JSON. The Workspace traceability context was updated in ${analysisDuration(Date.now() - taskStartedAt)}.`), { status: "COMPLETED", phase: "COMPLETED", endedAt: Date.now(), overallProgress: 100, phaseCompleted: 1, phaseTotal: 1, currentWork: t("主任务已完成", "Main task completed"), activeSubtask: null }, { role: "WORKSPACE", kind: "RESULT" });
       setMessage(result.features.length > 0 ? t(`混合分析已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件；模型处理 ${modelBatches.length} 个有界批次。`, `Hybrid analysis updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files; the model processed ${modelBatches.length} bounded batches.`) : t("分析完成，但没有发现有证据支持的接口或业务能力候选。", "Analysis completed, but no evidence-backed API or business-capability candidates were found."));
     } catch (error) {
@@ -2651,7 +2727,9 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         setResumableCheckpoint(pausedCheckpoint);
         const previewRecords = new Map(fileRecords.map((record) => [record.path, record]));
         for (const record of pausedCheckpoint.records) previewRecords.set(record.path, record);
-        setProgressAnalysis(analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] }));
+        const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] });
+        setProgressAnalysis(preview);
+        onProgressAnalysis(preview);
       }
       const errorMessage = error instanceof Error ? error.message : t("Workspace 分析失败；检查点已保留", "Workspace analysis failed; its checkpoint was preserved");
       appendAnalysisTaskEvent("FAILED", t(`任务失败：${errorMessage}。已完成的检查点仍保留。`, `Task failed: ${errorMessage}. Completed checkpoints remain available.`), { status: "FAILED", phase: "FAILED", endedAt: Date.now(), currentWork: t("等待处理错误", "Waiting for error resolution") });

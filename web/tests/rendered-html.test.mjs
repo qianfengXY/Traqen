@@ -144,7 +144,11 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /选择原目录并继续/);
   assert.match(product, /从检查点继续/);
   assert.match(product, /hasResumableRun && selectedFiles\.length === 0/);
-  assert.match(product, /setProgressAnalysis\(analyzeLocalWorkspaceRecords/);
+  assert.match(product, /const resumeModelPhase = Boolean\(checkpointFilesUnchanged/);
+  assert.match(product, /planLocalWorkspaceCheckpointResume/);
+  assert.match(product, /const priorCompletedModelBatchCount = resumeModelPhase/);
+  assert.match(product, /analysis=\{visibleCompletedWorkspaceAnalysis\}/);
+  assert.match(product, /onProgressAnalysis=\{publishWorkspaceProgress\}/);
   assert.match(product, /阶段性功能树/);
   assert.match(product, /最近检查点展示/);
   assert.match(product, /current\?\.projectId === projectId/);

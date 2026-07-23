@@ -1,8 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, createLocalWorkspaceAnalysisAccumulator, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
+import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, createLocalWorkspaceAnalysisAccumulator, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
 import { calculateLocalWorkspaceStatistics, localWorkspaceStatisticsForNode } from "../app/local-workspace-statistics.ts";
+
+test("resumes a local checkpoint from only the unfinished or changed files", () => {
+  const unchanged = scanLocalWorkspaceFile({ path: "src/unchanged.ts", size: 20, lastModified: 10, content: "export function unchanged() {}" });
+  const changed = scanLocalWorkspaceFile({ path: "src/changed.ts", size: 20, lastModified: 10, content: "export function before() {}" });
+  const partial = planLocalWorkspaceCheckpointResume([
+    { path: "src/unchanged.ts", size: 20, lastModified: 10 },
+    { path: "src/changed.ts", size: 24, lastModified: 20 },
+    { path: "src/new.ts", size: 12, lastModified: 30 },
+  ], [unchanged, changed]);
+
+  assert.deepEqual(partial.reusableRecords.map((record) => record.path), ["src/unchanged.ts"]);
+  assert.deepEqual(partial.remainingPaths, ["src/changed.ts", "src/new.ts"]);
+  assert.equal(partial.exactMatch, false);
+
+  const exact = planLocalWorkspaceCheckpointResume([
+    { path: "src/unchanged.ts", size: 20, lastModified: 10 },
+    { path: "src/changed.ts", size: 20, lastModified: 10 },
+  ], [unchanged, changed]);
+  assert.equal(exact.exactMatch, true);
+  assert.deepEqual(exact.remainingPaths, []);
+});
 
 test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
   const analysis = analyzeLocalWorkspace({

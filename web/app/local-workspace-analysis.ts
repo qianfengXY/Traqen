@@ -79,6 +79,26 @@ export type LocalWorkspaceFileRecord = {
 export const localWorkspaceScannerVersion = 4;
 export const localWorkspaceEvidencePolicyVersion = 1;
 
+export function planLocalWorkspaceCheckpointResume(
+  files: Array<{ path: string; size: number; lastModified: number }>,
+  checkpointRecords: LocalWorkspaceFileRecord[],
+) {
+  const filesByPath = new Map(files.map((file) => [file.path, file]));
+  const reusableRecords = checkpointRecords.filter((record) => {
+    const file = filesByPath.get(record.path);
+    return Boolean(file
+      && record.scannerVersion === localWorkspaceScannerVersion
+      && record.size === file.size
+      && record.lastModified === file.lastModified);
+  });
+  const reusablePaths = new Set(reusableRecords.map((record) => record.path));
+  return {
+    reusableRecords,
+    remainingPaths: files.filter((file) => !reusablePaths.has(file.path)).map((file) => file.path),
+    exactMatch: checkpointRecords.length === files.length && reusableRecords.length === files.length,
+  };
+}
+
 const supportedExtensions = new Set([
   "js", "mjs", "cjs", "jsx", "ts", "tsx", "py", "java", "go", "cs", "rs", "vue", "json", "md", "yaml", "yml", "sql", "properties", "env", "xml", "gradle", "kts",
 ]);
