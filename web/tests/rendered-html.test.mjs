@@ -141,6 +141,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.doesNotMatch(product, /className="workspace-create-backdrop"/);
   assert.match(product, /navigateToView/);
   assert.match(product, /已恢复持久化检查点/);
+  assert.match(product, /选择原目录并继续/);
+  assert.match(product, /从检查点继续/);
+  assert.match(product, /hasResumableRun && selectedFiles\.length === 0/);
+  assert.match(product, /setProgressAnalysis\(analyzeLocalWorkspaceRecords/);
+  assert.match(product, /阶段性功能树/);
+  assert.match(product, /最近检查点展示/);
   assert.match(product, /current\?\.projectId === projectId/);
   assert.match(product, /先建立项目身份，随后选择代码工程并启动首次全量分析/);
   assert.match(product, /saveLocalWorkspaceProjectSummary/);

@@ -668,6 +668,10 @@ button { color: inherit; }
 .workspace-code > details > summary { cursor: pointer; list-style: none; }
 .workspace-code > details > summary::-webkit-details-marker { display: none; }
 .workspace-initialized-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; padding: 14px 16px; border: 1px solid #b3d7ff; border-radius: 12px; background: var(--accent-subtle); color: var(--accent); font-size: 12px; font-weight: 650; }
+.workspace-progress-preview { display: flex; align-items: center; gap: 11px; margin: 16px 0 0; padding: 13px 16px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 10px; background: var(--accent-subtle); }
+.workspace-progress-preview > div { display: grid; gap: 3px; }
+.workspace-progress-preview b { color: var(--ink); font-size: 12px; }
+.workspace-progress-preview small { color: var(--muted); font-size: 10px; line-height: 1.45; }
 
 .workspace-trace-overview { padding: 22px 24px; }
 .workspace-trace-overview .panel-head { align-items: center; }
