@@ -1686,8 +1686,8 @@ export function TraqenProduct() {
           </header>
 
           {view === "workspace" && workspaceCreationOpen && (
-            <div className="workspace-create-backdrop">
-              <section className="panel workspace-create-panel" role="dialog" aria-modal="true" aria-labelledby="workspace-create-title">
+            <section className="workspace-create-page" aria-labelledby="workspace-create-title">
+              <div className="panel workspace-create-panel">
                 <div className="workspace-create-heading"><div><p className="eyebrow">Create Workspace</p><h2 id="workspace-create-title">{t("创建新的 Workspace", "Create a new Workspace")}</h2><p>{workspaceAnalysisRunning ? t("新项目会加入列表，当前分析不会被中断。", "The new project is added to the list without interrupting the active analysis.") : t("先建立项目身份，随后选择代码工程并启动首次全量分析。", "Create the project identity first, then select its codebase and start the initial full analysis.")}</p></div><button className="workspace-create-close" aria-label={t("关闭创建窗口", "Close creation dialog")} onClick={() => setWorkspaceCreationOpen(false)}>×</button></div>
                 <div className="workspace-create-grid">
                   <div className="field"><label htmlFor="new-workspace-name">Workspace Name</label><input id="new-workspace-name" autoFocus value={newWorkspaceName} onChange={(event) => updateNewWorkspaceName(event.target.value)} /></div>
@@ -1695,8 +1695,8 @@ export function TraqenProduct() {
                 </div>
                 {newWorkspaceProjectId && workspaceProjects.some((project) => project.id === newWorkspaceProjectId) && <p className="form-message error">{t("Project ID 已存在，请更换。", "This Project ID already exists.")}</p>}
                 <div className="workspace-create-actions"><button className="button" onClick={() => setWorkspaceCreationOpen(false)}>{t("取消", "Cancel")}</button><button className="button primary" disabled={!newWorkspaceName.trim() || !newWorkspaceProjectId.trim() || workspaceProjects.some((project) => project.id === newWorkspaceProjectId.trim())} onClick={() => void createWorkspaceProject()}>{workspaceAnalysisRunning ? t("创建项目", "Create project") : t("创建并进入项目", "Create and open project")}</button></div>
-              </section>
-            </div>
+              </div>
+            </section>
           )}
 
           {workspaceManagerOpen && (
@@ -1761,7 +1761,7 @@ export function TraqenProduct() {
             </section>
           )}
 
-          {view === "workspace" && !workspaceProjectCreated && (
+          {view === "workspace" && !workspaceCreationOpen && !workspaceProjectCreated && (
             <section className="workspace-empty-state" aria-labelledby="workspace-empty-title">
               <div className="workspace-empty-main">
                 <span className="workspace-empty-icon" aria-hidden="true">W</span>
@@ -1777,8 +1777,8 @@ export function TraqenProduct() {
               </div>
             </section>
           )}
-          <div className="workspace-view-state" hidden={view !== "workspace" || !workspaceProjectCreated}>
-            {workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
+          <div className="workspace-view-state" hidden={view !== "workspace" || workspaceCreationOpen || !workspaceProjectCreated}>
+            {!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
           </div>
           {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
           {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedFeatureId={workspaceFeatureId} onSelectFeature={selectWorkspaceFeature} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceFeatureId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceFeatureId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}

@@ -126,10 +126,12 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /API token（仅保存在当前页面内存）/);
   assert.match(product, /webkitdirectory/);
   assert.match(product, /WorkspaceAnalysisView/);
-  assert.match(product, /view === "workspace" && !workspaceProjectCreated/);
-  assert.match(product, /hidden=\{view !== "workspace" \|\| !workspaceProjectCreated\}/);
-  assert.match(product, /workspaceProjectCreated && <WorkspaceAnalysisView/);
+  assert.match(product, /view === "workspace" && !workspaceCreationOpen && !workspaceProjectCreated/);
+  assert.match(product, /hidden=\{view !== "workspace" \|\| workspaceCreationOpen \|\| !workspaceProjectCreated\}/);
+  assert.match(product, /!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView/);
   assert.match(product, /view === "workspace" && workspaceCreationOpen/);
+  assert.match(product, /className="workspace-create-page"/);
+  assert.doesNotMatch(product, /className="workspace-create-backdrop"/);
   assert.match(product, /navigateToView/);
   assert.match(product, /已恢复持久化检查点/);
   assert.match(product, /current\?\.projectId === projectId/);

@@ -113,7 +113,7 @@ button { color: inherit; }
 .sidebar-note { margin-top: auto; padding: 14px; border-radius: 12px; color: var(--sidebar-muted); background: var(--panel); border: 1px solid var(--sidebar-border); font-size: 11px; line-height: 1.55; }
 .sidebar-note b { color: var(--accent); }
 
-.main { min-width: 0; width: 100%; padding: 24px 28px 48px; }
+.main { min-width: 0; width: 100%; padding: 22px clamp(18px, 1.7vw, 34px) 48px; }
 
 .topbar { display: flex; align-items: center; gap: 16px; justify-content: space-between; margin-bottom: 24px; }
 .breadcrumb { color: var(--muted); font-size: 13px; }
@@ -1165,8 +1165,8 @@ button { color: inherit; }
 [data-theme="enterprise"] .input { border-radius: 6px; }
 
 /* Enterprise Blue completion pass: consistent density and hierarchy across every product surface. */
-.workspace-create-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 32px; background: rgba(15, 23, 42, .42); backdrop-filter: blur(7px); }
-.workspace-create-panel { width: min(680px, 100%); padding: 0; overflow: hidden; box-shadow: 0 24px 70px rgba(15, 23, 42, .24); }
+.workspace-create-page { min-height: calc(100vh - 112px); display: grid; place-items: start center; padding: clamp(36px, 7vh, 76px) 0; }
+.workspace-create-panel { width: min(760px, 100%); padding: 0; overflow: hidden; box-shadow: 0 16px 42px rgba(15, 23, 42, .1); }
 .workspace-create-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 26px 28px 20px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, var(--panel), var(--surface-muted)); }
 .workspace-create-heading h2 { margin: 5px 0 8px; color: var(--ink); font-size: 22px; letter-spacing: -.02em; }
 .workspace-create-heading p:last-child { max-width: 520px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
@@ -1179,12 +1179,12 @@ button { color: inherit; }
 .workspace-setup-grid input[readonly] { background: var(--surface-muted); color: var(--muted); cursor: default; }
 
 .workspace-empty-state { min-height: calc(100vh - 150px); display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .75fr); align-items: stretch; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
-.workspace-empty-main { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: clamp(48px, 7vw, 104px); background: radial-gradient(circle at 15% 15%, var(--accent-subtle), transparent 38%); }
+.workspace-empty-main { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: clamp(44px, 4vw, 72px); background: radial-gradient(circle at 15% 15%, var(--accent-subtle), transparent 38%); }
 .workspace-empty-icon { width: 52px; height: 52px; display: grid; place-items: center; margin-bottom: 28px; border-radius: 14px; color: #fff; background: var(--accent); box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 28%, transparent); font-size: 20px; font-weight: 760; }
 .workspace-empty-main h1 { max-width: 650px; margin: 8px 0 14px; color: var(--ink); font-size: clamp(32px, 3.2vw, 48px); line-height: 1.08; letter-spacing: -.045em; }
 .workspace-empty-main > p:not(.eyebrow) { max-width: 650px; margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
 .workspace-empty-action { margin-top: 30px; }
-.workspace-empty-steps { display: grid; align-content: center; gap: 12px; padding: clamp(28px, 4vw, 58px); border-left: 1px solid var(--line); background: var(--surface-muted); }
+.workspace-empty-steps { display: grid; align-content: center; gap: 12px; padding: clamp(26px, 2.5vw, 44px); border-left: 1px solid var(--line); background: var(--surface-muted); }
 .workspace-empty-steps article { display: grid; grid-template-columns: 42px minmax(0, 1fr); gap: 14px; align-items: center; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .workspace-empty-steps article > b { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 9px; color: var(--accent); background: var(--accent-subtle); font: 720 10px/1 var(--font-geist-mono); }
 .workspace-empty-steps article div { display: grid; gap: 5px; }
@@ -1195,7 +1195,7 @@ button { color: inherit; }
 [data-theme="enterprise"] .app-shell { grid-template-columns: 268px minmax(0, 1fr); }
 [data-theme="enterprise"] .sidebar { padding: 26px 18px; box-shadow: 1px 0 0 rgba(15, 23, 42, .02); }
 [data-theme="enterprise"] .brand-mark { border-radius: 8px; box-shadow: 0 6px 16px rgba(37, 99, 235, .22); }
-[data-theme="enterprise"] .main { max-width: 1920px; margin-inline: auto; padding: 26px clamp(28px, 2.6vw, 52px) 56px; }
+[data-theme="enterprise"] .main { max-width: none; margin-inline: 0; padding: 22px clamp(18px, 1.7vw, 34px) 52px; }
 [data-theme="enterprise"] .topbar { min-height: 42px; align-items: flex-start; margin-bottom: 22px; }
 [data-theme="enterprise"] .top-actions { justify-content: flex-end; flex-wrap: wrap; }
 [data-theme="enterprise"] .breadcrumb { padding-top: 9px; white-space: nowrap; }
@@ -1299,7 +1299,7 @@ button { color: inherit; }
 [data-theme] .task-diagnostics-toggle.active { border-color: var(--accent); color: var(--accent); background: var(--accent-subtle); }
 
 @media (min-width: 1800px) {
-  [data-theme="enterprise"] .main { padding-inline: 56px; }
+  [data-theme="enterprise"] .main { padding-inline: 32px; }
   [data-theme="enterprise"] .workspace-analysis-shell { grid-template-columns: 360px minmax(0, 1fr); gap: 20px; }
   [data-theme="enterprise"] .workspace-graph-shell { grid-template-columns: 320px minmax(0, 1fr); gap: 20px; }
   [data-theme="enterprise"] .workspace-stat-card-grid { grid-template-columns: repeat(4, minmax(180px, 1fr)); gap: 14px; }
@@ -1310,7 +1310,7 @@ button { color: inherit; }
 }
 
 @media (max-width: 760px) {
-  .workspace-create-backdrop { padding: 14px; }
+  .workspace-create-page { min-height: auto; padding: 18px 0; }
   .workspace-create-grid { grid-template-columns: 1fr; }
   .workspace-empty-state { grid-template-columns: 1fr; }
   .workspace-empty-main { padding: 42px 28px; }
