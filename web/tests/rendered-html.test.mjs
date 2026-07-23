@@ -149,6 +149,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /const priorCompletedModelBatchCount = resumeModelPhase/);
   assert.match(product, /analysis=\{visibleCompletedWorkspaceAnalysis\}/);
   assert.match(product, /onProgressAnalysis=\{publishWorkspaceProgress\}/);
+  assert.match(product, /expandableWorkspaceTreeNodeIds/);
+  assert.match(product, /全部展开/);
+  assert.match(product, /Agent 与证据已校验/);
+  assert.match(product, /业务树来自 Agent 结论与扫描证据的校验合并/);
   assert.match(product, /阶段性功能树/);
   assert.match(product, /最近检查点展示/);
   assert.match(product, /current\?\.projectId === projectId/);

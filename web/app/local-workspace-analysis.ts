@@ -11,6 +11,9 @@ export type LocalModelClassification = {
   profileId: string;
   evidencePolicyVersion: number;
   businessFeature: boolean;
+  businessKey: string;
+  businessModule: string;
+  businessSubmodule: string;
   domain: string;
   group: "BUSINESS_CAPABILITY" | "BACKGROUND_INTEGRATION" | "DATA_INTEGRATION" | "PROJECT_OPERATION" | "API_SERVICE";
   confidence: "LOW" | "MEDIUM" | "HIGH";
@@ -31,6 +34,7 @@ export type LocalFeatureCandidate = {
   apiDesign?: { protocol: string; method: string; path: string; handler: string | null; source: string };
   implementationBlocks?: Array<{ path: string; symbol: string; startLine: number; relation: "HANDLER" | "CALLS" | "MATCHED_IMPLEMENTATION"; code: string }>;
   modelClassification?: LocalModelClassification;
+  evidenceCandidateIds?: string[];
   configurations: Array<{ path: string; key: string; value: string }>;
   tests: Array<{ path: string; title: string; code: string }>;
   dimensions: {
@@ -77,7 +81,7 @@ export type LocalWorkspaceFileRecord = {
 };
 
 export const localWorkspaceScannerVersion = 4;
-export const localWorkspaceEvidencePolicyVersion = 1;
+export const localWorkspaceEvidencePolicyVersion = 2;
 
 export function planLocalWorkspaceCheckpointResume(
   files: Array<{ path: string; size: number; lastModified: number }>,
@@ -679,7 +683,7 @@ function treeGroup(feature: LocalFeatureCandidate): FeatureTreeGroup {
   return "BUSINESS_CAPABILITY";
 }
 
-function buildTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[]): LocalFeatureTreeNode {
+function buildEvidenceTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[]): LocalFeatureTreeNode {
   const groupOrder: FeatureTreeGroup[] = ["API_SERVICE", "BUSINESS_CAPABILITY", "DATA_INTEGRATION", "BACKGROUND_INTEGRATION", "PROJECT_OPERATION"];
   const modules = new Map<string, LocalFeatureCandidate[]>();
   for (const feature of features) {
@@ -734,25 +738,108 @@ function buildTree(workspaceName: string, projectId: string, features: LocalFeat
 }
 
 export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalysis, mode: LocalFeatureTreeMode): LocalWorkspaceAnalysis {
-  const features = analysis.features.filter((feature) => mode === "API" ? feature.kind === "ENDPOINT" : isLocalBusinessFeature(feature));
+  const classifiedFeatures = analysis.features.filter((feature) => mode === "API"
+    ? feature.kind === "ENDPOINT" && feature.modelClassification?.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion
+    : isLocalBusinessFeature(feature));
+  const features = mode === "BUSINESS" ? mergeAgentBusinessFeatures(classifiedFeatures) : classifiedFeatures;
   return {
     ...analysis,
     features,
-    tree: buildTree(analysis.workspaceName, analysis.projectId, features),
+    tree: buildAgentFeatureTree(analysis.workspaceName, analysis.projectId, features, mode),
   };
 }
 
 export function isLocalBusinessFeature(feature: LocalFeatureCandidate) {
-  if (feature.kind !== "CODE_SYMBOL") return false;
-  if (feature.modelClassification) return feature.modelClassification.businessFeature;
-  const group = treeGroup(feature);
-  if (!["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION"].includes(group)) return false;
-  const context = `${feature.name} ${feature.description} ${feature.sourcePath}`;
-  if (/(?:\brepository\b|\bdao\b|\bgateway\b|\bconnector\b|\badapter\b|Java interface capability)/i.test(context)) return false;
-  if (/(?:^|\/)(?:config|configs|types|schemas|utils?|helpers?|infrastructure)(?:\/|$)/i.test(feature.sourcePath)) return false;
-  if (/(?:Routes?|Router|Plugin|Configuration|Factory)$/i.test(feature.name.replace(/\s+/g, ""))) return false;
-  if (group === "BACKGROUND_INTEGRATION") return /(?:handle|consume|dispatch|schedule|process|deliver|receive)/i.test(feature.name);
-  return /(?:submit|approve|reject|cancel|refund|checkout|purchase|enroll|book|fulfill|ship|invoice|settle|withdraw|deposit|authenticate|authorize|sign\s*in|sign\s*out)/i.test(feature.name);
+  return feature.kind === "CODE_SYMBOL"
+    && feature.modelClassification?.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion
+    && feature.modelClassification.businessFeature === true;
+}
+
+function buildAgentFeatureTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[], mode: LocalFeatureTreeMode): LocalFeatureTreeNode {
+  const modules = new Map<string, LocalFeatureCandidate[]>();
+  for (const feature of features) {
+    const classification = feature.modelClassification;
+    if (!classification) continue;
+    const moduleName = classification.businessModule?.trim() || classification.domain?.trim() || (mode === "API" ? "API services" : "Business capabilities");
+    modules.set(moduleName, [...(modules.get(moduleName) ?? []), feature]);
+  }
+  return {
+    id: projectId,
+    label: workspaceName,
+    kind: "WORKSPACE",
+    featureCount: features.length,
+    children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleName, moduleFeatures]) => {
+      const submodules = new Map<string, LocalFeatureCandidate[]>();
+      for (const feature of moduleFeatures) {
+        const classification = feature.modelClassification;
+        if (!classification) continue;
+        const submoduleName = classification.businessSubmodule?.trim() || classification.domain?.trim() || (mode === "API" ? "API endpoints" : "Core functions");
+        submodules.set(submoduleName, [...(submodules.get(submoduleName) ?? []), feature]);
+      }
+      return {
+        id: `${projectId}:agent-module:${stableId(moduleName)}`,
+        label: moduleName,
+        kind: "MODULE" as const,
+        featureCount: moduleFeatures.length,
+        detail: mode === "API" ? "Agent-confirmed API module" : "Agent-confirmed business module",
+        children: [...submodules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([submoduleName, submoduleFeatures]) => ({
+          id: `${projectId}:agent-module:${stableId(moduleName)}:submodule:${stableId(submoduleName)}`,
+          label: submoduleName,
+          kind: "DOMAIN" as const,
+          featureCount: submoduleFeatures.length,
+          detail: mode === "API" ? "Agent-confirmed API submodule" : "Agent-confirmed business submodule",
+          children: submoduleFeatures.sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
+            id: feature.id,
+            label: feature.displayName ?? feature.name,
+            kind: "FEATURE" as const,
+            featureId: feature.id,
+            featureCount: 1,
+            detail: feature.description,
+            badge: mode === "API" ? feature.method ?? undefined : feature.modelClassification?.confidence,
+            children: [],
+          })),
+        })),
+      };
+    }),
+  };
+}
+
+function mergeAgentBusinessFeatures(features: LocalFeatureCandidate[]): LocalFeatureCandidate[] {
+  const groups = new Map<string, LocalFeatureCandidate[]>();
+  for (const feature of features) {
+    const classification = feature.modelClassification;
+    if (!classification) continue;
+    const identity = [
+      classification.businessModule || classification.domain,
+      classification.businessSubmodule || classification.domain,
+      classification.businessKey || feature.displayName || feature.name,
+    ].map((value) => value.trim().toLowerCase().replace(/\s+/g, " ")).join("|");
+    groups.set(identity, [...(groups.get(identity) ?? []), feature]);
+  }
+  const confidenceRank = { LOW: 1, MEDIUM: 2, HIGH: 3 } as const;
+  return [...groups.entries()].map(([identity, items]) => {
+    const primary = items[0];
+    const classifications = items.map((item) => item.modelClassification).filter((value): value is LocalModelClassification => Boolean(value));
+    const confidence = classifications.reduce<LocalModelClassification["confidence"]>((lowest, classification) =>
+      confidenceRank[classification.confidence] < confidenceRank[lowest] ? classification.confidence : lowest, classifications[0].confidence);
+    const unique = <T,>(values: T[], key: (value: T) => string) => [...new Map(values.map((value) => [key(value), value])).values()];
+    return {
+      ...primary,
+      id: stableId(`agent-business:${identity}`),
+      name: primary.displayName ?? primary.name,
+      evidenceCandidateIds: items.map((item) => item.id),
+      description: [...new Set(items.map((item) => item.description.trim()).filter(Boolean))].join(" "),
+      modelClassification: {
+        ...classifications[0],
+        confidence,
+        rationale: [...new Set(classifications.map((classification) => classification.rationale.trim()).filter(Boolean))].join(" "),
+      },
+      implementationBlocks: unique(items.flatMap((item) => item.implementationBlocks ?? []), (block) => `${block.path}:${block.startLine}:${block.symbol}`),
+      configurations: unique(items.flatMap((item) => item.configurations), (configuration) => `${configuration.path}:${configuration.key}`),
+      tests: unique(items.flatMap((item) => item.tests), (test) => test.path),
+      gaps: unique(items.flatMap((item) => item.gaps), (gap) => `${gap.type}:${gap.ownerRole}`),
+    };
+  }).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name));
 }
 
 export function analyzeLocalWorkspace(input: {
@@ -787,6 +874,9 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
   displayName: string;
   description: string;
   businessFeature: boolean;
+  businessKey: string;
+  businessModule: string;
+  businessSubmodule: string;
   domain: string;
   group: LocalModelClassification["group"];
   confidence: LocalModelClassification["confidence"];
@@ -806,6 +896,9 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
           profileId,
           evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
           businessFeature: value.businessFeature,
+          businessKey: value.businessKey,
+          businessModule: value.businessModule,
+          businessSubmodule: value.businessSubmodule,
           domain: value.domain,
           group: value.group,
           confidence: value.confidence,
@@ -888,7 +981,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
     supportedFileCount: input.records.filter((record) => record.supported).length,
     skippedFileCount: input.records.filter((record) => !record.supported).length,
     features,
-    tree: buildTree(workspaceName, projectId, features),
+    tree: buildEvidenceTree(workspaceName, projectId, features),
   };
 }
 

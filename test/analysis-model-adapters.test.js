@@ -137,6 +137,9 @@ test("runtime model profiles keep API keys private, require verification, and en
           displayName: "Submit order",
           description: "Submits an order through the discovered service method.",
           businessFeature: true,
+          businessKey: "order.submit",
+          businessModule: "Order management",
+          businessSubmodule: "Order submission",
           domain: "Orders",
           group: "BUSINESS_CAPABILITY",
           confidence: "HIGH",
@@ -197,7 +200,7 @@ test("Workspace model telemetry exposes the auditable request lifecycle and enfo
     model: "source-model",
     stream: true,
     fetchImpl: async () => new Response([
-      `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ candidates: [{ id: "CANDIDATE-1", displayName: "Candidate", description: "Observed candidate.", businessFeature: false, domain: "Technical", group: "PROJECT_OPERATION", confidence: "HIGH", rationale: "Single heuristic observation." }] }) } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ candidates: [{ id: "CANDIDATE-1", displayName: "Candidate", description: "Observed candidate.", businessFeature: false, businessKey: "platform.runtime-support", businessModule: "Platform operations", businessSubmodule: "Runtime support", domain: "Technical", group: "PROJECT_OPERATION", confidence: "HIGH", rationale: "Single heuristic observation." }] }) } }] })}`,
       "data: [DONE]",
     ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } }),
   });

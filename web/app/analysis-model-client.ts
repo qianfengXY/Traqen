@@ -28,6 +28,9 @@ export type WorkspaceModelEnrichment = {
   displayName: string;
   description: string;
   businessFeature: boolean;
+  businessKey: string;
+  businessModule: string;
+  businessSubmodule: string;
   domain: string;
   group: LocalModelClassification["group"];
   confidence: LocalModelClassification["confidence"];

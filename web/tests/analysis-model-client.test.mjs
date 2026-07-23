@@ -72,7 +72,7 @@ test("builds explicit evidence assessments and streams each observable LLM inter
     const lines = [
       { kind: "telemetry", event: { type: "REQUEST_PREPARED", at: "2026-07-22T01:00:00.000Z", requestId: "REQ-1", promptPreview: "bounded prompt" } },
       { kind: "telemetry", event: { type: "RESPONSE_PROGRESS", at: "2026-07-22T01:00:01.000Z", requestId: "REQ-1", chunkCount: 2, receivedCharacters: 120 } },
-      { kind: "result", profileId: "model-a", candidates: [{ id: candidate.id, displayName: "Submit order", description: "Candidate", businessFeature: true, domain: "Orders", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Single heuristic source" }] },
+      { kind: "result", profileId: "model-a", candidates: [{ id: candidate.id, displayName: "Submit order", description: "Candidate", businessFeature: true, businessKey: "order.submit", businessModule: "Order management", businessSubmodule: "Order submission", domain: "Orders", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Single heuristic source" }] },
     ].map((message) => `${JSON.stringify(message)}\n`).join("");
     return new Response(lines, { status: 200, headers: { "content-type": "application/x-ndjson" } });
   };
@@ -110,7 +110,7 @@ test("automatically bisects an incomplete model batch and preserves input order"
     const input = JSON.parse(options.body).candidates;
     const message = call === 1
       ? { kind: "error", error: { message: "analysis model output was truncated (length)" } }
-      : { kind: "result", candidates: input.map((candidate) => ({ id: candidate.id, displayName: candidate.name, description: candidate.description, businessFeature: true, domain: "Test", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Evidence bounded" })) };
+      : { kind: "result", candidates: input.map((candidate) => ({ id: candidate.id, displayName: candidate.name, description: candidate.description, businessFeature: true, businessKey: `test.${candidate.id}`, businessModule: "Test management", businessSubmodule: "Test execution", domain: "Test", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Evidence bounded" })) };
     return new Response(`${JSON.stringify(message)}\n`, { status: 200, headers: { "content-type": "application/x-ndjson" } });
   };
   try {

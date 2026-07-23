@@ -1504,12 +1504,15 @@
       },
       "WorkspaceModelEnrichment": {
         "type": "object",
-        "required": ["id", "displayName", "description", "businessFeature", "domain", "group", "confidence", "rationale"],
+        "required": ["id", "displayName", "description", "businessFeature", "businessKey", "businessModule", "businessSubmodule", "domain", "group", "confidence", "rationale"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
           "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
           "businessFeature": { "type": "boolean" },
+          "businessKey": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "businessModule": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "businessSubmodule": { "type": "string", "minLength": 1, "maxLength": 120 },
           "domain": { "type": "string", "minLength": 1, "maxLength": 120 },
           "group": { "enum": ["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION", "DATA_INTEGRATION", "PROJECT_OPERATION", "API_SERVICE"] },
           "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },

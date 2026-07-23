@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
-import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, isLocalBusinessFeature, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
+import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceProject, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
@@ -1225,13 +1225,14 @@ export function TraqenProduct() {
     )
   ));
   const workspaceTreeModeCounts = useMemo(() => ({
-    BUSINESS: effectiveWorkspaceAnalysis?.features.filter(isLocalBusinessFeature).length ?? 0,
-    API: effectiveWorkspaceAnalysis?.features.filter((feature) => feature.kind === "ENDPOINT").length ?? 0,
+    BUSINESS: effectiveWorkspaceAnalysis ? localWorkspaceAnalysisForTreeMode(effectiveWorkspaceAnalysis, "BUSINESS").features.length : 0,
+    API: effectiveWorkspaceAnalysis ? localWorkspaceAnalysisForTreeMode(effectiveWorkspaceAnalysis, "API").features.length : 0,
   }), [effectiveWorkspaceAnalysis]);
   const workspaceProjectCreated = useMemo(() => workspaceProjects.some((project) => project.id === workspaceProjectId), [workspaceProjectId, workspaceProjects]);
   const activateWorkspaceSnapshot = useCallback((snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false, treeMode: LocalFeatureTreeMode = "BUSINESS") => {
     const result = snapshot.analysis;
-    const firstFeatureId = localWorkspaceAnalysisForTreeMode(result, treeMode).features[0]?.id ?? "";
+    const projected = localWorkspaceAnalysisForTreeMode(result, treeMode);
+    const firstFeatureId = projected.features[0]?.id ?? "";
     setWorkspaceProgressAnalysis(null);
     setWorkspaceAnalysis(result);
     setWorkspaceName(result.workspaceName);
@@ -1243,7 +1244,7 @@ export function TraqenProduct() {
     setWorkspaceFileRecords(snapshot.records);
     setWorkspaceFeatureId(firstFeatureId);
     setWorkspaceTraceBlock("description");
-    setWorkspaceExpandedNodeIds(new Set([result.tree.id]));
+    setWorkspaceExpandedNodeIds(new Set(expandableWorkspaceTreeNodeIds(projected.tree)));
     if (firstFeatureId) setFeatureId(firstFeatureId);
   }, []);
 
@@ -1374,7 +1375,7 @@ export function TraqenProduct() {
     setWorkspaceProgressAnalysis(result);
     if (!result) return;
     const projected = localWorkspaceAnalysisForTreeMode(result, workspaceTreeMode);
-    setWorkspaceExpandedNodeIds((current) => current.has(projected.tree.id) ? current : new Set([...current, projected.tree.id]));
+    setWorkspaceExpandedNodeIds((current) => new Set([...current, ...expandableWorkspaceTreeNodeIds(projected.tree)]));
     setWorkspaceFeatureId((current) => {
       if (projected.features.some((feature) => feature.id === current)) return current;
       const firstFeatureId = projected.features[0]?.id ?? "";
@@ -1527,12 +1528,12 @@ export function TraqenProduct() {
 
   function changeWorkspaceTreeMode(nextMode: LocalFeatureTreeMode) {
     setWorkspaceTreeMode(nextMode);
-    if (!workspaceAnalysis) return;
-    const nextAnalysis = localWorkspaceAnalysisForTreeMode(workspaceAnalysis, nextMode);
+    if (!effectiveWorkspaceAnalysis) return;
+    const nextAnalysis = localWorkspaceAnalysisForTreeMode(effectiveWorkspaceAnalysis, nextMode);
     const nextFeatureId = nextAnalysis.features.some((feature) => feature.id === workspaceFeatureId) ? workspaceFeatureId : nextAnalysis.features[0]?.id ?? "";
     setWorkspaceFeatureId(nextFeatureId);
     setWorkspaceTraceBlock("description");
-    setWorkspaceExpandedNodeIds(new Set([nextAnalysis.tree.id]));
+    setWorkspaceExpandedNodeIds(new Set(expandableWorkspaceTreeNodeIds(nextAnalysis.tree)));
     if (nextFeatureId) setFeatureId(nextFeatureId);
   }
 
@@ -1839,6 +1840,12 @@ function FeatureTreeBranch({ node, selectedFeatureId, onSelect, expandedNodeIds,
   );
 }
 
+function expandableWorkspaceTreeNodeIds(node: LocalFeatureTreeNode): string[] {
+  return node.children.length > 0
+    ? [node.id, ...node.children.flatMap((child) => expandableWorkspaceTreeNodeIds(child))]
+    : [];
+}
+
 type WorkspaceTreeModeProps = {
   treeMode: LocalFeatureTreeMode;
   onTreeModeChange: (mode: LocalFeatureTreeMode) => void;
@@ -1871,11 +1878,11 @@ function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFe
     <article className="workspace-feature-detail">
       <header className="workspace-feature-head">
         <div>
-          <p className="eyebrow">{term(feature.kind)} · {feature.id}</p>
+          <p className="eyebrow">{feature.modelClassification?.businessFeature ? t("业务功能", "Business feature") : term(feature.kind)} · {feature.id}</p>
           <h2>{feature.displayName ?? feature.name}</h2>
           <p>{feature.sourcePath}:{feature.startLine} · {feature.modulePath}</p>
         </div>
-        <span className={`mode-badge ${feature.modelClassification ? "live" : ""}`}>{feature.modelClassification ? t("模型增强候选", "Model-enriched candidate") : t("扫描候选", "Discovered candidate")}</span>
+        <span className={`mode-badge ${feature.modelClassification ? "live" : ""}`}>{feature.modelClassification ? t("Agent 与证据已校验", "Agent + evidence validated") : t("仅扫描证据", "Scan evidence only")}</span>
       </header>
       <div className="workspace-dimensions" aria-label={t("候选功能可信维度", "Candidate feature trust dimensions")}>
         {Object.entries(feature.dimensions).map(([key, value]) => <div key={key}><span>{term(({ authority: "业务权威", conformance: "实现符合性", verification: "验证结果", freshness: "证据新鲜度", conflict: "冲突" } as Record<string, string>)[key] ?? key)}</span><b className={tone(value)}>{term(value)}</b></div>)}
@@ -1884,7 +1891,7 @@ function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFe
         {blocks.map((item) => <button key={item.key} className={block === item.key ? "active" : ""} aria-pressed={block === item.key} onClick={() => setBlock(item.key)}><span>{item.label}</span><b>{term(item.state)}</b><small>{item.count}</small></button>)}
       </nav>
       <div className="workspace-trace-content">
-        {block === "description" && <section className="workspace-document"><div className="artifact-intro"><div><h3>{t("完整功能说明", "Complete feature description")}</h3><p>{t("以下内容先由确定性源码证据发现，再由已验证模型在有界上下文内整理；仍是待业务负责人确认的候选说明。", "This description starts from deterministic source evidence and is then organized by a verified model within bounded context. It remains a candidate pending business-owner confirmation.")}</p></div><span>{term(feature.dimensions.authority)}</span></div><dl><dt>{t("候选名称", "Candidate name")}</dt><dd>{feature.displayName ?? feature.name}</dd><dt>{t("发现类型", "Discovery type")}</dt><dd>{term(feature.kind)}</dd><dt>{t("业务逻辑线索", "Business logic clue")}</dt><dd>{feature.description}</dd><dt>{t("适用模块", "Applicable module")}</dt><dd>{feature.modulePath}</dd>{feature.modelClassification && <><dt>{t("模型业务分类", "Model business classification")}</dt><dd>{feature.modelClassification.domain} · {term(feature.modelClassification.group)} · {term(feature.modelClassification.confidence)}</dd><dt>{t("分类依据", "Classification rationale")}</dt><dd>{feature.modelClassification.rationale}</dd></>}<dt>{t("前置条件与权限", "Prerequisites and permissions")}</dt><dd>{t("源码与模型都不能替代业务授权确认，必须由业务负责人补充并确认。", "Neither source evidence nor a model can replace governed business confirmation; a business owner must supply and confirm these details.")}</dd></dl></section>}
+        {block === "description" && <section className="workspace-document"><div className="artifact-intro"><div><h3>{t("完整功能说明", "Complete feature description")}</h3><p>{t("以下内容是 Agent 业务结论与确定性扫描证据校验合并后的候选说明；仍需业务负责人确认。", "This candidate description merges the Agent's business conclusion with validated deterministic scan evidence and still requires business-owner confirmation.")}</p></div><span>{term(feature.dimensions.authority)}</span></div><dl><dt>{t("功能名称", "Feature name")}</dt><dd>{feature.displayName ?? feature.name}</dd><dt>{t("业务逻辑", "Business logic")}</dt><dd>{feature.description}</dd>{feature.modelClassification && <><dt>{t("业务层级", "Business hierarchy")}</dt><dd>{feature.modelClassification.businessModule} → {feature.modelClassification.businessSubmodule}</dd><dt>{t("业务领域与置信度", "Business domain and confidence")}</dt><dd>{feature.modelClassification.domain} · {term(feature.modelClassification.confidence)}</dd><dt>{t("分析依据", "Analysis rationale")}</dt><dd>{feature.modelClassification.rationale}</dd></>}<dt>{t("前置条件与权限", "Prerequisites and permissions")}</dt><dd>{t("源码与模型都不能替代业务授权确认，必须由业务负责人补充并确认。", "Neither source evidence nor a model can replace governed business confirmation; a business owner must supply and confirm these details.")}</dd></dl></section>}
         {block === "design" && <section className="workspace-code">{feature.apiDesign && <div className="workspace-api-design"><div><span>{t("接口协议", "Protocol")}</span><b>{feature.apiDesign.protocol}</b></div><div><span>{t("方法与路径", "Method and path")}</span><b>{feature.apiDesign.method} {feature.apiDesign.path}</b></div><div><span>{t("处理逻辑入口", "Handler")}</span><b>{feature.apiDesign.handler ?? t("尚未匹配", "Not matched")}</b></div><div><span>{t("接口设计来源", "Design source")}</span><b>{feature.apiDesign.source}</b></div></div>}{(feature.implementationBlocks ?? [{ path: feature.sourcePath, symbol: feature.name, startLine: feature.startLine, relation: "HANDLER" as const, code: feature.code }]).map((implementation, index) => <details key={`${implementation.path}:${implementation.startLine}:${index}`} open={index === 0}><summary><div className="reader-file-head"><div><span className="file-type code">{implementation.path.split(".").at(-1)?.toUpperCase()}</span><div><b>{implementation.symbol}</b><small>{implementation.path}:{implementation.startLine}</small></div></div><span>{term(implementation.relation)}</span></div></summary><SourceCodeViewer content={implementation.code} /></details>)}</section>}
         {block === "configuration" && <section className="workspace-related-list"><div className="artifact-intro"><div><h3>{t("相关配置线索", "Related configuration clues")}</h3><p>{t("展示工程中发现的配置文件；在形成治理映射前，不声称每一项都控制当前功能。", "Shows configuration files discovered in the project. No item is claimed to control this feature until a governed mapping exists.")}</p></div><span>{feature.configurations.length}</span></div>{feature.configurations.length === 0 ? <div className="gap-empty">{t("未发现受支持的配置文件。", "No supported configuration files were discovered.")}</div> : feature.configurations.map((configuration) => <details key={configuration.path}><summary><b>{configuration.key}</b><span>{configuration.path}</span></summary><SourceCodeViewer content={configuration.value} /></details>)}</section>}
         {block === "test-case" && <section className="workspace-related-list"><div className="artifact-intro"><div><h3>{t("相关测试用例线索", "Related test-case clues")}</h3><p>{t("根据文件名、源码引用和符号名称建立候选关联；后续仍需生成并批准正式 TestSpec。", "Candidate links are based on filenames, source references, and symbol names. A formal TestSpec must still be generated and approved.")}</p></div><span>{feature.tests.length}</span></div>{feature.tests.length === 0 ? <div className="gap-empty">{t("没有发现关联测试，这是一个阻断级 TraceGap。", "No related tests were discovered; this is a blocking TraceGap.")}</div> : feature.tests.map((test) => <details key={test.path}><summary><b>{test.title}</b><span>{test.path}</span></summary><SourceCodeViewer content={test.code} /></details>)}</section>}
@@ -1939,7 +1946,14 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
 
   function selectScope(node: LocalFeatureTreeNode) {
     setSelectedNodeId(node.id);
-    if (node.children.length > 0 && !expandedNodeIds.has(node.id)) onToggleNode(node.id);
+  }
+
+  const expandableNodeIds = expandableWorkspaceTreeNodeIds(analysis.tree);
+  function expandAll() {
+    for (const nodeId of expandableNodeIds) if (!expandedNodeIds.has(nodeId)) onToggleNode(nodeId);
+  }
+  function collapseAll() {
+    for (const nodeId of expandableNodeIds) if (nodeId !== analysis.tree.id && expandedNodeIds.has(nodeId)) onToggleNode(nodeId);
   }
 
   return (
@@ -1948,7 +1962,7 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
         <div className="feature-tree-head"><div><p className="eyebrow">Analysis scope</p><h2>{analysis.workspaceName}</h2></div><b>{analysis.features.length}</b></div>
         <WorkspaceTreeModeSwitch treeMode={treeMode} onTreeModeChange={onTreeModeChange} treeModeCounts={treeModeCounts} />
         <div className="workspace-scan-stats"><span>{analysis.supportedFileCount} {t("已分析", "analyzed")}</span><span>{analysis.skippedFileCount} {t("已跳过", "skipped")}</span><small>{analysis.scannedAt}</small></div>
-        <p className="workspace-analysis-tree-help">{t("选择任意层级，右侧重新统计该节点下的全部功能。", "Select any level to recalculate all Features below that node.")}</p>
+        <div className="workspace-analysis-tree-tools"><p className="workspace-analysis-tree-help">{t("业务树来自 Agent 结论与扫描证据的校验合并；选择层级可重新统计。", "The business tree merges Agent conclusions with validated scan evidence; select a level to recalculate.")}</p><div><button type="button" onClick={expandAll}>{t("全部展开", "Expand all")}</button><button type="button" onClick={collapseAll}>{t("收起", "Collapse")}</button></div></div>
         <ul className="feature-tree"><FeatureTreeBranch node={analysis.tree} selectedFeatureId={selectedFeatureId} onSelect={onSelectFeature} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} selectedNodeId={scope.node.id} onSelectNode={selectScope} /></ul>
       </aside>
 
@@ -1965,9 +1979,11 @@ function WorkspaceAnalysisDashboard({ analysis, selectedFeatureId, onSelectFeatu
 
         <section className="workspace-statistics-grid">
           <article className="panel workspace-stat-panel">
-            <div className="workspace-stat-section-head"><div><p className="eyebrow">Coverage</p><h3>{t("功能类型与覆盖", "Feature types and coverage")}</h3></div></div>
+            <div className="workspace-stat-section-head"><div><p className="eyebrow">Coverage</p><h3>{treeMode === "BUSINESS" ? t("业务模块与覆盖", "Business modules and coverage") : t("API 覆盖", "API coverage")}</h3></div></div>
             <div className="workspace-kind-grid">
-              {(["ENDPOINT", "CODE_SYMBOL", "COMMAND"] as const).map((kind) => <div key={kind}><span>{term(kind)}</span><b>{statistics.byKind[kind]}</b><small>{percentage(statistics.byKind[kind], statistics.featureCount)}</small></div>)}
+              {treeMode === "BUSINESS"
+                ? analysis.tree.children.map((module) => <div key={module.id}><span>{module.label}</span><b>{module.featureCount}</b><small>{percentage(module.featureCount, statistics.featureCount)}</small></div>)
+                : <div><span>{t("已确认 API", "Confirmed APIs")}</span><b>{statistics.byKind.ENDPOINT}</b><small>{percentage(statistics.byKind.ENDPOINT, statistics.featureCount)}</small></div>}
             </div>
             <dl className="workspace-stat-list">
               <div><dt>{t("源码实现覆盖", "Source implementation coverage")}</dt><dd>{statistics.designImplementationCount} / {statistics.featureCount}</dd></div>
@@ -2744,8 +2760,8 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const hasResumableRun = Boolean(resumableCheckpoint || analysisTask?.status === "PAUSED" || analysisTask?.status === "FAILED");
   const analysisForDisplay = progressAnalysis ? localWorkspaceAnalysisForTreeMode(progressAnalysis, treeMode) : analysis;
   const displayTreeModeCounts = progressAnalysis ? {
-    BUSINESS: progressAnalysis.features.filter(isLocalBusinessFeature).length,
-    API: progressAnalysis.features.filter((feature) => feature.kind === "ENDPOINT").length,
+    BUSINESS: localWorkspaceAnalysisForTreeMode(progressAnalysis, "BUSINESS").features.length,
+    API: localWorkspaceAnalysisForTreeMode(progressAnalysis, "API").features.length,
   } : treeModeCounts;
   const taskStepDefinitions = [
     { id: "manifest", label: t("建立源码清单", "Build source manifest"), detail: t("确定分析范围、排除项与全量/增量策略", "Determine analysis scope, exclusions, and full/incremental strategy"), activePhase: "READY" as LocalAnalysisTaskPhase },

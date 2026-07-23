@@ -263,7 +263,7 @@ test("keeps Clowder-style async routes readable and excludes support artifacts f
   assert.equal(analysis.tree.children.find((node) => node.label === "API").children.find((node) => node.label === "Accounts").kind, "DOMAIN");
 });
 
-test("projects one scan into separate pure-business and API Feature trees", () => {
+test("does not promote scanner-only observations into business or API Feature trees", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Two-mode tree",
     projectId: "PROJECT-TWO-MODE-TREE",
@@ -275,14 +275,26 @@ test("projects one scan into separate pure-business and API Feature trees", () =
 
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
   const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
-  assert.deepEqual(business.features.map((feature) => feature.kind), ["CODE_SYMBOL"]);
-  assert.deepEqual(api.features.map((feature) => feature.kind), ["ENDPOINT"]);
-  assert.equal(business.tree.featureCount, 1);
-  assert.equal(api.tree.featureCount, 1);
-  assert.ok(business.tree.children.flatMap((module) => module.children).flatMap((domain) => domain.children).every((group) => group.label !== "API_SERVICE" && group.label !== "PROJECT_OPERATION"));
-  assert.ok(api.tree.children.flatMap((module) => module.children).flatMap((domain) => domain.children).every((group) => group.label === "API_SERVICE"));
-  assert.ok([...business.features, ...api.features].every((feature) => feature.kind !== "COMMAND"));
+  assert.deepEqual(business.features, []);
+  assert.deepEqual(api.features, []);
+  assert.equal(business.tree.featureCount, 0);
+  assert.equal(api.tree.featureCount, 0);
   assert.equal(analysis.features.filter((feature) => feature.kind === "COMMAND").length, 1);
+});
+
+test("hides legacy model classifications that predate the business hierarchy policy", () => {
+  const record = scanLocalWorkspaceFile({ path: "src/orders.ts", size: 80, content: "export function submitOrder() {}" });
+  record.candidates[0].modelClassification = {
+    profileId: "legacy-model",
+    evidencePolicyVersion: 1,
+    businessFeature: true,
+    domain: "Orders",
+    group: "BUSINESS_CAPABILITY",
+    confidence: "HIGH",
+    rationale: "Legacy classification without business hierarchy.",
+  };
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Orders", projectId: "PROJECT-ORDERS", records: [record] });
+  assert.deepEqual(localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS").features, []);
 });
 
 test("does not turn generic exported symbols from a large agent repository into business Features", () => {
@@ -297,7 +309,7 @@ test("does not turn generic exported symbols from a large agent repository into 
   });
   assert.equal(analysis.features.some((feature) => feature.name === "Expect Rejected Record"), false);
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
-  assert.deepEqual(business.features.map((feature) => feature.name), ["Submit Order"]);
+  assert.deepEqual(business.features, []);
 });
 
 test("discovers OpenClaw-style Gateway RPC design and links handler logic", () => {
@@ -352,14 +364,15 @@ test("business projection suppresses technical symbols while API projection link
 
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
   const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
-  assert.deepEqual(business.features.map((feature) => feature.name), ["Submit Order"]);
-  assert.equal(api.features.length, 1);
-  assert.equal(api.features[0].apiDesign.method, "POST");
-  assert.equal(api.features[0].apiDesign.path, "/orders");
-  assert.ok(api.features[0].implementationBlocks.some((block) => block.symbol === "Submit Order"));
+  assert.deepEqual(business.features, []);
+  assert.deepEqual(api.features, []);
+  const endpoint = analysis.features.find((feature) => feature.kind === "ENDPOINT");
+  assert.equal(endpoint.apiDesign.method, "POST");
+  assert.equal(endpoint.apiDesign.path, "/orders");
+  assert.ok(endpoint.implementationBlocks.some((block) => block.symbol === "Submit Order"));
 });
 
-test("model enrichment persists readable business classification without changing stable candidate identity", () => {
+test("model enrichment preserves scanner provenance behind a stable semantic business identity", () => {
   const service = scanLocalWorkspaceFile({ path: "src/technical/processor.ts", size: 90, content: "export function execute() { return issueRefund(); }" });
   const candidate = service.candidates[0];
   const records = applyLocalModelEnrichment([service], "workspace-default", [{
@@ -367,6 +380,9 @@ test("model enrichment persists readable business classification without changin
     displayName: "Issue customer refund",
     description: "Issues a customer refund through the discovered processor.",
     businessFeature: true,
+    businessKey: "payment.refund.issue",
+    businessModule: "Payment management",
+    businessSubmodule: "Customer refunds",
     domain: "Customer refunds",
     group: "BUSINESS_CAPABILITY",
     confidence: "HIGH",
@@ -376,11 +392,85 @@ test("model enrichment persists readable business classification without changin
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
 
   assert.equal(business.features.length, 1);
-  assert.equal(business.features[0].id, candidate.id);
+  assert.notEqual(business.features[0].id, candidate.id);
+  assert.deepEqual(business.features[0].evidenceCandidateIds, [candidate.id]);
   assert.equal(business.features[0].displayName, "Issue customer refund");
   assert.equal(business.features[0].modelClassification.profileId, "workspace-default");
-  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 1);
-  assert.equal(business.tree.children[0].children[0].label, "Customer Refunds");
+  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 2);
+  assert.equal(business.tree.children[0].label, "Payment management");
+  assert.equal(business.tree.children[0].children[0].label, "Customer refunds");
+});
+
+test("builds user-facing module, submodule, and feature levels only from Agent-validated evidence", () => {
+  const record = scanLocalWorkspaceFile({
+    path: "src/workspaces/service.ts",
+    size: 160,
+    content: "export function createWorkspace() {}\nrouter.post('/workspaces', createWorkspace);",
+  });
+  const businessCandidate = record.candidates.find((candidate) => candidate.kind === "CODE_SYMBOL");
+  const endpointCandidate = record.candidates.find((candidate) => candidate.kind === "ENDPOINT");
+  const enriched = applyLocalModelEnrichment([record], "workspace-default", [
+    {
+      id: businessCandidate.id,
+      displayName: "Create workspace",
+      description: "Creates a workspace for organizing one analyzed project.",
+      businessFeature: true,
+      businessKey: "workspace.create",
+      businessModule: "Workspace management",
+      businessSubmodule: "Workspace lifecycle",
+      domain: "Workspaces",
+      group: "BUSINESS_CAPABILITY",
+      confidence: "HIGH",
+      rationale: "The exported behavior and route corroborate workspace creation.",
+    },
+    {
+      id: endpointCandidate.id,
+      displayName: "Create workspace API",
+      description: "Accepts a request to create a workspace.",
+      businessFeature: false,
+      businessKey: "workspace.api.create",
+      businessModule: "Workspace management",
+      businessSubmodule: "Workspace APIs",
+      domain: "Workspaces",
+      group: "API_SERVICE",
+      confidence: "HIGH",
+      rationale: "The route declaration is directly observed.",
+    },
+  ]);
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Traqen", projectId: "PROJECT-TRAQEN", records: enriched });
+  const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
+  const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
+
+  assert.deepEqual(business.tree.children.map((node) => node.label), ["Workspace management"]);
+  assert.deepEqual(business.tree.children[0].children.map((node) => node.label), ["Workspace lifecycle"]);
+  assert.deepEqual(business.tree.children[0].children[0].children.map((node) => node.label), ["Create workspace"]);
+  assert.equal(business.tree.children[0].children[0].children[0].detail.includes("service.ts"), false);
+  assert.deepEqual(api.tree.children[0].children[0].children.map((node) => node.label), ["Create workspace API"]);
+});
+
+test("merges corroborating scanner candidates into one Agent business function", () => {
+  const service = scanLocalWorkspaceFile({ path: "src/workspaces/service.ts", size: 80, content: "export function createWorkspace() {}" });
+  const controller = scanLocalWorkspaceFile({ path: "src/workspaces/controller.ts", size: 90, content: "export function createWorkspace() { return service(); }" });
+  const records = applyLocalModelEnrichment([service, controller], "workspace-default", [service, controller].map((record) => ({
+    id: record.candidates[0].id,
+    displayName: "Create workspace",
+    description: `Creates a workspace based on ${record.path}.`,
+    businessFeature: true,
+    businessKey: "workspace.create",
+    businessModule: "Workspace management",
+    businessSubmodule: "Workspace lifecycle",
+    domain: "Workspaces",
+    group: "BUSINESS_CAPABILITY",
+    confidence: "MEDIUM",
+    rationale: `Evidence observed at ${record.path}.`,
+  })));
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Traqen", projectId: "PROJECT-TRAQEN", records });
+  const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
+
+  assert.equal(business.features.length, 1);
+  assert.equal(business.features[0].displayName, "Create workspace");
+  assert.equal(business.features[0].evidenceCandidateIds.length, 2);
+  assert.equal(business.features[0].implementationBlocks.length, 2);
 });
 
 test("calculates hierarchical Workspace statistics without treating unknown states as nonconforming", () => {
