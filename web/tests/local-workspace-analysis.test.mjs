@@ -396,7 +396,7 @@ test("model enrichment preserves scanner provenance behind a stable semantic bus
   assert.deepEqual(business.features[0].evidenceCandidateIds, [candidate.id]);
   assert.equal(business.features[0].displayName, "Issue customer refund");
   assert.equal(business.features[0].modelClassification.profileId, "workspace-default");
-  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 2);
+  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 3);
   assert.equal(business.tree.children[0].label, "Payment management");
   assert.equal(business.tree.children[0].children[0].label, "Customer refunds");
 });
@@ -446,6 +446,31 @@ test("builds user-facing module, submodule, and feature levels only from Agent-v
   assert.deepEqual(business.tree.children[0].children[0].children.map((node) => node.label), ["Create workspace"]);
   assert.equal(business.tree.children[0].children[0].children[0].detail.includes("service.ts"), false);
   assert.deepEqual(api.tree.children[0].children[0].children.map((node) => node.label), ["Create workspace API"]);
+});
+
+test("admits an Agent-confirmed endpoint to both business and API trees when it represents a business function", () => {
+  const record = scanLocalWorkspaceFile({
+    path: "src/orders.ts",
+    size: 120,
+    content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);",
+  });
+  const endpoint = record.candidates.find((candidate) => candidate.kind === "ENDPOINT");
+  const records = applyLocalModelEnrichment([record], "workspace-default", [{
+    id: endpoint.id,
+    displayName: "Submit order",
+    description: "Accepts and submits a customer order.",
+    businessFeature: true,
+    businessKey: "order.submit",
+    businessModule: "Order management",
+    businessSubmodule: "Order submission",
+    domain: "Orders",
+    group: "API_SERVICE",
+    confidence: "MEDIUM",
+    rationale: "The endpoint and handler describe a user-recognizable order submission.",
+  }]);
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Orders", projectId: "PROJECT-ORDERS", records });
+  assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS").features.length, 1);
+  assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "API").features.length, 1);
 });
 
 test("merges corroborating scanner candidates into one Agent business function", () => {

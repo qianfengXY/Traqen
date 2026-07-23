@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule } from "../app/analysis-model-client.ts";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, planWorkspaceAnalysis, reconcileWorkspaceAgentBatch, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule } from "../app/analysis-model-client.ts";
+import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, localWorkspaceAnalysisForTreeMode, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
 
 test("normalizes common OpenAI-compatible API base URLs without changing full endpoints", () => {
   assert.equal(normalizeChatCompletionsEndpoint("https://api.example.com/v1"), "https://api.example.com/v1/chat/completions");
@@ -137,6 +138,25 @@ test("keeps the Workspace running when the smallest model unit still returns inv
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("Main Agent reconciles child results with scanner evidence and exposes provisional APIs immediately", () => {
+  const record = scanLocalWorkspaceFile({
+    path: "src/orders.ts",
+    size: 120,
+    content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);",
+  });
+  const batch = workspaceModelCandidateBatches([record], "model-a").flat();
+  const endpoint = batch.find((candidate) => candidate.kind === "ENDPOINT");
+  const reconciliation = reconcileWorkspaceAgentBatch(batch, []);
+  assert.equal(reconciliation.decisions.find((decision) => decision.candidateId === endpoint.id).outcome, "ADMITTED_API");
+  assert.equal(reconciliation.enrichments.find((candidate) => candidate.id === endpoint.id).reconciliationStatus, "PROVISIONAL");
+
+  const reconciledRecords = applyLocalModelEnrichment([record], "model-a", reconciliation.enrichments);
+  const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Orders", projectId: "PROJECT-ORDERS", records: reconciledRecords });
+  assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "API").features.length, 1);
+  assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS").features.length, 0);
+  assert.ok(workspaceModelCandidateBatches(reconciledRecords, "model-a").flat().some((candidate) => candidate.id === endpoint.id));
 });
 
 test("streams a validated Main Agent plan with exactly three child assignments", async () => {

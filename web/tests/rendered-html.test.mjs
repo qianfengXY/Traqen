@@ -230,6 +230,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /技术诊断/);
   assert.match(product, /workspaceModelCandidateBatches/);
   assert.match(product, /applyLocalModelEnrichment/);
+  assert.match(product, /reconcileWorkspaceAgentBatch/);
+  assert.match(product, /子任务结论已返回主 Agent/);
+  assert.match(product, /主 Agent 对照/);
+  assert.match(product, /功能树已实时更新为业务/);
   assert.match(product, /先配置模型/);
   assert.match(product, /从展示中移出/);
   assert.match(product, /setLocalWorkspaceProjectVisibility/);

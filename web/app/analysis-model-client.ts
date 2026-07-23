@@ -35,6 +35,13 @@ export type WorkspaceModelEnrichment = {
   group: LocalModelClassification["group"];
   confidence: LocalModelClassification["confidence"];
   rationale: string;
+  reconciliationStatus?: LocalModelClassification["reconciliationStatus"];
+};
+
+export type WorkspaceAgentReconciliationDecision = {
+  candidateId: string;
+  outcome: "ADMITTED_BUSINESS" | "ADMITTED_API" | "EXCLUDED_TECHNICAL" | "PENDING_AGENT";
+  reason: string;
 };
 
 export type WorkspaceAnalysisPlan = {
@@ -288,7 +295,9 @@ function candidateEvidenceAssessment(candidate: LocalWorkspaceFileRecord["candid
 
 export function workspaceModelCandidateBatches(records: LocalWorkspaceFileRecord[], profileId: string, batchSize = 10) {
   const evidenceIndex = workspaceEvidenceIndex(records);
-  const candidates = records.flatMap((record) => record.candidates).filter((candidate) => candidate.modelClassification?.profileId !== profileId || candidate.modelClassification.evidencePolicyVersion !== localWorkspaceEvidencePolicyVersion).map((candidate) => ({
+  const candidates = records.flatMap((record) => record.candidates).filter((candidate) => candidate.modelClassification?.profileId !== profileId
+    || candidate.modelClassification.evidencePolicyVersion !== localWorkspaceEvidencePolicyVersion
+    || candidate.modelClassification.reconciliationStatus === "PROVISIONAL").map((candidate) => ({
     id: candidate.id,
     name: candidate.name,
     kind: candidate.kind,
@@ -310,6 +319,55 @@ export function workspaceModelCandidateBatches(records: LocalWorkspaceFileRecord
   }
   if (current.length > 0) batches.push(current);
   return batches;
+}
+
+function provisionalEndpointEnrichment(candidate: ReturnType<typeof workspaceModelCandidateBatches>[number][number]): WorkspaceModelEnrichment {
+  const endpointIdentity = `${candidate.method ?? "API"} ${candidate.name}`.trim();
+  const businessKey = `api.${endpointIdentity.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "").slice(0, 140) || "endpoint"}`;
+  return {
+    id: candidate.id,
+    displayName: candidate.name,
+    description: candidate.description,
+    businessFeature: false,
+    businessKey,
+    businessModule: "API services",
+    businessSubmodule: "Discovered endpoints",
+    domain: "API",
+    group: "API_SERVICE",
+    confidence: "LOW",
+    rationale: "Main Agent admitted the deterministic endpoint definition to the API tree provisionally; semantic classification is still pending.",
+    reconciliationStatus: "PROVISIONAL",
+  };
+}
+
+export function reconcileWorkspaceAgentBatch(
+  candidates: ReturnType<typeof workspaceModelCandidateBatches>[number],
+  childResults: WorkspaceModelEnrichment[],
+) {
+  const resultsById = new Map(childResults.map((result) => [result.id, result]));
+  const enrichments: WorkspaceModelEnrichment[] = [];
+  const decisions: WorkspaceAgentReconciliationDecision[] = [];
+  for (const candidate of candidates) {
+    const childResult = resultsById.get(candidate.id);
+    if (childResult) {
+      enrichments.push({ ...childResult, reconciliationStatus: "CONFIRMED" });
+      if (childResult.businessFeature && candidate.kind !== "COMMAND") {
+        decisions.push({ candidateId: candidate.id, outcome: "ADMITTED_BUSINESS", reason: "Child-Agent business conclusion matches a bounded scanner candidate and passed evidence validation." });
+      } else if (candidate.kind === "ENDPOINT") {
+        decisions.push({ candidateId: candidate.id, outcome: "ADMITTED_API", reason: "The endpoint classification matches a deterministic API definition and passed evidence validation." });
+      } else {
+        decisions.push({ candidateId: candidate.id, outcome: "EXCLUDED_TECHNICAL", reason: "The child Agent classified this scanner candidate as technical support rather than a user-recognizable function." });
+      }
+      continue;
+    }
+    if (candidate.kind === "ENDPOINT") {
+      enrichments.push(provisionalEndpointEnrichment(candidate));
+      decisions.push({ candidateId: candidate.id, outcome: "ADMITTED_API", reason: "The child result was unavailable, but a deterministic endpoint definition supports provisional API-tree admission." });
+    } else {
+      decisions.push({ candidateId: candidate.id, outcome: "PENDING_AGENT", reason: "Scanner evidence is retained, but no validated child-Agent semantic conclusion is available." });
+    }
+  }
+  return { enrichments, decisions };
 }
 
 async function requestWorkspaceCandidateBatch(apiBase: string, apiToken: string, profileId: string, candidates: ReturnType<typeof workspaceModelCandidateBatches>[number], options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {

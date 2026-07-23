@@ -3,7 +3,7 @@
 import cytoscape from "cytoscape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
-import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
+import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, reconcileWorkspaceAgentBatch, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, localWorkspaceAnalysisForTreeMode, localWorkspaceEvidencePolicyVersion, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile, type LocalFeatureCandidate, type LocalFeatureTreeMode, type LocalFeatureTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceAnalysisRunSummary, loadLocalWorkspaceDirectoryHandle, loadLocalWorkspaceProject, loadLocalWorkspaceProjectRecords, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceDirectoryHandle, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
@@ -1882,7 +1882,7 @@ function WorkspaceFeatureDetail({ feature, block, setBlock }: { feature: LocalFe
           <h2>{feature.displayName ?? feature.name}</h2>
           <p>{feature.sourcePath}:{feature.startLine} · {feature.modulePath}</p>
         </div>
-        <span className={`mode-badge ${feature.modelClassification ? "live" : ""}`}>{feature.modelClassification ? t("Agent 与证据已校验", "Agent + evidence validated") : t("仅扫描证据", "Scan evidence only")}</span>
+        <span className={`mode-badge ${feature.modelClassification?.reconciliationStatus === "CONFIRMED" ? "live" : ""}`}>{feature.modelClassification?.reconciliationStatus === "PROVISIONAL" ? t("扫描证据临时准入 · 待 Agent 补充", "Provisional scan admission · Agent pending") : feature.modelClassification ? t("Agent 与证据已校验", "Agent + evidence validated") : t("仅扫描证据", "Scan evidence only")}</span>
       </header>
       <div className="workspace-dimensions" aria-label={t("候选功能可信维度", "Candidate feature trust dimensions")}>
         {Object.entries(feature.dimensions).map(([key, value]) => <div key={key}><span>{term(({ authority: "业务权威", conformance: "实现符合性", verification: "验证结果", freshness: "证据新鲜度", conflict: "冲突" } as Record<string, string>)[key] ?? key)}</span><b className={tone(value)}>{term(value)}</b></div>)}
@@ -2847,7 +2847,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
             `我开始处理：${activeTaskName}\n\n目标：${workLabel}\n依据：${batch.length} 个可定位候选；证据上限低 ${evidenceCounts.LOW} / 中 ${evidenceCounts.MEDIUM} / 高 ${evidenceCounts.HIGH}\n正在做：区分用户可识别能力、API 行为与技术支撑，不提高证据置信度上限\n下一步：取得模型结论后核对结构与证据边界`,
             `Starting: ${activeTaskName}\n\nGoal: ${workLabel}\nEvidence basis: ${batch.length} locatable candidates; evidence caps ${evidenceCounts.LOW} low / ${evidenceCounts.MEDIUM} medium / ${evidenceCounts.HIGH} high\nWorking on: separate user-recognizable capabilities, API behavior, and technical support without raising evidence caps\nNext: validate structure and evidence boundaries after the model conclusion`,
           ));
-          const enrichments = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, batch, { onTelemetry: (event) => {
+          const childResults = await enrichWorkspaceCandidateBatch(apiBase, apiToken, analysisModelProfile.id, batch, { onTelemetry: (event) => {
             if (event.type === "REQUEST_PREPARED") {
               currentRequestId = event.requestId ?? `request-${requestOutput.size + 1}`;
               requestInput += event.inputCharacters ?? 0;
@@ -2860,12 +2860,25 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
             recordSubAgentTelemetry(agentId, event);
             recordModelTelemetry(event);
           } });
-          skippedModelCandidateCount += Math.max(0, batch.length - enrichments.length);
+          skippedModelCandidateCount += Math.max(0, batch.length - childResults.length);
           contextCharacters += requestInput + [...requestOutput.values()].reduce((total, characters) => total + characters, 0);
           completedInGeneration += 1;
+          appendSubAgentMessage(agentId, "AGENT", t(`子任务结论已返回主 Agent：${childResults.length} / ${batch.length} 条语义结论，等待与扫描证据逐项对账。`, `The child task returned ${childResults.length} / ${batch.length} semantic conclusions to the Main Agent for candidate-by-candidate reconciliation with scanner evidence.`));
+          const reconciliation = reconcileWorkspaceAgentBatch(batch, childResults);
+          const enrichments = reconciliation.enrichments;
           enrichedRecords = applyLocalModelEnrichment(enrichedRecords, analysisModelProfile.id, enrichments);
           completedModelBatchCount += 1;
           const preview = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
+          const visibleBusinessFeatureCount = localWorkspaceAnalysisForTreeMode(preview, "BUSINESS").features.length;
+          const visibleApiFeatureCount = localWorkspaceAnalysisForTreeMode(preview, "API").features.length;
+          const reconciliationCounts = reconciliation.decisions.reduce((counts, decision) => {
+            counts[decision.outcome] += 1;
+            return counts;
+          }, { ADMITTED_BUSINESS: 0, ADMITTED_API: 0, EXCLUDED_TECHNICAL: 0, PENDING_AGENT: 0 });
+          const admittedHighlights = reconciliation.decisions.filter((decision) => decision.outcome === "ADMITTED_BUSINESS" || decision.outcome === "ADMITTED_API").slice(0, 5).map((decision) => {
+            const candidate = batch.find((item) => item.id === decision.candidateId);
+            return `${candidate?.name ?? decision.candidateId} · ${decision.outcome === "ADMITTED_BUSINESS" ? t("业务准入", "business admission") : t("API 准入", "API admission")}`;
+          });
           const checkpoint = {
             id: runId, projectId, rootName: analysisDirectoryName, mode: activeRun?.mode ?? (analysis ? "INCREMENTAL" as const : "FULL" as const), engine: "HYBRID" as const, status: pauseRequestedRef.current ? "PAUSED" as const : "RUNNING" as const, phase: "MODEL_ENRICHMENT" as const, modelProfileId: analysisModelProfile.id, completedModelBatchCount, totalModelBatchCount, scannerVersion: localWorkspaceScannerVersion, evidencePolicyVersion: localWorkspaceEvidencePolicyVersion, plannedFileCount: analysisFileCount, completedFileCount: analysisFileCount, analysis: preview, records: enrichedRecords, currentPaths: [...currentPaths], counters: { added, modified, unchanged }, startedAt, updatedAt: new Date().toISOString(),
           };
@@ -2874,24 +2887,28 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           setResumableCheckpoint(checkpoint);
           setProgressAnalysis(preview);
           onProgressAnalysis(preview);
-          const domains = new Set(enrichments.map((item) => item.domain)).size;
-          const businessFeatures = enrichments.filter((item) => item.businessFeature).length;
-          if (enrichments.length > 0) {
-            const highlights = enrichments.slice(0, 4).map((item) => `• ${item.displayName} · ${item.domain} · ${term(item.confidence)}\n  ${item.rationale}`).join("\n");
+          appendAnalysisTaskEvent("MODEL_ENRICHMENT", t(
+            `${agentId} 已向主 Agent 返回当前子任务。主 Agent 对照 ${batch.length} 个扫描候选完成准入：业务功能 ${reconciliationCounts.ADMITTED_BUSINESS}、API ${reconciliationCounts.ADMITTED_API}、技术项排除 ${reconciliationCounts.EXCLUDED_TECHNICAL}、待补结论 ${reconciliationCounts.PENDING_AGENT}。${admittedHighlights.length > 0 ? `\n本批准入：${admittedHighlights.join("；")}。` : ""}\n功能树已实时更新为业务 ${visibleBusinessFeatureCount}、API ${visibleApiFeatureCount}。`,
+            `${agentId} returned the current child task. The Main Agent reconciled ${batch.length} scanner candidates: ${reconciliationCounts.ADMITTED_BUSINESS} business admissions, ${reconciliationCounts.ADMITTED_API} API admissions, ${reconciliationCounts.EXCLUDED_TECHNICAL} technical exclusions, and ${reconciliationCounts.PENDING_AGENT} pending conclusions.${admittedHighlights.length > 0 ? `\nAdmitted in this batch: ${admittedHighlights.join("; ")}.` : ""}\nThe live tree now contains ${visibleBusinessFeatureCount} business and ${visibleApiFeatureCount} API Features.`,
+          ), { currentWork: t("主 Agent 已完成本批准入并刷新功能树", "The Main Agent reconciled this batch and refreshed the Feature tree") }, { role: "AGENT", kind: "RESULT", detail: JSON.stringify(reconciliation.decisions, null, 2), technicalOnly: false });
+          const domains = new Set(childResults.map((item) => item.domain)).size;
+          const businessFeatures = childResults.filter((item) => item.businessFeature).length;
+          if (childResults.length > 0) {
+            const highlights = childResults.slice(0, 4).map((item) => `• ${item.displayName} · ${item.domain} · ${term(item.confidence)}\n  ${item.rationale}`).join("\n");
             const sourcePaths = [...new Set(batch.flatMap((candidate) => candidate.evidence.observations.map((observation) => observation.sourcePath)))];
             const corroborationCount = batch.reduce((total, candidate) => total + candidate.evidence.corroborations.length, 0);
             const diagnosticCount = batch.reduce((total, candidate) => total + candidate.evidence.diagnostics.length, 0);
-            const lowConfidenceCount = enrichments.filter((item) => item.confidence === "LOW").length;
+            const lowConfidenceCount = childResults.filter((item) => item.confidence === "LOW").length;
             appendSubAgentMessage(agentId, "MODEL", t(
-              `公开推理摘要\n\n观察：检查 ${sourcePaths.length} 个源码位置与 ${batch.length} 个候选，获得 ${corroborationCount} 条独立旁证。\n判断方法：逐项区分业务能力、API 行为和技术支撑；再用候选 ID、源码范围与证据上限约束结论。\n反证检查：发现 ${diagnosticCount} 条解析或完整性诊断；没有证据时不补写权限、业务规则或依赖。\n不确定性：${lowConfidenceCount} 条结论保持低置信度，等待更多实现、测试或规格旁证。\n阶段结论：形成 ${enrichments.length} 条可校验结论。\n${highlights}${enrichments.length > 4 ? `\n• 另有 ${enrichments.length - 4} 条结论已收起` : ""}\n\n下一步：交给验证 Agent 复核证据边界并保存检查点。`,
-              `Public reasoning summary\n\nObservations: inspected ${sourcePaths.length} source locations and ${batch.length} candidates with ${corroborationCount} independent corroborations.\nJudgment method: separate business capabilities, API behavior, and technical support, then constrain every conclusion by candidate ID, source scope, and evidence cap.\nCounter-check: found ${diagnosticCount} parser or completeness diagnostics; permissions, business rules, and dependencies are not filled in without evidence.\nUncertainty: ${lowConfidenceCount} conclusions remain low-confidence pending more implementation, test, or specification evidence.\nStage conclusion: ${enrichments.length} validatable conclusions.\n${highlights}${enrichments.length > 4 ? `\n• ${enrichments.length - 4} additional conclusions collapsed` : ""}\n\nNext: send the result to the Validation Agent for evidence-boundary review and checkpointing.`,
+              `公开推理摘要\n\n观察：检查 ${sourcePaths.length} 个源码位置与 ${batch.length} 个候选，获得 ${corroborationCount} 条独立旁证。\n判断方法：逐项区分业务能力、API 行为和技术支撑；再用候选 ID、源码范围与证据上限约束结论。\n反证检查：发现 ${diagnosticCount} 条解析或完整性诊断；没有证据时不补写权限、业务规则或依赖。\n不确定性：${lowConfidenceCount} 条结论保持低置信度，等待更多实现、测试或规格旁证。\n阶段结论：形成 ${childResults.length} 条可校验结论。\n${highlights}${childResults.length > 4 ? `\n• 另有 ${childResults.length - 4} 条结论已收起` : ""}\n\n下一步：返回主 Agent，与扫描证据逐项对账并决定功能树准入。`,
+              `Public reasoning summary\n\nObservations: inspected ${sourcePaths.length} source locations and ${batch.length} candidates with ${corroborationCount} independent corroborations.\nJudgment method: separate business capabilities, API behavior, and technical support, then constrain every conclusion by candidate ID, source scope, and evidence cap.\nCounter-check: found ${diagnosticCount} parser or completeness diagnostics; permissions, business rules, and dependencies are not filled in without evidence.\nUncertainty: ${lowConfidenceCount} conclusions remain low-confidence pending more implementation, test, or specification evidence.\nStage conclusion: ${childResults.length} validatable conclusions.\n${highlights}${childResults.length > 4 ? `\n• ${childResults.length - 4} additional conclusions collapsed` : ""}\n\nNext: return to the Main Agent for candidate-by-candidate reconciliation with scanner evidence and Feature-tree admission.`,
             ));
-            appendSubAgentMessage(agentId, "VALIDATOR", t(`证据校验通过：业务候选 ${businessFeatures} 个，技术支撑 ${enrichments.length - businessFeatures} 个；没有引用工作单元之外的源码证据。`, `Evidence validation passed: ${businessFeatures} business candidates and ${enrichments.length - businessFeatures} technical supports; no source evidence outside the work unit was cited.`));
+            appendSubAgentMessage(agentId, "VALIDATOR", t(`证据校验通过：业务候选 ${businessFeatures} 个，技术支撑 ${childResults.length - businessFeatures} 个；没有引用工作单元之外的源码证据。`, `Evidence validation passed: ${businessFeatures} business candidates and ${childResults.length - businessFeatures} technical supports; no source evidence outside the work unit was cited.`));
           }
           updateSubAgent(agentId, (agent) => ({ ...agent, status: "RUNNING", contextCharacters, completedTasks: agent.completedTasks + 1, currentTask: t("检查点已保存，准备下一工作单元", "Checkpoint saved; preparing the next work unit") }));
-          appendSubAgentMessage(agentId, "AGENT", enrichments.length > 0 ? t(
-            `发现：${businessFeatures} 个业务候选、${enrichments.length - businessFeatures} 个技术支撑、${domains} 个业务域\n证据：所有结论已通过 ID、源码范围和置信度上限校验\n检查点：本工作单元结果已保存；耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}\n下一步：领取队列中的下一个工作单元`,
-            `Findings: ${businessFeatures} business candidates, ${enrichments.length - businessFeatures} technical supports, and ${domains} domains\nEvidence: every conclusion passed ID, source-scope, and confidence-cap validation\nCheckpoint: this work unit is saved after ${analysisDuration(Date.now() - modelBatchStartedAt)}\nNext: claim the next queued work unit`,
+          appendSubAgentMessage(agentId, "AGENT", childResults.length > 0 ? t(
+            `发现：${businessFeatures} 个业务候选、${childResults.length - businessFeatures} 个技术支撑、${domains} 个业务域\n证据：所有结论已通过 ID、源码范围和置信度上限校验，并已返回主 Agent 完成准入对账\n检查点：本工作单元结果已保存；耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}\n下一步：领取队列中的下一个工作单元`,
+            `Findings: ${businessFeatures} business candidates, ${childResults.length - businessFeatures} technical supports, and ${domains} domains\nEvidence: every conclusion passed ID, source-scope, and confidence-cap validation and returned to the Main Agent for admission reconciliation\nCheckpoint: this work unit is saved after ${analysisDuration(Date.now() - modelBatchStartedAt)}\nNext: claim the next queued work unit`,
           ) : t(
             `发现：模型没有产生可校验结论\n证据：原始扫描候选和源码定位继续保留，不标记为通过或业务事实\n检查点：本单元已记录为待补模型分类；耗时 ${analysisDuration(Date.now() - modelBatchStartedAt)}\n下一步：继续后续任务，不让单点 JSON 错误阻断 Workspace`,
             `Finding: the model produced no validatable conclusion\nEvidence: scanner candidates and source locations remain; nothing is marked passed or promoted to business truth\nCheckpoint: this unit is recorded as pending model classification after ${analysisDuration(Date.now() - modelBatchStartedAt)}\nNext: continue so one JSON failure cannot block the Workspace`,
@@ -2917,13 +2934,15 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       }
       appendAnalysisTaskEvent("FINALIZING", t("全部语义分析子任务已完成。Workspace Agent 正在校验稳定身份、构建最新功能树并汇总追溯证据。", "All semantic-analysis subtasks are complete. The Workspace Agent is validating stable identities, building the latest Feature tree, and summarizing trace evidence."), { phase: "FINALIZING", phaseCompleted: 0, phaseTotal: 1, overallProgress: 96, currentWork: t("校验并保存最新 Workspace", "Validate and save the latest Workspace"), activeSubtask: t("生成最新功能树与追溯统计", "Generate the latest Feature tree and trace statistics") }, { role: "WORKSPACE", kind: "ACTION" });
       const result = analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: enrichedRecords });
+      const finalBusinessFeatureCount = localWorkspaceAnalysisForTreeMode(result, "BUSINESS").features.length;
+      const finalApiFeatureCount = localWorkspaceAnalysisForTreeMode(result, "API").features.length;
       await onInitialize(result, enrichedRecords, analysisDirectoryName);
       await clearLocalWorkspaceAnalysisRun(projectId);
       setResumableCheckpoint(null);
       setProgressAnalysis(null);
       onProgressAnalysis(null);
-      appendAnalysisTaskEvent("COMPLETED", t(`主任务完成：最新功能树包含 ${result.features.length} 个候选功能，${skippedModelCandidateCount} 个候选因模型 JSON 无效保留为待补分类；Workspace 追溯上下文已更新，总耗时 ${analysisDuration(Date.now() - taskStartedAt)}。`, `Main task completed: the latest Feature tree contains ${result.features.length} candidate Features; ${skippedModelCandidateCount} candidates remain pending classification because of invalid model JSON. The Workspace traceability context was updated in ${analysisDuration(Date.now() - taskStartedAt)}.`), { status: "COMPLETED", phase: "COMPLETED", endedAt: Date.now(), overallProgress: 100, phaseCompleted: 1, phaseTotal: 1, currentWork: t("主任务已完成", "Main task completed"), activeSubtask: null }, { role: "WORKSPACE", kind: "RESULT" });
-      setMessage(result.features.length > 0 ? t(`混合分析已更新 ${result.features.length} 个候选功能：新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件；模型处理 ${modelBatches.length} 个有界批次。`, `Hybrid analysis updated ${result.features.length} candidate features: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files; the model processed ${modelBatches.length} bounded batches.`) : t("分析完成，但没有发现有证据支持的接口或业务能力候选。", "Analysis completed, but no evidence-backed API or business-capability candidates were found."));
+      appendAnalysisTaskEvent("COMPLETED", t(`主任务完成：主 Agent 对账后的最新功能树包含业务功能 ${finalBusinessFeatureCount} 条、API ${finalApiFeatureCount} 条；${skippedModelCandidateCount} 个候选因模型 JSON 无效保留为待补分类。Workspace 追溯上下文已更新，总耗时 ${analysisDuration(Date.now() - taskStartedAt)}。`, `Main task completed: after Main-Agent reconciliation, the latest trees contain ${finalBusinessFeatureCount} business Features and ${finalApiFeatureCount} APIs; ${skippedModelCandidateCount} candidates remain pending because of invalid model JSON. The Workspace traceability context was updated in ${analysisDuration(Date.now() - taskStartedAt)}.`), { status: "COMPLETED", phase: "COMPLETED", endedAt: Date.now(), overallProgress: 100, phaseCompleted: 1, phaseTotal: 1, currentWork: t("主任务已完成", "Main task completed"), activeSubtask: null }, { role: "WORKSPACE", kind: "RESULT" });
+      setMessage(finalBusinessFeatureCount + finalApiFeatureCount > 0 ? t(`分析完成：业务功能 ${finalBusinessFeatureCount} 条、API ${finalApiFeatureCount} 条；新增 ${added}、修改 ${modified}、删除 ${deleted}、未变化 ${unchanged} 个文件，模型处理 ${modelBatches.length} 个有界批次。`, `Analysis completed with ${finalBusinessFeatureCount} business Features and ${finalApiFeatureCount} APIs: ${added} added, ${modified} modified, ${deleted} deleted, and ${unchanged} unchanged files across ${modelBatches.length} bounded model batches.`) : t("分析完成，但主 Agent 对账后仍没有可进入功能树的业务功能或 API；请查看主 Agent 的准入与排除记录。", "Analysis completed, but Main-Agent reconciliation found no business Features or APIs eligible for the trees. Review the Main Agent's admission and exclusion records."));
     } catch (error) {
       const activeRun = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
       if (activeRun) {

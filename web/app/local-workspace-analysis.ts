@@ -10,6 +10,7 @@ export type LocalFeatureTreeMode = "BUSINESS" | "API";
 export type LocalModelClassification = {
   profileId: string;
   evidencePolicyVersion: number;
+  reconciliationStatus?: "CONFIRMED" | "PROVISIONAL";
   businessFeature: boolean;
   businessKey: string;
   businessModule: string;
@@ -81,7 +82,7 @@ export type LocalWorkspaceFileRecord = {
 };
 
 export const localWorkspaceScannerVersion = 4;
-export const localWorkspaceEvidencePolicyVersion = 2;
+export const localWorkspaceEvidencePolicyVersion = 3;
 
 export function planLocalWorkspaceCheckpointResume(
   files: Array<{ path: string; size: number; lastModified: number }>,
@@ -750,8 +751,9 @@ export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalys
 }
 
 export function isLocalBusinessFeature(feature: LocalFeatureCandidate) {
-  return feature.kind === "CODE_SYMBOL"
+  return feature.kind !== "COMMAND"
     && feature.modelClassification?.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion
+    && feature.modelClassification.reconciliationStatus !== "PROVISIONAL"
     && feature.modelClassification.businessFeature === true;
 }
 
@@ -881,6 +883,7 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
   group: LocalModelClassification["group"];
   confidence: LocalModelClassification["confidence"];
   rationale: string;
+  reconciliationStatus?: LocalModelClassification["reconciliationStatus"];
 }>) {
   const enrichments = new Map(values.map((value) => [value.id, value]));
   return records.map((record) => ({
@@ -895,6 +898,7 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
         modelClassification: {
           profileId,
           evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
+          reconciliationStatus: value.reconciliationStatus ?? "CONFIRMED",
           businessFeature: value.businessFeature,
           businessKey: value.businessKey,
           businessModule: value.businessModule,
