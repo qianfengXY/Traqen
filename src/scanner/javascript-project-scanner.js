@@ -648,6 +648,7 @@ export class JavaScriptProjectScanner {
             source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
           );
           const handler = node.arguments.at(-1);
+          // Local declarations must win over imports so a shadowed binding cannot create a cross-file edge.
           if (handler?.type === "Identifier" && symbolByName.has(handler.name)) {
             addEdge(endpointId, "IMPLEMENTED_BY", symbolByName.get(handler.name), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
           } else if (handler?.type === "Identifier" && importedLocalNames.has(handler.name)) {
@@ -665,6 +666,7 @@ export class JavaScriptProjectScanner {
           }
         }
         const calledName = calleeName(node.callee);
+        // Preserve local-first resolution: the import branch is safe only after local shadowing is excluded.
         if (callingSymbolId && calledName && symbolByName.has(calledName)) {
           addEdge(callingSymbolId, "CALLS", symbolByName.get(calledName), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
         } else if (
