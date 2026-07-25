@@ -336,6 +336,7 @@ export class JavaScriptProjectScanner {
           ...candidates[0],
           importedName: binding.importedName,
           localName: binding.localName,
+          importKind: binding.kind,
           targetArtifact,
         };
         resolvedSymbols.push(resolved);
@@ -357,7 +358,7 @@ export class JavaScriptProjectScanner {
             testAssetId,
             "EXERCISES",
             symbol.id,
-            { basis: "NAMED_STATIC_IMPORT" },
+            { basis: "ESM_STATIC_IMPORT", importKind: symbol.importKind },
             reference.source,
           );
         }
@@ -379,6 +380,7 @@ export class JavaScriptProjectScanner {
           basis: "JAVASCRIPT_ESM_IMPORT",
           importedName: target.importedName,
           localName: target.localName,
+          importKind: target.importKind,
           targetArtifact: target.targetArtifact,
         },
         reference.source,

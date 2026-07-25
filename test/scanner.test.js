@@ -118,7 +118,7 @@ test("scanner produces locatable code, API, SQL, config, dependency, and test fa
   assert.equal(repeated.id, bundle.id);
 });
 
-test("scanner connects JavaScript calls and route handlers through named ESM imports", async () => {
+test("scanner connects JavaScript calls, route handlers, and tests through ESM imports", async () => {
   const rootPath = fileURLToPath(new URL("./fixtures/javascript-cross-file", import.meta.url));
   const scanner = new JavaScriptProjectScanner({ clock: fixedClock });
   const bundle = await scanner.scan({
@@ -142,12 +142,20 @@ test("scanner connects JavaScript calls and route handlers through named ESM imp
   const endpoint = bundle.nodes.find(
     (node) => node.type === "ENDPOINT" && node.name === "GET /orders/:id",
   );
+  const findAccount = symbol("src/default-service.js", "findAccount");
+  const defaultImportTest = bundle.nodes.find(
+    (node) =>
+      node.type === "TEST_ASSET" &&
+      node.source.artifact === "test/default-service.test.js",
+  );
 
   assert.ok(loadOrder);
   assert.ok(getOrder);
   assert.ok(runAudit);
   assert.ok(internalAudit);
   assert.ok(endpoint);
+  assert.ok(findAccount);
+  assert.ok(defaultImportTest);
   assert.ok(
     bundle.edges.some(
       (edge) =>
@@ -175,6 +183,17 @@ test("scanner connects JavaScript calls and route handlers through named ESM imp
     ),
     false,
     "the scanner must not link an import to a same-named symbol that is not exported",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === defaultImportTest.id &&
+        edge.predicate === "EXERCISES" &&
+        edge.objectId === findAccount.id &&
+        edge.attributes.basis === "ESM_STATIC_IMPORT" &&
+        edge.attributes.importKind === "DEFAULT",
+    ),
+    "default imports should produce accurately classified test-to-symbol evidence",
   );
 });
 
