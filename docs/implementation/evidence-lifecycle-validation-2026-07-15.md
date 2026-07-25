@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](evidence-lifecycle-validation-2026-07-15.zh-CN.md)
+
 # Evidence lifecycle validation — 2026-07-15
 
 ## Design obligation

@@ -4,6 +4,7 @@ import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
+import { AnalysisModelConnectionError } from "../src/analysis/index.js";
 import {
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -34,6 +35,8 @@ async function startServer(t, options = {}) {
     implementationPolicyResolver,
     continuousProtectionPolicyResolver,
     productMetricsPolicyResolver,
+    analysisAgent,
+    analysisModelRegistry,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -52,6 +55,8 @@ async function startServer(t, options = {}) {
     implementationPolicyResolver,
     continuousProtectionPolicyResolver,
     productMetricsPolicyResolver,
+    analysisAgent,
+    analysisModelRegistry,
   });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
@@ -90,6 +95,96 @@ test("health endpoint returns a request correlation ID", async (t) => {
   assert.equal(response.status, 200);
   assert.equal(response.headers.get("x-request-id"), "request-health-001");
   assert.deepEqual(await response.json(), { status: "ok" });
+});
+
+test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes latest/history projections", async (t) => {
+  const calls = [];
+  const checkpoint = { run: { id: "ANALYSIS-HTTP", status: "PAUSED" }, workUnits: [] };
+  const application = {
+    async submitAnalysisRun(input) { calls.push(["start", input]); return checkpoint; },
+    async getAnalysisRun(projectId, runId) { calls.push(["get", projectId, runId]); return checkpoint; },
+    async pauseAnalysisRun(projectId, runId) { calls.push(["pause", projectId, runId]); return checkpoint; },
+    async resumeAnalysisRun(projectId, runId) { calls.push(["resume", projectId, runId]); return checkpoint; },
+    async getLatestAnalysisResult(projectId) { calls.push(["latest", projectId]); return { id: "ANALYSIS-HTTP", projectId, features: [] }; },
+    async getAnalyzedFeatureHistory(projectId, featureId) { calls.push(["history", projectId, featureId]); return [{ runId: "ANALYSIS-HTTP" }]; },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const started = await postJson(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs`, {
+    id: "ANALYSIS-HTTP",
+    snapshotManifestId: "SNAPSHOT-HTTP",
+    sourceComponentId: "SOURCE-HTTP",
+    profile: { id: "deterministic", mode: "DETERMINISTIC" },
+  });
+  assert.equal(started.response.status, 202);
+  assert.equal(calls[0][1].projectId, "PROJECT-HTTP");
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP`)).status, 200);
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP/pause`, { method: "POST" })).status, 202);
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP/resume`, { method: "POST" })).status, 202);
+  assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-results/latest`)).status, 200);
+  const history = await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/features/FEATURE-HTTP/analysis-history`);
+  assert.deepEqual((await history.json()).history, [{ runId: "ANALYSIS-HTTP" }]);
+});
+
+test("analysis model profiles can be configured, verified, and used for bounded Workspace enrichment without returning secrets", async (t) => {
+  const calls = [];
+  const application = {
+    listAnalysisModelProfiles() { return [{ id: "workspace-default", ready: false }]; },
+    configureAnalysisModelProfile(input) { calls.push(["configure", input]); return { id: input.id, endpoint: input.endpoint, model: input.model, ready: false }; },
+    async verifyAnalysisModelProfile(profileId) { calls.push(["verify", profileId]); return { id: profileId, ready: true, latencyMs: 12 }; },
+    selectAnalysisModelProfile(profileId) { calls.push(["select", profileId]); return { id: profileId, ready: true, active: true }; },
+    removeAnalysisModelProfile(profileId) { calls.push(["remove", profileId]); return { id: profileId, ready: true, active: false }; },
+    async enrichWorkspaceCandidates(profileId, input, options = {}) { calls.push(["enrich", profileId, input]); options.onTelemetry?.({ type: "REQUEST_PREPARED", requestId: "REQ-1" }); return [{ id: input.candidates[0].id, businessFeature: true }]; },
+    async planWorkspaceAnalysis(profileId, input, options = {}) { calls.push(["plan", profileId, input]); options.onTelemetry?.({ type: "RESPONSE_PROGRESS", requestId: "REQ-PLAN", assistantMessage: "Three queues planned" }); return { agentMessage: "Three queues planned", taskAssignments: [1, 2, 3].map((slot) => ({ agentId: `SUB_AGENT_${slot}`, objective: `Queue ${slot}`, moduleScopes: [] })) }; },
+  };
+  const baseUrl = await startStubServer(t, application);
+
+  const listed = await fetch(`${baseUrl}/v1/analysis-model-profiles`);
+  assert.deepEqual((await listed.json()).profiles, [{ id: "workspace-default", ready: false }]);
+  const configured = await postJson(`${baseUrl}/v1/analysis-model-profiles`, {
+    id: "workspace-default",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "source-model",
+    apiKey: "not-returned",
+  });
+  assert.equal(configured.response.status, 201);
+  assert.equal(JSON.stringify(configured.body).includes("not-returned"), false);
+  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" })).status, 200);
+  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/select`, { method: "POST" })).status, 200);
+  const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, { candidates: [{ id: "FEATURE-1" }] });
+  assert.equal(enriched.response.status, 200);
+  assert.equal(enriched.body.candidates[0].businessFeature, true);
+  const observable = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+    body: JSON.stringify({ candidates: [{ id: "FEATURE-2" }] }),
+  });
+  assert.match(observable.headers.get("content-type") ?? "", /^application\/x-ndjson/);
+  const messages = (await observable.text()).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(messages.map((message) => message.kind), ["telemetry", "result"]);
+  assert.equal(messages[0].event.requestId, "REQ-1");
+  assert.equal(messages[1].candidates[0].id, "FEATURE-2");
+  const planned = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-plan`, {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+    body: JSON.stringify({ workspaceName: "Traqen", mode: "FULL", fileCount: 10, candidateCount: 3, modules: [] }),
+  });
+  const planMessages = (await planned.text()).trim().split("\n").map((line) => JSON.parse(line));
+  assert.deepEqual(planMessages.map((message) => message.kind), ["telemetry", "result"]);
+  assert.equal(planMessages[1].plan.taskAssignments.length, 3);
+  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default`, { method: "DELETE" })).status, 200);
+  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "select", "enrich", "enrich", "plan", "remove"]);
+});
+
+test("analysis model connectivity failures use a distinct gateway error", async (t) => {
+  const application = {
+    async verifyAnalysisModelProfile() {
+      throw new AnalysisModelConnectionError("Unable to reach the configured analysis model");
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const response = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" });
+  assert.equal(response.status, 502);
+  assert.equal((await response.json()).error.code, "ANALYSIS_MODEL_UNAVAILABLE");
 });
 
 test("production API authentication protects every non-health route", async (t) => {
@@ -568,6 +663,7 @@ test("browser product origins are explicit and preflight never grants an unknown
   });
   assert.equal(preflight.status, 204);
   assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
+  assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /DELETE/);
 
   const unknown = await fetch(`${baseUrl}/health`, {
     headers: { origin: "https://unknown.example" },

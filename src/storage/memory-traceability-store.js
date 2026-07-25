@@ -48,6 +48,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #implementationMappings = new Map();
   #conformances = new Map();
   #changeImpacts = new Map();
+  #analysisCheckpoints = new Map();
+  #analysisResults = new Map();
 
   async appendProjectFoundation(foundation) {
     const existing = this.#projects.get(foundation.project.id);
@@ -1111,5 +1113,39 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
   async getChangeImpact(projectId, changeSetId) {
     return this.#changeImpacts.get(key(projectId, changeSetId)) ?? null;
+  }
+
+  async saveAnalysisCheckpoint(projectId, checkpoint) {
+    const storageKey = key(projectId, checkpoint.run.id);
+    this.#analysisCheckpoints.set(storageKey, deepFreeze(structuredClone(checkpoint)));
+    return this.#analysisCheckpoints.get(storageKey);
+  }
+
+  async getAnalysisCheckpoint(projectId, runId) {
+    return this.#analysisCheckpoints.get(key(projectId, runId)) ?? null;
+  }
+
+  async appendAnalysisResult(projectId, result) {
+    return this.#appendVersion(
+      this.#analysisResults,
+      key(projectId, result.id),
+      result,
+      `Analysis result ${result.id}`,
+    );
+  }
+
+  async getAnalysisResult(projectId, runId) {
+    return this.#analysisResults.get(key(projectId, runId)) ?? null;
+  }
+
+  async listAnalysisResults(projectId) {
+    return deepFreeze([...this.#analysisResults.entries()]
+      .filter(([storageKey]) => storageKey.startsWith(`${projectId}\u0000`))
+      .map(([, result]) => result)
+      .sort((left, right) => right.completedAt.localeCompare(left.completedAt)));
+  }
+
+  async getLatestAnalysisResult(projectId) {
+    return (await this.listAnalysisResults(projectId))[0] ?? null;
   }
 }

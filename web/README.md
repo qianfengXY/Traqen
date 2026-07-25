@@ -1,13 +1,21 @@
+> Language: **English** · [简体中文](README.zh-CN.md)
+
 # Traqen Web
 
 The product surface for Traqen's evidence-first Feature traceability model.
 
-The default screen is an explicitly labelled synthetic demonstration of the order-submission vertical slice. It shows a complete current-deployment proof chain and a changed-code scenario where only implementation-derived layers become stale. The connection panel can load the server-derived Feature traceability view from a real Traqen API; the browser never computes a replacement trust score.
+The default screen treats the Traqen repository itself as the first `SELF WORKSPACE`. Its Feature traceability capability is demonstrated with the repository's real design document, domain source, environment configuration contract, test design, and execution results. A changed `trace-chain.js` scenario shows how only implementation-derived layers become stale. The connection panel can load the same server-derived projection from a running Traqen API; the browser never computes a replacement trust score.
 
 ## Product surfaces
 
 - Feature traceability with independent authority, conformance, verification, freshness, and conflict dimensions.
-- Ordered Claim → Scope → Decision → implementation/data/config → TestSpec → assertions → execution → Evidence chain.
+- The left Workspace switcher retains multiple local projects. A first scan initializes a project; later scans of the same root reuse records whose path, size, last-modified time, and scanner version are unchanged, and reread only added or modified files. Scanner upgrades automatically invalidate stale records. IndexedDB stores file metadata, the derived Feature index, bounded code/test excerpts, and redacted configuration—not complete raw source. Feature traceability and the trace graph both use the active project's Feature tree and selected Feature.
+- Workspace analysis is a hierarchical statistics dashboard rather than a duplicate trace detail. It summarizes Features, design/implementation, configuration, tests, execution outcomes, pending human confirmation, evidence-chain completeness, TraceGaps, conflicts, and explicit nonconformance for the whole project or any selected tree node. Unknown and unreviewed states remain distinct from nonconformance.
+- The Feature tree normalizes technical source paths into readable modules and groups candidates by external APIs, business capabilities, data/integrations, background messaging/jobs, and project operations. Endpoint leaves prefer handler or operation names, parent counts represent all descendant Features, and trivial Java accessors/configuration factories are filtered as noise.
+- A five-block Feature description → design/implementation → configuration → test cases → test results view. Feature description and test strategy each use one continuous document surface rather than a set of nested cards. Design/implementation loads the repository-backed Markdown design and switches between rendered design, raw Markdown, business code blocks, and the complete original source file. Configuration compares DEV/SIT/UAT/PROD; tests include expandable versioned cases; results group scenarios and drill failed executions down to the case, failed step, expected/actual values, error, and Evidence.
+- An Apple-inspired visual system tuned for a 27-inch desktop display, with larger system typography, restrained colors, comfortable reading widths, and consistent layout across traceability, graph, review, impact, and metrics pages.
+- A global 中文 / English switch controls navigation, page copy, and one shared dictionary for types, statuses, roles, relationships, policy values, and test outcomes. IDs, API values, configuration keys, and source code retain their canonical form; the design reader selects the matching Chinese or English Markdown file.
+- A future Agent contract is reserved: Agents consume approved immutable TestSpec versions and return structured step/assertion results plus signed Evidence and runner identity. External Agent execution is not wired yet, and an Agent cannot rewrite business authority or decide the final trusted state.
 - Visible TraceGap ownership and reasons that prevent a feature from being shown as complete.
 - Statement-level review that loads a real Reverse Run candidate and submits an authenticated, server-validated Decision without accepting client-supplied reviewer identity.
 - Historical Snapshot comparison backed by the immutable ChangeSet API, including preserved normative truth, invalidated derived layers, and a repair queue.
@@ -17,19 +25,24 @@ The default screen is an explicitly labelled synthetic demonstration of the orde
 
 Requires Node.js 22.13 or newer.
 
+From the repository root, install dependencies once and then start both the Web application and local API with the unified commands:
+
 ```bash
-npm install
+npm run setup
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`. The API is already available at `http://127.0.0.1:3100`, matching the product's default connection value. `Ctrl+C` stops both processes.
+
+To work on the Web package independently, run:
+
+```bash
+cd web
 npm run dev
 npm test
 ```
 
-The local Traqen API defaults to port 3000, so run it on another port while the web preview is active:
-
-```bash
-PORT=3100 CORS_ALLOWED_ORIGINS=http://localhost:3000 npm run api:dev
-```
-
-Then use “连接 Traqen API” in the product header and provide the Project, Feature, and Snapshot Manifest IDs. A deployed web origin must be listed explicitly in `CORS_ALLOWED_ORIGINS`; wildcard origins are rejected.
+A separately deployed Web origin must still be listed explicitly in `CORS_ALLOWED_ORIGINS`; wildcard origins are rejected.
 
 ## Trust boundary
 

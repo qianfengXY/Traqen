@@ -175,7 +175,10 @@ export class TraceabilityApplication {
   #implementationPolicyResolver;
   #continuousProtectionPolicyResolver;
   #productMetricsPolicyResolver;
+  #analysisAgent;
+  #analysisModelRegistry;
   #reverseJobControllers = new Map();
+  #analysisControllers = new Map();
 
   constructor({
     store,
@@ -192,6 +195,8 @@ export class TraceabilityApplication {
     implementationPolicyResolver = () => ({ allowedRoles: [] }),
     continuousProtectionPolicyResolver = () => ({ mode: "ADVISORY" }),
     productMetricsPolicyResolver = () => ({}),
+    analysisAgent = null,
+    analysisModelRegistry = null,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -227,6 +232,8 @@ export class TraceabilityApplication {
     this.#implementationPolicyResolver = implementationPolicyResolver;
     this.#continuousProtectionPolicyResolver = continuousProtectionPolicyResolver;
     this.#productMetricsPolicyResolver = productMetricsPolicyResolver;
+    this.#analysisAgent = analysisAgent;
+    this.#analysisModelRegistry = analysisModelRegistry;
   }
 
   async createProject(input) {
@@ -1202,6 +1209,180 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(runId, "runId");
     return this.#store.getReverseRun(projectId, runId);
+  }
+
+  listAnalysisModelProfiles() {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.list();
+  }
+
+  configureAnalysisModelProfile(input) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.configure(input);
+  }
+
+  async verifyAnalysisModelProfile(profileId) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.verify(requireId(profileId, "analysisModelProfileId"));
+  }
+
+  selectAnalysisModelProfile(profileId) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.select(requireId(profileId, "analysisModelProfileId"));
+  }
+
+  removeAnalysisModelProfile(profileId) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.remove(requireId(profileId, "analysisModelProfileId"));
+  }
+
+  async enrichWorkspaceCandidates(profileId, input, options = {}) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    if (!input || typeof input !== "object") throw new TypeError("workspace analysis input must be an object");
+    return this.#analysisModelRegistry.enrichWorkspaceCandidates(
+      requireId(profileId, "analysisModelProfileId"),
+      input.candidates,
+      { onTelemetry: options.onTelemetry ?? null },
+    );
+  }
+
+  async planWorkspaceAnalysis(profileId, input, options = {}) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    return this.#analysisModelRegistry.planWorkspaceAnalysis(
+      requireId(profileId, "analysisModelProfileId"),
+      input,
+      { onTelemetry: options.onTelemetry ?? null },
+    );
+  }
+
+  async #analysisInputs(input) {
+    if (!this.#analysisAgent) throw new TypeError("Analysis Agent is not configured");
+    const projectId = requireId(input?.projectId, "analysisRequest.projectId");
+    const snapshotManifestId = requireId(input?.snapshotManifestId, "analysisRequest.snapshotManifestId");
+    const sourceComponentId = requireId(input?.sourceComponentId, "analysisRequest.sourceComponentId");
+    const [manifest, factGraph] = await Promise.all([
+      this.#store.getSnapshotManifest(projectId, snapshotManifestId),
+      this.#store.getSnapshotFactGraph(projectId, snapshotManifestId, 1_000_000),
+    ]);
+    if (!manifest) throw new PersistenceConflictError(`SnapshotManifest ${snapshotManifestId} does not exist in project ${projectId}`);
+    if (manifest.components?.source?.id !== sourceComponentId) {
+      throw new PersistenceConflictError("Analysis source component must belong to the selected Snapshot Manifest");
+    }
+    if (factGraph.nodes.length === 0) throw new PersistenceConflictError("Analysis requires deterministic Facts for the selected Snapshot");
+    const baselineResult = input.baselineRunId
+      ? await this.#store.getAnalysisResult(projectId, input.baselineRunId)
+      : await this.#store.getLatestAnalysisResult(projectId);
+    if (input.baselineRunId && !baselineResult) {
+      throw new PersistenceConflictError(`Baseline AnalysisRun ${input.baselineRunId} does not exist`);
+    }
+    if (baselineResult?.projectId !== undefined && baselineResult.projectId !== projectId) {
+      throw new PersistenceConflictError("Analysis baseline must belong to the same project");
+    }
+    const governedBaseline = baselineResult ? structuredClone(baselineResult) : null;
+    if (governedBaseline) {
+      for (const feature of governedBaseline.features) {
+        const baseline = await this.#store.getFeatureBaseline(projectId, feature.id);
+        if (!baseline) continue;
+        const latestDecision = baseline.claims
+          .flatMap((item) => item.decisionHistory)
+          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
+        const status = authorityFromDecision(latestDecision, this.#clock());
+        if (status === "UNREVIEWED") continue;
+        feature.authority = {
+          status,
+          confirmedAt: latestDecision.createdAt,
+          actorId: latestDecision.actorId,
+          actorRole: latestDecision.actorRole,
+          inheritance: "NONE",
+          review: "NONE",
+        };
+      }
+    }
+    return { projectId, snapshotManifestId, factGraph, baselineResult: governedBaseline };
+  }
+
+  #withActiveAnalysisModel(input) {
+    if (!input?.profile?.model?.enabled || input.profile.model.profileId) return input;
+    const active = this.#analysisModelRegistry?.active();
+    if (!active?.ready) throw new TypeError("No verified active analysis model profile is selected");
+    const request = structuredClone(input);
+    request.profile.model.profileId = active.id;
+    return request;
+  }
+
+  async executeAnalysisRun(input, options = {}) {
+    const request = this.#withActiveAnalysisModel(input);
+    const context = await this.#analysisInputs(request);
+    return this.#analysisAgent.execute(request, {
+      factGraph: context.factGraph,
+      baselineResult: context.baselineResult,
+      signal: options.signal ?? null,
+      maximumCompletedWorkUnits: options.maximumCompletedWorkUnits ?? Infinity,
+    });
+  }
+
+  async submitAnalysisRun(input) {
+    const request = this.#withActiveAnalysisModel(input);
+    const runId = requireId(request?.id, "analysisRequest.id");
+    const projectId = requireId(request?.projectId, "analysisRequest.projectId");
+    const identity = `${projectId}\u0000${runId}`;
+    const existing = await this.#analysisAgent?.getRun(projectId, runId);
+    if (existing) return existing;
+    const planned = await this.executeAnalysisRun(request, { maximumCompletedWorkUnits: 0 });
+    if (planned?.status === "COMPLETED" || planned?.status === "COMPLETED_WITH_GAPS") return planned;
+    const controller = new AbortController();
+    this.#analysisControllers.set(identity, controller);
+    Promise.resolve()
+      .then(() => this.executeAnalysisRun(request, { signal: controller.signal }))
+      .catch(() => {})
+      .finally(() => this.#analysisControllers.delete(identity));
+    return planned;
+  }
+
+  async getAnalysisRun(projectId, runId) {
+    if (!this.#analysisAgent) throw new TypeError("Analysis Agent is not configured");
+    return this.#analysisAgent.getRun(requireId(projectId, "projectId"), requireId(runId, "runId"));
+  }
+
+  async pauseAnalysisRun(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    const checkpoint = await this.getAnalysisRun(projectId, runId);
+    if (!checkpoint) return null;
+    if (["COMPLETED", "COMPLETED_WITH_GAPS", "CANCELLED"].includes(checkpoint.run.status)) {
+      throw new PersistenceConflictError(`AnalysisRun ${runId} is already ${checkpoint.run.status}`);
+    }
+    this.#analysisControllers.get(`${projectId}\u0000${runId}`)?.abort();
+    return this.#analysisAgent.pauseRun(projectId, runId);
+  }
+
+  async resumeAnalysisRun(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    const checkpoint = await this.getAnalysisRun(projectId, runId);
+    if (!checkpoint) return null;
+    if (["COMPLETED", "COMPLETED_WITH_GAPS", "CANCELLED"].includes(checkpoint.run.status)) {
+      throw new PersistenceConflictError(`AnalysisRun ${runId} is already ${checkpoint.run.status}`);
+    }
+    const identity = `${projectId}\u0000${runId}`;
+    if (this.#analysisControllers.has(identity)) return checkpoint;
+    const controller = new AbortController();
+    this.#analysisControllers.set(identity, controller);
+    Promise.resolve()
+      .then(() => this.executeAnalysisRun(checkpoint.request, { signal: controller.signal }))
+      .catch(() => {})
+      .finally(() => this.#analysisControllers.delete(identity));
+    return checkpoint;
+  }
+
+  async getLatestAnalysisResult(projectId) {
+    if (!this.#analysisAgent) throw new TypeError("Analysis Agent is not configured");
+    return this.#analysisAgent.getLatestResult(requireId(projectId, "projectId"));
+  }
+
+  async getAnalyzedFeatureHistory(projectId, featureId) {
+    if (!this.#analysisAgent) throw new TypeError("Analysis Agent is not configured");
+    return this.#analysisAgent.getFeatureHistory(requireId(projectId, "projectId"), requireId(featureId, "featureId"));
   }
 
   async submitReverseRun(input) {

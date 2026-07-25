@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](platform-operations-observability-validation-2026-07-15.zh-CN.md)
+
 # Platform operations observability validation — 2026-07-15
 
 This increment implements the repository-controlled part of design section 17.1 without inventing measurements that the platform has not observed.

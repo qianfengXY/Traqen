@@ -1,10 +1,24 @@
+> Language: **English** · [简体中文](README.zh-CN.md)
+
 # Traqen
 
 Traqen is an enterprise traceable-quality platform for legacy systems that do not have trustworthy product, design, or test assets.
 
 The implementation follows one non-negotiable product vision:
 
-> For every governed high-value feature, show an explainable chain from confirmed business intent to evidence produced against the actual deployment, and expose every missing, stale, conflicting, or failed link.
+> For every governed high-value Feature, present an explainable traceability chain from confirmed business intent to Evidence from the actual deployment, and expose every missing, stale, conflicting, or failed link.
+
+The local Workspace Analysis Agent has also been exercised against the real [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo at a pinned commit. The resulting [bilingual validation report](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.md) records the observed scale, false-positive corrections, domain tree, conservative test/configuration associations, and the distinction between implementation candidates and confirmed business Features.
+
+The scanner has additionally been validated against the real [`openclaw/openclaw`](https://github.com/openclaw/openclaw) repository. The [OpenClaw validation report](docs/implementation/openclaw-workspace-analysis-2026-07-22.md) records full-tree scale, a bounded scan of the complete core `src` tree, the correction for OpenClaw's custom Gateway/RPC descriptor model, implementation linkage, and remaining language/semantic-analysis gaps.
+
+The initialized Feature tree offers two global projections without rescanning: a pure business-capability view that excludes APIs and engineering commands, and an API-only view containing HTTP/OpenAPI endpoints. Workspace statistics, Feature traceability, and the trace graph follow the same active projection.
+
+The “+” beside Workspace first creates and persists a project identity. Only after that project exists can a code directory be selected and its first full analysis started. If another Workspace is actively analyzing, the new project is added to the list without switching context or clearing the running Main/Child-Agent session; switch after that task completes or pauses.
+
+The Web workbench now uses the [Enterprise Blue theme](docs/design/enterprise-blue-theme.md) by default, with a global persisted theme switcher and layouts tuned for information-dense 27-inch desktop use. The palette and component rules apply consistently to Workspace analysis, traceability, graphs, reviews, impact, metrics, forms, tables, and the bounded Agent console.
+
+Before starting a local Workspace analysis, open **Configure model** in the global header and add one or more OpenAI-compatible profiles with an API URL, model name, API key, and optional Stream/SSE strategy. Runtime profiles and credentials are encrypted in the current device's Traqen configuration directory; the UI can edit, verify, select, and delete them without re-entering an unchanged key. The Web and API processes must run from the same repository revision; an older API does not expose the model-profile routes. The Agent session places one streaming Main Agent conversation above exactly three child-Agent conversations; all four windows have fixed heights and scroll long sessions internally. Navigating to another product page keeps the Workspace session mounted, so the active task, transcripts, elapsed time, and progress remain available on return. A real reload or interruption restores the persisted checkpoint as paused progress. Public Agent messages use a concise Codex-style structure—goal, action, findings, evidence, uncertainty, checkpoint, and next action—while raw transport details remain in diagnostics. The Main Agent's task map comes from an independent Source Manifest rather than scanner candidates. The target architecture reconciles independently produced deterministic, ECC-class source-analysis, and Specone-class specification-analysis results. An unavailable external Skill is reported as absent; a built-in reference adapter never impersonates a real integration. When a child reaches its context safety threshold, it completes the current work unit, saves a handoff, and starts the next generation in the same slot. Raw prompts, JSON, request identifiers, and token diagnostics remain behind the default-off Technical diagnostics control; private reasoning is never shown. Incomplete model JSON is recognized as truncation and retried with smaller bounded batches rather than repaired by inventing content. If the smallest bounded unit is still invalid, Traqen retains deterministic evidence, marks only that unit as pending model classification, records a checkpoint, and continues the run. Extractor observations carry independent corroborations, diagnostics, completeness, and a confidence cap; an AST or pattern match is never treated as business truth. Workspace visibility management lets you remove projects from the sidebar without deleting their scan results; hidden projects do not load their source index, Feature tree, or traceability snapshot.
 
 ## Implemented foundation
 
@@ -108,13 +122,24 @@ The controlled Runner slice adds:
 The deterministic fact-foundation slice adds:
 
 - a language-neutral, immutable `FactNode`/`FactEdge`/`FactBundle` contract with stable entity IDs and snapshot-specific fact IDs;
-- a bounded JavaScript/Node scanner for modules, symbols, state enums/transitions, condition and permission guards, exception paths, Express-style routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
+- a bounded JavaScript/Node and Java AST scanner for modules, symbols, state enums/transitions, condition and permission guards, exception paths, Express/Spring/JAX-RS routes, OpenAPI JSON, PostgreSQL DDL and literal queries, configuration references, dependencies, and test assets;
 - source artifact, line range, and SHA-256 location data on every fact and relation;
 - explicit incomplete results for parser failures, oversized files, unsupported source languages, and unsupported OpenAPI formats;
 - a deterministic source fingerprint API used as the Source Snapshot digest;
 - HMAC-SHA256 Scanner attestation plus exact Snapshot Manifest, Source component ID, and Source component digest binding before ingestion;
 - append-only memory and PostgreSQL storage plus a filtered one-hop fact graph API;
 - a self-scan command and a checked-in scanner validation report.
+
+The Analysis Agent slice adds:
+
+- deterministic and configurable hybrid model modes over the same immutable Fact graph;
+- graph-partitioned WorkUnits with explicit context budgets, reserved model headroom, bounded evidence packages, and per-unit checkpoints;
+- asynchronous start, immediate pause, persisted resume, full-first and later incremental execution;
+- exact evidence-boundary validation for model and Skill outputs, including stable-node references;
+- stable Feature reconciliation that preserves human authority across implementation remapping and near-full rescans, while requiring review for business-semantic changes;
+- separate latest business/API projections, immutable result history, retirement events, and per-Feature history queries;
+- PostgreSQL checkpoint/result storage and a browser-local deterministic workflow with resumable IndexedDB batches;
+- a configurable OpenAI-compatible model adapter whose credentials stay in server environment variables, plus bounded reference Skill adapters.
 
 The Reverse Skill Framework slice adds:
 
@@ -157,9 +182,11 @@ The product-interface slice adds:
 - a responsive Feature traceability workbench under `web/` that leads with “why the current deployment is trusted” rather than a composite quality score;
 - independent authority, conformance, verification, freshness, and conflict status cards;
 - live platform operations observations for Reverse Runs, Scanner volume, test execution, Evidence, and impact analysis, with unavailable external telemetry shown explicitly;
-- an ordered Claim, Scope, Decision, implementation/data/config, TestSpec, assertion, execution, and Evidence chain with node provenance;
+- a five-block product projection—Feature description, design/implementation, configuration, test cases, and test results—with each feature narrative and test strategy presented as one continuous document instead of nested field cards, a repository-backed Markdown design reader, raw Markdown, business code blocks and complete source-file views, a DEV/SIT/UAT/PROD configuration matrix, expandable versioned cases, and scenario-grouped results with failure drill-down;
+- an Apple-inspired responsive visual system tuned for a 27-inch desktop workspace, with larger typography, restrained system colors, wider document reading measures, consistent spacing, and unified navigation, panels, forms, graphs, reviews, impact, and metrics surfaces;
+- a stable future-Agent boundary in which an Agent consumes an approved versioned TestSpec and returns structured step, assertion, Evidence, runner identity, and attestation data, without being allowed to rewrite business confirmation or decide the final trusted state;
 - explicit TraceGap ownership, an authenticated statement-level human review flow, and API-backed Snapshot history comparison with change-impact repair guidance;
-- an explicitly labelled synthetic demonstration plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
+- a Traqen `SELF WORKSPACE` projection backed by this repository's real design, source, configuration contract, tests, and results, plus a connection panel that loads the server-derived Feature traceability API without reinterpreting trust on the client;
 - an API token field kept only in page memory and sent through `x-traqen-api-token`, leaving reviewer Authorization credentials independent;
 - an explicit CORS origin allowlist for connecting the browser product to a Traqen API.
 
@@ -182,11 +209,25 @@ The continuous-protection slice adds:
 
 The product-effectiveness metrics slice adds a Snapshot-bound dashboard and API for high-value valid-chain rate, Claim confirmation, confirmed-rule TestSpec coverage, meaningful assertions, Evidence freshness, TraceGap type/severity/owner, and per-Feature layer presence. Every ratio keeps its numerator and denominator, every Feature keeps its independent trust dimensions, and metrics that require external longitudinal, CI/CD, or defect data are explicitly unavailable instead of estimated. `HIGH_VALUE_FEATURE_IDS` optionally narrows the north-star population; without it, all governed Features are included.
 
-The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision review, candidate-review, TestSpec-approval, and business-process confirmation routes additionally fail closed unless a reviewer identity is configured. Use legacy `REVIEWER_ID`/`REVIEWER_ROLE` with an optional `REVIEWER_BEARER_TOKEN`, or `REVIEWER_IDENTITIES_JSON` for multiple token-bound actor/role identities; direct Decision creation is disabled by default and requires the review-case API unless `ALLOW_DIRECT_DECISIONS=true` is explicitly set. Decision proposer/approver/business/compliance/Break-glass/lifecycle roles and maximum emergency minutes are independently configurable. Implementation reanalysis has the distinct `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Only compiled-in, digest-matched reference Skill adapters execute in-process; official external Specone/GSD integrations, model-backed or third-party Skills, isolated Skill workers, additional language scanners, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
+The development server remains local-only and in-memory. The production process requires PostgreSQL and a global API token. Decision review, candidate-review, TestSpec-approval, and business-process confirmation routes additionally fail closed unless a reviewer identity is configured. Use legacy `REVIEWER_ID`/`REVIEWER_ROLE` with an optional `REVIEWER_BEARER_TOKEN`, or `REVIEWER_IDENTITIES_JSON` for multiple token-bound actor/role identities; direct Decision creation is disabled by default and requires the review-case API unless `ALLOW_DIRECT_DECISIONS=true` is explicitly set. Decision proposer/approver/business/compliance/Break-glass/lifecycle roles and maximum emergency minutes are independently configurable. Implementation reanalysis has the distinct `IMPLEMENTATION_REVIEWER_*` boundary. Set both `RUNNER_ID` and `RUNNER_SHARED_SECRET` to ingest matching Runner-signed bundles, `SCANNER_ID` and `SCANNER_SHARED_SECRET` for Scanner-signed Fact Bundles, and `SKILL_PUBLISHER=TRAQEN` plus `SKILL_PUBLISHER_SHARED_SECRET` for Skill registration. HMAC is the local MVP trust mechanism, not a replacement for enterprise workload identity and mTLS. CONTROLLED_WRITE remains disabled unless the signed target policy explicitly allows the operation and route, binds every Snapshot component, names trusted fixture and cleanup protocols, and the Runner has matching local handlers. DELETE, destructive execution, task-authored commands/SQL/fixture code, external side effects, and cross-origin redirects remain blocked. Configured Analysis Agent model adapters use bounded evidence and server-resolved secrets; third-party Skills, isolated Skill workers, additional deterministic language AST adapters, and OpenAPI YAML extraction remain outside the repository-controlled MVP.
 
-## Run
+## Quick start
 
-Requires Node.js 20 or newer.
+The complete local stack requires Node.js 22.13 or newer. On the first checkout, or after a lockfile changes, install both root and Web dependencies once:
+
+```bash
+npm run setup
+```
+
+After that, one command starts the local API and Web application together:
+
+```bash
+npm run dev
+```
+
+Open `http://127.0.0.1:3000`. The command starts the in-memory API at `http://127.0.0.1:3100`, configures the exact local CORS origins, and stops both processes when you press `Ctrl+C`. It does not enable production credentials or weaken any governance boundary.
+
+The API can still be run independently on its default port with `npm run api:dev`; this path requires Node.js 20 or newer. Other focused commands remain available:
 
 ```bash
 npm test
@@ -195,13 +236,12 @@ npm run test:web
 npm run test:reference
 npm run example
 npm run pilot:order-submit
-npm run quality-gate -- --base-url http://127.0.0.1:3000 --project PROJECT-001 --change-set CHANGESET-001
+npm run quality-gate -- --base-url http://127.0.0.1:3100 --project PROJECT-001 --change-set CHANGESET-001
 npm run scan:self
-npm run api:dev
 npm run api:serve
 ```
 
-The development API binds to `127.0.0.1:3000` by default. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
+The development API remains loopback-only and in-memory. It is not a production authentication boundary and must not be exposed outside a local development environment; governance review operations additionally fail closed unless a trusted local reviewer is configured.
 
 The production API binds to `0.0.0.0:3000` by default and requires `DATABASE_URL` plus `API_BEARER_TOKEN`. `POSTGRES_SSL` is `require` by default and also accepts `no-verify` or `disable` for explicitly controlled environments. `CORS_ALLOWED_ORIGINS` is a comma-separated exact-origin allowlist. On startup the process connects through the pinned `pg` client, verifies and applies pending migrations, then serves the PostgreSQL-backed application. Create the initial boundary through `POST /v1/projects`, register immutable execution context through `POST /v1/projects/{projectId}/snapshots`, and send the API token through `Authorization: Bearer ...` or `x-traqen-api-token`. The API and product UI can discover available resources through `GET /v1/projects/{projectId}/features` and `GET /v1/projects/{projectId}/snapshots`; Snapshot results are newest first, so service verification does not require copying opaque IDs from storage.
 
@@ -224,6 +264,8 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 The Fact API accepts signed bundles at `POST /v1/projects/{projectId}/fact-scans` and returns filtered one-hop graphs from `GET /v1/projects/{projectId}/facts`. Its `type`, `predicate`, `q`, `snapshotManifestId`, and `limit` query parameters are optional.
 
+Start the Analysis Agent after the selected Snapshot has deterministic Facts with `POST /v1/projects/{projectId}/analysis-runs`. Runs are asynchronous by default and can be queried, paused, and resumed under the same `/analysis-runs/{analysisRunId}` resource. Read the latest current projection from `/analysis-results/latest` and immutable Feature evolution from `/features/{featureId}/analysis-history`. Configure and verify a runtime model through `/v1/analysis-model-profiles` or provision managed profiles through `ANALYSIS_MODEL_PROFILES_JSON`; see the [bilingual Analysis Agent design](docs/features/analysis-agent-design.md) for credentials, bounded Workspace enrichment, incremental behavior, and authority-inheritance rules.
+
 `npm run pilot:order-submit` is the reproducible in-repository MVP proof. It uses only synthetic data and the same generic Scanner, Skill, review, TestSpec, Runner, Evidence, impact, and repair paths that a real pilot uses; no order-specific behavior exists in the Traqen core.
 
 Reverse Skill Manifests are registered and listed at `POST/GET /v1/skills`. A bounded run pins every Skill by ID and exact version, is submitted to `POST /v1/reverse-runs`, and is queried from `GET /v1/projects/{projectId}/reverse-runs/{runId}`. Raw Skill output is never treated as a Claim or business baseline: the run stops at `WAITING_REVIEW` with candidates, conflicts, and open questions until the separate authorized review flow records an outcome.
@@ -242,4 +284,4 @@ Govern Evidence retention with `POST /v1/projects/{projectId}/evidence-retention
 
 After a changed implementation is analyzed in a new Reverse Run, an authorized developer or architect can repair the stale implementation segment with `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses`. This creates a new Snapshot-bound mapping and conformance record for the existing Claim and Scope; it never edits or replaces the normative Decision.
 
-The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md). The current repository acceptance result and the explicit external-pilot boundary are recorded in [docs/implementation/mvp-acceptance-audit-2026-07-14.md](docs/implementation/mvp-acceptance-audit-2026-07-14.md); production startup and bootstrap are covered by [docs/implementation/production-runtime-validation-2026-07-14.md](docs/implementation/production-runtime-validation-2026-07-14.md).
+The detailed design is in [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md). The current repository acceptance result and the explicit external-pilot boundary are recorded in [docs/implementation/mvp-acceptance-audit-2026-07-14.md](docs/implementation/mvp-acceptance-audit-2026-07-14.md); production startup and bootstrap are covered by [docs/implementation/production-runtime-validation-2026-07-14.md](docs/implementation/production-runtime-validation-2026-07-14.md). See the [documentation index and bilingual maintenance policy](docs/README.md) for the complete convention.

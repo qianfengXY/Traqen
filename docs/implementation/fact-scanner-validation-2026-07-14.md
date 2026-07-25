@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](fact-scanner-validation-2026-07-14.zh-CN.md)
+
 # Fact scanner validation — 2026-07-14
 
 ## Scope and result

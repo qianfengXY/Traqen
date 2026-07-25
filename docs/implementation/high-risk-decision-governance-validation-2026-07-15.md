@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](high-risk-decision-governance-validation-2026-07-15.zh-CN.md)
+
 # High-risk Decision governance validation — 2026-07-15
 
 ## Design obligation

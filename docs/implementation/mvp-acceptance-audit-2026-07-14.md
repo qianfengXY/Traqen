@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](mvp-acceptance-audit-2026-07-14.zh-CN.md)
+
 # MVP acceptance audit — 2026-07-14
 
 ## Conclusion

@@ -206,4 +206,28 @@ export class TraceabilityStore {
   async getChangeImpact(_projectId, _changeSetId) {
     throw new Error("getChangeImpact must be implemented");
   }
+
+  async saveAnalysisCheckpoint(_projectId, _checkpoint) {
+    throw new Error("saveAnalysisCheckpoint must be implemented");
+  }
+
+  async getAnalysisCheckpoint(_projectId, _runId) {
+    throw new Error("getAnalysisCheckpoint must be implemented");
+  }
+
+  async appendAnalysisResult(_projectId, _result) {
+    throw new Error("appendAnalysisResult must be implemented");
+  }
+
+  async getAnalysisResult(_projectId, _runId) {
+    throw new Error("getAnalysisResult must be implemented");
+  }
+
+  async listAnalysisResults(_projectId) {
+    throw new Error("listAnalysisResults must be implemented");
+  }
+
+  async getLatestAnalysisResult(_projectId) {
+    throw new Error("getLatestAnalysisResult must be implemented");
+  }
 }

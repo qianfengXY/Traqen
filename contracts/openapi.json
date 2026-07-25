@@ -895,7 +895,8 @@
             "description": "Matching facts plus their one-hop graph neighbors",
             "content": { "application/json": { "schema": { "$ref": "./fact-bundle.schema.json#/$defs/FactGraph" } } }
           },
-          "400": { "$ref": "#/components/responses/BadRequest" }
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
         }
       }
     },
@@ -931,6 +932,181 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/SkillUnauthorized" },
           "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/analysis-model-profiles": {
+      "get": {
+        "operationId": "listAnalysisModelProfiles",
+        "responses": {
+          "200": {
+            "description": "Configured Analysis Agent model profiles without credentials",
+            "content": { "application/json": { "schema": { "type": "object", "required": ["profiles"], "properties": { "profiles": { "type": "array", "items": { "$ref": "#/components/schemas/AnalysisModelProfile" } } }, "additionalProperties": false } } }
+          }
+        }
+      },
+      "post": {
+        "operationId": "configureAnalysisModelProfile",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["id", "endpoint", "model"], "properties": { "id": { "type": "string", "minLength": 1 }, "endpoint": { "type": "string", "format": "uri" }, "model": { "type": "string", "minLength": 1 }, "apiKey": { "type": "string", "minLength": 1, "writeOnly": true, "description": "Required for a new runtime profile; omit while editing to retain its encrypted credential" }, "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 }, "stream": { "type": "boolean", "default": false, "description": "Request and merge OpenAI-compatible Server-Sent Events" } }, "additionalProperties": false } } }
+        },
+        "responses": {
+          "201": { "description": "Runtime model profile encrypted in the device-local profile store; the API key is not returned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/v1/analysis-model-profiles/{analysisModelProfileId}/verify": {
+      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
+      "post": {
+        "operationId": "verifyAnalysisModelProfile",
+        "responses": {
+          "200": { "description": "Model profile verified with a live structured-output request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
+        }
+      }
+    },
+    "/v1/analysis-model-profiles/{analysisModelProfileId}": {
+      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
+      "delete": {
+        "operationId": "removeAnalysisModelProfile",
+        "responses": {
+          "200": { "description": "Runtime model profile removed; environment profiles cannot be removed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/v1/analysis-model-profiles/{analysisModelProfileId}/select": {
+      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
+      "post": {
+        "operationId": "selectAnalysisModelProfile",
+        "responses": {
+          "200": { "description": "Verified profile selected as the current analysis model", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      }
+    },
+    "/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment": {
+      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
+      "post": {
+        "operationId": "enrichWorkspaceCandidates",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["candidates"], "properties": { "candidates": { "type": "array", "minItems": 1, "maxItems": 24, "items": { "$ref": "#/components/schemas/WorkspaceModelCandidate" } } }, "additionalProperties": false } } }
+        },
+        "responses": {
+          "200": { "description": "Evidence-bounded semantic enrichments. Send Accept: application/x-ndjson to receive live, secret-free model request, transport, response-progress, structured-output, and validation events followed by the result.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "candidates"], "properties": { "profileId": { "type": "string" }, "candidates": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceModelEnrichment" } } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string", "description": "Newline-delimited telemetry envelopes followed by one result or error envelope." } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
+        }
+      }
+    },
+    "/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-plan": {
+      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
+      "post": {
+        "operationId": "planWorkspaceAnalysis",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "required": ["workspaceName", "mode", "fileCount", "modules"], "properties": { "workspaceName": { "type": "string", "minLength": 1 }, "mode": { "enum": ["FULL", "INCREMENTAL"] }, "fileCount": { "type": "integer", "minimum": 0 }, "modules": { "type": "array", "maxItems": 120, "description": "Repository source-manifest partitions. They are computed independently of deterministic scanner candidates.", "items": { "type": "object", "required": ["name", "fileCount", "sourceBytes", "languages"], "properties": { "name": { "type": "string", "minLength": 1 }, "fileCount": { "type": "integer", "minimum": 0 }, "sourceBytes": { "type": "integer", "minimum": 0 }, "languages": { "type": "array", "maxItems": 24, "items": { "type": "string", "minLength": 1 } } }, "additionalProperties": false } } }, "additionalProperties": false } } }
+        },
+        "responses": {
+          "200": { "description": "A public Main Agent message and exactly three bounded child-Agent assignments. Send Accept: application/x-ndjson for live public model-message telemetry followed by the validated plan.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "plan"], "properties": { "profileId": { "type": "string" }, "plan": { "$ref": "#/components/schemas/WorkspaceAnalysisPlan" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "502": { "description": "Configured model endpoint was unavailable or returned an invalid orchestration plan" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "startAnalysisRun",
+        "parameters": [{
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "schema": { "type": "boolean", "default": true },
+          "description": "Runs asynchronously by default so large Workspaces can checkpoint and resume. Set false for bounded synchronous execution."
+        }],
+        "requestBody": { "$ref": "#/components/requestBodies/AnalysisRun" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/AnalysisRunResult" },
+          "202": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "analysisRunId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getAnalysisRun",
+        "responses": {
+          "200": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/pause": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "analysisRunId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "pauseAnalysisRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/resume": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "analysisRunId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "resumeAnalysisRun",
+        "responses": {
+          "202": { "$ref": "#/components/responses/AnalysisRunCheckpoint" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-results/latest": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getLatestAnalysisResult",
+        "responses": {
+          "200": { "$ref": "#/components/responses/AnalysisRunResult" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/analysis-history": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/FeatureId" }
+      ],
+      "get": {
+        "operationId": "getAnalyzedFeatureHistory",
+        "responses": {
+          "200": {
+            "description": "Immutable analyzed Feature versions and retirement events ordered from oldest to newest",
+            "content": { "application/json": { "schema": {
+              "type": "object",
+              "required": ["history"],
+              "properties": { "history": { "type": "array", "items": { "type": "object" } },
+              "additionalProperties": false
+            } } } }
+          }
         }
       }
     },
@@ -1082,6 +1258,12 @@
         "in": "path",
         "required": true,
         "schema": { "type": "string", "minLength": 1 }
+      },
+      "AnalysisModelProfileId": {
+        "name": "analysisModelProfileId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
       }
     },
     "requestBodies": {
@@ -1197,6 +1379,12 @@
           "application/json": { "schema": { "$ref": "./reverse-run.schema.json" } }
         }
       },
+      "AnalysisRun": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./analysis-agent.schema.json" } }
+        }
+      },
       "CandidateReview": {
         "required": true,
         "content": {
@@ -1254,6 +1442,93 @@
       }
     },
     "schemas": {
+      "AnalysisModelProfile": {
+        "type": "object",
+        "required": ["id", "endpoint", "model", "timeoutMs", "stream", "source", "configuredAt", "verifiedAt", "ready", "active"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "endpoint": { "type": "string", "format": "uri" },
+          "model": { "type": "string", "minLength": 1 },
+          "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+          "stream": { "type": "boolean" },
+          "source": { "enum": ["ENVIRONMENT", "RUNTIME"] },
+          "configuredAt": { "type": "string", "format": "date-time" },
+          "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
+          "ready": { "type": "boolean" },
+          "active": { "type": "boolean" },
+          "latencyMs": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceModelCandidate": {
+        "type": "object",
+        "required": ["id", "name", "kind", "method", "modulePath", "sourcePath", "description", "code", "evidence"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "kind": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "method": { "type": ["string", "null"], "maxLength": 20 },
+          "modulePath": { "type": "string", "maxLength": 300 },
+          "sourcePath": { "type": "string", "maxLength": 800 },
+          "description": { "type": "string", "maxLength": 1200 },
+          "code": { "type": "string", "maxLength": 2000 },
+          "evidence": { "$ref": "#/components/schemas/WorkspaceEvidenceAssessment" }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceEvidenceAssessment": {
+        "type": "object",
+        "required": ["observations", "corroborations", "contradictions", "diagnostics", "completeness", "confidenceCap"],
+        "properties": {
+          "observations": {
+            "type": "array", "minItems": 1, "maxItems": 8,
+            "items": {
+              "type": "object", "required": ["extractor", "basis", "sourcePath", "startLine", "excerpt"],
+              "properties": {
+                "extractor": { "type": "string", "minLength": 1, "maxLength": 80 },
+                "basis": { "type": "string", "minLength": 1, "maxLength": 160 },
+                "sourcePath": { "type": "string", "minLength": 1, "maxLength": 800 },
+                "startLine": { "type": "integer", "minimum": 1 },
+                "excerpt": { "type": "string", "maxLength": 1200 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "corroborations": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 800 } },
+          "contradictions": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 800 } },
+          "diagnostics": { "type": "array", "maxItems": 16, "items": { "type": "string", "maxLength": 800 } },
+          "completeness": { "enum": ["COMPLETE", "PARTIAL", "UNKNOWN"] },
+          "confidenceCap": { "enum": ["LOW", "MEDIUM", "HIGH"] }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceModelEnrichment": {
+        "type": "object",
+        "required": ["id", "displayName", "description", "businessFeature", "businessKey", "businessModule", "businessSubmodule", "domain", "group", "confidence", "rationale"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "displayName": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "description": { "type": "string", "minLength": 1, "maxLength": 2000 },
+          "businessFeature": { "type": "boolean" },
+          "businessKey": { "type": "string", "minLength": 1, "maxLength": 160 },
+          "businessModule": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "businessSubmodule": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "domain": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "group": { "enum": ["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION", "DATA_INTEGRATION", "PROJECT_OPERATION", "API_SERVICE"] },
+          "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "rationale": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceAnalysisPlan": {
+        "type": "object",
+        "required": ["agentMessage", "taskAssignments"],
+        "properties": {
+          "agentMessage": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "taskAssignments": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "object", "required": ["agentId", "objective", "moduleScopes"], "properties": { "agentId": { "enum": ["SUB_AGENT_1", "SUB_AGENT_2", "SUB_AGENT_3"] }, "objective": { "type": "string", "minLength": 1, "maxLength": 500 }, "moduleScopes": { "type": "array", "maxItems": 120, "items": { "type": "string", "minLength": 1, "maxLength": 300 } } }, "additionalProperties": false } }
+        },
+        "additionalProperties": false
+      },
       "NamedEntity": {
         "type": "object",
         "required": ["id", "name"],
@@ -1512,6 +1787,18 @@
         "description": "Durable asynchronous Reverse Run job projection with ordered status and cancellation events",
         "content": {
           "application/json": { "schema": { "$ref": "./reverse-run-job.schema.json" } }
+        }
+      },
+      "AnalysisRunCheckpoint": {
+        "description": "Durable Analysis Agent checkpoint with bounded WorkUnits and restart-safe progress",
+        "content": {
+          "application/json": { "schema": { "$ref": "./analysis-agent.schema.json#/$defs/Checkpoint" } }
+        }
+      },
+      "AnalysisRunResult": {
+        "description": "Latest Feature projection produced from deterministic Facts and optional evidence-bounded model/Skill analysis",
+        "content": {
+          "application/json": { "schema": { "$ref": "./analysis-agent.schema.json#/$defs/Result" } }
         }
       },
       "CandidateReviewed": {

@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { AnalysisModelConnectionError } from "../analysis/index.js";
 import {
   PersistenceConflictError,
   ReviewAuthenticationError,
@@ -34,6 +35,20 @@ function sendJson(response, status, body, id) {
     "x-request-id": id,
   });
   response.end(payload);
+}
+
+function startNdjson(response, id) {
+  response.writeHead(200, {
+    "content-type": "application/x-ndjson; charset=utf-8",
+    "cache-control": "no-store, no-transform",
+    "x-content-type-options": "nosniff",
+    "x-request-id": id,
+  });
+  response.flushHeaders?.();
+}
+
+function writeNdjson(response, value) {
+  response.write(`${JSON.stringify(value)}\n`);
 }
 
 function readJson(request, maxBodyBytes) {
@@ -134,6 +149,12 @@ function errorResponse(error, id) {
       body: { error: { code: "INVALID_REQUEST", message: error.message, requestId: id } },
     };
   }
+  if (error instanceof AnalysisModelConnectionError) {
+    return {
+      status: 502,
+      body: { error: { code: "ANALYSIS_MODEL_UNAVAILABLE", message: error.message, requestId: id } },
+    };
+  }
   if (error instanceof PersistenceConflictError) {
     return {
       status: 409,
@@ -194,7 +215,7 @@ function applyCors(request, response, allowedOrigins) {
   const origin = request.headers.origin;
   if (typeof origin !== "string" || !allowedOrigins.has(origin)) return false;
   response.setHeader("access-control-allow-origin", origin);
-  response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+  response.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
   response.setHeader(
     "access-control-allow-headers",
     "authorization, content-type, x-request-id, x-traqen-api-token",
@@ -773,6 +794,153 @@ export function createTraceabilityHttpHandler({
 
       if (url.pathname === "/v1/skills" && request.method === "GET") {
         sendJson(response, 200, { skills: await application.listReverseSkills() }, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/analysis-model-profiles" && request.method === "GET") {
+        sendJson(response, 200, { profiles: application.listAnalysisModelProfiles() }, id);
+        return;
+      }
+
+      if (url.pathname === "/v1/analysis-model-profiles" && request.method === "POST") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, application.configureAnalysisModelProfile(input), id);
+        return;
+      }
+
+      const analysisModelVerifyMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/verify$/.exec(url.pathname);
+      if (request.method === "POST" && analysisModelVerifyMatch) {
+        const profileId = decodePathSegment(analysisModelVerifyMatch[1]);
+        sendJson(response, 200, await application.verifyAnalysisModelProfile(profileId), id);
+        return;
+      }
+
+      const analysisModelSelectMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/select$/.exec(url.pathname);
+      if (request.method === "POST" && analysisModelSelectMatch) {
+        const profileId = decodePathSegment(analysisModelSelectMatch[1]);
+        sendJson(response, 200, application.selectAnalysisModelProfile(profileId), id);
+        return;
+      }
+
+      const analysisModelDeleteMatch = /^\/v1\/analysis-model-profiles\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "DELETE" && analysisModelDeleteMatch) {
+        const profileId = decodePathSegment(analysisModelDeleteMatch[1]);
+        sendJson(response, 200, application.removeAnalysisModelProfile(profileId), id);
+        return;
+      }
+
+      const workspaceModelAnalysisMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/workspace-enrichment$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceModelAnalysisMatch) {
+        requireJson(request);
+        const profileId = decodePathSegment(workspaceModelAnalysisMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
+        if (!observable) {
+          const candidates = await application.enrichWorkspaceCandidates(profileId, input);
+          sendJson(response, 200, { profileId, candidates }, id);
+          return;
+        }
+        startNdjson(response, id);
+        try {
+          const candidates = await application.enrichWorkspaceCandidates(profileId, input, {
+            onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
+          });
+          writeNdjson(response, { kind: "result", profileId, candidates });
+        } catch (error) {
+          const failure = errorResponse(error, id);
+          writeNdjson(response, { kind: "error", error: failure.body.error });
+        }
+        response.end();
+        return;
+      }
+
+      const workspaceModelPlanMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/workspace-plan$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceModelPlanMatch) {
+        requireJson(request);
+        const profileId = decodePathSegment(workspaceModelPlanMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
+        if (!observable) {
+          sendJson(response, 200, { profileId, plan: await application.planWorkspaceAnalysis(profileId, input) }, id);
+          return;
+        }
+        startNdjson(response, id);
+        try {
+          const plan = await application.planWorkspaceAnalysis(profileId, input, {
+            onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
+          });
+          writeNdjson(response, { kind: "result", profileId, plan });
+        } catch (error) {
+          const failure = errorResponse(error, id);
+          writeNdjson(response, { kind: "error", error: failure.body.error });
+        }
+        response.end();
+        return;
+      }
+
+      const analysisRunsCollectionMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs$/.exec(url.pathname);
+      if (request.method === "POST" && analysisRunsCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(analysisRunsCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        if (input.projectId !== undefined && input.projectId !== projectId) {
+          throw new HttpError(400, "PROJECT_MISMATCH", "Request projectId must match the route");
+        }
+        const requestInput = { ...input, projectId };
+        const respondAsync = url.searchParams.get("async") !== "false";
+        if (respondAsync) {
+          sendJson(response, 202, await application.submitAnalysisRun(requestInput), id);
+        } else {
+          sendJson(response, 201, await application.executeAnalysisRun(requestInput), id);
+        }
+        return;
+      }
+
+      const analysisRunMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && analysisRunMatch) {
+        const projectId = decodePathSegment(analysisRunMatch[1]);
+        const runId = decodePathSegment(analysisRunMatch[2]);
+        const run = await application.getAnalysisRun(projectId, runId);
+        if (!run) throw new HttpError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run was not found");
+        sendJson(response, 200, run, id);
+        return;
+      }
+
+      const analysisPauseMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/pause$/.exec(url.pathname);
+      if (request.method === "POST" && analysisPauseMatch) {
+        const projectId = decodePathSegment(analysisPauseMatch[1]);
+        const runId = decodePathSegment(analysisPauseMatch[2]);
+        const run = await application.pauseAnalysisRun(projectId, runId);
+        if (!run) throw new HttpError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run was not found");
+        sendJson(response, 202, run, id);
+        return;
+      }
+
+      const analysisResumeMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/resume$/.exec(url.pathname);
+      if (request.method === "POST" && analysisResumeMatch) {
+        const projectId = decodePathSegment(analysisResumeMatch[1]);
+        const runId = decodePathSegment(analysisResumeMatch[2]);
+        const run = await application.resumeAnalysisRun(projectId, runId);
+        if (!run) throw new HttpError(404, "ANALYSIS_RUN_NOT_FOUND", "Analysis run was not found");
+        sendJson(response, 202, run, id);
+        return;
+      }
+
+      const latestAnalysisMatch = /^\/v1\/projects\/([^/]+)\/analysis-results\/latest$/.exec(url.pathname);
+      if (request.method === "GET" && latestAnalysisMatch) {
+        const projectId = decodePathSegment(latestAnalysisMatch[1]);
+        const result = await application.getLatestAnalysisResult(projectId);
+        if (!result) throw new HttpError(404, "ANALYSIS_RESULT_NOT_FOUND", "No completed analysis result was found");
+        sendJson(response, 200, result, id);
+        return;
+      }
+
+      const analyzedFeatureHistoryMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/analysis-history$/.exec(url.pathname);
+      if (request.method === "GET" && analyzedFeatureHistoryMatch) {
+        const projectId = decodePathSegment(analyzedFeatureHistoryMatch[1]);
+        const featureId = decodePathSegment(analyzedFeatureHistoryMatch[2]);
+        sendJson(response, 200, { history: await application.getAnalyzedFeatureHistory(projectId, featureId) }, id);
         return;
       }
 

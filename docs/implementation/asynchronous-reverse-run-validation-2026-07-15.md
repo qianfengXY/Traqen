@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](asynchronous-reverse-run-validation-2026-07-15.zh-CN.md)
+
 # Asynchronous Reverse Run validation — 2026-07-15
 
 ## Design obligation

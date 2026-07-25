@@ -1,0 +1,879 @@
+function requiredString(value, fieldName) {
+  if (typeof value !== "string" || value.trim() === "") throw new TypeError(`${fieldName} must be a non-empty string`);
+  return value.trim();
+}
+function endpointUrl(value) {
+  const url = new URL(requiredString(value, "analysis model endpoint"));
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["localhost", "127.0.0.1", "::1"].includes(url.hostname))) {
+    throw new TypeError("analysis model endpoint must use HTTPS unless it is local");
+  }
+  return url.toString();
+}
+
+function telemetryTimestamp() {
+  return new Date().toISOString();
+}
+
+function boundedPreview(value, maximum = 24_000) {
+  const text = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+  if (text.length <= maximum) return { text, truncated: false, originalCharacters: text.length };
+  return { text: `${text.slice(0, maximum)}\n… [truncated by Traqen]`, truncated: true, originalCharacters: text.length };
+}
+
+function emitTelemetry(callback, event) {
+  if (typeof callback !== "function") return;
+  try {
+    callback({ at: telemetryTimestamp(), ...event });
+  } catch {
+    // Observability must never change model execution semantics.
+  }
+}
+
+function responseUsage(value, contentType = "") {
+  const payloads = [];
+  if (/text\/event-stream/i.test(contentType) || /^\s*(?:event:.*\r?\n)?data:/m.test(value)) {
+    for (const event of value.split(/\r?\n\r?\n/)) {
+      const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart()).join("\n").trim();
+      if (!data || data === "[DONE]") continue;
+      try { payloads.push(JSON.parse(data)); } catch { /* Parsed by the strict response decoder later. */ }
+    }
+  } else {
+    try { payloads.push(JSON.parse(value)); } catch { /* Parsed by the strict response decoder later. */ }
+  }
+  const usage = [...payloads].reverse().find((payload) => payload?.usage)?.usage;
+  if (!usage || typeof usage !== "object") return null;
+  const number = (candidate) => Number.isFinite(candidate) && candidate >= 0 ? Number(candidate) : null;
+  return {
+    inputTokens: number(usage.prompt_tokens ?? usage.input_tokens),
+    outputTokens: number(usage.completion_tokens ?? usage.output_tokens),
+    totalTokens: number(usage.total_tokens),
+  };
+}
+
+function observableStreamOutput(value, contentType = "") {
+  if (!/text\/event-stream/i.test(contentType) && !/^\s*(?:event:.*\r?\n)?data:/m.test(value)) return null;
+  const pieces = [];
+  for (const event of value.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const payload = JSON.parse(data);
+      const delta = payload?.choices?.[0]?.delta?.content;
+      if (typeof delta === "string") pieces.push(delta);
+      else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
+      else if (typeof payload?.delta === "string" && /output_text\.delta|content_block_delta/i.test(payload?.type ?? "")) pieces.push(payload.delta);
+      else if (typeof payload?.delta?.text === "string") pieces.push(payload.delta.text);
+    } catch {
+      // Strict parsing remains the responsibility of the final response decoder.
+    }
+  }
+  const output = pieces.join("");
+  const jsonStart = [output.indexOf("{"), output.indexOf("[")].filter((index) => index >= 0).sort((left, right) => left - right)[0];
+  if (jsonStart === undefined) return null;
+  return boundedPreview(output.slice(jsonStart), 8_000).text;
+}
+
+function visibleAgentMessage(value) {
+  const marker = /"agentMessage"\s*:\s*"/g;
+  const match = marker.exec(value);
+  if (!match) return null;
+  let result = "";
+  let escaped = false;
+  for (let index = marker.lastIndex; index < value.length && result.length < 4_000; index += 1) {
+    const character = value[index];
+    if (!escaped && character === '"') return result;
+    if (!escaped && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (escaped) {
+      const simpleEscape = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", '"': '"', "\\": "\\", "/": "/" }[character];
+      if (simpleEscape !== undefined) result += simpleEscape;
+      else if (character === "u" && /^[0-9a-f]{4}$/i.test(value.slice(index + 1, index + 5))) {
+        result += String.fromCharCode(Number.parseInt(value.slice(index + 1, index + 5), 16));
+        index += 4;
+      }
+      escaped = false;
+      continue;
+    }
+    result += character;
+  }
+  return result || null;
+}
+
+function observableAgentMessage(value, contentType = "") {
+  if (!/text\/event-stream/i.test(contentType) && !/^\s*(?:event:.*\r?\n)?data:/m.test(value)) return null;
+  const pieces = [];
+  for (const event of value.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart()).join("\n").trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      const payload = JSON.parse(data);
+      const delta = payload?.choices?.[0]?.delta?.content;
+      if (typeof delta === "string") pieces.push(delta);
+      else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
+      else if (typeof payload?.delta === "string" && /output_text\.delta|content_block_delta/i.test(payload?.type ?? "")) pieces.push(payload.delta);
+      else if (typeof payload?.delta?.text === "string") pieces.push(payload.delta.text);
+    } catch {
+      // The strict decoder reports malformed events after the stream ends.
+    }
+  }
+  return visibleAgentMessage(pieces.join(""));
+}
+
+async function responseBodyText(response, { onTelemetry, requestId, startedAt, contentType }) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return response.text();
+  const decoder = new TextDecoder();
+  let value = "";
+  let chunkCount = 0;
+  let lastEmittedAt = 0;
+  let lastEmittedCharacters = 0;
+  while (true) {
+    const { done, value: chunk } = await reader.read();
+    if (done) break;
+    chunkCount += 1;
+    value += decoder.decode(chunk, { stream: true });
+    if (value.length > 2_000_000) throw new TypeError("analysis model response exceeds the bounded response size");
+    const now = Date.now();
+    if (value.length - lastEmittedCharacters >= 4_096 || now - lastEmittedAt >= 500) {
+      lastEmittedAt = now;
+      lastEmittedCharacters = value.length;
+      emitTelemetry(onTelemetry, {
+        type: "RESPONSE_PROGRESS",
+        requestId,
+        chunkCount,
+        receivedCharacters: value.length,
+        elapsedMs: now - startedAt,
+        outputPreview: observableStreamOutput(value, contentType),
+        assistantMessage: observableAgentMessage(value, contentType),
+      });
+    }
+  }
+  value += decoder.decode();
+  emitTelemetry(onTelemetry, {
+    type: "RESPONSE_PROGRESS",
+    requestId,
+    chunkCount,
+    receivedCharacters: value.length,
+    elapsedMs: Date.now() - startedAt,
+    complete: true,
+    outputPreview: observableStreamOutput(value, contentType),
+    assistantMessage: observableAgentMessage(value, contentType),
+  });
+  return value;
+}
+
+function responseText(payload) {
+  const content = payload?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const joined = content.map((item) => {
+      if (typeof item === "string") return item;
+      if (typeof item?.text === "string") return item.text;
+      if (typeof item?.text?.value === "string") return item.text.value;
+      if (typeof item?.content === "string") return item.content;
+      return "";
+    }).filter(Boolean).join("\n");
+    if (joined) return joined;
+  }
+  if (content && typeof content === "object") return JSON.stringify(content);
+  const parsed = payload?.choices?.[0]?.message?.parsed;
+  if (parsed && typeof parsed === "object") return JSON.stringify(parsed);
+  const toolArguments = payload?.choices?.[0]?.message?.tool_calls?.find?.((call) => typeof call?.function?.arguments === "string")?.function?.arguments;
+  if (toolArguments) return toolArguments;
+  if (typeof payload?.choices?.[0]?.text === "string") return payload.choices[0].text;
+  if (typeof payload?.output_text === "string") return payload.output_text;
+  const outputText = payload?.output?.flatMap?.((item) => item?.content ?? [])
+    ?.map?.((item) => typeof item?.text === "string" ? item.text : typeof item?.text?.value === "string" ? item.text.value : "")
+    ?.filter?.(Boolean)
+    ?.join?.("\n");
+  if (outputText) return outputText;
+  const fields = payload && typeof payload === "object" ? Object.keys(payload).slice(0, 8).join(", ") : "none";
+  throw new TypeError(`analysis model response does not contain supported message text (top-level fields: ${fields || "none"})`);
+}
+
+function sseResponseText(value) {
+  if (value.length > 2_000_000) throw new TypeError("analysis model stream exceeds the bounded response size");
+  const pieces = [];
+  const fields = new Set();
+  let terminalReason = null;
+  for (const event of value.split(/\r?\n\r?\n/)) {
+    const data = event.split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n")
+      .trim();
+    if (!data || data === "[DONE]") continue;
+    let payload;
+    try {
+      payload = JSON.parse(data);
+    } catch (error) {
+      throw new TypeError("analysis model stream contains a non-JSON data event", { cause: error });
+    }
+    if (payload && typeof payload === "object") Object.keys(payload).slice(0, 8).forEach((field) => fields.add(field));
+    terminalReason = payload?.choices?.[0]?.finish_reason
+      ?? payload?.stop_reason
+      ?? payload?.incomplete_details?.reason
+      ?? (payload?.type === "response.incomplete" ? payload?.response?.incomplete_details?.reason ?? "incomplete" : terminalReason);
+    const delta = payload?.choices?.[0]?.delta?.content;
+    if (typeof delta === "string") pieces.push(delta);
+    else if (Array.isArray(delta)) pieces.push(...delta.map((item) => typeof item?.text === "string" ? item.text : "").filter(Boolean));
+    else if (typeof payload?.delta === "string" && /output_text\.delta|content_block_delta/i.test(payload?.type ?? "")) pieces.push(payload.delta);
+    else if (typeof payload?.delta?.text === "string") pieces.push(payload.delta.text);
+    else {
+      try {
+        pieces.push(responseText(payload));
+      } catch {
+        // Metadata-only stream events do not contribute output text.
+      }
+    }
+  }
+  if (["length", "max_tokens", "max_output_tokens", "incomplete"].includes(terminalReason)) {
+    const error = new TypeError(`analysis model output was truncated (${terminalReason})`);
+    error.code = "MODEL_OUTPUT_TRUNCATED";
+    throw error;
+  }
+  if (pieces.length === 0) throw new TypeError(`analysis model stream does not contain supported text deltas (event fields: ${[...fields].join(", ") || "none"})`);
+  return pieces.join("");
+}
+
+function structuredResponse(value, contentType = "") {
+  const stream = /text\/event-stream/i.test(contentType) || /^\s*(?:event:.*\r?\n)?data:/m.test(value);
+  if (stream) return jsonResponse({ choices: [{ message: { content: sseResponseText(value) } }] });
+  let payload;
+  try {
+    payload = JSON.parse(value);
+  } catch (error) {
+    throw new TypeError("analysis model HTTP response body is not valid JSON", { cause: error });
+  }
+  return jsonResponse(payload);
+}
+
+function firstJsonFragment(value) {
+  for (let start = 0; start < value.length; start += 1) {
+    if (value[start] !== "{" && value[start] !== "[") continue;
+    const stack = [];
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < value.length; index += 1) {
+      const character = value[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') quoted = false;
+        continue;
+      }
+      if (character === '"') {
+        quoted = true;
+        continue;
+      }
+      if (character === "{" || character === "[") stack.push(character);
+      else if (character === "}" || character === "]") {
+        const opening = stack.pop();
+        if ((opening === "{" && character !== "}") || (opening === "[" && character !== "]")) break;
+        if (stack.length === 0) {
+          const candidate = value.slice(start, index + 1);
+          try {
+            return JSON.parse(candidate);
+          } catch {
+            break;
+          }
+        }
+      }
+    }
+    if (stack.length > 0) return null;
+  }
+  return null;
+}
+
+function jsonResponse(payload) {
+  const value = responseText(payload).trim();
+  const unfenced = value.startsWith("```")
+    ? value.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "")
+    : value;
+  try {
+    return JSON.parse(unfenced);
+  } catch (error) {
+    const fragment = firstJsonFragment(unfenced);
+    if (fragment !== null) return fragment;
+    const terminalReason = payload?.choices?.[0]?.finish_reason ?? payload?.incomplete_details?.reason ?? payload?.stop_reason;
+    if (["length", "max_tokens", "max_output_tokens", "incomplete"].includes(terminalReason)) {
+      const truncated = new TypeError(`analysis model output was truncated (${terminalReason})`, { cause: error });
+      truncated.code = "MODEL_OUTPUT_TRUNCATED";
+      throw truncated;
+    }
+    throw new TypeError("analysis model message text does not contain a complete JSON object or array", { cause: error });
+  }
+}
+
+function boundedWorkspaceCandidates(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > 24) {
+    throw new TypeError("workspace model batch must contain between 1 and 24 candidates");
+  }
+  const candidates = value.map((candidate, index) => {
+    if (!candidate || typeof candidate !== "object") throw new TypeError(`workspace candidate ${index} must be an object`);
+    const evidence = candidate.evidence && typeof candidate.evidence === "object" ? candidate.evidence : {};
+    const allowedConfidence = new Set(["LOW", "MEDIUM", "HIGH"]);
+    const confidenceCap = allowedConfidence.has(evidence.confidenceCap) ? evidence.confidenceCap : "LOW";
+    const stringList = (items, maximumItems, maximumLength) => Array.isArray(items)
+      ? items.slice(0, maximumItems).filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim().slice(0, maximumLength))
+      : [];
+    const observations = Array.isArray(evidence.observations) ? evidence.observations.slice(0, 8).map((observation, observationIndex) => {
+      if (!observation || typeof observation !== "object") throw new TypeError(`workspace candidate ${index} evidence observation ${observationIndex} must be an object`);
+      return {
+        extractor: requiredString(observation.extractor, `workspace candidate ${index} evidence observation ${observationIndex} extractor`).slice(0, 80),
+        basis: requiredString(observation.basis, `workspace candidate ${index} evidence observation ${observationIndex} basis`).slice(0, 160),
+        sourcePath: requiredString(observation.sourcePath, `workspace candidate ${index} evidence observation ${observationIndex} sourcePath`).slice(0, 800),
+        startLine: Number.isSafeInteger(observation.startLine) && observation.startLine > 0 ? observation.startLine : 1,
+        excerpt: typeof observation.excerpt === "string" ? observation.excerpt.slice(0, 1_200) : "",
+      };
+    }) : [];
+    if (observations.length === 0) {
+      observations.push({
+        extractor: "UNDECLARED_LEGACY_EXTRACTOR",
+        basis: "Legacy candidate without an explicit extraction basis",
+        sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "unknown",
+        startLine: 1,
+        excerpt: typeof candidate.code === "string" ? candidate.code.slice(0, 1_200) : "",
+      });
+    }
+    return {
+      id: requiredString(candidate.id, `workspace candidate ${index} id`),
+      name: requiredString(candidate.name, `workspace candidate ${index} name`).slice(0, 300),
+      kind: requiredString(candidate.kind, `workspace candidate ${index} kind`).slice(0, 40),
+      method: typeof candidate.method === "string" ? candidate.method.slice(0, 20) : null,
+      modulePath: typeof candidate.modulePath === "string" ? candidate.modulePath.slice(0, 300) : "",
+      sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "",
+      description: typeof candidate.description === "string" ? candidate.description.slice(0, 1_200) : "",
+      code: typeof candidate.code === "string" ? candidate.code.slice(0, 2_000) : "",
+      evidence: {
+        observations,
+        corroborations: stringList(evidence.corroborations, 16, 800),
+        contradictions: stringList(evidence.contradictions, 16, 800),
+        diagnostics: stringList(evidence.diagnostics, 16, 800),
+        completeness: ["COMPLETE", "PARTIAL", "UNKNOWN"].includes(evidence.completeness) ? evidence.completeness : "UNKNOWN",
+        confidenceCap,
+      },
+    };
+  });
+  if (JSON.stringify(candidates).length > 72_000) throw new RangeError("workspace model batch exceeds the bounded context size");
+  return candidates;
+}
+
+function boundedWorkspacePlan(value) {
+  if (!value || typeof value !== "object") throw new TypeError("workspace plan input must be an object");
+  const modules = Array.isArray(value.modules) ? value.modules.slice(0, 120).map((module, index) => ({
+    name: requiredString(module?.name, `workspace plan module ${index} name`).slice(0, 300),
+    fileCount: Number.isSafeInteger(module?.fileCount) && module.fileCount >= 0 ? module.fileCount : 0,
+    sourceBytes: Number.isSafeInteger(module?.sourceBytes) && module.sourceBytes >= 0 ? module.sourceBytes : 0,
+    languages: Array.isArray(module?.languages)
+      ? [...new Set(module.languages.filter((language) => typeof language === "string" && language.trim()).map((language) => language.trim().slice(0, 40)))].slice(0, 24)
+      : [],
+  })) : [];
+  return {
+    workspaceName: requiredString(value.workspaceName, "workspace plan workspaceName").slice(0, 200),
+    mode: value.mode === "INCREMENTAL" ? "INCREMENTAL" : "FULL",
+    fileCount: Number.isSafeInteger(value.fileCount) && value.fileCount >= 0 ? value.fileCount : 0,
+    modules,
+  };
+}
+
+export class AnalysisModelConnectionError extends Error {
+  constructor(message, options) {
+    super(message, options);
+    this.name = "AnalysisModelConnectionError";
+  }
+}
+
+export class OpenAICompatibleAnalysisModelAdapter {
+  constructor({ id, endpoint, model, apiKeyResolver = () => null, fetchImpl = globalThis.fetch, timeoutMs = 120_000, stream = false }) {
+    this.id = requiredString(id, "analysis model profile id");
+    this.endpoint = endpointUrl(endpoint);
+    this.model = requiredString(model, "analysis model name");
+    if (typeof apiKeyResolver !== "function") throw new TypeError("apiKeyResolver must be a function");
+    if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl must be a function");
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) throw new TypeError("timeoutMs must be between 1 and 600000");
+    if (typeof stream !== "boolean") throw new TypeError("analysis model stream must be a boolean");
+    this.apiKeyResolver = apiKeyResolver;
+    this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
+    this.stream = stream;
+  }
+
+  async #request({ messages, maxOutputTokens }, { signal = null, onTelemetry = null } = {}) {
+    const requestId = `${this.id}:${Date.now()}:${Math.random().toString(16).slice(2, 10)}`;
+    const startedAt = Date.now();
+    const prompt = boundedPreview(messages);
+    emitTelemetry(onTelemetry, {
+      type: "REQUEST_PREPARED",
+      requestId,
+      profileId: this.id,
+      model: this.model,
+      endpoint: this.endpoint,
+      transport: this.stream ? "STREAM_SSE" : "JSON",
+      maxOutputTokens,
+      inputCharacters: JSON.stringify(messages).length,
+      promptPreview: prompt.text,
+      promptTruncated: prompt.truncated,
+      promptOriginalCharacters: prompt.originalCharacters,
+    });
+    const apiKey = await this.apiKeyResolver(this.id);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new Error("Analysis model request timed out")), this.timeoutMs);
+    const abort = () => controller.abort(signal.reason);
+    if (signal) signal.addEventListener("abort", abort, { once: true });
+    try {
+      const headers = { "content-type": "application/json" };
+      if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+      const response = await this.fetchImpl(this.endpoint, {
+        method: "POST",
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: this.model,
+          temperature: 0,
+          max_tokens: maxOutputTokens,
+          response_format: { type: "json_object" },
+          ...(this.stream ? { stream: true } : {}),
+          messages,
+        }),
+      });
+      emitTelemetry(onTelemetry, {
+        type: "HTTP_CONNECTED",
+        requestId,
+        status: response.status,
+        contentType: response.headers?.get?.("content-type") ?? "",
+        timeToFirstByteMs: Date.now() - startedAt,
+      });
+      if (!response.ok) {
+        const detail = typeof response.text === "function" ? await response.text().catch(() => "") : "";
+        throw new AnalysisModelConnectionError(`Analysis model request failed with HTTP ${response.status}${detail ? `: ${detail.slice(0, 300)}` : ""}`);
+      }
+      try {
+        const contentType = response.headers?.get?.("content-type") ?? "";
+        const responseTextValue = await responseBodyText(response, { onTelemetry, requestId, startedAt, contentType });
+        const result = structuredResponse(responseTextValue, contentType);
+        const output = boundedPreview(result);
+        emitTelemetry(onTelemetry, {
+          type: "STRUCTURED_RESPONSE_PARSED",
+          requestId,
+          elapsedMs: Date.now() - startedAt,
+          outputCharacters: JSON.stringify(result).length,
+          outputPreview: output.text,
+          outputTruncated: output.truncated,
+          assistantMessage: typeof result?.agentMessage === "string" ? result.agentMessage.slice(0, 4_000) : null,
+          usage: responseUsage(responseTextValue, contentType),
+        });
+        return result;
+      } catch (error) {
+        const reason = error instanceof TypeError && error.message.startsWith("analysis model ")
+          ? error.message
+          : "HTTP response body is not valid JSON";
+        throw new AnalysisModelConnectionError(`Analysis model returned an invalid structured JSON response: ${reason}`, { cause: error });
+      }
+    } catch (error) {
+      emitTelemetry(onTelemetry, {
+        type: "REQUEST_FAILED",
+        requestId,
+        elapsedMs: Date.now() - startedAt,
+        message: error instanceof Error ? error.message : "Unknown analysis model error",
+      });
+      if (error instanceof AnalysisModelConnectionError) throw error;
+      if (controller.signal.aborted) throw new AnalysisModelConnectionError("Analysis model request timed out or was cancelled", { cause: error });
+      throw new AnalysisModelConnectionError("Unable to reach the configured analysis model", { cause: error });
+    } finally {
+      clearTimeout(timeout);
+      if (signal) signal.removeEventListener("abort", abort);
+    }
+  }
+
+  async verify(options = {}) {
+    const startedAt = Date.now();
+    const result = await this.#request({
+      maxOutputTokens: 512,
+      messages: [
+        { role: "system", content: "Return JSON only." },
+        { role: "user", content: "Reply with exactly {\"ok\":true}." },
+      ],
+    }, options);
+    if (result?.ok !== true) throw new AnalysisModelConnectionError("Analysis model verification returned an unexpected structured response");
+    return { ok: true, latencyMs: Date.now() - startedAt };
+  }
+
+  async planWorkspaceAnalysis(value, options = {}) {
+    const input = boundedWorkspacePlan(value);
+    const moduleNames = new Set(input.modules.map((module) => module.name));
+    const result = await this.#request({
+      maxOutputTokens: 2_048,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Traqen's main Workspace orchestration agent.",
+            "Create exactly three parallel child-agent assignments from the supplied repository source manifest.",
+            "The manifest is independent of scanner candidates. Balance source volume and languages while keeping related modules together. Use only supplied module names.",
+            "Return JSON only with agentMessage and taskAssignments.",
+            "agentMessage is a concise user-visible execution update, not private reasoning. Use short lines for Goal, Plan, Evidence basis, Risks, and Next action. Do not quote prompts or source code.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: "Plan three bounded source-analysis queues without using deterministic scanner candidates as the task map.",
+            workspace: input,
+            outputContract: {
+              agentMessage: "public orchestration plan",
+              taskAssignments: [
+                { agentId: "SUB_AGENT_1", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
+                { agentId: "SUB_AGENT_2", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
+                { agentId: "SUB_AGENT_3", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
+              ],
+            },
+          }),
+        },
+      ],
+    }, options);
+    if (typeof result?.agentMessage !== "string" || !result.agentMessage.trim()) throw new AnalysisModelConnectionError("Analysis model orchestration plan requires agentMessage");
+    if (!Array.isArray(result.taskAssignments) || result.taskAssignments.length !== 3) throw new AnalysisModelConnectionError("Analysis model orchestration plan requires exactly three task assignments");
+    const expectedIds = new Set(["SUB_AGENT_1", "SUB_AGENT_2", "SUB_AGENT_3"]);
+    const assignments = result.taskAssignments.map((assignment, index) => {
+      const agentId = requiredString(assignment?.agentId, `task assignment ${index} agentId`);
+      if (!expectedIds.delete(agentId)) throw new AnalysisModelConnectionError(`Analysis model orchestration plan returned unsupported or duplicate agent ${agentId}`);
+      const moduleScopes = Array.isArray(assignment.moduleScopes)
+        ? [...new Set(assignment.moduleScopes.filter((scope) => typeof scope === "string" && moduleNames.has(scope)))].slice(0, 120)
+        : [];
+      return { agentId, objective: requiredString(assignment.objective, `task assignment ${index} objective`).slice(0, 500), moduleScopes };
+    });
+    return { agentMessage: result.agentMessage.trim().slice(0, 4_000), taskAssignments: assignments };
+  }
+
+  async enrichWorkspaceCandidates(value, options = {}) {
+    const candidates = boundedWorkspaceCandidates(value);
+    const inputIds = new Set(candidates.map((candidate) => candidate.id));
+    const result = await this.#request({
+      maxOutputTokens: Math.min(8_192, Math.max(1_200, candidates.length * 480)),
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Traqen's bounded Workspace analysis agent.",
+            "Classify implementation candidates using only the supplied paths, descriptions, and code excerpts.",
+            "Treat extractor output as an observation, never as truth. Weigh independent corroborations, contradictions, parser diagnostics, completeness, and the supplied confidenceCap.",
+            "Your confidence must never exceed each candidate evidence.confidenceCap. Keep uncertainty explicit when evidence is single-source or incomplete.",
+            "Do not invent permissions, business rules, dependencies, tests, or authority.",
+            "Return JSON only with agentMessage and candidates[]. Preserve every input id exactly.",
+            "agentMessage is a concise user-visible execution update, not private reasoning. Use short lines for Goal, Action, Findings, Evidence, Uncertainty, and Next action. Do not quote raw source or prompts.",
+            "businessFeature is true only for a user-recognizable business capability or background business process; repositories, DTOs, adapters, configuration, utilities, and framework plumbing are false.",
+            "For every candidate, return a stable businessKey plus businessModule and businessSubmodule from a product user's perspective. Use the same businessKey when multiple code observations implement the same user-recognizable behavior. These fields must describe what the product does, never source folders, packages, classes, frameworks, or code layers.",
+            "For businessFeature=true, displayName must be a plain-language user-recognizable function name. Do not expose code symbols or implementation terminology in the business hierarchy.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: "Improve readable feature names and distinguish business capabilities from technical symbols.",
+            candidates,
+            outputContract: {
+              agentMessage: "concise public conclusion for this bounded analysis task",
+              candidates: [{
+                id: "input id",
+                displayName: "concise user-recognizable name",
+                description: "evidence-bounded behavior description",
+                businessFeature: true,
+                businessKey: "stable product behavior key, such as workspace.create",
+                businessModule: "product-level capability area, such as Workspace management",
+                businessSubmodule: "smaller user-facing area, such as Workspace lifecycle",
+                domain: "short business domain",
+                group: "BUSINESS_CAPABILITY | BACKGROUND_INTEGRATION | DATA_INTEGRATION | PROJECT_OPERATION | API_SERVICE",
+                confidence: "LOW | MEDIUM | HIGH",
+                rationale: "short evidence-based reason",
+              }],
+            },
+          }),
+        },
+      ],
+    }, options);
+    try {
+      if (!Array.isArray(result?.candidates)) throw new TypeError("analysis model workspace response requires candidates[]");
+      const allowedGroups = new Set(["BUSINESS_CAPABILITY", "BACKGROUND_INTEGRATION", "DATA_INTEGRATION", "PROJECT_OPERATION", "API_SERVICE"]);
+      const allowedConfidence = new Set(["LOW", "MEDIUM", "HIGH"]);
+      const seen = new Set();
+      const confidenceRank = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+      const validated = result.candidates.map((candidate, index) => {
+        const id = requiredString(candidate?.id, `workspace response candidate ${index} id`);
+        if (!inputIds.has(id) || seen.has(id)) throw new TypeError(`analysis model returned an unknown or duplicate candidate id ${id}`);
+        seen.add(id);
+        const group = requiredString(candidate.group, `workspace response candidate ${index} group`);
+        const confidence = requiredString(candidate.confidence, `workspace response candidate ${index} confidence`);
+        if (!allowedGroups.has(group)) throw new TypeError(`analysis model returned unsupported group ${group}`);
+        if (!allowedConfidence.has(confidence)) throw new TypeError(`analysis model returned unsupported confidence ${confidence}`);
+        const input = candidates.find((item) => item.id === id);
+        if (confidenceRank[confidence] > confidenceRank[input.evidence.confidenceCap]) {
+          throw new TypeError(`analysis model confidence ${confidence} exceeds evidence cap ${input.evidence.confidenceCap} for ${id}`);
+        }
+        if (typeof candidate.businessFeature !== "boolean") throw new TypeError(`workspace response candidate ${index} businessFeature must be boolean`);
+        return {
+          id,
+          displayName: requiredString(candidate.displayName, `workspace response candidate ${index} displayName`).slice(0, 200),
+          description: requiredString(candidate.description, `workspace response candidate ${index} description`).slice(0, 2_000),
+          businessFeature: candidate.businessFeature,
+          businessKey: requiredString(candidate.businessKey, `workspace response candidate ${index} businessKey`).slice(0, 160),
+          businessModule: requiredString(candidate.businessModule, `workspace response candidate ${index} businessModule`).slice(0, 120),
+          businessSubmodule: requiredString(candidate.businessSubmodule, `workspace response candidate ${index} businessSubmodule`).slice(0, 120),
+          domain: requiredString(candidate.domain, `workspace response candidate ${index} domain`).slice(0, 120),
+          group,
+          confidence,
+          rationale: requiredString(candidate.rationale, `workspace response candidate ${index} rationale`).slice(0, 1_000),
+        };
+      });
+      const missing = candidates.filter((candidate) => !seen.has(candidate.id)).map((candidate) => candidate.id);
+      if (missing.length > 0) throw new TypeError(`analysis model omitted ${missing.length} input candidate ids`);
+      emitTelemetry(options.onTelemetry, {
+        type: "OUTPUT_VALIDATED",
+        candidateCount: validated.length,
+        businessCandidateCount: validated.filter((candidate) => candidate.businessFeature).length,
+        technicalCandidateCount: validated.filter((candidate) => !candidate.businessFeature).length,
+        confidence: validated.reduce((counts, candidate) => ({ ...counts, [candidate.confidence]: (counts[candidate.confidence] ?? 0) + 1 }), {}),
+      });
+      return validated;
+    } catch (error) {
+      emitTelemetry(options.onTelemetry, {
+        type: "OUTPUT_REJECTED",
+        message: error instanceof Error ? error.message : "Unknown Workspace output validation error",
+      });
+      throw new AnalysisModelConnectionError("Analysis model returned an invalid Workspace enrichment response", { cause: error });
+    }
+  }
+
+  async analyze(input, { signal = null } = {}) {
+    return this.#request({
+      maxOutputTokens: input.context.maxOutputTokens,
+      messages: [
+            {
+              role: "system",
+              content: [
+                "You are Traqen's bounded source-analysis engine.",
+                "Return JSON only with candidateFeatures[].",
+                "Every conclusion must cite evidenceFactIds present in the supplied WorkUnit.",
+                "Do not invent business authority, permissions, preconditions, or behavior absent from evidence.",
+                "Prefer grouping implementation symbols into user-recognizable business capabilities.",
+              ].join(" "),
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                task: "Refine deterministic feature candidates and recover business meaning from this bounded evidence graph.",
+                workUnit: { id: input.workUnit.id, scopeKey: input.workUnit.scopeKey, rootNodeId: input.workUnit.rootNodeId },
+                deterministicCandidates: input.deterministicCandidates,
+                evidence: input.evidence,
+                outputContract: {
+                  candidateFeatures: [{
+                    candidateKey: "stable semantic key",
+                    mode: "BUSINESS or API",
+                    name: "readable name",
+                    description: "evidence-bounded explanation",
+                    confidence: "LOW, MEDIUM, or HIGH",
+                    evidenceFactIds: ["Fact ids from this input only"],
+                    stableEvidenceNodeIds: ["stable node ids from this input only"],
+                    design: {},
+                    uncertainties: [],
+                  }],
+                },
+              }),
+            },
+          ],
+    }, { signal });
+  }
+}
+
+export class AnalysisModelRegistry {
+  #profiles = new Map();
+  #clock;
+  #fetchImpl;
+  #profileStore;
+  #activeProfileId = null;
+
+  constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
+    if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
+    if (typeof clock !== "function") throw new TypeError("analysis model registry clock must be a function");
+    if (typeof fetchImpl !== "function") throw new TypeError("analysis model registry fetchImpl must be a function");
+    if (profileStore && (typeof profileStore.load !== "function" || typeof profileStore.save !== "function")) throw new TypeError("analysis model profileStore requires load and save functions");
+    this.#clock = clock;
+    this.#fetchImpl = fetchImpl;
+    this.#profileStore = profileStore;
+    for (const [id, adapter] of adapters) {
+      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter });
+    }
+    const stored = this.#profileStore?.load() ?? { activeProfileId: null, profiles: [] };
+    for (const value of stored.profiles) {
+      const id = requiredString(value?.id, "stored analysis model profile id");
+      if (this.#profiles.has(id)) continue;
+      const endpoint = endpointUrl(value.endpoint);
+      const model = requiredString(value.model, "stored analysis model name");
+      const apiKey = requiredString(value.apiKey, "stored analysis model API key");
+      const timeoutMs = value.timeoutMs ?? 120_000;
+      const stream = value.stream ?? false;
+      const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+      this.#profiles.set(id, {
+        id,
+        endpoint: adapter.endpoint,
+        model,
+        timeoutMs,
+        stream,
+        source: "RUNTIME",
+        configuredAt: typeof value.configuredAt === "string" ? value.configuredAt : this.#clock().toISOString(),
+        verifiedAt: typeof value.verifiedAt === "string" ? value.verifiedAt : null,
+        apiKey,
+        adapter,
+      });
+    }
+    if (stored.activeProfileId && this.#profiles.get(stored.activeProfileId)?.verifiedAt) this.#activeProfileId = stored.activeProfileId;
+  }
+
+  #public(profile) {
+    return {
+      id: profile.id,
+      endpoint: profile.endpoint,
+      model: profile.model,
+      timeoutMs: profile.timeoutMs,
+      stream: profile.stream,
+      source: profile.source,
+      configuredAt: profile.configuredAt,
+      verifiedAt: profile.verifiedAt,
+      ready: Boolean(profile.verifiedAt),
+      active: profile.id === this.#activeProfileId,
+    };
+  }
+
+  #persist() {
+    if (!this.#profileStore) return;
+    this.#profileStore.save({
+      activeProfileId: this.#activeProfileId,
+      profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => ({
+        id: profile.id,
+        endpoint: profile.endpoint,
+        model: profile.model,
+        timeoutMs: profile.timeoutMs,
+        stream: profile.stream,
+        configuredAt: profile.configuredAt,
+        verifiedAt: profile.verifiedAt,
+        apiKey: profile.apiKey,
+      })),
+    });
+  }
+
+  list() {
+    return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  active() {
+    const profile = this.#profiles.get(this.#activeProfileId);
+    return profile ? this.#public(profile) : null;
+  }
+
+  resolve(id) {
+    const profile = this.#profiles.get(id ?? this.#activeProfileId);
+    return profile?.verifiedAt ? profile.adapter : null;
+  }
+
+  configure(input) {
+    if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
+    const id = requiredString(input.id, "analysis model profile id");
+    const existing = this.#profiles.get(id);
+    const endpoint = endpointUrl(input.endpoint);
+    const model = requiredString(input.model, "analysis model name");
+    const hasNewApiKey = typeof input.apiKey === "string" && input.apiKey.trim() !== "";
+    const apiKey = hasNewApiKey
+      ? requiredString(input.apiKey, "analysis model API key")
+      : existing?.source === "RUNTIME"
+        ? existing.apiKey
+        : requiredString(input.apiKey, "analysis model API key");
+    const timeoutMs = input.timeoutMs ?? 120_000;
+    const stream = input.stream ?? false;
+    const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+    const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
+    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, stream, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
+    this.#profiles.set(id, profile);
+    if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
+    this.#persist();
+    return this.#public(profile);
+  }
+
+  async verify(id) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    const verification = await profile.adapter.verify();
+    profile.verifiedAt = this.#clock().toISOString();
+    if (!this.#activeProfileId) this.#activeProfileId = profile.id;
+    this.#persist();
+    return { ...this.#public(profile), latencyMs: verification.latencyMs };
+  }
+
+  select(id) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before selection`);
+    this.#activeProfileId = profile.id;
+    this.#persist();
+    return this.#public(profile);
+  }
+
+  remove(id) {
+    const profileId = requiredString(id, "analysis model profile id");
+    const profile = this.#profiles.get(profileId);
+    if (!profile) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
+    if (profile.source === "ENVIRONMENT") throw new TypeError(`Environment model profile ${profileId} cannot be deleted at runtime`);
+    this.#profiles.delete(profileId);
+    if (this.#activeProfileId === profileId) {
+      this.#activeProfileId = this.list().find((candidate) => candidate.ready)?.id ?? null;
+    }
+    this.#persist();
+    return this.#public(profile);
+  }
+
+  async enrichWorkspaceCandidates(id, candidates, options = {}) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
+    return profile.adapter.enrichWorkspaceCandidates(candidates, options);
+  }
+
+  async planWorkspaceAnalysis(id, input, options = {}) {
+    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
+    return profile.adapter.planWorkspaceAnalysis(input, options);
+  }
+}
+
+export function configuredAnalysisModels(value, env = process.env) {
+  if (!value) return new Map();
+  let profiles;
+  try {
+    profiles = JSON.parse(value);
+  } catch (error) {
+    throw new TypeError("ANALYSIS_MODEL_PROFILES_JSON must be valid JSON", { cause: error });
+  }
+  if (!Array.isArray(profiles)) throw new TypeError("ANALYSIS_MODEL_PROFILES_JSON must be an array");
+  const result = new Map();
+  for (const [index, profile] of profiles.entries()) {
+    const id = requiredString(profile?.id, `analysisModels[${index}].id`);
+    const secretEnvironment = profile.apiKeyEnvironment
+      ? requiredString(profile.apiKeyEnvironment, `analysisModels[${index}].apiKeyEnvironment`)
+      : null;
+    if (result.has(id)) throw new TypeError(`Duplicate analysis model profile ${id}`);
+    result.set(id, new OpenAICompatibleAnalysisModelAdapter({
+      id,
+      endpoint: profile.endpoint,
+      model: profile.model,
+      timeoutMs: profile.timeoutMs ?? 120_000,
+      stream: profile.stream ?? false,
+      apiKeyResolver: () => secretEnvironment ? env[secretEnvironment] ?? null : null,
+    }));
+  }
+  return result;
+}

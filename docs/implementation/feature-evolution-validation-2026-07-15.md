@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](feature-evolution-validation-2026-07-15.zh-CN.md)
+
 # Feature evolution validation — 2026-07-15
 
 This increment implements the design requirement that a Feature must survive renames, aliases, merges, and splits without relying on display names or code locations for identity.

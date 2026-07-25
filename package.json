@@ -7,6 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
+    "setup": "npm ci && npm --prefix web ci",
+    "dev": "node src/cli/start-development.js",
     "test": "node --test test/*.test.js examples/order-platform/tests/*.test.js",
     "test:storage": "node --test test/storage-migrations.test.js",
     "test:runner": "node --test test/runner.test.js",
@@ -25,6 +27,8 @@
     "@electric-sql/pglite": "0.5.4"
   },
   "dependencies": {
+    "@ast-grep/lang-java": "0.0.7",
+    "@ast-grep/napi": "0.44.1",
     "acorn": "^8.15.0",
     "acorn-walk": "^8.3.4",
     "pg": "8.22.0"

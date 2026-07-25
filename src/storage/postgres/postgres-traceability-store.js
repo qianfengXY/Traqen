@@ -1927,8 +1927,8 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
   async getSnapshotFactGraph(projectId, snapshotManifestId, maxNodes = 100_000) {
     requireId(projectId, "projectId");
     requireId(snapshotManifestId, "snapshotManifestId");
-    if (!Number.isSafeInteger(maxNodes) || maxNodes < 1 || maxNodes > 100_000) {
-      throw new TypeError("maxNodes must be an integer between 1 and 100000");
+    if (!Number.isSafeInteger(maxNodes) || maxNodes < 1 || maxNodes > 1_000_000) {
+      throw new TypeError("maxNodes must be an integer between 1 and 1000000");
     }
     const bundleResult = await this.#database.query(
       `SELECT DISTINCT ON (source_component_id, extractor_id) id, complete
@@ -2764,5 +2764,89 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     );
     if (!result.rows[0]) return null;
     return deepFreeze(result.rows[0].change_impact_payload);
+  }
+
+  async saveAnalysisCheckpoint(projectId, checkpoint) {
+    requireId(projectId, "projectId");
+    requireId(checkpoint?.run?.id, "checkpoint.run.id");
+    await this.#database.query(
+      `INSERT INTO analysis_run_checkpoint (
+         project_id, id, snapshot_manifest_id, status, request_payload, checkpoint_payload, updated_at
+       ) VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)
+       ON CONFLICT (project_id, id) DO UPDATE SET
+         status = EXCLUDED.status,
+         checkpoint_payload = EXCLUDED.checkpoint_payload,
+         updated_at = EXCLUDED.updated_at`,
+      [
+        projectId,
+        checkpoint.run.id,
+        checkpoint.run.snapshotManifestId,
+        checkpoint.run.status,
+        JSON.stringify(checkpoint.request),
+        JSON.stringify(checkpoint),
+        checkpoint.run.updatedAt,
+      ],
+    );
+    return this.getAnalysisCheckpoint(projectId, checkpoint.run.id);
+  }
+
+  async getAnalysisCheckpoint(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    const result = await this.#database.query(
+      `SELECT checkpoint_payload FROM analysis_run_checkpoint WHERE project_id = $1 AND id = $2`,
+      [projectId, runId],
+    );
+    return result.rows[0] ? deepFreeze(result.rows[0].checkpoint_payload) : null;
+  }
+
+  async appendAnalysisResult(projectId, result) {
+    requireId(projectId, "projectId");
+    requireId(result?.id, "analysisResult.id");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO analysis_result (
+           project_id, id, snapshot_manifest_id, baseline_run_id, status, result_payload, completed_at
+         ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+         ON CONFLICT (project_id, id) DO NOTHING`,
+        [
+          projectId,
+          result.id,
+          result.snapshotManifestId,
+          result.baselineRunId,
+          result.status,
+          JSON.stringify(result),
+          result.completedAt,
+        ],
+      );
+      const stored = await this.getAnalysisResult(projectId, result.id);
+      if (!stored || canonicalJson(stored) !== canonicalJson(result)) {
+        throw new PersistenceConflictError(`Analysis result ${result.id} conflicts with an existing immutable result`);
+      }
+      return stored;
+    });
+  }
+
+  async getAnalysisResult(projectId, runId) {
+    requireId(projectId, "projectId");
+    requireId(runId, "runId");
+    const result = await this.#database.query(
+      `SELECT result_payload FROM analysis_result WHERE project_id = $1 AND id = $2`,
+      [projectId, runId],
+    );
+    return result.rows[0] ? deepFreeze(result.rows[0].result_payload) : null;
+  }
+
+  async listAnalysisResults(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT result_payload FROM analysis_result WHERE project_id = $1 ORDER BY completed_at DESC, id`,
+      [projectId],
+    );
+    return deepFreeze(result.rows.map((row) => row.result_payload));
+  }
+
+  async getLatestAnalysisResult(projectId) {
+    return (await this.listAnalysisResults(projectId))[0] ?? null;
   }
 }
