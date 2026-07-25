@@ -174,6 +174,8 @@ export class JavaScriptProjectScanner {
     const edges = new Map();
     const fileRecords = [];
     const localReferences = [];
+    const javascriptModuleExports = new Map();
+    const javascriptSymbolReferences = [];
     const javaCallReferences = [];
 
     const addNode = (type, naturalKey, name, attributes, factSource) => {
@@ -268,6 +270,8 @@ export class JavaScriptProjectScanner {
           artifactId,
           diagnostics,
           localReferences,
+          javascriptModuleExports,
+          javascriptSymbolReferences,
         });
       }
       if (path.extname(file.relativePath).toLowerCase() === ".java") {
@@ -298,33 +302,89 @@ export class JavaScriptProjectScanner {
     }
 
     const artifactPaths = new Set(fileRecords.map((record) => record.path));
+    const javascriptSymbolsByArtifact = new Map();
+    for (const [id, node] of nodes.entries()) {
+      if (node.type !== "CODE_SYMBOL" || node.attributes?.language !== "javascript") continue;
+      const symbolsByName = javascriptSymbolsByArtifact.get(node.source.artifact) ?? new Map();
+      const symbols = symbolsByName.get(node.name) ?? [];
+      symbols.push({ id, node });
+      symbolsByName.set(node.name, symbols);
+      javascriptSymbolsByArtifact.set(node.source.artifact, symbolsByName);
+    }
+    const resolvedImportTargets = new Map();
     for (const reference of localReferences) {
       const targetArtifact = resolveLocalArtifact(reference.fromArtifact, reference.specifier, artifactPaths);
       if (!targetArtifact) continue;
       const sourceArtifactId = stableFactNodeId(projectId, "ARTIFACT", `artifact:${reference.fromArtifact}`);
       const targetArtifactId = stableFactNodeId(projectId, "ARTIFACT", `artifact:${targetArtifact}`);
       addEdge(sourceArtifactId, "DEPENDS_ON", targetArtifactId, {}, reference.source);
+      const resolvedSymbols = [];
+      const exportedBindings = javascriptModuleExports.get(targetArtifact) ?? [];
+      for (const binding of reference.bindings ?? []) {
+        const exportedLocalNames = [
+          ...new Set(
+            exportedBindings
+              .filter((candidate) => candidate.exportedName === binding.importedName)
+              .map((candidate) => candidate.localName),
+          ),
+        ];
+        if (exportedLocalNames.length !== 1) continue;
+        const candidates =
+          javascriptSymbolsByArtifact.get(targetArtifact)?.get(exportedLocalNames[0]) ?? [];
+        if (candidates.length !== 1) continue;
+        const resolved = {
+          ...candidates[0],
+          importedName: binding.importedName,
+          localName: binding.localName,
+          importKind: binding.kind,
+          targetArtifact,
+        };
+        resolvedSymbols.push(resolved);
+        const key = canonicalJson({
+          fromArtifact: reference.fromArtifact,
+          localName: binding.localName,
+        });
+        const targets = resolvedImportTargets.get(key) ?? new Map();
+        targets.set(resolved.id, resolved);
+        resolvedImportTargets.set(key, targets);
+      }
       if (!isTestArtifact(reference.fromArtifact)) continue;
       const testAssetId = stableFactNodeId(projectId, "TEST_ASSET", `test:${reference.fromArtifact}`);
-      const exercisedSymbols = [...nodes.values()].filter(
-        (node) =>
-          node.type === "CODE_SYMBOL" &&
-          node.source.artifact === targetArtifact &&
-          reference.importedNames.includes(node.name),
-      );
-      if (exercisedSymbols.length === 0) {
+      if (resolvedSymbols.length === 0) {
         addEdge(testAssetId, "EXERCISES", targetArtifactId, { basis: "STATIC_IMPORT" }, reference.source);
       } else {
-        for (const symbol of exercisedSymbols) {
+        for (const symbol of resolvedSymbols) {
           addEdge(
             testAssetId,
             "EXERCISES",
-            stableFactNodeId(projectId, symbol.type, symbol.naturalKey),
-            { basis: "NAMED_STATIC_IMPORT" },
+            symbol.id,
+            { basis: "ESM_STATIC_IMPORT", importKind: symbol.importKind },
             reference.source,
           );
         }
       }
+    }
+    for (const reference of javascriptSymbolReferences) {
+      const key = canonicalJson({
+        fromArtifact: reference.fromArtifact,
+        localName: reference.localName,
+      });
+      const targets = [...(resolvedImportTargets.get(key)?.values() ?? [])];
+      if (targets.length !== 1) continue;
+      const target = targets[0];
+      addEdge(
+        reference.subjectId,
+        reference.predicate,
+        target.id,
+        {
+          basis: "JAVASCRIPT_ESM_IMPORT",
+          importedName: target.importedName,
+          localName: target.localName,
+          importKind: target.importKind,
+          targetArtifact: target.targetArtifact,
+        },
+        reference.source,
+      );
     }
 
     const javaMethods = [...nodes.entries()]
@@ -373,6 +433,8 @@ export class JavaScriptProjectScanner {
     artifactId,
     diagnostics,
     localReferences,
+    javascriptModuleExports,
+    javascriptSymbolReferences,
   }) {
     let ast;
     try {
@@ -385,9 +447,10 @@ export class JavaScriptProjectScanner {
         return;
       }
     }
-    const symbolByName = new Map();
     const symbolByNode = new Map();
     const naturalKeyBySymbolId = new Map();
+    const exportedBindings = [];
+    const importedLocalNames = new Set();
     const addSymbol = (name, kind, node, extraAttributes = {}) => {
       const naturalKey = `javascript:${relativePath}:${name}`;
       const symbolId = addNode(
@@ -397,7 +460,6 @@ export class JavaScriptProjectScanner {
         { language: "javascript", kind, ...extraAttributes },
         source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
       );
-      symbolByName.set(name, symbolId);
       symbolByNode.set(node, symbolId);
       naturalKeyBySymbolId.set(symbolId, naturalKey);
       addEdge(artifactId, "CONTAINS", symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
@@ -442,13 +504,25 @@ export class JavaScriptProjectScanner {
         const specifier = literalString(node.source);
         if (!specifier) return;
         if (specifier.startsWith(".")) {
+          const bindings = node.specifiers
+            .map((item) => {
+              if (item.type === "ImportSpecifier") {
+                const importedName = item.imported.name ?? literalString(item.imported);
+                return importedName
+                  ? { importedName, localName: item.local.name, kind: "NAMED" }
+                  : null;
+              }
+              if (item.type === "ImportDefaultSpecifier") {
+                return { importedName: "default", localName: item.local.name, kind: "DEFAULT" };
+              }
+              return null;
+            })
+            .filter(Boolean);
+          for (const binding of bindings) importedLocalNames.add(binding.localName);
           localReferences.push({
             fromArtifact: relativePath,
             specifier,
-            importedNames: node.specifiers
-              .filter((item) => item.type === "ImportSpecifier")
-              .map((item) => item.imported.name ?? literalString(item.imported))
-              .filter(Boolean),
+            bindings,
             source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
           });
           return;
@@ -463,8 +537,131 @@ export class JavaScriptProjectScanner {
         );
         addEdge(artifactId, "DEPENDS_ON", dependencyId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
       },
+      ExportNamedDeclaration: (node) => {
+        if (node.source) return;
+        if (node.declaration?.type === "FunctionDeclaration" || node.declaration?.type === "ClassDeclaration") {
+          if (node.declaration.id?.name) {
+            exportedBindings.push({
+              exportedName: node.declaration.id.name,
+              localName: node.declaration.id.name,
+            });
+          }
+          return;
+        }
+        if (node.declaration?.type === "VariableDeclaration") {
+          for (const declaration of node.declaration.declarations) {
+            if (declaration.id?.type === "Identifier") {
+              exportedBindings.push({
+                exportedName: declaration.id.name,
+                localName: declaration.id.name,
+              });
+            }
+          }
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          const exportedName = specifier.exported.name ?? literalString(specifier.exported);
+          const localName = specifier.local.name ?? literalString(specifier.local);
+          if (exportedName && localName) exportedBindings.push({ exportedName, localName });
+        }
+      },
+      ExportDefaultDeclaration: (node) => {
+        const declaration = node.declaration;
+        const localName =
+          declaration?.type === "Identifier" ||
+          declaration?.type === "FunctionDeclaration" ||
+          declaration?.type === "ClassDeclaration"
+            ? declaration.id?.name ?? declaration.name
+            : null;
+        if (localName) exportedBindings.push({ exportedName: "default", localName });
+      },
     });
+    javascriptModuleExports.set(relativePath, exportedBindings);
 
+    const localBindingsByScope = new Map();
+    const functionScopeTypes = new Set([
+      "FunctionDeclaration",
+      "FunctionExpression",
+      "ArrowFunctionExpression",
+    ]);
+    const blockScopeTypes = new Set([
+      "Program",
+      "BlockStatement",
+      "StaticBlock",
+      "SwitchStatement",
+      "ForStatement",
+      "ForInStatement",
+      "ForOfStatement",
+      "CatchClause",
+    ]);
+    const patternNames = (pattern) => {
+      if (!pattern) return [];
+      if (pattern.type === "Identifier") return [pattern.name];
+      if (pattern.type === "RestElement") return patternNames(pattern.argument);
+      if (pattern.type === "AssignmentPattern") return patternNames(pattern.left);
+      if (pattern.type === "ArrayPattern") return pattern.elements.flatMap(patternNames);
+      if (pattern.type === "ObjectPattern") {
+        return pattern.properties.flatMap((property) =>
+          property.type === "RestElement" ? patternNames(property.argument) : patternNames(property.value),
+        );
+      }
+      return [];
+    };
+    const nearestDeclarationScope = (ancestors, { functionScoped = false } = {}) => {
+      for (let index = ancestors.length - 2; index >= 0; index -= 1) {
+        const candidate = ancestors[index];
+        if (candidate.type === "Program" || functionScopeTypes.has(candidate.type)) return candidate;
+        if (!functionScoped && blockScopeTypes.has(candidate.type)) return candidate;
+      }
+      return ast;
+    };
+    const bindLocal = (scope, name, symbolId = null) => {
+      const bindings = localBindingsByScope.get(scope) ?? new Map();
+      bindings.set(name, symbolId);
+      localBindingsByScope.set(scope, bindings);
+    };
+    const bindParameters = (node) => {
+      for (const name of node.params.flatMap(patternNames)) bindLocal(node, name);
+    };
+    ancestor(ast, {
+      FunctionDeclaration: (node, _state, ancestors) => {
+        if (node.id?.name) {
+          bindLocal(nearestDeclarationScope(ancestors), node.id.name, symbolByNode.get(node));
+        }
+        bindParameters(node);
+      },
+      FunctionExpression: (node) => {
+        if (node.id?.name) bindLocal(node, node.id.name, symbolByNode.get(node));
+        bindParameters(node);
+      },
+      ArrowFunctionExpression: (node) => {
+        bindParameters(node);
+      },
+      ClassDeclaration: (node, _state, ancestors) => {
+        if (node.id?.name) {
+          bindLocal(nearestDeclarationScope(ancestors), node.id.name, symbolByNode.get(node));
+        }
+      },
+      VariableDeclarator: (node, _state, ancestors) => {
+        const declaration = ancestors.at(-2);
+        const scope = nearestDeclarationScope(ancestors, {
+          functionScoped: declaration?.type === "VariableDeclaration" && declaration.kind === "var",
+        });
+        for (const name of patternNames(node.id)) {
+          bindLocal(scope, name, node.id?.type === "Identifier" ? symbolByNode.get(node) : null);
+        }
+      },
+      CatchClause: (node) => {
+        for (const name of patternNames(node.param)) bindLocal(node, name);
+      },
+    });
+    const resolveLocalBinding = (name, ancestors) => {
+      for (let index = ancestors.length - 2; index >= 0; index -= 1) {
+        const bindings = localBindingsByScope.get(ancestors[index]);
+        if (bindings?.has(name)) return { found: true, symbolId: bindings.get(name) };
+      }
+      return { found: false, symbolId: null };
+    };
     const findCallingSymbol = (ancestors) => {
       for (let index = ancestors.length - 2; index >= 0; index -= 1) {
         const symbolId = symbolByNode.get(ancestors[index]);
@@ -535,8 +732,19 @@ export class JavaScriptProjectScanner {
             source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
           );
           const handler = node.arguments.at(-1);
-          if (handler?.type === "Identifier" && symbolByName.has(handler.name)) {
-            addEdge(endpointId, "IMPLEMENTED_BY", symbolByName.get(handler.name), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+          if (handler?.type === "Identifier") {
+            const localHandler = resolveLocalBinding(handler.name, ancestors);
+            if (localHandler.symbolId) {
+              addEdge(endpointId, "IMPLEMENTED_BY", localHandler.symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+            } else if (!localHandler.found && importedLocalNames.has(handler.name)) {
+              javascriptSymbolReferences.push({
+                fromArtifact: relativePath,
+                localName: handler.name,
+                subjectId: endpointId,
+                predicate: "IMPLEMENTED_BY",
+                source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+              });
+            }
           } else if (["ArrowFunctionExpression", "FunctionExpression"].includes(handler?.type)) {
             const handlerId = addSymbol(`${method.toUpperCase()} ${endpointPath} handler`, "route-handler", handler);
             symbolByNode.set(handler, handlerId);
@@ -544,8 +752,24 @@ export class JavaScriptProjectScanner {
           }
         }
         const calledName = calleeName(node.callee);
-        if (callingSymbolId && calledName && symbolByName.has(calledName)) {
-          addEdge(callingSymbolId, "CALLS", symbolByName.get(calledName), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+        const localCall = node.callee?.type === "Identifier"
+          ? resolveLocalBinding(node.callee.name, ancestors)
+          : { found: false, symbolId: null };
+        if (callingSymbolId && localCall.symbolId) {
+          addEdge(callingSymbolId, "CALLS", localCall.symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+        } else if (
+          callingSymbolId &&
+          !localCall.found &&
+          node.callee?.type === "Identifier" &&
+          importedLocalNames.has(node.callee.name)
+        ) {
+          javascriptSymbolReferences.push({
+            fromArtifact: relativePath,
+            localName: node.callee.name,
+            subjectId: callingSymbolId,
+            predicate: "CALLS",
+            source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+          });
         }
         if (callingSymbolId && calledName && /(?:require|check|assert|enforce).*(?:role|permission)|authori[sz]e|canAccess/i.test(calledName)) {
           const permissionId = addNode(
@@ -569,7 +793,7 @@ export class JavaScriptProjectScanner {
             localReferences.push({
               fromArtifact: relativePath,
               specifier,
-              importedNames: [],
+              bindings: [],
               source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
             });
           }

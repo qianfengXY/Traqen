@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { JavaScriptProjectScanner } from "../src/scanner/index.js";
 
@@ -115,6 +116,119 @@ test("scanner produces locatable code, API, SQL, config, dependency, and test fa
   });
   assert.equal(repeated.sourceDigest, bundle.sourceDigest);
   assert.equal(repeated.id, bundle.id);
+});
+
+test("scanner connects JavaScript calls, route handlers, and tests through ESM imports", async () => {
+  const rootPath = fileURLToPath(new URL("./fixtures/javascript-cross-file", import.meta.url));
+  const scanner = new JavaScriptProjectScanner({ clock: fixedClock });
+  const bundle = await scanner.scan({
+    projectId: "PROJECT-JS-MODULES",
+    snapshotManifestId: "SNAPSHOT-JS-MODULES",
+    sourceComponentId: "SOURCE-JS-MODULES",
+    rootPath,
+  });
+
+  const symbol = (artifact, name) =>
+    bundle.nodes.find(
+      (node) =>
+        node.type === "CODE_SYMBOL" &&
+        node.source.artifact === artifact &&
+        node.name === name,
+    );
+  const loadOrder = symbol("src/order-service.js", "loadOrder");
+  const getOrder = symbol("src/order-controller.js", "getOrder");
+  const runAudit = symbol("src/audit-runner.js", "runAudit");
+  const internalAudit = symbol("src/internal-audit.js", "auditOrder");
+  const endpoint = bundle.nodes.find(
+    (node) => node.type === "ENDPOINT" && node.name === "GET /orders/:id",
+  );
+  const findAccount = symbol("src/default-service.js", "findAccount");
+  const outer = symbol("src/shadowing.js", "outer");
+  const run = symbol("src/shadowing.js", "run");
+  const localHelper = symbol("src/shadowing.js", "helper");
+  const defaultImportTest = bundle.nodes.find(
+    (node) =>
+      node.type === "TEST_ASSET" &&
+      node.source.artifact === "test/default-service.test.js",
+  );
+
+  assert.ok(loadOrder);
+  assert.ok(getOrder);
+  assert.ok(runAudit);
+  assert.ok(internalAudit);
+  assert.ok(endpoint);
+  assert.ok(findAccount);
+  assert.ok(outer);
+  assert.ok(run);
+  assert.ok(localHelper);
+  assert.ok(defaultImportTest);
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === getOrder.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === loadOrder.id,
+    ),
+    "an aliased named import should resolve to the exported implementation symbol",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === endpoint.id &&
+        edge.predicate === "IMPLEMENTED_BY" &&
+        edge.objectId === getOrder.id,
+    ),
+    "an imported route handler should resolve to its exported implementation symbol",
+  );
+  assert.equal(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === runAudit.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === internalAudit.id,
+    ),
+    false,
+    "the scanner must not link an import to a same-named symbol that is not exported",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === defaultImportTest.id &&
+        edge.predicate === "EXERCISES" &&
+        edge.objectId === findAccount.id &&
+        edge.attributes.basis === "ESM_STATIC_IMPORT" &&
+        edge.attributes.importKind === "DEFAULT",
+    ),
+    "default imports should produce accurately classified test-to-symbol evidence",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === outer.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === localHelper.id,
+    ),
+    "a declaration in the calling scope should shadow an imported binding",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === run.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === loadOrder.id,
+    ),
+    "a nested declaration outside the calling scope must not suppress an imported binding",
+  );
+  assert.equal(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === run.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === localHelper.id,
+    ),
+    false,
+    "a nested declaration outside the calling scope must not create a false local edge",
+  );
 });
 
 test("scanner uses the Java AST to connect Spring API design, implementation, configuration, and calls", async () => {
