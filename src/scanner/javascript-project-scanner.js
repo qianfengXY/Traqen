@@ -447,7 +447,6 @@ export class JavaScriptProjectScanner {
         return;
       }
     }
-    const symbolByName = new Map();
     const symbolByNode = new Map();
     const naturalKeyBySymbolId = new Map();
     const exportedBindings = [];
@@ -461,7 +460,6 @@ export class JavaScriptProjectScanner {
         { language: "javascript", kind, ...extraAttributes },
         source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
       );
-      symbolByName.set(name, symbolId);
       symbolByNode.set(node, symbolId);
       naturalKeyBySymbolId.set(symbolId, naturalKey);
       addEdge(artifactId, "CONTAINS", symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
@@ -580,6 +578,90 @@ export class JavaScriptProjectScanner {
     });
     javascriptModuleExports.set(relativePath, exportedBindings);
 
+    const localBindingsByScope = new Map();
+    const functionScopeTypes = new Set([
+      "FunctionDeclaration",
+      "FunctionExpression",
+      "ArrowFunctionExpression",
+    ]);
+    const blockScopeTypes = new Set([
+      "Program",
+      "BlockStatement",
+      "StaticBlock",
+      "SwitchStatement",
+      "ForStatement",
+      "ForInStatement",
+      "ForOfStatement",
+      "CatchClause",
+    ]);
+    const patternNames = (pattern) => {
+      if (!pattern) return [];
+      if (pattern.type === "Identifier") return [pattern.name];
+      if (pattern.type === "RestElement") return patternNames(pattern.argument);
+      if (pattern.type === "AssignmentPattern") return patternNames(pattern.left);
+      if (pattern.type === "ArrayPattern") return pattern.elements.flatMap(patternNames);
+      if (pattern.type === "ObjectPattern") {
+        return pattern.properties.flatMap((property) =>
+          property.type === "RestElement" ? patternNames(property.argument) : patternNames(property.value),
+        );
+      }
+      return [];
+    };
+    const nearestDeclarationScope = (ancestors, { functionScoped = false } = {}) => {
+      for (let index = ancestors.length - 2; index >= 0; index -= 1) {
+        const candidate = ancestors[index];
+        if (candidate.type === "Program" || functionScopeTypes.has(candidate.type)) return candidate;
+        if (!functionScoped && blockScopeTypes.has(candidate.type)) return candidate;
+      }
+      return ast;
+    };
+    const bindLocal = (scope, name, symbolId = null) => {
+      const bindings = localBindingsByScope.get(scope) ?? new Map();
+      bindings.set(name, symbolId);
+      localBindingsByScope.set(scope, bindings);
+    };
+    const bindParameters = (node) => {
+      for (const name of node.params.flatMap(patternNames)) bindLocal(node, name);
+    };
+    ancestor(ast, {
+      FunctionDeclaration: (node, _state, ancestors) => {
+        if (node.id?.name) {
+          bindLocal(nearestDeclarationScope(ancestors), node.id.name, symbolByNode.get(node));
+        }
+        bindParameters(node);
+      },
+      FunctionExpression: (node) => {
+        if (node.id?.name) bindLocal(node, node.id.name, symbolByNode.get(node));
+        bindParameters(node);
+      },
+      ArrowFunctionExpression: (node) => {
+        bindParameters(node);
+      },
+      ClassDeclaration: (node, _state, ancestors) => {
+        if (node.id?.name) {
+          bindLocal(nearestDeclarationScope(ancestors), node.id.name, symbolByNode.get(node));
+        }
+      },
+      VariableDeclarator: (node, _state, ancestors) => {
+        const declaration = ancestors.at(-2);
+        const scope = nearestDeclarationScope(ancestors, {
+          functionScoped: declaration?.type === "VariableDeclaration" && declaration.kind === "var",
+        });
+        for (const name of patternNames(node.id)) {
+          bindLocal(scope, name, node.id?.type === "Identifier" ? symbolByNode.get(node) : null);
+        }
+      },
+      CatchClause: (node) => {
+        for (const name of patternNames(node.param)) bindLocal(node, name);
+      },
+    });
+    const resolveLocalBinding = (name, ancestors) => {
+      for (let index = ancestors.length - 2; index >= 0; index -= 1) {
+        const bindings = localBindingsByScope.get(ancestors[index]);
+        if (bindings?.has(name)) return { found: true, symbolId: bindings.get(name) };
+      }
+      return { found: false, symbolId: null };
+    };
     const findCallingSymbol = (ancestors) => {
       for (let index = ancestors.length - 2; index >= 0; index -= 1) {
         const symbolId = symbolByNode.get(ancestors[index]);
@@ -650,17 +732,19 @@ export class JavaScriptProjectScanner {
             source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
           );
           const handler = node.arguments.at(-1);
-          // Local declarations must win over imports so a shadowed binding cannot create a cross-file edge.
-          if (handler?.type === "Identifier" && symbolByName.has(handler.name)) {
-            addEdge(endpointId, "IMPLEMENTED_BY", symbolByName.get(handler.name), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
-          } else if (handler?.type === "Identifier" && importedLocalNames.has(handler.name)) {
-            javascriptSymbolReferences.push({
-              fromArtifact: relativePath,
-              localName: handler.name,
-              subjectId: endpointId,
-              predicate: "IMPLEMENTED_BY",
-              source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
-            });
+          if (handler?.type === "Identifier") {
+            const localHandler = resolveLocalBinding(handler.name, ancestors);
+            if (localHandler.symbolId) {
+              addEdge(endpointId, "IMPLEMENTED_BY", localHandler.symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+            } else if (!localHandler.found && importedLocalNames.has(handler.name)) {
+              javascriptSymbolReferences.push({
+                fromArtifact: relativePath,
+                localName: handler.name,
+                subjectId: endpointId,
+                predicate: "IMPLEMENTED_BY",
+                source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+              });
+            }
           } else if (["ArrowFunctionExpression", "FunctionExpression"].includes(handler?.type)) {
             const handlerId = addSymbol(`${method.toUpperCase()} ${endpointPath} handler`, "route-handler", handler);
             symbolByNode.set(handler, handlerId);
@@ -668,11 +752,14 @@ export class JavaScriptProjectScanner {
           }
         }
         const calledName = calleeName(node.callee);
-        // Preserve local-first resolution: the import branch is safe only after local shadowing is excluded.
-        if (callingSymbolId && calledName && symbolByName.has(calledName)) {
-          addEdge(callingSymbolId, "CALLS", symbolByName.get(calledName), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+        const localCall = node.callee?.type === "Identifier"
+          ? resolveLocalBinding(node.callee.name, ancestors)
+          : { found: false, symbolId: null };
+        if (callingSymbolId && localCall.symbolId) {
+          addEdge(callingSymbolId, "CALLS", localCall.symbolId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
         } else if (
           callingSymbolId &&
+          !localCall.found &&
           node.callee?.type === "Identifier" &&
           importedLocalNames.has(node.callee.name)
         ) {

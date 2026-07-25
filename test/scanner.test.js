@@ -143,6 +143,9 @@ test("scanner connects JavaScript calls, route handlers, and tests through ESM i
     (node) => node.type === "ENDPOINT" && node.name === "GET /orders/:id",
   );
   const findAccount = symbol("src/default-service.js", "findAccount");
+  const outer = symbol("src/shadowing.js", "outer");
+  const run = symbol("src/shadowing.js", "run");
+  const localHelper = symbol("src/shadowing.js", "helper");
   const defaultImportTest = bundle.nodes.find(
     (node) =>
       node.type === "TEST_ASSET" &&
@@ -155,6 +158,9 @@ test("scanner connects JavaScript calls, route handlers, and tests through ESM i
   assert.ok(internalAudit);
   assert.ok(endpoint);
   assert.ok(findAccount);
+  assert.ok(outer);
+  assert.ok(run);
+  assert.ok(localHelper);
   assert.ok(defaultImportTest);
   assert.ok(
     bundle.edges.some(
@@ -194,6 +200,34 @@ test("scanner connects JavaScript calls, route handlers, and tests through ESM i
         edge.attributes.importKind === "DEFAULT",
     ),
     "default imports should produce accurately classified test-to-symbol evidence",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === outer.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === localHelper.id,
+    ),
+    "a declaration in the calling scope should shadow an imported binding",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === run.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === loadOrder.id,
+    ),
+    "a nested declaration outside the calling scope must not suppress an imported binding",
+  );
+  assert.equal(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === run.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === localHelper.id,
+    ),
+    false,
+    "a nested declaration outside the calling scope must not create a false local edge",
   );
 });
 
