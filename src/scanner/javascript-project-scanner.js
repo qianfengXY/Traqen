@@ -174,6 +174,8 @@ export class JavaScriptProjectScanner {
     const edges = new Map();
     const fileRecords = [];
     const localReferences = [];
+    const javascriptModuleExports = new Map();
+    const javascriptSymbolReferences = [];
     const javaCallReferences = [];
 
     const addNode = (type, naturalKey, name, attributes, factSource) => {
@@ -268,6 +270,8 @@ export class JavaScriptProjectScanner {
           artifactId,
           diagnostics,
           localReferences,
+          javascriptModuleExports,
+          javascriptSymbolReferences,
         });
       }
       if (path.extname(file.relativePath).toLowerCase() === ".java") {
@@ -298,33 +302,87 @@ export class JavaScriptProjectScanner {
     }
 
     const artifactPaths = new Set(fileRecords.map((record) => record.path));
+    const javascriptSymbolsByArtifact = new Map();
+    for (const [id, node] of nodes.entries()) {
+      if (node.type !== "CODE_SYMBOL" || node.attributes?.language !== "javascript") continue;
+      const symbolsByName = javascriptSymbolsByArtifact.get(node.source.artifact) ?? new Map();
+      const symbols = symbolsByName.get(node.name) ?? [];
+      symbols.push({ id, node });
+      symbolsByName.set(node.name, symbols);
+      javascriptSymbolsByArtifact.set(node.source.artifact, symbolsByName);
+    }
+    const resolvedImportTargets = new Map();
     for (const reference of localReferences) {
       const targetArtifact = resolveLocalArtifact(reference.fromArtifact, reference.specifier, artifactPaths);
       if (!targetArtifact) continue;
       const sourceArtifactId = stableFactNodeId(projectId, "ARTIFACT", `artifact:${reference.fromArtifact}`);
       const targetArtifactId = stableFactNodeId(projectId, "ARTIFACT", `artifact:${targetArtifact}`);
       addEdge(sourceArtifactId, "DEPENDS_ON", targetArtifactId, {}, reference.source);
+      const resolvedSymbols = [];
+      const exportedBindings = javascriptModuleExports.get(targetArtifact) ?? [];
+      for (const binding of reference.bindings ?? []) {
+        const exportedLocalNames = [
+          ...new Set(
+            exportedBindings
+              .filter((candidate) => candidate.exportedName === binding.importedName)
+              .map((candidate) => candidate.localName),
+          ),
+        ];
+        if (exportedLocalNames.length !== 1) continue;
+        const candidates =
+          javascriptSymbolsByArtifact.get(targetArtifact)?.get(exportedLocalNames[0]) ?? [];
+        if (candidates.length !== 1) continue;
+        const resolved = {
+          ...candidates[0],
+          importedName: binding.importedName,
+          localName: binding.localName,
+          targetArtifact,
+        };
+        resolvedSymbols.push(resolved);
+        const key = canonicalJson({
+          fromArtifact: reference.fromArtifact,
+          localName: binding.localName,
+        });
+        const targets = resolvedImportTargets.get(key) ?? new Map();
+        targets.set(resolved.id, resolved);
+        resolvedImportTargets.set(key, targets);
+      }
       if (!isTestArtifact(reference.fromArtifact)) continue;
       const testAssetId = stableFactNodeId(projectId, "TEST_ASSET", `test:${reference.fromArtifact}`);
-      const exercisedSymbols = [...nodes.values()].filter(
-        (node) =>
-          node.type === "CODE_SYMBOL" &&
-          node.source.artifact === targetArtifact &&
-          reference.importedNames.includes(node.name),
-      );
-      if (exercisedSymbols.length === 0) {
+      if (resolvedSymbols.length === 0) {
         addEdge(testAssetId, "EXERCISES", targetArtifactId, { basis: "STATIC_IMPORT" }, reference.source);
       } else {
-        for (const symbol of exercisedSymbols) {
+        for (const symbol of resolvedSymbols) {
           addEdge(
             testAssetId,
             "EXERCISES",
-            stableFactNodeId(projectId, symbol.type, symbol.naturalKey),
+            symbol.id,
             { basis: "NAMED_STATIC_IMPORT" },
             reference.source,
           );
         }
       }
+    }
+    for (const reference of javascriptSymbolReferences) {
+      const key = canonicalJson({
+        fromArtifact: reference.fromArtifact,
+        localName: reference.localName,
+      });
+      const targets = [...(resolvedImportTargets.get(key)?.values() ?? [])];
+      if (targets.length !== 1) continue;
+      const target = targets[0];
+      addEdge(
+        reference.subjectId,
+        reference.predicate,
+        target.id,
+        {
+          basis: "JAVASCRIPT_ESM_IMPORT",
+          importedName: target.importedName,
+          localName: target.localName,
+          targetArtifact: target.targetArtifact,
+        },
+        reference.source,
+      );
     }
 
     const javaMethods = [...nodes.entries()]
@@ -373,6 +431,8 @@ export class JavaScriptProjectScanner {
     artifactId,
     diagnostics,
     localReferences,
+    javascriptModuleExports,
+    javascriptSymbolReferences,
   }) {
     let ast;
     try {
@@ -388,6 +448,8 @@ export class JavaScriptProjectScanner {
     const symbolByName = new Map();
     const symbolByNode = new Map();
     const naturalKeyBySymbolId = new Map();
+    const exportedBindings = [];
+    const importedLocalNames = new Set();
     const addSymbol = (name, kind, node, extraAttributes = {}) => {
       const naturalKey = `javascript:${relativePath}:${name}`;
       const symbolId = addNode(
@@ -442,13 +504,25 @@ export class JavaScriptProjectScanner {
         const specifier = literalString(node.source);
         if (!specifier) return;
         if (specifier.startsWith(".")) {
+          const bindings = node.specifiers
+            .map((item) => {
+              if (item.type === "ImportSpecifier") {
+                const importedName = item.imported.name ?? literalString(item.imported);
+                return importedName
+                  ? { importedName, localName: item.local.name, kind: "NAMED" }
+                  : null;
+              }
+              if (item.type === "ImportDefaultSpecifier") {
+                return { importedName: "default", localName: item.local.name, kind: "DEFAULT" };
+              }
+              return null;
+            })
+            .filter(Boolean);
+          for (const binding of bindings) importedLocalNames.add(binding.localName);
           localReferences.push({
             fromArtifact: relativePath,
             specifier,
-            importedNames: node.specifiers
-              .filter((item) => item.type === "ImportSpecifier")
-              .map((item) => item.imported.name ?? literalString(item.imported))
-              .filter(Boolean),
+            bindings,
             source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
           });
           return;
@@ -463,7 +537,46 @@ export class JavaScriptProjectScanner {
         );
         addEdge(artifactId, "DEPENDS_ON", dependencyId, {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
       },
+      ExportNamedDeclaration: (node) => {
+        if (node.source) return;
+        if (node.declaration?.type === "FunctionDeclaration" || node.declaration?.type === "ClassDeclaration") {
+          if (node.declaration.id?.name) {
+            exportedBindings.push({
+              exportedName: node.declaration.id.name,
+              localName: node.declaration.id.name,
+            });
+          }
+          return;
+        }
+        if (node.declaration?.type === "VariableDeclaration") {
+          for (const declaration of node.declaration.declarations) {
+            if (declaration.id?.type === "Identifier") {
+              exportedBindings.push({
+                exportedName: declaration.id.name,
+                localName: declaration.id.name,
+              });
+            }
+          }
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          const exportedName = specifier.exported.name ?? literalString(specifier.exported);
+          const localName = specifier.local.name ?? literalString(specifier.local);
+          if (exportedName && localName) exportedBindings.push({ exportedName, localName });
+        }
+      },
+      ExportDefaultDeclaration: (node) => {
+        const declaration = node.declaration;
+        const localName =
+          declaration?.type === "Identifier" ||
+          declaration?.type === "FunctionDeclaration" ||
+          declaration?.type === "ClassDeclaration"
+            ? declaration.id?.name ?? declaration.name
+            : null;
+        if (localName) exportedBindings.push({ exportedName: "default", localName });
+      },
     });
+    javascriptModuleExports.set(relativePath, exportedBindings);
 
     const findCallingSymbol = (ancestors) => {
       for (let index = ancestors.length - 2; index >= 0; index -= 1) {
@@ -537,6 +650,14 @@ export class JavaScriptProjectScanner {
           const handler = node.arguments.at(-1);
           if (handler?.type === "Identifier" && symbolByName.has(handler.name)) {
             addEdge(endpointId, "IMPLEMENTED_BY", symbolByName.get(handler.name), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+          } else if (handler?.type === "Identifier" && importedLocalNames.has(handler.name)) {
+            javascriptSymbolReferences.push({
+              fromArtifact: relativePath,
+              localName: handler.name,
+              subjectId: endpointId,
+              predicate: "IMPLEMENTED_BY",
+              source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+            });
           } else if (["ArrowFunctionExpression", "FunctionExpression"].includes(handler?.type)) {
             const handlerId = addSymbol(`${method.toUpperCase()} ${endpointPath} handler`, "route-handler", handler);
             symbolByNode.set(handler, handlerId);
@@ -546,6 +667,18 @@ export class JavaScriptProjectScanner {
         const calledName = calleeName(node.callee);
         if (callingSymbolId && calledName && symbolByName.has(calledName)) {
           addEdge(callingSymbolId, "CALLS", symbolByName.get(calledName), {}, source(relativePath, contentHash, node.loc.start.line, node.loc.end.line));
+        } else if (
+          callingSymbolId &&
+          node.callee?.type === "Identifier" &&
+          importedLocalNames.has(node.callee.name)
+        ) {
+          javascriptSymbolReferences.push({
+            fromArtifact: relativePath,
+            localName: node.callee.name,
+            subjectId: callingSymbolId,
+            predicate: "CALLS",
+            source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
+          });
         }
         if (callingSymbolId && calledName && /(?:require|check|assert|enforce).*(?:role|permission)|authori[sz]e|canAccess/i.test(calledName)) {
           const permissionId = addNode(
@@ -569,7 +702,7 @@ export class JavaScriptProjectScanner {
             localReferences.push({
               fromArtifact: relativePath,
               specifier,
-              importedNames: [],
+              bindings: [],
               source: source(relativePath, contentHash, node.loc.start.line, node.loc.end.line),
             });
           }

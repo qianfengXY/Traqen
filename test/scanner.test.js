@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { JavaScriptProjectScanner } from "../src/scanner/index.js";
 
@@ -115,6 +116,66 @@ test("scanner produces locatable code, API, SQL, config, dependency, and test fa
   });
   assert.equal(repeated.sourceDigest, bundle.sourceDigest);
   assert.equal(repeated.id, bundle.id);
+});
+
+test("scanner connects JavaScript calls and route handlers through named ESM imports", async () => {
+  const rootPath = fileURLToPath(new URL("./fixtures/javascript-cross-file", import.meta.url));
+  const scanner = new JavaScriptProjectScanner({ clock: fixedClock });
+  const bundle = await scanner.scan({
+    projectId: "PROJECT-JS-MODULES",
+    snapshotManifestId: "SNAPSHOT-JS-MODULES",
+    sourceComponentId: "SOURCE-JS-MODULES",
+    rootPath,
+  });
+
+  const symbol = (artifact, name) =>
+    bundle.nodes.find(
+      (node) =>
+        node.type === "CODE_SYMBOL" &&
+        node.source.artifact === artifact &&
+        node.name === name,
+    );
+  const loadOrder = symbol("src/order-service.js", "loadOrder");
+  const getOrder = symbol("src/order-controller.js", "getOrder");
+  const runAudit = symbol("src/audit-runner.js", "runAudit");
+  const internalAudit = symbol("src/internal-audit.js", "auditOrder");
+  const endpoint = bundle.nodes.find(
+    (node) => node.type === "ENDPOINT" && node.name === "GET /orders/:id",
+  );
+
+  assert.ok(loadOrder);
+  assert.ok(getOrder);
+  assert.ok(runAudit);
+  assert.ok(internalAudit);
+  assert.ok(endpoint);
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === getOrder.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === loadOrder.id,
+    ),
+    "an aliased named import should resolve to the exported implementation symbol",
+  );
+  assert.ok(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === endpoint.id &&
+        edge.predicate === "IMPLEMENTED_BY" &&
+        edge.objectId === getOrder.id,
+    ),
+    "an imported route handler should resolve to its exported implementation symbol",
+  );
+  assert.equal(
+    bundle.edges.some(
+      (edge) =>
+        edge.subjectId === runAudit.id &&
+        edge.predicate === "CALLS" &&
+        edge.objectId === internalAudit.id,
+    ),
+    false,
+    "the scanner must not link an import to a same-named symbol that is not exported",
+  );
 });
 
 test("scanner uses the Java AST to connect Spring API design, implementation, configuration, and calls", async () => {
