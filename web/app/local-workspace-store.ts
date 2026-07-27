@@ -29,7 +29,7 @@ export type LocalWorkspaceAnalysisRunCheckpoint = {
   rootName: string;
   mode: "FULL" | "INCREMENTAL";
   engine: "HYBRID";
-  status: "RUNNING" | "PAUSED";
+  status: "RUNNING" | "PAUSED" | "FAILED";
   phase: "SCANNING" | "MODEL_ENRICHMENT";
   modelProfileId: string;
   completedModelBatchCount: number;

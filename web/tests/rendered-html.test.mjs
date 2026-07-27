@@ -42,13 +42,14 @@ test("server-renders the Traqen proof-chain product surface", async () => {
 });
 
 test("keeps real API loading explicit and ships no disposable preview surface", async () => {
-  const [page, product, modelClient, analyzer, workspaceStatistics, workspaceStore, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
+  const [page, product, modelClient, analyzer, workspaceStatistics, workspaceStore, workspaceRunLifecycle, detailModel, layout, viteConfig, packageJson, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/analysis-model-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-analysis.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-statistics.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/local-workspace-store.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/local-workspace-run-lifecycle.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/trace-detail-model.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../vite.config.ts", import.meta.url), "utf8"),
@@ -142,6 +143,25 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /navigateToView/);
   assert.match(product, /已恢复持久化检查点/);
   assert.match(product, /继续分析/);
+  assert.match(product, /planLocalWorkspaceAnalysisRunRecovery/);
+  assert.match(product, /recovery\.shouldAutoResume/);
+  assert.match(product, /resumeWorkspaceAnalysisAfterRefresh/);
+  assert.match(product, /await continueWorkspaceAnalysis\(\)/);
+  assert.match(product, /await scanWorkspace\(files, rootName, checkpoint\)/);
+  assert.match(workspaceRunLifecycle, /checkpoint\.status === "RUNNING"/);
+  assert.match(product, /自动接续/);
+  assert.match(product, /async function pauseWorkspaceAnalysis/);
+  assert.match(product, /activeRun\.status !== "RUNNING"/);
+  assert.match(product, /setRunCheckpointReady\(true\)/);
+  assert.match(product, /scanning && runCheckpointReady/);
+  assert.ok(
+    product.indexOf("await saveLocalWorkspaceAnalysisRun(runningCheckpoint)") <
+      product.indexOf("setRunCheckpointReady(true)"),
+    "the pause control must not become available until the RUNNING checkpoint is durable",
+  );
+  assert.match(product, /status: "FAILED" as const/);
+  assert.match(product, /已完成工作单元不会重新规划或分析/);
+  assert.doesNotMatch(product, /phase: "PAUSED",\s*status: "PAUSED"/);
   assert.doesNotMatch(product, /选择原目录并继续/);
   assert.match(product, /loadLocalWorkspaceDirectoryHandle/);
   assert.match(product, /saveLocalWorkspaceDirectoryHandle/);

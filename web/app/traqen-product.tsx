@@ -1,12 +1,13 @@
 "use client";
 
 import cytoscape from "cytoscape";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 
 import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, listAnalysisModelProfiles, planWorkspaceAnalysis, reconcileWorkspaceAgentBatch, removeAnalysisModelProfile, selectAnalysisModelProfile, verifyConfiguredAnalysisModel, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule, type AnalysisModelProfile, type AnalysisModelTelemetryEvent, type WorkspaceAnalysisPlan } from "./analysis-model-client";
 import { changedTraqenArtifacts, currentTraqenArtifacts, type DesignDocument, type EnvironmentConfiguration, type FeatureDescriptionDocument, type HumanConfirmation, type ScenarioTestResult, type TestCaseDefinition, type TestDesign, type TraceDetailArtifacts } from "./trace-detail-model";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, localWorkspaceAnalysisForTreeMode, localWorkspaceEvidencePolicyVersion, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile, type LocalCandidate, type LocalCandidateTreeMode, type LocalCandidateTreeNode, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord, type LocalWorkspaceInputFile } from "./local-workspace-analysis";
 import { createLocalWorkspaceCandidateGraph } from "./local-workspace-graph";
+import { planLocalWorkspaceAnalysisRunRecovery } from "./local-workspace-run-lifecycle";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceAnalysisRunSummary, loadLocalWorkspaceDirectoryHandle, loadLocalWorkspaceProject, loadLocalWorkspaceProjectRecords, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceDirectoryHandle, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
@@ -2155,6 +2156,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const directoryNameRef = useRef(directoryName);
   const pauseRequestedRef = useRef(false);
   const [scanning, setScanning] = useState(false);
+  const [runCheckpointReady, setRunCheckpointReady] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ completed: number; total: number } | null>(null);
   const [message, setMessage] = useState("");
   const [analysisTask, setAnalysisTask] = useState<LocalAnalysisTask | null>(null);
@@ -2175,6 +2177,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const mainTranscriptRef = useRef<HTMLDivElement | null>(null);
   const subAgentTranscriptRefs = useRef<Partial<Record<LocalSubAgent["id"], HTMLDivElement | null>>>({});
   const sessionProjectIdRef = useRef(projectId);
+  const autoResumeRunRef = useRef("");
 
   useEffect(() => { selectedFilesRef.current = selectedFiles; }, [selectedFiles]);
   useEffect(() => { directoryNameRef.current = directoryName; }, [directoryName]);
@@ -2189,83 +2192,6 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     }).catch(() => undefined);
     return () => { cancelled = true; };
   }, [projectId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const projectChanged = sessionProjectIdRef.current !== projectId;
-    sessionProjectIdRef.current = projectId;
-    if (projectChanged) {
-      analysisTaskRef.current = null;
-      setAnalysisTask(null);
-      setMainModelMessage("");
-      setMainModelStreaming(false);
-      setScanProgress(null);
-      setMessage("");
-      setResumableCheckpoint(null);
-      setProgressAnalysis(null);
-      onProgressAnalysis(null);
-      setSubAgents(([1, 2, 3] as const).map((slot) => ({
-        id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
-      })));
-    }
-    void loadLocalWorkspaceAnalysisRunSummary(projectId).then(async (checkpoint) => {
-      if (cancelled || !checkpoint || analysisTaskRef.current?.projectId === projectId) return;
-      const modelPhase = checkpoint.phase === "MODEL_ENRICHMENT";
-      const completed = modelPhase ? checkpoint.completedModelBatchCount : checkpoint.completedFileCount;
-      const total = modelPhase ? checkpoint.totalModelBatchCount : checkpoint.plannedFileCount;
-      const overallProgress = modelPhase
-        ? 55 + Math.round((completed / Math.max(1, total)) * 40)
-        : Math.min(55, Math.round((completed / Math.max(1, total)) * 55));
-      const restoredAt = Date.parse(checkpoint.updatedAt) || Date.now();
-      const startedAt = Date.parse(checkpoint.startedAt) || restoredAt;
-      const restoredTask: LocalAnalysisTask = {
-        id: checkpoint.id,
-        projectId,
-        title: t(`恢复 Workspace“${workspaceName}”的分析进度`, `Restore analysis progress for Workspace “${workspaceName}”`),
-        mode: checkpoint.mode,
-        phase: "PAUSED",
-        status: "PAUSED",
-        model: analysisModelProfile?.id === checkpoint.modelProfileId ? analysisModelProfile.model : checkpoint.modelProfileId,
-        profileId: checkpoint.modelProfileId,
-        stream: analysisModelProfile?.id === checkpoint.modelProfileId ? analysisModelProfile.stream : false,
-        startedAt,
-        endedAt: restoredAt,
-        overallProgress,
-        phaseCompleted: completed,
-        phaseTotal: total,
-        modelCallsCompleted: checkpoint.completedModelBatchCount,
-        modelCallsTotal: checkpoint.totalModelBatchCount,
-        activeRequestId: null,
-        inputCharacters: 0,
-        outputCharacters: 0,
-        totalTokens: null,
-        currentWork: t("已恢复检查点，点击继续分析即可恢复任务", "Checkpoint restored; select Continue analysis to resume"),
-        activeSubtask: null,
-        events: [{
-          id: `${restoredAt}:restored`, at: restoredAt, phase: "PAUSED", role: "WORKSPACE", kind: "WARNING",
-          message: t(`已恢复持久化检查点：${modelPhase ? "模型工作单元" : "工程文件"}完成 ${completed.toLocaleString()} / ${total.toLocaleString()}。任务保持暂停，点击“继续分析”即可从该检查点恢复。`, `A persisted checkpoint was restored: ${completed.toLocaleString()} / ${total.toLocaleString()} ${modelPhase ? "model work units" : "project files"} completed. The task remains paused; select Continue analysis to resume from this checkpoint.`),
-        }],
-      };
-      analysisTaskRef.current = restoredTask;
-      setAnalysisTask(restoredTask);
-      setResumableCheckpoint(checkpoint);
-      const cachedPreviewIsCurrent = checkpoint.analysis
-        && checkpoint.scannerVersion === localWorkspaceScannerVersion
-        && checkpoint.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion;
-      const fullCheckpoint = cachedPreviewIsCurrent || checkpoint.records.length > 0
-        ? checkpoint
-        : await loadLocalWorkspaceAnalysisRun(projectId) ?? checkpoint;
-      const preview = cachedPreviewIsCurrent ? checkpoint.analysis : (() => {
-        const previewRecords = new Map(fileRecords.map((record) => [record.path, record]));
-        for (const record of fullCheckpoint.records) previewRecords.set(record.path, record);
-        return analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] });
-      })();
-      setProgressAnalysis(preview);
-      onProgressAnalysis(preview);
-      setMessage(t(`已恢复分析进度 ${completed.toLocaleString()} / ${total.toLocaleString()}；点击“继续分析”恢复任务。`, `Restored analysis progress ${completed.toLocaleString()} / ${total.toLocaleString()}; select Continue analysis to resume.`));
-    }).catch(() => undefined);
-    return () => { cancelled = true; };
-  }, [analysisModelProfile?.id, analysisModelProfile?.model, analysisModelProfile?.stream, fileRecords, onProgressAnalysis, projectId, t, workspaceName]);
 
   useEffect(() => {
     analysisTaskRef.current = analysisTask;
@@ -2517,7 +2443,17 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       files = restored.files;
       rootName = restored.rootName;
     }
-    await scanWorkspace(files, rootName);
+    await scanWorkspace(files, rootName, checkpoint);
+  }
+
+  async function pauseWorkspaceAnalysis() {
+    pauseRequestedRef.current = true;
+    setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…"));
+    const activeRun = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
+    if (!activeRun || activeRun.status !== "RUNNING") return;
+    const pausedCheckpoint = { ...activeRun, status: "PAUSED" as const, updatedAt: new Date().toISOString() };
+    await saveLocalWorkspaceAnalysisRun(pausedCheckpoint);
+    setResumableCheckpoint(pausedCheckpoint);
   }
 
   async function scanWorkspace(analysisFiles = selectedFilesRef.current, analysisDirectoryName = directoryNameRef.current, resumeCheckpoint?: LocalWorkspaceAnalysisRunCheckpoint) {
@@ -2532,6 +2468,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       return;
     }
     setScanning(true);
+    setRunCheckpointReady(false);
     pauseRequestedRef.current = false;
     setMessage("");
     const taskStartedAt = Date.now();
@@ -2543,16 +2480,16 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
     })));
     const nextAnalysisTask: LocalAnalysisTask = {
-      id: `LOCAL-ANALYSIS-${taskStartedAt}`,
+      id: resumeCheckpoint?.id ?? `LOCAL-ANALYSIS-${taskStartedAt}`,
       projectId,
       title: t(`分析 Workspace“${workspaceName}”并建立最新候选追溯`, `Analyze Workspace “${workspaceName}” and build its latest Candidate traceability`),
-      mode: analysis ? "INCREMENTAL" : "FULL",
+      mode: resumeCheckpoint?.mode ?? (analysis ? "INCREMENTAL" : "FULL"),
       phase: "SCANNING",
       status: "RUNNING",
       model: analysisModelProfile.model,
       profileId: analysisModelProfile.id,
       stream: analysisModelProfile.stream,
-      startedAt: taskStartedAt,
+      startedAt: resumeCheckpoint ? Date.parse(resumeCheckpoint.startedAt) || taskStartedAt : taskStartedAt,
       endedAt: null,
       overallProgress: 0,
       phaseCompleted: 0,
@@ -2606,10 +2543,6 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
         && activeRun.phase === "MODEL_ENRICHMENT"
         && activeRun.modelProfileId === analysisModelProfile.id
         && activeRun.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion);
-      const persistedFileRecords = resumeSavedScanSnapshot
-        ? activeRun.records
-        : fileRecords.length > 0 ? fileRecords : await loadLocalWorkspaceProjectRecords(projectId);
-      const previousRecords = new Map(persistedFileRecords.map((record) => [record.path, record]));
       const nextRecords: LocalWorkspaceFileRecord[] = [...reusableCheckpointRecords];
       const currentPaths = new Set(resumeSavedScanSnapshot ? activeRun.currentPaths : selectedEntries.map((entry) => entry.relativePath));
       const remainingEntries = selectedEntries.filter((entry) => !reusableCheckpointPaths.has(entry.relativePath));
@@ -2620,6 +2553,49 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       const runId = `${projectId}:ACTIVE`;
       const batchSize = 120;
       const completedFileBase = reusableCheckpointRecords.length;
+      const runningCheckpoint: LocalWorkspaceAnalysisRunCheckpoint = canResume && activeRun
+        ? {
+            ...activeRun,
+            status: "RUNNING" as const,
+            phase: resumeModelPhase ? "MODEL_ENRICHMENT" : "SCANNING",
+            modelProfileId: analysisModelProfile.id,
+            completedModelBatchCount: resumeModelPhase ? activeRun.completedModelBatchCount : 0,
+            totalModelBatchCount: resumeModelPhase ? activeRun.totalModelBatchCount : 0,
+            plannedFileCount: analysisFileCount,
+            completedFileCount: completedFileBase,
+            records: [...reusableCheckpointRecords],
+            currentPaths: [...currentPaths],
+            counters: { added, modified, unchanged },
+            updatedAt: new Date().toISOString(),
+          }
+        : {
+            id: runId,
+            projectId,
+            rootName: analysisDirectoryName,
+            mode: analysis ? "INCREMENTAL" : "FULL",
+            engine: "HYBRID",
+            status: "RUNNING" as const,
+            phase: "SCANNING",
+            modelProfileId: analysisModelProfile.id,
+            completedModelBatchCount: 0,
+            totalModelBatchCount: 0,
+            scannerVersion: localWorkspaceScannerVersion,
+            evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
+            plannedFileCount: analysisFileCount,
+            completedFileCount: 0,
+            records: [],
+            currentPaths: [...currentPaths],
+            counters: { added: 0, modified: 0, unchanged: 0 },
+            startedAt,
+            updatedAt: new Date().toISOString(),
+          };
+      await saveLocalWorkspaceAnalysisRun(runningCheckpoint);
+      setResumableCheckpoint(runningCheckpoint);
+      setRunCheckpointReady(true);
+      const persistedFileRecords = resumeSavedScanSnapshot
+        ? activeRun.records
+        : fileRecords.length > 0 ? fileRecords : await loadLocalWorkspaceProjectRecords(projectId);
+      const previousRecords = new Map(persistedFileRecords.map((record) => [record.path, record]));
       if (completedFileBase > 0) {
         const restoredPhase = resumeModelPhase ? "MODEL_ENRICHMENT" : "SCANNING";
         const restoredCompleted = resumeModelPhase ? activeRun.completedModelBatchCount : completedFileBase;
@@ -2784,7 +2760,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       const sourceManifest = workspaceSourceManifest(sourceFiles);
       const defaultAssignments: WorkspaceAnalysisPlan["taskAssignments"] = ([1, 2, 3] as const).map((slot) => ({ agentId: `SUB_AGENT_${slot}` as LocalSubAgent["id"], objective: t("识别所分配源码范围内的业务功能、API 行为与支撑实现，并核验证据边界", "Identify business capabilities, API behavior, and supporting implementation in the assigned source scope, then validate the evidence boundary"), moduleScopes: [] }));
       let orchestrationPlan: WorkspaceAnalysisPlan = { agentMessage: t("我会把有界工作单元分配给三个子 Agent 并行分析，并在每个结果返回后校验证据、保存检查点。", "I will assign bounded work units to three child Agents in parallel, validate evidence after every result, and save checkpoints."), taskAssignments: defaultAssignments };
-      if (modelBatches.length > 0) {
+      if (modelBatches.length > 0 && !resumeModelPhase) {
         try {
           orchestrationPlan = await planWorkspaceAnalysis(apiBase, apiToken, analysisModelProfile.id, {
             workspaceName,
@@ -2798,7 +2774,10 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       }
       setMainModelMessage(orchestrationPlan.agentMessage);
       setMainModelStreaming(false);
-      appendAnalysisTaskEvent("MODEL_ENRICHMENT", t("主 Agent 已采纳模型规划，并启动三个并行子 Agent 会话。", "The Main Agent accepted the model plan and started three parallel child-Agent sessions."), { currentWork: t("主 Agent 已启动三个子 Agent", "The Main Agent started three child Agents") }, { role: "AGENT", kind: "PLAN" });
+      appendAnalysisTaskEvent("MODEL_ENRICHMENT", resumeModelPhase
+        ? t("主 Agent 已从同一运行的持久检查点重建剩余队列；已完成工作单元不会重新规划或分析。", "The Main Agent rebuilt only the remaining queues from the persisted checkpoint of the same run; completed work units will not be planned or analyzed again.")
+        : t("主 Agent 已采纳模型规划，并启动三个并行子 Agent 会话。", "The Main Agent accepted the model plan and started three parallel child-Agent sessions."),
+      { currentWork: resumeModelPhase ? t("从检查点调度剩余工作单元", "Scheduling only the remaining checkpoint work") : t("主 Agent 已启动三个子 Agent", "The Main Agent started three child Agents") }, { role: "AGENT", kind: "PLAN" });
       const queues = new Map<LocalSubAgent["id"], number[]>(defaultAssignments.map((assignment) => [assignment.agentId, []]));
       for (let index = 0; index < modelBatches.length; index += 1) {
         const batchScope = modelBatches[index].map((candidate) => workspaceSourceModule(candidate.sourcePath)).sort((left, right) => left.localeCompare(right))[0] ?? "root";
@@ -2953,15 +2932,15 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     } catch (error) {
       const activeRun = await loadLocalWorkspaceAnalysisRun(projectId).catch(() => undefined);
       if (activeRun) {
-        const pausedCheckpoint = { ...activeRun, status: "PAUSED" as const, updatedAt: new Date().toISOString() };
-        await saveLocalWorkspaceAnalysisRun(pausedCheckpoint).catch(() => undefined);
-        setResumableCheckpoint(pausedCheckpoint);
-        const cachedPreviewIsCurrent = pausedCheckpoint.analysis
-          && pausedCheckpoint.scannerVersion === localWorkspaceScannerVersion
-          && pausedCheckpoint.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion;
-        const preview = cachedPreviewIsCurrent ? pausedCheckpoint.analysis : (() => {
+        const failedCheckpoint = { ...activeRun, status: "FAILED" as const, updatedAt: new Date().toISOString() };
+        await saveLocalWorkspaceAnalysisRun(failedCheckpoint).catch(() => undefined);
+        setResumableCheckpoint(failedCheckpoint);
+        const cachedPreviewIsCurrent = failedCheckpoint.analysis
+          && failedCheckpoint.scannerVersion === localWorkspaceScannerVersion
+          && failedCheckpoint.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion;
+        const preview = cachedPreviewIsCurrent ? failedCheckpoint.analysis : (() => {
           const previewRecords = new Map(fileRecords.map((record) => [record.path, record]));
-          for (const record of pausedCheckpoint.records) previewRecords.set(record.path, record);
+          for (const record of failedCheckpoint.records) previewRecords.set(record.path, record);
           return analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] });
         })();
         setProgressAnalysis(preview);
@@ -2972,9 +2951,111 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
       setMessage(errorMessage);
     } finally {
       setScanning(false);
+      setRunCheckpointReady(false);
       setScanProgress(null);
     }
   }
+
+  const resumeWorkspaceAnalysisAfterRefresh = useEffectEvent(async () => {
+    await continueWorkspaceAnalysis();
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const projectChanged = sessionProjectIdRef.current !== projectId;
+    sessionProjectIdRef.current = projectId;
+    if (projectChanged) {
+      autoResumeRunRef.current = "";
+      analysisTaskRef.current = null;
+      setAnalysisTask(null);
+      setMainModelMessage("");
+      setMainModelStreaming(false);
+      setScanProgress(null);
+      setMessage("");
+      setResumableCheckpoint(null);
+      setProgressAnalysis(null);
+      onProgressAnalysis(null);
+      setSubAgents(([1, 2, 3] as const).map((slot) => ({
+        id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+      })));
+    }
+    void loadLocalWorkspaceAnalysisRunSummary(projectId).then(async (checkpoint) => {
+      if (cancelled || !checkpoint) return;
+      const recovery = planLocalWorkspaceAnalysisRunRecovery(checkpoint);
+      const canAutoResume = recovery.shouldAutoResume
+        && !scanning
+        && analysisModelProfile?.ready
+        && analysisModelProfile.id === checkpoint.modelProfileId
+        && autoResumeRunRef.current !== checkpoint.id;
+      if (analysisTaskRef.current?.projectId === projectId && !canAutoResume) return;
+      const modelPhase = checkpoint.phase === "MODEL_ENRICHMENT";
+      const startedAt = Date.parse(checkpoint.startedAt) || recovery.restoredAt;
+      const restoredTask: LocalAnalysisTask = {
+        id: checkpoint.id,
+        projectId,
+        title: recovery.shouldAutoResume
+          ? t(`Workspace“${workspaceName}”分析任务运行中`, `Workspace “${workspaceName}” analysis is running`)
+          : t(`恢复 Workspace“${workspaceName}”的分析进度`, `Restore analysis progress for Workspace “${workspaceName}”`),
+        mode: checkpoint.mode,
+        phase: recovery.phase,
+        status: recovery.status,
+        model: analysisModelProfile?.id === checkpoint.modelProfileId ? analysisModelProfile.model : checkpoint.modelProfileId,
+        profileId: checkpoint.modelProfileId,
+        stream: analysisModelProfile?.id === checkpoint.modelProfileId ? analysisModelProfile.stream : false,
+        startedAt,
+        endedAt: recovery.endedAt,
+        overallProgress: recovery.overallProgress,
+        phaseCompleted: recovery.completed,
+        phaseTotal: recovery.total,
+        modelCallsCompleted: checkpoint.completedModelBatchCount,
+        modelCallsTotal: checkpoint.totalModelBatchCount,
+        activeRequestId: null,
+        inputCharacters: 0,
+        outputCharacters: 0,
+        totalTokens: null,
+        currentWork: recovery.shouldAutoResume
+          ? t("正在从最近检查点自动接续", "Automatically continuing from the latest checkpoint")
+          : checkpoint.status === "FAILED"
+            ? t("检查点已保留，等待人工恢复", "Checkpoint retained; waiting for manual resume")
+            : t("已恢复检查点，点击继续分析即可恢复任务", "Checkpoint restored; select Continue analysis to resume"),
+        activeSubtask: null,
+        events: [{
+          id: `${recovery.restoredAt}:restored`, at: recovery.restoredAt, phase: recovery.phase, role: "WORKSPACE", kind: recovery.shouldAutoResume ? "ACTION" : "WARNING",
+          message: recovery.shouldAutoResume
+            ? t(`已恢复持久化运行状态：${modelPhase ? "模型工作单元" : "工程文件"}完成 ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()}。刷新未触发暂停，任务将从最近检查点自动接续。`, `Persisted running state restored: ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()} ${modelPhase ? "model work units" : "project files"} completed. Refresh did not pause the run; it will continue automatically from the latest checkpoint.`)
+            : t(`已恢复持久化检查点：${modelPhase ? "模型工作单元" : "工程文件"}完成 ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()}。任务保持${checkpoint.status === "FAILED" ? "失败" : "人工暂停"}状态，点击“继续分析”即可从该检查点恢复。`, `A persisted checkpoint was restored: ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()} ${modelPhase ? "model work units" : "project files"} completed. The task remains ${checkpoint.status === "FAILED" ? "failed" : "explicitly paused"}; select Continue analysis to resume from this checkpoint.`),
+        }],
+      };
+      analysisTaskRef.current = restoredTask;
+      setAnalysisTask(restoredTask);
+      setResumableCheckpoint(checkpoint);
+      const cachedPreviewIsCurrent = checkpoint.analysis
+        && checkpoint.scannerVersion === localWorkspaceScannerVersion
+        && checkpoint.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion;
+      const fullCheckpoint = cachedPreviewIsCurrent || checkpoint.records.length > 0
+        ? checkpoint
+        : await loadLocalWorkspaceAnalysisRun(projectId) ?? checkpoint;
+      const preview = cachedPreviewIsCurrent ? checkpoint.analysis : (() => {
+        const previewRecords = new Map(fileRecords.map((record) => [record.path, record]));
+        for (const record of fullCheckpoint.records) previewRecords.set(record.path, record);
+        return analyzeLocalWorkspaceRecords({ workspaceName, projectId, records: [...previewRecords.values()] });
+      })();
+      setProgressAnalysis(preview);
+      onProgressAnalysis(preview);
+      if (recovery.shouldAutoResume) {
+        if (!analysisModelProfile?.ready || analysisModelProfile.id !== checkpoint.modelProfileId) {
+          setMessage(t(`任务仍为运行中；正在等待原分析模型“${checkpoint.modelProfileId}”恢复后自动接续。`, `The run remains active and will continue automatically when its original analysis model “${checkpoint.modelProfileId}” is ready.`));
+          return;
+        }
+        autoResumeRunRef.current = checkpoint.id;
+        setMessage(t(`已恢复运行进度 ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()}，正在从最近检查点自动接续。`, `Restored running progress ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()} and automatically continuing from the latest checkpoint.`));
+        await resumeWorkspaceAnalysisAfterRefresh();
+        return;
+      }
+      setMessage(t(`已恢复分析进度 ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()}；点击“继续分析”恢复任务。`, `Restored analysis progress ${recovery.completed.toLocaleString()} / ${recovery.total.toLocaleString()}; select Continue analysis to resume.`));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [analysisModelProfile?.id, analysisModelProfile?.model, analysisModelProfile?.ready, analysisModelProfile?.stream, fileRecords, onProgressAnalysis, projectId, scanning, t, workspaceName]);
 
   const taskElapsed = analysisTask ? (analysisTask.endedAt ?? taskClock) - analysisTask.startedAt : 0;
   const hasResumableRun = Boolean(resumableCheckpoint || analysisTask?.status === "PAUSED" || analysisTask?.status === "FAILED");
@@ -3002,7 +3083,7 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} readOnly aria-readonly="true" /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} readOnly aria-readonly="true" /></div>
           <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" disabled={directoryAccessRestoring} onClick={() => void chooseWorkspaceDirectory()}>{projectCreated ? t("选择代码工程", "Select code project") : t("先创建 Workspace", "Create Workspace first")}</button><span>{directoryName || (hasSavedDirectoryHandle ? t("已保存工程目录", "Saved project directory") : projectCreated ? t("尚未选择目录", "No directory selected") : t("尚未创建项目", "No project created"))}</span><small>{selectedFiles.length > 0 ? `${selectedFiles.length} ${t("个文件", "files")}` : hasSavedDirectoryHandle ? t("目录权限已保存", "Directory access saved") : ""}</small></div>
-          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || directoryAccessRestoring || checkpointRestoring} onClick={() => void continueWorkspaceAnalysis()}>{scanning ? t("分析中…", "Analyzing…") : checkpointRestoring ? t("正在恢复检查点…", "Restoring checkpoint…") : directoryAccessRestoring ? t("正在恢复工程目录…", "Restoring project directory…") : !projectCreated ? t("先创建 Workspace", "Create Workspace first") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : hasResumableRun ? t("继续分析", "Continue analysis") : analysis ? t("执行增量分析", "Run incremental analysis") : t("启动首次全量分析", "Start first full analysis")}</button>{scanning && <button className="button" onClick={() => { pauseRequestedRef.current = true; setMessage(t("将在当前批次完成后暂停…", "Pausing after the current batch…")); }}>{t("暂停", "Pause")}</button>}</div>
+          <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || directoryAccessRestoring || checkpointRestoring} onClick={() => void continueWorkspaceAnalysis()}>{scanning ? t("分析中…", "Analyzing…") : checkpointRestoring ? t("正在恢复检查点…", "Restoring checkpoint…") : directoryAccessRestoring ? t("正在恢复工程目录…", "Restoring project directory…") : !projectCreated ? t("先创建 Workspace", "Create Workspace first") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : hasResumableRun ? t("继续分析", "Continue analysis") : analysis ? t("执行增量分析", "Run incremental analysis") : t("启动首次全量分析", "Start first full analysis")}</button>{scanning && runCheckpointReady && <button className="button" onClick={() => void pauseWorkspaceAnalysis()}>{t("暂停", "Pause")}</button>}</div>
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
         {message && <div className="inline-message">{message}</div>}
