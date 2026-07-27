@@ -225,6 +225,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /visibleWorkspaceAnalysis && !liveScenario/);
   assert.match(product, /候选追溯/);
   assert.match(product, /Candidate traceability/);
+  assert.match(product, /CANDIDATE_FEATURE: \{ zh: "候选", en: "Candidate" \}/);
+  assert.doesNotMatch(product, /CANDIDATE_FEATURE: \{ zh: "候选功能", en: "Candidate Feature" \}/);
   assert.match(product, /执行证据状态/);
   assert.match(product, /Execution evidence status/);
   assert.match(product, /执行证据缺口/);

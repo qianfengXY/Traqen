@@ -27,7 +27,7 @@ const localizedTerms: Record<string, { zh: string; en: string }> = {
   Feature: { zh: "功能", en: "Feature" },
   FEATURE: { zh: "功能", en: "Feature" },
   CANDIDATE: { zh: "候选", en: "Candidate" },
-  CANDIDATE_FEATURE: { zh: "候选功能", en: "Candidate Feature" },
+  CANDIDATE_FEATURE: { zh: "候选", en: "Candidate" },
   CANDIDATE_CLAIM: { zh: "候选声明", en: "Candidate Claim" },
   Claim: { zh: "声明", en: "Claim" },
   CLAIM: { zh: "声明", en: "Claim" },
