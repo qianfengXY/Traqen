@@ -291,6 +291,14 @@ test("CandidateBundle contract binds every inference to one Snapshot and WorkUni
     ["CANDIDATE_FEATURE", "CANDIDATE_CLAIM"],
   );
   assert.equal(contract.$defs.Candidate.properties.status.const, "PENDING_REVIEW");
+  assert.equal(contract.$defs.Candidate.properties.proposal.$ref, "#/$defs/CandidateProposal");
+  assert.equal(contract.$defs.CandidateProposal.additionalProperties, false);
+  assert.equal(contract.$defs.CandidateProposal.properties.governedFeatureId, undefined);
+  assert.equal(contract.$defs.CandidateProposal.properties.identityDecision, undefined);
+  assert.equal(contract.$defs.CandidateProposal.properties.authority, undefined);
+  assert.equal(contract.$defs.CandidateProposal.properties.design.$ref, "#/$defs/GovernanceFreeObject");
+  assert.ok(contract.$defs.GovernanceFreeObject.propertyNames.not.enum.includes("governedFeatureId"));
+  assert.ok(contract.$defs.GovernanceFreeObject.propertyNames.not.enum.includes("authority"));
 });
 
 test("Reverse Skill contracts bind supply-chain permissions, structured output, and audit history", async () => {

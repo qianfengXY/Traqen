@@ -116,3 +116,20 @@ test("rejects model confidence above the deterministic evidence cap", () => {
     /confidence HIGH exceeds evidence cap MEDIUM/,
   );
 });
+
+test("rejects governance and unknown fields smuggled through Candidate proposal", () => {
+  for (const field of ["governedFeatureId", "identityDecision", "authority"]) {
+    const input = candidateBundle();
+    input.candidates[0].proposal[field] = field === "governedFeatureId" ? "FEATURE-001" : "CONFIRMED";
+    assert.throws(
+      () => normalizeCandidateBundle(input, normalizeWorkUnit(workUnit())),
+      new RegExp(`proposal contains unsupported field ${field}`),
+    );
+  }
+  const nested = candidateBundle();
+  nested.candidates[0].proposal.design = { authority: "CONFIRMED" };
+  assert.throws(
+    () => normalizeCandidateBundle(nested, normalizeWorkUnit(workUnit())),
+    /proposal\.design contains reserved governance field authority/,
+  );
+});

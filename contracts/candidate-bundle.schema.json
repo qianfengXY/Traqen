@@ -87,7 +87,7 @@
           "items": { "type": "string", "minLength": 1 }
         },
         "proposal": {
-          "type": "object"
+          "$ref": "#/$defs/CandidateProposal"
         },
         "provenance": {
           "type": "array",
@@ -96,6 +96,92 @@
         }
       },
       "additionalProperties": false
+    },
+    "CandidateProposal": {
+      "type": "object",
+      "minProperties": 1,
+      "properties": {
+        "candidateKey": { "type": "string", "minLength": 1 },
+        "mode": { "enum": ["BUSINESS", "API"] },
+        "name": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "method": { "type": ["string", "null"] },
+        "modulePath": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "description": { "type": "string" },
+        "code": { "type": "string" },
+        "evidence": { "$ref": "#/$defs/GovernanceFreeObject" },
+        "displayName": { "type": "string", "minLength": 1 },
+        "businessFeature": { "type": "boolean" },
+        "businessKey": { "type": "string", "minLength": 1 },
+        "businessModule": { "type": "string", "minLength": 1 },
+        "businessSubmodule": { "type": "string", "minLength": 1 },
+        "domain": { "type": "string", "minLength": 1 },
+        "group": {
+          "enum": [
+            "BUSINESS_CAPABILITY",
+            "BACKGROUND_INTEGRATION",
+            "DATA_INTEGRATION",
+            "PROJECT_OPERATION",
+            "API_SERVICE"
+          ]
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "stableEvidenceNodeIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "design": { "$ref": "#/$defs/GovernanceFreeObject" },
+        "analysisProvenance": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GovernanceFreeObject" }
+        },
+        "uncertainties": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "statement": { "type": "string", "minLength": 1 },
+        "scope": { "$ref": "#/$defs/GovernanceFreeObject" },
+        "constraint": { "$ref": "#/$defs/GovernanceFreeObject" },
+        "openQuestions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "GovernanceFreeValue": {
+      "oneOf": [
+        { "type": ["string", "number", "boolean", "null"] },
+        {
+          "type": "array",
+          "items": { "$ref": "#/$defs/GovernanceFreeValue" }
+        },
+        { "$ref": "#/$defs/GovernanceFreeObject" }
+      ]
+    },
+    "GovernanceFreeObject": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "governedFeatureId",
+            "featureId",
+            "featureVersionId",
+            "claimId",
+            "decisionId",
+            "identityDecision",
+            "authority",
+            "authorizedBy",
+            "reviewDisposition",
+            "retirement"
+          ]
+        }
+      },
+      "additionalProperties": { "$ref": "#/$defs/GovernanceFreeValue" }
     },
     "Provenance": {
       "type": "object",

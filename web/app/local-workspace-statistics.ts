@@ -35,10 +35,10 @@ export function findLocalWorkspaceTreeNode(root: LocalFeatureTreeNode, nodeId: s
   return null;
 }
 
-export function localWorkspaceTreeFeatureIds(node: LocalFeatureTreeNode) {
+export function localWorkspaceTreeCandidateIds(node: LocalFeatureTreeNode) {
   const ids = new Set<string>();
   function visit(current: LocalFeatureTreeNode) {
-    if (current.featureId) ids.add(current.featureId);
+    if (current.candidateId) ids.add(current.candidateId);
     for (const child of current.children) visit(child);
   }
   visit(node);
@@ -131,7 +131,7 @@ export function calculateLocalWorkspaceStatistics(features: LocalFeatureCandidat
 
 export function localWorkspaceStatisticsForNode(analysis: LocalWorkspaceAnalysis, nodeId: string) {
   const node = findLocalWorkspaceTreeNode(analysis.tree, nodeId) ?? analysis.tree;
-  const featureIds = localWorkspaceTreeFeatureIds(node);
-  const features = analysis.features.filter((feature) => featureIds.has(feature.id));
+  const candidateIds = localWorkspaceTreeCandidateIds(node);
+  const features = analysis.features.filter((feature) => candidateIds.has(feature.id));
   return { node, features, statistics: calculateLocalWorkspaceStatistics(features) };
 }

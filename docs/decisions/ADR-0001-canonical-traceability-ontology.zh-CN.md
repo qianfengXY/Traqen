@@ -120,6 +120,8 @@ Evidence 证明一次执行或观察的完整性。`VerificationResult` 针对�
 - 引用生产 WorkUnit 之外的证据；
 - 属于另一个 Snapshot 或项目的 Fact；
 - 缺失或重复的 evidence ID；
+- 与所引用 Fact ID 不精确对应的稳定 evidence node ID；
+- 超出声明词汇的 Candidate proposal 字段，包括嵌套的身份或治理字段；
 - 不完整的 Schema；
 - 超过确定性 evidence cap 的置信度；
 - WorkUnit 契约要求输入输出一一对应时出现的重复或遗漏 Candidate。

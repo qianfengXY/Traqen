@@ -56,8 +56,8 @@ export type LocalFeatureTreeNode = {
   id: string;
   label: string;
   kind: "WORKSPACE" | "MODULE" | "DOMAIN" | "GROUP" | "CANDIDATE";
-  featureId?: string;
-  featureCount: number;
+  candidateId?: string;
+  candidateCount: number;
   detail?: string;
   badge?: string;
   children: LocalFeatureTreeNode[];
@@ -740,7 +740,7 @@ function buildEvidenceTree(workspaceName: string, projectId: string, features: L
     id: projectId,
     label: workspaceName,
     kind: "WORKSPACE",
-    featureCount: features.length,
+    candidateCount: features.length,
     children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleIdentity, items]) => {
       const domains = new Map<string, { label: string; items: LocalFeatureCandidate[] }>();
       for (const feature of items) {
@@ -753,25 +753,25 @@ function buildEvidenceTree(workspaceName: string, projectId: string, features: L
         id: `${projectId}:${moduleIdentity}`,
         label: treeModuleLabel(moduleIdentity),
         kind: "MODULE" as const,
-        featureCount: items.length,
+        candidateCount: items.length,
         detail: moduleIdentity,
         children: [...domains.entries()].sort(([, left], [, right]) => left.label.localeCompare(right.label)).map(([domainIdentity, domain]) => ({
           id: `${projectId}:${moduleIdentity}:domain:${domainIdentity}`,
           label: domain.label,
           kind: "DOMAIN" as const,
-          featureCount: domain.items.length,
+          candidateCount: domain.items.length,
           detail: domainIdentity,
           children: groupOrder.map((group) => ({
             id: `${projectId}:${moduleIdentity}:domain:${domainIdentity}:${group}`,
             label: group,
             kind: "GROUP" as const,
-            featureCount: domain.items.filter((item) => treeGroup(item) === group).length,
+            candidateCount: domain.items.filter((item) => treeGroup(item) === group).length,
             children: domain.items.filter((item) => treeGroup(item) === group).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
               id: feature.id,
               label: feature.displayName ?? feature.name,
               kind: "CANDIDATE" as const,
-              featureId: feature.id,
-              featureCount: 1,
+              candidateId: feature.id,
+              candidateCount: 1,
               detail: feature.displayName && feature.displayName !== feature.name ? feature.name : `${feature.sourcePath}:${feature.startLine}`,
               badge: feature.method ?? undefined,
               children: [],
@@ -814,7 +814,7 @@ function buildAgentFeatureTree(workspaceName: string, projectId: string, feature
     id: projectId,
     label: workspaceName,
     kind: "WORKSPACE",
-    featureCount: features.length,
+    candidateCount: features.length,
     children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleName, moduleFeatures]) => {
       const submodules = new Map<string, LocalFeatureCandidate[]>();
       for (const feature of moduleFeatures) {
@@ -827,20 +827,20 @@ function buildAgentFeatureTree(workspaceName: string, projectId: string, feature
         id: `${projectId}:agent-module:${taxonomyProjectionId(moduleName)}`,
         label: moduleName,
         kind: "MODULE" as const,
-        featureCount: moduleFeatures.length,
+        candidateCount: moduleFeatures.length,
         detail: mode === "API" ? "Evidence-validated API Candidate module" : "Evidence-validated business Candidate module",
         children: [...submodules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([submoduleName, submoduleFeatures]) => ({
           id: `${projectId}:agent-module:${taxonomyProjectionId(moduleName)}:submodule:${taxonomyProjectionId(submoduleName)}`,
           label: submoduleName,
           kind: "DOMAIN" as const,
-          featureCount: submoduleFeatures.length,
+          candidateCount: submoduleFeatures.length,
           detail: mode === "API" ? "Evidence-validated API Candidate submodule" : "Evidence-validated business Candidate submodule",
           children: submoduleFeatures.sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
             id: feature.id,
             label: feature.displayName ?? feature.name,
             kind: "CANDIDATE" as const,
-            featureId: feature.id,
-            featureCount: 1,
+            candidateId: feature.id,
+            candidateCount: 1,
             detail: feature.description,
             badge: mode === "API" ? feature.method ?? undefined : feature.modelClassification?.confidence,
             children: [],

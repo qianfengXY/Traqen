@@ -12,6 +12,73 @@ export const CandidateStatus = Object.freeze({
 const confidenceRank = Object.freeze({ LOW: 1, MEDIUM: 2, HIGH: 3 });
 const candidateKinds = new Set(Object.values(CandidateKind));
 const candidateStatuses = new Set(Object.values(CandidateStatus));
+const candidateProposalFields = new Set([
+  "candidateKey",
+  "mode",
+  "name",
+  "kind",
+  "method",
+  "modulePath",
+  "sourcePath",
+  "description",
+  "code",
+  "evidence",
+  "displayName",
+  "businessFeature",
+  "businessKey",
+  "businessModule",
+  "businessSubmodule",
+  "domain",
+  "group",
+  "rationale",
+  "stableEvidenceNodeIds",
+  "design",
+  "analysisProvenance",
+  "uncertainties",
+  "statement",
+  "scope",
+  "constraint",
+  "openQuestions",
+]);
+const reservedGovernanceFields = new Set([
+  "governedFeatureId",
+  "featureId",
+  "featureVersionId",
+  "claimId",
+  "decisionId",
+  "identityDecision",
+  "authority",
+  "authorizedBy",
+  "reviewDisposition",
+  "retirement",
+]);
+const proposalStringFields = new Set([
+  "candidateKey",
+  "name",
+  "kind",
+  "displayName",
+  "businessKey",
+  "businessModule",
+  "businessSubmodule",
+  "domain",
+  "rationale",
+  "statement",
+]);
+const proposalPlainStringFields = new Set([
+  "modulePath",
+  "sourcePath",
+  "description",
+  "code",
+]);
+const proposalObjectFields = new Set(["evidence", "design", "scope", "constraint"]);
+const proposalStringArrayFields = new Set(["stableEvidenceNodeIds", "uncertainties", "openQuestions"]);
+const candidateGroups = new Set([
+  "BUSINESS_CAPABILITY",
+  "BACKGROUND_INTEGRATION",
+  "DATA_INTEGRATION",
+  "PROJECT_OPERATION",
+  "API_SERVICE",
+]);
 
 function deepFreeze(value) {
   if (value && typeof value === "object" && !Object.isFrozen(value)) {
@@ -66,8 +133,49 @@ function enumValue(values, value, fieldName) {
   return normalized;
 }
 
+function assertNoGovernanceFields(value, fieldName) {
+  if (!value || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoGovernanceFields(item, `${fieldName}[${index}]`));
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (reservedGovernanceFields.has(key)) {
+      throw new TypeError(`${fieldName} contains reserved governance field ${key}`);
+    }
+    assertNoGovernanceFields(child, `${fieldName}.${key}`);
+  }
+}
+
 function proposal(value, fieldName) {
   const normalized = object(value, fieldName);
+  const fields = Object.keys(normalized);
+  if (fields.length === 0) throw new TypeError(`${fieldName} must contain at least one proposed field`);
+  const unsupported = fields.filter((field) => !candidateProposalFields.has(field));
+  if (unsupported.length > 0) throw new TypeError(`${fieldName} contains unsupported field ${unsupported[0]}`);
+  assertNoGovernanceFields(normalized, fieldName);
+  for (const field of fields) {
+    const item = normalized[field];
+    if (proposalStringFields.has(field)) string(item, `${fieldName}.${field}`);
+    else if (proposalPlainStringFields.has(field) && typeof item !== "string") {
+      throw new TypeError(`${fieldName}.${field} must be a string`);
+    } else if (field === "method" && item !== null && typeof item !== "string") {
+      throw new TypeError(`${fieldName}.method must be a string or null`);
+    } else if (field === "businessFeature" && typeof item !== "boolean") {
+      throw new TypeError(`${fieldName}.businessFeature must be a boolean`);
+    } else if (field === "mode") {
+      enumValue(new Set(["BUSINESS", "API"]), item, `${fieldName}.mode`);
+    } else if (field === "group") {
+      enumValue(candidateGroups, item, `${fieldName}.group`);
+    } else if (proposalObjectFields.has(field)) {
+      object(item, `${fieldName}.${field}`);
+    } else if (proposalStringArrayFields.has(field)) {
+      uniqueStrings(item, `${fieldName}.${field}`);
+    } else if (field === "analysisProvenance") {
+      if (!Array.isArray(item)) throw new TypeError(`${fieldName}.analysisProvenance must be an array`);
+      item.forEach((entry, index) => object(entry, `${fieldName}.analysisProvenance[${index}]`));
+    }
+  }
   return structuredClone(normalized);
 }
 

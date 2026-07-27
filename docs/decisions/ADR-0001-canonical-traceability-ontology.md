@@ -120,6 +120,8 @@ Every Candidate conclusion must include non-empty `evidenceFactIds`. Determinist
 - evidence outside the producing WorkUnit;
 - Facts from another Snapshot or project;
 - missing or duplicate evidence IDs;
+- stable evidence node IDs that do not correspond exactly to the cited Fact IDs;
+- Candidate proposal fields outside the declared vocabulary, including nested identity or governance fields;
 - incomplete schema;
 - confidence above the deterministic evidence cap;
 - duplicate or omitted Candidate results where the WorkUnit contract requires one result per input.

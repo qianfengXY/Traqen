@@ -46,12 +46,30 @@ export function createLocalWorkspaceCandidateGraph(
 ): LocalWorkspaceCandidateGraph {
   const candidate = analysis.features.find((item) => item.id === candidateId) ?? analysis.features[0];
   if (!candidate) {
+    const gapId = localWorkspaceDerivedId(
+      "TRACE-GAP",
+      `${analysis.snapshotManifestId}\u0000NO_CANDIDATE_OBSERVATION`,
+    );
     return {
-      center: "",
+      center: gapId,
       snapshotManifestId: analysis.snapshotManifestId,
       view,
       depth: 8,
-      nodes: [],
+      nodes: [{
+        id: gapId,
+        type: "TRACE_GAP",
+        label: "NO_CANDIDATE_OBSERVATION",
+        version: null,
+        status: "GAP",
+        risk: "BLOCKING",
+        provenance: "LOCAL_WORKSPACE_TRACE_EVALUATION",
+        source: null,
+        details: {
+          ownerRole: "technical-owner",
+          snapshotManifestId: analysis.snapshotManifestId,
+          governedFallbackUsed: false,
+        },
+      }],
       edges: [],
       truncated: false,
       availableExpansions: [],

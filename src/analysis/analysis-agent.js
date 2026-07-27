@@ -324,22 +324,49 @@ function validateExtensionCandidates(output, allowedFactIds, allowedStableNodeId
     const prefix = `${producerLabel}.candidateFeatures[${index}]`;
     const evidenceFactIds = (candidate.evidenceFactIds ?? []).map((factId, factIndex) => requiredString(factId, `${prefix}.evidenceFactIds[${factIndex}]`));
     if (evidenceFactIds.length === 0) throw new TypeError(`${prefix} must cite at least one input Fact`);
+    if (new Set(evidenceFactIds).size !== evidenceFactIds.length) throw new TypeError(`${prefix}.evidenceFactIds must not contain duplicates`);
     const escaped = evidenceFactIds.filter((factId) => !allowedFactIds.has(factId));
     if (escaped.length > 0) throw new TypeError(`${prefix} cites Facts outside the bounded WorkUnit: ${escaped.join(", ")}`);
+    const expectedStableEvidenceNodeIds = [...new Set(
+      evidenceFactIds.map((factId) => stableNodeIdByFactId.get(factId)).filter(Boolean),
+    )].sort();
     const declaredStableIds = candidate.stableEvidenceNodeIds?.length > 0
       ? candidate.stableEvidenceNodeIds
-      : evidenceFactIds.map((factId) => stableNodeIdByFactId.get(factId)).filter(Boolean);
-    const stableEvidenceNodeIds = [...new Set(declaredStableIds)]
-      .map((stableId, stableIndex) => requiredString(stableId, `${prefix}.stableEvidenceNodeIds[${stableIndex}]`))
-      .sort();
+      : expectedStableEvidenceNodeIds;
+    const normalizedDeclaredStableIds = declaredStableIds
+      .map((stableId, stableIndex) => requiredString(stableId, `${prefix}.stableEvidenceNodeIds[${stableIndex}]`));
+    if (new Set(normalizedDeclaredStableIds).size !== normalizedDeclaredStableIds.length) {
+      throw new TypeError(`${prefix}.stableEvidenceNodeIds must not contain duplicates`);
+    }
+    const stableEvidenceNodeIds = [...normalizedDeclaredStableIds].sort();
     const escapedStableIds = stableEvidenceNodeIds.filter((stableId) => !allowedStableNodeIds.has(stableId));
     if (escapedStableIds.length > 0) throw new TypeError(`${prefix} cites stable nodes outside the bounded WorkUnit: ${escapedStableIds.join(", ")}`);
     if (stableEvidenceNodeIds.length === 0) throw new TypeError(`${prefix} must cite at least one stable Fact node`);
+    if (
+      stableEvidenceNodeIds.length !== expectedStableEvidenceNodeIds.length
+      || stableEvidenceNodeIds.some((stableId, stableIndex) => stableId !== expectedStableEvidenceNodeIds[stableIndex])
+    ) {
+      throw new TypeError(`${prefix}.stableEvidenceNodeIds must correspond exactly to evidenceFactIds`);
+    }
     const candidateKey = requiredString(candidate.candidateKey, `${prefix}.candidateKey`);
     const confidence = ["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence) ? candidate.confidence : "LOW";
     const confidenceCap = confidenceCaps.get(candidateKey) ?? "LOW";
     if (confidenceRank[confidence] > confidenceRank[confidenceCap]) {
       throw new TypeError(`${prefix} confidence ${confidence} exceeds evidence cap ${confidenceCap}`);
+    }
+    const designImplementationStableIds = Array.isArray(candidate.design?.implementation)
+      ? candidate.design.implementation
+        .map((item, implementationIndex) => item?.stableId === undefined || item?.stableId === null
+          ? null
+          : requiredString(item.stableId, `${prefix}.design.implementation[${implementationIndex}].stableId`))
+        .filter(Boolean)
+      : [];
+    if (new Set(designImplementationStableIds).size !== designImplementationStableIds.length) {
+      throw new TypeError(`${prefix}.design.implementation stable nodes must not contain duplicates`);
+    }
+    const undeclaredDesignStableIds = designImplementationStableIds.filter((stableId) => !stableEvidenceNodeIds.includes(stableId));
+    if (undeclaredDesignStableIds.length > 0) {
+      throw new TypeError(`${prefix}.design.implementation stable nodes must be declared evidence: ${undeclaredDesignStableIds.join(", ")}`);
     }
     return {
       candidateKey,
@@ -383,7 +410,7 @@ function mergeCandidates(candidates) {
 
 function candidateDigests(candidate) {
   const implementationStableIds = Array.isArray(candidate.design?.implementation)
-    ? candidate.design.implementation.map((item) => item?.stableId).filter(Boolean).sort()
+    ? [...new Set(candidate.design.implementation.map((item) => item?.stableId).filter(Boolean))].sort()
     : candidate.stableEvidenceNodeIds;
   return {
     semantic: contentId("CANDIDATE-SEMANTIC", { mode: candidate.mode, name: candidate.name, description: candidate.description }),

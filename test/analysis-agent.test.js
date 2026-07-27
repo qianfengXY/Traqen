@@ -297,6 +297,91 @@ test("LLM output cannot smuggle stable Fact-node evidence from outside its WorkU
   assert.ok((await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-STABLE-ESCAPE")).workUnits.every((unit) => unit.error.message.includes("stable nodes outside")));
 });
 
+test("LLM stable evidence must correspond exactly to its declared Fact evidence", async () => {
+  const repository = new MemoryAnalysisCheckpointRepository();
+  const agent = new AnalysisAgent({
+    repository,
+    modelResolver: () => ({
+      async analyze(input) {
+        const [declaredFact, mismatchedStable] = input.evidence.nodes;
+        if (!mismatchedStable) return { candidateFeatures: [] };
+        return { candidateFeatures: [{
+          ...input.deterministicCandidates[0],
+          evidenceFactIds: [declaredFact.factId],
+          stableEvidenceNodeIds: [mismatchedStable.id],
+        }] };
+      },
+    }),
+  });
+  const result = await agent.execute(request("ANALYSIS-STABLE-MISMATCH", "SNAPSHOT-A", {
+    id: "stable-mismatch-model",
+    mode: "HYBRID",
+    model: { enabled: true, profileId: "UNSAFE", contextWindow: 8_000, maxInputTokens: 4_000, maxOutputTokens: 1_000 },
+    maxAttemptsPerWorkUnit: 1,
+  }), { factGraph: commerceGraph("SNAPSHOT-A") });
+
+  assert.equal(result.status, "COMPLETED_WITH_GAPS");
+  assert.ok((await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-STABLE-MISMATCH")).workUnits.some((unit) =>
+    unit.error?.message.includes("must correspond exactly to evidenceFactIds")));
+});
+
+test("LLM design implementation cannot influence lineage with undeclared stable evidence", async () => {
+  const repository = new MemoryAnalysisCheckpointRepository();
+  const agent = new AnalysisAgent({
+    repository,
+    modelResolver: () => ({
+      async analyze(input) {
+        const [declaredFact, undeclaredDesignFact] = input.evidence.nodes;
+        if (!undeclaredDesignFact) return { candidateFeatures: [] };
+        return { candidateFeatures: [{
+          ...input.deterministicCandidates[0],
+          evidenceFactIds: [declaredFact.factId],
+          stableEvidenceNodeIds: [declaredFact.id],
+          design: { implementation: [{ stableId: undeclaredDesignFact.id }] },
+        }] };
+      },
+    }),
+  });
+  const result = await agent.execute(request("ANALYSIS-DESIGN-STABLE-MISMATCH", "SNAPSHOT-A", {
+    id: "design-stable-mismatch-model",
+    mode: "HYBRID",
+    model: { enabled: true, profileId: "UNSAFE", contextWindow: 8_000, maxInputTokens: 4_000, maxOutputTokens: 1_000 },
+    maxAttemptsPerWorkUnit: 1,
+  }), { factGraph: commerceGraph("SNAPSHOT-A") });
+
+  assert.equal(result.status, "COMPLETED_WITH_GAPS");
+  assert.ok((await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-DESIGN-STABLE-MISMATCH")).workUnits.some((unit) =>
+    unit.error?.message.includes("design.implementation stable nodes must be declared evidence")));
+});
+
+test("LLM design implementation cannot duplicate stable evidence to influence lineage", async () => {
+  const repository = new MemoryAnalysisCheckpointRepository();
+  const agent = new AnalysisAgent({
+    repository,
+    modelResolver: () => ({
+      async analyze(input) {
+        const [declaredFact] = input.evidence.nodes;
+        return { candidateFeatures: [{
+          ...input.deterministicCandidates[0],
+          evidenceFactIds: [declaredFact.factId],
+          stableEvidenceNodeIds: [declaredFact.id],
+          design: { implementation: [{ stableId: declaredFact.id }, { stableId: declaredFact.id }] },
+        }] };
+      },
+    }),
+  });
+  const result = await agent.execute(request("ANALYSIS-DESIGN-STABLE-DUPLICATE", "SNAPSHOT-A", {
+    id: "design-stable-duplicate-model",
+    mode: "HYBRID",
+    model: { enabled: true, profileId: "UNSAFE", contextWindow: 8_000, maxInputTokens: 4_000, maxOutputTokens: 1_000 },
+    maxAttemptsPerWorkUnit: 1,
+  }), { factGraph: commerceGraph("SNAPSHOT-A") });
+
+  assert.equal(result.status, "COMPLETED_WITH_GAPS");
+  assert.ok((await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-DESIGN-STABLE-DUPLICATE")).workUnits.some((unit) =>
+    unit.error?.message.includes("design.implementation stable nodes must not contain duplicates")));
+});
+
 test("LLM output cannot raise Candidate confidence above the deterministic evidence cap", async () => {
   const repository = new MemoryAnalysisCheckpointRepository();
   const agent = new AnalysisAgent({

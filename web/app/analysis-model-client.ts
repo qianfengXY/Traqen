@@ -406,7 +406,7 @@ export function reconcileWorkspaceAgentBatch(
     }
     if (candidate.kind === "ENDPOINT") {
       enrichments.push(provisionalEndpointEnrichment(candidate));
-      decisions.push({ candidateId: candidate.id, outcome: "ADMITTED_API", reason: "The child result was unavailable, but a deterministic endpoint definition supports provisional API-tree admission." });
+      decisions.push({ candidateId: candidate.id, outcome: "ADMITTED_API", reason: "The child result was unavailable, but a deterministic endpoint definition supports a provisional API Candidate projection." });
     } else {
       decisions.push({ candidateId: candidate.id, outcome: "PENDING_AGENT", reason: "Scanner evidence is retained, but no validated child-Agent semantic conclusion is available." });
     }

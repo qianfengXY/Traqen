@@ -210,6 +210,14 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /业务候选/);
   assert.match(product, /API 候选/);
   assert.match(product, /不含接口与工程命令/);
+  assert.match(product, /CANDIDATES/);
+  assert.match(product, /t\("候选", "Candidates"\)/);
+  assert.match(product, /Candidate-projection admission/);
+  assert.doesNotMatch(product, /Feature-tree admission/);
+  assert.doesNotMatch(product, /visibleWorkspaceAnalysis\.features\.length\} FEATURES/);
+  assert.doesNotMatch(product, /project\.featureCount\} \$\{t\("功能", "features"\)\}/);
+  assert.doesNotMatch(product, /workspaceGraphForAnalysis\(workspaceAnalysis, featureId, next\) \?\? demoGraphForScenario/);
+  assert.match(product, /workspaceAnalysis \? workspaceGraph as FeatureGraph : demoGraph/);
   assert.match(product, /const \[workspaceAnalysis, setWorkspaceAnalysis\]/);
   assert.match(product, /const \[workspaceProjectId, setWorkspaceProjectId\]/);
   assert.match(product, /const \[workspaceFeatureId, setWorkspaceFeatureId\]/);
@@ -263,7 +271,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /localWorkspaceScannerVersion = 5/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
   assert.match(analyzer, /API_SERVICE.*BUSINESS_CAPABILITY.*DATA_INTEGRATION.*BACKGROUND_INTEGRATION.*PROJECT_OPERATION/s);
-  assert.match(analyzer, /featureCount: features\.length/);
+  assert.match(analyzer, /candidateCount: features\.length/);
   assert.match(product, /对外接口服务/);
   assert.match(product, /业务处理能力/);
   assert.match(analyzer, /discoverJavaCandidates/);

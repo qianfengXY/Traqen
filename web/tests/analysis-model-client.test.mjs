@@ -130,7 +130,7 @@ test("builds explicit evidence assessments and streams each observable LLM inter
   }
 });
 
-test("keeps validated Candidate evidence and confidence authoritative over proposal fields", async () => {
+test("rejects Candidate envelope fields smuggled through proposal", async () => {
   const records = [{
     scannerVersion: 5,
     path: "src/orders.ts",
@@ -175,9 +175,10 @@ test("keeps validated Candidate evidence and confidence authoritative over propo
     });
   };
   try {
-    const [result] = await enrichWorkspaceCandidateBatch("http://127.0.0.1:3100", "", "model-a", candidates);
-    assert.deepEqual(result.evidenceFactIds, candidates[0].evidenceFactIds);
-    assert.equal(result.confidence, "LOW");
+    await assert.rejects(
+      () => enrichWorkspaceCandidateBatch("http://127.0.0.1:3100", "", "model-a", candidates),
+      /proposal contains unsupported field evidenceFactIds/,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

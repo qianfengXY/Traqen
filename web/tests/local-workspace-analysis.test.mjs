@@ -26,7 +26,7 @@ test("resumes a local checkpoint from only the unfinished or changed files", () 
   assert.deepEqual(exact.remainingPaths, []);
 });
 
-test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
+test("discovers a complete local Candidate tree without promoting candidates to business truth", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Customer Portal",
     projectId: "PROJECT-CUSTOMER-PORTAL",
@@ -89,12 +89,16 @@ test("discovers a complete local Feature tree without promoting candidates to bu
   assert.ok(capability.gaps.some((gap) => gap.type === "MISSING_AUTHORITY"));
   assert.ok(capability.gaps.some((gap) => gap.type === "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT"));
   assert.equal(analysis.tree.kind, "WORKSPACE");
-  assert.equal(analysis.tree.featureCount, analysis.features.length);
+  assert.equal(analysis.tree.candidateCount, analysis.features.length);
   assert.ok(analysis.tree.children.some((node) => node.kind === "MODULE"));
   assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.kind === "DOMAIN"));
   assert.ok(analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).some((node) => node.label === "API_SERVICE"));
   assert.ok(analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).some((node) => node.label === "BUSINESS_CAPABILITY"));
-  assert.ok(analysis.tree.children.every((node) => node.featureCount === node.children.reduce((sum, child) => sum + child.featureCount, 0)));
+  assert.ok(analysis.tree.children.every((node) => node.candidateCount === node.children.reduce((sum, child) => sum + child.candidateCount, 0)));
+  const candidateLeaf = analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).flatMap((node) => node.children)[0];
+  assert.equal(candidateLeaf.kind, "CANDIDATE");
+  assert.ok(candidateLeaf.candidateId);
+  assert.equal(candidateLeaf.featureId, undefined);
 });
 
 test("binds local Candidate evidence to a deterministic Snapshot without minting a governed Feature identity", () => {
@@ -159,6 +163,22 @@ test("projects Candidate and test-asset semantics without fabricating governed t
   assert.equal(nodeTypes.has("TEST_SPEC"), false);
   assert.equal(nodeTypes.has("TEST_EXECUTION"), false);
   assert.equal(graph.edges.some((edge) => edge.type === "EXECUTED_AS"), false);
+});
+
+test("projects an explicit TraceGap instead of governed demo truth when a Workspace has no candidates", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Empty",
+    projectId: "PROJECT-EMPTY",
+    files: [
+      { path: "README.md", size: 18, content: "# No source yet" },
+    ],
+  });
+  const graph = createLocalWorkspaceCandidateGraph(analysis, "", "traceability");
+
+  assert.equal(analysis.features.length, 0);
+  assert.deepEqual(graph.nodes.map((node) => node.type), ["TRACE_GAP"]);
+  assert.equal(graph.nodes[0].label, "NO_CANDIDATE_OBSERVATION");
+  assert.equal(graph.nodes.some((node) => ["FEATURE", "CLAIM", "TEST_SPEC", "TEST_EXECUTION"].includes(node.type)), false);
 });
 
 test("accepts a 100,000-file project in batches and skips only oversized files", () => {
@@ -328,7 +348,7 @@ test("keeps Clowder-style async routes readable and excludes support artifacts f
   assert.equal(analysis.tree.children.find((node) => node.label === "API").children.find((node) => node.label === "Accounts").kind, "DOMAIN");
 });
 
-test("does not promote scanner-only observations into business or API Feature trees", () => {
+test("does not promote scanner-only observations into governed business or API projections", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Two-mode tree",
     projectId: "PROJECT-TWO-MODE-TREE",
@@ -342,8 +362,8 @@ test("does not promote scanner-only observations into business or API Feature tr
   const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
   assert.deepEqual(business.features, []);
   assert.deepEqual(api.features, []);
-  assert.equal(business.tree.featureCount, 0);
-  assert.equal(api.tree.featureCount, 0);
+  assert.equal(business.tree.candidateCount, 0);
+  assert.equal(api.tree.candidateCount, 0);
   assert.equal(analysis.features.filter((feature) => feature.kind === "COMMAND").length, 1);
 });
 
