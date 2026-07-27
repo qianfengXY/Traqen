@@ -87,7 +87,12 @@ test("discovers a complete local Candidate tree without promoting candidates to 
   assert.ok(capability.configurations.every((item) => !item.value.includes("must-not-render") && !item.value.includes("must-not-be-read")));
   assert.equal(analysis.skippedFileCount, 1);
   assert.ok(capability.gaps.some((gap) => gap.type === "MISSING_AUTHORITY"));
+  assert.ok(capability.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  assert.ok(capability.gaps.every((gap) => gap.type !== "NO_TEST_ASSET_CLUE"));
   assert.ok(capability.gaps.some((gap) => gap.type === "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT"));
+  const candidateWithoutTestAsset = analysis.features.find((feature) => feature.name === "Calculate invoice total");
+  assert.ok(candidateWithoutTestAsset.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  assert.ok(candidateWithoutTestAsset.gaps.some((gap) => gap.type === "NO_TEST_ASSET_CLUE"));
   assert.equal(analysis.tree.kind, "WORKSPACE");
   assert.equal(analysis.tree.candidateCount, analysis.features.length);
   assert.ok(analysis.tree.children.some((node) => node.kind === "MODULE"));

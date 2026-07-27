@@ -288,6 +288,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /localWorkspaceScannerVersion = 6/);
   assert.match(analyzer, /verification: "UNAVAILABLE"/);
   assert.doesNotMatch(analyzer, /verification: "NOT_RUN"/);
+  assert.match(analyzer, /\{ type: "NO_TEST_SPEC", severity: "BLOCKING"/);
+  assert.match(analyzer, /tests\.length === 0 \? \[\{ type: "NO_TEST_ASSET_CLUE", severity: "WARNING"/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
   assert.match(analyzer, /API_SERVICE.*BUSINESS_CAPABILITY.*DATA_INTEGRATION.*BACKGROUND_INTEGRATION.*PROJECT_OPERATION/s);
   assert.match(analyzer, /candidateCount: features\.length/);

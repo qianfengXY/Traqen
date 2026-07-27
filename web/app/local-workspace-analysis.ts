@@ -1051,7 +1051,8 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
       gaps: [
         { type: "MISSING_AUTHORITY", severity: "BLOCKING", ownerRole: "product-owner" },
         { type: "IMPLEMENTATION_UNREVIEWED", severity: "BLOCKING", ownerRole: "technical-owner" },
-        ...(tests.length === 0 ? [{ type: "NO_TEST_SPEC", severity: "BLOCKING" as const, ownerRole: "quality-owner" }] : []),
+        { type: "NO_TEST_SPEC", severity: "BLOCKING", ownerRole: "quality-owner" },
+        ...(tests.length === 0 ? [{ type: "NO_TEST_ASSET_CLUE", severity: "WARNING" as const, ownerRole: "quality-owner" }] : []),
         { type: "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT", severity: "BLOCKING", ownerRole: "quality-owner" },
       ],
     };

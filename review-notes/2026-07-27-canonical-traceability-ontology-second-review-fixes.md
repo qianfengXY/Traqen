@@ -14,6 +14,7 @@ Kimi's second-review P2 terminology findings and the same-pattern siblings are f
 |---|---|
 | Workspace navigation and breadcrumb | The Trace label is contextual: local Workspace uses Candidate traceability; governed server/demo views retain Feature traceability. |
 | Candidate detail | Empty state says Candidate; trust dimensions no longer say Candidate Feature; test observations are Test Asset clues, not TestSpec/test cases. |
+| Test gaps | Every local Candidate keeps the blocking `NO_TEST_SPEC` gap even when Test Asset clues exist. Absence of a test file is a separate warning, `NO_TEST_ASSET_CLUE`. |
 | Execution semantics | Removed the synthetic execution-result distribution. Local statistics expose `executionEvidenceGapCount`; Candidate verification is `UNAVAILABLE`, not a fabricated `NOT_RUN` TestExecution state. |
 | Statistics and child scopes | Counts and labels use Candidate, Test Asset, and execution-evidence-gap terms throughout. |
 | Analysis task and graph | Task titles/actions use Candidate traceability; local graph errors and center legend use Candidate terms. |

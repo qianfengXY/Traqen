@@ -24,7 +24,7 @@ created: 2026-07-27
 | 证据 | Kimi 审查指出 `traqen-product.tsx:1645`、`:1679`、`:1926`、`:1946`、`:2027` 和 `:3045`；同模式扫描还发现 `:1892`、`:2001`、`:2028`、`:2550`、`:3002` 和 `:3408`。 |
 | 已排除假设 | 这不只是翻译错误：中英文和 TypeScript 统计模型都携带了同样的受治理词汇。它也不是真实执行状态，因为本地分析没有已批准的 TestSpec、Runner 结果或签名 Evidence。 |
 | 根因假设 | Workspace 界面复用了受治理 Feature 视图的命名，而本地统计模型把证据缺失编码成了合成的执行结果分布。共享词汇使新界面持续重复同一分类错误。 |
-| 修复 | 将本地类型、组件、计数和测试观察统一为 Candidate/Test Asset；用 `executionEvidenceGapCount` 替换合成执行结果；将验证状态表达为 `UNAVAILABLE`；根据 Candidate 与受治理上下文切换导航和图例；只在 IndexedDB 读取边界保留显式旧字段兼容。 |
+| 修复 | 将本地类型、组件、计数和测试观察统一为 Candidate/Test Asset；始终保留正式 `NO_TEST_SPEC` 缺口，并与可选的 `NO_TEST_ASSET_CLUE` 独立；用 `executionEvidenceGapCount` 替换合成执行结果；将验证状态表达为 `UNAVAILABLE`；根据 Candidate 与受治理上下文切换导航和图例；只在 IndexedDB 读取边界保留显式旧字段兼容。 |
 | 预防 | 源码契约测试拒绝旧的本地标识符和可见文案，统计测试要求 Candidate/Test Asset/执行证据缺口字段，扫描器版本 6 使旧本地结构的缓存分析失效。 |
 
 ## 同类失效模式扫描
@@ -49,4 +49,3 @@ created: 2026-07-27
 - 确实展示 Feature、TestSpec、TestExecution 或执行结果的受治理服务端/演示视图；
 - 明确表达“Candidate → 可信 Feature”的晋升文案；
 - 仅用于兼容的 `analysis.features` 和旧 IndexedDB `featureCount/features` 读取。新存储摘要写入 `candidateCount/candidates`。
-
