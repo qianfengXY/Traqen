@@ -12,24 +12,26 @@ doc_kind: bug-report
 created: 2026-07-27
 ---
 
-# Workspace analysis changed to paused after refresh
+# Workspace analysis was owned by the browser page
 
 ## Diagnosis capsule
 
 | Field | Evidence |
 |---|---|
-| Symptom | Refreshing the browser while a Workspace analysis was running displayed the task as paused. Continuing it created a new-looking Agent session and repeated Main-Agent planning. |
-| Minimal reproduction | Start a local Workspace analysis, wait for at least one persisted checkpoint, refresh, then inspect the task status and select Continue analysis. |
-| First bad boundary | `WorkspaceAnalysisView` restored every IndexedDB checkpoint as `PAUSED`, regardless of the persisted `RUNNING` or `PAUSED` status. |
-| Root cause | The executor belongs to the browser page lifecycle, so refresh ends that JavaScript invocation. The recovery effect then discarded the durable status and required a manual restart. Resume already filtered persisted model classifications, but it regenerated the visible task session and model plan, making checkpoint recovery look and partly behave like a new run. |
-| Fix | Persist `RUNNING` before exposing the Pause control; preserve all persisted run states; automatically reattach only `RUNNING`; persist an explicit pause request before the current unit boundary; keep `PAUSED` and `FAILED` distinct; reuse the same run ID; reconstruct only remaining queues; skip persisted file records and model classifications. |
-| Safety boundary | Raw source still stays in the browser. Refresh recovery uses the retained directory handle and IndexedDB checkpoint; if permission is unavailable, the run remains durable and requires reauthorization rather than claiming work is progressing. |
+| Symptom | Refreshing the browser destroyed the active analysis executor. The old recovery UI either showed a pause or restarted work from a browser checkpoint, even though the user never requested a lifecycle transition. |
+| Minimal reproduction | Start a local Workspace analysis, wait until model WorkUnits are running, refresh the page one or more times, then compare the executor, run ID, status, and completed-unit count. |
+| First bad boundary | `WorkspaceAnalysisView` owns the file loop, model batch loop, pause flag, Agent task, and `RUNNING` state inside one React component. Unmounting the page destroys the only executor. |
+| Confirmed root cause | IndexedDB made data recoverable but did not make execution durable. A browser-owned Promise cannot satisfy a server-style `RUNNING` contract after the page is gone. The first patch preserved/replayed browser state, but it still treated refresh as an execution event and therefore did not meet the requirement. |
+| Correct fix | Keep deterministic source preparation local, ingest only bounded derived observations as canonical Facts, and start the existing asynchronous server AnalysisRun. The browser stores a subscription, polls with `GET`, and sends Pause/Resume only from explicit user actions. |
+| Safety boundary | Raw files, full source content, real `.env` values, and unredacted secrets remain local. Only bounded derived observations enter the server Fact boundary. |
 
 ## Regression coverage
 
-- Running checkpoints recover as `RUNNING`, with automatic continuation and no artificial end time.
-- A new or manually resumed run makes its `RUNNING` checkpoint durable before Pause becomes available.
-- Explicitly paused checkpoints remain paused until manual resume.
-- Failed checkpoints remain failed instead of being mislabeled as user pauses.
-- Candidates already enriched under the same model/evidence policy are not enqueued again.
-- Source-contract checks require automatic reattachment, explicit pause persistence, stable run identity, and remaining-only planning.
+- Repeated mount, refresh, and reattach operations issue only `GET` and never Pause, Resume, or Start.
+- Only a server response may display `RUNNING`.
+- Explicitly paused checkpoints remain paused until the user calls Resume.
+- Resume keeps the same server run ID and completed WorkUnits.
+- The deterministic run pointer is persisted before Start, closing the refresh window around the `202 Accepted` response.
+- Source content fingerprints participate in Snapshot identity even when file size and derived candidates are unchanged.
+- Observation payloads reject raw code and secret-bearing configuration values.
+- A completed result is projected only for the subscribed project, Snapshot, and run.

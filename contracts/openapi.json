@@ -879,6 +879,21 @@
         }
       }
     },
+    "/v1/projects/{projectId}/workspace-observations": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "ingestWorkspaceObservations",
+        "description": "Accepts only bounded, code-free observations derived by the local browser scanner. The server normalizes them into a source-only Snapshot and canonical Facts before an AnalysisRun starts.",
+        "requestBody": { "$ref": "#/components/requestBodies/WorkspaceObservation" },
+        "responses": {
+          "201": { "$ref": "#/components/responses/WorkspaceObservationIngested" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedMediaType" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/facts": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
@@ -1367,6 +1382,12 @@
           "application/json": { "schema": { "$ref": "./fact-bundle.schema.json" } }
         }
       },
+      "WorkspaceObservation": {
+        "required": true,
+        "content": {
+          "application/json": { "schema": { "$ref": "./workspace-observation.schema.json" } }
+        }
+      },
       "ReverseSkillRegistration": {
         "required": true,
         "content": {
@@ -1759,6 +1780,14 @@
         "content": {
           "application/json": {
             "schema": { "$ref": "./fact-bundle.schema.json#/$defs/StoredFactBundle" }
+          }
+        }
+      },
+      "WorkspaceObservationIngested": {
+        "description": "Source-only Snapshot and canonical Fact receipt created from bounded browser observations",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "./workspace-observation.schema.json#/$defs/Receipt" }
           }
         }
       },

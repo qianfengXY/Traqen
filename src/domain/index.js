@@ -21,3 +21,4 @@ export * from "./reverse-job.js";
 export * from "./evidence-lifecycle.js";
 export * from "./feature-evolution.js";
 export * from "./platform-operations-metrics.js";
+export * from "./workspace-observations.js";

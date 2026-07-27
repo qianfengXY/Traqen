@@ -1,4 +1,5 @@
 import { analyzeLocalWorkspaceRecords, localWorkspaceEvidencePolicyVersion, localWorkspaceScannerVersion, type LocalWorkspaceAnalysis, type LocalWorkspaceFileRecord } from "./local-workspace-analysis";
+import type { WorkspaceRunSubscription } from "./workspace-analysis-run-client.ts";
 
 export type LocalWorkspaceProjectSummary = {
   id: string;
@@ -29,7 +30,7 @@ export type LocalWorkspaceAnalysisRunCheckpoint = {
   rootName: string;
   mode: "FULL" | "INCREMENTAL";
   engine: "HYBRID";
-  status: "RUNNING" | "PAUSED" | "FAILED";
+  status: "PREPARING" | "RUNNING" | "PAUSED" | "FAILED";
   phase: "SCANNING" | "MODEL_ENRICHMENT";
   modelProfileId: string;
   completedModelBatchCount: number;
@@ -47,7 +48,7 @@ export type LocalWorkspaceAnalysisRunCheckpoint = {
 };
 
 const databaseName = "traqen-local-workspaces";
-const databaseVersion = 4;
+const databaseVersion = 5;
 
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -59,6 +60,7 @@ function openDatabase() {
       if (!database.objectStoreNames.contains("snapshotRecords")) database.createObjectStore("snapshotRecords", { keyPath: "projectId" });
       if (!database.objectStoreNames.contains("analysisRuns")) database.createObjectStore("analysisRuns", { keyPath: "id" });
       if (!database.objectStoreNames.contains("analysisRunSummaries")) database.createObjectStore("analysisRunSummaries", { keyPath: "id" });
+      if (!database.objectStoreNames.contains("analysisRunSubscriptions")) database.createObjectStore("analysisRunSubscriptions", { keyPath: "projectId" });
       if (!database.objectStoreNames.contains("directoryHandles")) database.createObjectStore("directoryHandles", { keyPath: "projectId" });
       if (!database.objectStoreNames.contains("analysisResults")) {
         const results = database.createObjectStore("analysisResults", { keyPath: "id" });
@@ -240,6 +242,39 @@ export async function clearLocalWorkspaceAnalysisRun(projectId: string) {
     const transaction = database.transaction(["analysisRuns", "analysisRunSummaries"], "readwrite");
     transaction.objectStore("analysisRuns").delete(`${projectId}:ACTIVE`);
     transaction.objectStore("analysisRunSummaries").delete(`${projectId}:ACTIVE`);
+    await transactionComplete(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function loadWorkspaceRunSubscription(projectId: string) {
+  const database = await openDatabase();
+  try {
+    return await requestResult(
+      database.transaction("analysisRunSubscriptions", "readonly").objectStore("analysisRunSubscriptions").get(projectId),
+    ) as WorkspaceRunSubscription | undefined;
+  } finally {
+    database.close();
+  }
+}
+
+export async function saveWorkspaceRunSubscription(subscription: WorkspaceRunSubscription) {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("analysisRunSubscriptions", "readwrite");
+    transaction.objectStore("analysisRunSubscriptions").put(subscription);
+    await transactionComplete(transaction);
+  } finally {
+    database.close();
+  }
+}
+
+export async function clearWorkspaceRunSubscription(projectId: string) {
+  const database = await openDatabase();
+  try {
+    const transaction = database.transaction("analysisRunSubscriptions", "readwrite");
+    transaction.objectStore("analysisRunSubscriptions").delete(projectId);
     await transactionComplete(transaction);
   } finally {
     database.close();

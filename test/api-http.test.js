@@ -1224,6 +1224,63 @@ test("attested fact scans are snapshot-bound and queryable as a one-hop graph", 
   assert.equal(graph.edges[0].predicate, "CONTAINS");
 });
 
+test("Workspace observation API persists a source-only Snapshot and server-normalized Facts", async (t) => {
+  const baseUrl = await startServer(t);
+  const projectId = "PROJECT-WORKSPACE-OBSERVATIONS";
+  assert.equal((await postJson(`${baseUrl}/v1/projects`, {
+    organization: { id: "ORG-WORKSPACE", name: "Local Workspace" },
+    tenant: { id: "TENANT-WORKSPACE", name: "Local browser tenant" },
+    project: { id: projectId, name: "Orders" },
+    principals: [{ id: "USER-WORKSPACE", type: "USER", displayName: "Workspace owner" }],
+  })).response.status, 201);
+
+  const input = {
+    workspaceName: "Orders",
+    rootName: "orders-service",
+    observedAt: "2026-07-14T04:00:00.000Z",
+    records: [{
+      path: "orders-service/src/orders.ts",
+      size: 420,
+      contentFingerprint: "CONTENT-FINGERPRINT-ORDERS",
+      supported: true,
+      candidates: [{
+        localCandidateId: "CANDIDATE-GET-ORDER",
+        kind: "ENDPOINT",
+        name: "GET /orders/:id",
+        method: "GET",
+        modulePath: "orders-service",
+        sourcePath: "orders-service/src/orders.ts",
+        startLine: 12,
+        description: "Discovered GET order endpoint.",
+      }],
+      configuration: null,
+      test: null,
+    }],
+  };
+  const ingested = await postJson(
+    `${baseUrl}/v1/projects/${projectId}/workspace-observations`,
+    input,
+  );
+
+  assert.equal(ingested.response.status, 201);
+  assert.equal(ingested.body.projectId, projectId);
+  assert.equal(ingested.body.candidateFacts[0].localCandidateId, "CANDIDATE-GET-ORDER");
+  const facts = await fetch(
+    `${baseUrl}/v1/projects/${projectId}/facts?snapshotManifestId=${ingested.body.snapshotManifestId}`,
+  );
+  const graph = await facts.json();
+  assert.equal(facts.status, 200);
+  assert.equal(graph.nodes.some((node) => node.type === "ENDPOINT"), true);
+  assert.equal(graph.edges[0].predicate, "CONTAINS");
+
+  const repeated = await postJson(
+    `${baseUrl}/v1/projects/${projectId}/workspace-observations`,
+    input,
+  );
+  assert.equal(repeated.response.status, 201);
+  assert.deepEqual(repeated.body, ingested.body);
+});
+
 test("Skill API registers two attested adapters and preserves a reviewable reverse run", async (t) => {
   const scannerSecret = "scanner-shared-secret";
   const publisherSecret = "publisher-shared-secret";
