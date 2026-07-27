@@ -7,7 +7,7 @@ export interface SidebarLabels {
   manageVisibilityAriaLabel: string;
   createWorkspaceAriaLabel: string;
   workspaceLabel: string;
-  featuresSuffix: string;
+  candidatesSuffix: string;
   self: string;
   shownProjectsAriaLabel: string;
   removeProjectAriaLabel: (name: string) => string;
@@ -77,7 +77,7 @@ export function Sidebar({
           <small>
             {currentProjectId} ·{" "}
             {visibleWorkspaceAnalysis
-              ? `${visibleWorkspaceAnalysis.features.length} ${labels.featuresSuffix}`
+              ? `${visibleWorkspaceAnalysis.features.length} ${labels.candidatesSuffix}`
               : labels.self}
           </small>
         </div>
@@ -100,7 +100,7 @@ export function Sidebar({
                 >
                   <strong>{project.name}</strong>
                   <small>
-                    {project.featureCount} {labels.featuresSuffix} ·{" "}
+                    {project.candidateCount} {labels.candidatesSuffix} ·{" "}
                     {new Date(project.updatedAt).toLocaleDateString(language)}
                   </small>
                 </button>

@@ -52,9 +52,10 @@
     },
     "WorkUnit": {
       "type": "object",
-      "required": ["id", "runId", "scopeKey", "rootNodeId", "nodeIds", "edgeIds", "estimatedTokens", "inputDigest", "status", "attempts"],
+      "required": ["id", "boundary", "runId", "scopeKey", "rootNodeId", "nodeIds", "edgeIds", "estimatedTokens", "inputDigest", "status", "attempts", "output", "error"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "boundary": { "$ref": "./candidate-bundle.schema.json#/$defs/WorkUnit" },
         "runId": { "type": "string", "minLength": 1 },
         "scopeKey": { "type": "string", "minLength": 1 },
         "rootNodeId": { "type": "string", "minLength": 1 },
@@ -64,7 +65,19 @@
         "inputDigest": { "type": "string", "minLength": 1 },
         "status": { "enum": ["QUEUED", "RUNNING", "COMPLETED", "FAILED"] },
         "attempts": { "type": "array", "items": { "type": "object" } },
-        "output": { "type": ["object", "null"] },
+        "output": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["candidateBundle"],
+              "properties": {
+                "candidateBundle": { "$ref": "./candidate-bundle.schema.json" }
+              },
+              "additionalProperties": false
+            },
+            { "type": "null" }
+          ]
+        },
         "error": { "type": ["object", "null"] }
       },
       "additionalProperties": false
@@ -104,19 +117,33 @@
       },
       "additionalProperties": false
     },
-    "AnalyzedFeature": {
+    "AnalyzedCandidate": {
       "type": "object",
-      "required": ["id", "revision", "candidateKey", "mode", "name", "description", "authority", "change", "evidenceFactIds", "stableEvidenceNodeIds", "analysisRunId", "snapshotManifestId"],
+      "required": ["id", "nodeType", "status", "governedFeatureId", "candidateKey", "mode", "name", "description", "confidence", "confidenceCap", "reconciliation", "evidenceFactIds", "stableEvidenceNodeIds", "design", "provenance", "uncertainties", "digests", "analysisRunId", "snapshotManifestId", "observedAt"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "revision": { "type": "integer", "minimum": 1 },
+        "nodeType": { "const": "CANDIDATE_FEATURE" },
+        "status": { "const": "PENDING_REVIEW" },
+        "governedFeatureId": { "type": "null" },
         "candidateKey": { "type": "string", "minLength": 1 },
         "mode": { "enum": ["BUSINESS", "API"] },
         "name": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "minLength": 1 },
         "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },
-        "authority": { "type": "object" },
-        "change": { "type": "object" },
+        "confidenceCap": { "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "reconciliation": {
+          "type": "object",
+          "required": ["matchStatus", "matchBasis", "previousCandidateId", "previousRunId", "changeType", "identityDecision"],
+          "properties": {
+            "matchStatus": { "enum": ["UNMATCHED", "SUGGESTED"] },
+            "matchBasis": { "type": ["string", "null"] },
+            "previousCandidateId": { "type": ["string", "null"] },
+            "previousRunId": { "type": ["string", "null"] },
+            "changeType": { "enum": ["NEW", "BUSINESS_SEMANTICS_CHANGED", "IMPLEMENTATION_REMAPPED", "EVIDENCE_REFRESHED", "UNCHANGED"] },
+            "identityDecision": { "const": "NOT_MADE" }
+          },
+          "additionalProperties": false
+        },
         "evidenceFactIds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "stableEvidenceNodeIds": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
         "design": { "type": "object" },
@@ -125,14 +152,13 @@
         "digests": { "type": "object" },
         "analysisRunId": { "type": "string" },
         "snapshotManifestId": { "type": "string" },
-        "firstSeenAt": { "type": "string", "format": "date-time" },
-        "lastSeenAt": { "type": "string", "format": "date-time" }
+        "observedAt": { "type": "string", "format": "date-time" }
       },
       "additionalProperties": false
     },
     "Result": {
       "type": "object",
-      "required": ["id", "projectId", "snapshotManifestId", "mode", "profile", "status", "coverage", "factFingerprint", "features", "retiredFeatures", "completedAt"],
+      "required": ["id", "projectId", "snapshotManifestId", "mode", "profile", "status", "coverage", "factFingerprint", "candidates", "candidateAbsences", "completedAt"],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "projectId": { "type": "string", "minLength": 1 },
@@ -143,8 +169,8 @@
         "status": { "enum": ["COMPLETED", "COMPLETED_WITH_GAPS"] },
         "coverage": { "type": "object" },
         "factFingerprint": { "type": "object", "additionalProperties": { "type": "string" } },
-        "features": { "type": "array", "items": { "$ref": "#/$defs/AnalyzedFeature" } },
-        "retiredFeatures": { "type": "array", "items": { "type": "object" } },
+        "candidates": { "type": "array", "items": { "$ref": "#/$defs/AnalyzedCandidate" } },
+        "candidateAbsences": { "type": "array", "items": { "type": "object" } },
         "completedAt": { "type": "string", "format": "date-time" }
       },
       "additionalProperties": false

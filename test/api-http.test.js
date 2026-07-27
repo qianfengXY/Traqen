@@ -105,8 +105,8 @@ test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes late
     async getAnalysisRun(projectId, runId) { calls.push(["get", projectId, runId]); return checkpoint; },
     async pauseAnalysisRun(projectId, runId) { calls.push(["pause", projectId, runId]); return checkpoint; },
     async resumeAnalysisRun(projectId, runId) { calls.push(["resume", projectId, runId]); return checkpoint; },
-    async getLatestAnalysisResult(projectId) { calls.push(["latest", projectId]); return { id: "ANALYSIS-HTTP", projectId, features: [] }; },
-    async getAnalyzedFeatureHistory(projectId, featureId) { calls.push(["history", projectId, featureId]); return [{ runId: "ANALYSIS-HTTP" }]; },
+    async getLatestAnalysisResult(projectId) { calls.push(["latest", projectId]); return { id: "ANALYSIS-HTTP", projectId, candidates: [] }; },
+    async getAnalysisCandidateHistory(projectId, candidateId) { calls.push(["history", projectId, candidateId]); return [{ runId: "ANALYSIS-HTTP" }]; },
   };
   const baseUrl = await startStubServer(t, application);
   const started = await postJson(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs`, {
@@ -121,19 +121,29 @@ test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes late
   assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP/pause`, { method: "POST" })).status, 202);
   assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-runs/ANALYSIS-HTTP/resume`, { method: "POST" })).status, 202);
   assert.equal((await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-results/latest`)).status, 200);
-  const history = await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/features/FEATURE-HTTP/analysis-history`);
+  const history = await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/analysis-candidates/CANDIDATE-HTTP/history`);
   assert.deepEqual((await history.json()).history, [{ runId: "ANALYSIS-HTTP" }]);
 });
 
 test("analysis model profiles can be configured, verified, and used for bounded Workspace enrichment without returning secrets", async (t) => {
   const calls = [];
+  const enrichmentInput = (candidateId) => {
+    const workUnit = { schemaVersion: "1.0.0", id: `WORK-${candidateId}`, projectId: "PROJECT-HTTP", snapshotManifestId: "SNAPSHOT-HTTP", analysisRunId: "ANALYSIS-HTTP", factIds: [`FACT-${candidateId}`], rootFactIds: [`FACT-${candidateId}`] };
+    return {
+      workUnit,
+      candidateBundle: {
+        schemaVersion: "1.0.0", id: `BUNDLE-${candidateId}`, projectId: workUnit.projectId, snapshotManifestId: workUnit.snapshotManifestId, analysisRunId: workUnit.analysisRunId, workUnitId: workUnit.id, producedAt: "2026-07-25T10:00:00.000Z",
+        candidates: [{ id: candidateId, kind: "CANDIDATE_FEATURE", status: "PENDING_REVIEW", confidence: "LOW", confidenceCap: "LOW", evidenceFactIds: workUnit.factIds, proposal: { businessFeature: true }, provenance: [{ producerType: "DETERMINISTIC", producerId: "TEST", producerVersion: "1" }] }],
+      },
+    };
+  };
   const application = {
     listAnalysisModelProfiles() { return [{ id: "workspace-default", ready: false }]; },
     configureAnalysisModelProfile(input) { calls.push(["configure", input]); return { id: input.id, endpoint: input.endpoint, model: input.model, ready: false }; },
     async verifyAnalysisModelProfile(profileId) { calls.push(["verify", profileId]); return { id: profileId, ready: true, latencyMs: 12 }; },
     selectAnalysisModelProfile(profileId) { calls.push(["select", profileId]); return { id: profileId, ready: true, active: true }; },
     removeAnalysisModelProfile(profileId) { calls.push(["remove", profileId]); return { id: profileId, ready: true, active: false }; },
-    async enrichWorkspaceCandidates(profileId, input, options = {}) { calls.push(["enrich", profileId, input]); options.onTelemetry?.({ type: "REQUEST_PREPARED", requestId: "REQ-1" }); return [{ id: input.candidates[0].id, businessFeature: true }]; },
+    async enrichWorkspaceCandidates(profileId, input, options = {}) { calls.push(["enrich", profileId, input]); options.onTelemetry?.({ type: "REQUEST_PREPARED", requestId: "REQ-1" }); return input.candidateBundle; },
     async planWorkspaceAnalysis(profileId, input, options = {}) { calls.push(["plan", profileId, input]); options.onTelemetry?.({ type: "RESPONSE_PROGRESS", requestId: "REQ-PLAN", assistantMessage: "Three queues planned" }); return { agentMessage: "Three queues planned", taskAssignments: [1, 2, 3].map((slot) => ({ agentId: `SUB_AGENT_${slot}`, objective: `Queue ${slot}`, moduleScopes: [] })) }; },
   };
   const baseUrl = await startStubServer(t, application);
@@ -150,19 +160,19 @@ test("analysis model profiles can be configured, verified, and used for bounded 
   assert.equal(JSON.stringify(configured.body).includes("not-returned"), false);
   assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" })).status, 200);
   assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/select`, { method: "POST" })).status, 200);
-  const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, { candidates: [{ id: "FEATURE-1" }] });
+  const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, enrichmentInput("CANDIDATE-1"));
   assert.equal(enriched.response.status, 200);
-  assert.equal(enriched.body.candidates[0].businessFeature, true);
+  assert.equal(enriched.body.candidateBundle.candidates[0].proposal.businessFeature, true);
   const observable = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-    body: JSON.stringify({ candidates: [{ id: "FEATURE-2" }] }),
+    body: JSON.stringify(enrichmentInput("CANDIDATE-2")),
   });
   assert.match(observable.headers.get("content-type") ?? "", /^application\/x-ndjson/);
   const messages = (await observable.text()).trim().split("\n").map((line) => JSON.parse(line));
   assert.deepEqual(messages.map((message) => message.kind), ["telemetry", "result"]);
   assert.equal(messages[0].event.requestId, "REQ-1");
-  assert.equal(messages[1].candidates[0].id, "FEATURE-2");
+  assert.equal(messages[1].candidateBundle.candidates[0].id, "CANDIDATE-2");
   const planned = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-plan`, {
     method: "POST",
     headers: { "content-type": "application/json", accept: "application/x-ndjson" },

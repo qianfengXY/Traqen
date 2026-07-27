@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { analyzeLocalWorkspace, analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, createLocalWorkspaceAnalysisAccumulator, localWorkspaceAnalysisForTreeMode, localWorkspaceScannerVersion, planLocalWorkspaceCheckpointResume, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
+import { createLocalWorkspaceCandidateGraph } from "../app/local-workspace-graph.ts";
 import { calculateLocalWorkspaceStatistics, localWorkspaceStatisticsForNode } from "../app/local-workspace-statistics.ts";
 
 test("resumes a local checkpoint from only the unfinished or changed files", () => {
@@ -25,7 +26,7 @@ test("resumes a local checkpoint from only the unfinished or changed files", () 
   assert.deepEqual(exact.remainingPaths, []);
 });
 
-test("discovers a complete local Feature tree without promoting candidates to business truth", () => {
+test("discovers a complete local Candidate tree without promoting candidates to business truth", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Customer Portal",
     projectId: "PROJECT-CUSTOMER-PORTAL",
@@ -80,20 +81,109 @@ test("discovers a complete local Feature tree without promoting candidates to bu
   assert.ok(analysis.features.some((feature) => feature.kind === "CODE_SYMBOL" && feature.name === "Calculate invoice total"));
   const capability = analysis.features.find((feature) => feature.kind === "CODE_SYMBOL");
   assert.equal(capability.dimensions.authority, "PENDING");
-  assert.equal(capability.dimensions.verification, "NOT_RUN");
-  assert.ok(capability.tests.some((item) => item.path === "src/api/__tests__/customer.test.js"));
+  assert.equal(capability.dimensions.verification, "UNAVAILABLE");
+  assert.ok(capability.testAssets.some((item) => item.path === "src/api/__tests__/customer.test.js"));
   assert.ok(capability.configurations.some((item) => item.value.includes("<redacted>")));
   assert.ok(capability.configurations.every((item) => !item.value.includes("must-not-render") && !item.value.includes("must-not-be-read")));
   assert.equal(analysis.skippedFileCount, 1);
   assert.ok(capability.gaps.some((gap) => gap.type === "MISSING_AUTHORITY"));
+  assert.ok(capability.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  assert.ok(capability.gaps.every((gap) => gap.type !== "NO_TEST_ASSET_CLUE"));
   assert.ok(capability.gaps.some((gap) => gap.type === "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT"));
+  const candidateWithoutTestAsset = analysis.features.find((feature) => feature.name === "Calculate invoice total");
+  assert.ok(candidateWithoutTestAsset.gaps.some((gap) => gap.type === "NO_TEST_SPEC"));
+  assert.ok(candidateWithoutTestAsset.gaps.some((gap) => gap.type === "NO_TEST_ASSET_CLUE"));
   assert.equal(analysis.tree.kind, "WORKSPACE");
-  assert.equal(analysis.tree.featureCount, analysis.features.length);
+  assert.equal(analysis.tree.candidateCount, analysis.features.length);
   assert.ok(analysis.tree.children.some((node) => node.kind === "MODULE"));
   assert.ok(analysis.tree.children.flatMap((node) => node.children).some((node) => node.kind === "DOMAIN"));
   assert.ok(analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).some((node) => node.label === "API_SERVICE"));
   assert.ok(analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).some((node) => node.label === "BUSINESS_CAPABILITY"));
-  assert.ok(analysis.tree.children.every((node) => node.featureCount === node.children.reduce((sum, child) => sum + child.featureCount, 0)));
+  assert.ok(analysis.tree.children.every((node) => node.candidateCount === node.children.reduce((sum, child) => sum + child.candidateCount, 0)));
+  const candidateLeaf = analysis.tree.children.flatMap((node) => node.children).flatMap((node) => node.children).flatMap((node) => node.children)[0];
+  assert.equal(candidateLeaf.kind, "CANDIDATE");
+  assert.ok(candidateLeaf.candidateId);
+  assert.equal(candidateLeaf.featureId, undefined);
+});
+
+test("binds local Candidate evidence to a deterministic Snapshot without minting a governed Feature identity", () => {
+  const firstRecord = scanLocalWorkspaceFile({
+    path: "src/orders.ts",
+    size: 120,
+    lastModified: 1,
+    content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);",
+  });
+  const repeated = analyzeLocalWorkspaceRecords({
+    workspaceName: "Orders",
+    projectId: "PROJECT-ORDERS",
+    records: [firstRecord],
+    now: new Date("2026-07-25T10:00:00.000Z"),
+  });
+  const sameSnapshot = analyzeLocalWorkspaceRecords({
+    workspaceName: "Orders",
+    projectId: "PROJECT-ORDERS",
+    records: [firstRecord],
+    now: new Date("2026-07-25T11:00:00.000Z"),
+  });
+  const changedRecord = scanLocalWorkspaceFile({
+    path: "src/orders.ts",
+    size: 140,
+    lastModified: 2,
+    content: "export function submitOrder() { return validateOrder(); }\nrouter.post('/orders', submitOrder);",
+  });
+  const changed = analyzeLocalWorkspaceRecords({
+    workspaceName: "Orders",
+    projectId: "PROJECT-ORDERS",
+    records: [changedRecord],
+  });
+
+  assert.equal(repeated.snapshotManifestId, sameSnapshot.snapshotManifestId);
+  assert.notEqual(repeated.snapshotManifestId, changed.snapshotManifestId);
+  assert.equal(repeated.features[0].nodeType, "CANDIDATE_FEATURE");
+  assert.equal(repeated.features[0].governedFeatureId, null);
+  assert.ok(repeated.features[0].id.startsWith("CANDIDATE-DISCOVERED-"));
+  assert.ok(repeated.features[0].evidenceFactIds.length > 0);
+  assert.deepEqual(repeated.features[0].evidenceFactIds, sameSnapshot.features[0].evidenceFactIds);
+  assert.notDeepEqual(repeated.features[0].evidenceFactIds, changed.features[0].evidenceFactIds);
+});
+
+test("projects Candidate and test-asset semantics without fabricating governed truth or execution", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Orders",
+    projectId: "PROJECT-ORDERS",
+    files: [
+      { path: "orders/src/orders.ts", size: 120, content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);" },
+      { path: "orders/test/orders.test.ts", size: 90, content: "test('submit order', () => submitOrder());" },
+    ],
+  });
+  const graph = createLocalWorkspaceCandidateGraph(analysis, analysis.features[0].id, "traceability");
+  const nodeTypes = new Set(graph.nodes.map((node) => node.type));
+
+  assert.equal(graph.snapshotManifestId, analysis.snapshotManifestId);
+  assert.ok(nodeTypes.has("CANDIDATE_FEATURE"));
+  assert.ok(nodeTypes.has("CANDIDATE_CLAIM"));
+  assert.ok(nodeTypes.has("TEST_ASSET"));
+  assert.equal(nodeTypes.has("FEATURE"), false);
+  assert.equal(nodeTypes.has("CLAIM"), false);
+  assert.equal(nodeTypes.has("TEST_SPEC"), false);
+  assert.equal(nodeTypes.has("TEST_EXECUTION"), false);
+  assert.equal(graph.edges.some((edge) => edge.type === "EXECUTED_AS"), false);
+});
+
+test("projects an explicit TraceGap instead of governed demo truth when a Workspace has no candidates", () => {
+  const analysis = analyzeLocalWorkspace({
+    workspaceName: "Empty",
+    projectId: "PROJECT-EMPTY",
+    files: [
+      { path: "README.md", size: 18, content: "# No source yet" },
+    ],
+  });
+  const graph = createLocalWorkspaceCandidateGraph(analysis, "", "traceability");
+
+  assert.equal(analysis.features.length, 0);
+  assert.deepEqual(graph.nodes.map((node) => node.type), ["TRACE_GAP"]);
+  assert.equal(graph.nodes[0].label, "NO_CANDIDATE_OBSERVATION");
+  assert.equal(graph.nodes.some((node) => ["FEATURE", "CLAIM", "TEST_SPEC", "TEST_EXECUTION"].includes(node.type)), false);
 });
 
 test("accepts a 100,000-file project in batches and skips only oversized files", () => {
@@ -197,7 +287,7 @@ test("discovers Spring, JAX-RS, Java backend, interface, listener, config, and t
   assert.ok(analysis.features.every((feature) => feature.name !== "Audit Internally" && feature.name !== "Ignore Me" && feature.name !== "Get Name"));
   assert.ok(analysis.features.some((feature) => feature.modulePath.includes("order-service") && feature.modulePath.includes("com.acme.orders")));
   const findOrder = endpoints.find((feature) => feature.name === "GET /api/orders/{id}");
-  assert.ok(findOrder.tests.some((item) => item.path.includes("OrderControllerTest.java")));
+  assert.ok(findOrder.testAssets.some((item) => item.path.includes("OrderControllerTest.java")));
   assert.ok(findOrder.configurations.some((item) => item.path.endsWith("application.yml")));
   assert.ok(findOrder.configurations.some((item) => item.path.endsWith("pom.xml")));
   assert.equal(analysis.skippedFileCount, 1);
@@ -255,7 +345,7 @@ test("keeps Clowder-style async routes readable and excludes support artifacts f
   const endpoint = analysis.features.find((feature) => feature.kind === "ENDPOINT");
   assert.equal(endpoint.name, "GET /api/accounts");
   assert.notEqual(endpoint.displayName, "Async");
-  assert.ok(endpoint.tests.some((item) => item.path.endsWith("accounts.test.ts")));
+  assert.ok(endpoint.testAssets.some((item) => item.path.endsWith("accounts.test.ts")));
   assert.ok(analysis.features.some((feature) => feature.name === "Load Accounts"));
   assert.ok(analysis.features.some((feature) => feature.name === "Accounts Routes"));
   assert.ok(analysis.features.every((feature) => !["APP HEARTBEAT MS", "Account Schema", "Clear Accounts For Test"].includes(feature.name)));
@@ -263,7 +353,7 @@ test("keeps Clowder-style async routes readable and excludes support artifacts f
   assert.equal(analysis.tree.children.find((node) => node.label === "API").children.find((node) => node.label === "Accounts").kind, "DOMAIN");
 });
 
-test("does not promote scanner-only observations into business or API Feature trees", () => {
+test("does not promote scanner-only observations into governed business or API projections", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Two-mode tree",
     projectId: "PROJECT-TWO-MODE-TREE",
@@ -277,8 +367,8 @@ test("does not promote scanner-only observations into business or API Feature tr
   const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
   assert.deepEqual(business.features, []);
   assert.deepEqual(api.features, []);
-  assert.equal(business.tree.featureCount, 0);
-  assert.equal(api.tree.featureCount, 0);
+  assert.equal(business.tree.candidateCount, 0);
+  assert.equal(api.tree.candidateCount, 0);
   assert.equal(analysis.features.filter((feature) => feature.kind === "COMMAND").length, 1);
 });
 
@@ -297,7 +387,7 @@ test("hides legacy model classifications that predate the business hierarchy pol
   assert.deepEqual(localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS").features, []);
 });
 
-test("does not turn generic exported symbols from a large agent repository into business Features", () => {
+test("does not turn generic exported symbols from a large agent repository into business Candidates", () => {
   const analysis = analyzeLocalWorkspace({
     workspaceName: "Agent repository",
     projectId: "PROJECT-AGENT-REPOSITORY",
@@ -387,6 +477,7 @@ test("model enrichment preserves scanner provenance behind a stable semantic bus
     group: "BUSINESS_CAPABILITY",
     confidence: "HIGH",
     rationale: "The implementation invokes the refund operation.",
+    evidenceFactIds: ["FACT-REFUND"],
   }]);
   const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Payments", projectId: "PROJECT-PAYMENTS", records });
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
@@ -396,9 +487,30 @@ test("model enrichment preserves scanner provenance behind a stable semantic bus
   assert.deepEqual(business.features[0].evidenceCandidateIds, [candidate.id]);
   assert.equal(business.features[0].displayName, "Issue customer refund");
   assert.equal(business.features[0].modelClassification.profileId, "workspace-default");
-  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 3);
+  assert.equal(business.features[0].modelClassification.evidencePolicyVersion, 4);
   assert.equal(business.tree.children[0].label, "Payment management");
   assert.equal(business.tree.children[0].children[0].label, "Customer refunds");
+});
+
+test("rejects a local model conclusion that omits its evidence Fact references", () => {
+  const record = scanLocalWorkspaceFile({
+    path: "src/workspaces/service.ts",
+    size: 80,
+    content: "export function createWorkspace() {}",
+  });
+  assert.throws(() => applyLocalModelEnrichment([record], "workspace-default", [{
+    id: record.candidates[0].id,
+    displayName: "Create workspace",
+    description: "Creates a workspace.",
+    businessFeature: true,
+    businessKey: "workspace.create",
+    businessModule: "Workspace management",
+    businessSubmodule: "Workspace lifecycle",
+    domain: "Workspaces",
+    group: "BUSINESS_CAPABILITY",
+    confidence: "LOW",
+    rationale: "One observed source symbol.",
+  }]), /evidenceFactIds/);
 });
 
 test("builds user-facing module, submodule, and feature levels only from Agent-validated evidence", () => {
@@ -422,6 +534,7 @@ test("builds user-facing module, submodule, and feature levels only from Agent-v
       group: "BUSINESS_CAPABILITY",
       confidence: "HIGH",
       rationale: "The exported behavior and route corroborate workspace creation.",
+      evidenceFactIds: ["FACT-WORKSPACE-SYMBOL"],
     },
     {
       id: endpointCandidate.id,
@@ -435,12 +548,14 @@ test("builds user-facing module, submodule, and feature levels only from Agent-v
       group: "API_SERVICE",
       confidence: "HIGH",
       rationale: "The route declaration is directly observed.",
+      evidenceFactIds: ["FACT-WORKSPACE-ENDPOINT"],
     },
   ]);
   const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Traqen", projectId: "PROJECT-TRAQEN", records: enriched });
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
   const api = localWorkspaceAnalysisForTreeMode(analysis, "API");
 
+  assert.equal(enriched[0].candidates[0].modelClassification.reconciliationStatus, "EVIDENCE_VALIDATED");
   assert.deepEqual(business.tree.children.map((node) => node.label), ["Workspace management"]);
   assert.deepEqual(business.tree.children[0].children.map((node) => node.label), ["Workspace lifecycle"]);
   assert.deepEqual(business.tree.children[0].children[0].children.map((node) => node.label), ["Create workspace"]);
@@ -448,7 +563,7 @@ test("builds user-facing module, submodule, and feature levels only from Agent-v
   assert.deepEqual(api.tree.children[0].children[0].children.map((node) => node.label), ["Create workspace API"]);
 });
 
-test("admits an Agent-confirmed endpoint to both business and API trees when it represents a business function", () => {
+test("admits an evidence-validated Candidate endpoint to both business and API projections", () => {
   const record = scanLocalWorkspaceFile({
     path: "src/orders.ts",
     size: 120,
@@ -467,6 +582,7 @@ test("admits an Agent-confirmed endpoint to both business and API trees when it 
     group: "API_SERVICE",
     confidence: "MEDIUM",
     rationale: "The endpoint and handler describe a user-recognizable order submission.",
+    evidenceFactIds: ["FACT-ORDER-ENDPOINT"],
   }]);
   const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Orders", projectId: "PROJECT-ORDERS", records });
   assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS").features.length, 1);
@@ -488,6 +604,7 @@ test("merges corroborating scanner candidates into one Agent business function",
     group: "BUSINESS_CAPABILITY",
     confidence: "MEDIUM",
     rationale: `Evidence observed at ${record.path}.`,
+    evidenceFactIds: [`FACT-${record.path}`],
   })));
   const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Traqen", projectId: "PROJECT-TRAQEN", records });
   const business = localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS");
@@ -511,26 +628,26 @@ test("calculates hierarchical Workspace statistics without treating unknown stat
   });
 
   const workspace = localWorkspaceStatisticsForNode(analysis, analysis.tree.id);
-  assert.equal(workspace.statistics.featureCount, analysis.features.length);
+  assert.equal(workspace.statistics.candidateCount, analysis.features.length);
   assert.equal(workspace.statistics.designImplementationCount, analysis.features.length);
   assert.equal(workspace.statistics.pendingHumanConfirmationCount, analysis.features.length);
   assert.equal(workspace.statistics.incompleteEvidenceChainCount, analysis.features.length);
-  assert.equal(workspace.statistics.execution.notRun, analysis.features.length);
-  assert.equal(workspace.statistics.nonconformingFeatureCount, 0);
+  assert.equal(workspace.statistics.executionEvidenceGapCount, analysis.features.length);
+  assert.equal(workspace.statistics.nonconformingCandidateCount, 0);
   assert.ok(workspace.statistics.configurationItemCount > 0);
-  assert.ok(workspace.statistics.testCaseCount > 0);
+  assert.ok(workspace.statistics.testAssetCount > 0);
   assert.ok(workspace.statistics.blockingGapCount >= analysis.features.length);
 
   const orders = analysis.tree.children.find((node) => node.label === "Orders");
   assert.ok(orders);
   const ordersScope = localWorkspaceStatisticsForNode(analysis, orders.id);
-  assert.ok(ordersScope.statistics.featureCount > 0);
-  assert.ok(ordersScope.statistics.featureCount < workspace.statistics.featureCount);
+  assert.ok(ordersScope.statistics.candidateCount > 0);
+  assert.ok(ordersScope.statistics.candidateCount < workspace.statistics.candidateCount);
   assert.ok(ordersScope.statistics.configurationItemCount > 0);
   const customers = analysis.tree.children.find((node) => node.label === "Customers");
   assert.ok(customers);
   assert.equal(localWorkspaceStatisticsForNode(analysis, customers.id).statistics.configurationItemCount, 0);
   const explicitViolation = structuredClone(analysis.features[0]);
   explicitViolation.dimensions.conformance = "NON_CONFORMING";
-  assert.equal(calculateLocalWorkspaceStatistics([explicitViolation]).nonconformingFeatureCount, 1);
+  assert.equal(calculateLocalWorkspaceStatistics([explicitViolation]).nonconformingCandidateCount, 1);
 });

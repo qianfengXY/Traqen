@@ -994,10 +994,10 @@
         "operationId": "enrichWorkspaceCandidates",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["candidates"], "properties": { "candidates": { "type": "array", "minItems": 1, "maxItems": 24, "items": { "$ref": "#/components/schemas/WorkspaceModelCandidate" } } }, "additionalProperties": false } } }
+          "content": { "application/json": { "schema": { "type": "object", "required": ["workUnit", "candidateBundle"], "properties": { "workUnit": { "$ref": "./candidate-bundle.schema.json#/$defs/WorkUnit" }, "candidateBundle": { "$ref": "./candidate-bundle.schema.json" } }, "additionalProperties": false } } }
         },
         "responses": {
-          "200": { "description": "Evidence-bounded semantic enrichments. Send Accept: application/x-ndjson to receive live, secret-free model request, transport, response-progress, structured-output, and validation events followed by the result.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "candidates"], "properties": { "profileId": { "type": "string" }, "candidates": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceModelEnrichment" } } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string", "description": "Newline-delimited telemetry envelopes followed by one result or error envelope." } } } },
+          "200": { "description": "Evidence-bounded semantic CandidateBundle. Send Accept: application/x-ndjson to receive live, secret-free model request, transport, response-progress, structured-output, and validation events followed by the result.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "candidateBundle"], "properties": { "profileId": { "type": "string" }, "candidateBundle": { "$ref": "./candidate-bundle.schema.json" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string", "description": "Newline-delimited telemetry envelopes followed by one canonical CandidateBundle result or error envelope." } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
         }
@@ -1090,16 +1090,16 @@
         }
       }
     },
-    "/v1/projects/{projectId}/features/{featureId}/analysis-history": {
+    "/v1/projects/{projectId}/analysis-candidates/{candidateId}/history": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
-        { "$ref": "#/components/parameters/FeatureId" }
+        { "name": "candidateId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
       ],
       "get": {
-        "operationId": "getAnalyzedFeatureHistory",
+        "operationId": "getAnalysisCandidateHistory",
         "responses": {
           "200": {
-            "description": "Immutable analyzed Feature versions and retirement events ordered from oldest to newest",
+            "description": "Immutable analysis Candidate lineage and absence observations ordered from oldest to newest; no entry carries Feature authority",
             "content": { "application/json": { "schema": {
               "type": "object",
               "required": ["history"],

@@ -10,7 +10,7 @@ export interface WorkspaceManagerPanelLabels {
   noProjects: string;
   shown: string;
   hidden: string;
-  featuresSuffix: string;
+  candidatesSuffix: string;
 }
 
 export interface WorkspaceManagerPanelProps {
@@ -55,7 +55,7 @@ export function WorkspaceManagerPanel({
               <span>
                 <b>{project.name}</b>
                 <small>
-                  {project.id} · {project.featureCount} {labels.featuresSuffix} ·{" "}
+                  {project.id} · {project.candidateCount} {labels.candidatesSuffix} ·{" "}
                   {project.rootName}
                 </small>
               </span>

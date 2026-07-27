@@ -8,8 +8,13 @@ export type LocalWorkspaceProjectSummary = {
   updatedAt: string;
   fileCount: number;
   supportedFileCount: number;
-  featureCount: number;
+  candidateCount: number;
   visible: boolean;
+};
+
+type PersistedLocalWorkspaceProjectSummary = Omit<LocalWorkspaceProjectSummary, "candidateCount"> & {
+  candidateCount?: number;
+  featureCount?: number;
 };
 
 export type LocalWorkspaceProjectSnapshot = {
@@ -80,14 +85,19 @@ function transactionComplete(transaction: IDBTransaction) {
   });
 }
 
-function normalizedProject(project: LocalWorkspaceProjectSummary) {
-  return { ...project, visible: project.visible !== false };
+function normalizedProject(project: PersistedLocalWorkspaceProjectSummary): LocalWorkspaceProjectSummary {
+  const { featureCount: legacyFeatureCount, ...current } = project;
+  return {
+    ...current,
+    candidateCount: project.candidateCount ?? legacyFeatureCount ?? 0,
+    visible: project.visible !== false,
+  };
 }
 
 export async function listLocalWorkspaceProjects({ includeHidden = false }: { includeHidden?: boolean } = {}) {
   const database = await openDatabase();
   try {
-    const projects = await requestResult(database.transaction("projects", "readonly").objectStore("projects").getAll()) as LocalWorkspaceProjectSummary[];
+    const projects = await requestResult(database.transaction("projects", "readonly").objectStore("projects").getAll()) as PersistedLocalWorkspaceProjectSummary[];
     return projects.map(normalizedProject).filter((project) => includeHidden || project.visible).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   } finally {
     database.close();
@@ -99,7 +109,7 @@ export async function loadLocalWorkspaceProject(projectId: string) {
   try {
     const transaction = database.transaction(["projects", "snapshots"], "readonly");
     const [project, storedSnapshot] = await Promise.all([
-      requestResult(transaction.objectStore("projects").get(projectId)) as Promise<LocalWorkspaceProjectSummary | undefined>,
+      requestResult(transaction.objectStore("projects").get(projectId)) as Promise<PersistedLocalWorkspaceProjectSummary | undefined>,
       requestResult(transaction.objectStore("snapshots").get(projectId)) as Promise<{ projectId: string; scannedAt: string; scannerVersion?: number; evidencePolicyVersion?: number; analysis?: LocalWorkspaceAnalysis; records?: LocalWorkspaceFileRecord[] } | undefined>,
     ]);
     if (!project || !storedSnapshot) return null;
@@ -131,7 +141,7 @@ export async function setLocalWorkspaceProjectVisibility(projectId: string, visi
   try {
     const transaction = database.transaction("projects", "readwrite");
     const store = transaction.objectStore("projects");
-    const project = await requestResult(store.get(projectId)) as LocalWorkspaceProjectSummary | undefined;
+    const project = await requestResult(store.get(projectId)) as PersistedLocalWorkspaceProjectSummary | undefined;
     if (!project) throw new Error(`Local Workspace project ${projectId} was not found`);
     const updated = { ...normalizedProject(project), visible };
     store.put(updated);
@@ -172,8 +182,8 @@ export async function saveLocalWorkspaceProject(snapshot: LocalWorkspaceProjectS
       scannedAt: snapshot.analysis.scannedAt,
       fileCount: snapshot.analysis.fileCount,
       supportedFileCount: snapshot.analysis.supportedFileCount,
-      featureCount: snapshot.analysis.features.length,
-      features: snapshot.analysis.features.map((feature) => ({ id: feature.id, name: feature.name, displayName: feature.displayName, kind: feature.kind, sourcePath: feature.sourcePath, startLine: feature.startLine })),
+      candidateCount: snapshot.analysis.features.length,
+      candidates: snapshot.analysis.features.map((candidate) => ({ id: candidate.id, name: candidate.name, displayName: candidate.displayName, kind: candidate.kind, sourcePath: candidate.sourcePath, startLine: candidate.startLine })),
     });
     await transactionComplete(transaction);
   } finally {
@@ -273,8 +283,14 @@ export async function listLocalWorkspaceAnalysisHistory(projectId: string) {
   const database = await openDatabase();
   try {
     const index = database.transaction("analysisResults", "readonly").objectStore("analysisResults").index("projectId");
-    const results = await requestResult(index.getAll(projectId)) as Array<{ id: string; projectId: string; scannedAt: string; fileCount: number; supportedFileCount: number; featureCount: number; features: unknown[] }>;
-    return results.sort((left, right) => right.scannedAt.localeCompare(left.scannedAt));
+    const results = await requestResult(index.getAll(projectId)) as Array<{ id: string; projectId: string; scannedAt: string; fileCount: number; supportedFileCount: number; candidateCount?: number; candidates?: unknown[]; featureCount?: number; features?: unknown[] }>;
+    return results
+      .map(({ featureCount: legacyFeatureCount, features: legacyFeatures, ...result }) => ({
+        ...result,
+        candidateCount: result.candidateCount ?? legacyFeatureCount ?? 0,
+        candidates: result.candidates ?? legacyFeatures ?? [],
+      }))
+      .sort((left, right) => right.scannedAt.localeCompare(left.scannedAt));
   } finally {
     database.close();
   }
