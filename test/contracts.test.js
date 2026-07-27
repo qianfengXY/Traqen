@@ -44,7 +44,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.apiKey.writeOnly, true);
   assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.stream.default, false);
   assert.ok(contract.components.schemas.AnalysisModelProfile.required.includes("active"));
-  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.requestBody.content["application/json"].schema.properties.candidates.maxItems, 24);
+  assert.deepEqual(
+    contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.requestBody.content["application/json"].schema.required,
+    ["workUnit", "candidateBundle"],
+  );
   assert.ok(contract.components.schemas.WorkspaceModelCandidate.required.includes("evidence"));
   assert.equal(contract.components.schemas.WorkspaceEvidenceAssessment.properties.confidenceCap.enum.includes("HIGH"), true);
   assert.ok(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.responses["200"].content["application/x-ndjson"]);
@@ -196,7 +199,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/pause"].post.operationId, "pauseAnalysisRun");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/resume"].post.operationId, "resumeAnalysisRun");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-results/latest"].get.operationId, "getLatestAnalysisResult");
-  assert.equal(contract.paths["/v1/projects/{projectId}/features/{featureId}/analysis-history"].get.operationId, "getAnalyzedFeatureHistory");
+  assert.equal(contract.paths["/v1/projects/{projectId}/analysis-candidates/{candidateId}/history"].get.operationId, "getAnalysisCandidateHistory");
+  assert.equal(contract.paths["/v1/projects/{projectId}/features/{featureId}/analysis-history"], undefined);
   assert.equal(contract.paths["/v1/reverse-runs"].post.operationId, "executeReverseRun");
   assert.equal(
     contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}"].get.operationId,
@@ -220,16 +224,38 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   );
 });
 
-test("Analysis Agent contract makes resumability, bounded context, and latest Feature projection explicit", async () => {
+test("OpenAPI Workspace enrichment uses the canonical WorkUnit and CandidateBundle envelope", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"),
+  );
+  const operation = contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post;
+  const request = operation.requestBody.content["application/json"].schema;
+  const response = operation.responses["200"].content["application/json"].schema;
+
+  assert.deepEqual(request.required, ["workUnit", "candidateBundle"]);
+  assert.equal(request.properties.workUnit.$ref, "./candidate-bundle.schema.json#/$defs/WorkUnit");
+  assert.equal(request.properties.candidateBundle.$ref, "./candidate-bundle.schema.json");
+  assert.ok(response.required.includes("candidateBundle"));
+  assert.equal(response.properties.candidateBundle.$ref, "./candidate-bundle.schema.json");
+});
+
+test("Analysis Agent contract makes resumability, bounded evidence, and Candidate-only projection explicit", async () => {
   const contract = JSON.parse(
     await readFile(new URL("../contracts/analysis-agent.schema.json", import.meta.url), "utf8"),
   );
   assert.equal(contract.title, "AnalysisRunRequest");
   assert.ok(contract.required.includes("snapshotManifestId"));
-  assert.ok(contract.$defs.WorkUnit.required.includes("estimatedTokens"));
+  assert.ok(contract.$defs.WorkUnit.required.includes("boundary"));
+  assert.equal(contract.$defs.WorkUnit.properties.boundary.$ref, "./candidate-bundle.schema.json#/$defs/WorkUnit");
+  assert.equal(contract.$defs.WorkUnit.properties.output.oneOf[0].properties.candidateBundle.$ref, "./candidate-bundle.schema.json");
   assert.ok(contract.$defs.Checkpoint.required.includes("workUnits"));
-  assert.ok(contract.$defs.Result.required.includes("features"));
-  assert.deepEqual(contract.$defs.AnalyzedFeature.properties.mode.enum, ["BUSINESS", "API"]);
+  assert.ok(contract.$defs.Result.required.includes("candidates"));
+  assert.ok(contract.$defs.Result.required.includes("candidateAbsences"));
+  assert.deepEqual(contract.$defs.AnalyzedCandidate.properties.mode.enum, ["BUSINESS", "API"]);
+  assert.equal(contract.$defs.AnalyzedCandidate.properties.nodeType.const, "CANDIDATE_FEATURE");
+  assert.equal(contract.$defs.AnalyzedCandidate.properties.status.const, "PENDING_REVIEW");
+  assert.equal(contract.$defs.AnalyzedCandidate.properties.governedFeatureId.type, "null");
+  assert.equal(contract.$defs.AnalyzedCandidate.properties.authority, undefined);
 });
 
 test("FactBundle contract keeps facts locatable, snapshot-bound, and scanner-attested", async () => {
@@ -244,6 +270,27 @@ test("FactBundle contract keeps facts locatable, snapshot-bound, and scanner-att
   assert.deepEqual(contract.$defs.SourceLocation.required, ["artifact", "startLine", "endLine", "contentHash"]);
   assert.ok(contract.$defs.FactNode.properties.type.enum.includes("ENDPOINT"));
   assert.ok(contract.$defs.FactEdge.properties.predicate.enum.includes("IMPLEMENTED_BY"));
+});
+
+test("CandidateBundle contract binds every inference to one Snapshot and WorkUnit", async () => {
+  const contract = JSON.parse(
+    await readFile(new URL("../contracts/candidate-bundle.schema.json", import.meta.url), "utf8"),
+  );
+
+  assert.equal(contract.title, "CandidateBundle");
+  assert.deepEqual(
+    contract.$defs.WorkUnit.required,
+    ["schemaVersion", "id", "projectId", "snapshotManifestId", "analysisRunId", "factIds", "rootFactIds"],
+  );
+  assert.ok(contract.required.includes("workUnitId"));
+  assert.ok(contract.$defs.Candidate.required.includes("evidenceFactIds"));
+  assert.equal(contract.$defs.Candidate.properties.evidenceFactIds.minItems, 1);
+  assert.equal(contract.$defs.Candidate.properties.evidenceFactIds.uniqueItems, true);
+  assert.deepEqual(
+    contract.$defs.Candidate.properties.kind.enum,
+    ["CANDIDATE_FEATURE", "CANDIDATE_CLAIM"],
+  );
+  assert.equal(contract.$defs.Candidate.properties.status.const, "PENDING_REVIEW");
 });
 
 test("Reverse Skill contracts bind supply-chain permissions, structured output, and audit history", async () => {

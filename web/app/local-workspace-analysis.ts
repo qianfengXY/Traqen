@@ -10,7 +10,8 @@ export type LocalFeatureTreeMode = "BUSINESS" | "API";
 export type LocalModelClassification = {
   profileId: string;
   evidencePolicyVersion: number;
-  reconciliationStatus?: "CONFIRMED" | "PROVISIONAL";
+  evidenceFactIds: string[];
+  reconciliationStatus?: "EVIDENCE_VALIDATED" | "PROVISIONAL";
   businessFeature: boolean;
   businessKey: string;
   businessModule: string;
@@ -23,6 +24,9 @@ export type LocalModelClassification = {
 
 export type LocalFeatureCandidate = {
   id: string;
+  nodeType: "CANDIDATE_FEATURE";
+  governedFeatureId: null;
+  evidenceFactIds: string[];
   name: string;
   displayName?: string;
   kind: "ENDPOINT" | "CODE_SYMBOL" | "COMMAND";
@@ -36,8 +40,8 @@ export type LocalFeatureCandidate = {
   implementationBlocks?: Array<{ path: string; symbol: string; startLine: number; relation: "HANDLER" | "CALLS" | "MATCHED_IMPLEMENTATION"; code: string }>;
   modelClassification?: LocalModelClassification;
   evidenceCandidateIds?: string[];
-  configurations: Array<{ path: string; key: string; value: string }>;
-  tests: Array<{ path: string; title: string; code: string }>;
+  configurations: Array<{ factId: string; path: string; key: string; value: string }>;
+  tests: Array<{ factId: string; path: string; title: string; code: string }>;
   dimensions: {
     authority: "PENDING";
     conformance: "PARTIAL";
@@ -51,7 +55,7 @@ export type LocalFeatureCandidate = {
 export type LocalFeatureTreeNode = {
   id: string;
   label: string;
-  kind: "WORKSPACE" | "MODULE" | "DOMAIN" | "GROUP" | "FEATURE";
+  kind: "WORKSPACE" | "MODULE" | "DOMAIN" | "GROUP" | "CANDIDATE";
   featureId?: string;
   featureCount: number;
   detail?: string;
@@ -62,6 +66,7 @@ export type LocalFeatureTreeNode = {
 export type LocalWorkspaceAnalysis = {
   workspaceName: string;
   projectId: string;
+  snapshotManifestId: string;
   scannedAt: string;
   fileCount: number;
   supportedFileCount: number;
@@ -75,14 +80,15 @@ export type LocalWorkspaceFileRecord = {
   path: string;
   size: number;
   lastModified: number;
+  contentFingerprint?: string;
   supported: boolean;
   candidates: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>;
   configuration: { path: string; key: string; value: string } | null;
   test: ({ path: string; title: string; code: string } & { keys: string[] }) | null;
 };
 
-export const localWorkspaceScannerVersion = 4;
-export const localWorkspaceEvidencePolicyVersion = 3;
+export const localWorkspaceScannerVersion = 5;
+export const localWorkspaceEvidencePolicyVersion = 4;
 
 export function planLocalWorkspaceCheckpointResume(
   files: Array<{ path: string; size: number; lastModified: number }>,
@@ -125,13 +131,52 @@ function eligible(file: LocalWorkspaceInputFile) {
   return !actualEnvironmentFile && !segments.some((segment) => ignoredSegments.has(segment)) && supportedExtensions.has(extension(file.path));
 }
 
-function stableId(value: string) {
-  let hash = 2166136261;
+function hash32(value: string, seed: number) {
+  let hash = seed;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
     hash = Math.imul(hash, 16777619);
   }
-  return `FEATURE-DISCOVERED-${(hash >>> 0).toString(16).toUpperCase().padStart(8, "0")}`;
+  return (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
+}
+
+export function localWorkspaceDerivedId(prefix: string, value: string) {
+  const forward = hash32(value, 2166136261);
+  const reverse = hash32([...value].reverse().join(""), 2246822519);
+  return `${prefix}-${forward}${reverse}`;
+}
+
+const localContentId = localWorkspaceDerivedId;
+
+function discoveredCandidateId(value: string) {
+  return localContentId("CANDIDATE-DISCOVERED", value);
+}
+
+function projectedCandidateId(value: string) {
+  return localContentId("CANDIDATE-PROJECTED", value);
+}
+
+function taxonomyProjectionId(value: string) {
+  return localContentId("TAXONOMY-PROJECTION", value);
+}
+
+export function localWorkspaceFactId(snapshotManifestId: string, factType: string, naturalKey: string) {
+  return localContentId(`FACT-${factType}`, `${snapshotManifestId}\u0000${naturalKey}`);
+}
+
+export function localWorkspaceSnapshotManifestId(projectId: string, records: LocalWorkspaceFileRecord[]) {
+  const manifest = records.map((record) => ({
+    path: record.path,
+    size: record.size,
+    lastModified: record.lastModified,
+    supported: record.supported,
+    contentFingerprint: record.contentFingerprint ?? localContentId("CONTENT-LEGACY", JSON.stringify({
+      candidates: record.candidates,
+      configuration: record.configuration,
+      test: record.test,
+    })),
+  })).sort((left, right) => left.path.localeCompare(right.path));
+  return localContentId("LOCAL-SNAPSHOT", `${projectId}\u0000${JSON.stringify(manifest)}`);
 }
 
 function lineNumber(content: string, offset: number) {
@@ -171,7 +216,7 @@ function callableSymbol(symbol: string) {
   return !symbol.startsWith("_") && !/(?:ForTests?|TestOnly)$/i.test(symbol);
 }
 
-type RawFeatureCandidate = Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">;
+type RawFeatureCandidate = Omit<LocalFeatureCandidate, "nodeType" | "governedFeatureId" | "evidenceFactIds" | "configurations" | "tests" | "dimensions" | "gaps">;
 type JavaAnnotation = { name: string; arguments: string; start: number; end: number };
 type JavaMethod = { name: string; offset: number; declaration: string; visibility: "public" | "protected" | "private" | "package" };
 type JavaClass = { name: string; kind: "class" | "interface" | "record"; offset: number; annotations: JavaAnnotation[] };
@@ -273,7 +318,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
   const addEndpoint = (method: JavaMethod, protocol: string, httpMethod: string, path: string, annotation: JavaAnnotation) => {
     const identity = `${file.path}:${protocol}:${httpMethod}:${path}:${method.name}:${method.offset}`;
     candidates.push({
-      id: stableId(identity),
+      id: discoveredCandidateId(identity),
       name: `${httpMethod} ${path}`,
       displayName: titleFromSymbol(method.name),
       kind: "ENDPOINT",
@@ -328,7 +373,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
     const role = listener?.name ?? component?.name ?? (javaClass?.kind === "interface" ? "interface" : "backend");
     const identity = `${file.path}:java:${role}:${method.name}:${method.offset}`;
     candidates.push({
-      id: stableId(identity),
+      id: discoveredCandidateId(identity),
       name: listener ? `${titleFromSymbol(listener.name)} · ${titleFromSymbol(method.name)}` : titleFromSymbol(method.name),
       kind: "CODE_SYMBOL",
       method: null,
@@ -351,7 +396,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
     const handler = match[3] && !/^(?:async|function)$/i.test(match[3]) ? match[3] : undefined;
     const identity = `${file.path}:endpoint:${method}:${route}`;
     candidates.push({
-      id: stableId(identity),
+      id: discoveredCandidateId(identity),
       name: `${method} ${route}`,
       displayName: handler ? titleFromSymbol(handler) : undefined,
       kind: "ENDPOINT",
@@ -373,7 +418,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
       const rpcMethod = match[1];
       const scope = match[2];
       candidates.push({
-        id: stableId(`${file.path}:gateway-rpc:${rpcMethod}`),
+        id: discoveredCandidateId(`${file.path}:gateway-rpc:${rpcMethod}`),
         name: `RPC ${rpcMethod}`,
         displayName: titleFromSymbol(rpcMethod.replace(/\./g, " ")),
         kind: "ENDPOINT",
@@ -391,7 +436,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
     for (const match of file.content.matchAll(gatewayHandlerPattern)) {
       const rpcMethod = match[1];
       candidates.push({
-        id: stableId(`${file.path}:gateway-rpc-handler:${rpcMethod}`),
+        id: discoveredCandidateId(`${file.path}:gateway-rpc-handler:${rpcMethod}`),
         name: titleFromSymbol(rpcMethod.replace(/\./g, " ")),
         kind: "CODE_SYMBOL",
         method: null,
@@ -414,7 +459,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
     if (!callableSymbol(symbol)) continue;
     const identity = `${file.path}:symbol:${symbol}`;
     candidates.push({
-      id: stableId(identity),
+      id: discoveredCandidateId(identity),
       name: titleFromSymbol(symbol),
       kind: "CODE_SYMBOL",
       method: null,
@@ -439,7 +484,7 @@ function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
       if (["if", "for", "while", "switch", "catch"].includes(symbol) || !callableSymbol(symbol) || (language === "go" && !/^[A-Z]/.test(symbol))) continue;
       const identity = `${file.path}:symbol:${symbol}`;
       candidates.push({
-        id: stableId(identity),
+        id: discoveredCandidateId(identity),
         name: titleFromSymbol(symbol),
         kind: "CODE_SYMBOL",
         method: null,
@@ -476,7 +521,7 @@ function discoverOpenApiCandidates(file: LocalWorkspaceInputFile) {
         : typeof operation.operationId === "string" && operation.operationId.trim() ? titleFromSymbol(operation.operationId.trim()) : undefined;
       const identity = `${file.path}:openapi:${upperMethod}:${route}`;
       result.push({
-        id: stableId(identity),
+        id: discoveredCandidateId(identity),
         name: `${upperMethod} ${route}`,
         displayName: operationLabel,
         kind: "ENDPOINT",
@@ -497,7 +542,7 @@ function discoverCommands(file: LocalWorkspaceInputFile) {
   try {
     const parsed = JSON.parse(file.content) as { scripts?: Record<string, string> };
     return Object.entries(parsed.scripts ?? {}).map(([name, command]) => ({
-      id: stableId(`${file.path}:command:${name}`),
+      id: discoveredCandidateId(`${file.path}:command:${name}`),
       name: `npm run ${name}`,
       kind: "COMMAND" as const,
       method: null,
@@ -724,7 +769,7 @@ function buildEvidenceTree(workspaceName: string, projectId: string, features: L
             children: domain.items.filter((item) => treeGroup(item) === group).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
               id: feature.id,
               label: feature.displayName ?? feature.name,
-              kind: "FEATURE" as const,
+              kind: "CANDIDATE" as const,
               featureId: feature.id,
               featureCount: 1,
               detail: feature.displayName && feature.displayName !== feature.name ? feature.name : `${feature.sourcePath}:${feature.startLine}`,
@@ -779,21 +824,21 @@ function buildAgentFeatureTree(workspaceName: string, projectId: string, feature
         submodules.set(submoduleName, [...(submodules.get(submoduleName) ?? []), feature]);
       }
       return {
-        id: `${projectId}:agent-module:${stableId(moduleName)}`,
+        id: `${projectId}:agent-module:${taxonomyProjectionId(moduleName)}`,
         label: moduleName,
         kind: "MODULE" as const,
         featureCount: moduleFeatures.length,
-        detail: mode === "API" ? "Agent-confirmed API module" : "Agent-confirmed business module",
+        detail: mode === "API" ? "Evidence-validated API Candidate module" : "Evidence-validated business Candidate module",
         children: [...submodules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([submoduleName, submoduleFeatures]) => ({
-          id: `${projectId}:agent-module:${stableId(moduleName)}:submodule:${stableId(submoduleName)}`,
+          id: `${projectId}:agent-module:${taxonomyProjectionId(moduleName)}:submodule:${taxonomyProjectionId(submoduleName)}`,
           label: submoduleName,
           kind: "DOMAIN" as const,
           featureCount: submoduleFeatures.length,
-          detail: mode === "API" ? "Agent-confirmed API submodule" : "Agent-confirmed business submodule",
+          detail: mode === "API" ? "Evidence-validated API Candidate submodule" : "Evidence-validated business Candidate submodule",
           children: submoduleFeatures.sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name)).map((feature) => ({
             id: feature.id,
             label: feature.displayName ?? feature.name,
-            kind: "FEATURE" as const,
+            kind: "CANDIDATE" as const,
             featureId: feature.id,
             featureCount: 1,
             detail: feature.description,
@@ -827,7 +872,10 @@ function mergeAgentBusinessFeatures(features: LocalFeatureCandidate[]): LocalFea
     const unique = <T,>(values: T[], key: (value: T) => string) => [...new Map(values.map((value) => [key(value), value])).values()];
     return {
       ...primary,
-      id: stableId(`agent-business:${identity}`),
+      id: projectedCandidateId(`agent-business:${identity}`),
+      nodeType: "CANDIDATE_FEATURE",
+      governedFeatureId: null,
+      evidenceFactIds: [...new Set(items.flatMap((item) => item.evidenceFactIds))].sort(),
       name: primary.displayName ?? primary.name,
       evidenceCandidateIds: items.map((item) => item.id),
       description: [...new Set(items.map((item) => item.description.trim()).filter(Boolean))].join(" "),
@@ -857,7 +905,8 @@ export function analyzeLocalWorkspace(input: {
 
 export function scanLocalWorkspaceFile(file: LocalWorkspaceInputFile): LocalWorkspaceFileRecord {
   const supported = eligible(file) && file.size <= maxFileBytes;
-  if (!supported) return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: false, candidates: [], configuration: null, test: null };
+  const contentFingerprint = localContentId("CONTENT", file.content);
+  if (!supported) return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, contentFingerprint, supported: false, candidates: [], configuration: null, test: null };
   const type = extension(file.path);
   const supportFile = isFeatureSupportFile(file.path);
   const candidates = supportFile ? [] : [
@@ -868,7 +917,7 @@ export function scanLocalWorkspaceFile(file: LocalWorkspaceInputFile): LocalWork
   const configuration = isConfigurationFile(file)
     ? { path: file.path, key: file.path.split("/").at(-1) ?? file.path, value: redactConfiguration(file.content.slice(0, 500)) }
     : null;
-  return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, supported: true, candidates, configuration, test: isTestFile(file.path) ? testRecord(file) : null };
+  return { scannerVersion: localWorkspaceScannerVersion, path: file.path, size: file.size, lastModified: file.lastModified ?? 0, contentFingerprint, supported: true, candidates, configuration, test: isTestFile(file.path) ? testRecord(file) : null };
 }
 
 export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], profileId: string, values: Array<{
@@ -883,9 +932,21 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
   group: LocalModelClassification["group"];
   confidence: LocalModelClassification["confidence"];
   rationale: string;
+  evidenceFactIds: string[];
   reconciliationStatus?: LocalModelClassification["reconciliationStatus"];
 }>) {
-  const enrichments = new Map(values.map((value) => [value.id, value]));
+  const enrichments = new Map(values.map((value, index) => {
+    if (!Array.isArray(value.evidenceFactIds) || value.evidenceFactIds.length === 0) {
+      throw new TypeError(`model conclusion ${index} evidenceFactIds must contain at least one Fact`);
+    }
+    if (value.evidenceFactIds.some((factId) => typeof factId !== "string" || factId.trim() === "")) {
+      throw new TypeError(`model conclusion ${index} evidenceFactIds must contain non-empty strings`);
+    }
+    if (new Set(value.evidenceFactIds).size !== value.evidenceFactIds.length) {
+      throw new TypeError(`model conclusion ${index} evidenceFactIds must not contain duplicates`);
+    }
+    return [value.id, { ...value, evidenceFactIds: [...value.evidenceFactIds] }] as const;
+  }));
   return records.map((record) => ({
     ...record,
     candidates: record.candidates.map((candidate) => {
@@ -898,7 +959,8 @@ export function applyLocalModelEnrichment(records: LocalWorkspaceFileRecord[], p
         modelClassification: {
           profileId,
           evidencePolicyVersion: localWorkspaceEvidencePolicyVersion,
-          reconciliationStatus: value.reconciliationStatus ?? "CONFIRMED",
+          evidenceFactIds: value.evidenceFactIds,
+          reconciliationStatus: value.reconciliationStatus ?? "EVIDENCE_VALIDATED",
           businessFeature: value.businessFeature,
           businessKey: value.businessKey,
           businessModule: value.businessModule,
@@ -919,6 +981,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   if (!workspaceName) throw new TypeError("Workspace name is required");
   if (!projectId) throw new TypeError("Project ID is required");
   if (input.records.length === 0) throw new TypeError("Select a source directory first");
+  const snapshotManifestId = localWorkspaceSnapshotManifestId(projectId, input.records);
   const rawCandidates = new Map<string, Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>();
   const testIndex = new Map<string, RelatedTest[]>();
   for (const record of input.records) {
@@ -932,7 +995,10 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []);
   const candidateValues = [...rawCandidates.values()];
   const features: LocalFeatureCandidate[] = candidateValues.map((feature) => {
-    const tests = indexedTests(feature, testIndex);
+    const tests = indexedTests(feature, testIndex).map((test) => ({
+      ...test,
+      factId: localWorkspaceFactId(snapshotManifestId, "TEST-ASSET", `${test.path}:${test.title}`),
+    }));
     const normalizedCode = associationKey(feature.code);
     const gatewayRpcMethod = feature.description.match(/Gateway RPC descriptor\s+([^\s]+)/i)?.[1];
     const implementationMatches = feature.kind === "ENDPOINT" ? candidateValues.filter((candidate) => {
@@ -955,8 +1021,21 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
       })),
     ];
     const endpointIdentity = feature.kind === "ENDPOINT" ? /^(\S+)\s+(.+)$/.exec(feature.name) : null;
+    const featureConfigurations = configurationsForFeature(feature, configurations).map((configuration) => ({
+      ...configuration,
+      factId: localWorkspaceFactId(snapshotManifestId, "CONFIGURATION", `${configuration.path}:${configuration.key}`),
+    }));
+    const evidenceFactIds = [...new Set([
+      localWorkspaceFactId(snapshotManifestId, feature.kind, feature.id),
+      ...implementationMatches.map((candidate) => localWorkspaceFactId(snapshotManifestId, candidate.kind, candidate.id)),
+      ...featureConfigurations.map((configuration) => configuration.factId),
+      ...tests.map((test) => test.factId),
+    ])].sort();
     return {
       ...feature,
+      nodeType: "CANDIDATE_FEATURE" as const,
+      governedFeatureId: null,
+      evidenceFactIds,
       displayName: feature.displayName ?? inferredCandidateDisplayName(feature),
       apiDesign: endpointIdentity ? {
         protocol: /Gateway RPC/i.test(feature.description) ? "Gateway RPC" : /JAX-RS/i.test(feature.description) ? "JAX-RS" : /Spring/i.test(feature.description) ? "Spring" : /OpenAPI/i.test(feature.description) ? "OpenAPI" : "HTTP",
@@ -966,7 +1045,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
         source: feature.sourcePath,
       } : undefined,
       implementationBlocks,
-      configurations: configurationsForFeature(feature, configurations),
+      configurations: featureConfigurations,
       tests,
       dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
       gaps: [
@@ -980,6 +1059,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   return {
     workspaceName,
     projectId,
+    snapshotManifestId,
     scannedAt: (input.now ?? new Date()).toISOString(),
     fileCount: input.records.length,
     supportedFileCount: input.records.filter((record) => record.supported).length,

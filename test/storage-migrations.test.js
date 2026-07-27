@@ -289,7 +289,7 @@ test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable his
   await store.saveAnalysisCheckpoint("PROJECT-001", { ...checkpoint, run: { ...checkpoint.run, status: "PAUSED", updatedAt: "2026-07-20T01:01:00.000Z" } });
   assert.equal((await store.getAnalysisCheckpoint("PROJECT-001", "ANALYSIS-DB-001")).run.status, "PAUSED");
 
-  const result = { id: "ANALYSIS-DB-001", projectId: "PROJECT-001", snapshotManifestId: "SNAPSHOT-MANIFEST-001", baselineRunId: null, mode: "FULL", profile: checkpoint.run.profile, status: "COMPLETED", coverage: {}, factFingerprint: {}, features: [], retiredFeatures: [], completedAt: "2026-07-20T01:02:00.000Z" };
+  const result = { id: "ANALYSIS-DB-001", projectId: "PROJECT-001", snapshotManifestId: "SNAPSHOT-MANIFEST-001", baselineRunId: null, mode: "FULL", profile: checkpoint.run.profile, status: "COMPLETED", coverage: {}, factFingerprint: {}, candidates: [], candidateAbsences: [], completedAt: "2026-07-20T01:02:00.000Z" };
   await store.appendAnalysisResult("PROJECT-001", result);
   assert.deepEqual(await store.getLatestAnalysisResult("PROJECT-001"), result);
   await assert.rejects(store.appendAnalysisResult("PROJECT-001", { ...result, status: "COMPLETED_WITH_GAPS" }), /conflicts with an existing immutable result/);

@@ -27,7 +27,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /效果指标/);
   assert.match(html, /Workspace 分析/);
   assert.match(html, /创建第一个 Workspace/);
-  assert.match(html, /创建项目后，才会加载工程选择、分析 Agent、功能树与追溯统计/);
+  assert.match(html, /创建项目后，才会加载工程选择、分析 Agent、候选树与追溯统计/);
   assert.doesNotMatch(html, /选择工程，由分析 Agent 建立功能追溯 Workspace/);
   assert.doesNotMatch(html, /等待创建主任务/);
   assert.match(html, /配置分析模型/);
@@ -162,9 +162,10 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /onProgressAnalysis=\{publishWorkspaceProgress\}/);
   assert.match(product, /expandableWorkspaceTreeNodeIds/);
   assert.match(product, /全部展开/);
-  assert.match(product, /Agent 与证据已校验/);
+  assert.match(product, /模型结论已通过证据边界校验 · 仍待业务确认/);
+  assert.doesNotMatch(product, /Agent-confirmed/);
   assert.match(product, /业务树来自 Agent 结论与扫描证据的校验合并/);
-  assert.match(product, /阶段性功能树/);
+  assert.match(product, /阶段性候选树/);
   assert.match(product, /最近检查点展示/);
   assert.match(product, /current\?\.projectId === projectId/);
   assert.match(product, /先建立项目身份，随后选择代码工程并启动首次全量分析/);
@@ -206,8 +207,8 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /WorkspaceFeatureExplorer/);
   assert.match(product, /FeatureTreeBranch/);
   assert.match(product, /WorkspaceTreeModeSwitch/);
-  assert.match(product, /纯业务功能/);
-  assert.match(product, /API 接口/);
+  assert.match(product, /业务候选/);
+  assert.match(product, /API 候选/);
   assert.match(product, /不含接口与工程命令/);
   assert.match(product, /const \[workspaceAnalysis, setWorkspaceAnalysis\]/);
   assert.match(product, /const \[workspaceProjectId, setWorkspaceProjectId\]/);
@@ -215,7 +216,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /const \[workspaceExpandedNodeIds, setWorkspaceExpandedNodeIds\]/);
   assert.match(product, /visibleWorkspaceAnalysis && !liveScenario/);
   assert.match(product, /初始化完成：Workspace 已成为全局导航上下文/);
-  assert.match(product, /从功能树逐项查看端到端追溯链/);
+  assert.match(product, /从候选树逐项查看待治理追溯链/);
   assert.match(product, /十万级工程做有界确定性提取/);
   assert.match(product, /执行增量分析/);
   assert.match(product, /configureAndVerifyAnalysisModel/);
@@ -233,7 +234,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /reconcileWorkspaceAgentBatch/);
   assert.match(product, /子任务结论已返回主 Agent/);
   assert.match(product, /主 Agent 对照/);
-  assert.match(product, /功能树已实时更新为业务/);
+  assert.match(product, /候选树已实时更新为业务/);
   assert.match(product, /先配置模型/);
   assert.match(product, /从展示中移出/);
   assert.match(product, /setLocalWorkspaceProjectVisibility/);
@@ -259,7 +260,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(analyzer, /export function scanLocalWorkspaceFile/);
   assert.match(analyzer, /export function analyzeLocalWorkspaceRecords/);
   assert.match(analyzer, /export function localWorkspaceAnalysisForTreeMode/);
-  assert.match(analyzer, /localWorkspaceScannerVersion = 4/);
+  assert.match(analyzer, /localWorkspaceScannerVersion = 5/);
   assert.match(analyzer, /ENDPOINT.*CODE_SYMBOL.*COMMAND/s);
   assert.match(analyzer, /API_SERVICE.*BUSINESS_CAPABILITY.*DATA_INTEGRATION.*BACKGROUND_INTEGRATION.*PROJECT_OPERATION/s);
   assert.match(analyzer, /featureCount: features\.length/);

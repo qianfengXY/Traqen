@@ -1,3 +1,8 @@
+import {
+  normalizeCandidateBundle,
+  normalizeWorkUnit,
+} from "../shared/candidate-bundle.js";
+
 function requiredString(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") throw new TypeError(`${fieldName} must be a non-empty string`);
   return value.trim();
@@ -310,15 +315,23 @@ function jsonResponse(payload) {
   }
 }
 
-function boundedWorkspaceCandidates(value) {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 24) {
+function boundedWorkspaceCandidateBundle(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("workspace enrichment input must contain a WorkUnit and CandidateBundle");
+  }
+  const workUnit = normalizeWorkUnit(value.workUnit);
+  const candidateBundle = normalizeCandidateBundle(value.candidateBundle, workUnit);
+  if (candidateBundle.candidates.length === 0 || candidateBundle.candidates.length > 24) {
     throw new TypeError("workspace model batch must contain between 1 and 24 candidates");
   }
-  const candidates = value.map((candidate, index) => {
-    if (!candidate || typeof candidate !== "object") throw new TypeError(`workspace candidate ${index} must be an object`);
-    const evidence = candidate.evidence && typeof candidate.evidence === "object" ? candidate.evidence : {};
+  const candidates = candidateBundle.candidates.map((candidate, index) => {
+    const proposal = candidate.proposal;
+    const evidence = proposal.evidence && typeof proposal.evidence === "object" ? proposal.evidence : {};
     const allowedConfidence = new Set(["LOW", "MEDIUM", "HIGH"]);
-    const confidenceCap = allowedConfidence.has(evidence.confidenceCap) ? evidence.confidenceCap : "LOW";
+    const confidenceCap = allowedConfidence.has(evidence.confidenceCap) ? evidence.confidenceCap : candidate.confidenceCap;
+    if (confidenceCap !== candidate.confidenceCap) {
+      throw new TypeError(`workspace candidate ${index} evidence confidenceCap must match its CandidateBundle`);
+    }
     const stringList = (items, maximumItems, maximumLength) => Array.isArray(items)
       ? items.slice(0, maximumItems).filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim().slice(0, maximumLength))
       : [];
@@ -336,20 +349,22 @@ function boundedWorkspaceCandidates(value) {
       observations.push({
         extractor: "UNDECLARED_LEGACY_EXTRACTOR",
         basis: "Legacy candidate without an explicit extraction basis",
-        sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "unknown",
+        sourcePath: typeof proposal.sourcePath === "string" ? proposal.sourcePath.slice(0, 800) : "unknown",
         startLine: 1,
-        excerpt: typeof candidate.code === "string" ? candidate.code.slice(0, 1_200) : "",
+        excerpt: typeof proposal.code === "string" ? proposal.code.slice(0, 1_200) : "",
       });
     }
     return {
       id: requiredString(candidate.id, `workspace candidate ${index} id`),
-      name: requiredString(candidate.name, `workspace candidate ${index} name`).slice(0, 300),
-      kind: requiredString(candidate.kind, `workspace candidate ${index} kind`).slice(0, 40),
-      method: typeof candidate.method === "string" ? candidate.method.slice(0, 20) : null,
-      modulePath: typeof candidate.modulePath === "string" ? candidate.modulePath.slice(0, 300) : "",
-      sourcePath: typeof candidate.sourcePath === "string" ? candidate.sourcePath.slice(0, 800) : "",
-      description: typeof candidate.description === "string" ? candidate.description.slice(0, 1_200) : "",
-      code: typeof candidate.code === "string" ? candidate.code.slice(0, 2_000) : "",
+      kind: requiredString(proposal.kind, `workspace candidate ${index} proposal.kind`).slice(0, 40),
+      name: requiredString(proposal.name, `workspace candidate ${index} proposal.name`).slice(0, 300),
+      method: typeof proposal.method === "string" ? proposal.method.slice(0, 20) : null,
+      modulePath: typeof proposal.modulePath === "string" ? proposal.modulePath.slice(0, 300) : "",
+      sourcePath: typeof proposal.sourcePath === "string" ? proposal.sourcePath.slice(0, 800) : "",
+      description: typeof proposal.description === "string" ? proposal.description.slice(0, 1_200) : "",
+      code: typeof proposal.code === "string" ? proposal.code.slice(0, 2_000) : "",
+      evidenceFactIds: candidate.evidenceFactIds,
+      confidenceCap: candidate.confidenceCap,
       evidence: {
         observations,
         corroborations: stringList(evidence.corroborations, 16, 800),
@@ -361,7 +376,7 @@ function boundedWorkspaceCandidates(value) {
     };
   });
   if (JSON.stringify(candidates).length > 72_000) throw new RangeError("workspace model batch exceeds the bounded context size");
-  return candidates;
+  return { workUnit, candidateBundle, candidates };
 }
 
 function boundedWorkspacePlan(value) {
@@ -552,7 +567,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
   }
 
   async enrichWorkspaceCandidates(value, options = {}) {
-    const candidates = boundedWorkspaceCandidates(value);
+    const input = boundedWorkspaceCandidateBundle(value);
+    const { workUnit, candidateBundle, candidates } = input;
     const inputIds = new Set(candidates.map((candidate) => candidate.id));
     const result = await this.#request({
       maxOutputTokens: Math.min(8_192, Math.max(1_200, candidates.length * 480)),
@@ -566,6 +582,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
             "Your confidence must never exceed each candidate evidence.confidenceCap. Keep uncertainty explicit when evidence is single-source or incomplete.",
             "Do not invent permissions, business rules, dependencies, tests, or authority.",
             "Return JSON only with agentMessage and candidates[]. Preserve every input id exactly.",
+            "Every candidate conclusion must include non-empty evidenceFactIds from the supplied WorkUnit. Never cite any other Fact.",
             "agentMessage is a concise user-visible execution update, not private reasoning. Use short lines for Goal, Action, Findings, Evidence, Uncertainty, and Next action. Do not quote raw source or prompts.",
             "businessFeature is true only for a user-recognizable business capability or background business process; repositories, DTOs, adapters, configuration, utilities, and framework plumbing are false.",
             "For every candidate, return a stable businessKey plus businessModule and businessSubmodule from a product user's perspective. Use the same businessKey when multiple code observations implement the same user-recognizable behavior. These fields must describe what the product does, never source folders, packages, classes, frameworks, or code layers.",
@@ -591,6 +608,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
                 group: "BUSINESS_CAPABILITY | BACKGROUND_INTEGRATION | DATA_INTEGRATION | PROJECT_OPERATION | API_SERVICE",
                 confidence: "LOW | MEDIUM | HIGH",
                 rationale: "short evidence-based reason",
+                evidenceFactIds: ["Fact ids from this WorkUnit only"],
               }],
             },
           }),
@@ -616,18 +634,33 @@ export class OpenAICompatibleAnalysisModelAdapter {
           throw new TypeError(`analysis model confidence ${confidence} exceeds evidence cap ${input.evidence.confidenceCap} for ${id}`);
         }
         if (typeof candidate.businessFeature !== "boolean") throw new TypeError(`workspace response candidate ${index} businessFeature must be boolean`);
+        const evidenceFactIds = Array.isArray(candidate.evidenceFactIds)
+          ? candidate.evidenceFactIds.map((factId, factIndex) =>
+            requiredString(factId, `workspace response candidate ${index} evidenceFactIds[${factIndex}]`))
+          : [];
         return {
           id,
-          displayName: requiredString(candidate.displayName, `workspace response candidate ${index} displayName`).slice(0, 200),
-          description: requiredString(candidate.description, `workspace response candidate ${index} description`).slice(0, 2_000),
-          businessFeature: candidate.businessFeature,
-          businessKey: requiredString(candidate.businessKey, `workspace response candidate ${index} businessKey`).slice(0, 160),
-          businessModule: requiredString(candidate.businessModule, `workspace response candidate ${index} businessModule`).slice(0, 120),
-          businessSubmodule: requiredString(candidate.businessSubmodule, `workspace response candidate ${index} businessSubmodule`).slice(0, 120),
-          domain: requiredString(candidate.domain, `workspace response candidate ${index} domain`).slice(0, 120),
-          group,
+          kind: "CANDIDATE_FEATURE",
+          status: "PENDING_REVIEW",
           confidence,
-          rationale: requiredString(candidate.rationale, `workspace response candidate ${index} rationale`).slice(0, 1_000),
+          confidenceCap: input.confidenceCap,
+          evidenceFactIds,
+          proposal: {
+            displayName: requiredString(candidate.displayName, `workspace response candidate ${index} displayName`).slice(0, 200),
+            description: requiredString(candidate.description, `workspace response candidate ${index} description`).slice(0, 2_000),
+            businessFeature: candidate.businessFeature,
+            businessKey: requiredString(candidate.businessKey, `workspace response candidate ${index} businessKey`).slice(0, 160),
+            businessModule: requiredString(candidate.businessModule, `workspace response candidate ${index} businessModule`).slice(0, 120),
+            businessSubmodule: requiredString(candidate.businessSubmodule, `workspace response candidate ${index} businessSubmodule`).slice(0, 120),
+            domain: requiredString(candidate.domain, `workspace response candidate ${index} domain`).slice(0, 120),
+            group,
+            rationale: requiredString(candidate.rationale, `workspace response candidate ${index} rationale`).slice(0, 1_000),
+          },
+          provenance: [{
+            producerType: "MODEL",
+            producerId: this.id,
+            producerVersion: this.model,
+          }],
         };
       });
       const missing = candidates.filter((candidate) => !seen.has(candidate.id)).map((candidate) => candidate.id);
@@ -635,11 +668,20 @@ export class OpenAICompatibleAnalysisModelAdapter {
       emitTelemetry(options.onTelemetry, {
         type: "OUTPUT_VALIDATED",
         candidateCount: validated.length,
-        businessCandidateCount: validated.filter((candidate) => candidate.businessFeature).length,
-        technicalCandidateCount: validated.filter((candidate) => !candidate.businessFeature).length,
+        businessCandidateCount: validated.filter((candidate) => candidate.proposal.businessFeature).length,
+        technicalCandidateCount: validated.filter((candidate) => !candidate.proposal.businessFeature).length,
         confidence: validated.reduce((counts, candidate) => ({ ...counts, [candidate.confidence]: (counts[candidate.confidence] ?? 0) + 1 }), {}),
       });
-      return validated;
+      return normalizeCandidateBundle({
+        schemaVersion: candidateBundle.schemaVersion,
+        id: `${candidateBundle.id}:MODEL:${this.id}`,
+        projectId: candidateBundle.projectId,
+        snapshotManifestId: candidateBundle.snapshotManifestId,
+        analysisRunId: candidateBundle.analysisRunId,
+        workUnitId: candidateBundle.workUnitId,
+        producedAt: new Date().toISOString(),
+        candidates: validated,
+      }, workUnit);
     } catch (error) {
       emitTelemetry(options.onTelemetry, {
         type: "OUTPUT_REJECTED",
@@ -667,7 +709,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
               role: "user",
               content: JSON.stringify({
                 task: "Refine deterministic feature candidates and recover business meaning from this bounded evidence graph.",
-                workUnit: { id: input.workUnit.id, scopeKey: input.workUnit.scopeKey, rootNodeId: input.workUnit.rootNodeId },
+                workUnit: input.workUnit,
+                workContext: input.workContext,
                 deterministicCandidates: input.deterministicCandidates,
                 evidence: input.evidence,
                 outputContract: {
@@ -835,11 +878,11 @@ export class AnalysisModelRegistry {
     return this.#public(profile);
   }
 
-  async enrichWorkspaceCandidates(id, candidates, options = {}) {
+  async enrichWorkspaceCandidates(id, input, options = {}) {
     const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
-    return profile.adapter.enrichWorkspaceCandidates(candidates, options);
+    return profile.adapter.enrichWorkspaceCandidates(input, options);
   }
 
   async planWorkspaceAnalysis(id, input, options = {}) {

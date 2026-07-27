@@ -837,16 +837,16 @@ export function createTraceabilityHttpHandler({
         const input = await readJson(request, maxBodyBytes);
         const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
         if (!observable) {
-          const candidates = await application.enrichWorkspaceCandidates(profileId, input);
-          sendJson(response, 200, { profileId, candidates }, id);
+          const candidateBundle = await application.enrichWorkspaceCandidates(profileId, input);
+          sendJson(response, 200, { profileId, candidateBundle }, id);
           return;
         }
         startNdjson(response, id);
         try {
-          const candidates = await application.enrichWorkspaceCandidates(profileId, input, {
+          const candidateBundle = await application.enrichWorkspaceCandidates(profileId, input, {
             onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
           });
-          writeNdjson(response, { kind: "result", profileId, candidates });
+          writeNdjson(response, { kind: "result", profileId, candidateBundle });
         } catch (error) {
           const failure = errorResponse(error, id);
           writeNdjson(response, { kind: "error", error: failure.body.error });
@@ -936,11 +936,11 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
-      const analyzedFeatureHistoryMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/analysis-history$/.exec(url.pathname);
-      if (request.method === "GET" && analyzedFeatureHistoryMatch) {
-        const projectId = decodePathSegment(analyzedFeatureHistoryMatch[1]);
-        const featureId = decodePathSegment(analyzedFeatureHistoryMatch[2]);
-        sendJson(response, 200, { history: await application.getAnalyzedFeatureHistory(projectId, featureId) }, id);
+      const analysisCandidateHistoryMatch = /^\/v1\/projects\/([^/]+)\/analysis-candidates\/([^/]+)\/history$/.exec(url.pathname);
+      if (request.method === "GET" && analysisCandidateHistoryMatch) {
+        const projectId = decodePathSegment(analysisCandidateHistoryMatch[1]);
+        const candidateId = decodePathSegment(analysisCandidateHistoryMatch[2]);
+        sendJson(response, 200, { history: await application.getAnalysisCandidateHistory(projectId, candidateId) }, id);
         return;
       }
 

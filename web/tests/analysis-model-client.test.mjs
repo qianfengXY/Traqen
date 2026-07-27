@@ -4,6 +4,43 @@ import test from "node:test";
 import { configureAndVerifyAnalysisModel, enrichWorkspaceCandidateBatch, normalizeChatCompletionsEndpoint, planWorkspaceAnalysis, reconcileWorkspaceAgentBatch, removeAnalysisModelProfile, selectAnalysisModelProfile, workspaceModelCandidateBatches, workspaceSourceManifest, workspaceSourceModule } from "../app/analysis-model-client.ts";
 import { analyzeLocalWorkspaceRecords, applyLocalModelEnrichment, localWorkspaceAnalysisForTreeMode, scanLocalWorkspaceFile } from "../app/local-workspace-analysis.ts";
 
+const workspaceContext = {
+  projectId: "PROJECT-WEB",
+  snapshotManifestId: "LOCAL-SNAPSHOT-WEB-001",
+  analysisRunId: "ANALYSIS-WEB-001",
+};
+
+function canonicalModelBundle(requestBody, proposalFor) {
+  return {
+    ...requestBody.candidateBundle,
+    id: `${requestBody.candidateBundle.id}:MODEL:model-a`,
+    producedAt: "2026-07-25T10:01:00.000Z",
+    candidates: requestBody.candidateBundle.candidates.map((candidate) => {
+      const proposal = proposalFor(candidate);
+      return {
+        id: candidate.id,
+        kind: "CANDIDATE_FEATURE",
+        status: "PENDING_REVIEW",
+        confidence: proposal.confidence,
+        confidenceCap: candidate.confidenceCap,
+        evidenceFactIds: candidate.evidenceFactIds,
+        proposal: {
+          displayName: proposal.displayName,
+          description: proposal.description,
+          businessFeature: proposal.businessFeature,
+          businessKey: proposal.businessKey,
+          businessModule: proposal.businessModule,
+          businessSubmodule: proposal.businessSubmodule,
+          domain: proposal.domain,
+          group: proposal.group,
+          rationale: proposal.rationale,
+        },
+        provenance: [{ producerType: "MODEL", producerId: "model-a", producerVersion: "source-model" }],
+      };
+    }),
+  };
+}
+
 test("normalizes common OpenAI-compatible API base URLs without changing full endpoints", () => {
   assert.equal(normalizeChatCompletionsEndpoint("https://api.example.com/v1"), "https://api.example.com/v1/chat/completions");
   assert.equal(normalizeChatCompletionsEndpoint("http://127.0.0.1:11434"), "http://127.0.0.1:11434/v1/chat/completions");
@@ -61,19 +98,21 @@ test("builds explicit evidence assessments and streams each observable LLM inter
     description: "Discovered Java service capability submitOrder.", code: "public Order submitOrder() {}",
   };
   const records = [{ scannerVersion: 4, path: candidate.sourcePath, size: 100, lastModified: 1, supported: true, candidates: [candidate], configuration: null, test: null }];
-  const batches = workspaceModelCandidateBatches(records, "model-a");
+  const batches = workspaceModelCandidateBatches(records, "model-a", workspaceContext);
   assert.equal(batches[0][0].evidence.observations[0].extractor, "JAVA_DECLARATION_PATTERN");
   assert.equal(batches[0][0].evidence.confidenceCap, "LOW");
+  assert.ok(batches[0][0].evidenceFactIds.length > 0);
   assert.match(batches[0][0].evidence.diagnostics[0], /heuristic/i);
 
   const originalFetch = globalThis.fetch;
   let request;
   globalThis.fetch = async (_url, options) => {
     request = options;
+    const input = JSON.parse(options.body);
     const lines = [
       { kind: "telemetry", event: { type: "REQUEST_PREPARED", at: "2026-07-22T01:00:00.000Z", requestId: "REQ-1", promptPreview: "bounded prompt" } },
       { kind: "telemetry", event: { type: "RESPONSE_PROGRESS", at: "2026-07-22T01:00:01.000Z", requestId: "REQ-1", chunkCount: 2, receivedCharacters: 120 } },
-      { kind: "result", profileId: "model-a", candidates: [{ id: candidate.id, displayName: "Submit order", description: "Candidate", businessFeature: true, businessKey: "order.submit", businessModule: "Order management", businessSubmodule: "Order submission", domain: "Orders", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Single heuristic source" }] },
+      { kind: "result", profileId: "model-a", candidateBundle: canonicalModelBundle(input, () => ({ displayName: "Submit order", description: "Candidate", businessFeature: true, businessKey: "order.submit", businessModule: "Order management", businessSubmodule: "Order submission", domain: "Orders", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Single heuristic source" })) },
     ].map((message) => `${JSON.stringify(message)}\n`).join("");
     return new Response(lines, { status: 200, headers: { "content-type": "application/x-ndjson" } });
   };
@@ -83,6 +122,62 @@ test("builds explicit evidence assessments and streams each observable LLM inter
     assert.equal(result[0].confidence, "LOW");
     assert.deepEqual(telemetry.map((event) => event.type), ["REQUEST_PREPARED", "RESPONSE_PROGRESS"]);
     assert.match(request.headers.accept, /application\/x-ndjson/);
+    const requestBody = JSON.parse(request.body);
+    assert.equal(requestBody.workUnit.snapshotManifestId, workspaceContext.snapshotManifestId);
+    assert.deepEqual(requestBody.candidateBundle.candidates[0].evidenceFactIds, batches[0][0].evidenceFactIds);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keeps validated Candidate evidence and confidence authoritative over proposal fields", async () => {
+  const records = [{
+    scannerVersion: 5,
+    path: "src/orders.ts",
+    size: 100,
+    lastModified: 1,
+    supported: true,
+    candidates: [{
+      id: "CANDIDATE-ORDER",
+      name: "Submit order",
+      kind: "CODE_SYMBOL",
+      method: null,
+      modulePath: "src",
+      sourcePath: "src/orders.ts",
+      startLine: 1,
+      description: "Submit an order.",
+      code: "export function submitOrder() {}",
+    }],
+    configuration: null,
+    test: null,
+  }];
+  const candidates = workspaceModelCandidateBatches(records, "model-a", workspaceContext).flat();
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const requestBody = JSON.parse(options.body);
+    const candidateBundle = canonicalModelBundle(requestBody, () => ({
+      displayName: "Submit order",
+      description: "Candidate",
+      businessFeature: true,
+      businessKey: "order.submit",
+      businessModule: "Order management",
+      businessSubmodule: "Order submission",
+      domain: "Orders",
+      group: "BUSINESS_CAPABILITY",
+      confidence: "LOW",
+      rationale: "Bounded evidence",
+    }));
+    candidateBundle.candidates[0].proposal.evidenceFactIds = ["FACT-OUTSIDE"];
+    candidateBundle.candidates[0].proposal.confidence = "HIGH";
+    return new Response(JSON.stringify({ profileId: "model-a", candidateBundle }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  try {
+    const [result] = await enrichWorkspaceCandidateBatch("http://127.0.0.1:3100", "", "model-a", candidates);
+    assert.deepEqual(result.evidenceFactIds, candidates[0].evidenceFactIds);
+    assert.equal(result.confidence, "LOW");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -96,22 +191,22 @@ test("indexes evidence once and keeps large model batches bounded by count and s
     };
     return { scannerVersion: 4, path: candidate.sourcePath, size: 100, lastModified: 1, supported: true, candidates: [candidate], configuration: null, test: null };
   });
-  const batches = workspaceModelCandidateBatches(records, "model-a");
+  const batches = workspaceModelCandidateBatches(records, "model-a", workspaceContext);
   assert.equal(batches.flat().length, 5_000);
   assert.equal(batches.every((batch) => batch.length <= 10 && JSON.stringify(batch).length <= 60_000), true);
 });
 
 test("automatically bisects an incomplete model batch and preserves input order", async () => {
   const records = ["A", "B"].map((suffix) => ({ scannerVersion: 4, path: `src/${suffix}.ts`, size: 100, lastModified: 1, supported: true, candidates: [{ id: `FEATURE-${suffix}`, name: suffix, kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: `src/${suffix}.ts`, startLine: 1, description: suffix, code: `export function ${suffix}(){}` }], configuration: null, test: null }));
-  const candidates = workspaceModelCandidateBatches(records, "model-a").flat();
+  const candidates = workspaceModelCandidateBatches(records, "model-a", workspaceContext).flat();
   const originalFetch = globalThis.fetch;
   let call = 0;
   globalThis.fetch = async (_url, options) => {
     call += 1;
-    const input = JSON.parse(options.body).candidates;
+    const requestBody = JSON.parse(options.body);
     const message = call === 1
       ? { kind: "error", error: { message: "analysis model output was truncated (length)" } }
-      : { kind: "result", candidates: input.map((candidate) => ({ id: candidate.id, displayName: candidate.name, description: candidate.description, businessFeature: true, businessKey: `test.${candidate.id}`, businessModule: "Test management", businessSubmodule: "Test execution", domain: "Test", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Evidence bounded" })) };
+      : { kind: "result", candidateBundle: canonicalModelBundle(requestBody, (candidate) => ({ id: candidate.id, displayName: candidate.proposal.name, description: candidate.proposal.description, businessFeature: true, businessKey: `test.${candidate.id}`, businessModule: "Test management", businessSubmodule: "Test execution", domain: "Test", group: "BUSINESS_CAPABILITY", confidence: "LOW", rationale: "Evidence bounded" })) };
     return new Response(`${JSON.stringify(message)}\n`, { status: 200, headers: { "content-type": "application/x-ndjson" } });
   };
   try {
@@ -127,7 +222,7 @@ test("automatically bisects an incomplete model batch and preserves input order"
 
 test("keeps the Workspace running when the smallest model unit still returns invalid JSON", async () => {
   const records = [{ scannerVersion: 4, path: "src/unstable.ts", size: 100, lastModified: 1, supported: true, candidates: [{ id: "FEATURE-UNSTABLE", name: "Unstable", kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: "src/unstable.ts", startLine: 1, description: "Candidate", code: "export function unstable(){}" }], configuration: null, test: null }];
-  const candidate = workspaceModelCandidateBatches(records, "model-a")[0];
+  const candidate = workspaceModelCandidateBatches(records, "model-a", workspaceContext)[0];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(`${JSON.stringify({ kind: "error", error: { message: "analysis model message text does not contain a complete JSON object or array" } })}\n`, { status: 200, headers: { "content-type": "application/x-ndjson" } });
   try {
@@ -146,7 +241,7 @@ test("Main Agent reconciles child results with scanner evidence and exposes prov
     size: 120,
     content: "export function submitOrder() {}\nrouter.post('/orders', submitOrder);",
   });
-  const batch = workspaceModelCandidateBatches([record], "model-a").flat();
+  const batch = workspaceModelCandidateBatches([record], "model-a", workspaceContext).flat();
   const endpoint = batch.find((candidate) => candidate.kind === "ENDPOINT");
   const reconciliation = reconcileWorkspaceAgentBatch(batch, []);
   assert.equal(reconciliation.decisions.find((decision) => decision.candidateId === endpoint.id).outcome, "ADMITTED_API");
@@ -156,7 +251,7 @@ test("Main Agent reconciles child results with scanner evidence and exposes prov
   const analysis = analyzeLocalWorkspaceRecords({ workspaceName: "Orders", projectId: "PROJECT-ORDERS", records: reconciledRecords });
   assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "API").features.length, 1);
   assert.equal(localWorkspaceAnalysisForTreeMode(analysis, "BUSINESS").features.length, 0);
-  assert.ok(workspaceModelCandidateBatches(reconciledRecords, "model-a").flat().some((candidate) => candidate.id === endpoint.id));
+  assert.ok(workspaceModelCandidateBatches(reconciledRecords, "model-a", workspaceContext).flat().some((candidate) => candidate.id === endpoint.id));
 });
 
 test("streams a validated Main Agent plan with exactly three child assignments", async () => {

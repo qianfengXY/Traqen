@@ -1,8 +1,14 @@
 import { canonicalJson, contentId, deepFreeze } from "../domain/index.js";
+import {
+  candidateBundleSchemaVersion,
+  normalizeCandidateBundle,
+  normalizeWorkUnit,
+} from "../shared/candidate-bundle.js";
 
 const runModes = new Set(["FULL", "INCREMENTAL", "AUTO"]);
 const engineModes = new Set(["DETERMINISTIC", "HYBRID"]);
 const terminalStatuses = new Set(["COMPLETED", "COMPLETED_WITH_GAPS", "CANCELLED"]);
+const confidenceRank = Object.freeze({ LOW: 1, MEDIUM: 2, HIGH: 3 });
 
 function requiredString(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") throw new TypeError(`${fieldName} must be a non-empty string`);
@@ -201,8 +207,21 @@ function planWorkUnits({ request, graph, baselineResult, profile }) {
   const roots = planRoots(graph);
   const allUnits = roots.map((root) => {
     const neighborhood = boundedNeighborhood(root.id, indexes, profile.model.maxInputTokens);
+    const factIds = [...new Set([
+      ...neighborhood.nodeIds.map((id) => indexes.nodesById.get(id)?.factId).filter(Boolean),
+      ...graph.edges.filter((edge) => neighborhood.edgeIds.includes(edge.id)).map((edge) => edge.id),
+    ])].sort();
     return {
       id: contentId("ANALYSIS-WORK-UNIT", { runId: request.id, rootId: root.id }),
+      boundary: normalizeWorkUnit({
+        schemaVersion: candidateBundleSchemaVersion,
+        id: contentId("ANALYSIS-WORK-UNIT", { runId: request.id, rootId: root.id }),
+        projectId: request.projectId,
+        snapshotManifestId: request.snapshotManifestId,
+        analysisRunId: request.id,
+        factIds,
+        rootFactIds: [root.factId],
+      }),
       runId: request.id,
       scopeKey: `${nodeScope(root)}:${root.id}`,
       rootNodeId: root.id,
@@ -288,6 +307,7 @@ function deterministicCandidate(unit, graph) {
       ? `Discovered ${method ?? "HTTP"} ${route ?? root.name}; its design and implementation are linked by bounded deterministic Facts.`
       : `Business capability candidate rooted at ${root.name}; authority remains subject to human confirmation.`,
     confidence: mode === "API" ? "HIGH" : "MEDIUM",
+    confidenceCap: mode === "API" ? "HIGH" : "MEDIUM",
     evidenceFactIds: refs,
     stableEvidenceNodeIds: evidence.nodes.map((node) => node.id).sort(),
     design: categorized,
@@ -296,7 +316,7 @@ function deterministicCandidate(unit, graph) {
   }];
 }
 
-function validateExtensionCandidates(output, allowedFactIds, allowedStableNodeIds, stableNodeIdByFactId, producer) {
+function validateExtensionCandidates(output, allowedFactIds, allowedStableNodeIds, stableNodeIdByFactId, confidenceCaps, producer) {
   const producerLabel = producer.modelProfileId ? `model:${producer.modelProfileId}` : `skill:${producer.skill.id}@${producer.skill.version}`;
   if (output === null || typeof output !== "object" || Array.isArray(output)) throw new TypeError(`${producerLabel} output must be an object`);
   if (!Array.isArray(output.candidateFeatures ?? [])) throw new TypeError(`${producerLabel}.candidateFeatures must be an array`);
@@ -315,12 +335,19 @@ function validateExtensionCandidates(output, allowedFactIds, allowedStableNodeId
     const escapedStableIds = stableEvidenceNodeIds.filter((stableId) => !allowedStableNodeIds.has(stableId));
     if (escapedStableIds.length > 0) throw new TypeError(`${prefix} cites stable nodes outside the bounded WorkUnit: ${escapedStableIds.join(", ")}`);
     if (stableEvidenceNodeIds.length === 0) throw new TypeError(`${prefix} must cite at least one stable Fact node`);
+    const candidateKey = requiredString(candidate.candidateKey, `${prefix}.candidateKey`);
+    const confidence = ["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence) ? candidate.confidence : "LOW";
+    const confidenceCap = confidenceCaps.get(candidateKey) ?? "LOW";
+    if (confidenceRank[confidence] > confidenceRank[confidenceCap]) {
+      throw new TypeError(`${prefix} confidence ${confidence} exceeds evidence cap ${confidenceCap}`);
+    }
     return {
-      candidateKey: requiredString(candidate.candidateKey, `${prefix}.candidateKey`),
+      candidateKey,
       mode: candidate.mode === "API" ? "API" : "BUSINESS",
       name: requiredString(candidate.name, `${prefix}.name`),
       description: requiredString(candidate.description, `${prefix}.description`),
-      confidence: ["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence) ? candidate.confidence : "LOW",
+      confidence,
+      confidenceCap,
       evidenceFactIds: [...new Set(evidenceFactIds)].sort(),
       stableEvidenceNodeIds,
       design: clone(candidate.design ?? {}),
@@ -342,7 +369,9 @@ function mergeCandidates(candidates) {
     current.stableEvidenceNodeIds = [...new Set([...current.stableEvidenceNodeIds, ...candidate.stableEvidenceNodeIds])].sort();
     current.provenance.push(...candidate.provenance);
     current.uncertainties = [...new Set([...current.uncertainties, ...candidate.uncertainties])];
+    if (confidenceRank[candidate.confidenceCap] < confidenceRank[current.confidenceCap]) current.confidenceCap = candidate.confidenceCap;
     if (candidate.confidence === "HIGH" || (candidate.confidence === "MEDIUM" && current.confidence === "LOW")) current.confidence = candidate.confidence;
+    if (confidenceRank[current.confidence] > confidenceRank[current.confidenceCap]) current.confidence = current.confidenceCap;
     if (candidate.provenance.some((item) => item.modelProfileId)) {
       current.name = candidate.name;
       current.description = candidate.description;
@@ -357,64 +386,123 @@ function candidateDigests(candidate) {
     ? candidate.design.implementation.map((item) => item?.stableId).filter(Boolean).sort()
     : candidate.stableEvidenceNodeIds;
   return {
-    semantic: contentId("FEATURE-SEMANTIC", { mode: candidate.mode, name: candidate.name, description: candidate.description }),
-    implementation: contentId("FEATURE-IMPLEMENTATION", implementationStableIds),
-    evidence: contentId("FEATURE-EVIDENCE", candidate.evidenceFactIds),
+    semantic: contentId("CANDIDATE-SEMANTIC", { mode: candidate.mode, name: candidate.name, description: candidate.description }),
+    implementation: contentId("CANDIDATE-IMPLEMENTATION", implementationStableIds),
+    evidence: contentId("CANDIDATE-EVIDENCE", candidate.evidenceFactIds),
   };
 }
 
-function candidateFromFeature(feature) {
+function candidateFromProjection(candidate) {
   return {
-    candidateKey: feature.candidateKey,
-    mode: feature.mode,
-    name: feature.name,
-    description: feature.description,
-    confidence: feature.confidence,
-    evidenceFactIds: feature.evidenceFactIds,
-    stableEvidenceNodeIds: feature.stableEvidenceNodeIds,
-    design: feature.design,
-    provenance: feature.provenance,
-    uncertainties: feature.uncertainties,
+    candidateKey: candidate.candidateKey,
+    mode: candidate.mode,
+    name: candidate.name,
+    description: candidate.description,
+    confidence: candidate.confidence,
+    confidenceCap: candidate.confidenceCap,
+    evidenceFactIds: candidate.evidenceFactIds,
+    stableEvidenceNodeIds: candidate.stableEvidenceNodeIds,
+    design: candidate.design,
+    provenance: candidate.provenance,
+    uncertainties: candidate.uncertainties,
+  };
+}
+
+function canonicalProvenance(provenance) {
+  return provenance.map((item) => ({
+    producerType: item.modelProfileId ? "MODEL" : item.skill ? "SKILL" : "DETERMINISTIC",
+    producerId: item.modelProfileId ?? item.skill?.id ?? item.analyzerId,
+    producerVersion: item.skill?.version ?? item.analyzerVersion ?? null,
+  }));
+}
+
+function candidateBundleForUnit(unit, candidates, run, clock) {
+  return normalizeCandidateBundle({
+    schemaVersion: candidateBundleSchemaVersion,
+    id: contentId("CANDIDATE-BUNDLE", { analysisRunId: run.id, workUnitId: unit.boundary.id }),
+    projectId: unit.boundary.projectId,
+    snapshotManifestId: unit.boundary.snapshotManifestId,
+    analysisRunId: unit.boundary.analysisRunId,
+    workUnitId: unit.boundary.id,
+    producedAt: clock().toISOString(),
+    candidates: candidates.map((candidate) => ({
+      id: contentId("CANDIDATE-FEATURE", { workUnitId: unit.boundary.id, candidateKey: candidate.candidateKey }),
+      kind: "CANDIDATE_FEATURE",
+      status: "PENDING_REVIEW",
+      confidence: candidate.confidence,
+      confidenceCap: candidate.confidenceCap,
+      evidenceFactIds: candidate.evidenceFactIds,
+      proposal: {
+        candidateKey: candidate.candidateKey,
+        mode: candidate.mode,
+        name: candidate.name,
+        description: candidate.description,
+        stableEvidenceNodeIds: candidate.stableEvidenceNodeIds,
+        design: candidate.design,
+        analysisProvenance: candidate.provenance,
+        uncertainties: candidate.uncertainties,
+      },
+      provenance: canonicalProvenance(candidate.provenance),
+    })),
+  }, unit.boundary);
+}
+
+function candidateFromBundle(candidate) {
+  return {
+    candidateKey: candidate.proposal.candidateKey,
+    mode: candidate.proposal.mode,
+    name: candidate.proposal.name,
+    description: candidate.proposal.description,
+    confidence: candidate.confidence,
+    confidenceCap: candidate.confidenceCap,
+    evidenceFactIds: candidate.evidenceFactIds,
+    stableEvidenceNodeIds: candidate.proposal.stableEvidenceNodeIds,
+    design: candidate.proposal.design,
+    provenance: candidate.proposal.analysisProvenance,
+    uncertainties: candidate.proposal.uncertainties,
   };
 }
 
 function bestBaselineMatch(candidate, available) {
-  const exact = available.find((feature) => feature.candidateKey === candidate.candidateKey);
-  if (exact) return exact;
+  const exact = available.find((previous) => previous.candidateKey === candidate.candidateKey);
+  if (exact) return { candidate: exact, basis: "CANDIDATE_KEY" };
   let best = null;
   let bestScore = 0;
   let bestNameScore = 0;
   let bestNameCandidate = null;
   let equallyNamed = 0;
-  for (const feature of available) {
-    if (feature.mode !== candidate.mode) continue;
-    const evidenceScore = jaccard(feature.stableEvidenceNodeIds, candidate.stableEvidenceNodeIds);
-    const nameScore = similarity(feature.name, candidate.name);
+  for (const previous of available) {
+    if (previous.mode !== candidate.mode) continue;
+    const evidenceScore = jaccard(previous.stableEvidenceNodeIds, candidate.stableEvidenceNodeIds);
+    const nameScore = similarity(previous.name, candidate.name);
     const score = evidenceScore * 0.75 + nameScore * 0.25;
     if (nameScore > bestNameScore) {
       bestNameScore = nameScore;
-      bestNameCandidate = feature;
+      bestNameCandidate = previous;
       equallyNamed = 1;
     } else if (nameScore === bestNameScore) {
       equallyNamed += 1;
     }
     if (score > bestScore) {
-      best = feature;
+      best = previous;
       bestScore = score;
     }
   }
-  if (bestScore >= 0.55) return best;
-  // Large refactors can replace every implementation Fact. Preserve identity only
-  // when the semantic name is an unambiguous near-exact match in the same mode.
-  return bestNameScore >= 0.9 && equallyNamed === 1 ? bestNameCandidate : null;
+  if (bestScore >= 0.55) return { candidate: best, basis: "EVIDENCE_AND_SEMANTIC" };
+  // A complete code move can justify a lineage suggestion, never a Feature
+  // identity decision. Governance must accept or reject the proposed match.
+  return bestNameScore >= 0.9 && equallyNamed === 1
+    ? { candidate: bestNameCandidate, basis: "SEMANTIC_ONLY" }
+    : null;
 }
 
-function materializeFeatures({ candidates, baselineResult, run, clock }) {
-  const baselineFeatures = [...(baselineResult?.features ?? [])];
-  const available = [...baselineFeatures];
-  const features = [];
+function materializeCandidates({ candidates, baselineResult, run, clock }) {
+  const baselineCandidates = [...(baselineResult?.candidates ?? [])];
+  const available = [...baselineCandidates];
+  const projectedCandidates = [];
   for (const candidate of candidates) {
-    const match = bestBaselineMatch(candidate, available);
+    const matchSuggestion = bestBaselineMatch(candidate, available);
+    const match = matchSuggestion?.candidate ?? null;
     if (match) available.splice(available.indexOf(match), 1);
     const digests = candidateDigests(candidate);
     const changeType = !match
@@ -424,19 +512,31 @@ function materializeFeatures({ candidates, baselineResult, run, clock }) {
         : match.digests.implementation !== digests.implementation
           ? "IMPLEMENTATION_REMAPPED"
           : match.digests.evidence !== digests.evidence ? "EVIDENCE_REFRESHED" : "UNCHANGED";
-    const authority = match?.authority ?? { status: "UNREVIEWED", confirmedAt: null, actorId: null, actorRole: null };
-    const inherited = Boolean(match && authority.status !== "UNREVIEWED");
-    const review = changeType === "BUSINESS_SEMANTICS_CHANGED" ? "REQUIRED" : changeType === "NEW" ? "REQUIRED" : "NONE";
-    features.push({
-      id: match?.id ?? contentId("FEATURE", { projectId: run.projectId, candidateKey: candidate.candidateKey }),
-      revision: match ? match.revision + (changeType === "UNCHANGED" ? 0 : 1) : 1,
+    const id = contentId("CANDIDATE-FEATURE", {
+      analysisRunId: run.id,
+      candidateKey: candidate.candidateKey,
+      evidenceFactIds: candidate.evidenceFactIds,
+      stableEvidenceNodeIds: candidate.stableEvidenceNodeIds,
+    });
+    projectedCandidates.push({
+      id,
+      nodeType: "CANDIDATE_FEATURE",
+      status: "PENDING_REVIEW",
+      governedFeatureId: null,
       candidateKey: candidate.candidateKey,
       mode: candidate.mode,
       name: candidate.name,
       description: candidate.description,
       confidence: candidate.confidence,
-      authority: { ...clone(authority), inheritance: inherited ? "INHERITED" : "NONE", review },
-      change: { type: changeType, previousRunId: match?.analysisRunId ?? null, previousRevision: match?.revision ?? null },
+      confidenceCap: candidate.confidenceCap,
+      reconciliation: {
+        matchStatus: match ? "SUGGESTED" : "UNMATCHED",
+        matchBasis: matchSuggestion?.basis ?? null,
+        previousCandidateId: match?.id ?? null,
+        previousRunId: match?.analysisRunId ?? null,
+        changeType,
+        identityDecision: "NOT_MADE",
+      },
       evidenceFactIds: candidate.evidenceFactIds,
       stableEvidenceNodeIds: candidate.stableEvidenceNodeIds,
       design: candidate.design,
@@ -445,19 +545,17 @@ function materializeFeatures({ candidates, baselineResult, run, clock }) {
       digests,
       analysisRunId: run.id,
       snapshotManifestId: run.snapshotManifestId,
-      firstSeenAt: match?.firstSeenAt ?? clock().toISOString(),
-      lastSeenAt: clock().toISOString(),
+      observedAt: clock().toISOString(),
     });
   }
-  const retiredFeatures = available.map((feature) => ({
-    featureId: feature.id,
-    previousRevision: feature.revision,
-    previousRunId: feature.analysisRunId,
-    name: feature.name,
-    authority: feature.authority,
-    change: { type: "NO_CURRENT_IMPLEMENTATION", review: feature.authority.status === "UNREVIEWED" ? "RECOMMENDED" : "REQUIRED" },
+  const candidateAbsences = available.map((candidate) => ({
+    previousCandidateId: candidate.id,
+    previousRunId: candidate.analysisRunId,
+    name: candidate.name,
+    disposition: "NO_CURRENT_OBSERVATION",
+    governedFeatureId: null,
   }));
-  return { features, retiredFeatures };
+  return { candidates: projectedCandidates, candidateAbsences };
 }
 
 export function createAnalysisProfile(input = {}) {
@@ -631,6 +729,7 @@ export class AnalysisAgent {
       try {
         const evidence = evidenceForUnit(unit, factGraph);
         const deterministic = deterministicCandidate(unit, factGraph);
+        const confidenceCaps = new Map(deterministic.map((candidate) => [candidate.candidateKey, candidate.confidenceCap]));
         const allowed = new Set(evidenceReferences(evidence));
         const allowedStableNodeIds = new Set(evidence.nodes.map((node) => node.id));
         const stableNodeIdByFactId = new Map(evidence.nodes.map((node) => [node.factId, node.id]));
@@ -638,12 +737,18 @@ export class AnalysisAgent {
         if (model) {
           const output = await model.analyze({
             request,
-            workUnit: clone(unit),
+            workUnit: clone(unit.boundary),
+            workContext: {
+              scopeKey: unit.scopeKey,
+              rootNodeId: unit.rootNodeId,
+              inputDigest: unit.inputDigest,
+              estimatedTokens: unit.estimatedTokens,
+            },
             evidence: clone(evidence),
             deterministicCandidates: clone(deterministic),
             context: request.profile.model,
           }, { signal });
-          extensionCandidates.push(...validateExtensionCandidates(output, allowed, allowedStableNodeIds, stableNodeIdByFactId, {
+          extensionCandidates.push(...validateExtensionCandidates(output, allowed, allowedStableNodeIds, stableNodeIdByFactId, confidenceCaps, {
             analyzerId: "traqen-semantic-analysis",
             analyzerVersion: "1.0.0",
             modelProfileId: request.profile.model.profileId,
@@ -653,18 +758,25 @@ export class AnalysisAgent {
         for (const skill of skills) {
           const output = await skill.analyze({
             request,
-            workUnit: clone(unit),
+            workUnit: clone(unit.boundary),
+            workContext: {
+              scopeKey: unit.scopeKey,
+              rootNodeId: unit.rootNodeId,
+              inputDigest: unit.inputDigest,
+              estimatedTokens: unit.estimatedTokens,
+            },
             evidence: clone(evidence),
             deterministicCandidates: clone(deterministic),
           }, { signal });
-          extensionCandidates.push(...validateExtensionCandidates(output, allowed, allowedStableNodeIds, stableNodeIdByFactId, {
+          extensionCandidates.push(...validateExtensionCandidates(output, allowed, allowedStableNodeIds, stableNodeIdByFactId, confidenceCaps, {
             analyzerId: "traqen-skill-analysis",
             analyzerVersion: "1.0.0",
             modelProfileId: null,
             skill: { id: skill.id, version: skill.version },
           }));
         }
-        unit.output = { candidates: mergeCandidates([...deterministic, ...extensionCandidates]) };
+        const mergedCandidates = mergeCandidates([...deterministic, ...extensionCandidates]);
+        unit.output = { candidateBundle: candidateBundleForUnit(unit, mergedCandidates, checkpoint.run, this.#clock) };
         unit.status = "COMPLETED";
         unit.attempts.push({ attempt, status: "COMPLETED", startedAt, finishedAt: this.#clock().toISOString(), error: null });
         completedThisInvocation += 1;
@@ -687,15 +799,16 @@ export class AnalysisAgent {
       return deepFreeze(clone(checkpoint));
     }
 
-    const analyzedCandidates = mergeCandidates(checkpoint.workUnits.flatMap((unit) => unit.output?.candidates ?? []));
+    const analyzedCandidates = mergeCandidates(checkpoint.workUnits.flatMap((unit) =>
+      (unit.output?.candidateBundle?.candidates ?? []).map(candidateFromBundle)));
     const analyzedKeys = new Set(analyzedCandidates.map((candidate) => candidate.candidateKey));
     const changedIds = new Set(checkpoint.changedStableIds);
-    const inheritedUnchangedCandidates = (baselineResult?.features ?? [])
-      .filter((feature) => !analyzedKeys.has(feature.candidateKey))
-      .filter((feature) => !feature.stableEvidenceNodeIds.some((id) => changedIds.has(id)))
-      .map(candidateFromFeature);
+    const inheritedUnchangedCandidates = (baselineResult?.candidates ?? [])
+      .filter((candidate) => !analyzedKeys.has(candidate.candidateKey))
+      .filter((candidate) => !candidate.stableEvidenceNodeIds.some((id) => changedIds.has(id)))
+      .map(candidateFromProjection);
     const candidates = mergeCandidates([...analyzedCandidates, ...inheritedUnchangedCandidates]);
-    const materialized = materializeFeatures({ candidates, baselineResult, run: checkpoint.run, clock: this.#clock });
+    const materialized = materializeCandidates({ candidates, baselineResult, run: checkpoint.run, clock: this.#clock });
     const completedAt = this.#clock().toISOString();
     const result = deepFreeze({
       id: checkpoint.run.id,
@@ -713,8 +826,8 @@ export class AnalysisAgent {
         changedFacts: checkpoint.run.changedFactCount,
       },
       factFingerprint: checkpoint.factFingerprint,
-      features: materialized.features,
-      retiredFeatures: materialized.retiredFeatures,
+      candidates: materialized.candidates,
+      candidateAbsences: materialized.candidateAbsences,
       completedAt,
     });
     await this.#repository.appendAnalysisResult(request.projectId, result);
@@ -746,14 +859,27 @@ export class AnalysisAgent {
     return this.#repository.getLatestAnalysisResult(requiredString(projectId, "projectId"));
   }
 
-  async getFeatureHistory(projectId, featureId) {
+  async getCandidateHistory(projectId, candidateId) {
     const results = await this.#repository.listAnalysisResults(requiredString(projectId, "projectId"));
+    const normalizedCandidateId = requiredString(candidateId, "candidateId");
+    const allCandidates = results.flatMap((result) => result.candidates ?? []);
+    const selected = allCandidates.find((candidate) => candidate.id === normalizedCandidateId);
+    if (!selected) return deepFreeze([]);
+    const candidatesById = new Map(allCandidates.map((candidate) => [candidate.id, candidate]));
+    const relatedCandidateIds = new Set();
+    let current = selected;
+    while (current && !relatedCandidateIds.has(current.id)) {
+      relatedCandidateIds.add(current.id);
+      current = current.reconciliation?.previousCandidateId
+        ? candidatesById.get(current.reconciliation.previousCandidateId)
+        : null;
+    }
     const history = [];
     for (const result of [...results].reverse()) {
-      const feature = result.features.find((item) => item.id === featureId);
-      if (feature) history.push({ runId: result.id, snapshotManifestId: result.snapshotManifestId, completedAt: result.completedAt, feature });
-      const retirement = result.retiredFeatures.find((item) => item.featureId === featureId);
-      if (retirement) history.push({ runId: result.id, snapshotManifestId: result.snapshotManifestId, completedAt: result.completedAt, retirement });
+      const candidate = (result.candidates ?? []).find((item) => relatedCandidateIds.has(item.id));
+      if (candidate) history.push({ runId: result.id, snapshotManifestId: result.snapshotManifestId, completedAt: result.completedAt, candidate });
+      const absence = (result.candidateAbsences ?? []).find((item) => relatedCandidateIds.has(item.previousCandidateId));
+      if (absence) history.push({ runId: result.id, snapshotManifestId: result.snapshotManifestId, completedAt: result.completedAt, absence });
     }
     return deepFreeze(history);
   }

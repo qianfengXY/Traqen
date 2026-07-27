@@ -106,10 +106,16 @@ test("Analysis Agent builds bounded API and business projections from one determ
 
   assert.equal(result.status, "COMPLETED");
   assert.equal(result.mode, "FULL");
-  assert.ok(result.features.some((feature) => feature.mode === "API" && feature.name === "Submit order"));
-  assert.ok(result.features.some((feature) => feature.mode === "BUSINESS" && feature.name === "Submit Order"));
-  assert.equal(result.features.filter((feature) => feature.mode === "BUSINESS").length, 1);
-  const endpoint = result.features.find((feature) => feature.mode === "API");
+  assert.ok(result.candidates.some((candidate) => candidate.mode === "API" && candidate.name === "Submit order"));
+  assert.ok(result.candidates.some((candidate) => candidate.mode === "BUSINESS" && candidate.name === "Submit Order"));
+  assert.equal(result.candidates.filter((candidate) => candidate.mode === "BUSINESS").length, 1);
+  assert.ok(result.candidates.every((candidate) =>
+    candidate.nodeType === "CANDIDATE_FEATURE"
+    && candidate.status === "PENDING_REVIEW"
+    && candidate.governedFeatureId === null
+    && candidate.reconciliation.identityDecision === "NOT_MADE"
+    && !("authority" in candidate)));
+  const endpoint = result.candidates.find((candidate) => candidate.mode === "API");
   assert.equal(endpoint.design.endpoint.method, "POST");
   assert.ok(endpoint.design.implementation.some((item) => item.name === "OrderService#submitOrder"));
   assert.ok(endpoint.design.configurations.some((item) => item.name === "ORDER_SUBMIT_ENABLED"));
@@ -117,6 +123,13 @@ test("Analysis Agent builds bounded API and business projections from one determ
   assert.ok(endpoint.evidenceFactIds.length >= 6);
   const checkpoint = await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-A");
   assert.ok(checkpoint.workUnits.every((unit) => unit.estimatedTokens <= checkpoint.request.profile.model.maxInputTokens));
+  assert.ok(checkpoint.workUnits.every((unit) =>
+    unit.boundary.schemaVersion === "1.0.0"
+    && unit.boundary.projectId === "PROJECT-ANALYSIS"
+    && unit.boundary.snapshotManifestId === "SNAPSHOT-A"
+    && unit.boundary.analysisRunId === "ANALYSIS-A"
+    && unit.boundary.factIds.includes(unit.boundary.rootFactIds[0])
+    && unit.output.candidateBundle.workUnitId === unit.boundary.id));
 });
 
 test("Analysis Agent checkpoints every WorkUnit and resumes without repeating completed model work", async () => {
@@ -132,7 +145,7 @@ test("Analysis Agent checkpoints every WorkUnit and resumes without repeating co
         mode: deterministic.mode,
         name: deterministic.mode === "API" ? "Submit order" : deterministic.name,
         description: `${deterministic.description} Semantically reviewed.`,
-        confidence: "HIGH",
+        confidence: deterministic.confidence,
         evidenceFactIds: [cited],
         stableEvidenceNodeIds: [input.evidence.nodes[0].id],
       }] : [] };
@@ -154,61 +167,59 @@ test("Analysis Agent checkpoints every WorkUnit and resumes without repeating co
   const completed = await agent.execute(hybrid, { factGraph: graph });
   assert.equal(completed.status, "COMPLETED");
   assert.equal(modelCalls, completed.coverage.plannedWorkUnits);
-  assert.ok(completed.features.some((feature) => feature.provenance.some((item) => item.modelProfileId === "MODEL-LOCAL")));
+  assert.ok(completed.candidates.some((candidate) => candidate.provenance.some((item) => item.modelProfileId === "MODEL-LOCAL")));
 });
 
-test("incremental and near-full analysis inherit stable Feature identity and human authority", async () => {
+test("incremental analysis retains Candidate lineage without inheriting Feature identity or authority", async () => {
   const repository = new MemoryAnalysisCheckpointRepository();
   const agent = new AnalysisAgent({ repository });
   const first = await agent.execute(request("ANALYSIS-V1", "SNAPSHOT-V1"), { factGraph: commerceGraph("SNAPSHOT-V1") });
-  const confirmed = structuredClone(first);
-  confirmed.features = confirmed.features.map((feature) => ({
-    ...feature,
-    authority: { status: "CONFIRMED", confirmedAt: "2026-07-20T06:00:00.000Z", actorId: "OWNER-1", actorRole: "business-owner", inheritance: "NONE", review: "NONE" },
-  }));
 
   const second = await agent.execute(request("ANALYSIS-V2", "SNAPSHOT-V2"), {
     factGraph: commerceGraph("SNAPSHOT-V2", { serviceVersion: 2 }),
-    baselineResult: confirmed,
+    baselineResult: first,
   });
   assert.equal(second.mode, "INCREMENTAL");
   assert.ok(second.coverage.changedFacts > 0);
-  for (const current of second.features) {
-    const previous = confirmed.features.find((feature) => feature.candidateKey === current.candidateKey);
-    assert.equal(current.id, previous.id);
-    assert.equal(current.authority.status, "CONFIRMED");
-    assert.equal(current.authority.inheritance, "INHERITED");
-    assert.equal(current.authority.review, "NONE");
+  for (const current of second.candidates) {
+    const previous = first.candidates.find((candidate) => candidate.candidateKey === current.candidateKey);
+    assert.notEqual(current.id, previous.id);
+    assert.equal(current.reconciliation.previousCandidateId, previous.id);
+    assert.equal(current.reconciliation.identityDecision, "NOT_MADE");
+    assert.equal(current.governedFeatureId, null);
+    assert.equal("authority" in current, false);
   }
 
   const third = await agent.execute(request("ANALYSIS-V3", "SNAPSHOT-V3"), {
     factGraph: commerceGraph("SNAPSHOT-V3", { serviceVersion: 3, includeEndpoint: false }),
     baselineResult: second,
   });
-  const retiredApi = third.retiredFeatures.find((item) => item.name === "Submit order");
-  assert.ok(retiredApi);
-  assert.equal(retiredApi.authority.status, "CONFIRMED");
-  const history = await agent.getFeatureHistory("PROJECT-ANALYSIS", second.features.find((feature) => feature.mode === "BUSINESS").id);
+  const absentApi = third.candidateAbsences.find((item) => item.name === "Submit order");
+  assert.ok(absentApi);
+  assert.equal(absentApi.disposition, "NO_CURRENT_OBSERVATION");
+  assert.equal("retirement" in absentApi, false);
+  const currentBusiness = third.candidates.find((candidate) => candidate.mode === "BUSINESS");
+  const history = await agent.getCandidateHistory("PROJECT-ANALYSIS", currentBusiness.id);
   assert.equal(history.length, 3);
-  assert.equal(history.at(-1).feature.snapshotManifestId, "SNAPSHOT-V3");
+  assert.equal(history.at(-1).candidate.snapshotManifestId, "SNAPSHOT-V3");
 });
 
-test("an unambiguous business capability keeps its Feature identity across a complete code move", async () => {
+test("a complete code move creates a Candidate lineage suggestion without deciding Feature identity", async () => {
   const repository = new MemoryAnalysisCheckpointRepository();
   const agent = new AnalysisAgent({ repository });
   const first = await agent.execute(request("ANALYSIS-MOVE-V1", "SNAPSHOT-MOVE-V1"), { factGraph: movedBusinessGraph("SNAPSHOT-MOVE-V1", "services/legacy-billing") });
-  const confirmed = structuredClone(first);
-  confirmed.features[0].authority = { status: "CONFIRMED", confirmedAt: "2026-07-20T06:00:00.000Z", actorId: "OWNER-1", actorRole: "business-owner", inheritance: "NONE", review: "NONE" };
 
   const second = await agent.execute(request("ANALYSIS-MOVE-V2", "SNAPSHOT-MOVE-V2"), {
     factGraph: movedBusinessGraph("SNAPSHOT-MOVE-V2", "apps/billing-v2"),
-    baselineResult: confirmed,
+    baselineResult: first,
   });
 
-  assert.equal(second.features[0].id, first.features[0].id);
-  assert.equal(second.features[0].authority.status, "CONFIRMED");
-  assert.equal(second.features[0].authority.inheritance, "INHERITED");
-  assert.equal(second.features[0].change.type, "IMPLEMENTATION_REMAPPED");
+  assert.notEqual(second.candidates[0].id, first.candidates[0].id);
+  assert.equal(second.candidates[0].reconciliation.previousCandidateId, first.candidates[0].id);
+  assert.equal(second.candidates[0].reconciliation.matchStatus, "SUGGESTED");
+  assert.equal(second.candidates[0].reconciliation.changeType, "IMPLEMENTATION_REMAPPED");
+  assert.equal(second.candidates[0].reconciliation.identityDecision, "NOT_MADE");
+  assert.equal(second.candidates[0].governedFeatureId, null);
 });
 
 test("incremental planning follows changed graph relations even though stable IDs contain colons", async () => {
@@ -228,7 +239,7 @@ test("incremental planning follows changed graph relations even though stable ID
   assert.equal(second.mode, "INCREMENTAL");
   assert.ok(second.coverage.changedFacts >= 2);
   assert.ok(second.coverage.plannedWorkUnits > 0);
-  assert.ok(second.features.some((feature) => feature.change.type === "EVIDENCE_REFRESHED"));
+  assert.ok(second.candidates.some((candidate) => candidate.reconciliation.changeType === "EVIDENCE_REFRESHED"));
 });
 
 test("LLM and Skill outputs cannot cite evidence outside their bounded WorkUnit", async () => {
@@ -261,7 +272,7 @@ test("LLM and Skill outputs cannot cite evidence outside their bounded WorkUnit"
   assert.ok((await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-UNSAFE")).workUnits.every((unit) => unit.error.message.includes("outside the bounded WorkUnit")));
 });
 
-test("LLM output cannot smuggle stable Feature evidence from outside its WorkUnit", async () => {
+test("LLM output cannot smuggle stable Fact-node evidence from outside its WorkUnit", async () => {
   const repository = new MemoryAnalysisCheckpointRepository();
   const agent = new AnalysisAgent({
     repository,
@@ -284,4 +295,32 @@ test("LLM output cannot smuggle stable Feature evidence from outside its WorkUni
 
   assert.equal(result.status, "COMPLETED_WITH_GAPS");
   assert.ok((await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-STABLE-ESCAPE")).workUnits.every((unit) => unit.error.message.includes("stable nodes outside")));
+});
+
+test("LLM output cannot raise Candidate confidence above the deterministic evidence cap", async () => {
+  const repository = new MemoryAnalysisCheckpointRepository();
+  const agent = new AnalysisAgent({
+    repository,
+    modelResolver: () => ({
+      async analyze(input) {
+        const candidate = input.deterministicCandidates[0];
+        return { candidateFeatures: candidate ? [{
+          ...candidate,
+          confidence: "HIGH",
+          evidenceFactIds: [input.evidence.nodes[0].factId],
+          stableEvidenceNodeIds: [input.evidence.nodes[0].id],
+        }] : [] };
+      },
+    }),
+  });
+  const result = await agent.execute(request("ANALYSIS-CONFIDENCE-CAP", "SNAPSHOT-A", {
+    id: "confidence-cap-model",
+    mode: "HYBRID",
+    model: { enabled: true, profileId: "CAP-RAISER", contextWindow: 8_000, maxInputTokens: 4_000, maxOutputTokens: 1_000 },
+    maxAttemptsPerWorkUnit: 1,
+  }), { factGraph: commerceGraph("SNAPSHOT-A") });
+
+  assert.equal(result.status, "COMPLETED_WITH_GAPS");
+  const checkpoint = await agent.getRun("PROJECT-ANALYSIS", "ANALYSIS-CONFIDENCE-CAP");
+  assert.ok(checkpoint.workUnits.some((unit) => unit.error?.message.includes("exceeds evidence cap")));
 });

@@ -3,6 +3,59 @@ import test from "node:test";
 
 import { AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels } from "../src/analysis/index.js";
 
+function workspaceCandidateEnvelope(overrides = {}) {
+  const workUnit = {
+    schemaVersion: "1.0.0",
+    id: "WORK-UNIT-WORKSPACE-001",
+    projectId: "PROJECT-WORKSPACE",
+    snapshotManifestId: "SNAPSHOT-WORKSPACE-001",
+    analysisRunId: "ANALYSIS-WORKSPACE-001",
+    factIds: ["FACT-WORKSPACE-001", "FACT-WORKSPACE-002"],
+    rootFactIds: ["FACT-WORKSPACE-001"],
+  };
+  return {
+    workUnit,
+    candidateBundle: {
+      schemaVersion: "1.0.0",
+      id: "CANDIDATE-BUNDLE-WORKSPACE-001",
+      projectId: workUnit.projectId,
+      snapshotManifestId: workUnit.snapshotManifestId,
+      analysisRunId: workUnit.analysisRunId,
+      workUnitId: workUnit.id,
+      producedAt: "2026-07-25T10:00:00.000Z",
+      candidates: [{
+        id: "CANDIDATE-WORKSPACE-001",
+        kind: "CANDIDATE_FEATURE",
+        status: "PENDING_REVIEW",
+        confidence: "LOW",
+        confidenceCap: "HIGH",
+        evidenceFactIds: ["FACT-WORKSPACE-001"],
+        proposal: {
+          name: "submitOrder",
+          kind: "CODE_SYMBOL",
+          method: null,
+          modulePath: "src/orders",
+          sourcePath: "src/orders/service.ts",
+          description: "Discovered source capability.",
+          code: "export function submitOrder() {}",
+          evidence: {
+            observations: [
+              { extractor: "TYPESCRIPT_AST", basis: "exported function", sourcePath: "src/orders/service.ts", startLine: 1, excerpt: "export function submitOrder() {}" },
+            ],
+            corroborations: [],
+            contradictions: [],
+            diagnostics: [],
+            completeness: "PARTIAL",
+            confidenceCap: "HIGH",
+          },
+        },
+        provenance: [{ producerType: "DETERMINISTIC", producerId: "TRAQEN_BROWSER_SCANNER", producerVersion: "4" }],
+      }],
+    },
+    ...overrides,
+  };
+}
+
 test("configured Analysis Agent models resolve secrets at call time without serializing them into input", async () => {
   const profiles = configuredAnalysisModels(JSON.stringify([{
     id: "private-model",
@@ -17,7 +70,16 @@ test("configured Analysis Agent models resolve secrets at call time without seri
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ candidateFeatures: [] }) } }] }), { status: 200, headers: { "content-type": "application/json" } });
   };
   const input = {
-    workUnit: { id: "UNIT-1", scopeKey: "orders", rootNodeId: "NODE-1" },
+    workUnit: {
+      schemaVersion: "1.0.0",
+      id: "UNIT-1",
+      projectId: "PROJECT-1",
+      snapshotManifestId: "SNAPSHOT-1",
+      analysisRunId: "RUN-1",
+      factIds: ["FACT-1"],
+      rootFactIds: ["FACT-1"],
+    },
+    workContext: { scopeKey: "orders", rootNodeId: "NODE-1", inputDigest: "DIGEST-1", estimatedTokens: 10 },
     deterministicCandidates: [],
     evidence: { nodes: [], edges: [] },
     context: { maxOutputTokens: 1_000 },
@@ -133,7 +195,7 @@ test("runtime model profiles keep API keys private, require verification, and en
       const verify = input.messages.at(-1).content.includes("exactly");
       const content = verify ? { ok: true } : {
         candidates: [{
-          id: "FEATURE-ORDER",
+          id: "CANDIDATE-WORKSPACE-001",
           displayName: "Submit order",
           description: "Submits an order through the discovered service method.",
           businessFeature: true,
@@ -144,6 +206,7 @@ test("runtime model profiles keep API keys private, require verification, and en
           group: "BUSINESS_CAPABILITY",
           confidence: "HIGH",
           rationale: "The method and source path identify an order submission capability.",
+          evidenceFactIds: ["FACT-WORKSPACE-001"],
         }],
       };
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }] }), { status: 200 });
@@ -159,35 +222,16 @@ test("runtime model profiles keep API keys private, require verification, and en
   assert.equal(configured.ready, false);
   assert.equal(registry.resolve("workspace-default"), null);
   assert.equal(JSON.stringify(configured).includes("runtime-secret"), false);
-  await assert.rejects(() => registry.enrichWorkspaceCandidates("workspace-default", []), /must be verified/);
+  await assert.rejects(() => registry.enrichWorkspaceCandidates("workspace-default", workspaceCandidateEnvelope()), /must be verified/);
 
   const verified = await registry.verify("workspace-default");
   assert.equal(verified.ready, true);
   assert.equal(JSON.parse(requests[0].body).max_tokens, 512);
   assert.ok(registry.resolve("workspace-default"));
-  const enriched = await registry.enrichWorkspaceCandidates("workspace-default", [{
-    id: "FEATURE-ORDER",
-    name: "submitOrder",
-    kind: "CODE_SYMBOL",
-    method: null,
-    modulePath: "src/orders",
-    sourcePath: "src/orders/service.ts",
-    description: "Discovered source capability.",
-    code: "export function submitOrder() {}",
-    evidence: {
-      observations: [
-        { extractor: "TYPESCRIPT_AST", basis: "exported function", sourcePath: "src/orders/service.ts", startLine: 1, excerpt: "export function submitOrder() {}" },
-        { extractor: "OPENAPI_DOCUMENT", basis: "declared operation", sourcePath: "openapi.json", startLine: 1, excerpt: "POST /orders" },
-      ],
-      corroborations: ["Related test clue submit order at test/orders.test.ts"],
-      contradictions: [],
-      diagnostics: [],
-      completeness: "PARTIAL",
-      confidenceCap: "HIGH",
-    },
-  }]);
-  assert.equal(enriched[0].businessFeature, true);
-  assert.equal(enriched[0].displayName, "Submit order");
+  const enriched = await registry.enrichWorkspaceCandidates("workspace-default", workspaceCandidateEnvelope());
+  assert.equal(enriched.candidates[0].proposal.businessFeature, true);
+  assert.equal(enriched.candidates[0].proposal.displayName, "Submit order");
+  assert.deepEqual(enriched.candidates[0].evidenceFactIds, ["FACT-WORKSPACE-001"]);
   assert.equal(requests.every((request) => request.headers.authorization === "Bearer runtime-secret"), true);
   assert.equal(JSON.stringify(registry.list()).includes("runtime-secret"), false);
 });
@@ -200,23 +244,60 @@ test("Workspace model telemetry exposes the auditable request lifecycle and enfo
     model: "source-model",
     stream: true,
     fetchImpl: async () => new Response([
-      `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ candidates: [{ id: "CANDIDATE-1", displayName: "Candidate", description: "Observed candidate.", businessFeature: false, businessKey: "platform.runtime-support", businessModule: "Platform operations", businessSubmodule: "Runtime support", domain: "Technical", group: "PROJECT_OPERATION", confidence: "HIGH", rationale: "Single heuristic observation." }] }) } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ candidates: [{ id: "CANDIDATE-WORKSPACE-001", displayName: "Candidate", description: "Observed candidate.", businessFeature: false, businessKey: "platform.runtime-support", businessModule: "Platform operations", businessSubmodule: "Runtime support", domain: "Technical", group: "PROJECT_OPERATION", confidence: "HIGH", rationale: "Single heuristic observation.", evidenceFactIds: ["FACT-WORKSPACE-001"] }] }) } }] })}`,
       "data: [DONE]",
     ].join("\n\n"), { status: 200, headers: { "content-type": "text/event-stream" } }),
   });
-  await assert.rejects(() => adapter.enrichWorkspaceCandidates([{
-    id: "CANDIDATE-1", name: "candidate", kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: "src/candidate.js", description: "candidate", code: "export function candidate() {}",
-    evidence: {
-      observations: [{ extractor: "SOURCE_PATTERN", basis: "heuristic", sourcePath: "src/candidate.js", startLine: 1, excerpt: "export function candidate() {}" }],
-      corroborations: [], contradictions: [], diagnostics: ["heuristic"], completeness: "UNKNOWN", confidenceCap: "LOW",
-    },
-  }], { onTelemetry: (event) => telemetry.push(event) }), /invalid Workspace enrichment response/);
+  const boundedInput = workspaceCandidateEnvelope();
+  boundedInput.candidateBundle.candidates[0].confidenceCap = "LOW";
+  boundedInput.candidateBundle.candidates[0].proposal.evidence.confidenceCap = "LOW";
+  await assert.rejects(() => adapter.enrichWorkspaceCandidates(
+    boundedInput,
+    { onTelemetry: (event) => telemetry.push(event) },
+  ), /invalid Workspace enrichment response/);
   assert.deepEqual(telemetry.slice(0, 3).map((event) => event.type), ["REQUEST_PREPARED", "HTTP_CONNECTED", "RESPONSE_PROGRESS"]);
   assert.ok(telemetry.some((event) => event.type === "STRUCTURED_RESPONSE_PARSED"));
   assert.ok(telemetry.some((event) => event.type === "OUTPUT_REJECTED"));
   assert.match(telemetry.find((event) => event.type === "RESPONSE_PROGRESS").outputPreview, /^\{"candidates"/);
-  assert.equal(telemetry[0].promptPreview.includes("SOURCE_PATTERN"), true);
+  assert.equal(telemetry[0].promptPreview.includes("TYPESCRIPT_AST"), true);
   assert.equal(JSON.stringify(telemetry).includes("authorization"), false);
+});
+
+test("Workspace model output must cite Facts from its supplied WorkUnit", async () => {
+  for (const evidenceFactIds of [undefined, ["FACT-OUTSIDE"]]) {
+    const adapter = new OpenAICompatibleAnalysisModelAdapter({
+      id: "bounded-model",
+      endpoint: "https://models.example/v1/chat/completions",
+      model: "source-model",
+      fetchImpl: async () => new Response(JSON.stringify({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              candidates: [{
+                id: "CANDIDATE-WORKSPACE-001",
+                displayName: "Submit order",
+                description: "Submits a customer order.",
+                businessFeature: true,
+                businessKey: "order.submit",
+                businessModule: "Order management",
+                businessSubmodule: "Order submission",
+                domain: "Orders",
+                group: "BUSINESS_CAPABILITY",
+                confidence: "MEDIUM",
+                rationale: "The bounded source Fact describes order submission.",
+                ...(evidenceFactIds ? { evidenceFactIds } : {}),
+              }],
+            }),
+          },
+        }],
+      }), { status: 200 }),
+    });
+
+    await assert.rejects(
+      () => adapter.enrichWorkspaceCandidates(workspaceCandidateEnvelope()),
+      /invalid Workspace enrichment response/,
+    );
+  }
 });
 
 test("model transport and structured output failures are reported as model availability errors", async () => {

@@ -10,7 +10,7 @@ export function createReverseSkillAnalysisAdapter(adapter) {
         ...input.evidence.edges.map((edge) => edge.id),
       ];
       const raw = await adapter.execute({
-        digest: input.workUnit.inputDigest,
+        digest: input.workContext.inputDigest,
         allowedFactIds,
         facts: input.evidence,
         factBundles: [],
@@ -19,7 +19,7 @@ export function createReverseSkillAnalysisAdapter(adapter) {
           snapshotManifestId: input.request.snapshotManifestId,
           sourceComponentId: input.request.sourceComponentId,
         },
-        taskScope: { workUnitId: input.workUnit.id, scopeKey: input.workUnit.scopeKey },
+        taskScope: { workUnitId: input.workUnit.id, scopeKey: input.workContext.scopeKey },
       }, { signal });
       const nodeByFactId = new Map(input.evidence.nodes.map((node) => [node.factId, node]));
       return {
@@ -34,7 +34,7 @@ export function createReverseSkillAnalysisAdapter(adapter) {
             mode: endpoint ? "API" : "BUSINESS",
             name: candidate.name,
             description: candidate.description,
-            confidence: "HIGH",
+            confidence: "LOW",
             evidenceFactIds,
             stableEvidenceNodeIds: evidenceFactIds.map((factId) => nodeByFactId.get(factId)?.id).filter(Boolean),
             design: {},

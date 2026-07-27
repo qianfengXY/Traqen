@@ -1241,7 +1241,7 @@ export class TraceabilityApplication {
     if (!input || typeof input !== "object") throw new TypeError("workspace analysis input must be an object");
     return this.#analysisModelRegistry.enrichWorkspaceCandidates(
       requireId(profileId, "analysisModelProfileId"),
-      input.candidates,
+      input,
       { onTelemetry: options.onTelemetry ?? null },
     );
   }
@@ -1278,27 +1278,7 @@ export class TraceabilityApplication {
     if (baselineResult?.projectId !== undefined && baselineResult.projectId !== projectId) {
       throw new PersistenceConflictError("Analysis baseline must belong to the same project");
     }
-    const governedBaseline = baselineResult ? structuredClone(baselineResult) : null;
-    if (governedBaseline) {
-      for (const feature of governedBaseline.features) {
-        const baseline = await this.#store.getFeatureBaseline(projectId, feature.id);
-        if (!baseline) continue;
-        const latestDecision = baseline.claims
-          .flatMap((item) => item.decisionHistory)
-          .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0] ?? null;
-        const status = authorityFromDecision(latestDecision, this.#clock());
-        if (status === "UNREVIEWED") continue;
-        feature.authority = {
-          status,
-          confirmedAt: latestDecision.createdAt,
-          actorId: latestDecision.actorId,
-          actorRole: latestDecision.actorRole,
-          inheritance: "NONE",
-          review: "NONE",
-        };
-      }
-    }
-    return { projectId, snapshotManifestId, factGraph, baselineResult: governedBaseline };
+    return { projectId, snapshotManifestId, factGraph, baselineResult };
   }
 
   #withActiveAnalysisModel(input) {
@@ -1380,9 +1360,9 @@ export class TraceabilityApplication {
     return this.#analysisAgent.getLatestResult(requireId(projectId, "projectId"));
   }
 
-  async getAnalyzedFeatureHistory(projectId, featureId) {
+  async getAnalysisCandidateHistory(projectId, candidateId) {
     if (!this.#analysisAgent) throw new TypeError("Analysis Agent is not configured");
-    return this.#analysisAgent.getFeatureHistory(requireId(projectId, "projectId"), requireId(featureId, "featureId"));
+    return this.#analysisAgent.getCandidateHistory(requireId(projectId, "projectId"), requireId(candidateId, "candidateId"));
   }
 
   async submitReverseRun(input) {

@@ -1,4 +1,14 @@
-import { localWorkspaceEvidencePolicyVersion, type LocalWorkspaceFileRecord, type LocalModelClassification } from "./local-workspace-analysis.ts";
+import {
+  localWorkspaceDerivedId,
+  localWorkspaceEvidencePolicyVersion,
+  localWorkspaceFactId,
+  type LocalWorkspaceFileRecord,
+  type LocalModelClassification,
+} from "./local-workspace-analysis.ts";
+import {
+  normalizeCandidateBundle,
+  normalizeWorkUnit,
+} from "../../src/shared/candidate-bundle.js";
 
 export type AnalysisModelProfile = {
   id: string;
@@ -25,6 +35,7 @@ export type AnalysisModelSettings = {
 
 export type WorkspaceModelEnrichment = {
   id: string;
+  evidenceFactIds: string[];
   displayName: string;
   description: string;
   businessFeature: boolean;
@@ -69,6 +80,12 @@ export type WorkspaceEvidenceAssessment = {
   diagnostics: string[];
   completeness: "COMPLETE" | "PARTIAL" | "UNKNOWN";
   confidenceCap: "LOW" | "MEDIUM" | "HIGH";
+};
+
+export type WorkspaceModelBatchContext = {
+  projectId: string;
+  snapshotManifestId: string;
+  analysisRunId: string;
 };
 
 export type AnalysisModelTelemetryEvent = {
@@ -258,7 +275,7 @@ function workspaceEvidenceIndex(records: LocalWorkspaceFileRecord[]): WorkspaceE
   return { candidatesByKey, testsByKey };
 }
 
-function candidateEvidenceAssessment(candidate: LocalWorkspaceFileRecord["candidates"][number], index: WorkspaceEvidenceIndex): WorkspaceEvidenceAssessment {
+function candidateEvidenceAssessment(candidate: LocalWorkspaceFileRecord["candidates"][number], index: WorkspaceEvidenceIndex) {
   const key = evidenceKey(candidate.name);
   const matches = key ? (index.candidatesByKey.get(key) ?? []).filter((item) => item.id !== candidate.id).slice(0, 4) : [];
   const relatedTests = key ? (index.testsByKey.get(key) ?? []).slice(0, 4) : [];
@@ -284,30 +301,56 @@ function candidateEvidenceAssessment(candidate: LocalWorkspaceFileRecord["candid
     ? ["This browser-side observation is heuristic and must be corroborated before it can support medium or high confidence."]
     : [];
   return {
-    observations,
-    corroborations,
-    contradictions: [],
-    diagnostics,
-    completeness: corroborations.length > 0 ? "PARTIAL" : "UNKNOWN",
-    confidenceCap,
+    assessment: {
+      observations,
+      corroborations,
+      contradictions: [],
+      diagnostics,
+      completeness: corroborations.length > 0 ? "PARTIAL" : "UNKNOWN",
+      confidenceCap,
+    } satisfies WorkspaceEvidenceAssessment,
+    matches,
+    relatedTests,
   };
 }
 
-export function workspaceModelCandidateBatches(records: LocalWorkspaceFileRecord[], profileId: string, batchSize = 10) {
+export function workspaceModelCandidateBatches(
+  records: LocalWorkspaceFileRecord[],
+  profileId: string,
+  context: WorkspaceModelBatchContext,
+  batchSize = 10,
+) {
+  if (!context?.projectId?.trim() || !context.snapshotManifestId?.trim() || !context.analysisRunId?.trim()) {
+    throw new TypeError("Workspace model batches require projectId, snapshotManifestId, and analysisRunId");
+  }
   const evidenceIndex = workspaceEvidenceIndex(records);
   const candidates = records.flatMap((record) => record.candidates).filter((candidate) => candidate.modelClassification?.profileId !== profileId
     || candidate.modelClassification.evidencePolicyVersion !== localWorkspaceEvidencePolicyVersion
-    || candidate.modelClassification.reconciliationStatus === "PROVISIONAL").map((candidate) => ({
-    id: candidate.id,
-    name: candidate.name,
-    kind: candidate.kind,
-    method: candidate.method,
-    modulePath: candidate.modulePath,
-    sourcePath: candidate.sourcePath,
-    description: candidate.description,
-    code: candidate.code,
-    evidence: candidateEvidenceAssessment(candidate, evidenceIndex),
-  }));
+    || candidate.modelClassification.reconciliationStatus === "PROVISIONAL").map((candidate) => {
+    const assessed = candidateEvidenceAssessment(candidate, evidenceIndex);
+    const rootEvidenceFactId = localWorkspaceFactId(context.snapshotManifestId, candidate.kind, candidate.id);
+    const evidenceFactIds = [...new Set([
+      rootEvidenceFactId,
+      ...assessed.matches.map((match) => localWorkspaceFactId(context.snapshotManifestId, match.kind, match.id)),
+      ...assessed.relatedTests.map((test) => localWorkspaceFactId(context.snapshotManifestId, "TEST-ASSET", `${test.path}:${test.title}`)),
+    ])].sort();
+    return {
+      id: candidate.id,
+      projectId: context.projectId,
+      snapshotManifestId: context.snapshotManifestId,
+      analysisRunId: context.analysisRunId,
+      name: candidate.name,
+      kind: candidate.kind,
+      method: candidate.method,
+      modulePath: candidate.modulePath,
+      sourcePath: candidate.sourcePath,
+      description: candidate.description,
+      code: candidate.code,
+      evidenceFactIds,
+      rootEvidenceFactId,
+      evidence: assessed.assessment,
+    };
+  });
   const batches: typeof candidates[] = [];
   let current: typeof candidates = [];
   for (const candidate of candidates) {
@@ -336,6 +379,7 @@ function provisionalEndpointEnrichment(candidate: ReturnType<typeof workspaceMod
     group: "API_SERVICE",
     confidence: "LOW",
     rationale: "Main Agent admitted the deterministic endpoint definition to the API tree provisionally; semantic classification is still pending.",
+    evidenceFactIds: candidate.evidenceFactIds,
     reconciliationStatus: "PROVISIONAL",
   };
 }
@@ -350,7 +394,7 @@ export function reconcileWorkspaceAgentBatch(
   for (const candidate of candidates) {
     const childResult = resultsById.get(candidate.id);
     if (childResult) {
-      enrichments.push({ ...childResult, reconciliationStatus: "CONFIRMED" });
+      enrichments.push({ ...childResult, reconciliationStatus: "EVIDENCE_VALIDATED" });
       if (childResult.businessFeature && candidate.kind !== "COMMAND") {
         decisions.push({ candidateId: candidate.id, outcome: "ADMITTED_BUSINESS", reason: "Child-Agent business conclusion matches a bounded scanner candidate and passed evidence validation." });
       } else if (candidate.kind === "ENDPOINT") {
@@ -370,15 +414,89 @@ export function reconcileWorkspaceAgentBatch(
   return { enrichments, decisions };
 }
 
+function canonicalEnvelopeForWorkspaceBatch(candidates: ReturnType<typeof workspaceModelCandidateBatches>[number]) {
+  if (candidates.length === 0) throw new TypeError("Workspace model batch cannot be empty");
+  const first = candidates[0];
+  if (candidates.some((candidate) =>
+    candidate.projectId !== first.projectId
+    || candidate.snapshotManifestId !== first.snapshotManifestId
+    || candidate.analysisRunId !== first.analysisRunId)) {
+    throw new TypeError("Workspace model batch cannot mix project, Snapshot, or AnalysisRun identity");
+  }
+  const identity = candidates.map((candidate) => candidate.id).sort().join("\u0000");
+  const workUnit = normalizeWorkUnit({
+    schemaVersion: "1.0.0",
+    id: localWorkspaceDerivedId("WORK-UNIT", `${first.analysisRunId}\u0000${identity}`),
+    projectId: first.projectId,
+    snapshotManifestId: first.snapshotManifestId,
+    analysisRunId: first.analysisRunId,
+    factIds: [...new Set(candidates.flatMap((candidate) => candidate.evidenceFactIds))].sort(),
+    rootFactIds: [...new Set(candidates.map((candidate) => candidate.rootEvidenceFactId))].sort(),
+  });
+  const candidateBundle = normalizeCandidateBundle({
+    schemaVersion: "1.0.0",
+    id: localWorkspaceDerivedId("CANDIDATE-BUNDLE", `${workUnit.id}\u0000DETERMINISTIC`),
+    projectId: workUnit.projectId,
+    snapshotManifestId: workUnit.snapshotManifestId,
+    analysisRunId: workUnit.analysisRunId,
+    workUnitId: workUnit.id,
+    producedAt: new Date().toISOString(),
+    candidates: candidates.map((candidate) => ({
+      id: candidate.id,
+      kind: "CANDIDATE_FEATURE",
+      status: "PENDING_REVIEW",
+      confidence: "LOW",
+      confidenceCap: candidate.evidence.confidenceCap,
+      evidenceFactIds: candidate.evidenceFactIds,
+      proposal: {
+        name: candidate.name,
+        kind: candidate.kind,
+        method: candidate.method,
+        modulePath: candidate.modulePath,
+        sourcePath: candidate.sourcePath,
+        description: candidate.description,
+        code: candidate.code,
+        evidence: candidate.evidence,
+      },
+      provenance: [{
+        producerType: "DETERMINISTIC",
+        producerId: "TRAQEN_BROWSER_SCANNER",
+        producerVersion: String(localWorkspaceEvidencePolicyVersion),
+      }],
+    })),
+  }, workUnit);
+  return { workUnit, candidateBundle };
+}
+
+function enrichmentsFromCandidateBundle(value: unknown, workUnit: ReturnType<typeof normalizeWorkUnit>) {
+  const candidateBundle = normalizeCandidateBundle(value, workUnit);
+  return candidateBundle.candidates.map((candidate) => ({
+    id: candidate.id,
+    evidenceFactIds: candidate.evidenceFactIds,
+    displayName: candidate.proposal.displayName,
+    description: candidate.proposal.description,
+    businessFeature: candidate.proposal.businessFeature,
+    businessKey: candidate.proposal.businessKey,
+    businessModule: candidate.proposal.businessModule,
+    businessSubmodule: candidate.proposal.businessSubmodule,
+    domain: candidate.proposal.domain,
+    group: candidate.proposal.group,
+    confidence: candidate.confidence,
+    rationale: candidate.proposal.rationale,
+  })) as WorkspaceModelEnrichment[];
+}
+
 async function requestWorkspaceCandidateBatch(apiBase: string, apiToken: string, profileId: string, candidates: ReturnType<typeof workspaceModelCandidateBatches>[number], options: { onTelemetry?: (event: AnalysisModelTelemetryEvent) => void } = {}) {
+  const envelope = canonicalEnvelopeForWorkspaceBatch(candidates);
   const response = await fetch(`${baseUrl(apiBase)}/v1/analysis-model-profiles/${encodeURIComponent(profileId)}/workspace-enrichment`, {
     method: "POST",
     headers: { ...headers(apiToken, true), accept: "application/x-ndjson, application/json" },
-    body: JSON.stringify({ candidates }),
+    body: JSON.stringify(envelope),
   });
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.toLowerCase().includes("application/x-ndjson") || !response.body) {
-    return (await responseJson<{ profileId: string; candidates: WorkspaceModelEnrichment[] }>(response)).candidates;
+    const body = await responseJson<{ profileId: string; candidateBundle: unknown }>(response);
+    return enrichmentsFromCandidateBundle(body.candidateBundle, envelope.workUnit);
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -386,9 +504,9 @@ async function requestWorkspaceCandidateBatch(apiBase: string, apiToken: string,
   let result: WorkspaceModelEnrichment[] | null = null;
   const consumeLine = (line: string) => {
     if (!line.trim()) return;
-    const message = JSON.parse(line) as { kind: "telemetry" | "result" | "error"; event?: AnalysisModelTelemetryEvent; candidates?: WorkspaceModelEnrichment[]; error?: { message?: string } };
+    const message = JSON.parse(line) as { kind: "telemetry" | "result" | "error"; event?: AnalysisModelTelemetryEvent; candidateBundle?: unknown; error?: { message?: string } };
     if (message.kind === "telemetry" && message.event) options.onTelemetry?.(message.event);
-    else if (message.kind === "result") result = message.candidates ?? [];
+    else if (message.kind === "result") result = enrichmentsFromCandidateBundle(message.candidateBundle, envelope.workUnit);
     else if (message.kind === "error") throw new Error(message.error?.message ?? "Analysis model interaction failed");
   };
   while (true) {

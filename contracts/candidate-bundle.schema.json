@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/candidate-bundle.schema.json",
+  "title": "CandidateBundle",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "id",
+    "projectId",
+    "snapshotManifestId",
+    "analysisRunId",
+    "workUnitId",
+    "producedAt",
+    "candidates"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "analysisRunId": { "type": "string", "minLength": 1 },
+    "workUnitId": { "type": "string", "minLength": 1 },
+    "producedAt": { "type": "string", "format": "date-time" },
+    "candidates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Candidate" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "WorkUnit": {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "id",
+        "projectId",
+        "snapshotManifestId",
+        "analysisRunId",
+        "factIds",
+        "rootFactIds"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "id": { "type": "string", "minLength": 1 },
+        "projectId": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "analysisRunId": { "type": "string", "minLength": 1 },
+        "factIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rootFactIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Candidate": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "status",
+        "confidence",
+        "confidenceCap",
+        "evidenceFactIds",
+        "proposal",
+        "provenance"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["CANDIDATE_FEATURE", "CANDIDATE_CLAIM"]
+        },
+        "status": { "const": "PENDING_REVIEW" },
+        "confidence": { "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "confidenceCap": { "enum": ["LOW", "MEDIUM", "HIGH"] },
+        "evidenceFactIds": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "proposal": {
+          "type": "object"
+        },
+        "provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Provenance" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "Provenance": {
+      "type": "object",
+      "required": ["producerType", "producerId", "producerVersion"],
+      "properties": {
+        "producerType": {
+          "enum": ["DETERMINISTIC", "MODEL", "SKILL", "HUMAN"]
+        },
+        "producerId": { "type": "string", "minLength": 1 },
+        "producerVersion": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
