@@ -5,7 +5,7 @@ export type LocalWorkspaceInputFile = {
   lastModified?: number;
 };
 
-export type LocalFeatureTreeMode = "BUSINESS" | "API";
+export type LocalCandidateTreeMode = "BUSINESS" | "API";
 
 export type LocalModelClassification = {
   profileId: string;
@@ -22,7 +22,7 @@ export type LocalModelClassification = {
   rationale: string;
 };
 
-export type LocalFeatureCandidate = {
+export type LocalCandidate = {
   id: string;
   nodeType: "CANDIDATE_FEATURE";
   governedFeatureId: null;
@@ -41,18 +41,18 @@ export type LocalFeatureCandidate = {
   modelClassification?: LocalModelClassification;
   evidenceCandidateIds?: string[];
   configurations: Array<{ factId: string; path: string; key: string; value: string }>;
-  tests: Array<{ factId: string; path: string; title: string; code: string }>;
+  testAssets: Array<{ factId: string; path: string; title: string; code: string }>;
   dimensions: {
     authority: "PENDING";
     conformance: "PARTIAL";
-    verification: "NOT_RUN";
+    verification: "UNAVAILABLE";
     freshness: "UNKNOWN";
     conflict: "NONE";
   };
   gaps: Array<{ type: string; severity: "BLOCKING" | "WARNING"; ownerRole: string }>;
 };
 
-export type LocalFeatureTreeNode = {
+export type LocalCandidateTreeNode = {
   id: string;
   label: string;
   kind: "WORKSPACE" | "MODULE" | "DOMAIN" | "GROUP" | "CANDIDATE";
@@ -60,7 +60,7 @@ export type LocalFeatureTreeNode = {
   candidateCount: number;
   detail?: string;
   badge?: string;
-  children: LocalFeatureTreeNode[];
+  children: LocalCandidateTreeNode[];
 };
 
 export type LocalWorkspaceAnalysis = {
@@ -71,8 +71,8 @@ export type LocalWorkspaceAnalysis = {
   fileCount: number;
   supportedFileCount: number;
   skippedFileCount: number;
-  features: LocalFeatureCandidate[];
-  tree: LocalFeatureTreeNode;
+  features: LocalCandidate[];
+  tree: LocalCandidateTreeNode;
 };
 
 export type LocalWorkspaceFileRecord = {
@@ -82,12 +82,12 @@ export type LocalWorkspaceFileRecord = {
   lastModified: number;
   contentFingerprint?: string;
   supported: boolean;
-  candidates: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>;
+  candidates: Array<Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">>;
   configuration: { path: string; key: string; value: string } | null;
   test: ({ path: string; title: string; code: string } & { keys: string[] }) | null;
 };
 
-export const localWorkspaceScannerVersion = 5;
+export const localWorkspaceScannerVersion = 6;
 export const localWorkspaceEvidencePolicyVersion = 4;
 
 export function planLocalWorkspaceCheckpointResume(
@@ -216,7 +216,7 @@ function callableSymbol(symbol: string) {
   return !symbol.startsWith("_") && !/(?:ForTests?|TestOnly)$/i.test(symbol);
 }
 
-type RawFeatureCandidate = Omit<LocalFeatureCandidate, "nodeType" | "governedFeatureId" | "evidenceFactIds" | "configurations" | "tests" | "dimensions" | "gaps">;
+type RawCandidate = Omit<LocalCandidate, "nodeType" | "governedFeatureId" | "evidenceFactIds" | "configurations" | "testAssets" | "dimensions" | "gaps">;
 type JavaAnnotation = { name: string; arguments: string; start: number; end: number };
 type JavaMethod = { name: string; offset: number; declaration: string; visibility: "public" | "protected" | "private" | "package" };
 type JavaClass = { name: string; kind: "class" | "interface" | "record"; offset: number; annotations: JavaAnnotation[] };
@@ -312,7 +312,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
   }
   const classes: JavaClass[] = rawClasses.map((javaClass) => ({ ...javaClass, annotations: classAnnotations.get(javaClass.offset) ?? [] }));
   const javaModule = javaModulePath(file);
-  const candidates: RawFeatureCandidate[] = [];
+  const candidates: RawCandidate[] = [];
   const endpointMethodOffsets = new Set<number>();
   const classForMethod = (method: JavaMethod) => [...classes].reverse().find((javaClass) => javaClass.offset < method.offset);
   const addEndpoint = (method: JavaMethod, protocol: string, httpMethod: string, path: string, annotation: JavaAnnotation) => {
@@ -388,7 +388,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
 }
 
 function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
-  const candidates: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">> = [];
+  const candidates: Array<Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">> = [];
   const routePattern = /\b(?:app|router|server)\s*\.\s*(get|post|put|patch|delete|options|head)\s*\(\s*["'`]([^"'`]+)["'`](?:\s*,\s*([A-Za-z_$][\w$]*))?/gi;
   for (const match of file.content.matchAll(routePattern)) {
     const method = match[1].toUpperCase();
@@ -510,7 +510,7 @@ function discoverOpenApiCandidates(file: LocalWorkspaceInputFile) {
   if (!document || typeof document !== "object" || Array.isArray(document)) return [];
   const paths = (document as { paths?: Record<string, Record<string, unknown>> }).paths;
   if (!paths || typeof paths !== "object") return [];
-  const result: Array<Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">> = [];
+  const result: Array<Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">> = [];
   for (const [route, operations] of Object.entries(paths)) {
     for (const [method, operationValue] of Object.entries(operations ?? {})) {
       if (!["get", "post", "put", "patch", "delete", "options", "head"].includes(method.toLowerCase())) continue;
@@ -641,7 +641,7 @@ function isConfigurationFile(file: LocalWorkspaceInputFile) {
     || /^application(?:-[^.]+)?\.(?:ya?ml|properties)$/i.test(name);
 }
 
-function inferredCandidateDisplayName(feature: { kind: LocalFeatureCandidate["kind"]; description: string; code: string }) {
+function inferredCandidateDisplayName(feature: { kind: LocalCandidate["kind"]; description: string; code: string }) {
   if (feature.kind !== "ENDPOINT") return undefined;
   const javaMethod = feature.description.match(/implemented by\s+([A-Za-z_$][\w$]*)/i)?.[1];
   if (javaMethod) return titleFromSymbol(javaMethod);
@@ -658,9 +658,9 @@ function inferredCandidateDisplayName(feature: { kind: LocalFeatureCandidate["ki
   return undefined;
 }
 
-type FeatureTreeGroup = "API_SERVICE" | "BUSINESS_CAPABILITY" | "DATA_INTEGRATION" | "BACKGROUND_INTEGRATION" | "PROJECT_OPERATION";
+type CandidateTreeGroup = "API_SERVICE" | "BUSINESS_CAPABILITY" | "DATA_INTEGRATION" | "BACKGROUND_INTEGRATION" | "PROJECT_OPERATION";
 
-function treeModuleIdentity(feature: Pick<LocalFeatureCandidate, "sourcePath" | "modulePath">) {
+function treeModuleIdentity(feature: Pick<LocalCandidate, "sourcePath" | "modulePath">) {
   const path = feature.sourcePath.replace(/\\/g, "/");
   const segments = path.split("/").filter(Boolean);
   const sourceIndex = segments.indexOf("src");
@@ -719,7 +719,7 @@ function treeModuleLabel(identity: string) {
   return title;
 }
 
-function treeGroup(feature: LocalFeatureCandidate): FeatureTreeGroup {
+function treeGroup(feature: LocalCandidate): CandidateTreeGroup {
   if (feature.modelClassification) return feature.modelClassification.group;
   if (feature.kind === "ENDPOINT") return "API_SERVICE";
   if (feature.kind === "COMMAND" || /(?:^|\/)(?:scripts?|tools?|cli)(?:\/|$)/i.test(feature.sourcePath)) return "PROJECT_OPERATION";
@@ -729,9 +729,9 @@ function treeGroup(feature: LocalFeatureCandidate): FeatureTreeGroup {
   return "BUSINESS_CAPABILITY";
 }
 
-function buildEvidenceTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[]): LocalFeatureTreeNode {
-  const groupOrder: FeatureTreeGroup[] = ["API_SERVICE", "BUSINESS_CAPABILITY", "DATA_INTEGRATION", "BACKGROUND_INTEGRATION", "PROJECT_OPERATION"];
-  const modules = new Map<string, LocalFeatureCandidate[]>();
+function buildCandidateEvidenceTree(workspaceName: string, projectId: string, features: LocalCandidate[]): LocalCandidateTreeNode {
+  const groupOrder: CandidateTreeGroup[] = ["API_SERVICE", "BUSINESS_CAPABILITY", "DATA_INTEGRATION", "BACKGROUND_INTEGRATION", "PROJECT_OPERATION"];
+  const modules = new Map<string, LocalCandidate[]>();
   for (const feature of features) {
     const identity = treeModuleIdentity(feature);
     modules.set(identity, [...(modules.get(identity) ?? []), feature]);
@@ -742,7 +742,7 @@ function buildEvidenceTree(workspaceName: string, projectId: string, features: L
     kind: "WORKSPACE",
     candidateCount: features.length,
     children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleIdentity, items]) => {
-      const domains = new Map<string, { label: string; items: LocalFeatureCandidate[] }>();
+      const domains = new Map<string, { label: string; items: LocalCandidate[] }>();
       for (const feature of items) {
         const domain = treeDomainIdentity(feature.sourcePath, moduleIdentity, feature.modelClassification?.domain);
         const current = domains.get(domain.identity) ?? { label: domain.label, items: [] };
@@ -783,27 +783,27 @@ function buildEvidenceTree(workspaceName: string, projectId: string, features: L
   };
 }
 
-export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalysis, mode: LocalFeatureTreeMode): LocalWorkspaceAnalysis {
+export function localWorkspaceAnalysisForTreeMode(analysis: LocalWorkspaceAnalysis, mode: LocalCandidateTreeMode): LocalWorkspaceAnalysis {
   const classifiedFeatures = analysis.features.filter((feature) => mode === "API"
     ? feature.kind === "ENDPOINT" && feature.modelClassification?.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion
-    : isLocalBusinessFeature(feature));
-  const features = mode === "BUSINESS" ? mergeAgentBusinessFeatures(classifiedFeatures) : classifiedFeatures;
+    : isLocalBusinessCandidate(feature));
+  const features = mode === "BUSINESS" ? mergeAgentBusinessCandidates(classifiedFeatures) : classifiedFeatures;
   return {
     ...analysis,
     features,
-    tree: buildAgentFeatureTree(analysis.workspaceName, analysis.projectId, features, mode),
+    tree: buildAgentCandidateTree(analysis.workspaceName, analysis.projectId, features, mode),
   };
 }
 
-export function isLocalBusinessFeature(feature: LocalFeatureCandidate) {
+export function isLocalBusinessCandidate(feature: LocalCandidate) {
   return feature.kind !== "COMMAND"
     && feature.modelClassification?.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion
     && feature.modelClassification.reconciliationStatus !== "PROVISIONAL"
     && feature.modelClassification.businessFeature === true;
 }
 
-function buildAgentFeatureTree(workspaceName: string, projectId: string, features: LocalFeatureCandidate[], mode: LocalFeatureTreeMode): LocalFeatureTreeNode {
-  const modules = new Map<string, LocalFeatureCandidate[]>();
+function buildAgentCandidateTree(workspaceName: string, projectId: string, features: LocalCandidate[], mode: LocalCandidateTreeMode): LocalCandidateTreeNode {
+  const modules = new Map<string, LocalCandidate[]>();
   for (const feature of features) {
     const classification = feature.modelClassification;
     if (!classification) continue;
@@ -816,7 +816,7 @@ function buildAgentFeatureTree(workspaceName: string, projectId: string, feature
     kind: "WORKSPACE",
     candidateCount: features.length,
     children: [...modules.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([moduleName, moduleFeatures]) => {
-      const submodules = new Map<string, LocalFeatureCandidate[]>();
+      const submodules = new Map<string, LocalCandidate[]>();
       for (const feature of moduleFeatures) {
         const classification = feature.modelClassification;
         if (!classification) continue;
@@ -851,8 +851,8 @@ function buildAgentFeatureTree(workspaceName: string, projectId: string, feature
   };
 }
 
-function mergeAgentBusinessFeatures(features: LocalFeatureCandidate[]): LocalFeatureCandidate[] {
-  const groups = new Map<string, LocalFeatureCandidate[]>();
+function mergeAgentBusinessCandidates(features: LocalCandidate[]): LocalCandidate[] {
+  const groups = new Map<string, LocalCandidate[]>();
   for (const feature of features) {
     const classification = feature.modelClassification;
     if (!classification) continue;
@@ -886,7 +886,7 @@ function mergeAgentBusinessFeatures(features: LocalFeatureCandidate[]): LocalFea
       },
       implementationBlocks: unique(items.flatMap((item) => item.implementationBlocks ?? []), (block) => `${block.path}:${block.startLine}:${block.symbol}`),
       configurations: unique(items.flatMap((item) => item.configurations), (configuration) => `${configuration.path}:${configuration.key}`),
-      tests: unique(items.flatMap((item) => item.tests), (test) => test.path),
+      testAssets: unique(items.flatMap((item) => item.testAssets), (test) => test.path),
       gaps: unique(items.flatMap((item) => item.gaps), (gap) => `${gap.type}:${gap.ownerRole}`),
     };
   }).sort((left, right) => (left.displayName ?? left.name).localeCompare(right.displayName ?? right.name));
@@ -982,7 +982,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   if (!projectId) throw new TypeError("Project ID is required");
   if (input.records.length === 0) throw new TypeError("Select a source directory first");
   const snapshotManifestId = localWorkspaceSnapshotManifestId(projectId, input.records);
-  const rawCandidates = new Map<string, Omit<LocalFeatureCandidate, "configurations" | "tests" | "dimensions" | "gaps">>();
+  const rawCandidates = new Map<string, Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">>();
   const testIndex = new Map<string, RelatedTest[]>();
   for (const record of input.records) {
     for (const candidate of record.candidates) {
@@ -994,7 +994,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   }
   const configurations = input.records.flatMap((record) => record.configuration ? [record.configuration] : []);
   const candidateValues = [...rawCandidates.values()];
-  const features: LocalFeatureCandidate[] = candidateValues.map((feature) => {
+  const features: LocalCandidate[] = candidateValues.map((feature) => {
     const tests = indexedTests(feature, testIndex).map((test) => ({
       ...test,
       factId: localWorkspaceFactId(snapshotManifestId, "TEST-ASSET", `${test.path}:${test.title}`),
@@ -1046,8 +1046,8 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
       } : undefined,
       implementationBlocks,
       configurations: featureConfigurations,
-      tests,
-      dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "NOT_RUN", freshness: "UNKNOWN", conflict: "NONE" },
+      testAssets: tests,
+      dimensions: { authority: "PENDING", conformance: "PARTIAL", verification: "UNAVAILABLE", freshness: "UNKNOWN", conflict: "NONE" },
       gaps: [
         { type: "MISSING_AUTHORITY", severity: "BLOCKING", ownerRole: "product-owner" },
         { type: "IMPLEMENTATION_UNREVIEWED", severity: "BLOCKING", ownerRole: "technical-owner" },
@@ -1065,7 +1065,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
     supportedFileCount: input.records.filter((record) => record.supported).length,
     skippedFileCount: input.records.filter((record) => !record.supported).length,
     features,
-    tree: buildEvidenceTree(workspaceName, projectId, features),
+    tree: buildCandidateEvidenceTree(workspaceName, projectId, features),
   };
 }
 

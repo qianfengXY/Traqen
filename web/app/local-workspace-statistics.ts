@@ -1,13 +1,13 @@
-import type { LocalFeatureCandidate, LocalFeatureTreeNode, LocalWorkspaceAnalysis } from "./local-workspace-analysis";
+import type { LocalCandidate, LocalCandidateTreeNode, LocalWorkspaceAnalysis } from "./local-workspace-analysis";
 
 export type LocalWorkspaceStatistics = {
-  featureCount: number;
+  candidateCount: number;
   designImplementationCount: number;
   configurationItemCount: number;
-  configuredFeatureCount: number;
-  testCaseCount: number;
-  testedFeatureCount: number;
-  executedFeatureCount: number;
+  candidatesWithConfigurationCount: number;
+  testAssetCount: number;
+  candidatesWithTestAssetsCount: number;
+  executionEvidenceGapCount: number;
   pendingHumanConfirmationCount: number;
   completeEvidenceChainCount: number;
   incompleteEvidenceChainCount: number;
@@ -15,18 +15,11 @@ export type LocalWorkspaceStatistics = {
   warningGapCount: number;
   unreviewedImplementationCount: number;
   conflictCount: number;
-  nonconformingFeatureCount: number;
-  execution: {
-    passed: number;
-    failed: number;
-    error: number;
-    skipped: number;
-    notRun: number;
-  };
-  byKind: Record<LocalFeatureCandidate["kind"], number>;
+  nonconformingCandidateCount: number;
+  byKind: Record<LocalCandidate["kind"], number>;
 };
 
-export function findLocalWorkspaceTreeNode(root: LocalFeatureTreeNode, nodeId: string): LocalFeatureTreeNode | null {
+export function findLocalWorkspaceTreeNode(root: LocalCandidateTreeNode, nodeId: string): LocalCandidateTreeNode | null {
   if (root.id === nodeId) return root;
   for (const child of root.children) {
     const found = findLocalWorkspaceTreeNode(child, nodeId);
@@ -35,9 +28,9 @@ export function findLocalWorkspaceTreeNode(root: LocalFeatureTreeNode, nodeId: s
   return null;
 }
 
-export function localWorkspaceTreeCandidateIds(node: LocalFeatureTreeNode) {
+export function localWorkspaceTreeCandidateIds(node: LocalCandidateTreeNode) {
   const ids = new Set<string>();
-  function visit(current: LocalFeatureTreeNode) {
+  function visit(current: LocalCandidateTreeNode) {
     if (current.candidateId) ids.add(current.candidateId);
     for (const child of current.children) visit(child);
   }
@@ -45,86 +38,68 @@ export function localWorkspaceTreeCandidateIds(node: LocalFeatureTreeNode) {
   return ids;
 }
 
-function isExplicitlyNonconforming(feature: LocalFeatureCandidate) {
-  const conformance = String(feature.dimensions.conformance).toUpperCase();
-  const verification = String(feature.dimensions.verification).toUpperCase();
+function isExplicitlyNonconforming(candidate: LocalCandidate) {
+  const conformance = String(candidate.dimensions.conformance).toUpperCase();
+  const verification = String(candidate.dimensions.verification).toUpperCase();
   return ["NON_CONFORMING", "NONCONFORMING", "VIOLATED"].includes(conformance)
     || ["FAIL", "FAILED", "ERROR"].includes(verification)
-    || feature.gaps.some((gap) => /NON.?CONFORM|VIOLATION|EXECUTION_FAILED/.test(gap.type.toUpperCase()));
+    || candidate.gaps.some((gap) => /NON.?CONFORM|VIOLATION|EXECUTION_FAILED/.test(gap.type.toUpperCase()));
 }
 
-export function calculateLocalWorkspaceStatistics(features: LocalFeatureCandidate[]): LocalWorkspaceStatistics {
+export function calculateLocalWorkspaceStatistics(candidates: LocalCandidate[]): LocalWorkspaceStatistics {
   const configurationItems = new Set<string>();
-  const testCases = new Set<string>();
-  const execution = { passed: 0, failed: 0, error: 0, skipped: 0, notRun: 0 };
-  let configuredFeatureCount = 0;
-  let testedFeatureCount = 0;
-  let executedFeatureCount = 0;
+  const testAssets = new Set<string>();
+  let candidatesWithConfigurationCount = 0;
+  let candidatesWithTestAssetsCount = 0;
+  let executionEvidenceGapCount = 0;
   let pendingHumanConfirmationCount = 0;
   let completeEvidenceChainCount = 0;
   let blockingGapCount = 0;
   let warningGapCount = 0;
   let unreviewedImplementationCount = 0;
   let conflictCount = 0;
-  let nonconformingFeatureCount = 0;
+  let nonconformingCandidateCount = 0;
   const byKind: LocalWorkspaceStatistics["byKind"] = { ENDPOINT: 0, CODE_SYMBOL: 0, COMMAND: 0 };
 
-  for (const feature of features) {
-    byKind[feature.kind] += 1;
-    for (const item of feature.configurations) configurationItems.add(`${item.path}\u0000${item.key}`);
-    for (const item of feature.tests) testCases.add(`${item.path}\u0000${item.title}`);
-    if (feature.configurations.length > 0) configuredFeatureCount += 1;
-    if (feature.tests.length > 0) testedFeatureCount += 1;
-    if (String(feature.dimensions.authority).toUpperCase() !== "CONFIRMED") pendingHumanConfirmationCount += 1;
-    if (!["CONFORMING", "CONFORMANT", "VERIFIED"].includes(String(feature.dimensions.conformance).toUpperCase())) unreviewedImplementationCount += 1;
-    if (!["NONE", "NO_CONFLICT"].includes(String(feature.dimensions.conflict).toUpperCase())) conflictCount += 1;
-    blockingGapCount += feature.gaps.filter((gap) => gap.severity === "BLOCKING").length;
-    warningGapCount += feature.gaps.filter((gap) => gap.severity === "WARNING").length;
-    if (isExplicitlyNonconforming(feature)) nonconformingFeatureCount += 1;
+  for (const candidate of candidates) {
+    byKind[candidate.kind] += 1;
+    for (const item of candidate.configurations) configurationItems.add(`${item.path}\u0000${item.key}`);
+    for (const item of candidate.testAssets) testAssets.add(`${item.path}\u0000${item.title}`);
+    if (candidate.configurations.length > 0) candidatesWithConfigurationCount += 1;
+    if (candidate.testAssets.length > 0) candidatesWithTestAssetsCount += 1;
+    if (candidate.gaps.some((gap) => gap.type === "NOT_EXECUTED_ON_CURRENT_DEPLOYMENT")) executionEvidenceGapCount += 1;
+    if (String(candidate.dimensions.authority).toUpperCase() !== "CONFIRMED") pendingHumanConfirmationCount += 1;
+    if (!["CONFORMING", "CONFORMANT", "VERIFIED"].includes(String(candidate.dimensions.conformance).toUpperCase())) unreviewedImplementationCount += 1;
+    if (!["NONE", "NO_CONFLICT"].includes(String(candidate.dimensions.conflict).toUpperCase())) conflictCount += 1;
+    blockingGapCount += candidate.gaps.filter((gap) => gap.severity === "BLOCKING").length;
+    warningGapCount += candidate.gaps.filter((gap) => gap.severity === "WARNING").length;
+    if (isExplicitlyNonconforming(candidate)) nonconformingCandidateCount += 1;
 
-    const verification = String(feature.dimensions.verification).toUpperCase();
-    if (["PASS", "PASSED"].includes(verification)) {
-      execution.passed += 1;
-      executedFeatureCount += 1;
-    } else if (["FAIL", "FAILED"].includes(verification)) {
-      execution.failed += 1;
-      executedFeatureCount += 1;
-    } else if (verification === "ERROR") {
-      execution.error += 1;
-      executedFeatureCount += 1;
-    } else if (["SKIP", "SKIPPED", "CANCELLED"].includes(verification)) {
-      execution.skipped += 1;
-      executedFeatureCount += 1;
-    } else {
-      execution.notRun += 1;
-    }
-
-    const evidenceComplete = feature.gaps.length === 0
-      && String(feature.dimensions.authority).toUpperCase() === "CONFIRMED"
-      && ["CONFORMING", "CONFORMANT", "VERIFIED"].includes(String(feature.dimensions.conformance).toUpperCase())
-      && ["PASS", "PASSED"].includes(verification)
-      && ["CURRENT", "FRESH"].includes(String(feature.dimensions.freshness).toUpperCase())
-      && ["NONE", "NO_CONFLICT"].includes(String(feature.dimensions.conflict).toUpperCase());
+    const evidenceComplete = candidate.gaps.length === 0
+      && String(candidate.dimensions.authority).toUpperCase() === "CONFIRMED"
+      && ["CONFORMING", "CONFORMANT", "VERIFIED"].includes(String(candidate.dimensions.conformance).toUpperCase())
+      && ["PASS", "PASSED"].includes(String(candidate.dimensions.verification).toUpperCase())
+      && ["CURRENT", "FRESH"].includes(String(candidate.dimensions.freshness).toUpperCase())
+      && ["NONE", "NO_CONFLICT"].includes(String(candidate.dimensions.conflict).toUpperCase());
     if (evidenceComplete) completeEvidenceChainCount += 1;
   }
 
   return {
-    featureCount: features.length,
-    designImplementationCount: features.filter((feature) => Boolean(feature.sourcePath && feature.code.trim())).length,
+    candidateCount: candidates.length,
+    designImplementationCount: candidates.filter((candidate) => Boolean(candidate.sourcePath && candidate.code.trim())).length,
     configurationItemCount: configurationItems.size,
-    configuredFeatureCount,
-    testCaseCount: testCases.size,
-    testedFeatureCount,
-    executedFeatureCount,
+    candidatesWithConfigurationCount,
+    testAssetCount: testAssets.size,
+    candidatesWithTestAssetsCount,
+    executionEvidenceGapCount,
     pendingHumanConfirmationCount,
     completeEvidenceChainCount,
-    incompleteEvidenceChainCount: features.length - completeEvidenceChainCount,
+    incompleteEvidenceChainCount: candidates.length - completeEvidenceChainCount,
     blockingGapCount,
     warningGapCount,
     unreviewedImplementationCount,
     conflictCount,
-    nonconformingFeatureCount,
-    execution,
+    nonconformingCandidateCount,
     byKind,
   };
 }
@@ -132,6 +107,6 @@ export function calculateLocalWorkspaceStatistics(features: LocalFeatureCandidat
 export function localWorkspaceStatisticsForNode(analysis: LocalWorkspaceAnalysis, nodeId: string) {
   const node = findLocalWorkspaceTreeNode(analysis.tree, nodeId) ?? analysis.tree;
   const candidateIds = localWorkspaceTreeCandidateIds(node);
-  const features = analysis.features.filter((feature) => candidateIds.has(feature.id));
-  return { node, features, statistics: calculateLocalWorkspaceStatistics(features) };
+  const candidates = analysis.features.filter((candidate) => candidateIds.has(candidate.id));
+  return { node, candidates, statistics: calculateLocalWorkspaceStatistics(candidates) };
 }

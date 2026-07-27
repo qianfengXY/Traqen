@@ -81,8 +81,8 @@ test("discovers a complete local Candidate tree without promoting candidates to 
   assert.ok(analysis.features.some((feature) => feature.kind === "CODE_SYMBOL" && feature.name === "Calculate invoice total"));
   const capability = analysis.features.find((feature) => feature.kind === "CODE_SYMBOL");
   assert.equal(capability.dimensions.authority, "PENDING");
-  assert.equal(capability.dimensions.verification, "NOT_RUN");
-  assert.ok(capability.tests.some((item) => item.path === "src/api/__tests__/customer.test.js"));
+  assert.equal(capability.dimensions.verification, "UNAVAILABLE");
+  assert.ok(capability.testAssets.some((item) => item.path === "src/api/__tests__/customer.test.js"));
   assert.ok(capability.configurations.some((item) => item.value.includes("<redacted>")));
   assert.ok(capability.configurations.every((item) => !item.value.includes("must-not-render") && !item.value.includes("must-not-be-read")));
   assert.equal(analysis.skippedFileCount, 1);
@@ -282,7 +282,7 @@ test("discovers Spring, JAX-RS, Java backend, interface, listener, config, and t
   assert.ok(analysis.features.every((feature) => feature.name !== "Audit Internally" && feature.name !== "Ignore Me" && feature.name !== "Get Name"));
   assert.ok(analysis.features.some((feature) => feature.modulePath.includes("order-service") && feature.modulePath.includes("com.acme.orders")));
   const findOrder = endpoints.find((feature) => feature.name === "GET /api/orders/{id}");
-  assert.ok(findOrder.tests.some((item) => item.path.includes("OrderControllerTest.java")));
+  assert.ok(findOrder.testAssets.some((item) => item.path.includes("OrderControllerTest.java")));
   assert.ok(findOrder.configurations.some((item) => item.path.endsWith("application.yml")));
   assert.ok(findOrder.configurations.some((item) => item.path.endsWith("pom.xml")));
   assert.equal(analysis.skippedFileCount, 1);
@@ -340,7 +340,7 @@ test("keeps Clowder-style async routes readable and excludes support artifacts f
   const endpoint = analysis.features.find((feature) => feature.kind === "ENDPOINT");
   assert.equal(endpoint.name, "GET /api/accounts");
   assert.notEqual(endpoint.displayName, "Async");
-  assert.ok(endpoint.tests.some((item) => item.path.endsWith("accounts.test.ts")));
+  assert.ok(endpoint.testAssets.some((item) => item.path.endsWith("accounts.test.ts")));
   assert.ok(analysis.features.some((feature) => feature.name === "Load Accounts"));
   assert.ok(analysis.features.some((feature) => feature.name === "Accounts Routes"));
   assert.ok(analysis.features.every((feature) => !["APP HEARTBEAT MS", "Account Schema", "Clear Accounts For Test"].includes(feature.name)));
@@ -623,26 +623,26 @@ test("calculates hierarchical Workspace statistics without treating unknown stat
   });
 
   const workspace = localWorkspaceStatisticsForNode(analysis, analysis.tree.id);
-  assert.equal(workspace.statistics.featureCount, analysis.features.length);
+  assert.equal(workspace.statistics.candidateCount, analysis.features.length);
   assert.equal(workspace.statistics.designImplementationCount, analysis.features.length);
   assert.equal(workspace.statistics.pendingHumanConfirmationCount, analysis.features.length);
   assert.equal(workspace.statistics.incompleteEvidenceChainCount, analysis.features.length);
-  assert.equal(workspace.statistics.execution.notRun, analysis.features.length);
-  assert.equal(workspace.statistics.nonconformingFeatureCount, 0);
+  assert.equal(workspace.statistics.executionEvidenceGapCount, analysis.features.length);
+  assert.equal(workspace.statistics.nonconformingCandidateCount, 0);
   assert.ok(workspace.statistics.configurationItemCount > 0);
-  assert.ok(workspace.statistics.testCaseCount > 0);
+  assert.ok(workspace.statistics.testAssetCount > 0);
   assert.ok(workspace.statistics.blockingGapCount >= analysis.features.length);
 
   const orders = analysis.tree.children.find((node) => node.label === "Orders");
   assert.ok(orders);
   const ordersScope = localWorkspaceStatisticsForNode(analysis, orders.id);
-  assert.ok(ordersScope.statistics.featureCount > 0);
-  assert.ok(ordersScope.statistics.featureCount < workspace.statistics.featureCount);
+  assert.ok(ordersScope.statistics.candidateCount > 0);
+  assert.ok(ordersScope.statistics.candidateCount < workspace.statistics.candidateCount);
   assert.ok(ordersScope.statistics.configurationItemCount > 0);
   const customers = analysis.tree.children.find((node) => node.label === "Customers");
   assert.ok(customers);
   assert.equal(localWorkspaceStatisticsForNode(analysis, customers.id).statistics.configurationItemCount, 0);
   const explicitViolation = structuredClone(analysis.features[0]);
   explicitViolation.dimensions.conformance = "NON_CONFORMING";
-  assert.equal(calculateLocalWorkspaceStatistics([explicitViolation]).nonconformingFeatureCount, 1);
+  assert.equal(calculateLocalWorkspaceStatistics([explicitViolation]).nonconformingCandidateCount, 1);
 });

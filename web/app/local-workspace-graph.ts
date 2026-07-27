@@ -128,7 +128,7 @@ export function createLocalWorkspaceCandidateGraph(
       source: { path: configuration.path },
       details: { clueOnly: true },
     })),
-    ...candidate.tests.slice(0, 8).map((test) => ({
+    ...candidate.testAssets.slice(0, 8).map((test) => ({
       id: test.factId,
       type: "TEST_ASSET",
       label: test.title,
@@ -167,7 +167,7 @@ export function createLocalWorkspaceCandidateGraph(
   for (const configuration of candidate.configurations.slice(0, 6)) {
     addEdge(candidate.id, configuration.factId, "SUPPORTED_BY");
   }
-  for (const test of candidate.tests.slice(0, 8)) {
+  for (const test of candidate.testAssets.slice(0, 8)) {
     addEdge(candidate.id, test.factId, "OBSERVED_WITH");
   }
   for (const gap of nodes.filter((node) => node.type === "TRACE_GAP")) {
@@ -195,7 +195,7 @@ export function createLocalWorkspaceCandidateGraph(
     depth: 8,
     nodes: visibleNodes,
     edges: visibleEdges,
-    truncated: candidate.configurations.length > 6 || candidate.tests.length > 8,
+    truncated: candidate.configurations.length > 6 || candidate.testAssets.length > 8,
     availableExpansions: [],
   };
 }
