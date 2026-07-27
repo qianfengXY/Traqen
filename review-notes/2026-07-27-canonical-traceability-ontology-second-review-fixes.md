@@ -3,8 +3,8 @@
 Review-Target-ID: canonical-traceability-ontology-r3
 Branch: codex/canonical-traceability-ontology
 Previous reviewed commit: e4c41e5
-Second-review fixes: 66fe842
-Review range: e4c41e5..66fe842
+Second-review fixes: 66fe842, 904ba45
+Review range: e4c41e5..904ba45
 
 ## What
 
@@ -79,7 +79,7 @@ node --test web/tests/local-workspace-analysis.test.mjs web/tests/rendered-html.
 → old Feature component and source-contract names still present
 ```
 
-The verification-state assertion also failed with actual `NOT_RUN` versus required `UNAVAILABLE` before the final ontology repair.
+The verification-state assertion also failed with actual `NOT_RUN` versus required `UNAVAILABLE` before the ontology repair. A final red test proved that a Candidate with a Test Asset clue incorrectly lacked `NO_TEST_SPEC`; it now retains that blocking gap while `NO_TEST_ASSET_CLUE` is independent.
 
 After implementation:
 
@@ -121,7 +121,7 @@ empty governed fallback
 
 ## Next Action
 
-Perform an independent read-only review of commit `66fe842` (range `e4c41e5..66fe842`), including a browser visual pass, and return `APPROVE` or `REQUEST_CHANGES` with file/line evidence. Do not edit the author worktree.
+Perform an independent read-only review through commit `904ba45` (range `e4c41e5..904ba45`), including a browser visual pass, and return `APPROVE` or `REQUEST_CHANGES` with file/line evidence. Do not edit the author worktree.
 
 Suggested review sandbox:
 
