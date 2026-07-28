@@ -28,7 +28,7 @@
       "type": "array",
       "items": { "$ref": "#/$defs/FactEdge" }
     },
-    "attestation": { "$ref": "#/$defs/ScannerAttestation" }
+    "attestation": { "$ref": "#/$defs/Attestation" }
   },
   "additionalProperties": false,
   "$defs": {
@@ -128,6 +128,22 @@
         "signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
       },
       "additionalProperties": false
+    },
+    "ServerNormalizedAttestation": {
+      "type": "object",
+      "required": ["algorithm", "extractorId", "signature"],
+      "properties": {
+        "algorithm": { "const": "SERVER-NORMALIZED-SHA256" },
+        "extractorId": { "type": "string", "minLength": 1 },
+        "signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "Attestation": {
+      "oneOf": [
+        { "$ref": "#/$defs/ScannerAttestation" },
+        { "$ref": "#/$defs/ServerNormalizedAttestation" }
+      ]
     },
     "StoredFactBundle": {
       "type": "object",

@@ -770,6 +770,17 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const workspaceObservationCollectionMatch =
+        /^\/v1\/projects\/([^/]+)\/workspace-observations$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceObservationCollectionMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(workspaceObservationCollectionMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const receipt = await application.ingestWorkspaceObservations(projectId, input);
+        sendJson(response, 201, receipt, id);
+        return;
+      }
+
       const factsCollectionMatch = /^\/v1\/projects\/([^/]+)\/facts$/.exec(url.pathname);
       if (request.method === "GET" && factsCollectionMatch) {
         const projectId = decodePathSegment(factsCollectionMatch[1]);

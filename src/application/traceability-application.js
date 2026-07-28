@@ -29,6 +29,7 @@ import {
   createFeatureLineage,
   createFeatureGraphProjection,
   createSnapshotManifest,
+  createWorkspaceObservationPackage,
   createTestSpec,
   generateEndpointTestSpecDraft,
   evaluateTraceChain,
@@ -1071,6 +1072,17 @@ export class TraceabilityApplication {
       );
     }
     return this.#store.appendFactBundle(projectId, attestedBundle);
+  }
+
+  async ingestWorkspaceObservations(projectId, input) {
+    requireId(projectId, "projectId");
+    if (Object.hasOwn(input ?? {}, "projectId")) {
+      throw new TypeError("Workspace observation projectId is assigned by the route");
+    }
+    const prepared = createWorkspaceObservationPackage({ ...input, projectId }, this.#clock);
+    await this.#store.appendSnapshotManifest(projectId, prepared.snapshotManifest);
+    await this.#store.appendFactBundle(projectId, prepared.factBundle);
+    return prepared.receipt;
   }
 
   async queryFacts(projectId, filters = {}) {

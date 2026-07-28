@@ -197,6 +197,39 @@ test("indexes evidence once and keeps large model batches bounded by count and s
   assert.equal(batches.every((batch) => batch.length <= 10 && JSON.stringify(batch).length <= 60_000), true);
 });
 
+test("does not enqueue model work already completed in the persisted checkpoint", () => {
+  const completed = scanLocalWorkspaceFile({
+    path: "src/completed.ts",
+    size: 100,
+    lastModified: 1,
+    content: "export function completedCapability() {}",
+  });
+  const pending = scanLocalWorkspaceFile({
+    path: "src/pending.ts",
+    size: 100,
+    lastModified: 1,
+    content: "export function pendingCapability() {}",
+  });
+  const enriched = applyLocalModelEnrichment([completed, pending], "model-a", [{
+    id: completed.candidates[0].id,
+    displayName: "Completed capability",
+    description: "Already analyzed in an earlier work unit.",
+    businessFeature: true,
+    businessKey: "completed.capability",
+    businessModule: "Completed",
+    businessSubmodule: "Completed",
+    domain: "Completed",
+    group: "BUSINESS_CAPABILITY",
+    confidence: "LOW",
+    rationale: "Persisted checkpoint result",
+    evidenceFactIds: [completed.candidates[0].id],
+  }]);
+
+  const queued = workspaceModelCandidateBatches(enriched, "model-a", workspaceContext).flat();
+
+  assert.deepEqual(queued.map((candidate) => candidate.id), [pending.candidates[0].id]);
+});
+
 test("automatically bisects an incomplete model batch and preserves input order", async () => {
   const records = ["A", "B"].map((suffix) => ({ scannerVersion: 4, path: `src/${suffix}.ts`, size: 100, lastModified: 1, supported: true, candidates: [{ id: `FEATURE-${suffix}`, name: suffix, kind: "CODE_SYMBOL", method: null, modulePath: "src", sourcePath: `src/${suffix}.ts`, startLine: 1, description: suffix, code: `export function ${suffix}(){}` }], configuration: null, test: null }));
   const candidates = workspaceModelCandidateBatches(records, "model-a", workspaceContext).flat();

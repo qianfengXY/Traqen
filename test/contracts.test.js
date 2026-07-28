@@ -191,6 +191,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/fact-scans"].post.operationId,
     "ingestFactBundle",
   );
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/workspace-observations"].post.operationId,
+    "ingestWorkspaceObservations",
+  );
   assert.equal(contract.paths["/v1/projects/{projectId}/facts"].get.operationId, "queryFacts");
   assert.equal(contract.paths["/v1/skills"].post.operationId, "registerReverseSkill");
   assert.equal(contract.paths["/v1/skills"].get.operationId, "listReverseSkills");

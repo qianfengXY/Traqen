@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.local/contracts/workspace-observation.schema.json",
+  "title": "WorkspaceObservationRequest",
+  "type": "object",
+  "required": ["workspaceName", "rootName", "observedAt", "records"],
+  "properties": {
+    "workspaceName": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "rootName": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": { "$ref": "#/$defs/Record" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "RelativePath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800,
+      "pattern": "^(?!/)(?![A-Za-z]:/)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\\\]+$"
+    },
+    "Candidate": {
+      "type": "object",
+      "required": [
+        "localCandidateId", "kind", "name", "method", "modulePath",
+        "sourcePath", "startLine", "description"
+      ],
+      "properties": {
+        "localCandidateId": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "kind": { "enum": ["ENDPOINT", "CODE_SYMBOL", "COMMAND"] },
+        "name": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "method": { "type": ["string", "null"], "minLength": 1, "maxLength": 20 },
+        "modulePath": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "sourcePath": { "$ref": "#/$defs/RelativePath" },
+        "startLine": { "type": "integer", "minimum": 1 },
+        "description": { "type": "string", "minLength": 1, "maxLength": 1200 }
+      },
+      "additionalProperties": false
+    },
+    "Configuration": {
+      "type": ["object", "null"],
+      "required": ["path", "key", "value"],
+      "properties": {
+        "path": { "$ref": "#/$defs/RelativePath" },
+        "key": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "value": { "type": "string", "minLength": 1, "maxLength": 500 }
+      },
+      "additionalProperties": false
+    },
+    "TestAsset": {
+      "type": ["object", "null"],
+      "required": ["path", "title"],
+      "properties": {
+        "path": { "$ref": "#/$defs/RelativePath" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 300 }
+      },
+      "additionalProperties": false
+    },
+    "Record": {
+      "type": "object",
+      "required": ["path", "size", "contentFingerprint", "supported", "candidates", "configuration", "test"],
+      "properties": {
+        "path": { "$ref": "#/$defs/RelativePath" },
+        "size": { "type": "integer", "minimum": 0 },
+        "contentFingerprint": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "supported": { "type": "boolean" },
+        "candidates": {
+          "type": "array",
+          "maxItems": 5000,
+          "items": { "$ref": "#/$defs/Candidate" }
+        },
+        "configuration": { "$ref": "#/$defs/Configuration" },
+        "test": { "$ref": "#/$defs/TestAsset" }
+      },
+      "additionalProperties": false
+    },
+    "CandidateFact": {
+      "type": "object",
+      "required": ["localCandidateId", "stableNodeId", "factId"],
+      "properties": {
+        "localCandidateId": { "type": "string", "minLength": 1 },
+        "stableNodeId": { "type": "string", "minLength": 1 },
+        "factId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "Receipt": {
+      "type": "object",
+      "required": [
+        "projectId", "snapshotManifestId", "sourceComponentId",
+        "factBundleId", "candidateFacts"
+      ],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "sourceComponentId": { "type": "string", "minLength": 1 },
+        "factBundleId": { "type": "string", "minLength": 1 },
+        "candidateFacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/CandidateFact" }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
