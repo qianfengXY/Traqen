@@ -30,6 +30,8 @@ status: converged
 > “第一次分析存量系统肯定是全量分析……需求或者代码等被修改以后进行增量分析，就应该重新更新图谱，同时还需要分析出本次变更会对原来的功能产生哪些影响以及每个功能点的历史版本变化。”
 >
 > “图谱本身只记录最新的，但功能点是需要记录变化过程及每次变化会影响哪些功能。”
+>
+> “Analysis Agent 也是从原工程目录读取所有文件，不是从扫描器的结果去分析。Inventory 分区怎么来，WorkUnit 怎么运行，要考虑用什么模型、什么 Skill；工程很大时怎么一次性分析完，是否用多个模型并行，最后一起对账。”
 
 ## Misunderstanding corrected
 
@@ -48,6 +50,7 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 9. Read the latest `CurrentGraphHead` by default while retaining immutable GraphRevision, FeatureVersion, implementation mapping by Snapshot, ChangeSet, ImpactAssessment, Decision, and Evidence history.
 10. Never let code/configuration change create a business FeatureVersion automatically; only a Decision revises business definition.
 11. Prevent overfitting with numeric `traqen-self-v1` thresholds and calibration/held-out/challenge blind review.
+12. Plan Agent work from the complete immutable Snapshot, directly read every eligible source Artifact inside the permitted data boundary, derive deterministic bounded partitions and a dynamic dependency DAG, route each WorkUnit by verified model/Skill capability and calibration, and use selective independent multi-model evidence reconciliation rather than scanner-only inputs or voting.
 
 ## Design sources
 
@@ -65,3 +68,4 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 - approve allowlisted Local Runner as the first source connector;
 - approve numeric `traqen-self-v1` thresholds and independent blind review;
 - approve first-FULL/later-INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature/Impact history semantics.
+- approve complete Snapshot-derived Agent planning, capability-routed dynamic DAG execution, and selective evidence-based multi-model reconciliation.

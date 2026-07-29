@@ -205,10 +205,10 @@ Feature
 2. **确定性提取通道**：把受支持 Artifact 解析为 Facts 和类型化关系。
 3. **文档与契约通道**：提取需求/设计/API/Schema 候选，但不把文档文字当成已批准真相。
 4. **测试、配置与执行通道**：区分静态线索、受治理 TestSpec 和真实执行证据。
-5. **Agent/Skill 通道**：检查有界源码切片与 Facts，提出业务语义，并只引用 WorkUnit 内证据。
+5. **Agent/Skill 通道**：在本地/私有边界内通过有界 SourceSlice 独立访问每个可分析 Artifact，用 Facts 做可选增强，提出业务语义，并只引用 WorkUnit 内证据。
 6. **对账通道**：去重 Candidate、记录冲突、保留替代解释并计算 lineage。
 
-一个通道失败或看不见某处，不能阻止其他通道检查源码。尤其是 Agent 任务规划不能只围绕某一个扫描器已经发现的节点。
+一个通道失败或看不见某处，不能阻止其他通道检查源码。尤其是 Agent 任务规划必须从完整 Snapshot/ArtifactInventory 出发，不能只围绕某一个扫描器已经发现的节点。
 
 ### 7.2 治理前对账
 
@@ -227,7 +227,7 @@ Feature
 | SR-001 | 登记授权源码，并用完整 Artifact 清单密封不可变、内容寻址的 Snapshot。 |
 | SR-002 | 在覆盖账本中保留纳入、排除、不支持、失败和秘密脱敏的 Artifact。 |
 | SR-003 | 对受支持格式生成带精确源码位置和类型关系的版本化确定性 Facts。 |
-| SR-004 | 即使确定性提取器漏掉语义根，独立 Agent/Skill 仍能检查有界源码切片。 |
+| SR-004 | 即使确定性提取器没有产生对应 Fact，独立 Agent/Skill 仍能在本地/私有边界内直接检查每个可分析 Artifact 的有界 SourceSlice。 |
 | SR-005 | 每条模型结论和 Candidate 关系必须引用其 WorkUnit 与 Snapshot 内证据。 |
 | SR-006 | 对重复、冲突、层级和 lineage 做对账，不隐藏替代解释、不创建权威。 |
 | SR-007 | 创建或修订受治理 Feature、Claim、Taxonomy 分类和 TestSpec 必须有显式 Decision。 |
@@ -244,6 +244,9 @@ Feature
 | SR-018 | 默认图谱只投影最新已发布状态，同时以不可变账本保留 FeatureVersion、Snapshot 映射、Decision、ChangeSet、ImpactAssessment 与 Evidence 历史。 |
 | SR-019 | 每个已发布 Snapshot 转换都必须解释本次变化影响哪些现有 Feature/Claim/TestSpec/依赖，以及哪些对象需要重审或重验证。 |
 | SR-020 | 只有 Decision 能创建新的业务 FeatureVersion；代码、配置、测试或部署变化只更新实现、符合性、影响与验证历史，不能静默改变业务定义。 |
+| SR-021 | 从 Snapshot/ArtifactInventory 派生确定性完整 UnderstandingPlan，Partition 稳定、`unassignedCount=0`，并用有界动态 WorkUnit 依赖 DAG 扩展到超出单 Prompt 或固定子任务数量的工程。 |
+| SR-022 | 每个 WorkUnit 都必须基于已验证模型能力/校准 Profile、签名 Skill 合同与部署数据边界持久化版本固定的 AnalysisRouteDecision；能力缺失必须以 `NO_ELIGIBLE_PRODUCER` 关闭失败。 |
+| SR-023 | 默认按 Partition 并行使用模型，只对选定范围采用相互独立的 Producer/Critic 冗余；对原始证据做对账并保留冲突，不能把相关一致或多数票当真相。 |
 
 ## 9. 核心用户旅程
 
@@ -349,7 +352,7 @@ operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Revi
 - 源码访问必须显式授权、最小权限且可审计。
 - 普通客户端返回的路径使用 Workspace 相对路径或不透明标识。
 - 真实秘密值不能持久化为 Fact，也不能发给外部模型。
-- 外部模型输入必须有界、按摘要与策略记录并脱敏禁止内容。
+- 外部模型只接收有界、按摘要/策略记录且经过策略过滤的 Facts；原始 SourceSlice 留在本地/私有源码边界内。
 - 执行 Evidence 记录精确 Snapshot、构建、依赖、配置、Runtime、Runner、断言和尝试。
 - 读取 API 强制 Project 边界并保持 Candidate/受治理对象区分。
 - 每次图谱写入记录 Actor、理由、先前状态及 Decision 或执行来源。

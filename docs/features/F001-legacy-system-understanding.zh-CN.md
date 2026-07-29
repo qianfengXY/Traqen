@@ -114,6 +114,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | J5 | 首次全量分析后，一个文件变化只影响一个图谱区域 | 新 Snapshot、增量/全量等价、原子 CurrentGraphHead 更新与 Impact 路径 |
 | J6 | Traqen 分析固定的自身仓库 | 审核自图谱、缺口、TraceChain 与 Impact 报告 |
 | J7 | 查看一项长期演进的 Feature | FeatureVersion Decision、各 Snapshot 实现映射、ChangeSet、Impact 与验证时间线 |
+| J8 | 分析一个超大、多语言工程 | 完整原始源码处置、确定性分区、动态 DAG 进度、模型/Skill 路由决策、选择性独立 Critic 与显式剩余 Gap |
 
 ## Acceptance criteria
 
@@ -129,6 +130,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 - [ ] **AC-B2**：Agent/Skill 能请求策略约束的 SourceSlice，并恢复一个被某确定性提取器有意漏掉的审核锚点。
 - [ ] **AC-B3**：每个 Candidate 节点和关系只引用同一 Snapshot 与 WorkUnit 内允许证据；拒绝非法 ID 和过高置信度。
 - [ ] **AC-B4**：预算耗尽、不支持语法、歧义和模型失败产生显式 Gap，不能伪造完成。
+- [ ] **AC-B5**：每条 ArtifactInventory 记录都必须直接读取不可变 Snapshot 原始源码、交给声明过能力的专用 Skill，或形成显式 Gap；Scanner Facts 只是可选增强，绝不能定义 Agent 任务全集。
+- [ ] **AC-B6**：相同 Snapshot、Planner/Convention 版本、执行策略与源码范围必须产生相同且完整的 `UnderstandingPlan`，其 Partition ID 稳定且 `unassignedCount=0`；动态依赖 DAG 以有界大文件、文件、Module、跨 Module、Critic 与汇总 WorkUnit 处理规模，子任务摘要不能单独作为证据。
+- [ ] **AC-B7**：每个 WorkUnit 都有基于已验证模型能力/校准 Profile 与 Skill 合同、版本固定且已持久化的 `AnalysisRouteDecision`；高风险冗余使用相互独立的 Producer Group 和证据对账，找不到合格 Producer 与未解决分歧必须显式保留，不能 Fallback 或按多数票造真相。
 
 ### C. 对账与治理
 
@@ -169,8 +173,8 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 | ID | operator 原话 | AC | 验证方式 | 状态 |
 |---|---|---|---|---|
-| R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1～B4、AC-C1 | 对抗通道 + 对账测试 | [ ] |
-| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1～A3、AC-D1～D8 | 版本化 Truth Set 评估 | [ ] |
+| R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1～B7、AC-C1 | 完整源码分区/DAG/Router 对抗测试 + 对账 | [ ] |
+| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1～A3、AC-B5～B7、AC-D1～D8 | 完整源码覆盖与版本化 Truth Set 评估 | [ ] |
 | R3 | “做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联。” | AC-C4、AC-F3～F4 | canonical graph 断言与 UI | [ ] |
 | R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4～D8、AC-F4～F5、AC-F7 | 内容、TraceChain、Impact 与历史验收 | [ ] |
 | R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1～F7 | 隔离 Traqen 自分析验收 | [ ] |
@@ -204,6 +208,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 |---|---|
 | 把节点数量误当理解质量 | 人工审核多维评估与负向断言 |
 | 一个扫描器盲点变成整条管线盲点 | Manifest 派生规划与独立源码通道 |
+| “分析所有文件”退化成超大 Prompt 或只分析部分扫描结果 | Snapshot 确定性分区、有界层级 DAG 与 `unassignedCount=0` |
+| 通用或未校准模型静默处理所有语言与角色 | 已验证 ModelCapabilityProfile、版本固定 Skill 合同、持久 Route Decision 与 `NO_ELIGIBLE_PRODUCER` |
+| 多模型把相关猜测变成多数票真相 | 选择性独立 Critic、证据对账与 ConflictLedger 保留 |
 | Agent 文字虚构关系 | 结构化 Bundle、有界源码/证据、确定性拒绝 |
 | 把当前代码冻结成业务真相 | Candidate/Decision/受治理对象分离 |
 | 隐藏不支持范围 | 完整 Inventory 分母与显式处置 |
@@ -234,6 +241,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | KD-5 | `Fxxx` 生命周期 ID 与受治理 `Feature.id` 分离。 | 工程规划不能创建业务权威。 | 2026-07-29 |
 | KD-6 | 第一次分析强制 FULL，后续默认 INCREMENTAL；当前图谱头与历史账本分离。 | 系统既要提供最新可用图谱，也要长期解释 Feature 如何变化及每次变化影响什么。 | 2026-07-29 |
 | KD-7 | 代码/配置变化不能自行创建 FeatureVersion。 | 业务定义的版本权威来自 Decision，实现演进应记录为 Snapshot 映射、Impact 与验证历史。 | 2026-07-29 |
+| KD-8 | Agent 从完整不可变 Snapshot 规划，通过能力路由的模型/Skill 执行确定性动态分区 DAG，并以选择性多模型证据对账取代 Scanner-only 输入、整仓单 Prompt 或多数票。 | 超大工程需要可审核的完整处置、有界上下文、显式 Producer 适配度并保留分歧，不能让 Scanner 盲点或相关模型猜测定义真相。 | 2026-07-29 |
 
 ## Timeline
 
@@ -242,6 +250,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | 2026-07-29 | F001 最初按持久扫描生命周期立项 |
 | 2026-07-29 | operator 纠正为存量系统理解正确性和 Traqen 自身 Dogfood |
 | 2026-07-29 | operator 明确长期演进模型：首次全量、后续增量、最新图谱投影与 Feature/Impact 历史并存 |
+| 2026-07-29 | operator 明确 Agent 完整原始源码覆盖、确定性分区/DAG、显式模型/Skill 路由与选择性多模型对账 |
 
 ## Review gate
 
@@ -254,6 +263,7 @@ Design Gate 必须确认：
 5. Traqen 分析 Traqen 是强制验收；
 6. 第一阶段 Local Runner 数据边界；
 7. FULL→INCREMENTAL、CurrentGraphHead 原子发布与 Feature 历史语义。
+8. Snapshot 派生的完整 Agent 规划、按能力路由的模型/Skill 执行与基于证据的多模型对账。
 
 实现随后执行 TDD、Quality Gate、独立 Review 与 Merge Gate。
 

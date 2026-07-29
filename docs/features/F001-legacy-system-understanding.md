@@ -114,6 +114,7 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | J5 | After the first full analysis, one changed file affects only one graph region | new Snapshot, incremental/full equivalence, atomic CurrentGraphHead update, and impact paths |
 | J6 | Traqen analyzes its own pinned repository | reviewed self-graph, gaps, TraceChain, and impact report |
 | J7 | Inspect a long-lived Feature | FeatureVersion Decisions, implementation mappings by Snapshot, ChangeSets, impacts, and verification timeline |
+| J8 | Analyze a very large mixed-language repository | complete raw-source disposition, deterministic partitions, dynamic DAG progress, model/Skill route decisions, selective independent criticism, and explicit residual gaps |
 
 ## Acceptance criteria
 
@@ -129,6 +130,9 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 - [ ] **AC-B2**: an Agent/Skill can request policy-bounded SourceSlices and recover a reviewed anchor intentionally missed by one extractor.
 - [ ] **AC-B3**: every Candidate node and relation cites allowed evidence inside one Snapshot and WorkUnit; invalid IDs and overclaimed confidence are rejected.
 - [ ] **AC-B4**: budget exhaustion, unsupported syntax, ambiguity, and model failure produce explicit gaps rather than fabricated completion.
+- [ ] **AC-B5**: every ArtifactInventory row is directly read from the immutable Snapshot, handled by a declared specialist, or represented by an explicit Gap; scanner Facts are optional enrichment and never define the Agent task universe.
+- [ ] **AC-B6**: the same Snapshot, planner/convention versions, execution policy, and source ranges produce the same complete `UnderstandingPlan` with stable partition IDs and `unassignedCount=0`; its dynamic dependency DAG handles bounded large-file, file, module, cross-module, critic, and synthesis WorkUnits without treating a child summary as sole evidence.
+- [ ] **AC-B7**: every WorkUnit has a persisted, version-pinned `AnalysisRouteDecision` selected from verified model capability/calibration profiles and Skill contracts; high-risk redundancy uses independent producer groups and evidence reconciliation, while no eligible producer and unresolved disagreement remain explicit instead of falling back or becoming majority truth.
 
 ### C. Reconciliation and governance
 
@@ -169,8 +173,8 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 
 | ID | Operator requirement | AC | Verification | Status |
 |---|---|---|---|---|
-| R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1–B4, AC-C1 | adversarial lanes + reconciliation tests | [ ] |
-| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1–A3, AC-D1–D8 | versioned truth-set evaluation | [ ] |
+| R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1–B7, AC-C1 | complete-source partition/DAG/router adversarial tests + reconciliation | [ ] |
+| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1–A3, AC-B5–B7, AC-D1–D8 | complete-source coverage and versioned truth-set evaluation | [ ] |
 | R3 | “做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联。” | AC-C4, AC-F3–F4 | canonical graph assertions and UI | [ ] |
 | R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4–D8, AC-F4–F5, AC-F7 | content, TraceChain, impact, and history acceptance | [ ] |
 | R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1–F7 | isolated Traqen-on-Traqen acceptance | [ ] |
@@ -204,6 +208,9 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 |---|---|
 | Node count is mistaken for understanding quality | reviewed multi-dimensional evaluation and negative assertions |
 | One scanner's blind spot becomes a pipeline blind spot | manifest-derived planning and independent source lanes |
+| “Analyze all files” becomes one oversized prompt or a partial scan | deterministic Snapshot partitions, bounded hierarchical DAG execution, and `unassignedCount=0` |
+| A generic or miscalibrated model silently handles every language and role | verified ModelCapabilityProfiles, version-pinned Skill contracts, persisted route decisions, and `NO_ELIGIBLE_PRODUCER` |
+| Multiple models turn correlated guesses into majority truth | selective independent critics, evidence-based reconciliation, and ConflictLedger preservation |
 | Agent prose fabricates relations | structured bundles, bounded source/evidence, deterministic rejection |
 | Current code is frozen as business truth | Candidate/Decision/governed separation |
 | Unsupported scope is hidden | complete inventory denominator and explicit dispositions |
@@ -234,6 +241,7 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | KD-5 | `Fxxx` lifecycle IDs remain separate from governed `Feature.id`. | Engineering planning must not create business authority. | 2026-07-29 |
 | KD-6 | First analysis is FULL, later analyses default to INCREMENTAL, and the current graph head is separate from historical ledgers. | The system must provide the latest usable graph while explaining how Features evolved and what each change affected. | 2026-07-29 |
 | KD-7 | Code/configuration change cannot create a FeatureVersion by itself. | Business-version authority comes from Decisions; implementation evolution belongs to Snapshot mappings, impacts, and verification history. | 2026-07-29 |
+| KD-8 | The Agent plans from the complete immutable Snapshot, executes a deterministic dynamic partition DAG through capability-routed models/Skills, and uses selective multi-model evidence reconciliation rather than scanner-only inputs, one whole-repository prompt, or majority voting. | Large repositories need auditable total disposition, bounded contexts, explicit producer fitness, and preserved disagreement without allowing either scanner blind spots or correlated model guesses to define truth. | 2026-07-29 |
 
 ## Timeline
 
@@ -242,6 +250,7 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | 2026-07-29 | F001 initially created around durable scan lifecycle |
 | 2026-07-29 | operator correction broadened F001 to legacy-system understanding correctness and Traqen self-dogfood |
 | 2026-07-29 | operator established the long-term evolution model: first full, later incremental, latest graph projection plus Feature/Impact history |
+| 2026-07-29 | operator established complete raw-source Agent coverage, deterministic partition/DAG execution, explicit model/Skill routing, and selective multi-model reconciliation |
 
 ## Review gate
 
@@ -254,6 +263,7 @@ Design Gate must approve:
 5. Traqen-on-Traqen as required acceptance;
 6. the Local Runner data boundary for the first connector;
 7. FULL→INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature-history semantics.
+8. complete Snapshot-derived Agent planning, capability-routed model/Skill execution, and evidence-based multi-model reconciliation.
 
 Implementation then follows TDD, quality gate, independent review, and merge gate.
 

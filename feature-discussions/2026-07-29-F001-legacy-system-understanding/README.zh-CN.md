@@ -30,6 +30,8 @@ status: converged
 > “第一次分析存量系统肯定是全量分析……需求或者代码等被修改以后进行增量分析，就应该重新更新图谱，同时还需要分析出本次变更会对原来的功能产生哪些影响以及每个功能点的历史版本变化。”
 >
 > “图谱本身只记录最新的，但功能点是需要记录变化过程及每次变化会影响哪些功能。”
+>
+> “Analysis Agent 也是从原工程目录读取所有文件，不是从扫描器的结果去分析。Inventory 分区怎么来，WorkUnit 怎么运行，要考虑用什么模型、什么 Skill；工程很大时怎么一次性分析完，是否用多个模型并行，最后一起对账。”
 
 ## 已纠正的理解偏差
 
@@ -48,6 +50,7 @@ status: converged
 9. 默认图谱读取最新 `CurrentGraphHead`；GraphRevision、FeatureVersion、Snapshot 实现映射、ChangeSet、ImpactAssessment、Decision 与 Evidence 作为不可变历史保留。
 10. 代码或配置变化不能自动创建业务 FeatureVersion；只有 Decision 能修订业务定义。
 11. 用 `traqen-self-v1` 数字阈值和 calibration/held-out/challenge 盲测协议阻断过拟合。
+12. Agent 从完整不可变 Snapshot 规划，在允许的数据边界内直接读取每个可分析源码 Artifact，派生确定性有界分区与动态依赖 DAG，按已验证模型/Skill 能力和校准为每个 WorkUnit 路由，并用选择性独立多模型证据对账取代 Scanner-only 输入或投票。
 
 ## 设计真相源
 
@@ -65,3 +68,4 @@ status: converged
 - 确认 Allowlisted Local Runner 是首个 Source Connector；
 - 确认 `traqen-self-v1` 数字阈值与独立盲审；
 - 确认首次 FULL、后续默认 INCREMENTAL、原子 CurrentGraphHead 与 Feature/Impact 历史语义。
+- 确认完整 Snapshot 派生的 Agent 规划、能力路由动态 DAG 与选择性证据型多模型对账。

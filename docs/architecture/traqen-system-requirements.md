@@ -205,10 +205,10 @@ The engine runs multiple independently observable lanes:
 2. **Deterministic extraction lane** — parses supported artifacts into Facts and typed relations.
 3. **Document and contract lane** — extracts requirement/design/API/schema candidates without treating prose as approved truth.
 4. **Test, configuration, and execution lane** — distinguishes static clues from governed TestSpecs and real execution evidence.
-5. **Agent/Skill lane** — examines bounded source slices and Facts, proposes business semantics, and cites only WorkUnit evidence.
+5. **Agent/Skill lane** — independently visits every eligible Artifact through bounded local/private SourceSlices, optionally enriches from Facts, proposes business semantics, and cites only WorkUnit evidence.
 6. **Reconciliation lane** — deduplicates Candidates, records conflicts, preserves alternatives, and computes lineage.
 
-Failure or blindness in one lane must not prevent another lane from examining the source. In particular, Agent planning cannot be limited to only the nodes already discovered by one scanner.
+Failure or blindness in one lane must not prevent another lane from examining the source. In particular, Agent planning starts from the complete Snapshot/ArtifactInventory and cannot be limited to only the nodes already discovered by one scanner.
 
 ### 7.2 Reconciliation before governance
 
@@ -227,7 +227,7 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-001 | Register authorized sources and seal immutable, content-addressed Snapshots with a complete artifact inventory. |
 | SR-002 | Keep included, excluded, unsupported, failed, and secret-redacted artifacts visible in a coverage ledger. |
 | SR-003 | Produce versioned deterministic Facts with exact source locations and typed relations for supported formats. |
-| SR-004 | Let independent Agents/Skills inspect bounded source slices even when deterministic extraction missed a semantic root. |
+| SR-004 | Let independent Agents/Skills directly inspect bounded local/private SourceSlices for every eligible Artifact even when deterministic extraction produced no corresponding Fact. |
 | SR-005 | Require every model conclusion and Candidate relation to cite evidence inside its WorkUnit and Snapshot. |
 | SR-006 | Reconcile duplicates, conflicts, hierarchy, and lineage without hiding alternatives or creating authority. |
 | SR-007 | Require explicit Decisions to create or revise governed Features, Claims, taxonomy classifications, and TestSpecs. |
@@ -244,6 +244,9 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-018 | Default graph views to the latest published state while retaining immutable FeatureVersion, Snapshot mapping, Decision, ChangeSet, ImpactAssessment, and Evidence history. |
 | SR-019 | For every published Snapshot transition, explain which existing Features, Claims, TestSpecs, and dependencies are affected and what must be re-reviewed or revalidated. |
 | SR-020 | Let only a Decision create a new business FeatureVersion; code, configuration, test, or deployment changes update implementation, conformance, impact, and verification history instead. |
+| SR-021 | Derive a deterministic complete UnderstandingPlan from Snapshot/ArtifactInventory with stable partitions, `unassignedCount=0`, and a bounded dynamic WorkUnit dependency DAG that scales beyond one prompt or fixed child count. |
+| SR-022 | Persist a version-pinned AnalysisRouteDecision for every WorkUnit using verified model capability/calibration profiles, signed Skill contracts, and deployment data boundaries; missing capability must fail closed as `NO_ELIGIBLE_PRODUCER`. |
+| SR-023 | Use model parallelism by partition and selective independent Producer/Critic redundancy; reconcile raw evidence and preserve conflict instead of using correlated agreement or majority count as truth. |
 
 ## 9. Primary user journeys
 
@@ -349,7 +352,7 @@ The operator approves business capability boundaries, P0 anchors, and threshold 
 - Source access is explicitly authorized, least-privilege, and auditable.
 - Paths returned to ordinary clients are workspace-relative or opaque.
 - Real secret values are never persisted as Facts or sent to external models.
-- External model inputs are bounded, recorded by digest and policy, and redact prohibited content.
+- External models receive only bounded, policy-filtered Facts recorded by digest and policy; raw SourceSlices remain inside the local/private source boundary.
 - Execution Evidence records the exact Snapshot, build, dependency, configuration, runtime, Runner, assertions, and attempts.
 - Read APIs enforce project boundaries and preserve Candidate/governed distinctions.
 - Every graph mutation records actor, reason, prior state, and Decision or execution provenance.

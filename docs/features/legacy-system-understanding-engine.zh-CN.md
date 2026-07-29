@@ -349,36 +349,69 @@ Agent/Skill 采用多个有界视角：
 
 ## 7. Work 规划与迭代检索
 
-规划器不能把“扫描器已发现的节点”当成任务全集。它分两轮建立计划：
+分区、动态 DAG、模型/Skill 路由与多模型对账的精确合同见
+[`workspace-scan-and-analysis-lifecycle.zh-CN.md`](workspace-scan-and-analysis-lifecycle.zh-CN.md) §3.3。
+本节固定引擎级不变量。
 
-**Manifest/约定派生初始计划**在语义 Facts 尚未完成前产生，来源包括：
+### 7.1 完整 Snapshot 规划
 
-- 完整 ArtifactInventory；
-- 版本化 `ConventionRegistry` 中的构建/Package/Module/入口约定；
-- 文档与 API Manifest；
-- 测试/配置/数据簇；
-- 内容类型、相对路径类别和安全结构摘要；
-- 旧 Snapshot 的模块/入口 lineage。
+Agent 的任务全集是完整不可变 `SourceSnapshot` 与 ArtifactInventory，不是 Scanner Facts。每条 ArtifactInventory 记录必须且只能有一种基础结果：
 
-它必须为每个 Inventory 分区建立至少一个覆盖 WorkUnit，并为入口、公开接口、文档、测试与配置建立互相独立的根 WorkUnit。因此某个确定性提取器故意漏掉入口时，Agent/Skill 仍能通过 Artifact ID 请求 SourceSlice 并产生带证据的 Candidate。
+- 通过授权原始 SourceSlice 直接读取；
+- 交给声明过能力的 Binary/Generated/Result 专用 Skill；或
+- 形成 Excluded、Unsupported、Policy、Secret、Size、Read Failure 或 Budget 显式处置/Gap。
 
-**Fact 增强计划**在确定性提取后追加：
+Planner 按固定顺序确定性派生不可变 `UnderstandingPlan`：
 
-- 提取器诊断；
-- 解析出的 Symbol/Route/Data 关系；
-- 缺失或冲突关系；
-- 与旧 Snapshot 的细粒度 Candidate lineage。
+1. 由版本化 Workspace/Package/Build 约定识别工程边界；
+2. 由内容类型与声明的 Manifest 结构确定 Artifact 通道；
+3. 按工程、语言/工具链、Module、Package 归属与直接结构关系形成局部性分组；
+4. 形成预算分片，超大文件按稳定语法/文档 Range 切分并追加文件汇总；
+5. 为入口、公开接口、流程、配置 Consumer、测试、文档和变化前沿增加允许重叠的横切根任务。
 
-执行期间，各通道可以为下列问题排入有界后续 WorkUnit：
+每条 Inventory 记录必须有且只有一种基础处置，不能遗漏；SourceRange 可有声明过的有界重叠，横切与 Follow-up 分区也可与基础任务重叠。相同 Snapshot、Planner、Convention Registry、执行策略、Range 与 Policy Digest 重规划时必须得到相同稳定 Partition ID，且 `unassignedCount=0`。
 
-- 未解析 Call Target；
-- 未写文档的 Endpoint；
-- 没有实现关系的 Claim；
-- 意图模糊的测试；
-- 消费者未知的配置引用；
-- 一条未解析的文档/代码矛盾。
+Scanner Facts 作为可选增强并行到达。它可以增加细粒度关系或 Gap WorkUnit，但不能删除基础覆盖 WorkUnit，也不能成为直接源码结论的唯一证据。
 
-后续深度、预算和理由都要记录。预算耗尽记为 `UNEXPLORED_BUDGET_LIMIT`，不能记为完成。
+### 7.2 动态层级执行
+
+`UnderstandingPlan` 展开为持久化依赖 DAG，绝不是固定数量的子 Agent：
+
+1. 有界原始源码、文档、测试、配置、数据与专用 Skill 叶子 WorkUnit；
+2. 大文件及文件/Module 汇总；
+3. 跨 Module 能力、流程、状态、规则、数据/配置与测试意图重建；
+4. 独立 Critic、矛盾与缺失关系探针；
+5. 工程级 CandidateBundle 汇总与对账。
+
+每个 WorkUnit 持久化准确 Artifact/Range 与可选 Fact 输入、依赖、必需能力、所选 Producer Route、预算、Attempt、Checkpoint 和 Input/Output Digest。就绪单元在 Worker/Provider 配额内并行；at-least-once 调度配合一个 Input Digest 的 exactly-once 结果提交。子任务摘要可以引导检索，但绝不能单独成为 Candidate 证据。
+
+各通道可为未解析 Call、无文档接口、缺失实现关系、意图模糊测试、未知配置 Consumer 或文档/代码矛盾创建有界 Follow-up WorkUnit。跟进深度与总预算由策略固定；触顶形成 `UNEXPLORED_BUDGET_LIMIT`，不能记为完成。
+
+### 7.3 模型与 Skill 能力路由
+
+`AnalysisModelProfile` 的传输/凭据可用性与版本化 `ModelCapabilityProfile` 分离；后者声明模型 Revision、支持 Role、语言、Artifact、结构化输出、Context 上限、数据边界类别（`FACTS_ONLY_EXTERNAL`、`RAW_SOURCE_LOCAL` 或 `RAW_SOURCE_PRIVATE_RUNNER`）、Calibration Policy、Quality Tier、Independence Group 与 Cost Class。
+
+签名 Skill Manifest 继续声明 Capability、兼容性、Schema、Permission、Model Policy、Cost 与增量行为。其终态输入合同区分：
+
+- **Direct-source Skill**：必需 `PROJECT_SNAPSHOT`，读取 SourceSlice，`CODE_FACT_BUNDLE` 只是可选增强；
+- **Fact-dependent Skill**：显式要求对应 FactBundle。
+
+确定性 Capability Router 把 WorkUnit 要求与已验证 Model Profile、允许且版本固定的 Skill、源码策略以及本次运行质量/成本/截止时间/并发/冗余策略求交集。Direct-source WorkUnit 必须使用 `RAW_SOURCE_LOCAL` 或 `RAW_SOURCE_PRIVATE_RUNNER` Producer；`FACTS_ONLY_EXTERNAL` 模型绝不能读取原始 SourceSlice。Router 持久化 `AnalysisRouteDecision`，记录候选、选定和拒绝 Route、原因码、精确版本、Calibration、Independence Group 与预算。能力缺失形成 `NO_ELIGIBLE_PRODUCER`，不能触发隐藏通用 Fallback 或外部源码泄露。
+
+设计期没有默认厂商模型。版本化 Calibration Suite 按 Role、语言、Artifact 与 Risk Cell，用 Schema 有效率、源码 Grounding、关系正确性、Context 退化、Gap 诚实度、数据边界合规、延迟与成本晋升合格 Primary/Critic Revision；每个新 Model Revision 初始状态都是未验证。生命周期设计中的 Role 表把这些 Cell 映射到现有 Reverse Skill Capability 词汇。
+
+### 7.4 超大工程与多模型
+
+一次完整分析是由许多有界 WorkUnit 构成的持久 Run，不是整仓单 Prompt。叶子单元横向扩展；大文件按 Range 分片；Module 输出进入跨 Module 汇总；不变 Input Digest 可复用；全局汇总只读取有界 Candidate/Evidence Index 与选定 SourceSlice。完成条件是 Inventory 无未分配项、所有必需 WorkUnit 进入终态，且每个不支持或预算不足区域都有显式 Gap。
+
+多模型执行采用：
+
+- 默认按合格能力对 Partition 并行；
+- 只对高风险、低置信、矛盾或 Challenge 抽样范围做选择性独立冗余；
+- 由不同 `independenceGroup` 的 Critic 审核 Candidate 证据，且看不到 Primary Producer 的私有推理；
+- 确定性证据校验与 Candidate 对账。
+
+引擎绝不把相关模型/Prompt 变体当成独立投票。一致结果只能在 Calibration 上限内提高 Corroboration；分歧保留在 ConflictLedger，未解决高风险冲突进入人工 Review/Decision。
 
 生产规划器从不读取 Truth Set。评估 Harness 只能在运行完成后比较结果；held-out Miss 触发的是下一次工程改进或公开类别的诊断重跑，不能把隐藏答案塞回同一次分析。
 
@@ -574,14 +607,17 @@ UI 必须区分：
 - 普通读取只暴露相对/不透明路径；
 - SourceSlice 在模型访问前脱敏并限制预算；
 - 模型凭据与真实配置秘密不能进入 Run 或图谱数据；
-- 原始源码保留和外部模型使用属于部署策略；
+- 原始源码只在本地/私有边界内处理；外部模型只接收策略过滤后的 Facts；
 - 所有评估和 Dogfood 使用隔离的非生产 Store。
 
 ## 14. 验收标准
 
 - **AC-01**：固定 Snapshot 中每个 Artifact 都有明确 Inventory 处置。
 - **AC-02**：受支持提取器通过精确正向、负向、跨度和诊断 Fixture。
-- **AC-03**：Agent 规划包含 Manifest 派生根，并能恢复一个被某个确定性提取器漏掉的审核锚点。
+- **AC-03**：每条 Inventory 记录都有一种可审核基础处置，且每个可分析源码 Artifact 都独立于 Scanner Facts 直接读取 Snapshot。
+- **AC-03a**：确定性重规划产生稳定 Partition、`unassignedCount=0` 与有界动态 DAG，并能恢复一个被某个确定性提取器漏掉的审核锚点。
+- **AC-03b**：每个 WorkUnit 持久化经验证、版本固定的模型/Skill Route；不支持能力形成 `NO_ELIGIBLE_PRODUCER`，不能隐藏 Fallback。
+- **AC-03c**：选择性多模型冗余使用独立 Group 与证据对账；相关一致不能算投票，未解决分歧保持 Conflict。
 - **AC-04**：全部 Candidate 节点与关系通过 Snapshot 和 WorkUnit 证据校验。
 - **AC-05**：对账保留冲突与替代解释，且不能创建受治理权威。
 - **AC-06**：评估报告带分母展示召回、精度、关系、来源、缺口、重放和增量维度。
@@ -600,6 +636,8 @@ UI 必须区分：
 - 自动批准 Candidate；
 - 静态理解时执行任意仓库代码；
 - 用节点数量或一个模型评分代表正确性；
+- 用 Scanner 输出定义 Agent 任务全集，或把整仓单 Prompt 当作全量分析；
+- 把所有角色路由给未验证通用模型，或把模型多数票当真相；
 - 第一版支持所有语言；
 - 为改善指标隐藏不支持范围；
 - 让浏览器 IndexedDB 成为执行或真相权威。
@@ -615,3 +653,4 @@ UI 必须区分：
 5. Connector 增量交付，第一阶段采用 Allowlisted Local Runner，但不改变 canonical graph 契约；
 6. 接受 `traqen-self-v1` 数字阈值、calibration/held-out/challenge 盲测协议与独立审批；
 7. 接受首次 FULL、后续默认 INCREMENTAL、CurrentGraphHead 原子发布和 Feature 历史账本语义。
+8. 接受完整 Snapshot 派生的 Agent 规划、能力路由动态 DAG 与选择性证据型多模型对账。

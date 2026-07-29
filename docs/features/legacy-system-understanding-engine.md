@@ -349,36 +349,69 @@ It does not generate business-stable Feature IDs from names, paths, domains, or 
 
 ## 7. Work planning and iterative retrieval
 
-The planner cannot treat “nodes found by scanners” as the complete task universe. It creates two planning waves.
+The exact partition, dynamic-DAG, model/Skill-routing, and multi-model reconciliation contract is defined in
+§3.3 of [`workspace-scan-and-analysis-lifecycle.md`](workspace-scan-and-analysis-lifecycle.md).
+This section records the engine-level invariants.
 
-The **manifest/convention-derived initial plan** exists before semantic Facts are complete and uses:
+### 7.1 Complete Snapshot planning
 
-- complete ArtifactInventory;
-- build/package/module/entrypoint conventions from a versioned `ConventionRegistry`;
-- document and API manifests;
-- test/config/data clusters;
-- content types, relative-path classes, and safe structural summaries;
-- module/entrypoint lineage from the prior Snapshot.
+The complete immutable `SourceSnapshot` and ArtifactInventory—not scanner Facts—form the Agent task universe. Every ArtifactInventory row has exactly one base outcome:
 
-It creates at least one coverage WorkUnit per inventory partition and independent root WorkUnits for entrypoints, public interfaces, documents, tests, and configuration. If a deterministic extractor intentionally misses an entrypoint, an Agent/Skill can still request a SourceSlice by Artifact ID and produce an evidenced Candidate.
+- direct reading through authorized raw SourceSlices;
+- a declared specialist for binary/generated/result content; or
+- an explicit excluded, unsupported, policy, secret, size, read-failure, or budget disposition/Gap.
 
-The **Fact-enriched plan** then adds:
+The planner deterministically derives an immutable `UnderstandingPlan` in this order:
 
-- extractor diagnostics;
-- parsed Symbol/Route/Data relations;
-- missing or contradictory relations;
-- fine-grained Candidate lineage from the prior Snapshot.
+1. project boundaries from versioned workspace/package/build conventions;
+2. artifact lanes from content type and declared manifest structure;
+3. locality groups by project, language/toolchain, module, package membership, and direct structural relationships;
+4. budget shards, including stable syntax/document ranges plus file synthesis for oversized files;
+5. overlapping cross-cutting roots for entrypoints, public interfaces, workflows, configuration consumers, tests, documents, and change frontiers.
 
-During execution, lanes may enqueue bounded follow-up WorkUnits for:
+Every Inventory row has one base disposition without omission; SourceRanges may use declared bounded overlap, and cross-cutting/follow-up partitions may overlap base work. Replanning the same Snapshot with the same planner, convention registry, execution policy, ranges, and policy digest produces the same stable partition IDs and `unassignedCount=0`.
 
-- an unresolved call target;
-- an undocumented endpoint;
-- a Claim with no implementation relation;
-- a test with ambiguous intent;
-- a configuration reference with unknown consumers;
-- an unresolved document/code contradiction.
+Scanner Facts arrive as optional parallel enrichment. They may add fine-grained relation or Gap work, but they cannot delete base-coverage WorkUnits or become the only evidence for direct-source conclusions.
 
-Follow-up depth, budget, and reason are recorded. Budget exhaustion becomes `UNEXPLORED_BUDGET_LIMIT`, not completion.
+### 7.2 Dynamic hierarchical execution
+
+`UnderstandingPlan` expands into a persisted dependency DAG, never a fixed count of child Agents:
+
+1. bounded raw-source, document, test, configuration, data, and specialist leaf WorkUnits;
+2. large-file and file/module synthesis;
+3. cross-module capability, workflow, state, rule, data/configuration, and test-intent reconstruction;
+4. independent critic, contradiction, and missing-relation probes;
+5. project-level CandidateBundle synthesis and reconciliation.
+
+Each WorkUnit persists exact Artifact/range and optional Fact inputs, dependencies, required capabilities, selected producer route, budgets, attempts, checkpoint, and input/output digests. Ready units run in parallel within worker/provider quotas. At-least-once scheduling is paired with exactly-once result commit for one input digest. A child summary can guide retrieval but can never be the sole Candidate evidence.
+
+Lanes may enqueue bounded follow-up WorkUnits for unresolved calls, undocumented interfaces, missing implementation relations, ambiguous tests, unknown configuration consumers, or document/code contradictions. Follow-up depth and total budget are fixed by policy; a limit produces `UNEXPLORED_BUDGET_LIMIT`, not completion.
+
+### 7.3 Model and Skill capability routing
+
+Transport and credential readiness in `AnalysisModelProfile` are separate from a versioned `ModelCapabilityProfile`, which declares model revision, supported roles, languages, artifact kinds, structured outputs, context limit, data-boundary class (`FACTS_ONLY_EXTERNAL`, `RAW_SOURCE_LOCAL`, or `RAW_SOURCE_PRIVATE_RUNNER`), calibration policy, quality tier, independence group, and cost class.
+
+Signed Skill manifests continue to declare capabilities, compatibility, schemas, permissions, model policy, cost, and incremental behavior. Their target input contract distinguishes:
+
+- **direct-source Skills**, which require `PROJECT_SNAPSHOT`, receive SourceSlices, and treat `CODE_FACT_BUNDLE` as optional enrichment;
+- **Fact-dependent Skills**, which explicitly require the relevant FactBundle.
+
+A deterministic Capability Router intersects WorkUnit requirements with verified model profiles, allowed version-pinned Skills, source policy, and run quality/cost/deadline/concurrency/redundancy policy. A direct-source WorkUnit requires a `RAW_SOURCE_LOCAL` or `RAW_SOURCE_PRIVATE_RUNNER` producer; a `FACTS_ONLY_EXTERNAL` model never receives raw SourceSlices. The Router persists an `AnalysisRouteDecision` with eligible, selected, and rejected routes, reason codes, exact versions, calibration, independence groups, and budgets. Missing capability is `NO_ELIGIBLE_PRODUCER`; it does not trigger a hidden generic fallback or external source disclosure.
+
+No vendor model is a design-time default. A versioned calibration suite promotes eligible primary/critic revisions per role, language, artifact, and risk cell using schema validity, source grounding, relation accuracy, context degradation, Gap honesty, data-boundary compliance, latency, and cost. Every new model revision starts unverified. The lifecycle design's role table maps these cells to the existing Reverse Skill capability vocabulary.
+
+### 7.4 Large repositories and multiple models
+
+One complete analysis is a durable run composed of many bounded WorkUnits, not one repository-sized prompt. Leaf units scale horizontally; large files are range-sharded; module output feeds cross-module synthesis; unchanged input digests are reusable; and global synthesis reads bounded Candidate/evidence indexes plus selected SourceSlices. Completion requires no unassigned Inventory, terminal required WorkUnits, and explicit Gaps for every unsupported or budget-limited region.
+
+Multi-model execution uses:
+
+- partition parallelism by eligible capability as the default;
+- selective independent redundancy for high-risk, low-confidence, contradictory, or challenge-sampled scopes;
+- a critic from a different `independenceGroup` that reviews Candidate evidence without the primary producer's private reasoning;
+- deterministic evidence validation and Candidate reconciliation.
+
+The engine never counts correlated model/prompt variants as independent votes. Agreement raises corroboration only within calibrated caps; disagreement remains in ConflictLedger, and unresolved high-risk conflicts require human Review/Decision.
 
 The production planner never reads the truth set. The evaluation harness compares output only after the run. A held-out miss informs a later engineering change or a diagnostic rerun described by a public discrepancy category; it never injects the hidden answer into the same analysis.
 
@@ -574,14 +607,17 @@ The UI separates:
 - ordinary reads expose relative/opaque paths;
 - SourceSlices are redacted and budgeted before model access;
 - model credentials and real configuration secrets never enter runs or graph data;
-- raw source retention and external model use are deployment policies;
+- raw source is processed only inside the local/private boundary; external models receive only policy-filtered Facts;
 - all evaluation and dogfood runs use isolated non-production stores.
 
 ## 14. Acceptance criteria
 
 - **AC-01**: every artifact in a pinned Snapshot has an explicit inventory disposition.
 - **AC-02**: supported extractors pass exact positive, negative, span, and diagnostic fixtures.
-- **AC-03**: Agent planning includes manifest-derived roots and can recover a reviewed anchor missed by one deterministic extractor.
+- **AC-03**: every Inventory row has one auditable base disposition and every eligible source Artifact is directly read from the Snapshot independent of scanner Facts.
+- **AC-03a**: deterministic replanning produces stable partitions, `unassignedCount=0`, and a bounded dynamic DAG that can recover a reviewed anchor missed by one deterministic extractor.
+- **AC-03b**: every WorkUnit persists a verified, version-pinned model/Skill route; unsupported capability becomes `NO_ELIGIBLE_PRODUCER` rather than hidden fallback.
+- **AC-03c**: selective multi-model redundancy uses independent groups and evidence reconciliation; correlated agreement is not a vote, and unresolved disagreement remains a Conflict.
 - **AC-04**: all Candidate nodes and relations pass Snapshot and WorkUnit evidence validation.
 - **AC-05**: reconciliation preserves conflicts and alternatives and cannot create governed authority.
 - **AC-06**: the evaluation report exposes recall, precision, relation, provenance, gap, replay, and incremental dimensions with denominators.
@@ -600,6 +636,8 @@ The UI separates:
 - automatic Candidate approval;
 - running arbitrary repository code during static understanding;
 - using node count or one model score as correctness;
+- using scanner outputs as the Agent task universe or one repository-sized prompt as a full analysis;
+- routing all roles to an unverified generic model or treating model majority as truth;
 - supporting every language in the first delivery;
 - hiding unsupported scope to improve metrics;
 - making browser IndexedDB an execution or truth authority.
@@ -615,3 +653,4 @@ The recommended decisions are:
 5. deliver source connectors incrementally, starting with an allowlisted Local Runner, without changing the canonical graph contract;
 6. accept `traqen-self-v1` numeric thresholds, calibration/held-out/challenge blind review, and independent approval;
 7. accept first-FULL/later-INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature-history ledger semantics.
+8. accept complete Snapshot-derived Agent planning, capability-routed dynamic DAG execution, and selective evidence-based multi-model reconciliation.

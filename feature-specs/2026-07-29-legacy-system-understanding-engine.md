@@ -29,7 +29,7 @@ priority: P0
 **Goal:** 从存量代码/文档/契约/配置/测试/结果建立可审核的 canonical graph；第一次 FULL 形成完整当前图谱，后续 INCREMENTAL 更新当前图谱并保留 Feature 版本、实现映射、每次变更影响和验证历史。
 **Architecture cell:** legacy-system understanding → canonical traceability graph
 **Map delta:** update required
-**Map delta why:** F001 新增完整 Inventory、六条独立证据通道、SourceSlice Broker、盲测评估、GraphRevision/CurrentGraphHead 和长期 Feature/Impact 历史。
+**Map delta why:** F001 新增完整 Inventory、Snapshot 派生 UnderstandingPlan、动态 WorkUnit DAG、模型/Skill 能力路由、六条独立证据通道、SourceSlice Broker、盲测评估、GraphRevision/CurrentGraphHead 和长期 Feature/Impact 历史。
 **Tech stack:** Node.js ESM、JSON Schema/OpenAPI、Memory/PostgreSQL stores、server scanner/runner、Analysis Agent/Skills、React/Vinext、Node test runner。
 **前端验证:** Yes；必须用 Traqen 分析两个固定的 Traqen Snapshot，在产品内验证最新图谱、Feature 历史、Impact 和 TraceChain。
 
@@ -42,7 +42,9 @@ priority: P0
   SourceRegistration
     → SnapshotManifest(FULL)
     → ArtifactInventory
+    → deterministic UnderstandingPlan(unassignedCount=0)
     → 六条独立证据通道
+    → capability-routed dynamic WorkUnit DAG
     → Candidate reconciliation
     → EvaluationRun
     → GraphRevision(PUBLISHED)
@@ -74,7 +76,10 @@ priority: P0
 
 - 完整 ArtifactInventory 与 ExtractorCapability 注册表。
 - 文档/契约、代码、数据、配置、测试/结果的类型化 Facts。
-- 从 Manifest、约定和旧 Snapshot lineage 独立派生 Agent/Skill WorkUnit。
+- 从完整 Snapshot/ArtifactInventory 独立于 Scanner Facts 派生确定性 `UnderstandingPlan`，保证每条记录直接读取、专用处理或形成显式 Gap。
+- 用动态依赖 DAG 执行大文件、文件、Module、跨 Module、Critic 与汇总 WorkUnit，不把整仓塞入单 Prompt。
+- 版本化 `ModelCapabilityProfile`、Direct-source/Fact-dependent Skill 输入合同与持久 `AnalysisRouteDecision`。
+- 选择性使用相互独立的多模型 Producer/Critic，并按证据对账而非多数票。
 - SourceSlice Broker、证据边界、预算、脱敏和可判定错误。
 - 六条独立通道与治理前 Candidate 对账。
 - TruthSetVersion、EvaluationPolicy、EvaluationRun 和盲测协议。
@@ -88,6 +93,8 @@ priority: P0
 - 从代码变化自动创建业务 FeatureVersion。
 - 静态理解阶段执行任意仓库代码。
 - 用一个总分、节点数量或模型自评分代表正确性。
+- 让一个通用模型静默处理所有语言/Artifact/角色，或在无合格 Producer 时隐藏 Fallback。
+- 默认让每个文件经过所有模型，或按模型票数创建业务真相。
 - 第一版支持所有语言或所有 Connector。
 - 删除历史 Revision/Facts/Impact 以“只保留最新图谱”。
 - 把 held-out Truth Set 答案提供给生产 Agent。
@@ -99,7 +106,10 @@ priority: P0
 - `contracts/artifact-inventory.schema.json`
 - `contracts/extractor-capability.schema.json`
 - `contracts/source-slice.schema.json`
+- `contracts/understanding-plan.schema.json`
 - `contracts/understanding-work-unit.schema.json`
+- `contracts/model-capability-profile.schema.json`
+- `contracts/analysis-route-decision.schema.json`
 - `contracts/candidate-reconciliation.schema.json`
 - `contracts/understanding-evaluation.schema.json`
 - `contracts/graph-revision.schema.json`
@@ -143,7 +153,10 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 | `SnapshotManifest` | Scanner/store | BUILDING→SEALED/FAILED | SEALED 后不可变 |
 | `ArtifactInventory` | Scanner/store | seal 前构建 | seal 后不可变、处置率 100% |
 | `ExtractorCapability` | policy registry | 新版本替换默认指针 | 旧版本保留 |
+| `UnderstandingPlan` | planner/store | none | 按 Snapshot/planner/convention/policy 版本不可变；基础覆盖 `unassignedCount=0` |
 | `UnderstandingWorkUnit` | planner/runtime | execution state/attempt | 稳定 ID，完成结果不重放 |
+| `ModelCapabilityProfile` | capability registry | 新版本替换默认指针 | 凭据分离；旧 Revision/Calibration 保留 |
+| `AnalysisRouteDecision` | capability router/store | none | 每个 WorkUnit append-only，记录候选/选中/拒绝原因 |
 | `SourceSliceRequest/SourceSlice` | broker | request state | 按 Snapshot/WorkUnit 审计保留 |
 | `CandidateBundle` | producer/store | none | append-only、跨 Snapshot lineage |
 | `ReconciliationResult` | reconciler/store | none | append-only |
@@ -193,7 +206,7 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 | 不变量 | 首个失败测试 |
 |---|---|
 | INV-1：Inventory 每个范围内 Artifact 都有处置 | `test/artifact-inventory.test.js` |
-| INV-2：Agent 初始计划不依赖单一扫描器发现 | `test/understanding-planner.test.js` |
+| INV-2：Agent 任务全集来自完整 Snapshot；相同输入得到稳定分区且 `unassignedCount=0` | `test/understanding-planner.test.js` |
 | INV-3：SourceSlice 不接受路径/Glob/跨 Snapshot ID | `test/source-slice-broker.test.js` |
 | INV-4：Candidate 证据不越 WorkUnit | `test/candidate-reconciliation.test.js` |
 | INV-5：Truth Set 不进入生产输入 Digest | `test/understanding-evaluation.test.js` |
@@ -206,6 +219,10 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 | INV-12：Candidate 消失不自动退役 Feature | `test/feature-evolution.test.js` |
 | INV-13：默认图谱读 Head，历史 API 读不可变账本 | `test/api-http.test.js` |
 | INV-14：浏览器无 scanner/Agent 权威循环 | `web/tests/rendered-html.test.mjs` |
+| INV-15：Direct-source Skill 无 FactBundle 仍能读取授权 SourceSlice | `test/understanding-planner.test.js` |
+| INV-16：每个 WorkUnit Route 来自已验证模型能力/Skill 合同；无交集时显式失败 | `test/analysis-capability-router.test.js` |
+| INV-17：超大工程由有界动态 DAG 完整处置，Summary 不能成为唯一证据 | `test/understanding-planner.test.js` |
+| INV-18：多模型只做选择性独立冗余；相关输出不算独立票，分歧进入 ConflictLedger | `test/analysis-capability-router.test.js` |
 
 ## 7. 对抗场景
 
@@ -224,6 +241,10 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 13. Candidate 在新 Snapshot 消失；显示 `NO_CURRENT_OBSERVATION`，不产生 retirement。
 14. Worker/API/浏览器在扫描、Agent、Evaluation、Publishing 各阶段中断。
 15. held-out Reviewer 与实现者对边界分歧；结果保持 UNKNOWN/CONFLICT。
+16. Scanner 对某语言产生零 Fact；该语言每个 eligible Artifact 仍在 Direct-source WorkUnit 中被读取或形成显式 Gap。
+17. 十万文件工程与超大单文件；Planner 稳定分区、DAG 有界运行、所有基础 Artifact 处置且 `unassignedCount=0`。
+18. 唯一可用模型不支持某语言/数据边界；Router 记录 `NO_ELIGIBLE_PRODUCER`，不能换通用模型。
+19. 两个同源模型同意但独立 Critic 反对；相关输出不算两票，证据分歧进入 ConflictLedger。
 
 ## 8. TDD 实施任务
 
@@ -234,14 +255,17 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 - Create: `contracts/artifact-inventory.schema.json`
 - Create: `contracts/extractor-capability.schema.json`
 - Create: `contracts/source-slice.schema.json`
+- Create: `contracts/understanding-plan.schema.json`
 - Create: `contracts/understanding-work-unit.schema.json`
+- Create: `contracts/model-capability-profile.schema.json`
+- Create: `contracts/analysis-route-decision.schema.json`
 - Create: `contracts/candidate-reconciliation.schema.json`
 - Create: `contracts/understanding-evaluation.schema.json`
 - Create: `contracts/graph-revision.schema.json`
 - Modify: `contracts/openapi.json`
 - Modify: `test/contracts.test.js`
 
-1. 先写 additional-properties、Project/Snapshot refs、枚举、预算上限、GraphRevision 状态和 Evaluation 分母的失败断言。
+1. 先写 additional-properties、Project/Snapshot refs、Plan 覆盖恒等式、Partition/Route/模型能力枚举、预算上限、GraphRevision 状态和 Evaluation 分母的失败断言。
 2. 运行 `node --test test/contracts.test.js`，记录 RED。
 3. 添加 Schema/OpenAPI `$ref`，不把未定字段塞入 generic metadata。
 4. GREEN 后提交契约真相。
@@ -257,7 +281,7 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 - Create: `test/graph-revision-store.test.js`
 - Modify: `test/storage-migrations.test.js`
 
-1. RED：append-only Inventory/Capability/WorkUnit/Slice/Evaluation/Revision、重复 ID 幂等、终态不可改。
+1. RED：append-only Inventory/ExtractorCapability/UnderstandingPlan/ModelCapabilityProfile/RouteDecision/WorkUnit/Slice/Evaluation/Revision、重复 ID 幂等、终态不可改。
 2. RED：`publishGraphRevision(expectedHeadVersion)` 同事务验证 Evaluation=PASSED、Revision→PUBLISHED、Head CAS。
 3. RED：失败/并发/旧 fencing token 不移动 Head。
 4. 实现 Memory/Postgres 行为等价；迁移只前进，不重写既有 Feature/Impact 历史。
@@ -312,21 +336,32 @@ FeatureVersion 继续使用现有稳定 `Feature.id + version`。新增的是按
 4. 配置只记录 Key/存在性/消费者，真实值进入脱敏/拒绝路径。
 5. 所有通道有独立状态、诊断、覆盖分母和 producer version。
 
-### Task 6：Agent WorkUnit 重新规划 RED
+### Task 6：Agent 完整源码规划、能力路由与动态 DAG RED
 
 **Files**
 
 - Create: `src/analysis/understanding-planner.js`
+- Create: `src/analysis/analysis-capability-router.js`
 - Modify: `src/analysis/analysis-agent.js`
 - Modify: `src/analysis/skill-adapters.js`
+- Modify: `src/domain/reverse-skill.js`
 - Create: `test/understanding-planner.test.js`
+- Create: `test/analysis-capability-router.test.js`
 - Create: `test/fixtures/understanding/adversarial-missed-entrypoint/`
+- Create: `test/fixtures/understanding/large-mixed-language-project/`
+- Create: `test/fixtures/understanding/model-calibration/`
 
-1. RED：没有任何 Symbol Fact 时，Manifest/ConventionRegistry 仍产生 module/entrypoint/document/test/config 根任务。
-2. RED：scanner 故意漏入口，Agent 通过 Artifact ID + SourceSlice 恢复 Candidate。
-3. RED：Fact-enriched wave 只追加关系/Gap WorkUnit，不删除初始覆盖任务。
-4. RED：Truth Set Digest/答案出现在 production plan/input 时拒绝。
-5. 每个 WorkUnit ID 由 Snapshot/lane/scope/producer/policy 确定生成。
+1. RED：没有任何 Fact 时，完整 ArtifactInventory 仍按工程边界→Artifact 通道→局部性分组→预算分片→横切根任务生成稳定 `UnderstandingPlan`；每条记录恰好直接读取、专用处理或形成 Gap，且 `unassignedCount=0`。
+2. RED：相同 Snapshot/planner/convention/execution policy/source ranges 重规划产生相同 Partition ID；任一版本、Range 或 Policy Digest 改变都会改变 Input Digest。
+3. RED：Scanner 故意漏入口，Direct-source Skill 在没有 FactBundle 时仍通过 Artifact ID + SourceSlice 恢复 Candidate；Fact-dependent Skill 缺少 FactBundle 时拒绝。
+4. RED：超大文件按版本化语法/文档边界分 Range 并追加文件汇总；超大多语言工程展开为 Leaf→File/Module→Cross-module→Critic→Project synthesis 动态 DAG，不受当前三个 UI Child Slot 限制。
+5. RED：Candidate 必须落到原始 SourceSlice 和/或允许 Fact；只有子任务 Summary 时校验失败。Fact-enriched/FOLLOW_UP WorkUnit 只能追加，不能删除基础覆盖。
+6. RED：Model Revision 初始未验证；只有按 Role/语言/Artifact/Risk Cell 通过 Schema、Grounding、关系正负断言、Context 退化、Gap 诚实度与数据边界 Fixture 的 Profile 才能进入候选，厂商名或凭据连通不能替代 Calibration。
+7. RED：Capability Router 按 Role/Capability/语言/Artifact/Context/Data Boundary/Quality/Cost/Deadline/Concurrency 与已验证 ModelCapabilityProfile、版本固定 Skill 求交集，并持久化候选、选中、拒绝原因、精确版本、Calibration、Independence Group 与预算。
+8. RED：无合格 Route 产生 `NO_ELIGIBLE_PRODUCER`，不允许隐藏 Fallback；高风险/低置信/冲突才触发不同 Independence Group 的冗余 Producer/Critic。
+9. RED：同源模型/Prompt Family 输出不能累计独立票；多模型分歧保留 Evidence 与 ConflictLedger，不能按多数创建 Feature 身份。
+10. RED：Truth Set Digest/答案出现在 production plan/input 时拒绝；Follow-up 深度/总预算触顶形成 `UNEXPLORED_BUDGET_LIMIT`。
+11. 每个 WorkUnit ID 与结果提交绑定 Snapshot/Partition/Dependency/Producer Route/Skill/Policy Input Digest；调度可 at-least-once，但相同 Digest 结果只能提交一次。
 
 ### Task 7：Candidate 对账、Lineage 与冲突 RED
 

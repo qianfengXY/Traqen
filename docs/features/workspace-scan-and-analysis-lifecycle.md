@@ -151,22 +151,175 @@ ORDER_SUBMIT_ENABLED
 
 This proves observable structure. It does not yet prove that the structure is the governed business feature “Submit order.”
 
-### 3.3 Analysis Agent algorithm: Facts to semantic Candidates
+### 3.3 Analysis Agent algorithm: the complete Snapshot to semantic Candidates
 
-The Agent does not replace parsers. It answers bounded semantic questions that deterministic extraction cannot settle: business capability, actors and workflow, rules and exceptions, design-to-implementation mapping, test intent, contradictions, and missing relations.
+The Agent's task universe is the complete immutable `SourceSnapshot`, not the scanner's successful outputs. Every ArtifactInventory row must end in exactly one base-coverage outcome:
 
-Planning occurs in two passes so scanner blind spots do not become Agent blind spots:
+- directly read by a source-analysis WorkUnit;
+- consumed by a declared specialist for binary/generated/result content; or
+- retained with an explicit excluded, unsupported, policy, secret, size, or read-failure disposition/Gap.
 
-1. **Manifest/convention pass.** Before semantic Facts are complete, create at least one WorkUnit for every inventory partition using ArtifactInventory, package/module/entrypoint conventions, API and document manifests, test/config/data clusters, safe path categories, and prior Snapshot lineage.
-2. **Fact-enrichment pass.** Add WorkUnits for unresolved calls, undocumented endpoints, requirements without implementation evidence, unclear tests, configuration without consumers, document/code contradictions, and the relation frontier touched by an incremental change.
+Scanner Facts are a parallel, optional enrichment input. A missing Symbol, Endpoint, or relation Fact must not remove the corresponding source Artifact from the Agent plan. “Analyze every file” therefore means complete, auditable visitation across many bounded WorkUnits; it never means placing the whole repository into one prompt.
 
-Each WorkUnit is pinned to:
+#### 3.3.1 How Inventory partitions are derived
 
-```text
-Snapshot + analysis lane + bounded scope + producer version + policy digest
+The planner builds an immutable `UnderstandingPlan` directly from ArtifactInventory and Snapshot source metadata. It does not read scanner Candidate output, governed Features, or the Truth Set.
+
+Partitioning is deterministic and ordered:
+
+1. **Project boundaries:** detect workspace/package/build roots from source manifests such as `package.json`, workspace files, Maven/Gradle descriptors, solution/project files, module files, and repository configuration. An unrecognized repository still receives one root boundary rather than disappearing.
+2. **Artifact lanes:** assign every row to source, document/contract, API/schema, data/migration, configuration, test, build/result, binary/generated, or unknown. This routing uses content type, declared manifest structure, and versioned convention rules—not a scanner-produced business feature.
+3. **Locality groups:** group artifacts by project boundary, language/toolchain, module/subtree, declared package membership, and direct manifest/import-header relationships. A lightweight planner structural index may read manifests and import headers, but it does not create Facts or semantic Candidates.
+4. **Budget shards:** pack each locality group under the selected execution profile's input budget. Small related files stay together. A large file is split at versioned syntax/document boundaries into stable line/range slices with bounded overlap, followed by one file-level synthesis unit.
+5. **Cross-cutting roots:** add explicitly overlapping WorkUnits for entrypoints, public interfaces, workflows, configuration consumers, tests, documents, and known change frontiers. These do not replace the disjoint base-coverage partitions.
+
+```ts
+type UnderstandingPlan = {
+  id: string;
+  snapshotManifestId: string;
+  plannerVersion: string;
+  conventionRegistryVersion: string;
+  executionProfileId: string;
+  partitions: Array<{
+    id: string;
+    kind: "BASE_COVERAGE" | "CROSS_CUTTING" | "FOLLOW_UP";
+    lane: string;
+    projectBoundaryId: string;
+    artifactIds: string[];
+    sourceRanges: Array<{ artifactId: string; startLine?: number; endLine?: number }>;
+    dependencyPartitionIds: string[];
+    requiredCapabilities: string[];
+    languages: string[];
+    estimatedInputTokens: number;
+    riskClass: "STANDARD" | "HIGH";
+  }>;
+  coverage: {
+    inventoryArtifactCount: number;
+    directlyAssignedCount: number;
+    specialistAssignedCount: number;
+    explicitDispositionOrGapCount: number;
+    unassignedCount: 0;
+  };
+};
 ```
 
-When source text is necessary, the Agent requests an Artifact/Symbol-bound slice through the SourceSlice Broker. The Broker validates the WorkUnit scope, applies secret scanning/redaction, clips line and byte ranges, enforces the 64 KiB / 12,000-token default ceiling, and records request/policy/result digests. Denial or truncation becomes a Diagnostic/Gap rather than an authorization bypass.
+The three assigned counts plus `unassignedCount` must equal `inventoryArtifactCount`; one Artifact has one base disposition even when its SourceRanges use bounded overlap. Every base partition has a stable ID derived from Snapshot, planner/convention versions, lane, ordered Artifact/range identities, and policy digest. Replanning the same Snapshot under the same policy must produce the same partitions. A changed planner, model/Skill route, or source range creates a new input digest and cannot silently reuse an incompatible result.
+
+#### 3.3.2 How WorkUnits execute
+
+An `UnderstandingPlan` becomes a persisted dependency DAG rather than a fixed number of child Agents:
+
+```mermaid
+flowchart TB
+    A[Complete SourceSnapshot and ArtifactInventory] --> B[Deterministic Partition Planner]
+    B --> C1[Leaf source WorkUnits: raw source slices]
+    B --> C2[Leaf document, test, config and data WorkUnits]
+    B --> C3[Specialist or explicit Gap WorkUnits]
+
+    A --> D[Deterministic scanner in parallel]
+    D --> E[Optional Fact enrichment]
+
+    C1 --> F[File and module synthesis]
+    C2 --> F
+    C3 --> F
+    E --> F
+    F --> G[Cross-module capability and workflow synthesis]
+    G --> H[Critic, contradiction and missing-relation probes]
+    H --> I[Project CandidateBundles]
+    I --> J[Candidate reconciliation]
+
+    K[Capability Router] --> C1
+    K --> C2
+    K --> C3
+    K --> F
+    K --> G
+    K --> H
+```
+
+The DAG runs in layers:
+
+1. **Leaf reading:** a model/Skill eligible inside the local/private source boundary directly reads the authorized raw SourceSlices for every eligible Artifact and emits source-anchored observations/Candidates.
+2. **File/module synthesis:** combine related leaf outputs with selected raw slices and optional Facts. A child summary alone is never sufficient evidence for a Candidate.
+3. **Cross-module reconstruction:** analyze public interfaces, calls between modules, workflows, state transitions, rules, data/configuration influence, and test intent.
+4. **Critic and gap probes:** independently challenge high-risk conclusions, contradictions, low-confidence regions, unassigned evidence, and unresolved boundaries.
+5. **Project synthesis:** form bounded CandidateBundles for reconciliation; it does not mint governed Feature identity.
+
+Each WorkUnit persists dependency IDs, Artifact/range inputs, optional Fact IDs, required capabilities, selected producer route, token/cost/deadline budgets, input/output digests, attempts, checkpoint, and structured output. Ready units execute in parallel under worker and provider concurrency quotas. Scheduling is at-least-once; an input-digest-bound result commit is exactly-once. Failure, timeout, or budget exhaustion creates an explicit Gap and never marks the covered Artifacts as semantically complete.
+
+During execution, a lane may enqueue a bounded `FOLLOW_UP` unit for an unresolved call, undocumented interface, unclear test, unknown configuration consumer, contradiction, or missing relation. Follow-up depth and total budget are fixed by policy; reaching either limit records `UNEXPLORED_BUDGET_LIMIT`.
+
+#### 3.3.3 Model and Skill routing
+
+The current `AnalysisModelProfile` proves transport configuration and credential readiness. It is not sufficient evidence that a model can analyze every language, artifact type, or reasoning role. The F001 target adds a versioned capability/calibration declaration separate from credentials:
+
+```ts
+type ModelCapabilityProfile = {
+  id: string;
+  analysisModelProfileId: string;
+  modelRevision: string;
+  roles: Array<"SOURCE_READER" | "MODULE_SYNTHESIS" | "CROSS_MODULE_REASONING" | "CRITIC">;
+  languages: string[];
+  artifactKinds: string[];
+  structuredOutputSchemas: string[];
+  maxContextTokens: number;
+  dataBoundaryClasses: Array<"FACTS_ONLY_EXTERNAL" | "RAW_SOURCE_LOCAL" | "RAW_SOURCE_PRIVATE_RUNNER">;
+  calibrationPolicyVersion: string;
+  qualityTierByRole: Record<string, string>;
+  independenceGroup: string;
+  costClass: string;
+};
+```
+
+Signed Skill registrations already declare capabilities, language/framework compatibility, input/output schemas, permissions, model policy, cost class, and incremental support. The target input contract distinguishes two kinds of Skill:
+
+- a **direct-source Skill** requires `PROJECT_SNAPSHOT` and receives SourceSlices; `CODE_FACT_BUNDLE` is optional enrichment;
+- a **Fact-dependent Skill** explicitly requires the relevant FactBundle.
+
+This changes the current baseline, where Reverse Skills require both `PROJECT_SNAPSHOT` and `CODE_FACT_BUNDLE`.
+Direct-source WorkUnits require a `RAW_SOURCE_LOCAL` or `RAW_SOURCE_PRIVATE_RUNNER` producer route. An external model declared `FACTS_ONLY_EXTERNAL` may process policy-filtered Facts but never raw SourceSlices. If no in-boundary producer is eligible, analysis records `NO_ELIGIBLE_PRODUCER`.
+
+For each WorkUnit, a deterministic Capability Router intersects:
+
+- required role/capabilities, languages, artifact kinds, context size, and risk class;
+- verified ModelCapabilityProfiles;
+- allowed, version-pinned Skill manifests;
+- source data boundary and tenant policy;
+- run quality, cost, deadline, concurrency, and redundancy policy.
+
+It persists an `AnalysisRouteDecision` containing eligible producers, the selected primary/critic routes, rejected routes with reason codes, exact model/Skill versions, calibration version, independence groups, and budgets. No model selects itself, no unverified profile is used, and a missing eligible producer becomes `NO_ELIGIBLE_PRODUCER` rather than an invisible generic fallback.
+
+The initial role/Skill routing baseline is:
+
+| WorkUnit role | Model profile must prove | Typical registered Skill capabilities | Primary evidence |
+|---|---|---|---|
+| `SOURCE_READER` | language/artifact support, schema adherence, source grounding, bounded-context behavior, and local/private raw-source eligibility | `ARCHITECTURE_REVERSE`, `BUSINESS_RULE_MINING`, `DATA_SEMANTICS`, `CONFIGURATION_ANALYSIS`, `TEST_INVENTORY_REVIEW` | raw SourceSlices; optional Facts |
+| `MODULE_SYNTHESIS` | long-context synthesis without citation loss and calibrated relation precision | `FEATURE_DISCOVERY`, `ARCHITECTURE_REVERSE`, `DOMAIN_MODELING`, `BUSINESS_RULE_MINING` | leaf outputs plus selected SourceSlices/Facts |
+| `CROSS_MODULE_REASONING` | cross-file graph/workflow/state reasoning and calibrated missing-relation recall | `FEATURE_DISCOVERY`, `STATE_MACHINE_RECOVERY`, `PERMISSION_ANALYSIS`, `DATA_SEMANTICS`, `CONFIGURATION_ANALYSIS`, `TEST_DESIGN`, `RUNTIME_CORRELATION`, `CHANGE_IMPACT` | module Candidates/evidence index plus selected SourceSlices/Facts |
+| `CRITIC` | high evidence-verification precision, contradiction detection, and a different independence group from the primary | `REVERSE_REVIEW` plus the challenged domain capability | Candidate, raw evidence, route/calibration provenance; no private primary reasoning |
+
+The design intentionally does not hard-code a vendor model name. For every role/language/risk cell, a versioned calibration suite measures schema validity, source-grounding precision, required/forbidden relation accuracy, context-degradation behavior, Gap honesty, secret/data-boundary compliance, latency, and cost. Only a passing model revision can become the primary or critic for that cell; a new revision begins unverified. Thus “which model” is an auditable deployment decision backed by observed fitness, not an unchecked configuration string.
+
+#### 3.3.4 Large repositories and multiple models
+
+A full run is one durable `AnalysisRun`, not one model request. Scale comes from bounded hierarchical decomposition and parallelism:
+
+- leaf WorkUnits spread across workers and provider quotas;
+- large files become stable source ranges and file synthesis;
+- module results feed cross-module units;
+- unchanged input-digest results are reusable across recovery and later incremental Snapshots;
+- global synthesis sees bounded Candidate/evidence indexes plus selected SourceSlices, never every raw file at once;
+- completion requires `unassignedCount=0`, terminal state for every required WorkUnit, and every unsupported/budget-limited region represented as a Gap.
+
+Multiple models are supported, but not as an uncontrolled vote:
+
+1. **Partition parallelism (default):** route different WorkUnits to the best eligible model/Skill and run them concurrently.
+2. **Selective redundancy:** run two independently calibrated producers only for high-risk anchors, low-confidence output, contradictions, challenge samples, or policy-selected coverage—not for every file by default.
+3. **Independent critic:** a different `independenceGroup` reviews the Candidate plus its raw evidence without seeing private reasoning from the primary producer.
+4. **Evidence reconciliation:** deterministic validation and Candidate reconciliation compare citations, scopes, constraints, and contradictions. Two outputs from the same base model/prompt family are correlated evidence, not two independent votes.
+
+Agreement may raise corroboration only within calibrated evidence caps. Disagreement is preserved in ConflictLedger; majority count never creates truth or governed identity. An unresolved high-risk conflict goes to human Review/Decision.
+
+#### 3.3.5 Candidate output contract
 
 The output is a structured `CandidateBundle`, not a free-form summary:
 
@@ -181,7 +334,7 @@ CandidateTestIntent:
   order-submit.test.js may exercise "Only DRAFT orders may be submitted"
 ```
 
-Every Candidate carries evidence Fact IDs, Snapshot and WorkUnit identity, producer/model/Skill version, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Project, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
+Every Candidate carries raw SourceSlice and/or Fact evidence, Snapshot and WorkUnit identity, producer/model/Skill version, route/calibration provenance, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Project, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
 
 ### 3.4 Reconciliation algorithm: preserve identity uncertainty
 
@@ -235,9 +388,9 @@ The first successful project analysis must be `FULL`. A later `INCREMENTAL` run 
 
 ### 3.6 Current implementation boundary
 
-This section defines the F001 target, not a claim that every component already exists. Current code has deterministic JavaScript/Java and partial OpenAPI/SQL/config/test scanning, SnapshotManifest and FactBundle relations, bounded Analysis WorkUnits and Candidate validation, incremental Candidate lineage, governed Feature/Claim/Decision/TestSpec/Evidence objects, and graph/trace projections.
+This section defines the F001 target, not a claim that every component already exists. Current code has deterministic JavaScript/Java and partial OpenAPI/SQL/config/test scanning, SnapshotManifest and FactBundle relations, bounded Fact-rooted Analysis WorkUnits and Candidate validation, one active model profile plus optional version-pinned Skills, a UI plan fixed to three child slots, incremental Candidate lineage, governed Feature/Claim/Decision/TestSpec/Evidence objects, and graph/trace projections.
 
-F001 still requires the complete server-owned SourceScanRun, multilingual canonical-scanner parity, complete ArtifactInventory, manifest-first Agent planning, SourceSlice Broker, global reconciliation and its ledgers, EvaluationRun/GraphRevision/CurrentGraphHead publication, and the two-Snapshot “Traqen analyzes Traqen” acceptance.
+F001 still requires the complete server-owned SourceScanRun, multilingual canonical-scanner parity, complete ArtifactInventory, scanner-independent raw-source base coverage, deterministic UnderstandingPlan/partition coverage, dynamic WorkUnit DAG scheduling, ModelCapabilityProfile and capability routing, direct-source Skill inputs, selective multi-model/critic execution, SourceSlice Broker, global reconciliation and its ledgers, EvaluationRun/GraphRevision/CurrentGraphHead publication, and the two-Snapshot “Traqen analyzes Traqen” acceptance.
 
 ## 4. User journey
 
@@ -500,7 +653,7 @@ The first implementation delivers `LOCAL_SINGLE_TENANT`. `SourceRegistration` re
 - Canonical `realpath` checks apply to the root and every file.
 - Filesystem root, home root, symlink escape, device files, sockets, FIFOs, and non-regular files are rejected.
 - Normal read APIs and logs do not reveal absolute paths, source bodies, secrets, or unredacted `.env` values.
-- Raw source enters only the local Snapshot spool and scanner.
+- Raw source enters only the local/private Snapshot spool, scanner, SourceSlice Broker, and explicitly eligible in-boundary Analysis Workers/Skills.
 - External models receive bounded, policy-filtered Facts, never raw source or unredacted secrets.
 - Snapshot spool data has no implicit TTL and is deleted only through an explicit audited action that removes only blobs exclusively referenced by the target Snapshot.
 
@@ -584,6 +737,10 @@ UI rules:
 - **INV-10:** Scan, Facts, and Analysis belong to the same Project and Snapshot.
 - **INV-11:** External models never receive raw source or secrets.
 - **INV-12:** Scanner capability may not regress at cutover.
+- **INV-13:** every Inventory row has one base disposition and every eligible source Artifact is assigned for direct SourceSlice reading independent of scanner Facts.
+- **INV-14:** the same planning inputs produce the same Partition IDs, `unassignedCount=0`, and a dependency-acyclic dynamic WorkUnit DAG.
+- **INV-15:** every executable WorkUnit has a verified, version-pinned model/Skill route; missing capability is explicit.
+- **INV-16:** multi-model agreement is never counted as business truth; only evidence-backed reconciliation and human Decisions cross the governance boundary.
 
 ## 16. Acceptance
 
@@ -601,6 +758,10 @@ UI rules:
 - Pause and resume the same analysis run.
 - Prove completed Agent WorkUnits do not call model or Skill again.
 - Recover running work after worker/API restart while preserving manual pause.
+- With scanner Fact output empty, prove every eligible source Artifact is directly read or ends in an explicit Gap.
+- Replan the same large mixed-language Snapshot and prove stable Partition IDs, `unassignedCount=0`, bounded contexts, dynamic DAG completion, and no summary-only Candidate evidence.
+- Prove each WorkUnit route records verified model/Skill capabilities, exact versions, calibration, independence group, budgets, and rejected alternatives; unsupported capability becomes `NO_ELIGIBLE_PRODUCER`.
+- Prove selective independent critics preserve evidence disagreement in ConflictLedger and that neither correlated agreement nor majority count creates governed identity.
 
 ### Security and consistency
 
