@@ -29,6 +29,8 @@ priority: P0
 1. **SourceScanRun**：在服务端建立不可变源码快照，逐文件提取确定性事实并生成 `FactBundle`。
 2. **AnalysisRun**：基于同一个 Snapshot 的确定性 Facts 规划并执行 Agent/Skill `WorkUnit`，生成 Candidate 投影。
 
+父 Job 随后持有对账、评估、图谱投影和发布。后续编排阶段不会把 SourceScanRun 与 AnalysisRun 合并成同一套检查点。
+
 二者由一个用户可见的 **WorkspaceAnalysisJob** 串联。浏览器不拥有任何执行器，只负责：
 
 - 创建或选择 Workspace；
@@ -65,7 +67,11 @@ WorkspaceAnalysisJob                         ← 用户看到的唯一任务
   │              └─ FactBundle               ← Snapshot-bound Facts
   │
   └─ AnalysisRun                             ← 服务端 Agent/Skill WorkUnits
-       └─ CandidateBundle / AnalysisResult
+       └─ CandidateBundles
+            └─ CandidateReconciliation
+                 └─ EvaluationRun
+                      └─ GraphRevision 投影
+                           └─ 原子发布 → CurrentGraphHead
 
 BrowserSubscription                          ← 非权威只读指针
 ```
@@ -216,6 +222,9 @@ type WorkspaceAnalysisJob = {
   sourceSnapshotId: string | null;
   scanRunId: string | null;
   analysisRunId: string | null;
+  candidateGraphId: string | null;
+  evaluationRunId: string | null;
+  graphRevisionId: string | null;
   requestedMode: "FULL" | "INCREMENTAL" | "AUTO";
   desiredState: "RUNNING" | "PAUSED" | "CANCELLED";
   status:
@@ -228,7 +237,14 @@ type WorkspaceAnalysisJob = {
     | "COMPLETED_WITH_GAPS"
     | "FAILED"
     | "CANCELLED";
-  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "EVALUATION" | "PROJECTION" | "PUBLISHING";
+  phase:
+    | "SOURCE_SCAN"
+    | "FACT_COMMIT"
+    | "ANALYSIS"
+    | "RECONCILIATION"
+    | "EVALUATION"
+    | "PROJECTION"
+    | "PUBLISHING";
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -262,20 +278,26 @@ subscription 不保存权威 `RUNNING`、扫描检查点、Fact 或 Candidate。
 | `PAUSED` | 显式 Resume | `QUEUED` | 同一 job 重新取租约 |
 | `RUNNING` | worker 租约过期 | `RECOVERING` | 不视为人工暂停 |
 | `RECOVERING` | 新 worker 取得租约 | `RUNNING` | 从最后检查点继续 |
-| `RUNNING` | 所有阶段完成 | `COMPLETED` / `COMPLETED_WITH_GAPS` | 固化结果 |
+| `RUNNING` | 所有阶段完成 | `COMPLETED` / `COMPLETED_WITH_GAPS` | 固化结果和不可变输出引用 |
 | 非终态 | 显式 Cancel | `CANCELLED` | 保留历史检查点，不自动恢复 |
 | 任意 | 浏览器刷新/断网/GET | 不变 | 无生命周期副作用 |
 
 ### 6.2 阶段切换
 
-| 前置 | 事件 | 后续 |
+| 当前阶段 | 已提交事件 | 后续阶段或状态 |
 |---|---|---|
-| `SOURCE_SCAN` | Snapshot sealed | `SOURCE_SCAN / EXTRACTION` |
-| SourceScanRun terminal-success | FactBundle committed | `ANALYSIS` |
-| AnalysisRun terminal-success | Candidate projection committed | `PROJECTION` |
-| Projection committed | Job terminal-success | `COMPLETED` / `COMPLETED_WITH_GAPS` |
+| `SOURCE_SCAN` | 所有扫描 WorkUnit 完成 | `FACT_COMMIT` |
+| `FACT_COMMIT` | SnapshotManifest 与 FactBundle 已提交 | `ANALYSIS` |
+| `ANALYSIS` | 所有必需 CandidateBundle 已提交 | `RECONCILIATION` |
+| `RECONCILIATION` | CandidateGraph、ConflictLedger、CoverageLedger 与 lineage 已提交 | `EVALUATION` |
+| `EVALUATION` | EvaluationRun 通过 | `PROJECTION` |
+| `EVALUATION` | EvaluationRun 拒绝本次 Revision | 以 gap/failure 终止；保留旧 `CurrentGraphHead` |
+| `PROJECTION` | 不可变 GraphRevision 已物化 | `PUBLISHING` |
+| `PUBLISHING` | GraphRevision 变为 `PUBLISHED` 且 CurrentGraphHead 原子移动 | `COMPLETED` / `COMPLETED_WITH_GAPS` |
 
-阶段切换必须和输出引用在同一个事务中提交，禁止出现“阶段已前进但 FactBundle/Result 不存在”的窗口。
+这些 Job 阶段是
+[`legacy-system-understanding-engine.zh-CN.md`](legacy-system-understanding-engine.zh-CN.md)
+所定义 F001 理解流水线的执行投影。阶段切换必须和输出引用在同一个事务中提交：FactBundle 未提交不能进入 Analysis，对账账本未提交不能进入 Evaluation，GraphRevision 未形成明确的 published/rejected 结果不能完成 Job。
 
 ## 7. 扫描检查点设计
 
@@ -502,7 +524,7 @@ UI 规则：
 
 1. **契约与持久化基线**：SourceRegistration、SourceSnapshot、SourceScanRun、WorkspaceAnalysisJob schema 与 store。
 2. **Canonical server scanner**：Snapshot spool、逐文件检查点、跨文件关系解析和多语言能力对账。
-3. **统一 job orchestrator**：扫描 → Fact commit → AnalysisRun → Projection。
+3. **统一 job orchestrator**：扫描 → Fact commit → Analysis → Reconciliation → Evaluation → Projection → Publishing。
 4. **租约与恢复**：heartbeat、fencing token、API/worker restart recovery。
 5. **浏览器瘦客户端**：移除 page-owned scanner，保留 start/pause/resume/status。
 6. **兼容迁移与删除旧路径**：迁移 subscription，删除 browser execution/checkpoint authority。

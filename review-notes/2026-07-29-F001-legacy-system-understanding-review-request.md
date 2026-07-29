@@ -22,6 +22,24 @@ Round 2 adds:
 - the complete TDD plan `feature-specs/2026-07-29-legacy-system-understanding-engine.md`;
 - English lifecycle safety/failure/denominator parity.
 
+Round 2 follow-up after Kimi's second review adds:
+
+- removal of the eight whitespace violations in the F001 implementation plan;
+- one explicit orchestration contract shared by both lifecycle translations:
+  `SOURCE_SCAN → FACT_COMMIT → ANALYSIS → RECONCILIATION → EVALUATION → PROJECTION → PUBLISHING`;
+- atomic output references for CandidateGraph, EvaluationRun, GraphRevision, and CurrentGraphHead publication;
+- English SourceRegistration, AnalysisRun, job-read, and UI rules that match the Chinese contract;
+- a repository test that requires both translations to keep the same complete phase set and happy-path edges.
+
+## Second-Review Findings
+
+| Finding | Resolution |
+|---|---|
+| P1 implementation-plan trailing whitespace | Removed all eight instances. `git diff --check a5f8b08` now exits 0. |
+| P2 English lifecycle semantics | The cited root/home rejection, secret-safe logging, scan outcome classes, and pre-seal unknown denominator were already present in English. The remaining real deltas—SourceRegistration local rules, AnalysisRun evidence rules, job-read fields, and UI command rules—are now explicit in English. Line count is not used as a translation gate. |
+| P2 lifecycle phase mismatch | Added `RECONCILIATION`, completed both phase-transition tables, added downstream output references, and added a bilingual contract regression test. |
+| P2 ownerless main-worktree artifacts | Outside this branch and review range. They remain untouched pending the co-creator's explicit archive/ignore/commit/delete decision; tracked separately rather than smuggled into F001. |
+
 ## First-Review Findings Closed
 
 | Finding | Resolution |
@@ -123,15 +141,19 @@ root media artifact audit in the feature worktree → no findings
 Current Round-2 delta recheck:
 
 ```text
-node --test test/bilingual-documentation.test.js → 1/1 pass
-npm test → 231/231 pass
+node --test test/bilingual-documentation.test.js → 2/2 pass
+npm test → 232/232 pass
 npm run test:web → production build + 40/40 pass
 npm --prefix web run lint → exit 0
-git diff --check → exit 0
-relative-link audit → 11 changed Markdown files, all links resolve
+git diff --check a5f8b08 → exit 0
+relative-link audit → 12 changed Markdown files, all links resolve
 root media artifact audit in the feature worktree → no findings
 designs/**/*.pen glob → no findings
 ```
+
+### Dogfood-Your-Slice
+
+Scope verdict: docs/test-only follow-up; no runtime or user-visible implementation changed, so runtime dogfood is exempt. The executable documentation contract itself was exercised by the focused bilingual phase test.
 
 ### Architecture ownership
 

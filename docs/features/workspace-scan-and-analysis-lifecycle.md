@@ -22,10 +22,12 @@ priority: P0
 
 ## 1. Requirement
 
-The Workspace flow is one user-visible job with two separately checkpointed server stages:
+The Workspace flow is one user-visible job with two separately checkpointed execution stages:
 
 1. **SourceScanRun** seals an immutable source Snapshot, extracts deterministic per-file facts, resolves cross-file relations, and commits a `FactBundle`.
 2. **AnalysisRun** plans and executes Agent/Skill `WorkUnit`s from Facts in that same Snapshot and materializes a Candidate projection.
+
+The parent job then owns reconciliation, evaluation, graph projection, and publication. These orchestration phases do not collapse SourceScanRun and AnalysisRun into one checkpoint stream.
 
 The parent **WorkspaceAnalysisJob** is the only task exposed to the user. The browser may create commands and observe state, but it never owns a scanner, model executor, pause flag, run clock, or authoritative status.
 
@@ -58,7 +60,11 @@ WorkspaceAnalysisJob                         ← the only user-visible task
   │              └─ FactBundle               ← Snapshot-bound Facts
   │
   └─ AnalysisRun                             ← server-owned Agent/Skill WorkUnits
-       └─ CandidateBundle / AnalysisResult
+       └─ CandidateBundles
+            └─ CandidateReconciliation
+                 └─ EvaluationRun
+                      └─ GraphRevision projection
+                           └─ atomic publication → CurrentGraphHead
 
 BrowserSubscription                          ← non-authoritative read pointer
 ```
@@ -107,7 +113,12 @@ type SourceRegistration = {
 };
 ```
 
-The canonical root must resolve below an operator-configured allowlist. Revocation prevents new jobs but does not rewrite historical Snapshots.
+Registration rules:
+
+- canonicalize `rootPath` with `realpath` and require it to be below an operator-configured allowlist;
+- reject the filesystem root, the home root, device files, sockets, and symlink escape;
+- keep the absolute canonical root private and out of normal read APIs;
+- make revocation prevent new jobs without rewriting historical Snapshots.
 
 ### SourceSnapshot
 
@@ -161,7 +172,14 @@ Completed units are skipped on recovery.
 
 ### AnalysisRun
 
-The canonical AnalysisRun remains the Agent owner. It may start only after a complete FactBundle exists for the same Project and Snapshot. Evidence scope, confidence caps, Candidate-only authority, and completed WorkUnit reuse remain mandatory.
+The canonical AnalysisRun remains the Agent owner. It may start only after a complete FactBundle exists for the same Project and Snapshot.
+
+Every Analysis WorkUnit must preserve these boundaries:
+
+- `evidenceFactIds` belong to the target WorkUnit;
+- Facts belong to the same Project and Snapshot;
+- model confidence does not exceed deterministic evidence caps;
+- completed WorkUnits do not call the model or Skill again during recovery.
 
 ### WorkspaceAnalysisJob
 
@@ -173,13 +191,23 @@ type WorkspaceAnalysisJob = {
   sourceSnapshotId: string | null;
   scanRunId: string | null;
   analysisRunId: string | null;
+  candidateGraphId: string | null;
+  evaluationRunId: string | null;
+  graphRevisionId: string | null;
   requestedMode: "FULL" | "INCREMENTAL" | "AUTO";
   desiredState: "RUNNING" | "PAUSED" | "CANCELLED";
   status:
     | "QUEUED" | "RUNNING" | "PAUSE_REQUESTED" | "PAUSED"
     | "RECOVERING" | "COMPLETED" | "COMPLETED_WITH_GAPS"
     | "FAILED" | "CANCELLED";
-  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "EVALUATION" | "PROJECTION" | "PUBLISHING";
+  phase:
+    | "SOURCE_SCAN"
+    | "FACT_COMMIT"
+    | "ANALYSIS"
+    | "RECONCILIATION"
+    | "EVALUATION"
+    | "PROJECTION"
+    | "PUBLISHING";
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -202,6 +230,8 @@ The subscription is a non-authoritative pointer. It does not store authoritative
 
 ## 6. State transitions
 
+### 6.1 WorkspaceAnalysisJob
+
 | Current | Event | Next | Rule |
 |---|---|---|---|
 | absent | Start | `QUEUED` | Persist before `202` |
@@ -211,11 +241,25 @@ The subscription is a non-authoritative pointer. It does not store authoritative
 | `PAUSED` | explicit Resume | `QUEUED` | Same job and Snapshot |
 | `RUNNING` | lease expires | `RECOVERING` | Not a manual pause |
 | `RECOVERING` | new worker lease | `RUNNING` | Resume from checkpoint |
-| `RUNNING` | all phases finish | terminal success | Persist result |
+| `RUNNING` | all phases finish | terminal success | Persist result and immutable output references |
 | non-terminal | explicit Cancel | `CANCELLED` | Never auto-resume |
 | any | refresh/offline/GET | unchanged | No side effect |
 
-Stage transitions and their output references must commit atomically. A job may not enter Analysis without a committed FactBundle, or complete without a committed result.
+### 6.2 Phase transitions
+
+| Current phase | Committed event | Next phase or state |
+|---|---|---|
+| `SOURCE_SCAN` | all scan WorkUnits complete | `FACT_COMMIT` |
+| `FACT_COMMIT` | SnapshotManifest and FactBundle committed | `ANALYSIS` |
+| `ANALYSIS` | all required CandidateBundles committed | `RECONCILIATION` |
+| `RECONCILIATION` | CandidateGraph, ConflictLedger, CoverageLedger, and lineage committed | `EVALUATION` |
+| `EVALUATION` | EvaluationRun passes | `PROJECTION` |
+| `EVALUATION` | EvaluationRun rejects the revision | terminal gap/failure; keep the prior `CurrentGraphHead` |
+| `PROJECTION` | immutable GraphRevision materialized | `PUBLISHING` |
+| `PUBLISHING` | GraphRevision becomes `PUBLISHED` and CurrentGraphHead moves atomically | `COMPLETED` / `COMPLETED_WITH_GAPS` |
+
+These job phases project the detailed F001 understanding pipeline defined in
+[`legacy-system-understanding-engine.md`](legacy-system-understanding-engine.md). Phase transitions and their output references commit atomically. A job cannot enter Analysis without a committed FactBundle, enter Evaluation without reconciliation ledgers, or complete without a published-or-rejected GraphRevision result.
 
 ## 7. Scan checkpoints
 
@@ -313,6 +357,14 @@ GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/events
 
 Start references a source registration, model profile, and mode. It does not contain source bodies or browser-derived observations.
 
+Job reads return:
+
+- job `status`, `phase`, and `desiredState`;
+- SourceScanRun file counts and AnalysisRun WorkUnit counts;
+- Snapshot, FactBundle, AnalysisRun, CandidateGraph, EvaluationRun, and GraphRevision references;
+- the most recent error and whether it is retryable;
+- a monotonically increasing `version`.
+
 ## 13. UI contract
 
 ```text
@@ -328,7 +380,14 @@ Connection: reconnecting…
 [Pause] [Cancel]
 ```
 
-Connection and job status are separate. Refresh displays reconnecting, never terminated or automatically paused. Server status is the only source of `RUNNING`, `PAUSED`, and terminal states.
+UI rules:
+
+- display connection and job status separately;
+- show reconnecting after refresh, never terminated or automatically paused;
+- derive `RUNNING`, `PAUSED`, and terminal states only from the server;
+- disable duplicate Pause while `PAUSE_REQUESTED` and show that a checkpoint is being saved;
+- allow only an explicit user Resume from `PAUSED`;
+- keep mount, refresh, reconnect, and polling paths GET-only.
 
 ## 14. Failure and recovery
 
@@ -403,7 +462,7 @@ Connection and job status are separate. Refresh displays reconnecting, never ter
 
 1. Contracts and persistence for registrations, Snapshots, scan runs, and jobs.
 2. Canonical server scanner with spool, checkpoints, relation resolution, and language parity.
-3. Unified orchestration from scan through Candidate projection.
+3. Unified orchestration from scan through Analysis, Reconciliation, Evaluation, Projection, and Publishing.
 4. Worker lease, fencing, and restart recovery.
 5. Browser thin client with command and read-only subscription surfaces.
 6. Compatibility migration and removal of browser execution authority.

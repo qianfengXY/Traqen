@@ -23,14 +23,14 @@ priority: P0
 > [`2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md`](2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md)
 > 支撑，但生命周期门禁不能替代理解正确性、增量等价、图谱发布和 Traqen 自分析门禁。
 
-**Feature truth:** `docs/features/F001-legacy-system-understanding.zh-CN.md`  
-**System truth:** `docs/architecture/traqen-system-requirements.zh-CN.md`  
-**Engine design:** `docs/features/legacy-system-understanding-engine.zh-CN.md`  
-**Goal:** 从存量代码/文档/契约/配置/测试/结果建立可审核的 canonical graph；第一次 FULL 形成完整当前图谱，后续 INCREMENTAL 更新当前图谱并保留 Feature 版本、实现映射、每次变更影响和验证历史。  
-**Architecture cell:** legacy-system understanding → canonical traceability graph  
-**Map delta:** update required  
-**Map delta why:** F001 新增完整 Inventory、六条独立证据通道、SourceSlice Broker、盲测评估、GraphRevision/CurrentGraphHead 和长期 Feature/Impact 历史。  
-**Tech stack:** Node.js ESM、JSON Schema/OpenAPI、Memory/PostgreSQL stores、server scanner/runner、Analysis Agent/Skills、React/Vinext、Node test runner。  
+**Feature truth:** `docs/features/F001-legacy-system-understanding.zh-CN.md`
+**System truth:** `docs/architecture/traqen-system-requirements.zh-CN.md`
+**Engine design:** `docs/features/legacy-system-understanding-engine.zh-CN.md`
+**Goal:** 从存量代码/文档/契约/配置/测试/结果建立可审核的 canonical graph；第一次 FULL 形成完整当前图谱，后续 INCREMENTAL 更新当前图谱并保留 Feature 版本、实现映射、每次变更影响和验证历史。
+**Architecture cell:** legacy-system understanding → canonical traceability graph
+**Map delta:** update required
+**Map delta why:** F001 新增完整 Inventory、六条独立证据通道、SourceSlice Broker、盲测评估、GraphRevision/CurrentGraphHead 和长期 Feature/Impact 历史。
+**Tech stack:** Node.js ESM、JSON Schema/OpenAPI、Memory/PostgreSQL stores、server scanner/runner、Analysis Agent/Skills、React/Vinext、Node test runner。
 **前端验证:** Yes；必须用 Traqen 分析两个固定的 Traqen Snapshot，在产品内验证最新图谱、Feature 历史、Impact 和 TraceChain。
 
 ---
