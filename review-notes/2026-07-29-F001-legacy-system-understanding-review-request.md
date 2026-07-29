@@ -2,9 +2,9 @@
 
 Review-Target-ID: refresh-independent-workspace-runs
 Branch: codex/refresh-independent-workspace-runs
-Review range: 669f6ee..HEAD
+Review range: 44578c1..HEAD
 
-Round: 2 — addresses the first independent review findings and the operator's continuous-evolution requirement.
+Round: 4 — documents the operator-requested scanner, Agent, reconciliation, and graph-publication logic after the Round-3 Design Gate approval.
 
 ## What
 
@@ -30,6 +30,16 @@ Round 2 follow-up after Kimi's second review adds:
 - atomic output references for CandidateGraph, EvaluationRun, GraphRevision, and CurrentGraphHead publication;
 - English SourceRegistration, AnalysisRun, job-read, and UI rules that match the Chinese contract;
 - a repository test that requires both translations to keep the same complete phase set and happy-path edges.
+
+Round 4 adds to both lifecycle translations:
+
+- one authority table separating deterministic observation, semantic inference, reconciliation, human governance, evaluation, and publication;
+- one end-to-end Mermaid object-flow diagram and one reconciliation/publication decision diagram;
+- a concrete order-service example from ArtifactInventory and Facts through CandidateTestIntent;
+- the two-pass Manifest/convention plus Fact-enrichment Agent planner and bounded SourceSlice Broker;
+- the six reconciliation gates, including explicit `candidateAbsences.NO_CURRENT_OBSERVATION`;
+- fail-closed GraphRevision publication, atomic CurrentGraphHead movement, and FULL→INCREMENTAL evolution;
+- an explicit current-implementation boundary so the target design is not misrepresented as shipped behavior.
 
 ## Second-Review Findings
 
@@ -96,10 +106,11 @@ Please check:
 
 ### Technical OQ
 
-1. Does the 60/30/10 blind-review protocol and input-digest boundary adequately prevent Truth Set leakage?
-2. Is the concrete SourceSlice schema/API/error boundary sufficient for an implementation contract?
-3. Are GraphRevision publication and CurrentGraphHead invariants complete under failure/concurrency?
-4. Do `traqen-self-v1` thresholds and the two-Snapshot dogfood prove useful traceability rather than self-referential node generation?
+1. Do the two diagrams preserve the authority boundary from Fact through Candidate, Decision, EvaluationRun, GraphRevision, and CurrentGraphHead?
+2. Does the scanner walkthrough distinguish complete inventory/coverage from successfully extracted Facts?
+3. Does the two-pass Agent planner remain independent from scanner discovery while respecting SourceSlice evidence boundaries?
+4. Does reconciliation correctly separate observed Candidate lineage from `candidateAbsences.NO_CURRENT_OBSERVATION`?
+5. Are the English and Chinese explanations semantically equivalent without introducing a predicate or lifecycle state outside the canonical ontology?
 
 ### Value OQ
 
@@ -107,7 +118,7 @@ No new value choice for reviewer. The operator has specified the latest-graph pl
 
 ## Next Action
 
-Perform an independent read-only review of `669f6ee..HEAD`, compare both languages and the existing ADR/architecture, then return `APPROVE` or prioritized findings. Do not implement changes.
+Perform an independent read-only review of `44578c1..HEAD`, compare both languages with F001, the understanding-engine design, and ADR-0001, then return `APPROVE` or prioritized findings. Do not implement changes.
 
 ## Review Sandbox
 
@@ -151,9 +162,24 @@ root media artifact audit in the feature worktree → no findings
 designs/**/*.pen glob → no findings
 ```
 
+Current Round-4 delta recheck:
+
+```text
+node --test test/bilingual-documentation.test.js → 2/2 pass
+npm test → 232/232 pass
+npm run test:web → production build + 40/40 pass
+npm --prefix web run lint → exit 0
+git diff --check a5f8b08 → exit 0
+logic-token audit → all required scanner/Agent/reconciliation/publication terms present in both languages
+Mermaid audit → exactly 2 diagrams in each language
+relative-link audit → all links in both lifecycle documents resolve
+root media artifact audit in the feature worktree and committed range → no findings
+designs/**/*.pen glob → no findings
+```
+
 ### Dogfood-Your-Slice
 
-Scope verdict: docs/test-only follow-up; no runtime or user-visible implementation changed, so runtime dogfood is exempt. The executable documentation contract itself was exercised by the focused bilingual phase test.
+Scope verdict: docs-only explanation; no runtime or user-visible implementation changed, so runtime dogfood is exempt. The bilingual phase test and focused logic-token/diagram/link audit exercise the documentation contract.
 
 ### Architecture ownership
 
