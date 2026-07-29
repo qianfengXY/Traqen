@@ -6,6 +6,12 @@
 
 用户可以自定义 Workspace、选择一个代码工程，在不上传源码的前提下自行分析，查看有证据支撑的当前能力形成的功能树，并对每一个功能查看五段式追溯。分析发现不能静默地把实现观察晋升为已确认的业务真相。服务端架构与保留权威的增量规则见[分析 Agent 设计](analysis-agent-design.zh-CN.md)。
 
+## 生命周期现状与 P0 后续需求
+
+当前已交付实现仍在浏览器页面内执行确定性源码扫描，只有扫描完成后才创建持久化的服务端 `AnalysisRun`。在源码扫描阶段刷新或关闭浏览器，会销毁正在工作的扫描执行器。服务端拥有 AnalysisRun 的改造只解决了派生观察被服务端接受之后的刷新安全，没有让源码扫描本身持久运行。
+
+这是已确认的产品缺口，不是目标完成态。拟定中的 P0 [服务端拥有的 Workspace 扫描与 Analysis 生命周期](workspace-scan-and-analysis-lifecycle.zh-CN.md)定义了一个用户可见的 `WorkspaceAnalysisJob`，其中包含分别写入检查点的服务端 `SourceScanRun` 与 `AnalysisRun`。在该需求交付前，下文涉及浏览器扫描的描述只代表当前实现，而不是目标生命周期。
+
 ## 用户流程
 
 1. 输入 Workspace 名称与稳定的 Project ID。

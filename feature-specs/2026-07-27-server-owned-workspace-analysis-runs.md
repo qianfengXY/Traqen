@@ -13,6 +13,8 @@ created: 2026-07-27
 
 # Server-owned Workspace Analysis Runs Implementation Plan
 
+> **Scope correction — 2026-07-29:** This implemented plan covers the server `AnalysisRun` after browser-owned source preparation has completed. It does not meet the requirement that file scanning continue independently of browser refresh or closure. The proposed P0 [server-owned Workspace scan and Analysis lifecycle](../docs/features/workspace-scan-and-analysis-lifecycle.md) and its [implementation plan](2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md) are authoritative for the complete two-stage lifecycle.
+
 **Feature:** Workspace analysis — `docs/features/workspace-analysis-design.md`
 **Goal:** A Workspace analysis accepted by the API continues independently of browser refreshes, and only an explicit user command pauses or resumes the same checkpointed server run.
 **Acceptance Criteria:** (1) Refreshing or reopening the page never pauses, resumes, restarts, or duplicates a running analysis; (2) only the server may report `RUNNING`; (3) Pause and Resume are explicit API mutations; (4) Resume keeps the same run ID and does not repeat completed WorkUnits; (5) raw project files are not uploaded or persisted; (6) completed server results update the local Candidate projection for the exact Snapshot; (7) the deterministic run pointer is persisted before Start, while stale pointers fail explicitly without inventing progress.

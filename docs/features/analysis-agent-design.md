@@ -6,11 +6,15 @@
 
 The Analysis Agent is Traqen's core source-understanding capability and the successor to a flat scanner. It turns immutable, locatable source Facts into two current projections: user-recognizable business capabilities and API interfaces. Its output feeds Feature traceability, configuration and test linkage, impact analysis, review, and later automated test agents. It proposes evidence-backed candidates; it never creates business authority.
 
+## Lifecycle scope
+
+This document defines the Agent phase that begins after a Snapshot-bound `FactBundle` exists. The shipped browser workflow still prepares those facts before starting a server `AnalysisRun`, so its file-scanning phase is not refresh-safe. The proposed P0 [server-owned Workspace scan and Analysis lifecycle](workspace-scan-and-analysis-lifecycle.md) makes that boundary explicit: a checkpointed `SourceScanRun` commits the FactBundle, then the existing checkpointed `AnalysisRun` consumes it under one `WorkspaceAnalysisJob`.
+
 ## Non-negotiable invariants
 
 1. Freeze one Source Snapshot, then run deterministic extraction and source-analysis Skills independently. Scanner candidates cannot become a Skill's input answers or decide which capabilities the Skill is allowed to see; the lanes meet only during reconciliation.
 2. Context is bounded per WorkUnit. A repository can contain 100,000 or more files without placing the whole project into one model context.
-3. A checkpoint is persisted after every server WorkUnit. The local browser workflow checkpoints bounded file batches and can reuse them after the same directory is selected again.
+3. A checkpoint is persisted after every server Analysis WorkUnit. The target lifecycle also persists every completed scan WorkUnit; browser-local batch records are only a compatibility cache and cannot satisfy an active execution contract.
 4. The first run is full. Later `AUTO` runs use the latest completed result as the incremental baseline; callers can also explicitly request `FULL` or `INCREMENTAL`.
 5. Analysis may suggest Candidate lineage by exact candidate key, stable evidence overlap, or semantic-name similarity. It never allocates, matches, or inherits a governed Feature identity.
 6. Candidate lineage and change classification are advisory metadata with `identityDecision: NOT_MADE`. Only an explicit governance Decision can create or associate an opaque `Feature.id` and business authority.
@@ -111,4 +115,4 @@ The Candidate tree has two projections. Business mode suppresses endpoints, comm
 
 ## Deliberate boundaries
 
-The Agent does not approve Claims, execute tests, or turn an LLM statement into business truth. The authenticated Traqen API owns hybrid execution, model calls, credentials, checkpoints, and lifecycle mutations; the browser only prepares derived observations and subscribes to progress. Model names, business grouping, confidence, and rationale remain candidate metadata until governed human confirmation. Multi-instance worker leasing and a distributed queue remain deployment infrastructure concerns. OpenAPI YAML and additional deterministic language AST adapters remain explicit future extensions rather than silently incomplete analysis.
+The Agent does not approve Claims, execute tests, or turn an LLM statement into business truth. The authenticated Traqen API owns hybrid execution, model calls, credentials, checkpoints, and lifecycle mutations. In the current release the browser still prepares derived observations before the server run; in the target lifecycle it only issues commands and subscribes to progress while the server-side Local Runner owns Snapshot capture and scanning. Model names, business grouping, confidence, and rationale remain candidate metadata until governed human confirmation. Multi-instance worker leasing and a distributed queue remain deployment infrastructure concerns. OpenAPI YAML and additional deterministic language AST adapters remain explicit future extensions rather than silently incomplete analysis.

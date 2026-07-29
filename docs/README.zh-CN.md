@@ -8,6 +8,7 @@ Traqen 的产品与工程文档同时维护英文和简体中文版本。两个�
 
 - [架构与产品设计](architecture/enterprise-traceable-quality-platform-design-v0.2.md) · [English](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md)
 - [本地 Workspace 分析与功能树](features/workspace-analysis-design.zh-CN.md) · [English](features/workspace-analysis-design.md)
+- [服务端拥有的 Workspace 扫描与 Analysis 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md)
 - [核心分析 Agent](features/analysis-agent-design.zh-CN.md) · [English](features/analysis-agent-design.md)
 - [Clowder AI 真实仓库 Workspace 验证](implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md) · [English](implementation/clowder-ai-workspace-analysis-2026-07-18.md)
 - [实现验证记录](implementation/)

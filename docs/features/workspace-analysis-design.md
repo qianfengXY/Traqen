@@ -6,6 +6,12 @@
 
 A user can define a Workspace, select a source-code directory, analyze it without uploading source, see evidence-backed current capabilities in a Feature tree, and inspect the five-part trace view for each capability. Discovery must never silently promote implementation observations into confirmed business truth. The server-side architecture and authority-preserving incremental rules are defined in the [Analysis Agent design](analysis-agent-design.md).
 
+## Lifecycle status and P0 follow-up
+
+The currently shipped implementation still performs deterministic source scanning inside the browser page and creates the durable server `AnalysisRun` only after that scan has finished. Refreshing or closing the browser during this source-scan phase destroys the active scan executor. The server-owned AnalysisRun change fixed refresh safety only after derived observations were accepted; it did not make source scanning durable.
+
+This is a confirmed product gap, not the intended finish line. The proposed P0 [server-owned Workspace scan and Analysis lifecycle](workspace-scan-and-analysis-lifecycle.md) defines one user-visible `WorkspaceAnalysisJob` containing two separately checkpointed server phases: `SourceScanRun` and `AnalysisRun`. Until that requirement is delivered, browser-scanning statements below describe current implementation behavior rather than the target lifecycle.
+
 ## User flow
 
 1. Enter a Workspace name and stable Project ID.

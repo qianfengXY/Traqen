@@ -1,0 +1,497 @@
+> 语言：**简体中文** · [English](workspace-scan-and-analysis-lifecycle.md)
+
+---
+feature_ids:
+  - workspace-analysis
+  - workspace-source-scan
+topics:
+  - workspace
+  - source-scan
+  - analysis-run
+  - checkpoint
+  - pause-resume
+  - browser-refresh
+doc_kind: feature-design
+created: 2026-07-29
+status: proposed
+priority: P0
+---
+
+# 服务端拥有的 Workspace 扫描与 Analysis Agent 生命周期
+
+## 1. 需求定义
+
+> “我说的是扫描阶段，扫描文件这一步。另外将扫描文件与分析 Agent 这一步的逻辑单独列为一个需求，作为重点需求推进。”
+
+本需求把 Workspace 分析明确拆成两个独立、可追踪的执行阶段：
+
+1. **SourceScanRun**：在服务端建立不可变源码快照，逐文件提取确定性事实并生成 `FactBundle`。
+2. **AnalysisRun**：基于同一个 Snapshot 的确定性 Facts 规划并执行 Agent/Skill `WorkUnit`，生成 Candidate 投影。
+
+二者由一个用户可见的 **WorkspaceAnalysisJob** 串联。浏览器不拥有任何执行器，只负责：
+
+- 创建或选择 Workspace；
+- 登记一个经过授权的源码位置；
+- 发出 Start、Pause、Resume、Cancel 命令；
+- 通过 `GET` 或事件流观察服务端状态。
+
+浏览器刷新、关闭、重新打开、断网或多标签页访问都不得改变任务状态。
+
+## 2. 当前问题与证据
+
+当前实现只把模型分析阶段迁移到了服务端。源码扫描仍由 React 组件
+`WorkspaceAnalysisView.scanWorkspace()` 中的 Promise 和内存状态驱动：
+
+- 文件目录句柄、文件列表、扫描游标、批次和 `scanning` 状态属于页面进程；
+- 服务端 `AnalysisRun` 只在全部文件扫描完成、浏览器提交 derived observations 后才创建；
+- 页面卸载会销毁唯一的扫描执行器；
+- IndexedDB 只能保存检查点，不能让执行在页面消失后继续；
+- 旧设计明确允许 `SCANNING + refresh → INTERRUPTED`，与本需求冲突。
+
+此前验证只覆盖了服务端 `AnalysisRun` 创建后的刷新场景，没有覆盖扫描阶段，因此不能作为本需求的验收证据。
+
+## 3. 完成态
+
+```text
+User
+  │ Start / Pause / Resume / Cancel
+  ▼
+WorkspaceAnalysisJob                         ← 用户看到的唯一任务
+  │
+  ├─ SourceRegistration                      ← 经过授权的源码位置
+  │    └─ SourceSnapshot                     ← 本次任务固定的不可变输入
+  │         └─ SourceScanRun                  ← 服务端逐文件扫描
+  │              └─ FactBundle               ← Snapshot-bound Facts
+  │
+  └─ AnalysisRun                             ← 服务端 Agent/Skill WorkUnits
+       └─ CandidateBundle / AnalysisResult
+
+BrowserSubscription                          ← 非权威只读指针
+```
+
+完成态必须满足：
+
+- 点击 Start 后，API 先持久化任务 ID，再异步执行。
+- SourceScanRun 与 AnalysisRun 都由服务端 worker 持有。
+- SourceScanRun 和 AnalysisRun 分别拥有自己的检查点、进度和失败语义。
+- WorkspaceAnalysisJob 使用同一个 ID 串联两个阶段。
+- 只有用户命令能够进入人工暂停状态。
+- 服务崩溃或进程重启后，非人工暂停任务从最后一个已提交检查点重新租约执行。
+- 已完成的扫描文件和 Analysis WorkUnit 不得重复执行。
+
+## 4. 用户旅程
+
+### 4.1 首次分析
+
+1. 用户创建 Workspace。
+2. 用户通过 Local Runner 登记源码目录；服务端返回不暴露绝对路径的 `sourceRegistrationId`。
+3. 用户选择模型配置并点击“开始分析”。
+4. API 返回 `202 Accepted` 和稳定的 `jobId`；页面立即展示服务端任务状态。
+5. 服务端建立源码快照并执行 SourceScanRun。
+6. 扫描完成后，服务端基于 FactBundle 创建 AnalysisRun。
+7. AnalysisRun 完成后，服务端生成 Candidate 投影。
+
+### 4.2 刷新、关闭和重新打开
+
+1. 用户可以在任意阶段刷新或关闭浏览器。
+2. 服务端任务继续运行。
+3. 页面重新打开后读取本地 subscription，并对同一 `jobId` 发 `GET`。
+4. UI 恢复服务端返回的 phase、status、进度和时间线。
+5. 刷新路径不得发送 Start、Pause、Resume 或 Cancel。
+
+### 4.3 人工暂停与恢复
+
+1. 用户点击 Pause。
+2. 服务端先记录 `PAUSE_REQUESTED`，worker 在当前原子 WorkUnit 边界保存检查点。
+3. 状态变为 `PAUSED` 后不再自动取得新租约。
+4. 用户刷新页面，任务仍为 `PAUSED`。
+5. 用户点击 Resume；同一 `jobId`、`sourceSnapshotId`、`scanRunId` 和 `analysisRunId` 继续执行。
+6. 已完成的文件与 Agent WorkUnit 被跳过。
+
+## 5. 生命周期对象普查
+
+### 5.1 SourceRegistration
+
+表示服务端被允许读取的源码位置。
+
+```ts
+type SourceRegistration = {
+  id: string;
+  projectId: string;
+  connectorKind: "LOCAL_FILESYSTEM";
+  displayName: string;
+  canonicalRootRef: string; // 加密或服务端私有；普通读取 API 不返回绝对路径
+  policyVersion: string;
+  status: "ACTIVE" | "REVOKED";
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+规则：
+
+- `rootPath` 必须经过 `realpath` 规范化并位于 operator 配置的 allowlist 下。
+- 注册时拒绝根目录、home 根目录、设备、socket 和符号链接越界。
+- 撤销 registration 不删除既有历史 Snapshot；只阻止新任务读取。
+
+### 5.2 SourceSnapshot
+
+一次 WorkspaceAnalysisJob 的不可变源码输入。
+
+```ts
+type SourceSnapshot = {
+  id: string;
+  projectId: string;
+  sourceRegistrationId: string;
+  manifestDigest: string;
+  scannerVersion: string;
+  policyVersion: string;
+  fileCount: number;
+  totalBytes: number;
+  status: "BUILDING" | "SEALED" | "FAILED";
+  createdAt: string;
+  sealedAt: string | null;
+};
+```
+
+Snapshot 在 `SEALED` 后不可追加或替换文件。运行期间源目录发生变化，不改变当前任务；下一次分析创建新的 Snapshot。
+
+### 5.3 SourceScanRun
+
+```ts
+type SourceScanRun = {
+  id: string;
+  jobId: string;
+  projectId: string;
+  sourceSnapshotId: string;
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "PAUSE_REQUESTED"
+    | "PAUSED"
+    | "COMPLETED"
+    | "COMPLETED_WITH_GAPS"
+    | "FAILED"
+    | "CANCELLED";
+  phase: "DISCOVERY" | "SNAPSHOTTING" | "EXTRACTION" | "RELATION_RESOLUTION" | "FACT_COMMIT";
+  plannedFileCount: number | null;
+  completedFileCount: number;
+  failedFileCount: number;
+  leaseOwnerId: string | null;
+  leaseToken: number;
+  leaseExpiresAt: string | null;
+  updatedAt: string;
+};
+```
+
+每个扫描 WorkUnit 的稳定身份为：
+
+```text
+hash(sourceSnapshotId + relativePath + contentHash + scannerVersion + policyVersion)
+```
+
+已提交为 `COMPLETED` 的扫描 WorkUnit 在恢复时直接跳过。
+
+### 5.4 AnalysisRun
+
+继续复用 canonical `AnalysisRun`，但只能在 SourceScanRun 已产生同一 Snapshot 的完整 FactBundle 后启动。
+
+Analysis WorkUnit 的证据仍必须满足：
+
+- `evidenceFactIds` 属于目标 WorkUnit；
+- Facts 属于同一 Project 与 Snapshot；
+- 模型置信度不超过确定性证据上限；
+- 已完成 WorkUnit 在恢复时不重复调用模型或 Skill。
+
+### 5.5 WorkspaceAnalysisJob
+
+这是用户看到的唯一任务资源。
+
+```ts
+type WorkspaceAnalysisJob = {
+  id: string;
+  projectId: string;
+  sourceRegistrationId: string;
+  sourceSnapshotId: string | null;
+  scanRunId: string | null;
+  analysisRunId: string | null;
+  requestedMode: "FULL" | "INCREMENTAL" | "AUTO";
+  desiredState: "RUNNING" | "PAUSED" | "CANCELLED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "PAUSE_REQUESTED"
+    | "PAUSED"
+    | "RECOVERING"
+    | "COMPLETED"
+    | "COMPLETED_WITH_GAPS"
+    | "FAILED"
+    | "CANCELLED";
+  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "PROJECTION";
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+```
+
+`connectionStatus` 不属于该对象。浏览器的 `CONNECTED / RECONNECTING / OFFLINE` 只能作为界面派生值，绝不能覆盖服务端 job status。
+
+### 5.6 BrowserSubscription
+
+IndexedDB 只保存：
+
+- `projectId`
+- `jobId`
+- 最后观察到的版本和时间
+
+subscription 不保存权威 `RUNNING`、扫描检查点、Fact 或 Candidate。
+
+## 6. 状态转移
+
+### 6.1 WorkspaceAnalysisJob
+
+| 当前状态 | 事件 | 下一状态 | 说明 |
+|---|---|---|---|
+| absent | `POST jobs` | `QUEUED` | 先持久化 job，再返回 `202` |
+| `QUEUED` | worker 取得租约 | `RUNNING` | 进入 `SOURCE_SCAN` |
+| `RUNNING` | 显式 Pause | `PAUSE_REQUESTED` | 持久化 desiredState |
+| `PAUSE_REQUESTED` | 当前原子单元已提交 | `PAUSED` | 停止取得新单元 |
+| `PAUSED` | 显式 Resume | `QUEUED` | 同一 job 重新取租约 |
+| `RUNNING` | worker 租约过期 | `RECOVERING` | 不视为人工暂停 |
+| `RECOVERING` | 新 worker 取得租约 | `RUNNING` | 从最后检查点继续 |
+| `RUNNING` | 所有阶段完成 | `COMPLETED` / `COMPLETED_WITH_GAPS` | 固化结果 |
+| 非终态 | 显式 Cancel | `CANCELLED` | 保留历史检查点，不自动恢复 |
+| 任意 | 浏览器刷新/断网/GET | 不变 | 无生命周期副作用 |
+
+### 6.2 阶段切换
+
+| 前置 | 事件 | 后续 |
+|---|---|---|
+| `SOURCE_SCAN` | Snapshot sealed | `SOURCE_SCAN / EXTRACTION` |
+| SourceScanRun terminal-success | FactBundle committed | `ANALYSIS` |
+| AnalysisRun terminal-success | Candidate projection committed | `PROJECTION` |
+| Projection committed | Job terminal-success | `COMPLETED` / `COMPLETED_WITH_GAPS` |
+
+阶段切换必须和输出引用在同一个事务中提交，禁止出现“阶段已前进但 FactBundle/Result 不存在”的窗口。
+
+## 7. 扫描检查点设计
+
+SourceScanRun 分五步执行：
+
+1. **DISCOVERY**：遍历 allowlisted root，建立有序文件清单。
+2. **SNAPSHOTTING**：读取文件并写入 content-addressed 本地 spool，固定 content hash。
+3. **EXTRACTION**：对每个不可变 blob 提取 Artifact、Symbol、Endpoint、Configuration、Test Asset 等 Facts。
+4. **RELATION_RESOLUTION**：跨文件解析 import/call/test linkage。
+5. **FACT_COMMIT**：原子写入 SnapshotManifest 和 FactBundle。
+
+检查点要求：
+
+- 每个文件或有界批次完成后原子提交。
+- 进程崩溃最多重做一个未提交单元。
+- 重试不得重复写 Fact；Fact ID 和 WorkUnit ID 必须确定性生成。
+- `RUNNING` 状态必须有有效 worker lease；租约过期进入 `RECOVERING`。
+- 扫描失败分为 `SKIPPED`、可重试 `FAILED` 和致命根目录错误。
+- 文件总数在 manifest seal 前显示为不确定；seal 后显示准确分母。
+
+## 8. 扫描器能力等价门禁
+
+当前浏览器 scanner 与服务端 `JavaScriptProjectScanner` 的语言覆盖不一致。迁移不得降低现有能力。
+
+切换到服务端扫描前，canonical scanner 必须覆盖当前用户可见能力：
+
+- JavaScript / TypeScript / JSX / TSX
+- Java
+- Python
+- Go
+- C#
+- Rust
+- OpenAPI
+- 工程命令与配置
+- 测试文件线索
+
+必须用同一组多语言 fixture 做旧/新扫描结果对账，至少比较：
+
+- 文件覆盖率
+- Candidate/Fact 类型和数量
+- 稳定 ID
+- source location
+- 配置值脱敏
+- 测试线索与实现关系
+- diagnostics
+
+能力不等价时不得切断浏览器旧路径，也不得宣布本需求完成。
+
+## 9. Analysis Agent 接续设计
+
+- SourceScanRun 完成后，job 使用固定 `sourceSnapshotId` 和 `factBundleId` 创建 AnalysisRun。
+- Pause 在模型请求进行中时可以中止当前请求，但该 WorkUnit 必须回到 `QUEUED`，且不得误记为已完成。
+- 已经成功提交 CandidateBundle 的 WorkUnit 永不重复执行。
+- Resume 复用同一个 AnalysisRun；不得创建新 run 冒充继续。
+- 模型/Skill 输出校验失败只影响对应 WorkUnit，并保留可诊断错误。
+- 自动重试受 `maxAttemptsPerWorkUnit` 限制；耗尽后按策略进入 `COMPLETED_WITH_GAPS` 或 `PAUSED`，不得无限循环。
+
+## 10. 并发、租约与幂等
+
+- Job 创建请求必须提供客户端生成的稳定 `idempotencyKey` 或 job ID。
+- 同一 key 的重复 Start 返回同一 job。
+- 每个 job 同时只能存在一个有效 worker lease。
+- lease 更新使用单调递增 `leaseToken` 作为 fencing token；旧 worker 不能提交新结果。
+- 多标签页只读同一 job；Pause/Resume 重复点击应幂等。
+- WorkUnit 采用 at-least-once 调度和 exactly-once result commit。
+- 进程重启后：
+  - `desiredState=RUNNING` 的过期任务自动恢复；
+  - `desiredState=PAUSED` 的任务保持暂停；
+  - `desiredState=CANCELLED` 的任务永不恢复。
+
+## 11. 安全与数据边界
+
+Local Runner 只适用于 API 能直接访问源码的本地或私有部署。
+
+硬性约束：
+
+- operator 配置 `TRAQEN_ALLOWED_WORKSPACE_ROOTS`；未配置时禁止本地路径注册。
+- 对 root 和每个文件执行 canonical `realpath` 边界检查。
+- 不跟随越过 root 的符号链接。
+- 拒绝设备、socket、FIFO 和非普通文件。
+- API 普通读取响应不返回绝对路径。
+- 日志不记录源码正文、secret 或未脱敏 `.env` 值。
+- 原始源码只进入本地 Snapshot spool 和 scanner；不直接发送给外部模型。
+- 外部模型只接收经过 Evidence Policy 过滤的 bounded Facts。
+- spool 默认持久化直到用户显式删除 Snapshot；不得使用隐式 TTL。
+- 删除必须走显式 API、审计并只删除目标 Snapshot 的引用安全 blob。
+
+远程 Git、代码托管平台连接器和浏览器上传源码不在第一阶段范围内。
+
+## 12. API 草案
+
+```http
+POST /v1/projects/{projectId}/source-registrations
+GET  /v1/projects/{projectId}/source-registrations/{registrationId}
+POST /v1/projects/{projectId}/source-registrations/{registrationId}/revoke
+
+POST /v1/projects/{projectId}/workspace-analysis-jobs
+GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}
+POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/pause
+POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/resume
+POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/cancel
+GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/events
+```
+
+Start 请求只引用 `sourceRegistrationId`、模型配置和分析模式，不包含文件正文或 derived observations。
+
+Job 查询返回：
+
+- job status、phase 和 desiredState
+- SourceScanRun 文件计数
+- AnalysisRun WorkUnit 计数
+- Snapshot/FactBundle/AnalysisRun 引用
+- 最近错误和可重试性
+- 单调递增 `version`
+
+## 13. UI 设计
+
+任务卡同时展示两个独立阶段：
+
+```text
+Workspace analysis · JOB-123                     [RUNNING]
+
+1. Source scan
+   Snapshot sealed · 5,240 / 12,480 files · 42%
+
+2. Analysis Agent
+   Waiting for FactBundle · 0 / 0 WorkUnits
+
+Connection: reconnecting…
+[Pause] [Cancel]
+```
+
+UI 规则：
+
+- Connection 与 Job status 分开展示。
+- 刷新后先显示“正在重新连接”，不得显示“任务终止”或“已暂停”。
+- 只根据服务端响应显示 `RUNNING/PAUSED/COMPLETED`。
+- `PAUSE_REQUESTED` 期间禁用重复 Pause，显示“正在保存检查点”。
+- `PAUSED` 时仅用户点击 Resume 才能继续。
+- 页面 mount、refresh 和 polling 路径必须是 GET-only。
+
+## 14. 错误与恢复矩阵
+
+| 故障 | Job 行为 | 用户看到 |
+|---|---|---|
+| 浏览器刷新/关闭 | 不变，服务端继续 | 重新连接后恢复同一 job |
+| 浏览器断网 | 不变，服务端继续 | Connection=OFFLINE |
+| API 暂时不可达 | 状态未知但不改为失败 | RECONNECTING |
+| worker 崩溃 | lease 过期后自动恢复 | RECOVERING → RUNNING |
+| API 进程重启 | 持久 job 重新租约 | 同一 job 从检查点继续 |
+| 源目录权限失效 | 扫描暂停或失败，保留检查点 | 明确授权错误 |
+| 单文件无法读取 | 按策略 gap 或失败 | 文件级 diagnostics |
+| 源文件运行中变化 | 当前 Snapshot 不变 | 下次运行提示有新 Snapshot |
+| 模型超时 | 当前 WorkUnit 重试 | 已完成单元保持 |
+| 人工 Pause | 保存边界后暂停 | PAUSE_REQUESTED → PAUSED |
+
+## 15. 不变量
+
+- **INV-1**：浏览器生命周期事件永不改变 job 状态。
+- **INV-2**：只有服务端 lease owner 可以执行扫描或 Analysis WorkUnit。
+- **INV-3**：一个 job 固定引用一个不可变 SourceSnapshot。
+- **INV-4**：SourceScanRun 完成前不得启动 AnalysisRun。
+- **INV-5**：已完成扫描 WorkUnit 和 Analysis WorkUnit 不重复执行。
+- **INV-6**：只有显式 Pause 命令能把 desiredState 改为 `PAUSED`。
+- **INV-7**：人工暂停任务在刷新、断网和服务重启后保持暂停。
+- **INV-8**：非人工暂停的运行任务在 worker/API 恢复后自动继续。
+- **INV-9**：客户端连接状态与服务端任务状态是两个不同对象。
+- **INV-10**：SourceScanRun、FactBundle、AnalysisRun 必须属于同一 Project 与 Snapshot。
+- **INV-11**：外部模型不能接收原始源码或未脱敏 secret。
+- **INV-12**：多语言 scanner 能力未达到现有基线时不能切换。
+
+## 16. 验收标准
+
+### 扫描阶段
+
+- 启动至少 10,000 文件的工程扫描，连续刷新十次，`jobId` 和 `scanRunId` 不变。
+- 关闭浏览器至少 30 秒，服务端 `completedFileCount` 继续增长。
+- 扫描中人工 Pause，达到 `PAUSED` 后计数停止；刷新仍暂停。
+- Resume 后从同一 Snapshot 继续，已完成 file WorkUnit 的执行计数不增加。
+- API 进程在扫描中重启，任务自动从最后提交检查点恢复。
+
+### Analysis Agent 阶段
+
+- 刷新、关闭和断网不终止 AnalysisRun。
+- Pause/Resume 复用同一 `analysisRunId`。
+- 已完成 Agent WorkUnit 不再次调用模型或 Skill。
+- API/worker 重启后继续未完成单元，人工暂停任务不自动恢复。
+
+### 安全与一致性
+
+- 未在 allowlist 的路径、`..` 越界和符号链接逃逸全部被拒绝。
+- 浏览器请求、API 响应和日志均不包含原始源码正文或真实 secret。
+- 当前 Snapshot 在源目录变化时保持不变；下一次运行生成新 Snapshot。
+- 浏览器旧 scanner 与 canonical server scanner 的多语言 fixture 对账达到 100% 必需能力等价。
+
+### 用户体验
+
+- 页面刷新时只短暂显示 connection 恢复，不显示终止或自动暂停。
+- 扫描与 Agent 进度独立可见，并明确当前阶段。
+- 任意页面只读挂接都不产生 POST。
+
+## 17. 非目标
+
+- 用 Service Worker、SharedWorker 或隐藏浏览器标签维持长任务。
+- 通过刷新事件自动调用 Resume。
+- 第一阶段支持远程 Git clone 或浏览器源码上传。
+- 分布式多数据中心调度。
+- 把 Candidate 自动晋升为 Governed Feature。
+- 保证外部模型请求绝对 exactly-once；系统保证的是结果提交幂等和已完成单元不重放。
+
+## 18. 实施阶段
+
+1. **契约与持久化基线**：SourceRegistration、SourceSnapshot、SourceScanRun、WorkspaceAnalysisJob schema 与 store。
+2. **Canonical server scanner**：Snapshot spool、逐文件检查点、跨文件关系解析和多语言能力对账。
+3. **统一 job orchestrator**：扫描 → Fact commit → AnalysisRun → Projection。
+4. **租约与恢复**：heartbeat、fencing token、API/worker restart recovery。
+5. **浏览器瘦客户端**：移除 page-owned scanner，保留 start/pause/resume/status。
+6. **兼容迁移与删除旧路径**：迁移 subscription，删除 browser execution/checkpoint authority。
+7. **真实验收**：大仓扫描、多次刷新、断网、人工暂停/恢复、API 重启和视觉证据。
+
+详细 TDD 实施计划见
+[`feature-specs/2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md`](../../feature-specs/2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md)。
