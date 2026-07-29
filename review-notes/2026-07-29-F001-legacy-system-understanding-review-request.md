@@ -2,7 +2,7 @@
 
 Review-Target-ID: refresh-independent-workspace-runs
 Branch: codex/refresh-independent-workspace-runs
-Review range: 84e94f3..HEAD
+Review range: 84e94f3..aedffec
 
 Round: 5 — specifies complete raw-source Agent planning, deterministic partition/DAG execution, model/Skill capability routing, and selective multi-model reconciliation after the Round-4 approval.
 
@@ -58,6 +58,15 @@ Round 5 adds:
 - F001 AC-B5–B7, J8, KD-8, engine-level acceptance, lifecycle invariants/acceptance, implementation schemas, persistence census, adversarial cases, and Task-6 RED tests for the same contract;
 - system requirements SR-021–SR-023 for deterministic complete planning, fail-closed capability routing, and selective evidence-based multi-model execution;
 - the operator's detailed Agent-partition/model/large-repository requirement in both discussion documents.
+
+## Round-5 Review Outcome
+
+- **Reviewer:** Kimi 3 / Kimi
+- **Reviewed range:** `84e94f3..aedffec`
+- **Verdict:** `APPROVE`
+- **Independent verification:** backend 232/232; Web production build + 40/40; Web lint; diff check; bilingual contract tests; relative-link audit.
+- **Decision:** `aedffec` is the approved F001 design baseline for subsequent implementation.
+- **Implementation-detail notes:** Task 6 owns the concrete `ConventionRegistry` and `ExecutionProfile` schemas/fixtures. The unrelated untracked files in the main worktree remain outside this design range and require the co-creator's explicit disposition.
 
 ## Second-Review Findings
 
