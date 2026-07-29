@@ -6,6 +6,8 @@ Traqen maintains its product and engineering documentation in English and Simpli
 
 ## Documentation map
 
+- [Feature roadmap](ROADMAP.md) · [简体中文](ROADMAP.zh-CN.md)
+- [F001: Server-owned Workspace scan and Analysis lifecycle](features/F001-server-owned-workspace-scan-and-analysis.md) · [简体中文](features/F001-server-owned-workspace-scan-and-analysis.zh-CN.md)
 - [Architecture and product design](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md) · [中文原文](architecture/enterprise-traceable-quality-platform-design-v0.2.md)
 - [Local Workspace analysis and Feature tree](features/workspace-analysis-design.md) · [简体中文](features/workspace-analysis-design.zh-CN.md)
 - [Server-owned Workspace scan and Analysis lifecycle](features/workspace-scan-and-analysis-lifecycle.md) · [简体中文](features/workspace-scan-and-analysis-lifecycle.zh-CN.md)

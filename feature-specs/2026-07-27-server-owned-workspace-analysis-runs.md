@@ -1,6 +1,5 @@
 ---
-feature_ids:
-  - workspace-analysis
+feature_ids: [F001]
 topics:
   - workspace
   - analysis-run

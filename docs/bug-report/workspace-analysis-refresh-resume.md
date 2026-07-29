@@ -1,8 +1,7 @@
 > Language: **English** · [简体中文](workspace-analysis-refresh-resume.zh-CN.md)
 
 ---
-feature_ids:
-  - workspace-analysis
+feature_ids: [F001]
 topics:
   - workspace
   - analysis-run

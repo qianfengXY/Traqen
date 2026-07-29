@@ -1,7 +1,6 @@
 ---
-feature_ids:
-  - workspace-analysis
-  - workspace-source-scan
+feature_ids: [F001]
+related_features: []
 topics:
   - workspace
   - source-scan

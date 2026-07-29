@@ -1,9 +1,8 @@
 > 语言：**简体中文** · [English](workspace-scan-and-analysis-lifecycle.md)
 
 ---
-feature_ids:
-  - workspace-analysis
-  - workspace-source-scan
+feature_ids: [F001]
+related_features: []
 topics:
   - workspace
   - source-scan
@@ -18,6 +17,8 @@ priority: P0
 ---
 
 # 服务端拥有的 Workspace 扫描与 Analysis Agent 生命周期
+
+> Feature 聚合入口：[F001](F001-server-owned-workspace-scan-and-analysis.zh-CN.md)
 
 ## 1. 需求定义
 

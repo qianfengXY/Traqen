@@ -6,6 +6,8 @@ Traqen 的产品与工程文档同时维护英文和简体中文版本。两个�
 
 ## 文档导航
 
+- [Feature 路线图](ROADMAP.zh-CN.md) · [English](ROADMAP.md)
+- [F001：服务端拥有的 Workspace 扫描与 Analysis 生命周期](features/F001-server-owned-workspace-scan-and-analysis.zh-CN.md) · [English](features/F001-server-owned-workspace-scan-and-analysis.md)
 - [架构与产品设计](architecture/enterprise-traceable-quality-platform-design-v0.2.md) · [English](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md)
 - [本地 Workspace 分析与功能树](features/workspace-analysis-design.zh-CN.md) · [English](features/workspace-analysis-design.md)
 - [服务端拥有的 Workspace 扫描与 Analysis 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md)
