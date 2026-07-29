@@ -10,7 +10,7 @@ A user can define a Workspace, select a source-code directory, analyze it withou
 
 The currently shipped implementation still performs deterministic source scanning inside the browser page and creates the durable server `AnalysisRun` only after that scan has finished. Refreshing or closing the browser during this source-scan phase destroys the active scan executor. The server-owned AnalysisRun change fixed refresh safety only after derived observations were accepted; it did not make source scanning durable.
 
-This is a confirmed product gap, not the intended finish line. The proposed P0 [server-owned Workspace scan and Analysis lifecycle](workspace-scan-and-analysis-lifecycle.md) defines one user-visible `WorkspaceAnalysisJob` containing two separately checkpointed server phases: `SourceScanRun` and `AnalysisRun`. Until that requirement is delivered, browser-scanning statements below describe current implementation behavior rather than the target lifecycle.
+This is a confirmed product gap, not the intended finish line. The supporting [durable Workspace scan and Analysis lifecycle](workspace-scan-and-analysis-lifecycle.md) defines one user-visible `WorkspaceAnalysisJob` containing two separately checkpointed server phases: `SourceScanRun` and `AnalysisRun`. The broader P0 objective and correctness contract are defined by [F001 legacy-system understanding](F001-legacy-system-understanding.md). Until those requirements are delivered, browser-scanning statements below describe current implementation behavior rather than the target lifecycle.
 
 ## User flow
 

@@ -7,10 +7,12 @@ Traqen maintains its product and engineering documentation in English and Simpli
 ## Documentation map
 
 - [Feature roadmap](ROADMAP.md) · [简体中文](ROADMAP.zh-CN.md)
-- [F001: Server-owned Workspace scan and Analysis lifecycle](features/F001-server-owned-workspace-scan-and-analysis.md) · [简体中文](features/F001-server-owned-workspace-scan-and-analysis.zh-CN.md)
+- [System requirements: legacy-system understanding and canonical quality traceability](architecture/traqen-system-requirements.md) · [简体中文](architecture/traqen-system-requirements.zh-CN.md)
+- [F001: Legacy-system understanding and canonical graph construction](features/F001-legacy-system-understanding.md) · [简体中文](features/F001-legacy-system-understanding.zh-CN.md)
+- [Legacy-system understanding engine](features/legacy-system-understanding-engine.md) · [简体中文](features/legacy-system-understanding-engine.zh-CN.md)
 - [Architecture and product design](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md) · [中文原文](architecture/enterprise-traceable-quality-platform-design-v0.2.md)
 - [Local Workspace analysis and Feature tree](features/workspace-analysis-design.md) · [简体中文](features/workspace-analysis-design.zh-CN.md)
-- [Server-owned Workspace scan and Analysis lifecycle](features/workspace-scan-and-analysis-lifecycle.md) · [简体中文](features/workspace-scan-and-analysis-lifecycle.zh-CN.md)
+- [Durable Workspace scan and Analysis lifecycle](features/workspace-scan-and-analysis-lifecycle.md) · [简体中文](features/workspace-scan-and-analysis-lifecycle.zh-CN.md)
 - [Core Analysis Agent](features/analysis-agent-design.md) · [简体中文](features/analysis-agent-design.zh-CN.md)
 - [Clowder AI real-repository Workspace validation](implementation/clowder-ai-workspace-analysis-2026-07-18.md) · [简体中文](implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)
 - [Implementation validation records](implementation/)

@@ -2,13 +2,15 @@
 
 # 分析 Agent 设计
 
+> 当前能力基线。F001 对完整清点、独立于扫描器的任务规划、独立源码通道、对账、正确性评估和 Traqen 自分析的重新设计见[存量系统理解引擎](legacy-system-understanding-engine.zh-CN.md)。
+
 ## 产品定位
 
 分析 Agent 是 Traqen 的核心源码理解能力，也是原平面扫描器的进阶形态。它把不可变、可定位的源码 Fact 转换成两种最新视图：用户可理解的纯业务能力和 API 接口。其结果会供功能追溯、配置与测试关联、影响分析、人工审核以及后续自动化测试 Agent 使用。它只能提出有证据支撑的候选，不能创建业务权威。
 
 ## 生命周期范围
 
-本文定义的是 Snapshot-bound `FactBundle` 已经存在之后的 Agent 阶段。当前已交付的浏览器流程仍在启动服务端 `AnalysisRun` 前准备这些事实，因此文件扫描阶段不能跨刷新持续运行。拟定中的 P0 [服务端拥有的 Workspace 扫描与 Analysis 生命周期](workspace-scan-and-analysis-lifecycle.zh-CN.md)明确了该边界：写入检查点的 `SourceScanRun` 先提交 FactBundle，再由现有的检查点式 `AnalysisRun` 消费；两者统一隶属于一个 `WorkspaceAnalysisJob`。
+本文定义的是 Snapshot-bound `FactBundle` 已经存在之后的 Agent 阶段。当前已交付的浏览器流程仍在启动服务端 `AnalysisRun` 前准备这些事实，因此文件扫描阶段不能跨刷新持续运行。支撑性的[持久 Workspace 扫描与 Analysis 生命周期](workspace-scan-and-analysis-lifecycle.zh-CN.md)明确了该边界：写入检查点的 `SourceScanRun` 先提交 FactBundle，再由现有的检查点式 `AnalysisRun` 消费；两者统一隶属于一个 `WorkspaceAnalysisJob`。
 
 ## 不可破坏的约束
 

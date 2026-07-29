@@ -29,7 +29,7 @@ created: 2026-07-27
 
 The operator confirmed that the failing scenario is the **file-scanning phase**, not the later model/AnalysisRun phase. The previous fix and the regression list below prove only that an already-created server `AnalysisRun` survives refresh. They are not acceptance evidence for end-to-end Workspace analysis.
 
-The authoritative P0 follow-up is the [server-owned Workspace scan and Analysis lifecycle](../features/workspace-scan-and-analysis-lifecycle.md). It moves source registration, immutable Snapshot capture, deterministic scanning, checkpointing, leases, and recovery to a server-side Local Runner, then hands the committed FactBundle to the existing Analysis Agent. Browser refresh remains read-only in both phases.
+The durable-execution follow-up is the [Workspace scan and Analysis lifecycle](../features/workspace-scan-and-analysis-lifecycle.md). It moves source registration, immutable Snapshot capture, deterministic scanning, checkpointing, leases, and recovery to a server-side Local Runner, then hands the committed FactBundle to the existing Analysis Agent. Browser refresh remains read-only in both phases. The broader P0 truth is [F001 legacy-system understanding](../features/F001-legacy-system-understanding.md).
 
 ## Regression coverage
 

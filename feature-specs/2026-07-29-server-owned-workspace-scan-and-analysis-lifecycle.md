@@ -16,6 +16,8 @@ priority: P0
 
 # Server-owned Workspace Scan and Analysis Lifecycle Implementation Plan
 
+> **Scope note:** this is a supporting implementation plan for F001's durable execution layer. It is not the complete F001 implementation plan and does not by itself satisfy repository-understanding correctness or Traqen-on-Traqen acceptance. The Feature truth is `docs/features/F001-legacy-system-understanding.md`.
+
 **Feature:** Workspace scan and Analysis Agent lifecycle — `docs/features/workspace-scan-and-analysis-lifecycle.md`
 **Goal:** Once a Workspace analysis job is accepted, source scanning and Agent analysis continue under server ownership across browser refresh, closure, disconnect, and API/worker restart, while explicit Pause and Resume reuse the same checkpointed job without repeating completed work.
 **Acceptance Criteria:** (1) Browser lifecycle events are read-only and never alter the job; (2) SourceScanRun and AnalysisRun have separate durable checkpoints under one job ID; (3) Pause and Resume are explicit and reuse the same Snapshot and child runs; (4) completed scan and analysis WorkUnits are not repeated; (5) running jobs recover after worker/API restart while manually paused jobs stay paused; (6) local source access is allowlisted and cannot escape by traversal or symlink; (7) raw source and secrets do not enter browser responses, logs, or external model inputs; (8) the canonical server scanner reaches current browser-scanner language parity before cutover; (9) the UI separates connection state from task state and shows both phases.

@@ -16,9 +16,9 @@ status: proposed
 priority: P0
 ---
 
-# Server-owned Workspace Scan and Analysis Agent Lifecycle
+# Durable Workspace Scan and Analysis Agent Lifecycle
 
-> Feature home: [F001](F001-server-owned-workspace-scan-and-analysis.md)
+> Supporting execution design for [F001](F001-legacy-system-understanding.md). This document specifies durable ownership and recovery; understanding correctness, reconciliation, and evaluation are defined by the F001 engine design.
 
 ## 1. Requirement
 

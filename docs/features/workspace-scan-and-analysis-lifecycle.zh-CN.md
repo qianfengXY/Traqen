@@ -16,9 +16,9 @@ status: proposed
 priority: P0
 ---
 
-# 服务端拥有的 Workspace 扫描与 Analysis Agent 生命周期
+# 持久 Workspace 扫描与 Analysis Agent 生命周期
 
-> Feature 聚合入口：[F001](F001-server-owned-workspace-scan-and-analysis.zh-CN.md)
+> [F001](F001-legacy-system-understanding.zh-CN.md) 的支撑执行设计。本文定义持久所有权与恢复；理解正确性、对账和评估由 F001 理解引擎设计定义。
 
 ## 1. 需求定义
 

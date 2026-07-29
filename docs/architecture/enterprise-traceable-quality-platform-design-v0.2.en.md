@@ -2,6 +2,8 @@
 
 # Enterprise Traceable Quality Platform — Detailed Design
 
+> System requirements source: [Traqen System Requirements](traqen-system-requirements.md). This document remains the detailed subsystem architecture.
+
 > Version: v0.2.0
 > Status: Baseline for the implementation vision, overall design, and core traceability model
 > Date: 2026-07-14

@@ -29,7 +29,7 @@ created: 2026-07-27
 
 operator 已确认失败场景是**文件扫描阶段**，不是后续的模型/AnalysisRun 阶段。此前修复和下方回归项只能证明一个已经创建的服务端 `AnalysisRun` 可以跨刷新运行，不能作为端到端 Workspace 分析的验收证据。
 
-权威 P0 后续需求是[服务端拥有的 Workspace 扫描与 Analysis 生命周期](../features/workspace-scan-and-analysis-lifecycle.zh-CN.md)。它把源码登记、不可变 Snapshot 捕获、确定性扫描、检查点、租约和恢复迁移到服务端 Local Runner，再把已提交的 FactBundle 交给现有 Analysis Agent。两个阶段中的浏览器刷新都只允许读取。
+持久执行的后续设计是[Workspace 扫描与 Analysis 生命周期](../features/workspace-scan-and-analysis-lifecycle.zh-CN.md)。它把源码登记、不可变 Snapshot 捕获、确定性扫描、检查点、租约和恢复迁移到服务端 Local Runner，再把已提交的 FactBundle 交给现有 Analysis Agent。两个阶段中的浏览器刷新都只允许读取。更完整的 P0 真相源是 [F001 存量系统理解](../features/F001-legacy-system-understanding.zh-CN.md)。
 
 ## 回归覆盖
 

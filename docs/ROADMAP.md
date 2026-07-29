@@ -14,4 +14,4 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 
 | ID | Priority | Feature | Status | Owner | Source | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | Server-owned Workspace scan and Analysis lifecycle | spec | CodeX | operator requirement | [F001](features/F001-server-owned-workspace-scan-and-analysis.md) |
+| F001 | P0 | Legacy-system understanding and canonical graph construction | spec | CodeX | operator core requirement | [F001](features/F001-legacy-system-understanding.md) |

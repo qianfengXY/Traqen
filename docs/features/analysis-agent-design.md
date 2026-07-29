@@ -2,13 +2,15 @@
 
 # Analysis Agent design
 
+> Current capability baseline. The F001 redesign for complete inventory, scanner-independent planning, independent source lanes, reconciliation, correctness evaluation, and Traqen self-analysis is defined in [Legacy-System Understanding Engine](legacy-system-understanding-engine.md).
+
 ## Product role
 
 The Analysis Agent is Traqen's core source-understanding capability and the successor to a flat scanner. It turns immutable, locatable source Facts into two current projections: user-recognizable business capabilities and API interfaces. Its output feeds Feature traceability, configuration and test linkage, impact analysis, review, and later automated test agents. It proposes evidence-backed candidates; it never creates business authority.
 
 ## Lifecycle scope
 
-This document defines the Agent phase that begins after a Snapshot-bound `FactBundle` exists. The shipped browser workflow still prepares those facts before starting a server `AnalysisRun`, so its file-scanning phase is not refresh-safe. The proposed P0 [server-owned Workspace scan and Analysis lifecycle](workspace-scan-and-analysis-lifecycle.md) makes that boundary explicit: a checkpointed `SourceScanRun` commits the FactBundle, then the existing checkpointed `AnalysisRun` consumes it under one `WorkspaceAnalysisJob`.
+This document defines the Agent phase that begins after a Snapshot-bound `FactBundle` exists. The shipped browser workflow still prepares those facts before starting a server `AnalysisRun`, so its file-scanning phase is not refresh-safe. The supporting [durable Workspace scan and Analysis lifecycle](workspace-scan-and-analysis-lifecycle.md) makes that boundary explicit: a checkpointed `SourceScanRun` commits the FactBundle, then the existing checkpointed `AnalysisRun` consumes it under one `WorkspaceAnalysisJob`.
 
 ## Non-negotiable invariants
 

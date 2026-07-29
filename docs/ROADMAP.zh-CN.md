@@ -14,4 +14,4 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 
 | ID | 优先级 | Feature | 状态 | Owner | 来源 | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | 服务端拥有的 Workspace 扫描与 Analysis 生命周期 | spec | CodeX | operator 需求 | [F001](features/F001-server-owned-workspace-scan-and-analysis.zh-CN.md) |
+| F001 | P0 | 存量系统理解与 Canonical Graph 构建 | spec | CodeX | operator 核心需求 | [F001](features/F001-legacy-system-understanding.zh-CN.md) |

@@ -7,10 +7,12 @@ Traqen 的产品与工程文档同时维护英文和简体中文版本。两个�
 ## 文档导航
 
 - [Feature 路线图](ROADMAP.zh-CN.md) · [English](ROADMAP.md)
-- [F001：服务端拥有的 Workspace 扫描与 Analysis 生命周期](features/F001-server-owned-workspace-scan-and-analysis.zh-CN.md) · [English](features/F001-server-owned-workspace-scan-and-analysis.md)
+- [系统需求：存量系统理解与统一质量追溯](architecture/traqen-system-requirements.zh-CN.md) · [English](architecture/traqen-system-requirements.md)
+- [F001：存量系统理解与 Canonical Graph 构建](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md)
+- [存量系统理解引擎](features/legacy-system-understanding-engine.zh-CN.md) · [English](features/legacy-system-understanding-engine.md)
 - [架构与产品设计](architecture/enterprise-traceable-quality-platform-design-v0.2.md) · [English](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md)
 - [本地 Workspace 分析与功能树](features/workspace-analysis-design.zh-CN.md) · [English](features/workspace-analysis-design.md)
-- [服务端拥有的 Workspace 扫描与 Analysis 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md)
+- [持久 Workspace 扫描与 Analysis 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md)
 - [核心分析 Agent](features/analysis-agent-design.zh-CN.md) · [English](features/analysis-agent-design.md)
 - [Clowder AI 真实仓库 Workspace 验证](implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md) · [English](implementation/clowder-ai-workspace-analysis-2026-07-18.md)
 - [实现验证记录](implementation/)
