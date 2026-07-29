@@ -73,6 +73,172 @@ The API persists the job ID before returning `202 Accepted`. SourceScanRun and A
 
 Only an explicit user command can manually pause a job. A crashed worker or restarted API automatically re-leases work from the last committed checkpoint when `desiredState=RUNNING`.
 
+### 3.1 End-to-end understanding logic
+
+Traqen deliberately separates observation, interpretation, reconciliation, governance, and publication:
+
+| Layer | Input | Output | Authority |
+|---|---|---|---|
+| deterministic scanner | immutable source Snapshot | ArtifactInventory, Facts, deterministic relations | may state what is present in the Snapshot |
+| Analysis Agent / Skills | authorized Facts and bounded source slices | evidence-backed Candidates | may propose semantic interpretations |
+| reconciliation | Facts, Candidates, prior lineage | CandidateGraph, conflict/coverage ledgers, lineage | may match and compare; may not assign governed identity |
+| review and Decision | reconciled Candidates and evidence | governed Feature, Claim, FeatureVersion, TestSpec decisions | the only path that creates or changes business authority |
+| evaluation and publication | candidate graph, decisions, evidence, gaps | immutable GraphRevision and atomic CurrentGraphHead update | may publish only a revision that passes policy |
+
+Neither a path name, a model response, a similarity score, nor a deterministic hash may create or merge a governed `Feature.id`.
+
+```mermaid
+flowchart LR
+    A[Authorized code or document project] --> B[SourceRegistration]
+    B --> C[Immutable SourceSnapshot]
+    C --> D[ArtifactInventory]
+
+    D --> E[Deterministic extractors]
+    E --> F[FactBundle]
+    F --> G[Cross-file relation resolver]
+
+    D --> H[Manifest and convention plan]
+    G --> I[Fact-enrichment plan]
+    H --> J[Bounded Analysis WorkUnits]
+    I --> J
+    J --> K[Agent and Skills]
+    K --> L[CandidateBundles]
+
+    F --> M[Candidate reconciliation]
+    L --> M
+    M --> N[CandidateGraph]
+    M --> O[ConflictLedger]
+    M --> P[CoverageLedger]
+    M --> Q[CandidateLineage]
+
+    N --> R[EvaluationRun]
+    O --> R
+    P --> R
+    Q --> R
+    N --> S[Human review and Decision]
+    S --> T[Governed Feature, Claim, TestSpec]
+    T --> U[GraphRevision]
+    R -->|pass| U
+    R -->|reject| V[Keep prior CurrentGraphHead]
+    U --> W[Atomic publish]
+    W --> X[CurrentGraphHead]
+    X --> Y[Feature, API, trace, impact and quality views]
+```
+
+### 3.2 Scanner algorithm: source to deterministic Facts
+
+Given a project such as an order service, the scanner executes four logical steps:
+
+1. **Authorize and freeze the input.** `SourceRegistration` proves that the runner may read the root. Files are copied into a content-addressed Snapshot spool with relative path, content hash, size, media type, detected language, and scanner/policy versions. A source change during the run belongs to the next Snapshot.
+2. **Seal the full inventory.** Every in-scope artifact receives an explicit disposition: `INCLUDED`, `EXCLUDED_BY_POLICY`, `UNSUPPORTED`, `GENERATED`, `BINARY`, `OVERSIZED`, `SECRET_REDACTED`, or `READ_FAILED`. Before manifest seal, the denominator is unknown; after seal, coverage is measured against the exact inventory rather than only successfully parsed files.
+3. **Run versioned deterministic extractors.** Code yields modules, symbols, imports, calls, endpoints, jobs, and commands; schemas and migrations yield data objects and reads/writes; configuration yields keys and consumers without secret values; documents yield addressable requirement/design passages; tests yield cases, assertions, fixtures, and implementation links; result files yield execution identities and metadata.
+4. **Resolve cross-file relations and commit.** The resolver links routes to handlers, calls to symbols, tests to implementation, configuration to consumers, and code to data objects. `SnapshotManifest + FactBundle` commit atomically. Each Fact retains Project, Snapshot, source span/content hash, extractor identity/version, a stable entity identity, and an immutable Snapshot-local Fact identity.
+
+For example, the deterministic layer may produce:
+
+```text
+POST /orders
+  └─ IMPLEMENTED_BY → OrderController.submitOrder
+       └─ CALLS → OrderService.createOrder
+            └─ WRITES → orders
+
+order-submit.test.js
+  └─ EXERCISES → OrderService.createOrder
+
+ORDER_SUBMIT_ENABLED
+  └─ CONSUMED_BY → OrderService.createOrder
+```
+
+This proves observable structure. It does not yet prove that the structure is the governed business feature “Submit order.”
+
+### 3.3 Analysis Agent algorithm: Facts to semantic Candidates
+
+The Agent does not replace parsers. It answers bounded semantic questions that deterministic extraction cannot settle: business capability, actors and workflow, rules and exceptions, design-to-implementation mapping, test intent, contradictions, and missing relations.
+
+Planning occurs in two passes so scanner blind spots do not become Agent blind spots:
+
+1. **Manifest/convention pass.** Before semantic Facts are complete, create at least one WorkUnit for every inventory partition using ArtifactInventory, package/module/entrypoint conventions, API and document manifests, test/config/data clusters, safe path categories, and prior Snapshot lineage.
+2. **Fact-enrichment pass.** Add WorkUnits for unresolved calls, undocumented endpoints, requirements without implementation evidence, unclear tests, configuration without consumers, document/code contradictions, and the relation frontier touched by an incremental change.
+
+Each WorkUnit is pinned to:
+
+```text
+Snapshot + analysis lane + bounded scope + producer version + policy digest
+```
+
+When source text is necessary, the Agent requests an Artifact/Symbol-bound slice through the SourceSlice Broker. The Broker validates the WorkUnit scope, applies secret scanning/redaction, clips line and byte ranges, enforces the 64 KiB / 12,000-token default ceiling, and records request/policy/result digests. Denial or truncation becomes a Diagnostic/Gap rather than an authorization bypass.
+
+The output is a structured `CandidateBundle`, not a free-form summary:
+
+```text
+CandidateFeature: "Submit order"
+CandidateClaim: "Only DRAFT orders may be submitted"
+CandidateRelation:
+  Submit order IMPLEMENTED_BY OrderService.createOrder
+  Submit order EXPOSED_BY POST /orders
+  Submit order CONFIGURED_BY ORDER_SUBMIT_ENABLED
+CandidateTestIntent:
+  order-submit.test.js may exercise "Only DRAFT orders may be submitted"
+```
+
+Every Candidate carries evidence Fact IDs, Snapshot and WorkUnit identity, producer/model/Skill version, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Project, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
+
+### 3.4 Reconciliation algorithm: preserve identity uncertainty
+
+Reconciliation is not name-based deduplication. It runs the following gates in order:
+
+1. validate Candidate schema, endpoints, evidence scope, SourceSlice authorization, and confidence caps;
+2. match exact stable Candidate keys, shared Facts/source slices, explicit API/document/symbol references, constraints, and scope;
+3. compare with the prior Snapshot and classify observed Candidate lineage as `NEW`, `UNCHANGED`, `BUSINESS_SEMANTICS_CHANGED`, `IMPLEMENTATION_REMAPPED`, or `EVIDENCE_REFRESHED`; place a prior Candidate that is no longer observed under `candidateAbsences` with disposition `NO_CURRENT_OBSERVATION`;
+4. propose duplicate, parent/child, split, merge, or existing-Feature mappings without applying them;
+5. preserve contradictory document, implementation, and test claims in `ConflictLedger`;
+6. prove inventory/WorkUnit/evidence coverage and unresolved gaps in `CoverageLedger`.
+
+```mermaid
+flowchart TD
+    A[CandidateBundle] --> B{Schema and evidence valid?}
+    B -->|no| C[Reject candidate and retain Diagnostic]
+    B -->|yes| D[Exact key and evidence matching]
+    D --> E[Prior-Snapshot lineage comparison]
+    E --> F{Conflicting explanations?}
+    F -->|yes| G[ConflictLedger: preserve every claim and citation]
+    F -->|no| H[CandidateGraph]
+    G --> H
+    H --> I[Coverage and gap evaluation]
+    I --> J{Governed identity change needed?}
+    J -->|yes| K[Human Review and Decision]
+    J -->|no| L[Retain existing governed identity]
+    K --> M[Create or revise Feature, Claim, FeatureVersion or TestSpec]
+    L --> N[Build immutable GraphRevision]
+    M --> N
+    N --> O{Evaluation passes?}
+    O -->|no| P[REJECTED revision; prior head remains]
+    O -->|yes| Q[Publish revision and move CurrentGraphHead atomically]
+```
+
+The reconciliation result consists of `CandidateGraph`, `ConflictLedger`, `CoverageLedger`, and `CandidateLineage`. A Candidate remains `PENDING_REVIEW` with no governed Feature ID until an authorized Decision accepts, rejects, links, splits, merges, or classifies it.
+
+### 3.5 Graph projection, publication, and incremental evolution
+
+A `GraphRevision` materializes one coherent view of SnapshotManifest/ArtifactInventory, Facts, reconciled Candidates and ledgers, governed Features/Claims/Decisions/TestSpecs, test executions and Evidence, ChangeSet/ImpactAssessment, and explicit gaps. All nodes and edges retain Snapshot, producer, evidence, decision, status, version, and time provenance.
+
+Publication is fail-closed:
+
+```text
+BUILDING → EVALUATING → PUBLISHED
+                     ↘ REJECTED
+```
+
+Publishing the immutable revision and moving `CurrentGraphHead` are one transaction. On scan, reconciliation, evaluation, or publication failure, the failed revision and diagnostics remain queryable while the prior head continues serving every Feature Tree, API Tree, TraceChain, impact, coverage, conflict, and quality projection.
+
+The first successful project analysis must be `FULL`. A later `INCREMENTAL` run compares ArtifactInventories, invalidates affected Facts, resolves the changed relation frontier, reruns WorkUnits whose evidence or producer changed, reuses unchanged Candidate lineage, emits a ChangeSet, computes impacted Features/Claims/TestSpecs, creates an ImpactAssessment and revalidation plan, and publishes a new GraphRevision only after evaluation passes. Implementation movement alone updates mappings and history; only a governed business-definition Decision creates a new FeatureVersion.
+
+### 3.6 Current implementation boundary
+
+This section defines the F001 target, not a claim that every component already exists. Current code has deterministic JavaScript/Java and partial OpenAPI/SQL/config/test scanning, SnapshotManifest and FactBundle relations, bounded Analysis WorkUnits and Candidate validation, incremental Candidate lineage, governed Feature/Claim/Decision/TestSpec/Evidence objects, and graph/trace projections.
+
+F001 still requires the complete server-owned SourceScanRun, multilingual canonical-scanner parity, complete ArtifactInventory, manifest-first Agent planning, SourceSlice Broker, global reconciliation and its ledgers, EvaluationRun/GraphRevision/CurrentGraphHead publication, and the two-Snapshot “Traqen analyzes Traqen” acceptance.
+
 ## 4. User journey
 
 ### First run

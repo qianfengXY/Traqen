@@ -86,6 +86,172 @@ BrowserSubscription                          ← 非权威只读指针
 - 服务崩溃或进程重启后，非人工暂停任务从最后一个已提交检查点重新租约执行。
 - 已完成的扫描文件和 Analysis WorkUnit 不得重复执行。
 
+### 3.1 端到端理解逻辑
+
+Traqen 故意把观察、解释、对账、治理和发布分成不同权威层：
+
+| 层 | 输入 | 输出 | 权威边界 |
+|---|---|---|---|
+| 确定性扫描器 | 不可变源码 Snapshot | ArtifactInventory、Facts、确定性关系 | 可以陈述 Snapshot 中客观存在什么 |
+| Analysis Agent / Skills | 授权 Facts 与有界源码切片 | 带证据的 Candidates | 可以提出语义解释 |
+| 对账层 | Facts、Candidates、历史 lineage | CandidateGraph、冲突/覆盖账本、lineage | 可以匹配比较，不能分配治理身份 |
+| 人工 Review 与 Decision | 已对账 Candidates 与证据 | Feature、Claim、FeatureVersion、TestSpec 决策 | 唯一可以创建或修改业务权威对象的路径 |
+| 评估与发布 | CandidateGraph、Decision、Evidence、Gap | 不可变 GraphRevision 与原子 CurrentGraphHead 更新 | 只有通过策略的 Revision 才能发布 |
+
+路径名、模型回答、相似度分数和确定性 Hash 都不能创建或合并受治理的 `Feature.id`。
+
+```mermaid
+flowchart LR
+    A[经过授权的代码或文档工程] --> B[SourceRegistration]
+    B --> C[不可变 SourceSnapshot]
+    C --> D[ArtifactInventory]
+
+    D --> E[确定性 Extractors]
+    E --> F[FactBundle]
+    F --> G[跨文件关系解析]
+
+    D --> H[Manifest 与约定派生计划]
+    G --> I[Fact 增强计划]
+    H --> J[有界 Analysis WorkUnits]
+    I --> J
+    J --> K[Agent 与 Skills]
+    K --> L[CandidateBundles]
+
+    F --> M[Candidate 对账]
+    L --> M
+    M --> N[CandidateGraph]
+    M --> O[ConflictLedger]
+    M --> P[CoverageLedger]
+    M --> Q[CandidateLineage]
+
+    N --> R[EvaluationRun]
+    O --> R
+    P --> R
+    Q --> R
+    N --> S[人工 Review 与 Decision]
+    S --> T[Governed Feature, Claim, TestSpec]
+    T --> U[GraphRevision]
+    R -->|通过| U
+    R -->|拒绝| V[保留旧 CurrentGraphHead]
+    U --> W[原子发布]
+    W --> X[CurrentGraphHead]
+    X --> Y[Feature、API、追溯、影响与质量视图]
+```
+
+### 3.2 扫描算法：从工程源码到确定性 Facts
+
+以一个订单工程为例，扫描器执行四个逻辑步骤：
+
+1. **授权并固定输入。** `SourceRegistration` 证明 Runner 可以读取该根目录；文件进入 content-addressed Snapshot spool，并固定相对路径、内容 Hash、大小、媒体类型、语言以及 scanner/policy 版本。运行期间发生的源码变化属于下一个 Snapshot。
+2. **密封完整清单。** 范围内每个 Artifact 都有明确处置：`INCLUDED`、`EXCLUDED_BY_POLICY`、`UNSUPPORTED`、`GENERATED`、`BINARY`、`OVERSIZED`、`SECRET_REDACTED` 或 `READ_FAILED`。Manifest 密封前分母未知；密封后，覆盖率按完整 Inventory 计算，不能只统计成功解析的文件。
+3. **执行版本化确定性 Extractor。** 代码生成 Module、Symbol、Import、Call、Endpoint、Job、Command；Schema 和迁移生成 DataObject 与 Read/Write；配置生成 Key 与 Consumer 但不保存真实秘密；文档生成可定位的需求/设计段落；测试生成 Case、Assertion、Fixture 与实现关系；结果文件生成执行身份和元数据。
+4. **解析跨文件关系并提交。** Resolver 把 Route 关联 Handler、Call 关联 Symbol、Test 关联实现、Configuration 关联 Consumer、代码关联数据对象。`SnapshotManifest + FactBundle` 原子提交。每个 Fact 保留 Project、Snapshot、源码区间/内容 Hash、Extractor 身份与版本、稳定实体身份和 Snapshot 内不可变 Fact 身份。
+
+例如确定性层可能产生：
+
+```text
+POST /orders
+  └─ IMPLEMENTED_BY → OrderController.submitOrder
+       └─ CALLS → OrderService.createOrder
+            └─ WRITES → orders
+
+order-submit.test.js
+  └─ EXERCISES → OrderService.createOrder
+
+ORDER_SUBMIT_ENABLED
+  └─ CONSUMED_BY → OrderService.createOrder
+```
+
+这些关系证明可观察的工程结构，但还不能证明它就是权威业务 Feature“提交订单”。
+
+### 3.3 Analysis Agent 算法：从 Facts 到语义 Candidates
+
+Agent 不替代 Parser。它回答确定性提取无法独立确定的有界语义问题：业务能力、Actor 与流程、规则与例外、设计到实现映射、测试意图、矛盾和缺失关系。
+
+任务采用两轮规划，避免扫描器盲区直接变成 Agent 盲区：
+
+1. **Manifest/约定轮。** 语义 Facts 尚未完整时，就用 ArtifactInventory、Package/Module/入口点约定、API 与文档 Manifest、测试/配置/数据文件簇、安全路径类别和上一 Snapshot lineage，为每个 Inventory 分区至少创建一个 WorkUnit。
+2. **Fact 增强轮。** 再为未解析 Call、无文档 Endpoint、无实现证据需求、意图不清测试、无 Consumer 配置、文档/代码冲突以及增量变化关系前沿追加 WorkUnit。
+
+每个 WorkUnit 固定绑定：
+
+```text
+Snapshot + analysis lane + bounded scope + producer version + policy digest
+```
+
+需要源码时，Agent 只能通过 SourceSlice Broker 按 Artifact/Symbol 请求有界切片。Broker 校验 WorkUnit 范围、执行秘密扫描与脱敏、裁剪行号和字节范围、执行默认 64 KiB / 12,000 Token 上限，并记录请求/策略/结果 Digest。拒绝或截断会形成 Diagnostic/Gap，不能成为绕过授权的理由。
+
+输出是结构化 `CandidateBundle`，不是自由文本总结：
+
+```text
+CandidateFeature: “提交订单”
+CandidateClaim: “只有 DRAFT 订单可以提交”
+CandidateRelation:
+  提交订单 IMPLEMENTED_BY OrderService.createOrder
+  提交订单 EXPOSED_BY POST /orders
+  提交订单 CONFIGURED_BY ORDER_SUBMIT_ENABLED
+CandidateTestIntent:
+  order-submit.test.js 可能覆盖“只有 DRAFT 订单可以提交”
+```
+
+每个 Candidate 携带证据 Fact ID、Snapshot/WorkUnit、Producer/模型/Skill 版本、分维度置信度、确定性置信度上限、不确定性和替代解释。确定性 Validator 拒绝越过 WorkUnit、跨 Project/Snapshot、缺失、重复或伪造的证据；剥离模型擅自填写的治理 ID/字段；并把置信度限制在证据允许的上限内。
+
+### 3.4 对账算法：保留身份不确定性
+
+对账不是按名称去重，而是依序执行以下门禁：
+
+1. 校验 Candidate Schema、端点、证据范围、SourceSlice 授权和置信度上限；
+2. 匹配稳定 Candidate Key、共同 Fact/SourceSlice、显式 API/文档/Symbol 引用、约束和作用域；
+3. 与上一 Snapshot 比较，把本次仍观察到的 Candidate lineage 分类为 `NEW`、`UNCHANGED`、`BUSINESS_SEMANTICS_CHANGED`、`IMPLEMENTATION_REMAPPED` 或 `EVIDENCE_REFRESHED`；上一 Snapshot 有但本次未观察到的 Candidate 进入 `candidateAbsences`，处置为 `NO_CURRENT_OBSERVATION`；
+4. 提出重复、父子、拆分、合并或映射到既有 Feature 的建议，但不直接执行；
+5. 把互相矛盾的文档、实现和测试主张全部保存在 `ConflictLedger`；
+6. 在 `CoverageLedger` 中证明 Inventory/WorkUnit/证据覆盖，并记录仍未解决的 Gap。
+
+```mermaid
+flowchart TD
+    A[CandidateBundle] --> B{Schema 与证据有效?}
+    B -->|否| C[拒绝 Candidate 并保留 Diagnostic]
+    B -->|是| D[精确 Key 与证据匹配]
+    D --> E[上一 Snapshot lineage 比较]
+    E --> F{存在互斥解释?}
+    F -->|是| G[ConflictLedger: 保留每条主张与引用]
+    F -->|否| H[CandidateGraph]
+    G --> H
+    H --> I[覆盖与 Gap 评估]
+    I --> J{需要改变治理身份?}
+    J -->|是| K[人工 Review 与 Decision]
+    J -->|否| L[保留既有治理身份]
+    K --> M[创建或修订 Feature, Claim, FeatureVersion, TestSpec]
+    L --> N[构建不可变 GraphRevision]
+    M --> N
+    N --> O{Evaluation 通过?}
+    O -->|否| P[REJECTED Revision; 旧 Head 保持不变]
+    O -->|是| Q[发布 Revision 并原子移动 CurrentGraphHead]
+```
+
+对账输出由 `CandidateGraph`、`ConflictLedger`、`CoverageLedger` 和 `CandidateLineage` 组成。Candidate 在授权 Decision 接受、拒绝、关联、拆分、合并或分类前保持 `PENDING_REVIEW`，并且没有 governed Feature ID。
+
+### 3.5 图谱投影、发布与增量演进
+
+一次 `GraphRevision` 物化同一个一致视图：SnapshotManifest/ArtifactInventory、Facts、已对账 Candidate 与账本、受治理 Feature/Claim/Decision/TestSpec、测试执行与 Evidence、ChangeSet/ImpactAssessment，以及明确 Gap。所有节点和边保留 Snapshot、Producer、Evidence、Decision、Status、Version 和 Time provenance。
+
+发布按 fail-closed 工作：
+
+```text
+BUILDING → EVALUATING → PUBLISHED
+                     ↘ REJECTED
+```
+
+发布不可变 Revision 和移动 `CurrentGraphHead` 必须是同一个事务。扫描、对账、评估或发布失败时，失败 Revision 与 Diagnostic 仍可查询，旧 Head 继续服务 Feature Tree、API Tree、TraceChain、影响、覆盖、冲突和质量等全部投影视图。
+
+项目第一次成功分析必须是 `FULL`。后续 `INCREMENTAL` 比较 ArtifactInventory、失效受影响 Facts、重算变化关系前沿、重跑证据或 Producer 变化的 WorkUnit、复用未变化 Candidate lineage、生成 ChangeSet、计算受影响 Feature/Claim/TestSpec、形成 ImpactAssessment 与重验证计划，并且只在评估通过后发布新 GraphRevision。单纯实现移动只更新映射与历史；只有经过治理的业务定义 Decision 才创建新 FeatureVersion。
+
+### 3.6 当前实现边界
+
+本节定义 F001 目标，不代表所有组件已经实现。当前代码已经具备 JavaScript/Java 及部分 OpenAPI/SQL/配置/测试确定性扫描、SnapshotManifest 与 FactBundle 关系、有界 Analysis WorkUnit 与 Candidate 校验、增量 Candidate lineage、受治理 Feature/Claim/Decision/TestSpec/Evidence，以及图谱/追溯投影。
+
+F001 仍需完成：完整服务端 SourceScanRun、多语言 canonical scanner 等价、完整 ArtifactInventory、Manifest-first Agent 规划、SourceSlice Broker、全局对账及账本、EvaluationRun/GraphRevision/CurrentGraphHead 发布，以及“Traqen 分析 Traqen”的双 Snapshot 验收。
+
 ## 4. 用户旅程
 
 ### 4.1 首次分析
