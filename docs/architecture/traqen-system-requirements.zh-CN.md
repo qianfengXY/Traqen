@@ -170,6 +170,31 @@ Feature 在业务域间移动或源码路径改变，不能改变其不透明稳
 - 变更影响与重验证计划；
 - 完整性、缺口、可信和运行指标。
 
+### 6.3 当前图谱与历史账本
+
+Traqen 必须把“当前可查询状态”和“历史演进事实”分开建模：
+
+```text
+Project
+  └─ CURRENT_GRAPH_HEAD → GraphRevision
+       ├─ PROJECTS → 当前 Snapshot 的 Facts / Candidates / 受治理对象映射
+       └─ EVALUATED_BY → EvaluationRun
+
+Snapshot N ── ChangeSet / ImpactAssessment ──→ Snapshot N+1
+
+Feature
+  └─ HAS_VERSION → FeatureVersion 1..n
+       └─ AUTHORIZED_BY → Decision
+```
+
+- 项目的第一次成功分析必须是 `FULL`，并在完整清点、分析、对账和评估通过后原子发布首个 `CurrentGraphHead`。
+- 后续源码、需求文档、配置、测试或结果变化创建新 Snapshot，默认运行 `INCREMENTAL`；operator 或策略可以强制 `FULL`。
+- 增量运行只重算受影响区域，但必须产生从前一已发布 Snapshot 到新 Snapshot 的 `ChangeSet`、`ImpactAssessment` 和重验证计划，并通过全量/增量等价门禁。
+- 默认 Graph、Feature Tree、TraceChain、Impact 与 Metrics 查询只读取最新已发布的 `CurrentGraphHead`。构建中、失败或评估未通过的 GraphRevision 不能替换当前头。
+- GraphRevision、SnapshotManifest、FactBundle、Candidate lineage、Decision、FeatureVersion、Claim/TestSpec 版本、ChangeSet、ImpactAssessment、TestExecution 和 Evidence 都是不可变、可追溯的历史账本；“只展示最新图谱”不等于删除历史。
+- Feature 的稳定身份贯穿所有 Snapshot。只有业务定义发生变化并经 Decision 授权时才创建新的 FeatureVersion。代码、配置、测试或部署映射变化不能自行修订业务 FeatureVersion，而是生成新的实现映射、符合性状态、影响和验证记录。
+- Candidate 在新 Snapshot 中消失只表示“当前未观察到”，不能自动表示 Feature 退役；Feature 退役、合并或拆分仍需要显式治理。
+
 ## 7. 理解流水线
 
 ### 7.1 独立证据通道
@@ -214,6 +239,11 @@ Feature 在业务域间移动或源码路径改变，不能改变其不透明稳
 | SR-013 | 用人工审核维度、正负断言和明确 Unknown 报告正确性。 |
 | SR-014 | 按部署数据边界保护源码、路径、凭据、秘密、模型输入、日志和 Evidence。 |
 | SR-015 | 用 Traqen 的固定 Snapshot 做自举分析，并在 Traqen 中展示经审核的 Traqen 自身能力图谱。 |
+| SR-016 | 第一次成功分析必须是 FULL；后续 Snapshot 默认增量分析，并可按策略强制 FULL。 |
+| SR-017 | 只有完成且评估通过的 GraphRevision 才能原子替换 CurrentGraphHead；失败运行保留旧头。 |
+| SR-018 | 默认图谱只投影最新已发布状态，同时以不可变账本保留 FeatureVersion、Snapshot 映射、Decision、ChangeSet、ImpactAssessment 与 Evidence 历史。 |
+| SR-019 | 每个已发布 Snapshot 转换都必须解释本次变化影响哪些现有 Feature/Claim/TestSpec/依赖，以及哪些对象需要重审或重验证。 |
+| SR-020 | 只有 Decision 能创建新的业务 FeatureVersion；代码、配置、测试或部署变化只更新实现、符合性、影响与验证历史，不能静默改变业务定义。 |
 
 ## 9. 核心用户旅程
 
@@ -243,6 +273,14 @@ operator 能区分：
 - 执行失败、通过或结论不明确；
 - Evidence 缺失、过期、无效或完整。
 
+### 9.5 持续演进一个已理解系统
+
+1. operator 在首个完整图谱上选择一个后续 Commit、源码目录状态或其他新 Snapshot。
+2. Traqen 比较新旧 Artifact/Facts，复用未变化工作，只对受影响区域执行扫描、Agent 分析与对账。
+3. 发布前，Traqen 展示本次 `ChangeSet`、受影响 Feature/Claim/TestSpec/依赖、失效的派生知识和重验证计划。
+4. 增量结果与受控全量重建在评估范围内等价后，新的 GraphRevision 原子成为 `CurrentGraphHead`；否则旧图谱继续作为当前真相。
+5. operator 默认查看最新图谱，也可进入 Feature 历史查看每个 FeatureVersion 的 Decision、各 Snapshot 实现映射、每次变更影响和验证结果。
+
 ## 10. Traqen 分析 Traqen 验收合同
 
 Traqen 自身仓库是强制的真实 dogfood 数据集。小型 Fixture 仍用于确定性边界用例，但不能代替这项验收。
@@ -264,6 +302,7 @@ Traqen 自身仓库是强制的真实 dogfood 数据集。小型 Fixture 仍用�
 | 确定性 Facts 与源码观察 | `src/domain/facts.js`、`src/domain/workspace-observations.js`、`src/scanner/` |
 | Analysis Agent 与 Candidate 证据边界 | `src/analysis/analysis-agent.js`、`src/shared/candidate-bundle.js` |
 | Reverse Skill 编排 | `src/domain/reverse-skill.js`、`src/skills/reverse-orchestrator.js` |
+| HTTP API 与应用编排 | `src/api/http-server.js`、`src/application/traceability-application.js` |
 | 治理与 Decision | `src/domain/governance.js`、`src/domain/decision-governance.js`、`src/domain/review.js` |
 | Feature Graph 与 TraceChain | `src/domain/feature-graph.js`、`src/domain/trace-chain.js` |
 | TestSpec、Runner、结果与 Evidence | `src/domain/test-spec*.js`、`src/runner/`、`src/domain/execution-evidence.js` |
@@ -285,6 +324,25 @@ Truth Set 是人工审核数据，不是硬编码扫描器输出；它通过 Dec
 - 一项受控 Traqen 变更，其预测影响与所需重验证结果能和人工预期对比。
 
 仅仅扫描完成或生成很多节点，不能宣称“Traqen 已理解 Traqen”。
+
+### 10.4 `traqen-self-v1` 判定阈值与权威
+
+首个 Traqen 自分析策略固定为 `traqen-self-v1`，至少满足：
+
+| 维度 | 阻塞阈值 |
+|---|---|
+| Inventory | 范围内 Artifact 处置率 100% |
+| 来源/Schema | Fact、WorkUnit、Candidate 的 Snapshot 与证据边界有效率 100% |
+| 锚点召回 | 至少 30 个正向锚点、覆盖至少 10 项核心能力；召回率 ≥ 90%，且不得漏掉 P0 锚点 |
+| 必须关系 | 至少 60 条类型化关系断言，满足率 100% |
+| 禁止关系 | 至少 30 条负向断言，违反数为 0 |
+| Candidate 精度 | 分层抽样最多 100 条（不足则全量）；明确判断的 Candidate 中人工确认支持率 ≥ 90%，高置信无支撑结论为阻塞项 |
+| 不确定性诚实度 | 所有抽样歧义、证据不足、不支持和预算耗尽案例必须显示 Gap/Conflict，不得静默成功 |
+| 重放 | 同一 Snapshot 与引擎/策略版本的语义 Digest 100% 一致 |
+| 增量等价 | 受控第二 Snapshot 的未变区域 100% 等价，变化区域只包含预期或已解释差异 |
+| 端到端价值 | 至少 1 条完整审核 TraceChain，以及 1 个经过人工预期对照的变更影响场景 |
+
+operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Reviewer 批准源码锚点和关系断言。实现作者不能批准自己的 held-out Truth Set 或验收结果。任何阈值调整都必须形成带生效版本的 Decision，不能追溯性改写旧 EvaluationRun。
 
 ## 11. 安全与可信要求
 

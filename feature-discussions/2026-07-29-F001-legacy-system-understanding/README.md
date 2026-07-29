@@ -26,6 +26,10 @@ status: converged
 > “通过分析存量代码或文件等，做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联，便于之后做变更影响分析、内容查看、质量追溯等。”
 >
 > “拿我自己这个 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。”
+>
+> “第一次分析存量系统肯定是全量分析……需求或者代码等被修改以后进行增量分析，就应该重新更新图谱，同时还需要分析出本次变更会对原来的功能产生哪些影响以及每个功能点的历史版本变化。”
+>
+> “图谱本身只记录最新的，但功能点是需要记录变化过程及每次变化会影响哪些功能。”
 
 ## Misunderstanding corrected
 
@@ -40,6 +44,10 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 5. Preserve Candidate/Decision/governed object and test clue/TestSpec/execution/Evidence boundaries.
 6. Make a pinned Traqen-on-Traqen graph, TraceChain, and change-impact journey a release gate.
 7. Retain durable server ownership as a supporting F001 design.
+8. Force FULL for the first successful run, default later Snapshots to INCREMENTAL, and gate them by full equivalence.
+9. Read the latest `CurrentGraphHead` by default while retaining immutable GraphRevision, FeatureVersion, implementation mapping by Snapshot, ChangeSet, ImpactAssessment, Decision, and Evidence history.
+10. Never let code/configuration change create a business FeatureVersion automatically; only a Decision revises business definition.
+11. Prevent overfitting with numeric `traqen-self-v1` thresholds and calibration/held-out/challenge blind review.
 
 ## Design sources
 
@@ -47,6 +55,7 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 - `docs/features/F001-legacy-system-understanding.md`
 - `docs/features/legacy-system-understanding-engine.md`
 - `docs/features/workspace-scan-and-analysis-lifecycle.md`
+- `feature-specs/2026-07-29-legacy-system-understanding-engine.md`
 
 ## Design Gate items
 
@@ -54,4 +63,5 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 - approve the reviewed, versioned truth-set authority;
 - approve Traqen-on-Traqen as required acceptance;
 - approve allowlisted Local Runner as the first source connector;
-- establish initial evaluation baselines before setting blocking thresholds.
+- approve numeric `traqen-self-v1` thresholds and independent blind review;
+- approve first-FULL/later-INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature/Impact history semantics.

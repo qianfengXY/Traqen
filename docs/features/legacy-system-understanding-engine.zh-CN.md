@@ -169,16 +169,69 @@ SourceRegistration
 
 ### 5.3 `SourceSlice`
 
-Agent 或 Skill 获得经过授权、有界的源码投影：
+Agent 或 Skill 不能直接读取任意路径。它必须通过 Broker 用 Snapshot 内稳定 ID 请求经过授权、有界的源码投影：
 
-- 稳定 Artifact ID 与相对路径；
-- 请求的行/符号范围；
-- 脱敏内容或结构化节选；
-- 关联确定性 Facts 与诊断；
-- 明确 Token/Byte 预算；
-- 允许引用的证据 ID。
+```ts
+type SourceSliceRequest = {
+  id: string;
+  projectId: string;
+  snapshotManifestId: string;
+  analysisRunId: string;
+  workUnitId: string;
+  producerRef: string;
+  purpose:
+    | "ENTRYPOINT_RECOVERY"
+    | "RELATION_RESOLUTION"
+    | "CONTRADICTION_PROBE"
+    | "TEST_INTENT"
+    | "CONFIG_INFLUENCE";
+  selectors: Array<{
+    artifactId: string;
+    symbolId?: string;
+    startLine?: number;
+    endLine?: number;
+  }>;
+  allowedFactIds: string[];
+  maxBytes: number;   // traqen-source-slice-v1 默认/硬上限：64 KiB
+  maxTokens: number;  // traqen-source-slice-v1 默认/硬上限：12,000
+  policyId: string;
+  requestedAt: string;
+};
 
-源码切片 Broker 记录请求目的和 Digest；内容离开可信 Runner 前执行秘密策略。
+type SourceSlice = {
+  id: string;
+  requestId: string;
+  artifactSlices: Array<{
+    artifactId: string;
+    relativePath: string;
+    contentDigest: string;
+    range: { startLine: number; endLine: number };
+    redactedText?: string;
+    structuralSummary?: object;
+  }>;
+  factIds: string[];
+  redactions: Array<{ kind: string; range: object }>;
+  contentDigest: string;
+  truncated: boolean;
+  omittedReasons: string[];
+  policyDecisionId: string;
+  createdAt: string;
+};
+```
+
+API 边界：
+
+```http
+POST /v1/projects/{projectId}/analysis-runs/{runId}/work-units/{workUnitId}/source-slices
+GET  /v1/projects/{projectId}/analysis-runs/{runId}/work-units/{workUnitId}/source-slices/{sliceId}
+```
+
+- 只有服务端 Agent/Skill Runtime 身份能创建请求；普通浏览器不能借此任意读取源码。
+- Selector 只能使用同一 Snapshot 的 Artifact/Symbol ID，禁止绝对路径、任意 Glob 和跨 Snapshot 范围。
+- `allowedFactIds` 必须是 WorkUnit 证据集合的子集；返回 Fact 也不能越界。
+- Broker 在内容离开可信 Runner 前执行确定性秘密扫描、脱敏、范围裁剪和预算限制，并记录目的、策略、请求/响应 Digest。
+- 错误必须可判定：`SOURCE_SLICE_SCOPE_VIOLATION` (403)、`ARTIFACT_NOT_IN_SNAPSHOT` (422)、`FACT_NOT_IN_WORK_UNIT` (422)、`SECRET_POLICY_BLOCKED` (422)、`SOURCE_SLICE_BUDGET_EXCEEDED` (413)、`UNSUPPORTED_BINARY` (422)、`STALE_ANALYSIS_RUN` (409)。
+- 被拒绝或截断必须成为 WorkUnit Diagnostic/Gap，不能改用绕过 Broker 的源码读取。
 
 ### 5.4 `UnderstandingWorkUnit`
 
@@ -240,7 +293,31 @@ WorkUnit 范围包括：
 
 解析诊断和不完整结构进入缺口。不支持语法不能静默 Fallback 为“成功”。
 
-### 6.3 独立语义分析
+### 6.3 文档与契约通道
+
+该通道独立处理需求、设计、ADR、Feature 文档、OpenAPI、Schema 与 Runbook：
+
+- 确定性解析保留段落、Operation、Schema 和显式交叉引用为 Facts；
+- 语义步骤提出 Requirement/Design/API Candidate 及其关系；
+- 文档陈述不能自动成为受治理 Claim；
+- 文档与代码冲突进入 ConflictLedger，不能以“文档优先”或“代码优先”静默覆盖。
+
+### 6.4 测试、配置、结果与执行通道
+
+引擎分别产生：
+
+- `TestAssetFact`：观察到静态测试文件/Case/断言；
+- `CandidateTestIntent`：该资产可能覆盖规则的候选说明；
+- `ConfigurationFact`：配置 Key、默认/存在性及消费者，不包含真实秘密值；
+- `ExecutionArtifactFact`：观察到构建/测试结果 Artifact，但尚未证明其可信执行 lineage；
+- `TestSpec`：仅在治理之后出现；
+- `TestExecution`：一次实际受控执行；
+- `VerificationResult`：针对 Claim 的 PASS/FAIL/INCONCLUSIVE；
+- `Evidence`：支撑结果的受保护输出。
+
+文件名含有 “test”、结果文件名含有 “passed” 或模型声称“已验证”都不能关闭验证缺口。
+
+### 6.5 Agent/Skill 独立语义通道
 
 Agent/Skill 采用多个有界视角：
 
@@ -256,20 +333,7 @@ Agent/Skill 采用多个有界视角：
 
 直接源码分析独立于确定性发现，但不能绕过确定性证据和 Schema 校验。
 
-### 6.4 测试与执行解释
-
-引擎分别产生：
-
-- `TestAssetFact`：观察到静态测试文件/Case/断言；
-- `CandidateTestIntent`：该资产可能覆盖规则的候选说明；
-- `TestSpec`：仅在治理之后出现；
-- `TestExecution`：一次实际受控执行；
-- `VerificationResult`：针对 Claim 的 PASS/FAIL/INCONCLUSIVE；
-- `Evidence`：支撑结果的受保护输出。
-
-文件名含有 “test” 不能关闭验证缺口。
-
-### 6.5 对账
+### 6.6 对账通道
 
 对账结合证据与语义：
 
@@ -285,15 +349,25 @@ Agent/Skill 采用多个有界视角：
 
 ## 7. Work 规划与迭代检索
 
-第一版计划来自：
+规划器不能把“扫描器已发现的节点”当成任务全集。它分两轮建立计划：
+
+**Manifest/约定派生初始计划**在语义 Facts 尚未完成前产生，来源包括：
 
 - 完整 ArtifactInventory；
-- 构建/Package/Module 边界；
-- 已知公开入口点；
+- 版本化 `ConventionRegistry` 中的构建/Package/Module/入口约定；
 - 文档与 API Manifest；
 - 测试/配置/数据簇；
+- 内容类型、相对路径类别和安全结构摘要；
+- 旧 Snapshot 的模块/入口 lineage。
+
+它必须为每个 Inventory 分区建立至少一个覆盖 WorkUnit，并为入口、公开接口、文档、测试与配置建立互相独立的根 WorkUnit。因此某个确定性提取器故意漏掉入口时，Agent/Skill 仍能通过 Artifact ID 请求 SourceSlice 并产生带证据的 Candidate。
+
+**Fact 增强计划**在确定性提取后追加：
+
 - 提取器诊断；
-- 旧 Snapshot lineage。
+- 解析出的 Symbol/Route/Data 关系；
+- 缺失或冲突关系；
+- 与旧 Snapshot 的细粒度 Candidate lineage。
 
 执行期间，各通道可以为下列问题排入有界后续 WorkUnit：
 
@@ -302,13 +376,17 @@ Agent/Skill 采用多个有界视角：
 - 没有实现关系的 Claim；
 - 意图模糊的测试；
 - 消费者未知的配置引用；
-- 尚未恢复的 Truth Set 锚点。
+- 一条未解析的文档/代码矛盾。
 
 后续深度、预算和理由都要记录。预算耗尽记为 `UNEXPLORED_BUDGET_LIMIT`，不能记为完成。
 
+生产规划器从不读取 Truth Set。评估 Harness 只能在运行完成后比较结果；held-out Miss 触发的是下一次工程改进或公开类别的诊断重跑，不能把隐藏答案塞回同一次分析。
+
 ## 8. 增量分析
 
-新 Snapshot 的处理：
+项目没有已发布图谱时，请求模式无论是 `AUTO` 还是 `FULL` 都执行完整清点、全部通道、全量对账与评估；`INCREMENTAL` 请求被拒绝。第一次成功运行原子发布首个 `CurrentGraphHead`。
+
+已有 `CurrentGraphHead` 后，新 Snapshot 的 `AUTO` 默认执行增量分析：
 
 1. 按内容身份比较 ArtifactInventory；
 2. 失效变化提取器输入对应 Facts；
@@ -316,9 +394,36 @@ Agent/Skill 采用多个有界视角：
 4. 重跑证据或生产者版本变化的语义 WorkUnit；
 5. 保留未变 Candidate lineage；
 6. 把受治理 Claim 标记为可能过期，而不删除 Decision；
-7. 将增量图谱与抽样全量重建对比。
+7. 生成从旧 Snapshot 到新 Snapshot 的 `ChangeSet`；
+8. 生成受影响 Feature/Claim/TestSpec/依赖、失效原因和重验证工作的 `ImpactAssessment`；
+9. 构建不可变 `GraphRevision(status=BUILDING)`；
+10. 将增量图谱与策略要求的全量重建范围对比；
+11. 评估通过后，在同一事务中把 GraphRevision 标记为 `PUBLISHED` 并移动 `CurrentGraphHead`。
 
 只有在被评估的未变/变化范围中，增量图谱与全量图谱除允许时间戳和 Run ID 外等价，增量运行才算通过。
+
+构建失败、评估失败或发布事务失败时，旧 `CurrentGraphHead` 保持不变；失败 GraphRevision 和诊断仍保留用于审核。
+
+### 8.1 当前投影与历史语义
+
+- 默认 Graph API/UI 只读取 `CurrentGraphHead` 指向的最新已发布 Revision。
+- GraphRevision、SnapshotManifest、FactBundle、Candidate lineage、Decision、FeatureVersion、Claim/TestSpec 版本、ChangeSet、ImpactAssessment、Execution 和 Evidence 不可变且可按时间查询。
+- Feature 的业务定义只有在 Decision 授权时才产生新 FeatureVersion。代码、配置、测试或部署变化只更新该 Snapshot 下的实现映射、符合性、Impact 与 Verification 历史。
+- Candidate 在新 Snapshot 中消失不等于 Feature 退役；退役、合并、拆分仍由治理决定。
+- Feature History 以稳定 `Feature.id` 为轴，显示 FeatureVersion、授权 Decision、每个 Snapshot 的实现映射、每次 Snapshot 转换的影响以及对应重验证结果。
+
+### 8.2 GraphRevision 状态与不变量
+
+```text
+BUILDING → EVALUATING → PUBLISHED
+                     ↘ REJECTED
+```
+
+- 首次发布前 Project 可以没有 `CurrentGraphHead`；发布后恰好有一个，且只能指向 `PUBLISHED` Revision。
+- 首个 `PUBLISHED` Revision 必须来自 FULL Run。
+- `PUBLISHED` Revision 和 CurrentGraphHead 指针移动必须原子提交。
+- `REJECTED` Revision 不可转回 PUBLISHED；修复后创建新 Revision。
+- 删除或覆盖历史 Revision、ChangeSet 或 ImpactAssessment 不属于正常更新路径。
 
 ## 9. 持久执行生命周期
 
@@ -350,7 +455,27 @@ Agent/Skill 采用多个有界视角：
 
 生产模式分析时，引擎不能把 Truth Set 当成输入。评估 Harness 在运行完成后比较输出。
 
-### 10.2 测试层
+### 10.2 Truth Set 防过拟合与盲审协议
+
+每个 TruthSetVersion 密封后按稳定 `evaluationSeed` 分层分区：
+
+- **60% calibration**：实现者可见，用于本地 TDD 和解释失败；
+- **30% held-out**：对实现者密封，仅验收 Harness 和指定独立 Reviewer 可读；
+- **10% rotating challenge**：每次重要发布轮换，覆盖新语言、误导命名、跨模块关系和历史变化。
+
+分层维度至少包含节点/边类型、证据层级、核心能力、模块、Artifact 类型和正向/负向断言，禁止随机抽样把稀有但关键关系丢掉。Candidate 人工精度审查最多抽样 100 条（不足则全量），并在各 Candidate/关系类型、置信区间和来源通道间分层。
+
+每个抽样项由独立 Reviewer 标为 `SUPPORTED`、`AMBIGUOUS_EXPLICIT`、`UNSUPPORTED`、`DUPLICATE` 或 `WRONG_RELATION`：
+
+- 精度分母是除 `AMBIGUOUS_EXPLICIT` 外的明确 Candidate；
+- 真实歧义只有在产品中显式为 Gap/Conflict 时才能排除；
+- 高置信 `UNSUPPORTED`、Truth Set 输入泄漏或 P0 锚点漏检直接阻塞发布。
+
+operator/业务权威批准能力边界、P0 锚点和阈值；独立技术 Reviewer 批准源码锚点与类型关系。实现作者不能批准 held-out 内容、修改分区 Seed 或签署自己的验收结果。分歧保持为 `UNKNOWN/CONFLICT`，不能为了过门禁强制选边。
+
+发布后保存完整 EvaluationRun 与 TruthSetVersion；下一版轮换 challenge 项，但旧答案和旧结果不可改写。确定性边界测试必须证明生产 AnalysisRun 的输入 Digest 不包含 Truth Set Digest、锚点答案或 held-out 内容。
+
+### 10.3 测试层
 
 | 层 | 数据集 | 目的 |
 |---|---|---|
@@ -361,9 +486,9 @@ Agent/Skill 采用多个有界视角：
 | 真实 dogfood | 固定 Traqen Snapshot | 系统级召回、精度、缺口与 UI 可用性 |
 | 增量 | 受控 Commit | Lineage、失效、全量/增量等价 |
 
-### 10.3 回归策略
+### 10.4 回归策略
 
-评估策略按维度版本化阈值。节点数量增加不能掩盖必须关系正确性或不确定性诚实度下降。阈值变化必须显式 Review。
+评估策略按维度版本化阈值。节点数量增加不能掩盖必须关系正确性或不确定性诚实度下降。阈值变化必须由 Decision 明确版本、生效范围和理由，且不能追溯性改变旧 EvaluationRun。
 
 ## 11. Traqen 自分析设计
 
@@ -393,13 +518,19 @@ Candidate 图谱必须在支持范围内显式连接：
 
 ### 11.3 自分析验收
 
-- 恢复每项必要种子能力，或报告一次经审核的 Miss；
-- 满足必须/禁止边断言；
+- 使用 `traqen-self-v1`；
+- 100% 处置范围内 Artifact；
+- 至少 30 个正向锚点覆盖至少 10 项核心能力，召回 ≥90%，且无 P0 锚点漏检；
+- 至少 60 条必须类型边 100% 满足，至少 30 条禁止边零违反；
+- 分层抽样最多 100 条 Candidate（不足则全量），明确 Candidate 人工支持精度 ≥90%，且不存在高置信无支撑结论；
+- 同 Snapshot/引擎/策略的语义 Digest 100% 一致；
+- 受控第二 Snapshot 的未变区域 100% 等价，变化区域只有预期或已解释差异；
 - 明确 Web/语言/文档的不支持区域；
 - 每个抽样 Fact 与 Candidate 都能查看源码；
 - 执行不依赖浏览器所有权；
 - 在 Traqen 自身产品中展示图谱；
-- 对一项受控变更做 Impact 并和人工预期对比。
+- 对一项受控变更做 Impact 并和人工预期对比；
+- 默认显示第二个 Snapshot 的 CurrentGraphHead，并能打开一项 Feature 的版本/实现/Impact/验证历史。
 
 ## 12. API 与 UI 要求
 
@@ -409,9 +540,11 @@ Candidate 图谱必须在支持范围内显式连接：
 - Run/阶段/WorkUnit 进度；
 - Facts、Candidates、冲突与缺口；
 - Candidate lineage 与评估报告；
-- 按策略提供的图谱投影与源码节选。
+- 按策略提供的图谱投影与源码节选；
+- 当前 `GraphRevision` 与 `CurrentGraphHead`；
+- FeatureVersion、Snapshot 实现映射、ChangeSet、ImpactAssessment 与验证历史。
 
-命令 API 提供显式 Start、Pause、Resume、Cancel、Review 和 Decision 操作。
+命令 API 提供显式 Start、Pause、Resume、Cancel、Review 和 Decision 操作。SourceSlice API 只提供给服务端 Agent/Skill Runtime。GraphRevision 发布是评估通过后的内部原子命令，普通浏览器不能直接移动 CurrentGraphHead。
 
 UI 必须区分：
 
@@ -423,6 +556,18 @@ UI 必须区分：
 - “未分析”“不支持”“未知”“冲突”和“不存在”。
 
 ## 13. 安全边界
+
+### 13.1 部署能力模式
+
+| 模式 | 源码访问 | 约束 |
+|---|---|---|
+| `LOCAL_SINGLE_TENANT` | API/Runner 共置并直接读取 allowlisted 本地路径 | 适合本机；普通 API 不暴露绝对路径 |
+| `PRIVATE_RUNNER` | Runner 位于源码侧，通过双向认证/出站连接接收任务 | 原始源码留在私有边界，只上传允许的 Facts/Candidates/Evidence |
+| `CLOUD_CONTROL_PLANE` | 禁止解释浏览器提交的本地路径 | 必须配 Private Runner 或受治理 Remote Git Connector |
+
+`SourceRegistration.connectorKind` 和 capability/policy version 明确记录模式。云端/多租户 API 未配置 Private Runner 或 Remote Connector 时必须拒绝 `LOCAL_FILESYSTEM` 注册，不能假装服务端能读取用户机器路径。
+
+### 13.2 通用边界
 
 - Runner 只能访问 Allowlist 内 SourceRegistration；
 - 拒绝 Symlink 逃逸、路径穿越、过宽 Root/Home、设备、Socket 和非普通文件；
@@ -441,9 +586,11 @@ UI 必须区分：
 - **AC-05**：对账保留冲突与替代解释，且不能创建受治理权威。
 - **AC-06**：评估报告带分母展示召回、精度、关系、来源、缺口、重放和增量维度。
 - **AC-07**：受控变更的全量与增量运行产生等价的被评估图谱。
+- **AC-07a**：首次运行强制 FULL；后续 AUTO 默认 INCREMENTAL；只有评估通过的 GraphRevision 能原子替换 CurrentGraphHead。
+- **AC-07b**：默认图谱只显示最新状态，Feature 历史保留版本 Decision、各 Snapshot 实现、ChangeSet、Impact 与验证；代码变化不自动创建 FeatureVersion。
 - **AC-08**：刷新、关闭、重连、人工 Pause/Resume 和 Worker 重启保留相同 Job 与已提交工作。
 - **AC-09**：测试线索、TestSpec、执行、结果和 Evidence 在领域数据和 UI 中保持区分。
-- **AC-10**：固定 Traqen Snapshot 在 Traqen 内产出经审核 Candidate 图、一个受治理完整 TraceChain、可见缺口报告和经审核 Impact 结果。
+- **AC-10**：两个固定 Traqen Snapshot 按 `traqen-self-v1` 在 Traqen 内产出经审核 Candidate 图、一个受治理完整 TraceChain、可见缺口报告、最新图谱头、Feature 历史和经审核 Impact 结果。
 - **AC-11**：源码与秘密安全边界通过确定性测试。
 - **AC-12**：后端、Web、Build、Lint、Diff、评估和独立 Review 门禁通过。
 
@@ -465,4 +612,6 @@ UI 必须区分：
 2. 接受版本化、人工审核 Truth Set 作为评估权威；
 3. 把 Traqen 分析 Traqen 设为强制发布门禁；
 4. 把持久生命周期保留为 F001 支撑层；
-5. Connector 增量交付，第一阶段采用 Allowlisted Local Runner，但不改变 canonical graph 契约。
+5. Connector 增量交付，第一阶段采用 Allowlisted Local Runner，但不改变 canonical graph 契约；
+6. 接受 `traqen-self-v1` 数字阈值、calibration/held-out/challenge 盲测协议与独立审批；
+7. 接受首次 FULL、后续默认 INCREMENTAL、CurrentGraphHead 原子发布和 Feature 历史账本语义。

@@ -79,7 +79,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 ### Phase E：持久与增量执行
 
-在一个服务端持久 Job 下执行扫描与 Agent WorkUnit；复用已提交工作、让浏览器生命周期只读、选择性失效变化区域，并证明增量/全量等价。
+在一个服务端持久 Job 下执行扫描与 Agent WorkUnit。首个 Snapshot 强制 `FULL`，后续 Snapshot 默认 `INCREMENTAL`；复用已提交工作、选择性失效变化区域、证明增量/全量等价，并且只有完整且评估通过的 GraphRevision 才能原子更新 `CurrentGraphHead`。默认图谱展示最新状态，但 FeatureVersion、Snapshot 映射、ChangeSet、ImpactAssessment、Decision 和 Evidence 历史必须长期保留。
 
 ### Phase F：Traqen 分析 Traqen
 
@@ -111,8 +111,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | J2 | 两个 Skill 对一个能力边界有分歧 | ConflictLedger 与双方解释 |
 | J3 | 有测试文件，但没有当前执行证明 Claim | TestAsset/TestSpec/Execution 分离状态 |
 | J4 | 扫描期间刷新或关闭浏览器 | Job 身份不变且服务端进度增长 |
-| J5 | 一个文件变化只影响一个图谱区域 | 增量/全量等价与 Impact 路径 |
+| J5 | 首次全量分析后，一个文件变化只影响一个图谱区域 | 新 Snapshot、增量/全量等价、原子 CurrentGraphHead 更新与 Impact 路径 |
 | J6 | Traqen 分析固定的自身仓库 | 审核自图谱、缺口、TraceChain 与 Impact 报告 |
+| J7 | 查看一项长期演进的 Feature | FeatureVersion Decision、各 Snapshot 实现映射、ChangeSet、Impact 与验证时间线 |
 
 ## Acceptance criteria
 
@@ -142,6 +143,10 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 - [ ] **AC-D2**：Truth Set 数据版本化、经审核，并排除在生产分析输入之外。
 - [ ] **AC-D3**：同一 Snapshot 与引擎重复运行产生稳定 Facts 和 Candidate lineage。
 - [ ] **AC-D4**：受控新 Snapshot 的增量图谱在评估范围内等价于全量图谱，并保留不受影响的 Decision。
+- [ ] **AC-D5**：项目没有已发布图谱时只能执行 FULL；已有 `CurrentGraphHead` 时 AUTO 默认 INCREMENTAL，operator 可显式强制 FULL。
+- [ ] **AC-D6**：构建中、失败或评估未通过的运行不能替换 `CurrentGraphHead`；发布新 GraphRevision 与移动当前头在一个原子事务中完成。
+- [ ] **AC-D7**：每个已发布 Snapshot 转换都生成 `ChangeSet`、`ImpactAssessment`、受影响 Feature/Claim/TestSpec/依赖集合和重验证计划。
+- [ ] **AC-D8**：默认图谱只显示最新已发布状态，但 Feature 历史能查询每个 FeatureVersion 的 Decision、各 Snapshot 实现映射、本次变化影响和验证结果；代码变化不得自动修订业务 FeatureVersion。
 
 ### E. 持久生命周期与安全
 
@@ -153,22 +158,24 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 ### F. Traqen 分析 Traqen
 
 - [ ] **AC-F1**：固定 Traqen Snapshot 清点 `docs/`、`feature-specs/`、`contracts/`、`src/`、`test/`、`web/` 和安全构建/测试产物，并显式列出排除项。
-- [ ] **AC-F2**：输出与覆盖 Traqen 核心子系统及必须/禁止关系的人工审核种子 Truth Set 对比。
+- [ ] **AC-F2**：输出按 `traqen-self-v1` 与盲测 Truth Set 对比：100% Inventory 处置、至少 30 个正向锚点/10 项能力且召回 ≥90%、至少 60 条必须关系 100% 满足、至少 30 条禁止关系零违反、分层 Candidate 样本精度 ≥90%，并由非实现作者审批。
 - [ ] **AC-F3**：Traqen 展示自身 Candidate 图和视觉区分的受治理种子图，并提供源码内容与缺口报告。
 - [ ] **AC-F4**：至少一项 Traqen 能力具有从系统需求/设计到代码、TestSpec、当前执行、VerificationResult 与 Evidence 的完整审核 TraceChain。
 - [ ] **AC-F5**：一项受控 Traqen 变更产出经审核的 Impact 路径和重验证计划。
 - [ ] **AC-F6**：后端、Web、Build、Lint、Diff、评估、浏览器验收和独立 Review 门禁通过。
+- [ ] **AC-F7**：Traqen UI 默认展示第二个 Snapshot 的最新图谱，同时能打开一项 Feature 的版本/实现/影响/验证历史，并证明第一次 FULL 和第二次 INCREMENTAL 的图谱切换是原子的。
 
 ## 需求点 Checklist
 
 | ID | operator 原话 | AC | 验证方式 | 状态 |
 |---|---|---|---|---|
 | R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1～B4、AC-C1 | 对抗通道 + 对账测试 | [ ] |
-| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1～A3、AC-D1～D4 | 版本化 Truth Set 评估 | [ ] |
+| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1～A3、AC-D1～D8 | 版本化 Truth Set 评估 | [ ] |
 | R3 | “做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联。” | AC-C4、AC-F3～F4 | canonical graph 断言与 UI | [ ] |
-| R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4、AC-F4～F5 | 内容、TraceChain、Impact 验收 | [ ] |
-| R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1～F6 | 隔离 Traqen 自分析验收 | [ ] |
+| R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4～D8、AC-F4～F5、AC-F7 | 内容、TraceChain、Impact 与历史验收 | [ ] |
+| R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1～F7 | 隔离 Traqen 自分析验收 | [ ] |
 | R6 | “刷新浏览器，当前运行的任务状态未发生变化。” | AC-E1～E2 | Job 身份、进度、WorkUnit 调用 | [ ] |
+| R7 | “第一次全量形成完整图谱；以后增量更新最新图谱，同时保留功能版本变化和每次变更影响。” | AC-D4～D8、AC-F5、AC-F7 | 两个 Snapshot 的 FULL→INCREMENTAL 验收、CurrentGraphHead 与 Feature 历史查询 | [ ] |
 
 ### 覆盖检查
 
@@ -202,6 +209,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | 隐藏不支持范围 | 完整 Inventory 分母与显式处置 |
 | Truth Set 对当前实现过拟合 | 正负关系断言、版本化、独立 Review |
 | 增量模式偏离全量分析 | 全量/增量等价门禁 |
+| 失败的增量运行污染当前图谱 | GraphRevision 评估通过后原子移动 CurrentGraphHead |
+| 代码变化被误写为业务 Feature 新版本 | FeatureVersion 只由 Decision 创建；实现映射和影响历史独立记录 |
+| “只保留最新图谱”被误解为删除历史 | 当前投影与不可变 Snapshot/版本/影响账本分离 |
 | 自分析污染生产数据 | 隔离 Worktree、Store、端口与经审核执行 |
 | 耐久性工程再次挤占产品正确性 | 正确性与 Dogfood 阶段为发布阻塞项 |
 
@@ -210,7 +220,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | # | 问题 | 建议 | 状态 |
 |---|---|---|---|
 | OQ-1 | 谁批准初始 Traqen 种子 Truth Set？ | operator 决定业务边界；独立 Reviewer 验证技术锚点 | Design Gate |
-| OQ-2 | 哪些阈值阻塞发布？ | 先建立 Baseline，再按维度版本化阈值；禁止单一总分 | Design Gate |
+| OQ-2 | 哪些阈值阻塞发布？ | 已定义 `traqen-self-v1` 数字阈值；后续变更必须有 Decision | Resolved |
 | OQ-3 | 第一种 Source Connector 是什么？ | Allowlisted Local Runner，随后加入 Remote Git，但图谱契约不变 | Design Gate |
 
 ## Key decisions
@@ -222,6 +232,8 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | KD-3 | 分析通道独立产证据，之后对账。 | 一个提取器不能决定系统允许发现什么。 | 2026-07-29 |
 | KD-4 | Traqen 分析 Traqen 是发布门禁。 | 产品必须在自身真实系统上展示有用追溯。 | 2026-07-29 |
 | KD-5 | `Fxxx` 生命周期 ID 与受治理 `Feature.id` 分离。 | 工程规划不能创建业务权威。 | 2026-07-29 |
+| KD-6 | 第一次分析强制 FULL，后续默认 INCREMENTAL；当前图谱头与历史账本分离。 | 系统既要提供最新可用图谱，也要长期解释 Feature 如何变化及每次变化影响什么。 | 2026-07-29 |
+| KD-7 | 代码/配置变化不能自行创建 FeatureVersion。 | 业务定义的版本权威来自 Decision，实现演进应记录为 Snapshot 映射、Impact 与验证历史。 | 2026-07-29 |
 
 ## Timeline
 
@@ -229,6 +241,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 |---|---|
 | 2026-07-29 | F001 最初按持久扫描生命周期立项 |
 | 2026-07-29 | operator 纠正为存量系统理解正确性和 Traqen 自身 Dogfood |
+| 2026-07-29 | operator 明确长期演进模型：首次全量、后续增量、最新图谱投影与 Feature/Impact 历史并存 |
 
 ## Review gate
 
@@ -239,7 +252,8 @@ Design Gate 必须确认：
 3. 人工审核 Truth Set 权威；
 4. 独立分析通道与对账边界；
 5. Traqen 分析 Traqen 是强制验收；
-6. 第一阶段 Local Runner 数据边界。
+6. 第一阶段 Local Runner 数据边界；
+7. FULL→INCREMENTAL、CurrentGraphHead 原子发布与 Feature 历史语义。
 
 实现随后执行 TDD、Quality Gate、独立 Review 与 Merge Gate。
 
@@ -249,6 +263,7 @@ Design Gate 必须确认：
 |---|---|---|
 | 系统需求 | `docs/architecture/traqen-system-requirements.zh-CN.md` | 产品使命、图谱、旅程、系统需求、Dogfood 合同 |
 | 核心理解引擎 | `docs/features/legacy-system-understanding-engine.zh-CN.md` | Inventory、通道、WorkUnit、对账、评估、增量 |
+| 理解引擎实施计划 | `feature-specs/2026-07-29-legacy-system-understanding-engine.md` | F001 全部 AC 的 TDD 顺序、状态机、契约与 Traqen dogfood |
 | 持久生命周期 | `docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md` | 服务端所有权、检查点、Pause/Resume、Worker 恢复 |
 | 当前 Analysis Agent | `docs/features/analysis-agent-design.zh-CN.md` | 已实现 Agent 契约与当前限制 |
 | 当前 Workspace | `docs/features/workspace-analysis-design.zh-CN.md` | 当前浏览器体验与迁移基线 |

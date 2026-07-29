@@ -90,7 +90,7 @@ BrowserSubscription                          ← 非权威只读指针
 4. API 返回 `202 Accepted` 和稳定的 `jobId`；页面立即展示服务端任务状态。
 5. 服务端建立源码快照并执行 SourceScanRun。
 6. 扫描完成后，服务端基于 FactBundle 创建 AnalysisRun。
-7. AnalysisRun 完成后，服务端生成 Candidate 投影。
+7. 项目首次运行时评估并发布 FULL GraphRevision；后续 Snapshot 评估 INCREMENTAL Revision，只有通过后才原子移动 CurrentGraphHead。
 
 ### 4.2 刷新、关闭和重新打开
 
@@ -228,7 +228,7 @@ type WorkspaceAnalysisJob = {
     | "COMPLETED_WITH_GAPS"
     | "FAILED"
     | "CANCELLED";
-  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "PROJECTION";
+  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "EVALUATION" | "PROJECTION" | "PUBLISHING";
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -236,6 +236,8 @@ type WorkspaceAnalysisJob = {
 ```
 
 `connectionStatus` 不属于该对象。浏览器的 `CONNECTED / RECONNECTING / OFFLINE` 只能作为界面派生值，绝不能覆盖服务端 job status。
+
+模式解析必须确定性持久化：Project 没有 `CurrentGraphHead` 时，`AUTO` 解析为 `FULL`，显式 `INCREMENTAL` 被拒绝；已有当前头后，`AUTO` 解析为 `INCREMENTAL`，operator 仍可强制 `FULL`。Resume 不能改变已解析模式。
 
 ### 5.6 BrowserSubscription
 
@@ -346,7 +348,17 @@ SourceScanRun 分五步执行：
 
 ## 11. 安全与数据边界
 
-Local Runner 只适用于 API 能直接访问源码的本地或私有部署。
+### 11.1 部署能力模式
+
+| 模式 | 源码访问 | 规则 |
+|---|---|---|
+| `LOCAL_SINGLE_TENANT` | API 与 Runner 共置并读取 allowlisted 本地源码 | 允许 `LOCAL_FILESYSTEM` 注册 |
+| `PRIVATE_RUNNER` | Runner 位于私有源码侧，通过双向认证/出站连接接收任务 | 原始源码留在源码边界 |
+| `CLOUD_CONTROL_PLANE` | 控制面不能读取浏览器本地路径 | 必须使用 Private Runner 或受治理 Remote Git Connector；禁用直接本地注册 |
+
+第一阶段只交付 `LOCAL_SINGLE_TENANT`。`SourceRegistration` 记录 connector kind、capability version 和 policy version，使后续 Connector 不改变 Snapshot 或图谱语义。
+
+### 11.2 通用边界
 
 硬性约束：
 
@@ -362,6 +374,8 @@ Local Runner 只适用于 API 能直接访问源码的本地或私有部署。
 - 删除必须走显式 API、审计并只删除目标 Snapshot 的引用安全 blob。
 
 远程 Git、代码托管平台连接器和浏览器上传源码不在第一阶段范围内。
+
+云端/多租户 API 在没有兼容 Private Runner 时必须拒绝 `LOCAL_FILESYSTEM` 注册。
 
 ## 12. API 草案
 

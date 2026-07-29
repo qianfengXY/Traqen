@@ -77,7 +77,7 @@ Only an explicit user command can manually pause a job. A crashed worker or rest
 4. Receive a stable `jobId` immediately.
 5. Observe the server building a SourceSnapshot and executing SourceScanRun.
 6. Observe the server transition to AnalysisRun after the FactBundle commits.
-7. View the final Candidate projection.
+7. On the first project run, evaluate and publish the FULL GraphRevision. On later Snapshots, evaluate the INCREMENTAL revision and atomically move CurrentGraphHead only after it passes.
 
 ### Refresh and reconnect
 
@@ -179,7 +179,7 @@ type WorkspaceAnalysisJob = {
     | "QUEUED" | "RUNNING" | "PAUSE_REQUESTED" | "PAUSED"
     | "RECOVERING" | "COMPLETED" | "COMPLETED_WITH_GAPS"
     | "FAILED" | "CANCELLED";
-  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "PROJECTION";
+  phase: "SOURCE_SCAN" | "FACT_COMMIT" | "ANALYSIS" | "EVALUATION" | "PROJECTION" | "PUBLISHING";
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -187,6 +187,8 @@ type WorkspaceAnalysisJob = {
 ```
 
 Browser connection state is not job state. `CONNECTED / RECONNECTING / OFFLINE` is a client-only projection and may never overwrite the server job.
+
+Mode resolution is deterministic: when the Project has no `CurrentGraphHead`, `AUTO` resolves to `FULL` and explicit `INCREMENTAL` is rejected. Once a head exists, `AUTO` resolves to `INCREMENTAL`; an operator may still force `FULL`. Mode resolution is persisted before work starts and cannot change during Resume.
 
 ### BrowserSubscription
 
@@ -227,6 +229,14 @@ SourceScanRun executes:
 
 Each file or bounded batch commits atomically. A crash may repeat at most one uncommitted unit. Deterministic IDs make retries idempotent. A `RUNNING` scan must have a valid worker lease.
 
+Scan outcomes are classified rather than collapsed:
+
+- `SKIPPED` for an explicit policy disposition that remains in the inventory denominator;
+- retryable `FAILED` for a file/batch failure that preserves its diagnostic and attempt count;
+- fatal source-root/authorization failure, which fails the scan without pretending the remaining inventory was examined.
+
+Before the manifest is sealed, `plannedFileCount` is `null` and the UI states that the denominator is still being discovered. After seal it is exact; progress must never display an estimated count as a complete denominator.
+
 ## 8. Scanner parity gate
 
 The current browser scanner supports more languages than the server `JavaScriptProjectScanner`. Server migration may not reduce product capability.
@@ -264,17 +274,27 @@ The browser execution path cannot be removed until required parity is 100%.
 
 ## 11. Security boundary
 
-The Local Runner is for local or private deployments where the API can directly access source.
+### 11.1 Deployment capability modes
+
+| Mode | Source access | Rule |
+|---|---|---|
+| `LOCAL_SINGLE_TENANT` | API and Runner are co-located and read allowlisted local source | permits `LOCAL_FILESYSTEM` registration |
+| `PRIVATE_RUNNER` | runner stays beside private source and receives work over mutually authenticated/outbound transport | raw source remains at the source boundary |
+| `CLOUD_CONTROL_PLANE` | control plane cannot read a browser-local path | requires Private Runner or governed Remote Git Connector; direct local registration is disabled |
+
+The first implementation delivers `LOCAL_SINGLE_TENANT`. `SourceRegistration` records connector kind, capability version, and policy version so later connectors do not change Snapshot or graph semantics.
+
+### 11.2 Common boundaries
 
 - `TRAQEN_ALLOWED_WORKSPACE_ROOTS` is required for local registrations.
 - Canonical `realpath` checks apply to the root and every file.
-- Symlink escape, device files, sockets, FIFOs, and non-regular files are rejected.
-- Normal read APIs and logs do not reveal absolute paths or source bodies.
+- Filesystem root, home root, symlink escape, device files, sockets, FIFOs, and non-regular files are rejected.
+- Normal read APIs and logs do not reveal absolute paths, source bodies, secrets, or unredacted `.env` values.
 - Raw source enters only the local Snapshot spool and scanner.
 - External models receive bounded, policy-filtered Facts, never raw source or unredacted secrets.
-- Snapshot spool data has no implicit TTL and is deleted only through an explicit audited action.
+- Snapshot spool data has no implicit TTL and is deleted only through an explicit audited action that removes only blobs exclusively referenced by the target Snapshot.
 
-Remote Git and browser source upload connectors are outside the first phase.
+Remote Git and browser source upload connectors are outside the first phase. A cloud/multi-tenant API must reject `LOCAL_FILESYSTEM` registration until a compatible Private Runner exists.
 
 ## 12. API draft
 

@@ -4,9 +4,36 @@ Review-Target-ID: refresh-independent-workspace-runs
 Branch: codex/refresh-independent-workspace-runs
 Review range: 669f6ee..HEAD
 
+Round: 2 — addresses the first independent review findings and the operator's continuous-evolution requirement.
+
 ## What
 
 Reframed F001 from a browser-refresh/durable-scan task into Traqen's P0 legacy-system understanding and canonical graph capability. Added bilingual system requirements and a detailed understanding-engine design covering complete inventory, independent evidence lanes, bounded Agent/Skill analysis, reconciliation, multi-dimensional correctness evaluation, incremental equivalence, and Traqen-on-Traqen acceptance. The durable lifecycle remains a supporting design.
+
+Round 2 adds:
+
+- first-run FULL, later AUTO→INCREMENTAL, immutable GraphRevision, and atomic CurrentGraphHead;
+- FeatureVersion/implementation/ChangeSet/Impact/verification history semantics;
+- a concrete SourceSlice schema/API/error/policy boundary;
+- six lane names aligned across system and engine design;
+- Manifest/convention-derived Agent planning with adversarial missed-entrypoint recovery;
+- calibration/held-out/challenge blind review and numeric `traqen-self-v1` thresholds;
+- Local/Private Runner/Cloud deployment capability modes;
+- the complete TDD plan `feature-specs/2026-07-29-legacy-system-understanding-engine.md`;
+- English lifecycle safety/failure/denominator parity.
+
+## First-Review Findings Closed
+
+| Finding | Resolution |
+|---|---|
+| P1 understanding-engine TDD plan missing | Added `feature-specs/2026-07-29-legacy-system-understanding-engine.md` with terminal contracts, lifecycle census, state/event matrices, invariants, adversarial scenarios, exact files, RED/GREEN order, cutover, and two-Snapshot dogfood. |
+| P1 Agent redesign not executable | Added Manifest/ConventionRegistry initial planning wave, Fact-enriched second wave, missed-entrypoint SourceSlice fixture, and production Truth Set input prohibition. |
+| P1 Truth Set overfit process missing | Added stable stratification, 60/30/10 calibration/held-out/challenge partitions, blind reviewer classifications, author/reviewer separation, rotation, immutable results, and leakage test. |
+| P1 dogfood thresholds not decidable | Added `traqen-self-v1` numeric counts/rates, sample size, blocking cases, operator authority, and independent technical approval. |
+| P1 SourceSlice contract missing | Added request/response schema, two API routes, service-identity restriction, budgets, policy/digest rules, and deterministic HTTP/error codes. |
+| P2 English lifecycle parity | Added scan outcome classes, pre-seal unknown denominator, root/home rejection, `.env`/secret log boundary, ref-safe deletion, and deployment modes. |
+| P2 lane mismatch | Engine now names the same six lanes as system requirements. |
+| P2 Local Runner deployment unclear | Added `LOCAL_SINGLE_TENANT`, `PRIVATE_RUNNER`, and `CLOUD_CONTROL_PLANE` capability modes and rejection behavior. |
 
 ## Why
 
@@ -19,6 +46,8 @@ Durable execution can keep a wrong or noisy analysis running. The operator's cor
 > “做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联，便于之后做变更影响分析、内容查看、质量追溯等。”
 >
 > “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。”
+>
+> “第一次分析会得到一个完整的图谱关系……增量分析就应该重新更新图谱……功能点是需要记录变化过程及每次变化会影响哪些功能。”
 
 - Source: `feature-discussions/2026-07-29-F001-legacy-system-understanding/README.md`
 - Please judge the design against these outcomes, not only against its stated ACs.
@@ -29,6 +58,8 @@ Durable execution can keep a wrong or noisy analysis running. The operator's cor
 - Rejected node count and one confidence score as correctness.
 - Kept human Decisions as business authority, which means self-analysis requires a reviewed seed truth set.
 - Kept the first connector local and allowlisted; remote Git is an extension, not a different graph model.
+- Separated the latest graph projection from immutable history; this avoids forcing every query to replay history while preserving long-term traceability.
+- Rejected automatic FeatureVersion creation from code/configuration changes; business-version authority remains governed.
 
 ## Architecture Ownership
 
@@ -47,14 +78,14 @@ Please check:
 
 ### Technical OQ
 
-1. Can the truth-set design measure recall without leaking expected answers into production analysis?
-2. Are independent lanes and iterative SourceSlice retrieval bounded enough to prevent unreviewable model behavior?
-3. Are the full-versus-incremental equivalence and required/forbidden edge gates adequate?
-4. Does the Traqen-on-Traqen contract prove useful traceability rather than merely self-referential node generation?
+1. Does the 60/30/10 blind-review protocol and input-digest boundary adequately prevent Truth Set leakage?
+2. Is the concrete SourceSlice schema/API/error boundary sufficient for an implementation contract?
+3. Are GraphRevision publication and CurrentGraphHead invariants complete under failure/concurrency?
+4. Do `traqen-self-v1` thresholds and the two-Snapshot dogfood prove useful traceability rather than self-referential node generation?
 
 ### Value OQ
 
-No new value choice for reviewer. The operator Design Gate will approve truth-set ownership, initial release thresholds, and Local Runner as the first connector.
+No new value choice for reviewer. The operator has specified the latest-graph plus Feature/Impact-history outcome. The Design Gate confirms the documented authority, thresholds, and first connector.
 
 ## Next Action
 
@@ -72,9 +103,10 @@ Perform an independent read-only review of `669f6ee..HEAD`, compare both languag
 ### Spec compliance
 
 - operator's correctness, graph, impact/content/quality, and Traqen self-analysis requirements map to F001 ACs;
+- operator's first-FULL/later-INCREMENTAL, latest graph, Feature history, and per-change impact requirement maps to AC-D4–D8 and AC-F7;
 - refresh durability is retained as AC-E infrastructure rather than the Feature goal;
 - system requirements and engine design have equivalent English/Chinese section structures;
-- docs-only Dogfood-Your-Slice and `.pen` comparison are explicitly not applicable.
+- docs-only Dogfood-Your-Slice is explicitly exempt; `.pen` glob returned no matching design.
 
 ### Tests
 
@@ -88,10 +120,31 @@ relative-link audit → 21 changed/new Markdown files, all links resolve
 root media artifact audit in the feature worktree → no findings
 ```
 
+Current Round-2 delta recheck:
+
+```text
+node --test test/bilingual-documentation.test.js → 1/1 pass
+npm test → 231/231 pass
+npm run test:web → production build + 40/40 pass
+npm --prefix web run lint → exit 0
+git diff --check → exit 0
+relative-link audit → 11 changed Markdown files, all links resolve
+root media artifact audit in the feature worktree → no findings
+designs/**/*.pen glob → no findings
+```
+
+### Architecture ownership
+
+- Architecture cell: legacy-system understanding → canonical traceability graph
+- Map delta: update required
+- Updated map truth: bilingual system requirements, F001, engine design, lifecycle design, discussion, and implementation plan
+- No duplicate runtime Store/Queue/Router was implemented; this round is design-only.
+
 ### Relevant documents
 
 - Discussion: `feature-discussions/2026-07-29-F001-legacy-system-understanding/README.md`
 - System requirements: `docs/architecture/traqen-system-requirements.md`
 - Feature: `docs/features/F001-legacy-system-understanding.md`
 - Engine: `docs/features/legacy-system-understanding-engine.md`
+- F001 TDD plan: `feature-specs/2026-07-29-legacy-system-understanding-engine.md`
 - ADR: `docs/decisions/ADR-0001-canonical-traceability-ontology.md`

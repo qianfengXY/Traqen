@@ -170,6 +170,31 @@ All projections are generated from the same graph and expose their filters:
 - change-impact and revalidation plan;
 - completeness, gap, trust, and operational metrics.
 
+### 6.3 Current graph and historical ledgers
+
+Traqen separates the currently queryable state from immutable evolution history:
+
+```text
+Project
+  └─ CURRENT_GRAPH_HEAD → GraphRevision
+       ├─ PROJECTS → Facts / Candidates / governed mappings for the current Snapshot
+       └─ EVALUATED_BY → EvaluationRun
+
+Snapshot N ── ChangeSet / ImpactAssessment ──→ Snapshot N+1
+
+Feature
+  └─ HAS_VERSION → FeatureVersion 1..n
+       └─ AUTHORIZED_BY → Decision
+```
+
+- A project's first successful analysis is always `FULL`. It publishes the first `CurrentGraphHead` atomically only after inventory, analysis, reconciliation, and evaluation succeed.
+- Later source, requirement, configuration, test, or result changes create a new Snapshot and default to `INCREMENTAL`; an operator or policy may force `FULL`.
+- Incremental execution recomputes only affected regions, but always produces a `ChangeSet`, `ImpactAssessment`, and revalidation plan from the prior published Snapshot to the new one, and must pass the full/incremental equivalence gate.
+- Default Graph, Feature Tree, TraceChain, Impact, and Metrics queries read only the latest published `CurrentGraphHead`. A building, failed, or evaluation-rejected GraphRevision cannot replace the current head.
+- GraphRevisions, SnapshotManifests, FactBundles, Candidate lineage, Decisions, FeatureVersions, Claim/TestSpec versions, ChangeSets, ImpactAssessments, TestExecutions, and Evidence remain immutable and queryable historical ledgers. “Show only the latest graph” never means deleting history.
+- A Feature's stable identity spans Snapshots. Only a governed change to the business definition creates a new FeatureVersion through a Decision. Code, configuration, test, or deployment mapping changes instead create implementation mapping, conformance, impact, and verification records.
+- A Candidate disappearing from a new Snapshot means only “not currently observed.” It cannot automatically retire a Feature; retirement, merge, and split remain governed actions.
+
 ## 7. Understanding pipeline
 
 ### 7.1 Independent evidence lanes
@@ -214,6 +239,11 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-013 | Report correctness by reviewed dimensions, with positive/negative assertions and explicit unknowns. |
 | SR-014 | Protect source, paths, credentials, secrets, model inputs, logs, and evidence according to deployment data boundaries. |
 | SR-015 | Dogfood Traqen against a pinned Snapshot of Traqen and display Traqen's own reviewed capability graph. |
+| SR-016 | Require the first successful analysis to be FULL; default later Snapshots to incremental analysis while allowing policy-forced FULL. |
+| SR-017 | Atomically replace CurrentGraphHead only with a completed, evaluation-passing GraphRevision; failed runs leave the prior head current. |
+| SR-018 | Default graph views to the latest published state while retaining immutable FeatureVersion, Snapshot mapping, Decision, ChangeSet, ImpactAssessment, and Evidence history. |
+| SR-019 | For every published Snapshot transition, explain which existing Features, Claims, TestSpecs, and dependencies are affected and what must be re-reviewed or revalidated. |
+| SR-020 | Let only a Decision create a new business FeatureVersion; code, configuration, test, or deployment changes update implementation, conformance, impact, and verification history instead. |
 
 ## 9. Primary user journeys
 
@@ -243,6 +273,14 @@ The operator distinguishes:
 - execution failed, passed, or was inconclusive;
 - Evidence is missing, stale, invalid, or complete.
 
+### 9.5 Continuously evolve an understood system
+
+1. From the first complete graph, the operator selects a later commit, workspace state, or other new Snapshot.
+2. Traqen compares old and new Artifacts/Facts, reuses unchanged work, and scans, analyzes, and reconciles only affected regions.
+3. Before publication, Traqen shows the `ChangeSet`, affected Features/Claims/TestSpecs/dependencies, invalidated derived knowledge, and the revalidation plan.
+4. After incremental output is equivalent to a controlled full rebuild for the evaluated scope, the new GraphRevision atomically becomes `CurrentGraphHead`; otherwise the prior graph remains current.
+5. The operator sees the latest graph by default and can open Feature history to inspect each FeatureVersion's Decision, implementation mapping by Snapshot, change impact, and verification results.
+
 ## 10. Traqen-on-Traqen acceptance contract
 
 Traqen's own repository is the required realistic dogfood dataset. A small fixture remains useful for deterministic edge cases, but cannot replace this acceptance.
@@ -264,6 +302,7 @@ The initial truth set contains positive and negative assertions, source anchors,
 | Deterministic Facts and source observations | `src/domain/facts.js`, `src/domain/workspace-observations.js`, `src/scanner/` |
 | Analysis Agent and Candidate evidence boundary | `src/analysis/analysis-agent.js`, `src/shared/candidate-bundle.js` |
 | Reverse Skill orchestration | `src/domain/reverse-skill.js`, `src/skills/reverse-orchestrator.js` |
+| HTTP API and application orchestration | `src/api/http-server.js`, `src/application/traceability-application.js` |
 | Governance and Decisions | `src/domain/governance.js`, `src/domain/decision-governance.js`, `src/domain/review.js` |
 | Feature graph and TraceChain | `src/domain/feature-graph.js`, `src/domain/trace-chain.js` |
 | TestSpec, Runner, result, and Evidence | `src/domain/test-spec*.js`, `src/runner/`, `src/domain/execution-evidence.js` |
@@ -285,6 +324,25 @@ The truth set is reviewed data, not hard-coded scanner output. It shall evolve b
 - a controlled Traqen change whose predicted impact and required revalidation are compared with reviewed expectations.
 
 No release may claim “Traqen understands Traqen” solely because a scan completed or produced many nodes.
+
+### 10.4 `traqen-self-v1` thresholds and authority
+
+The first Traqen self-analysis policy is fixed as `traqen-self-v1` and blocks release unless it meets:
+
+| Dimension | Blocking threshold |
+|---|---|
+| Inventory | 100% disposition for in-scope artifacts |
+| Provenance/schema | 100% valid Snapshot and evidence boundaries for Facts, WorkUnits, and Candidates |
+| Anchor recall | At least 30 positive anchors across at least 10 core capabilities; recall ≥ 90%, with no missing P0 anchor |
+| Required relations | At least 60 typed relation assertions; 100% satisfied |
+| Forbidden relations | At least 30 negative assertions; zero violations |
+| Candidate precision | Stratified sample up to 100 items (all when fewer); ≥ 90% human-supported among decisive Candidates, with any unsupported high-confidence claim blocking |
+| Honest uncertainty | Every sampled ambiguous, insufficient-evidence, unsupported, and budget-exhausted case is an explicit Gap/Conflict rather than silent success |
+| Replay | 100% stable semantic digest for the same Snapshot and engine/policy versions |
+| Incremental equivalence | 100% equality in unchanged regions of a controlled second Snapshot; changed regions contain only expected or explained deltas |
+| End-to-end value | At least one complete reviewed TraceChain and one change-impact scenario compared with human expectations |
+
+The operator approves business capability boundaries, P0 anchors, and threshold changes. An independent technical reviewer approves source anchors and relationship assertions. Implementation authors cannot approve their own held-out truth set or acceptance result. Every threshold change is a version-effective Decision and cannot rewrite prior EvaluationRuns retroactively.
 
 ## 11. Security and trust requirements
 

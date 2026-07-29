@@ -79,7 +79,7 @@ Validate evidence bounds, reconcile duplicates and hierarchy, preserve conflicts
 
 ### Phase E: Durable and incremental execution
 
-Execute scan and Agent WorkUnits under one persistent server-owned job. Reuse committed work, make browser lifecycle read-only, selectively invalidate changed regions, and prove incremental/full equivalence.
+Execute scan and Agent WorkUnits under one persistent server-owned job. Force `FULL` for the first Snapshot and default later Snapshots to `INCREMENTAL`; reuse committed work, selectively invalidate changed regions, prove incremental/full equivalence, and atomically update `CurrentGraphHead` only from a complete, evaluation-passing GraphRevision. The default graph shows the latest state while FeatureVersion, Snapshot mapping, ChangeSet, ImpactAssessment, Decision, and Evidence history remain durable.
 
 ### Phase F: Traqen analyzes Traqen
 
@@ -111,8 +111,9 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | J2 | Two Skills disagree about one capability boundary | ConflictLedger and both alternatives |
 | J3 | A test file exists but no current execution proves a Claim | separate TestAsset/TestSpec/Execution states |
 | J4 | A browser is refreshed or closed during scanning | unchanged job identity and increasing server progress |
-| J5 | A changed file affects only one graph region | incremental/full equivalence and impact paths |
+| J5 | After the first full analysis, one changed file affects only one graph region | new Snapshot, incremental/full equivalence, atomic CurrentGraphHead update, and impact paths |
 | J6 | Traqen analyzes its own pinned repository | reviewed self-graph, gaps, TraceChain, and impact report |
+| J7 | Inspect a long-lived Feature | FeatureVersion Decisions, implementation mappings by Snapshot, ChangeSets, impacts, and verification timeline |
 
 ## Acceptance criteria
 
@@ -142,6 +143,10 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 - [ ] **AC-D2**: truth-set data is versioned, reviewed, and excluded from production analysis inputs.
 - [ ] **AC-D3**: repeated runs on the same Snapshot and engine produce stable Facts and Candidate lineage.
 - [ ] **AC-D4**: a controlled new Snapshot produces an incremental graph equivalent to a full graph for evaluated scopes and preserves unaffected Decisions.
+- [ ] **AC-D5**: when no published graph exists, only FULL is allowed; with a `CurrentGraphHead`, AUTO defaults to INCREMENTAL while the operator may force FULL.
+- [ ] **AC-D6**: building, failed, or evaluation-rejected runs cannot replace `CurrentGraphHead`; publishing a GraphRevision and moving the head is one atomic transaction.
+- [ ] **AC-D7**: every published Snapshot transition produces a `ChangeSet`, `ImpactAssessment`, affected Feature/Claim/TestSpec/dependency set, and revalidation plan.
+- [ ] **AC-D8**: default graph views show only the latest published state, while Feature history queries each FeatureVersion's Decision, implementation mapping by Snapshot, change impact, and verification result; code change never auto-revises the business FeatureVersion.
 
 ### E. Durable lifecycle and security
 
@@ -153,22 +158,24 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 ### F. Traqen-on-Traqen
 
 - [ ] **AC-F1**: a pinned Traqen Snapshot inventories `docs/`, `feature-specs/`, `contracts/`, `src/`, `test/`, `web/`, and safe build/test artifacts with explicit exclusions.
-- [ ] **AC-F2**: the output is evaluated against a human-reviewed seed truth set covering core Traqen subsystems and required/forbidden relations.
+- [ ] **AC-F2**: output is evaluated under `traqen-self-v1` against a blind truth set: 100% inventory disposition; at least 30 positive anchors across 10 capabilities with ≥90% recall; at least 60 required relations at 100%; at least 30 forbidden relations with zero violations; stratified Candidate precision ≥90%; and approval by a non-author.
 - [ ] **AC-F3**: Traqen displays its own Candidate graph and visibly distinct governed seed graph, with source content and a gap report.
 - [ ] **AC-F4**: at least one Traqen capability has a complete reviewed TraceChain from system requirement/design to code, TestSpec, current execution, VerificationResult, and Evidence.
 - [ ] **AC-F5**: one controlled Traqen change produces a reviewed impact path and revalidation plan.
 - [ ] **AC-F6**: backend, Web, build, lint, diff, evaluation, browser acceptance, and independent review gates pass.
+- [ ] **AC-F7**: the Traqen UI defaults to the second Snapshot's latest graph, can open one Feature's version/implementation/impact/verification history, and proves atomic graph switching from the first FULL run to the second INCREMENTAL run.
 
 ## Requirements checklist
 
 | ID | Operator requirement | AC | Verification | Status |
 |---|---|---|---|---|
 | R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1–B4, AC-C1 | adversarial lanes + reconciliation tests | [ ] |
-| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1–A3, AC-D1–D4 | versioned truth-set evaluation | [ ] |
+| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1–A3, AC-D1–D8 | versioned truth-set evaluation | [ ] |
 | R3 | “做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联。” | AC-C4, AC-F3–F4 | canonical graph assertions and UI | [ ] |
-| R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4, AC-F4–F5 | content, TraceChain, impact acceptance | [ ] |
-| R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1–F6 | isolated Traqen-on-Traqen acceptance | [ ] |
+| R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4–D8, AC-F4–F5, AC-F7 | content, TraceChain, impact, and history acceptance | [ ] |
+| R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1–F7 | isolated Traqen-on-Traqen acceptance | [ ] |
 | R6 | “刷新浏览器，当前运行的任务状态未发生变化。” | AC-E1–E2 | job identity, progress, WorkUnit calls | [ ] |
+| R7 | “第一次分析会得到一个完整的图谱关系……增量分析就应该重新更新图谱……功能点是需要记录变化过程及每次变化会影响哪些功能。” | AC-D4–D8, AC-F5, AC-F7 | two-Snapshot FULL→INCREMENTAL acceptance, CurrentGraphHead, and Feature-history query | [ ] |
 
 ### Coverage check
 
@@ -202,6 +209,9 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | Unsupported scope is hidden | complete inventory denominator and explicit dispositions |
 | Truth set overfits implementation | positive/negative relation assertions, versioning, independent review |
 | Incremental mode drifts from full analysis | full-versus-incremental equivalence gate |
+| A failed incremental run contaminates the current graph | move CurrentGraphHead atomically only after GraphRevision evaluation passes |
+| A code change is mistaken for a new business Feature version | only Decisions create FeatureVersions; implementation mappings and impact history remain separate |
+| “Show only the latest graph” is interpreted as deleting history | separate the current projection from immutable Snapshot/version/impact ledgers |
 | Self-analysis contaminates production data | isolated worktree, store, ports, and reviewed execution |
 | Durability work dominates product correctness again | correctness and dogfood phases are release-blocking |
 
@@ -210,7 +220,7 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | # | Question | Recommendation | Status |
 |---|---|---|---|
 | OQ-1 | Who approves the initial Traqen seed truth set? | operator owns business boundaries; independent reviewer validates technical anchors | Design Gate |
-| OQ-2 | What thresholds block release? | establish baselines first, then version thresholds per dimension; never use one aggregate | Design Gate |
+| OQ-2 | What thresholds block release? | numeric `traqen-self-v1` thresholds are defined; later changes require a Decision | Resolved |
 | OQ-3 | What is the first source connector? | allowlisted Local Runner, followed by remote Git without changing graph contracts | Design Gate |
 
 ## Key decisions
@@ -222,6 +232,8 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | KD-3 | Analysis lanes are independent and reconcile after evidence production. | One extractor must not define what the system is allowed to discover. | 2026-07-29 |
 | KD-4 | Traqen-on-Traqen is a release gate. | The product must demonstrate useful traceability on its own realistic system. | 2026-07-29 |
 | KD-5 | `Fxxx` lifecycle IDs remain separate from governed `Feature.id`. | Engineering planning must not create business authority. | 2026-07-29 |
+| KD-6 | First analysis is FULL, later analyses default to INCREMENTAL, and the current graph head is separate from historical ledgers. | The system must provide the latest usable graph while explaining how Features evolved and what each change affected. | 2026-07-29 |
+| KD-7 | Code/configuration change cannot create a FeatureVersion by itself. | Business-version authority comes from Decisions; implementation evolution belongs to Snapshot mappings, impacts, and verification history. | 2026-07-29 |
 
 ## Timeline
 
@@ -229,6 +241,7 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 |---|---|
 | 2026-07-29 | F001 initially created around durable scan lifecycle |
 | 2026-07-29 | operator correction broadened F001 to legacy-system understanding correctness and Traqen self-dogfood |
+| 2026-07-29 | operator established the long-term evolution model: first full, later incremental, latest graph projection plus Feature/Impact history |
 
 ## Review gate
 
@@ -239,7 +252,8 @@ Design Gate must approve:
 3. the reviewed truth-set authority;
 4. independent analysis lanes and reconciliation boundary;
 5. Traqen-on-Traqen as required acceptance;
-6. the Local Runner data boundary for the first connector.
+6. the Local Runner data boundary for the first connector;
+7. FULL→INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature-history semantics.
 
 Implementation then follows TDD, quality gate, independent review, and merge gate.
 
@@ -249,6 +263,7 @@ Implementation then follows TDD, quality gate, independent review, and merge gat
 |---|---|---|
 | System requirements | `docs/architecture/traqen-system-requirements.md` | product mission, graph, journeys, system requirements, dogfood contract |
 | Core engine design | `docs/features/legacy-system-understanding-engine.md` | inventory, lanes, WorkUnits, reconciliation, evaluation, incremental behavior |
+| Understanding-engine plan | `feature-specs/2026-07-29-legacy-system-understanding-engine.md` | TDD order, state machines, contracts, and Traqen dogfood for all F001 ACs |
 | Durable lifecycle design | `docs/features/workspace-scan-and-analysis-lifecycle.md` | server ownership, checkpoints, Pause/Resume, worker recovery |
 | Current Analysis Agent | `docs/features/analysis-agent-design.md` | implemented Agent contracts and current limitations |
 | Current Workspace | `docs/features/workspace-analysis-design.md` | current browser experience and migration baseline |

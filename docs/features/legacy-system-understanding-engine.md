@@ -169,16 +169,69 @@ A text-regex fallback is a separately named capability. It cannot impersonate AS
 
 ### 5.3 `SourceSlice`
 
-An Agent or Skill receives an authorized, bounded source projection:
+An Agent or Skill cannot read an arbitrary path. It requests an authorized, bounded source projection from the broker using stable IDs inside one Snapshot:
 
-- stable artifact IDs and relative paths;
-- requested line/symbol ranges;
-- redacted content or structural excerpt;
-- related deterministic Facts and diagnostics;
-- explicit token/byte budget;
-- allowed evidence IDs.
+```ts
+type SourceSliceRequest = {
+  id: string;
+  projectId: string;
+  snapshotManifestId: string;
+  analysisRunId: string;
+  workUnitId: string;
+  producerRef: string;
+  purpose:
+    | "ENTRYPOINT_RECOVERY"
+    | "RELATION_RESOLUTION"
+    | "CONTRADICTION_PROBE"
+    | "TEST_INTENT"
+    | "CONFIG_INFLUENCE";
+  selectors: Array<{
+    artifactId: string;
+    symbolId?: string;
+    startLine?: number;
+    endLine?: number;
+  }>;
+  allowedFactIds: string[];
+  maxBytes: number;   // traqen-source-slice-v1 default/hard cap: 64 KiB
+  maxTokens: number;  // traqen-source-slice-v1 default/hard cap: 12,000
+  policyId: string;
+  requestedAt: string;
+};
 
-The source-slice broker logs request purpose and digest. Secret policy is enforced before content leaves the trusted runner.
+type SourceSlice = {
+  id: string;
+  requestId: string;
+  artifactSlices: Array<{
+    artifactId: string;
+    relativePath: string;
+    contentDigest: string;
+    range: { startLine: number; endLine: number };
+    redactedText?: string;
+    structuralSummary?: object;
+  }>;
+  factIds: string[];
+  redactions: Array<{ kind: string; range: object }>;
+  contentDigest: string;
+  truncated: boolean;
+  omittedReasons: string[];
+  policyDecisionId: string;
+  createdAt: string;
+};
+```
+
+API boundary:
+
+```http
+POST /v1/projects/{projectId}/analysis-runs/{runId}/work-units/{workUnitId}/source-slices
+GET  /v1/projects/{projectId}/analysis-runs/{runId}/work-units/{workUnitId}/source-slices/{sliceId}
+```
+
+- Only the server Agent/Skill runtime identity may create requests; an ordinary browser cannot use the broker for arbitrary source reads.
+- Selectors use Artifact/Symbol IDs from the same Snapshot. Absolute paths, arbitrary globs, and cross-Snapshot ranges are forbidden.
+- `allowedFactIds` is a subset of the WorkUnit evidence set, and returned Facts cannot exceed that boundary.
+- Before content leaves the trusted runner, the broker applies deterministic secret detection, redaction, range clipping, and budgets, and records purpose, policy, and request/response digests.
+- Failures are deterministic: `SOURCE_SLICE_SCOPE_VIOLATION` (403), `ARTIFACT_NOT_IN_SNAPSHOT` (422), `FACT_NOT_IN_WORK_UNIT` (422), `SECRET_POLICY_BLOCKED` (422), `SOURCE_SLICE_BUDGET_EXCEEDED` (413), `UNSUPPORTED_BINARY` (422), and `STALE_ANALYSIS_RUN` (409).
+- Denial or truncation becomes a WorkUnit Diagnostic/Gap; the runtime cannot bypass the broker with direct source access.
 
 ### 5.4 `UnderstandingWorkUnit`
 
@@ -240,7 +293,31 @@ Extractors create Facts for supported structures, including:
 
 Parse diagnostics and incomplete constructs become gaps. Unsupported syntax never silently falls back to “success”.
 
-### 6.3 Independent semantic analysis
+### 6.3 Document and contract lane
+
+This lane independently processes requirements, designs, ADRs, Feature documents, OpenAPI, schemas, and runbooks:
+
+- deterministic parsing preserves sections, operations, schemas, and explicit cross-references as Facts;
+- semantic work proposes Requirement/Design/API Candidates and their relations;
+- prose cannot automatically become a governed Claim;
+- document/code disagreement enters ConflictLedger rather than silently choosing “docs win” or “code wins.”
+
+### 6.4 Test, configuration, result, and execution lane
+
+The engine separately emits:
+
+- `TestAssetFact`: a static test file/case/assertion was observed;
+- `CandidateTestIntent`: a proposed rule the asset may exercise;
+- `ConfigurationFact`: configuration key, safe default/presence, and consumers, never real secret values;
+- `ExecutionArtifactFact`: a build/test result artifact was observed but does not yet prove a trusted execution lineage;
+- `TestSpec`: only after governance;
+- `TestExecution`: one actual controlled execution;
+- `VerificationResult`: PASS/FAIL/INCONCLUSIVE for a Claim;
+- `Evidence`: protected output supporting that result.
+
+A filename containing “test”, an artifact named “passed”, or a model claim of verification cannot close a verification gap.
+
+### 6.5 Independent Agent/Skill semantic lane
 
 Agent/Skill analysis uses multiple bounded perspectives:
 
@@ -256,20 +333,7 @@ Each perspective may request additional SourceSlices within policy. It returns s
 
 Direct-source analysis is independent of deterministic detection, but it cannot bypass deterministic evidence and schema validation.
 
-### 6.4 Test and execution interpretation
-
-The engine separately emits:
-
-- `TestAssetFact`: a static test file/case/assertion was observed;
-- `CandidateTestIntent`: a proposed rule the asset may exercise;
-- `TestSpec`: only after governance;
-- `TestExecution`: one actual controlled execution;
-- `VerificationResult`: PASS/FAIL/INCONCLUSIVE for a Claim;
-- `Evidence`: protected output supporting that result.
-
-A filename containing “test” cannot close a verification gap.
-
-### 6.5 Reconciliation
+### 6.6 Reconciliation lane
 
 Reconciliation combines candidates using evidence and semantics:
 
@@ -285,15 +349,25 @@ It does not generate business-stable Feature IDs from names, paths, domains, or 
 
 ## 7. Work planning and iterative retrieval
 
-The first plan is generated from:
+The planner cannot treat “nodes found by scanners” as the complete task universe. It creates two planning waves.
+
+The **manifest/convention-derived initial plan** exists before semantic Facts are complete and uses:
 
 - complete ArtifactInventory;
-- build/package/module boundaries;
-- known public entrypoints;
+- build/package/module/entrypoint conventions from a versioned `ConventionRegistry`;
 - document and API manifests;
 - test/config/data clusters;
+- content types, relative-path classes, and safe structural summaries;
+- module/entrypoint lineage from the prior Snapshot.
+
+It creates at least one coverage WorkUnit per inventory partition and independent root WorkUnits for entrypoints, public interfaces, documents, tests, and configuration. If a deterministic extractor intentionally misses an entrypoint, an Agent/Skill can still request a SourceSlice by Artifact ID and produce an evidenced Candidate.
+
+The **Fact-enriched plan** then adds:
+
 - extractor diagnostics;
-- prior Snapshot lineage.
+- parsed Symbol/Route/Data relations;
+- missing or contradictory relations;
+- fine-grained Candidate lineage from the prior Snapshot.
 
 During execution, lanes may enqueue bounded follow-up WorkUnits for:
 
@@ -302,13 +376,17 @@ During execution, lanes may enqueue bounded follow-up WorkUnits for:
 - a Claim with no implementation relation;
 - a test with ambiguous intent;
 - a configuration reference with unknown consumers;
-- a truth-set anchor not yet recovered.
+- an unresolved document/code contradiction.
 
 Follow-up depth, budget, and reason are recorded. Budget exhaustion becomes `UNEXPLORED_BUDGET_LIMIT`, not completion.
 
+The production planner never reads the truth set. The evaluation harness compares output only after the run. A held-out miss informs a later engineering change or a diagnostic rerun described by a public discrepancy category; it never injects the hidden answer into the same analysis.
+
 ## 8. Incremental analysis
 
-For a new Snapshot:
+When a project has no published graph, both `AUTO` and `FULL` perform complete inventory, all lanes, full reconciliation, and evaluation; `INCREMENTAL` is rejected. The first successful run atomically publishes the initial `CurrentGraphHead`.
+
+After a `CurrentGraphHead` exists, `AUTO` defaults to incremental analysis for a new Snapshot:
 
 1. compare ArtifactInventory by content identity;
 2. invalidate Facts for changed extractor inputs;
@@ -316,9 +394,36 @@ For a new Snapshot:
 4. re-run semantic WorkUnits whose evidence or producer version changed;
 5. retain unchanged Candidate lineage;
 6. mark governed Claims as potentially stale rather than deleting Decisions;
-7. compare the incremental graph with a sampled full rebuild.
+7. create a `ChangeSet` from the prior Snapshot to the new Snapshot;
+8. create an `ImpactAssessment` listing affected Features/Claims/TestSpecs/dependencies, invalidation reasons, and revalidation work;
+9. build an immutable `GraphRevision(status=BUILDING)`;
+10. compare the incremental graph with the policy-required full rebuild scope;
+11. after evaluation passes, mark the GraphRevision `PUBLISHED` and move `CurrentGraphHead` in the same transaction.
 
 An incremental run is accepted only if its graph is equivalent to a full run for the evaluated unaffected/affected scopes, apart from permitted timestamps and run IDs.
+
+If build, evaluation, or publication fails, the prior `CurrentGraphHead` remains current. The failed GraphRevision and diagnostics remain available for review.
+
+### 8.1 Current projection and history semantics
+
+- Default Graph APIs/UI read only the latest published Revision referenced by `CurrentGraphHead`.
+- GraphRevisions, SnapshotManifests, FactBundles, Candidate lineage, Decisions, FeatureVersions, Claim/TestSpec versions, ChangeSets, ImpactAssessments, Executions, and Evidence are immutable and time-queryable.
+- A business FeatureVersion is created only through a Decision. Code, configuration, test, or deployment changes update implementation mappings, conformance, impacts, and verification history for that Snapshot instead.
+- A Candidate disappearing from a new Snapshot does not retire a Feature. Retirement, merge, and split remain governed decisions.
+- Feature History is keyed by stable `Feature.id` and shows FeatureVersions, authorizing Decisions, implementation mappings per Snapshot, each Snapshot transition's impact, and its revalidation results.
+
+### 8.2 GraphRevision state and invariants
+
+```text
+BUILDING → EVALUATING → PUBLISHED
+                     ↘ REJECTED
+```
+
+- Before first publication a Project may have no `CurrentGraphHead`; afterward it has exactly one, and it references only a `PUBLISHED` Revision.
+- The first `PUBLISHED` Revision comes from a FULL run.
+- Publishing a Revision and moving CurrentGraphHead are one atomic commit.
+- A `REJECTED` Revision cannot transition back to PUBLISHED; remediation creates a new Revision.
+- Normal update paths never delete or overwrite historical Revisions, ChangeSets, or ImpactAssessments.
 
 ## 9. Persistent execution lifecycle
 
@@ -350,7 +455,27 @@ A reviewed truth set contains:
 
 The engine never uses the truth set as analysis input in production mode. The evaluation harness compares outputs after the run.
 
-### 10.2 Test layers
+### 10.2 Truth-set anti-overfit and blind-review protocol
+
+After sealing, each TruthSetVersion is stratified under a stable `evaluationSeed` into:
+
+- **60% calibration**: visible to implementers for local TDD and failure explanation;
+- **30% held-out**: sealed from implementers and readable only by the acceptance harness and assigned independent reviewer;
+- **10% rotating challenge**: rotated for important releases to cover new languages, misleading names, cross-module relations, and historical change.
+
+Strata include node/edge type, evidence tier, core capability, module, artifact kind, and positive/negative assertion so random sampling cannot erase rare critical relations. Candidate precision review samples at most 100 items (all when fewer), stratified across Candidate/relation kinds, confidence bands, and producer lanes.
+
+An independent reviewer classifies each sample as `SUPPORTED`, `AMBIGUOUS_EXPLICIT`, `UNSUPPORTED`, `DUPLICATE`, or `WRONG_RELATION`:
+
+- precision denominators include decisive Candidates and exclude only `AMBIGUOUS_EXPLICIT`;
+- genuine ambiguity is excludable only when the product exposes it as a Gap/Conflict;
+- any high-confidence `UNSUPPORTED`, truth-set input leakage, or missed P0 anchor blocks release.
+
+The operator/business authority approves capability boundaries, P0 anchors, and thresholds. An independent technical reviewer approves source anchors and typed relations. Implementation authors cannot approve held-out content, alter partition seeds, or sign their own acceptance result. Disagreement remains `UNKNOWN/CONFLICT` rather than being forced through the gate.
+
+After release, the complete EvaluationRun and TruthSetVersion are retained. Challenge items rotate for the next version, while prior answers and results remain immutable. A deterministic boundary test proves that production AnalysisRun input digests contain no truth-set digest, anchor answer, or held-out content.
+
+### 10.3 Test layers
 
 | Layer | Dataset | Purpose |
 |---|---|---|
@@ -361,9 +486,9 @@ The engine never uses the truth set as analysis input in production mode. The ev
 | Realistic dogfood | pinned Traqen Snapshot | system-level recall, precision, gaps, UI usability |
 | Incremental | controlled commits | lineage, invalidation, full/incremental equivalence |
 
-### 10.3 Regression policy
+### 10.4 Regression policy
 
-The evaluation policy versions thresholds by dimension. A change cannot improve node count while regressing required relation correctness or uncertainty honesty. Threshold changes require explicit review.
+The evaluation policy versions thresholds by dimension. A change cannot improve node count while regressing required relation correctness or uncertainty honesty. Threshold changes require a Decision with explicit version, effective scope, and reason, and cannot retroactively alter prior EvaluationRuns.
 
 ## 11. Traqen self-analysis design
 
@@ -393,13 +518,19 @@ At least one governed seed Feature must render a complete TraceChain. Candidate-
 
 ### 11.3 Self-analysis acceptance
 
-- recover every required seed capability or report a reviewed miss;
-- satisfy required/forbidden edge assertions;
+- use `traqen-self-v1`;
+- disposition 100% of in-scope artifacts;
+- evaluate at least 30 positive anchors across at least 10 core capabilities with ≥90% recall and no missed P0 anchor;
+- satisfy 100% of at least 60 required typed edges and violate none of at least 30 forbidden edges;
+- stratify up to 100 Candidate samples (all when fewer), achieve ≥90% human-supported precision among decisive Candidates, and contain no unsupported high-confidence conclusion;
+- reproduce a 100% stable semantic digest for the same Snapshot/engine/policy;
+- achieve 100% equivalence in unchanged regions of a controlled second Snapshot, with only expected or explained changed-region deltas;
 - make unsupported Web/language/document areas explicit;
 - show source content for every sampled Fact and Candidate;
 - complete without browser ownership;
 - display the graph in Traqen itself;
-- evaluate one controlled change and compare predicted impact with the reviewed expectation.
+- evaluate one controlled change and compare predicted impact with the reviewed expectation;
+- default to the second Snapshot's CurrentGraphHead and open one Feature's version/implementation/impact/verification history.
 
 ## 12. API and UI requirements
 
@@ -409,9 +540,11 @@ Read APIs expose:
 - run/phase/WorkUnit progress;
 - Facts, Candidates, conflicts, and gaps;
 - Candidate lineage and evaluation report;
-- graph projections and source excerpts according to policy.
+- graph projections and source excerpts according to policy;
+- current `GraphRevision` and `CurrentGraphHead`;
+- FeatureVersion, implementation mapping by Snapshot, ChangeSet, ImpactAssessment, and verification history.
 
-Command APIs expose explicit Start, Pause, Resume, Cancel, review, and Decision operations.
+Command APIs expose explicit Start, Pause, Resume, Cancel, review, and Decision operations. SourceSlice APIs are available only to the server Agent/Skill runtime. GraphRevision publication is an internal atomic command after evaluation; an ordinary browser cannot move CurrentGraphHead directly.
 
 The UI separates:
 
@@ -423,6 +556,18 @@ The UI separates:
 - “not analyzed”, “unsupported”, “unknown”, “conflicting”, and “absent”.
 
 ## 13. Security boundaries
+
+### 13.1 Deployment capability modes
+
+| Mode | Source access | Constraint |
+|---|---|---|
+| `LOCAL_SINGLE_TENANT` | co-located API/Runner reads an allowlisted local path | suitable for a workstation; ordinary APIs never expose absolute paths |
+| `PRIVATE_RUNNER` | runner stays beside source and receives work over mutually authenticated/outbound transport | raw source stays private; only allowed Facts/Candidates/Evidence leave the boundary |
+| `CLOUD_CONTROL_PLANE` | never interprets a browser-submitted local path | requires a Private Runner or governed Remote Git Connector |
+
+`SourceRegistration.connectorKind` and capability/policy version record the mode. A cloud/multi-tenant API without a Private Runner or Remote Connector rejects `LOCAL_FILESYSTEM` registration rather than pretending it can read a user's machine.
+
+### 13.2 Common boundaries
 
 - the runner can access only allowlisted source registrations;
 - symlink escape, traversal, broad root/home targets, devices, sockets, and non-regular files are rejected;
@@ -441,9 +586,11 @@ The UI separates:
 - **AC-05**: reconciliation preserves conflicts and alternatives and cannot create governed authority.
 - **AC-06**: the evaluation report exposes recall, precision, relation, provenance, gap, replay, and incremental dimensions with denominators.
 - **AC-07**: full and incremental runs produce equivalent evaluated graphs for a controlled change.
+- **AC-07a**: the first run is FULL, later AUTO defaults to INCREMENTAL, and only an evaluation-passing GraphRevision atomically replaces CurrentGraphHead.
+- **AC-07b**: the default graph shows only the latest state, while Feature history retains version Decisions, implementations by Snapshot, ChangeSets, impacts, and verification; code change does not auto-create FeatureVersion.
 - **AC-08**: refresh, closure, reconnect, manual Pause/Resume, and worker restart preserve the same job and committed work.
 - **AC-09**: test clues, TestSpecs, executions, results, and Evidence remain distinct in domain data and UI.
-- **AC-10**: a pinned Traqen Snapshot produces the reviewed Candidate graph, one governed complete TraceChain, a visible gap report, and a reviewed change-impact result inside Traqen.
+- **AC-10**: two pinned Traqen Snapshots under `traqen-self-v1` produce the reviewed Candidate graph, one governed complete TraceChain, a visible gap report, the latest graph head, Feature history, and a reviewed change-impact result inside Traqen.
 - **AC-11**: source and secret security boundaries pass deterministic tests.
 - **AC-12**: backend, Web, build, lint, diff, evaluation, and independent review gates pass.
 
@@ -465,4 +612,6 @@ The recommended decisions are:
 2. accept a versioned, human-reviewed truth set as evaluation authority;
 3. make Traqen-on-Traqen a required release gate;
 4. keep the durable lifecycle as a supporting layer of F001;
-5. deliver source connectors incrementally, starting with an allowlisted Local Runner, without changing the canonical graph contract.
+5. deliver source connectors incrementally, starting with an allowlisted Local Runner, without changing the canonical graph contract;
+6. accept `traqen-self-v1` numeric thresholds, calibration/held-out/challenge blind review, and independent approval;
+7. accept first-FULL/later-INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature-history ledger semantics.
