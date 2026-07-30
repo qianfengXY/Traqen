@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/source-slice.schema.json",
+  "title": "SourceSlice",
+  "oneOf": [
+    {
+      "title": "SourceSliceRequest",
+      "type": "object",
+      "required": ["projectId", "snapshotManifestId", "analysisRunId", "workUnitId", "artifactId", "range", "maxBytes", "maxTokens", "policyDigest"],
+      "properties": {
+        "projectId": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "analysisRunId": { "type": "string", "minLength": 1 },
+        "workUnitId": { "type": "string", "minLength": 1 },
+        "artifactId": { "type": "string", "minLength": 1 },
+        "range": { "type": "object", "required": ["startByte"], "properties": { "startByte": { "type": "integer", "minimum": 0 }, "endByte": { "type": ["integer", "null"], "minimum": 1 } }, "additionalProperties": false },
+        "maxBytes": { "type": "integer", "minimum": 1, "maximum": 65536 },
+        "maxTokens": { "type": "integer", "minimum": 1, "maximum": 12000 },
+        "policyDigest": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    {
+      "title": "SourceSliceResponse",
+      "type": "object",
+      "required": ["id", "requestId", "artifactId", "status", "content", "contentDigest", "responseDigest"],
+      "properties": {
+        "id": { "type": "string" }, "requestId": { "type": "string" }, "artifactId": { "type": "string" },
+        "status": { "enum": ["COMPLETE", "TRUNCATED", "REDACTED", "REJECTED"] },
+        "content": { "type": "string", "maxLength": 65536 },
+        "contentDigest": { "type": "string" }, "responseDigest": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

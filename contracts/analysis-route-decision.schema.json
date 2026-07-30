@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/analysis-route-decision.schema.json",
+  "title": "AnalysisRouteDecision",
+  "type": "object",
+  "required": ["id", "projectId", "analysisRunId", "workUnitId", "request", "candidates", "selected", "status", "decidedAt"],
+  "properties": {
+    "id": { "type": "string" }, "projectId": { "type": "string" }, "analysisRunId": { "type": "string" }, "workUnitId": { "type": "string" },
+    "request": { "type": "object" }, "candidates": { "type": "array", "items": { "type": "object" } },
+    "selected": { "type": "array", "items": { "type": "object" }, "maxItems": 2 },
+    "status": { "enum": ["ROUTED", "ROUTED_WITH_GAP", "NO_ELIGIBLE_PRODUCER"] },
+    "gap": { "type": ["object", "null"] }, "decidedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

@@ -2849,4 +2849,142 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
   async getLatestAnalysisResult(projectId) {
     return (await this.listAnalysisResults(projectId))[0] ?? null;
   }
+
+  async appendUnderstandingRecord(projectId, recordType, record) {
+    requireId(projectId, "projectId");
+    requireId(recordType, "recordType");
+    requireId(record?.id, "record.id");
+    const createdAt = record.createdAt ?? record.completedAt ?? record.decidedAt
+      ?? record.producedAt ?? record.requestedAt ?? record.updatedAt ?? new Date().toISOString();
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO understanding_record (
+           project_id, record_type, id, snapshot_manifest_id, analysis_run_id, status, record_payload, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
+         ON CONFLICT (project_id, record_type, id) DO NOTHING`,
+        [
+          projectId,
+          recordType,
+          record.id,
+          record.snapshotManifestId ?? null,
+          record.analysisRunId ?? null,
+          record.status ?? null,
+          JSON.stringify(record),
+          createdAt,
+        ],
+      );
+      const stored = await this.getUnderstandingRecord(projectId, recordType, record.id);
+      if (!stored || canonicalJson(stored) !== canonicalJson(record)) {
+        throw new PersistenceConflictError(`${recordType} ${record.id} conflicts with an existing immutable record`);
+      }
+      return stored;
+    });
+  }
+
+  async getUnderstandingRecord(projectId, recordType, recordId) {
+    requireId(projectId, "projectId");
+    requireId(recordType, "recordType");
+    requireId(recordId, "recordId");
+    const result = await this.#database.query(
+      `SELECT record_payload FROM understanding_record
+       WHERE project_id = $1 AND record_type = $2 AND id = $3`,
+      [projectId, recordType, recordId],
+    );
+    return result.rows[0] ? deepFreeze(result.rows[0].record_payload) : null;
+  }
+
+  async listUnderstandingRecords(projectId, recordType) {
+    requireId(projectId, "projectId");
+    requireId(recordType, "recordType");
+    const result = await this.#database.query(
+      `SELECT record_payload FROM understanding_record
+       WHERE project_id = $1 AND record_type = $2
+       ORDER BY created_at DESC, id`,
+      [projectId, recordType],
+    );
+    return deepFreeze(result.rows.map((row) => row.record_payload));
+  }
+
+  async getCurrentGraphHead(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT project_id, graph_revision_id, version, updated_at
+       FROM current_graph_head WHERE project_id = $1`,
+      [projectId],
+    );
+    const row = result.rows[0];
+    return row ? deepFreeze({
+      projectId: row.project_id,
+      graphRevisionId: row.graph_revision_id,
+      version: Number(row.version),
+      updatedAt: new Date(row.updated_at).toISOString(),
+    }) : null;
+  }
+
+  async publishGraphRevision(projectId, revisionId, expectedHeadVersion = 0) {
+    requireId(projectId, "projectId");
+    requireId(revisionId, "revisionId");
+    if (!Number.isSafeInteger(expectedHeadVersion) || expectedHeadVersion < 0) {
+      throw new TypeError("expectedHeadVersion must be a non-negative integer");
+    }
+    return this.#transaction(async () => {
+      const headResult = await this.#database.query(
+        `SELECT graph_revision_id, version FROM current_graph_head
+         WHERE project_id = $1 FOR UPDATE`,
+        [projectId],
+      );
+      const current = headResult.rows[0] ?? null;
+      const currentVersion = current ? Number(current.version) : 0;
+      if (currentVersion !== expectedHeadVersion) {
+        throw new PersistenceConflictError(
+          `CurrentGraphHead version ${currentVersion} does not match ${expectedHeadVersion}`,
+        );
+      }
+      const revisionResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'GRAPH_REVISION' AND id = $2 FOR UPDATE`,
+        [projectId, revisionId],
+      );
+      const revision = revisionResult.rows[0]?.record_payload;
+      if (!revision) throw new PersistenceConflictError(`GraphRevision ${revisionId} does not exist`);
+      if (revision.status !== "EVALUATING") throw new PersistenceConflictError("GraphRevision must be EVALUATING");
+      const evaluationResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'EVALUATION_RUN' AND id = $2`,
+        [projectId, revision.evaluationRunId],
+      );
+      if (evaluationResult.rows[0]?.record_payload?.status !== "PASSED") {
+        throw new PersistenceConflictError("GraphRevision evaluation must be PASSED");
+      }
+      if (!current && revision.mode !== "FULL") {
+        throw new PersistenceConflictError("The first published GraphRevision must be FULL");
+      }
+      if (current && revision.mode === "INCREMENTAL" && revision.baseRevisionId !== current.graph_revision_id) {
+        throw new PersistenceConflictError("Incremental GraphRevision must use the current head as its base");
+      }
+      const publishedAt = new Date().toISOString();
+      const published = { ...revision, status: "PUBLISHED", publishedAt };
+      await this.#database.query(
+        `UPDATE understanding_record
+         SET status = 'PUBLISHED', record_payload = $3::jsonb
+         WHERE project_id = $1 AND record_type = 'GRAPH_REVISION' AND id = $2`,
+        [projectId, revisionId, JSON.stringify(published)],
+      );
+      await this.#database.query(
+        `INSERT INTO current_graph_head (project_id, graph_revision_id, version, updated_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (project_id) DO UPDATE SET
+           graph_revision_id = EXCLUDED.graph_revision_id,
+           version = EXCLUDED.version,
+           updated_at = EXCLUDED.updated_at`,
+        [projectId, revisionId, currentVersion + 1, publishedAt],
+      );
+      await this.#database.query(
+        `INSERT INTO current_graph_head_event (project_id, version, graph_revision_id, updated_at)
+         VALUES ($1, $2, $3, $4)`,
+        [projectId, currentVersion + 1, revisionId, publishedAt],
+      );
+      return this.getCurrentGraphHead(projectId);
+    });
+  }
 }

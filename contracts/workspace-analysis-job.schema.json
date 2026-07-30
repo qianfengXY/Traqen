@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/workspace-analysis-job.schema.json",
+  "title": "WorkspaceAnalysisJob",
+  "type": "object",
+  "required": ["id", "projectId", "snapshotManifestId", "requestedMode", "resolvedMode", "baseRevisionId", "policyDigest", "phase", "status", "completedPhases", "outputs", "createdAt", "updatedAt"],
+  "properties": {
+    "id": { "type": "string" }, "projectId": { "type": "string" }, "snapshotManifestId": { "type": "string" },
+    "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] }, "resolvedMode": { "enum": ["FULL", "INCREMENTAL"] },
+    "baseRevisionId": { "type": ["string", "null"] }, "policyDigest": { "type": "string" },
+    "phase": { "enum": ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING", "COMPLETED"] },
+    "status": { "enum": ["RUNNING", "PAUSED", "COMPLETED", "FAILED"] },
+    "completedPhases": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "outputs": { "type": "object" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

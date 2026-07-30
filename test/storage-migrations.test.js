@@ -42,6 +42,7 @@ async function migratedDatabase() {
     "0011_evidence_lifecycle",
     "0012_feature_evolution",
     "0013_analysis_agent",
+    "0014_legacy_understanding_engine",
   ]);
   return database;
 }

@@ -30,6 +30,7 @@ import {
   createFeatureGraphProjection,
   createSnapshotManifest,
   createWorkspaceObservationPackage,
+  createSourceSliceRequest,
   createTestSpec,
   generateEndpointTestSpecDraft,
   evaluateTraceChain,
@@ -178,6 +179,7 @@ export class TraceabilityApplication {
   #productMetricsPolicyResolver;
   #analysisAgent;
   #analysisModelRegistry;
+  #sourceSliceBroker;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -198,6 +200,7 @@ export class TraceabilityApplication {
     productMetricsPolicyResolver = () => ({}),
     analysisAgent = null,
     analysisModelRegistry = null,
+    sourceSliceBroker = null,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -235,6 +238,7 @@ export class TraceabilityApplication {
     this.#productMetricsPolicyResolver = productMetricsPolicyResolver;
     this.#analysisAgent = analysisAgent;
     this.#analysisModelRegistry = analysisModelRegistry;
+    this.#sourceSliceBroker = sourceSliceBroker;
   }
 
   async createProject(input) {
@@ -2311,5 +2315,83 @@ export class TraceabilityApplication {
     if (!await this.#store.getProjectFoundation(projectId)) return null;
     const observations = await this.#store.getPlatformOperationObservations(projectId);
     return createPlatformOperationsMetrics(projectId, observations, this.#clock);
+  }
+
+  async appendUnderstandingRecord(projectId, recordType, record) {
+    requireId(projectId, "projectId");
+    requireId(recordType, "recordType");
+    if (record?.projectId !== undefined && record.projectId !== projectId) {
+      throw new TypeError("understanding record projectId must match the route projectId");
+    }
+    return this.#store.appendUnderstandingRecord(projectId, recordType, record);
+  }
+
+  async requestSourceSlice(projectId, input, requestContext = {}) {
+    requireId(projectId, "projectId");
+    if (!this.#sourceSliceBroker) throw new TypeError("SourceSlice Broker is not configured");
+    if (input.projectId !== projectId) throw new TypeError("SourceSlice projectId must match the route projectId");
+    const request = createSourceSliceRequest(input, this.#clock);
+    const workUnit = await this.#store.getUnderstandingRecord(projectId, "WORK_UNIT", request.workUnitId);
+    const authorized = requestContext.serviceIdentity && workUnit
+      && workUnit.analysisRunId === request.analysisRunId
+      && workUnit.snapshotManifestId === request.snapshotManifestId;
+    return this.#sourceSliceBroker.read(request, authorized ? {
+      serviceIdentity: requestContext.serviceIdentity,
+      projectId,
+      analysisRunId: request.analysisRunId,
+      workUnitArtifactIds: workUnit.artifactIds,
+    } : null);
+  }
+
+  async getCurrentUnderstandingGraph(projectId) {
+    requireId(projectId, "projectId");
+    const head = await this.#store.getCurrentGraphHead(projectId);
+    if (!head) return null;
+    const revision = await this.#store.getUnderstandingRecord(
+      projectId,
+      "GRAPH_REVISION",
+      head.graphRevisionId,
+    );
+    if (!revision || revision.status !== "PUBLISHED") {
+      throw new PersistenceConflictError("CurrentGraphHead must reference a published GraphRevision");
+    }
+    return deepFreeze({ head, revision });
+  }
+
+  async listGraphRevisions(projectId) {
+    requireId(projectId, "projectId");
+    return this.#store.listUnderstandingRecords(projectId, "GRAPH_REVISION");
+  }
+
+  async getGraphRevision(projectId, revisionId) {
+    requireId(projectId, "projectId");
+    requireId(revisionId, "revisionId");
+    return this.#store.getUnderstandingRecord(projectId, "GRAPH_REVISION", revisionId);
+  }
+
+  async publishGraphRevision(projectId, revisionId, expectedHeadVersion = 0) {
+    requireId(projectId, "projectId");
+    requireId(revisionId, "revisionId");
+    return this.#store.publishGraphRevision(projectId, revisionId, expectedHeadVersion);
+  }
+
+  async getFeatureUnderstandingHistory(projectId, featureId) {
+    requireId(projectId, "projectId");
+    requireId(featureId, "featureId");
+    const baseline = await this.#store.getFeatureBaseline(projectId, featureId);
+    if (!baseline) return null;
+    const [mappings, revisions] = await Promise.all([
+      this.#store.listImplementationMappings(projectId),
+      this.#store.listUnderstandingRecords(projectId, "GRAPH_REVISION"),
+    ]);
+    return deepFreeze({
+      feature: baseline.feature,
+      featureVersions: baseline.featureHistory ?? [baseline.feature],
+      decisions: (baseline.claims ?? []).flatMap(({ decisionHistory = [] }) => decisionHistory),
+      implementationMappings: mappings.filter((mapping) => mapping.featureId === featureId),
+      graphRevisions: revisions.filter((revision) => revision.status === "PUBLISHED"),
+      testSpecs: baseline.testSpecs ?? [],
+      testExecutions: baseline.testExecutions ?? [],
+    });
   }
 }

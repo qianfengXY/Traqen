@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/understanding-evaluation.schema.json",
+  "title": "UnderstandingEvaluation",
+  "type": "object",
+  "required": ["id", "projectId", "analysisRunId", "truthSetVersionId", "policyId", "metrics", "denominators", "failures", "status", "reviewer", "completedAt"],
+  "properties": {
+    "id": { "type": "string" }, "projectId": { "type": "string" }, "analysisRunId": { "type": "string" },
+    "truthSetVersionId": { "type": "string" }, "policyId": { "type": "string" },
+    "metrics": { "type": "object", "additionalProperties": { "type": "number", "minimum": 0, "maximum": 1 } },
+    "denominators": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "failures": { "type": "array", "items": { "type": "object" } },
+    "status": { "enum": ["QUEUED", "RUNNING", "PASSED", "FAILED"] },
+    "reviewer": { "type": "object" }, "completedAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

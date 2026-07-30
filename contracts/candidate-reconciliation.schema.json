@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/candidate-reconciliation.schema.json",
+  "title": "CandidateReconciliation",
+  "type": "object",
+  "required": ["id", "projectId", "snapshotManifestId", "analysisRunId", "candidates", "conflicts", "candidateAbsences", "createdAt"],
+  "properties": {
+    "id": { "type": "string" }, "projectId": { "type": "string" }, "snapshotManifestId": { "type": "string" }, "analysisRunId": { "type": "string" },
+    "candidates": { "type": "array", "items": { "type": "object" } },
+    "conflicts": { "type": "array", "items": { "type": "object" } },
+    "candidateAbsences": { "type": "array", "items": { "type": "object" } },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

@@ -1,6 +1,7 @@
 import { TraceabilityApplication } from "../application/traceability-application.js";
 import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
 import { AnalysisAgent, AnalysisModelRegistry, configuredAnalysisModels, createReverseSkillAnalysisAdapter, defaultAnalysisModelProfileStorePath, EncryptedAnalysisModelProfileStore } from "../analysis/index.js";
+import { createLocalSourceSnapshotBroker } from "../application/local-source-snapshot-broker.js";
 
 function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
@@ -89,6 +90,9 @@ export function createConfiguredApplication({ store, env = process.env }) {
       skillResolver: (skillId, version) => analysisSkills.get(`${skillId}\u0000${version}`) ?? null,
     }),
     analysisModelRegistry,
+    sourceSliceBroker: env.SOURCE_SNAPSHOT_ROOT
+      ? createLocalSourceSnapshotBroker({ store, snapshotRoot: env.SOURCE_SNAPSHOT_ROOT })
+      : null,
     reviewerResolver: (_projectId, context) => {
       if (configuredReviewers.length > 0) {
         const matched = configuredReviewers.find((entry) => context.authorization === `Bearer ${entry.token}`);

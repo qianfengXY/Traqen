@@ -50,6 +50,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #changeImpacts = new Map();
   #analysisCheckpoints = new Map();
   #analysisResults = new Map();
+  #understandingRecords = new Map();
+  #currentGraphHeads = new Map();
 
   async appendProjectFoundation(foundation) {
     const existing = this.#projects.get(foundation.project.id);
@@ -1147,5 +1149,73 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
   async getLatestAnalysisResult(projectId) {
     return (await this.listAnalysisResults(projectId))[0] ?? null;
+  }
+
+  async appendUnderstandingRecord(projectId, recordType, record) {
+    const supported = new Set([
+      "ARTIFACT_INVENTORY", "EXTRACTOR_CAPABILITY", "UNDERSTANDING_PLAN", "WORK_UNIT",
+      "MODEL_CAPABILITY_PROFILE", "ANALYSIS_ROUTE_DECISION", "SOURCE_SLICE",
+      "RECONCILIATION", "EVALUATION_RUN", "GRAPH_REVISION",
+    ]);
+    if (!supported.has(recordType)) throw new TypeError(`Unsupported understanding record type ${recordType}`);
+    if (!record?.id) throw new TypeError("understanding record id is required");
+    const storageKey = key(projectId, `${recordType}\u0000${record.id}`);
+    return this.#appendVersion(
+      this.#understandingRecords,
+      storageKey,
+      record,
+      `${recordType} ${record.id}`,
+    );
+  }
+
+  async getUnderstandingRecord(projectId, recordType, recordId) {
+    return this.#understandingRecords.get(key(projectId, `${recordType}\u0000${recordId}`)) ?? null;
+  }
+
+  async listUnderstandingRecords(projectId, recordType) {
+    const prefix = key(projectId, `${recordType}\u0000`);
+    return deepFreeze([...this.#understandingRecords.entries()]
+      .filter(([storageKey]) => storageKey.startsWith(prefix))
+      .map(([, record]) => record)
+      .sort((left, right) => (right.createdAt ?? right.completedAt ?? "").localeCompare(
+        left.createdAt ?? left.completedAt ?? "",
+      ) || left.id.localeCompare(right.id)));
+  }
+
+  async getCurrentGraphHead(projectId) {
+    return this.#currentGraphHeads.get(projectId) ?? null;
+  }
+
+  async publishGraphRevision(projectId, revisionId, expectedHeadVersion = 0) {
+    const current = this.#currentGraphHeads.get(projectId) ?? null;
+    const currentVersion = current?.version ?? 0;
+    if (currentVersion !== expectedHeadVersion) {
+      throw new PersistenceConflictError(`CurrentGraphHead version ${currentVersion} does not match ${expectedHeadVersion}`);
+    }
+    const revisionKey = key(projectId, `GRAPH_REVISION\u0000${revisionId}`);
+    const revision = this.#understandingRecords.get(revisionKey);
+    if (!revision) throw new PersistenceConflictError(`GraphRevision ${revisionId} does not exist`);
+    if (revision.status !== "EVALUATING") throw new PersistenceConflictError("GraphRevision must be EVALUATING");
+    const evaluation = this.#understandingRecords.get(key(projectId, `EVALUATION_RUN\u0000${revision.evaluationRunId}`));
+    if (!evaluation || evaluation.status !== "PASSED") {
+      throw new PersistenceConflictError("GraphRevision evaluation must be PASSED");
+    }
+    if (!current && revision.mode !== "FULL") {
+      throw new PersistenceConflictError("The first published GraphRevision must be FULL");
+    }
+    if (current && revision.mode === "INCREMENTAL" && revision.baseRevisionId !== current.graphRevisionId) {
+      throw new PersistenceConflictError("Incremental GraphRevision must use the current head as its base");
+    }
+    const publishedAt = new Date().toISOString();
+    const published = deepFreeze({ ...structuredClone(revision), status: "PUBLISHED", publishedAt });
+    this.#understandingRecords.set(revisionKey, published);
+    const head = deepFreeze({
+      projectId,
+      graphRevisionId: revisionId,
+      version: currentVersion + 1,
+      updatedAt: publishedAt,
+    });
+    this.#currentGraphHeads.set(projectId, head);
+    return head;
   }
 }

@@ -47,3 +47,44 @@ export function createReverseSkillAnalysisAdapter(adapter) {
     },
   });
 }
+
+export function createDirectSourceAnalysisAdapter(adapter, sourceSliceBroker) {
+  if (!adapter || typeof adapter.execute !== "function") throw new TypeError("direct-source Skill adapter.execute is required");
+  if (!sourceSliceBroker || typeof sourceSliceBroker.read !== "function") throw new TypeError("sourceSliceBroker is required");
+  return Object.freeze({
+    id: adapter.id,
+    version: adapter.version,
+    inputMode: "DIRECT_SOURCE",
+    async analyze(input, { signal = null } = {}) {
+      if (input.factBundleRequired) throw new TypeError("Direct-source adapter cannot require a FactBundle");
+      const slices = [];
+      for (const request of input.sourceSliceRequests ?? []) {
+        if (signal?.aborted) throw new DOMException("Analysis aborted", "AbortError");
+        const slice = await sourceSliceBroker.read(request, input.authorization);
+        if (slice.status === "REJECTED") continue;
+        slices.push(slice);
+      }
+      if (slices.length === 0) {
+        return { candidateFeatures: [], gaps: [{ code: "NO_AUTHORIZED_SOURCE_SLICE" }] };
+      }
+      const raw = await adapter.execute({
+        projectSnapshot: {
+          projectId: input.projectId,
+          snapshotManifestId: input.snapshotManifestId,
+        },
+        workUnitId: input.workUnitId,
+        sourceSlices: slices.map(({ id, artifactId, content, contentDigest, range }) => ({
+          id, artifactId, content, contentDigest, range,
+        })),
+        optionalFacts: input.optionalFacts ?? null,
+      }, { signal });
+      return {
+        candidateFeatures: (raw.candidateFeatures ?? []).map((candidate) => ({
+          ...candidate,
+          sourceSliceIds: [...new Set(candidate.sourceSliceIds ?? [])],
+        })),
+        gaps: raw.gaps ?? [],
+      };
+    },
+  });
+}

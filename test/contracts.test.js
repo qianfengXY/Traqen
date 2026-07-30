@@ -204,6 +204,12 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/resume"].post.operationId, "resumeAnalysisRun");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-results/latest"].get.operationId, "getLatestAnalysisResult");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-candidates/{candidateId}/history"].get.operationId, "getAnalysisCandidateHistory");
+  assert.equal(contract.paths["/v1/projects/{projectId}/graph/current"].get.operationId, "getCurrentUnderstandingGraph");
+  assert.equal(contract.paths["/v1/projects/{projectId}/graph/revisions"].get.operationId, "listGraphRevisions");
+  assert.equal(contract.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}"].get.operationId, "getGraphRevision");
+  assert.equal(contract.paths["/v1/projects/{projectId}/features/{featureId}/history"].get.operationId, "getFeatureUnderstandingHistory");
+  assert.equal(contract.paths["/v1/projects/{projectId}/changes/{changeSetId}/impact"].get.operationId, "getUnderstandingChangeImpact");
+  assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/features/{featureId}/analysis-history"], undefined);
   assert.equal(contract.paths["/v1/reverse-runs"].post.operationId, "executeReverseRun");
   assert.equal(

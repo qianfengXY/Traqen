@@ -955,6 +955,84 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const currentGraphMatch = /^\/v1\/projects\/([^/]+)\/graph\/current$/.exec(url.pathname);
+      if (request.method === "GET" && currentGraphMatch) {
+        const projectId = decodePathSegment(currentGraphMatch[1]);
+        const graph = await application.getCurrentUnderstandingGraph(projectId);
+        if (!graph) throw new HttpError(404, "CURRENT_GRAPH_NOT_FOUND", "No published GraphRevision was found");
+        sendJson(response, 200, graph, id);
+        return;
+      }
+
+      const graphRevisionsMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions$/.exec(url.pathname);
+      if (request.method === "GET" && graphRevisionsMatch) {
+        const projectId = decodePathSegment(graphRevisionsMatch[1]);
+        sendJson(response, 200, { revisions: await application.listGraphRevisions(projectId) }, id);
+        return;
+      }
+
+      const graphRevisionMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && graphRevisionMatch) {
+        const projectId = decodePathSegment(graphRevisionMatch[1]);
+        const revisionId = decodePathSegment(graphRevisionMatch[2]);
+        const revision = await application.getGraphRevision(projectId, revisionId);
+        if (!revision) throw new HttpError(404, "GRAPH_REVISION_NOT_FOUND", "GraphRevision was not found");
+        sendJson(response, 200, revision, id);
+        return;
+      }
+
+      const graphPublishMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)\/publish$/.exec(url.pathname);
+      if (request.method === "POST" && graphPublishMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(graphPublishMatch[1]);
+        const revisionId = decodePathSegment(graphPublishMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 200, await application.publishGraphRevision(
+          projectId,
+          revisionId,
+          input.expectedHeadVersion ?? 0,
+        ), id);
+        return;
+      }
+
+      const featureHistoryMatch = /^\/v1\/projects\/([^/]+)\/features\/([^/]+)\/history$/.exec(url.pathname);
+      if (request.method === "GET" && featureHistoryMatch) {
+        const projectId = decodePathSegment(featureHistoryMatch[1]);
+        const featureId = decodePathSegment(featureHistoryMatch[2]);
+        const history = await application.getFeatureUnderstandingHistory(projectId, featureId);
+        if (!history) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
+        sendJson(response, 200, history, id);
+        return;
+      }
+
+      const understandingImpactMatch = /^\/v1\/projects\/([^/]+)\/changes\/([^/]+)\/impact$/.exec(url.pathname);
+      if (request.method === "GET" && understandingImpactMatch) {
+        const projectId = decodePathSegment(understandingImpactMatch[1]);
+        const changeSetId = decodePathSegment(understandingImpactMatch[2]);
+        const impact = await application.getChangeImpact(projectId, changeSetId);
+        if (!impact) throw new HttpError(404, "CHANGE_IMPACT_NOT_FOUND", "Change impact was not found");
+        sendJson(response, 200, impact, id);
+        return;
+      }
+
+      const sourceSliceMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/source-slices$/.exec(url.pathname);
+      if (request.method === "POST" && sourceSliceMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(sourceSliceMatch[1]);
+        const analysisRunId = decodePathSegment(sourceSliceMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        const slice = await application.requestSourceSlice(
+          projectId,
+          { ...input, projectId, analysisRunId },
+          { serviceIdentity: request.headers["x-traqen-service-identity"] ?? null },
+        );
+        if (slice.status === "REJECTED") {
+          throw new HttpError(403, "SOURCE_SLICE_FORBIDDEN", "SourceSlice request was rejected", slice.diagnostics);
+        }
+        sendJson(response, 200, slice, id);
+        return;
+      }
+
       if (url.pathname === "/v1/reverse-runs" && request.method === "POST") {
         requireJson(request);
         const input = await readJson(request, maxBodyBytes);

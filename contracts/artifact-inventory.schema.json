@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/artifact-inventory.schema.json",
+  "title": "ArtifactInventory",
+  "type": "object",
+  "required": ["id", "projectId", "snapshotManifestId", "sourceDigest", "sealed", "totalCount", "disposedCount", "artifacts"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "sourceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "sealed": { "type": "boolean" },
+    "totalCount": { "type": "integer", "minimum": 0 },
+    "disposedCount": { "type": "integer", "minimum": 0 },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "kind", "byteSize", "contentDigest", "disposition"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "language": { "type": ["string", "null"] },
+          "byteSize": { "type": "integer", "minimum": 0 },
+          "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+          "disposition": { "enum": ["INCLUDED", "EXCLUDED", "UNSUPPORTED", "GENERATED", "BINARY", "OVERSIZED", "SECRET_REDACTED", "READ_FAILED"] },
+          "reason": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

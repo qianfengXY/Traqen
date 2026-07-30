@@ -105,11 +105,21 @@ export function createReverseSkillManifest(input) {
   const inputs = requireObject(input.inputs, "manifest.inputs");
   const requiredInputs = uniqueStrings(inputs.required, "manifest.inputs.required");
   const optionalInputs = uniqueStrings(inputs.optional ?? [], "manifest.inputs.optional", { allowEmpty: true });
+  const inputMode = inputs.mode ?? "FACT_DEPENDENT";
+  if (!["DIRECT_SOURCE", "FACT_DEPENDENT"].includes(inputMode)) {
+    throw new TypeError("manifest.inputs.mode must be DIRECT_SOURCE or FACT_DEPENDENT");
+  }
   for (const inputType of [...requiredInputs, ...optionalInputs]) {
     if (!inputTypes.has(inputType)) throw new TypeError(`Unsupported Skill input type: ${inputType}`);
   }
-  if (!requiredInputs.includes("PROJECT_SNAPSHOT") || !requiredInputs.includes("CODE_FACT_BUNDLE")) {
-    throw new TypeError("Skill inputs must require PROJECT_SNAPSHOT and CODE_FACT_BUNDLE");
+  if (!requiredInputs.includes("PROJECT_SNAPSHOT")) {
+    throw new TypeError("Skill inputs must require PROJECT_SNAPSHOT");
+  }
+  if (inputMode === "FACT_DEPENDENT" && !requiredInputs.includes("CODE_FACT_BUNDLE")) {
+    throw new TypeError("Fact-dependent Skill inputs must require CODE_FACT_BUNDLE");
+  }
+  if (inputMode === "DIRECT_SOURCE" && requiredInputs.includes("CODE_FACT_BUNDLE")) {
+    throw new TypeError("Direct-source Skill cannot require CODE_FACT_BUNDLE");
   }
   const outputs = requireObject(input.outputs, "manifest.outputs");
   if (outputs.schema !== "reverse-artifact-bundle/v1alpha1") {
@@ -144,7 +154,7 @@ export function createReverseSkillManifest(input) {
       frameworks: uniqueStrings(compatibility.frameworks, "manifest.compatibility.frameworks", { allowEmpty: true }),
       factSchema: requireNonEmptyString(compatibility.factSchema, "manifest.compatibility.factSchema"),
     },
-    inputs: { required: requiredInputs, optional: optionalInputs },
+    inputs: { mode: inputMode, required: requiredInputs, optional: optionalInputs },
     outputs: {
       schema: outputs.schema,
       types: uniqueStrings(outputs.types, "manifest.outputs.types").map((type) =>

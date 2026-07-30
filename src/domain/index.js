@@ -22,3 +22,7 @@ export * from "./evidence-lifecycle.js";
 export * from "./feature-evolution.js";
 export * from "./platform-operations-metrics.js";
 export * from "./workspace-observations.js";
+export * from "./artifact-inventory.js";
+export * from "./source-slice.js";
+export * from "./graph-revision.js";
+export * from "./understanding-evaluation.js";

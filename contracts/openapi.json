@@ -1222,6 +1222,101 @@
           "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
+    },
+    "/v1/projects/{projectId}/graph/current": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "getCurrentUnderstandingGraph",
+        "responses": {
+          "200": { "description": "Current atomically published graph head and revision" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/graph/revisions": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "get": {
+        "operationId": "listGraphRevisions",
+        "responses": { "200": { "description": "Immutable graph revision history" } }
+      }
+    },
+    "/v1/projects/{projectId}/graph/revisions/{revisionId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "getGraphRevision",
+        "responses": {
+          "200": { "description": "One immutable GraphRevision", "content": { "application/json": { "schema": { "$ref": "./graph-revision.schema.json" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/graph/revisions/{revisionId}/publish": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": {
+        "operationId": "publishGraphRevision",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": {
+            "type": "object",
+            "required": ["expectedHeadVersion"],
+            "properties": { "expectedHeadVersion": { "type": "integer", "minimum": 0 } },
+            "additionalProperties": false
+          } } }
+        },
+        "responses": {
+          "200": { "description": "CurrentGraphHead moved atomically" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/features/{featureId}/history": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/FeatureId" }
+      ],
+      "get": {
+        "operationId": "getFeatureUnderstandingHistory",
+        "responses": {
+          "200": { "description": "FeatureVersion, Decision, Snapshot implementation, impact and verification history" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/changes/{changeSetId}/impact": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/ChangeSetId" }
+      ],
+      "get": {
+        "operationId": "getUnderstandingChangeImpact",
+        "responses": {
+          "200": { "$ref": "#/components/responses/ChangeImpact" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/source-slices": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "$ref": "#/components/parameters/AnalysisRunId" }
+      ],
+      "post": {
+        "operationId": "requestSourceSlice",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "./source-slice.schema.json" } } }
+        },
+        "responses": {
+          "200": { "description": "Policy-bounded SourceSlice" },
+          "403": { "$ref": "#/components/responses/ReviewerForbidden" }
+        }
+      }
     }
   },
   "components": {
@@ -1276,6 +1371,24 @@
       },
       "AnalysisModelProfileId": {
         "name": "analysisModelProfileId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "FeatureId": {
+        "name": "featureId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "ChangeSetId": {
+        "name": "changeSetId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "minLength": 1 }
+      },
+      "AnalysisRunId": {
+        "name": "analysisRunId",
         "in": "path",
         "required": true,
         "schema": { "type": "string", "minLength": 1 }

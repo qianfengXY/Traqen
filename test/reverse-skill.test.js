@@ -25,7 +25,7 @@ function manifest(overrides = {}) {
     },
     capabilities: ["FEATURE_DISCOVERY", "BUSINESS_RULE_MINING"],
     compatibility: { languages: ["javascript"], frameworks: ["express"], factSchema: ">=0.1 <0.2" },
-    inputs: { required: ["PROJECT_SNAPSHOT", "CODE_FACT_BUNDLE"], optional: [] },
+    inputs: { mode: "FACT_DEPENDENT", required: ["PROJECT_SNAPSHOT", "CODE_FACT_BUNDLE"], optional: [] },
     outputs: {
       schema: "reverse-artifact-bundle/v1alpha1",
       types: ["CANDIDATE_FEATURE", "CANDIDATE_CLAIM", "OPEN_QUESTION"],
@@ -107,6 +107,17 @@ test("Skill manifests are versioned, least-privilege, and publisher-attested", (
     () => createReverseSkillManifest(manifest({ permissions: { ...manifest().permissions, shell: "READ_ONLY" } })),
     /unsupported privilege/,
   );
+});
+
+test("Direct-source Skills require Snapshot input but can operate without a FactBundle", () => {
+  const normalized = createReverseSkillManifest(manifest({
+    inputs: { mode: "DIRECT_SOURCE", required: ["PROJECT_SNAPSHOT"], optional: ["CODE_FACT_BUNDLE"] },
+  }));
+  assert.equal(normalized.inputs.mode, "DIRECT_SOURCE");
+  assert.deepEqual(normalized.inputs.required, ["PROJECT_SNAPSHOT"]);
+  assert.throws(() => createReverseSkillManifest(manifest({
+    inputs: { mode: "FACT_DEPENDENT", required: ["PROJECT_SNAPSHOT"], optional: [] },
+  })), /must require CODE_FACT_BUNDLE/);
 });
 
 test("Skill output must be structured and every conclusion must cite an input fact", () => {

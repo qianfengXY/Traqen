@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/understanding-work-unit.schema.json",
+  "title": "UnderstandingWorkUnit",
+  "type": "object",
+  "required": ["id", "kind", "dependencies", "artifactIds", "inputDigest"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "partitionId": { "type": ["string", "null"] },
+    "kind": { "enum": ["LEAF", "GAP", "FILE_SYNTHESIS", "MODULE_SYNTHESIS", "CROSS_MODULE", "CRITIC", "PROJECT_SYNTHESIS", "FOLLOW_UP"] },
+    "dependencies": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "artifactIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "inputDigest": { "type": "string", "minLength": 1 }
+  },
+  "additionalProperties": false
+}

@@ -10,6 +10,7 @@ import { createLocalWorkspaceCandidateGraph } from "./local-workspace-graph";
 import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWorkspaceAnalysisRun, loadLocalWorkspaceDirectoryHandle, loadLocalWorkspaceProject, loadLocalWorkspaceProjectRecords, loadWorkspaceRunSubscription, saveLocalWorkspaceAnalysisRun, saveLocalWorkspaceDirectoryHandle, saveLocalWorkspaceProject, saveLocalWorkspaceProjectSummary, saveWorkspaceRunSubscription, setLocalWorkspaceProjectVisibility, type LocalWorkspaceAnalysisRunCheckpoint, type LocalWorkspaceProjectSnapshot, type LocalWorkspaceProjectSummary } from "./local-workspace-store";
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 import { buildWorkspaceObservationRequest, ensureWorkspaceProject, getWorkspaceAnalysisRun, ingestWorkspaceObservations, pauseWorkspaceAnalysisRun, resumeWorkspaceAnalysisRun, startWorkspaceAnalysisRun, workspaceEnrichmentsFromAnalysisResult, workspaceRunSubscriptionBeforeStart, workspaceRunSubscriptionFromServer, type ServerAnalysisCheckpoint, type WorkspaceRunSubscription } from "./workspace-analysis-run-client";
+import { getCurrentUnderstandingGraph, listGraphRevisions, type CurrentUnderstandingGraph, type GraphRevision } from "./understanding-graph-client";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { ThemeProvider } from "./theme-context";
 
@@ -20,6 +21,42 @@ type TraceBlockKey = "description" | "design" | "configuration" | "test-case" | 
 type WorkspaceTraceBlock = TraceBlockKey;
 type TraceDetail = { label: string; value: string };
 type Language = "zh-CN" | "en";
+
+function PublishedUnderstandingGraphStatus({ apiBase, apiToken, projectId }: { apiBase: string; apiToken: string; projectId: string }) {
+  const [current, setCurrent] = useState<CurrentUnderstandingGraph | null>(null);
+  const [revisions, setRevisions] = useState<GraphRevision[]>([]);
+  const [unavailable, setUnavailable] = useState(false);
+  const { t, term } = useI18n();
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      getCurrentUnderstandingGraph(apiBase, apiToken, projectId),
+      listGraphRevisions(apiBase, apiToken, projectId),
+    ]).then(([nextCurrent, nextRevisions]) => {
+      if (cancelled) return;
+      setCurrent(nextCurrent);
+      setRevisions(nextRevisions);
+      setUnavailable(false);
+    }).catch(() => {
+      if (!cancelled) setUnavailable(true);
+    });
+    return () => { cancelled = true; };
+  }, [apiBase, apiToken, projectId]);
+  if (unavailable || (!current && revisions.length === 0)) return null;
+  return (
+    <section className="panel published-understanding-status" aria-label={t("已发布理解图谱", "Published understanding graph")}>
+      <div>
+        <p className="eyebrow">CurrentGraphHead</p>
+        <h2>{current ? `${current.revision.mode} · ${current.revision.snapshotManifestId}` : t("尚无当前图谱", "No current graph")}</h2>
+        <p>{current ? t("默认视图来自通过评估并原子发布的最新 GraphRevision。", "The default view comes from the latest evaluated and atomically published GraphRevision.") : t("构建中或评估失败的 Revision 不会成为默认图谱。", "Building or rejected revisions never become the default graph.")}</p>
+      </div>
+      <div className="published-understanding-history">
+        <strong>{revisions.length} {t("个历史版本", "historical revisions")}</strong>
+        {revisions.slice(0, 4).map((revision) => <span key={revision.id} className={revision.status === "PUBLISHED" ? "published" : "diagnostic"}>{revision.mode} · {term(revision.status)} · {revision.snapshotManifestId}</span>)}
+      </div>
+    </section>
+  );
+}
 
 const LanguageContext = createContext<Language>("zh-CN");
 
@@ -1807,6 +1844,7 @@ export function TraqenProduct() {
             </section>
           )}
           <div className="workspace-view-state" hidden={view !== "workspace" || workspaceCreationOpen || !workspaceProjectCreated}>
+            {!workspaceCreationOpen && workspaceProjectCreated && <PublishedUnderstandingGraphStatus apiBase={apiBase} apiToken={apiToken} projectId={workspaceProjectId} />}
             {!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleCompletedWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} onProgressAnalysis={publishWorkspaceProgress} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
           </div>
           {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}

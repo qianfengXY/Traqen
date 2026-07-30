@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/understanding-plan.schema.json",
+  "title": "UnderstandingPlan",
+  "type": "object",
+  "required": ["id", "projectId", "snapshotManifestId", "inventoryId", "plannerVersion", "conventionVersion", "executionPolicyDigest", "artifactCount", "assignedCount", "unassignedCount", "partitions", "workUnits", "planDigest"],
+  "properties": {
+    "id": { "type": "string" }, "projectId": { "type": "string" }, "snapshotManifestId": { "type": "string" },
+    "inventoryId": { "type": "string" }, "plannerVersion": { "type": "string" }, "conventionVersion": { "type": "string" },
+    "executionPolicyDigest": { "type": "string" }, "artifactCount": { "type": "integer", "minimum": 0 },
+    "assignedCount": { "type": "integer", "minimum": 0 }, "unassignedCount": { "const": 0 },
+    "partitions": { "type": "array", "items": { "type": "object" } },
+    "workUnits": { "type": "array", "items": { "$ref": "understanding-work-unit.schema.json" } },
+    "planDigest": { "type": "string" }, "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

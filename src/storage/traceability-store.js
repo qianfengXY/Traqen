@@ -230,4 +230,24 @@ export class TraceabilityStore {
   async getLatestAnalysisResult(_projectId) {
     throw new Error("getLatestAnalysisResult must be implemented");
   }
+
+  async appendUnderstandingRecord(_projectId, _recordType, _record) {
+    throw new Error("appendUnderstandingRecord must be implemented");
+  }
+
+  async getUnderstandingRecord(_projectId, _recordType, _recordId) {
+    throw new Error("getUnderstandingRecord must be implemented");
+  }
+
+  async listUnderstandingRecords(_projectId, _recordType) {
+    throw new Error("listUnderstandingRecords must be implemented");
+  }
+
+  async getCurrentGraphHead(_projectId) {
+    throw new Error("getCurrentGraphHead must be implemented");
+  }
+
+  async publishGraphRevision(_projectId, _revisionId, _expectedHeadVersion = 0) {
+    throw new Error("publishGraphRevision must be implemented");
+  }
 }

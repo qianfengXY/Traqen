@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/extractor-capability.schema.json",
+  "title": "ExtractorCapability",
+  "type": "object",
+  "required": ["id", "version", "engine", "languages", "artifactKinds", "nodeTypes", "edgePredicates", "knownGaps", "fixtureStatus"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "engine": { "enum": ["AST", "REGEX_FALLBACK", "DOCUMENT", "CONFIG", "TEST_RESULT"] },
+    "languages": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+    "artifactKinds": { "type": "array", "items": { "type": "string" }, "minItems": 1, "uniqueItems": true },
+    "nodeTypes": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "edgePredicates": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "knownGaps": { "type": "array", "items": { "type": "string" } },
+    "fixtureStatus": { "enum": ["VERIFIED", "FAILED", "UNVERIFIED"] }
+  },
+  "additionalProperties": false
+}

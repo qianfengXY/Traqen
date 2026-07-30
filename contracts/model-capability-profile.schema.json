@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/model-capability-profile.schema.json",
+  "title": "ModelCapabilityProfile",
+  "type": "object",
+  "required": ["id", "analysisModelProfileId", "modelRevision", "verificationStatus", "roles", "languages", "artifactKinds", "structuredOutputSchemas", "maxContextTokens", "dataBoundaryClasses", "calibrationPolicyVersion", "qualityTierByRole", "independenceGroup", "costClass"],
+  "properties": {
+    "id": { "type": "string" }, "analysisModelProfileId": { "type": "string" }, "modelRevision": { "type": "string" },
+    "verificationStatus": { "enum": ["UNVERIFIED", "VERIFIED", "REJECTED"] },
+    "roles": { "type": "array", "items": { "enum": ["SOURCE_READER", "MODULE_SYNTHESIS", "CROSS_MODULE_REASONING", "CRITIC"] }, "uniqueItems": true },
+    "languages": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "artifactKinds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "structuredOutputSchemas": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "maxContextTokens": { "type": "integer", "minimum": 1 },
+    "dataBoundaryClasses": { "type": "array", "items": { "enum": ["FACTS_ONLY_EXTERNAL", "RAW_SOURCE_LOCAL", "RAW_SOURCE_PRIVATE_RUNNER"] }, "uniqueItems": true },
+    "calibrationPolicyVersion": { "type": "string" }, "qualityTierByRole": { "type": "object" },
+    "independenceGroup": { "type": "string" }, "costClass": { "type": "string" }
+  },
+  "additionalProperties": false
+}
