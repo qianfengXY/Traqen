@@ -4,3 +4,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Local-only branch review records. Publish validated findings as Issues instead.
+/.review-local/
