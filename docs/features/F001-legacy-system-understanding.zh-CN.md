@@ -275,6 +275,8 @@ Design Gate 必须确认：
 | 核心理解引擎 | `docs/features/legacy-system-understanding-engine.zh-CN.md` | Inventory、通道、WorkUnit、对账、评估、增量 |
 | 理解引擎实施计划 | `feature-specs/2026-07-29-legacy-system-understanding-engine.md` | F001 全部 AC 的 TDD 顺序、状态机、契约与 Traqen dogfood |
 | 持久生命周期 | `docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md` | 服务端所有权、检查点、Pause/Resume、Worker 恢复 |
+| Archify 架构图 | `docs/diagrams/f001-legacy-system-understanding/understanding-architecture.html` | 完整源码主路径、安全/权威边界、对账与发布 |
+| Archify Agent 工作流 | `docs/diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html` | 确定性分区、WorkUnit DAG、模型/Skill 路由、Critic、对账与 Gap |
 | 当前 Analysis Agent | `docs/features/analysis-agent-design.zh-CN.md` | 已实现 Agent 契约与当前限制 |
 | 当前 Workspace | `docs/features/workspace-analysis-design.zh-CN.md` | 当前浏览器体验与迁移基线 |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md` | 真相与权威边界 |

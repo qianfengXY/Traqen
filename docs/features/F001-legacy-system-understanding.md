@@ -275,6 +275,8 @@ Implementation then follows TDD, quality gate, independent review, and merge gat
 | Core engine design | `docs/features/legacy-system-understanding-engine.md` | inventory, lanes, WorkUnits, reconciliation, evaluation, incremental behavior |
 | Understanding-engine plan | `feature-specs/2026-07-29-legacy-system-understanding-engine.md` | TDD order, state machines, contracts, and Traqen dogfood for all F001 ACs |
 | Durable lifecycle design | `docs/features/workspace-scan-and-analysis-lifecycle.md` | server ownership, checkpoints, Pause/Resume, worker recovery |
+| Archify architecture | `docs/diagrams/f001-legacy-system-understanding/understanding-architecture.html` | complete-source path, security/authority boundaries, reconciliation, and publication |
+| Archify Agent workflow | `docs/diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html` | deterministic partitions, WorkUnit DAG, model/Skill routing, Critic, reconciliation, and gaps |
 | Current Analysis Agent | `docs/features/analysis-agent-design.md` | implemented Agent contracts and current limitations |
 | Current Workspace | `docs/features/workspace-analysis-design.md` | current browser experience and migration baseline |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.md` | truth and authority boundaries |

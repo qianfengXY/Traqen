@@ -21,6 +21,11 @@ priority: P0
 
 > Feature 聚合入口：[F001](F001-legacy-system-understanding.zh-CN.md)
 
+> 可视化地图：
+> [端到端架构](../diagrams/f001-legacy-system-understanding/understanding-architecture.html) ·
+> [Analysis Agent 工作流](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html) ·
+> [Archify 源与交付回执](../diagrams/f001-legacy-system-understanding/README.zh-CN.md)
+
 ## 1. 设计目标
 
 F001 必须产出一张能解释存量系统、可审核且盲区可度量的 Candidate 图谱，而不只是完成文件循环、按路径名分类，或让一个模型概括整个仓库。

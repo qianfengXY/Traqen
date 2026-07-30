@@ -87,43 +87,14 @@ Traqen deliberately separates observation, interpretation, reconciliation, gover
 
 Neither a path name, a model response, a similarity score, nor a deterministic hash may create or merge a governed `Feature.id`.
 
-```mermaid
-flowchart LR
-    A[Authorized code or document project] --> B[SourceRegistration]
-    B --> C[Immutable SourceSnapshot]
-    C --> D[ArtifactInventory]
+[![F001 legacy-system understanding architecture](../diagrams/f001-legacy-system-understanding/understanding-architecture.png)](../diagrams/f001-legacy-system-understanding/understanding-architecture.html)
 
-    D --> E[Deterministic extractors]
-    E --> F[FactBundle]
-    F --> G[Cross-file relation resolver]
-
-    D --> H[Manifest and convention plan]
-    G --> I[Fact-enrichment plan]
-    H --> J[Bounded Analysis WorkUnits]
-    I --> J
-    J --> K[Agent and Skills]
-    K --> L[CandidateBundles]
-
-    F --> M[Candidate reconciliation]
-    L --> M
-    M --> N[CandidateGraph]
-    M --> O[ConflictLedger]
-    M --> P[CoverageLedger]
-    M --> Q[CandidateLineage]
-
-    N --> R[EvaluationRun]
-    O --> R
-    P --> R
-    Q --> R
-    N --> S[Human review and Decision]
-    S --> T[Governed Feature, Claim, TestSpec]
-    T --> U[GraphRevision]
-    R -->|pass| U
-    R -->|reject| V[Keep prior CurrentGraphHead]
-    U --> W[Atomic publish]
-    W --> X[CurrentGraphHead]
-    X --> Y[Feature, API, trace, impact and quality views]
-```
+The static preview is linked to the self-contained interactive Archify artifact.
+Its guided views isolate the complete-source path, model/Skill routing, and the
+governance/publication boundary. The reproducible
+[Archify JSON source](../diagrams/f001-legacy-system-understanding/understanding-architecture.architecture.json)
+and [delivery receipt](../diagrams/f001-legacy-system-understanding/README.md)
+are checked in with the design.
 
 ### 3.2 Scanner algorithm: source to deterministic Facts
 
@@ -160,6 +131,14 @@ The Agent's task universe is the complete immutable `SourceSnapshot`, not the sc
 - retained with an explicit excluded, unsupported, policy, secret, size, or read-failure disposition/Gap.
 
 Scanner Facts are a parallel, optional enrichment input. A missing Symbol, Endpoint, or relation Fact must not remove the corresponding source Artifact from the Agent plan. “Analyze every file” therefore means complete, auditable visitation across many bounded WorkUnits; it never means placing the whole repository into one prompt.
+
+[![F001 Analysis Agent execution workflow](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.png)](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html)
+
+The interactive workflow expands the deterministic partition, capability route,
+bounded source reads, hierarchical synthesis, selective independent Critic,
+Candidate reconciliation, and explicit failure/gap paths. Its
+[Archify JSON source](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.workflow.json)
+is the reproducible visual projection of the algorithm below.
 
 #### 3.3.1 How Inventory partitions are derived
 

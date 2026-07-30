@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "F001 Legacy-System Understanding",
+    "subtitle": "完整源码覆盖、能力路由、证据对账与原子图谱发布",
+    "output": "understanding-architecture.html",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "viewBox": [1600, 820],
+    "views": [
+      {
+        "id": "raw-source-path",
+        "label": "完整源码主路径",
+        "focus": ["source", "snapshot", "planner", "broker", "workunits", "reconciliation", "publication", "head"],
+        "note": "Agent 从完整 Snapshot 规划并在本地/私有边界内直接读取源码，不依赖 Scanner 是否产出 Fact。"
+      },
+      {
+        "id": "model-routing",
+        "label": "模型与 Skill 路由",
+        "focus": ["scanner", "router", "external_model", "workunits"],
+        "note": "能力路由选择已校准 Producer；外部模型只能处理策略过滤后的 Facts。"
+      },
+      {
+        "id": "authority-boundary",
+        "label": "治理与发布权威",
+        "focus": ["reconciliation", "governance", "publication", "head"],
+        "note": "Candidate 对账不创建业务权威；只有人工 Decision 能修改受治理对象。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "source",
+      "type": "external",
+      "label": "SourceRegistration",
+      "sublabel": "授权工程目录",
+      "pos": [40, 310],
+      "size": [150, 72]
+    },
+    {
+      "id": "snapshot",
+      "type": "database",
+      "label": "SourceSnapshot",
+      "sublabel": "ArtifactInventory · immutable",
+      "tag": "完整任务全集",
+      "pos": [250, 310],
+      "size": [170, 72]
+    },
+    {
+      "id": "planner",
+      "type": "backend",
+      "label": "Partition Planner",
+      "sublabel": "UnderstandingPlan",
+      "tag": "unassignedCount = 0",
+      "pos": [490, 150],
+      "size": [180, 72]
+    },
+    {
+      "id": "broker",
+      "type": "security",
+      "label": "SourceSlice Broker",
+      "sublabel": "范围 · 脱敏 · 预算",
+      "pos": [490, 310],
+      "size": [180, 72]
+    },
+    {
+      "id": "scanner",
+      "type": "backend",
+      "label": "Deterministic Scanner",
+      "sublabel": "可选 Fact 增强",
+      "pos": [490, 500],
+      "size": [180, 72]
+    },
+    {
+      "id": "router",
+      "type": "backend",
+      "label": "Capability Router",
+      "sublabel": "Model + Skill + Calibration",
+      "tag": "AnalysisRouteDecision",
+      "pos": [750, 110],
+      "size": [190, 78]
+    },
+    {
+      "id": "workunits",
+      "type": "messagebus",
+      "label": "Dynamic WorkUnit DAG",
+      "sublabel": "Leaf → Module → Cross-module",
+      "tag": "有界并行 + checkpoint",
+      "pos": [750, 310],
+      "size": [200, 82]
+    },
+    {
+      "id": "external_model",
+      "type": "cloud",
+      "label": "External Model",
+      "sublabel": "FACTS_ONLY_EXTERNAL",
+      "tag": "禁止原始 SourceSlice",
+      "pos": [750, 520],
+      "size": [190, 72]
+    },
+    {
+      "id": "reconciliation",
+      "type": "backend",
+      "label": "Candidate Reconciliation",
+      "sublabel": "lineage · conflict · coverage",
+      "tag": "不按多数票",
+      "pos": [1020, 310],
+      "size": [200, 82]
+    },
+    {
+      "id": "governance",
+      "type": "security",
+      "label": "Human Review / Decision",
+      "sublabel": "受治理 Feature / Claim / TestSpec",
+      "pos": [1020, 110],
+      "size": [210, 78]
+    },
+    {
+      "id": "publication",
+      "type": "backend",
+      "label": "Evaluation + Publication",
+      "sublabel": "EvaluationRun · GraphRevision",
+      "tag": "fail closed",
+      "pos": [1280, 310],
+      "size": [200, 82]
+    },
+    {
+      "id": "head",
+      "type": "database",
+      "label": "CurrentGraphHead",
+      "sublabel": "最新投影 + 不可变历史",
+      "tag": "atomic move",
+      "pos": [1280, 520],
+      "size": [200, 76]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "Local / Private Raw-Source Boundary",
+      "wraps": ["snapshot", "planner", "broker", "scanner", "router", "workunits"],
+      "pad": 34
+    }
+  ],
+  "connections": [
+    {
+      "id": "register-source",
+      "from": "source",
+      "to": "snapshot",
+      "variant": "emphasis"
+    },
+    {
+      "id": "snapshot-plan",
+      "from": "snapshot",
+      "to": "planner"
+    },
+    {
+      "id": "plan-slices",
+      "from": "planner",
+      "to": "broker"
+    },
+    {
+      "id": "broker-work",
+      "from": "broker",
+      "to": "workunits",
+      "variant": "emphasis"
+    },
+    {
+      "id": "snapshot-scan",
+      "from": "snapshot",
+      "to": "scanner",
+      "variant": "dashed"
+    },
+    {
+      "id": "scanner-work",
+      "from": "scanner",
+      "to": "workunits",
+      "variant": "dashed"
+    },
+    {
+      "id": "router-work",
+      "from": "router",
+      "to": "workunits",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "scanner-external",
+      "from": "scanner",
+      "to": "external_model",
+      "variant": "dashed"
+    },
+    {
+      "id": "external-work",
+      "from": "external_model",
+      "to": "workunits",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "work-reconcile",
+      "from": "workunits",
+      "to": "reconciliation",
+      "variant": "emphasis"
+    },
+    {
+      "id": "reconcile-govern",
+      "from": "reconciliation",
+      "to": "governance",
+      "variant": "security",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "reconcile-publish",
+      "from": "reconciliation",
+      "to": "publication",
+      "variant": "emphasis",
+      "route": "straight"
+    },
+    {
+      "id": "govern-publish",
+      "from": "governance",
+      "to": "publication",
+      "variant": "security"
+    },
+    {
+      "id": "publish-head",
+      "from": "publication",
+      "to": "head",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "完整覆盖",
+      "items": [
+        "Agent 任务全集是不可变 SourceSnapshot / ArtifactInventory",
+        "每个 Artifact 必须直接读取、专用处理或形成显式 Gap",
+        "Scanner Facts 只增强语义分析，不能决定 Agent 看什么"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "规模与模型",
+      "items": [
+        "UnderstandingPlan 派生动态依赖 DAG，不固定子 Agent 数量",
+        "Capability Router 按语言、角色、数据边界与校准选择模型 / Skill",
+        "多个模型只做选择性独立挑战，分歧进入 ConflictLedger"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "权威与安全",
+      "items": [
+        "原始 SourceSlice 只留在本地 / 私有源码边界",
+        "Candidate 与对账结果永远不是业务权威",
+        "Evaluation 失败不移动 CurrentGraphHead，历史账本不覆盖"
+      ]
+    }
+  ]
+}

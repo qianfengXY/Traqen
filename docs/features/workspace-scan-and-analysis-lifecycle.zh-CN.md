@@ -100,43 +100,13 @@ Traqen 故意把观察、解释、对账、治理和发布分成不同权威层�
 
 路径名、模型回答、相似度分数和确定性 Hash 都不能创建或合并受治理的 `Feature.id`。
 
-```mermaid
-flowchart LR
-    A[经过授权的代码或文档工程] --> B[SourceRegistration]
-    B --> C[不可变 SourceSnapshot]
-    C --> D[ArtifactInventory]
+[![F001 存量系统理解架构](../diagrams/f001-legacy-system-understanding/understanding-architecture.png)](../diagrams/f001-legacy-system-understanding/understanding-architecture.html)
 
-    D --> E[确定性 Extractors]
-    E --> F[FactBundle]
-    F --> G[跨文件关系解析]
-
-    D --> H[Manifest 与约定派生计划]
-    G --> I[Fact 增强计划]
-    H --> J[有界 Analysis WorkUnits]
-    I --> J
-    J --> K[Agent 与 Skills]
-    K --> L[CandidateBundles]
-
-    F --> M[Candidate 对账]
-    L --> M
-    M --> N[CandidateGraph]
-    M --> O[ConflictLedger]
-    M --> P[CoverageLedger]
-    M --> Q[CandidateLineage]
-
-    N --> R[EvaluationRun]
-    O --> R
-    P --> R
-    Q --> R
-    N --> S[人工 Review 与 Decision]
-    S --> T[Governed Feature, Claim, TestSpec]
-    T --> U[GraphRevision]
-    R -->|通过| U
-    R -->|拒绝| V[保留旧 CurrentGraphHead]
-    U --> W[原子发布]
-    W --> X[CurrentGraphHead]
-    X --> Y[Feature、API、追溯、影响与质量视图]
-```
+点击静态预览可打开自包含的 Archify 交互产物；其中的引导视图分别聚焦完整
+源码主路径、模型/Skill 路由以及治理/发布边界。可复现的
+[Archify JSON 源](../diagrams/f001-legacy-system-understanding/understanding-architecture.architecture.json)
+和[交付回执](../diagrams/f001-legacy-system-understanding/README.zh-CN.md)
+随设计一并入库。
 
 ### 3.2 扫描算法：从工程源码到确定性 Facts
 
@@ -173,6 +143,13 @@ Agent 的任务全集是完整、不可变的 `SourceSnapshot`，不是扫描器
 - 以 Excluded、Unsupported、Policy、Secret、Size、Read Failure 等显式处置/Gap 保留。
 
 Scanner Facts 是并行产生、可选的增强输入。某个 Symbol、Endpoint 或关系 Fact 缺失，不能让对应源码 Artifact 从 Agent 计划中消失。因此，“分析所有文件”指所有 Artifact 在许多有界 WorkUnit 中得到完整、可审核的处置；绝不表示把整个仓库塞进一个 Prompt。
+
+[![F001 Analysis Agent 执行工作流](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.png)](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html)
+
+交互工作流展开确定性分区、能力路由、有界源码读取、层级汇总、选择性独立
+Critic、Candidate 对账与显式失败/Gap 路径。对应的
+[Archify JSON 源](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.workflow.json)
+是下述算法的可复现视觉投影。
 
 #### 3.3.1 Inventory 分区如何产生
 

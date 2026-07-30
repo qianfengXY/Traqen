@@ -26,6 +26,7 @@ priority: P0
 **Feature truth:** `docs/features/F001-legacy-system-understanding.zh-CN.md`
 **System truth:** `docs/architecture/traqen-system-requirements.zh-CN.md`
 **Engine design:** `docs/features/legacy-system-understanding-engine.zh-CN.md`
+**Architecture diagrams:** `docs/diagrams/f001-legacy-system-understanding/understanding-architecture.html`；`docs/diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html`
 **Goal:** 从存量代码/文档/契约/配置/测试/结果建立可审核的 canonical graph；第一次 FULL 形成完整当前图谱，后续 INCREMENTAL 更新当前图谱并保留 Feature 版本、实现映射、每次变更影响和验证历史。
 **Architecture cell:** legacy-system understanding → canonical traceability graph
 **Map delta:** update required

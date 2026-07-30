@@ -1,10 +1,10 @@
 # Review Request: F001 Legacy-System Understanding and Traqen System Requirements
 
-Review-Target-ID: refresh-independent-workspace-runs
-Branch: codex/refresh-independent-workspace-runs
-Review range: 84e94f3..aedffec
+Review-Target-ID: f001
+Branch: design/f001-legacy-system-understanding
+Review range: 0855e39..HEAD
 
-Round: 5 — specifies complete raw-source Agent planning, deterministic partition/DAG execution, model/Skill capability routing, and selective multi-model reconciliation after the Round-4 approval.
+Round: 6 — adds validated Archify projections of the approved end-to-end architecture and Analysis Agent workflow after the Round-5 approval.
 
 ## What
 
@@ -59,6 +59,15 @@ Round 5 adds:
 - system requirements SR-021–SR-023 for deterministic complete planning, fail-closed capability routing, and selective evidence-based multi-model execution;
 - the operator's detailed Agent-partition/model/large-repository requirement in both discussion documents.
 
+Round 6 adds:
+
+- one Archify architecture source and self-contained HTML showing the complete-source path, local/private raw-source boundary, capability route, Candidate reconciliation, human governance, evaluation, and atomic CurrentGraphHead publication;
+- one Archify workflow source and self-contained HTML expanding deterministic Inventory partitioning, bounded source reads, the hierarchical WorkUnit DAG, optional Facts, selective Critic execution, reconciliation, and explicit Gap paths;
+- static PNG projections embedded in both lifecycle translations, with interactive HTML and reproducible JSON links;
+- bilingual diagram-index documents containing deterministic delivery hashes, showcase validation results, and truthful visual-review status;
+- discoverability links from the F001 Feature documents, understanding-engine documents, and implementation plan;
+- replacement of the broad end-to-end Mermaid view with the richer Archify artifact; the prose design and authority contract are unchanged.
+
 ## Round-5 Review Outcome
 
 - **Reviewer:** Kimi 3 / Kimi
@@ -105,8 +114,11 @@ Durable execution can keep a wrong or noisy analysis running. The operator's cor
 > “第一次分析会得到一个完整的图谱关系……增量分析就应该重新更新图谱……功能点是需要记录变化过程及每次变化会影响哪些功能。”
 >
 > “Analysis Agent 也是从原工程目录读取所有文件，不是从扫描器的结果去分析。Inventory 分区怎么来，WorkUnit 怎么运行，要考虑用什么模型、什么 Skill；工程很大时怎么一次性分析完，是否用多个模型并行，最后一起对账。”
+>
+> “将本次设计文档，其中核心逻辑或者架构采用 archify 这个 skill 进行生成图，便于理解。”
 
-- Source: `feature-discussions/2026-07-29-F001-legacy-system-understanding/README.md`
+- Design sources: `feature-discussions/2026-07-29-F001-legacy-system-understanding/README.md`
+  and the co-creator's 2026-07-30 Archify instruction in this thread.
 - Please judge the design against these outcomes, not only against its stated ACs.
 
 ## Tradeoff
@@ -154,11 +166,15 @@ No new value choice for reviewer. The operator has specified the latest-graph pl
 
 ## Next Action
 
-Perform an independent read-only review of `84e94f3..HEAD`, compare both languages with F001, the understanding-engine design, current Analysis Agent/model/Skill contracts, and ADR-0001, then return `APPROVE` or prioritized findings. Do not implement changes.
+Perform an independent read-only review of `0855e39..HEAD`. Confirm that both
+Archify artifacts faithfully project the approved Round-5 design, that the
+static/interactive/source links resolve in both languages, and that no diagram
+silently changes the authority, data-boundary, or execution contracts. Then
+return `APPROVE` or prioritized findings. Do not implement changes.
 
 ## Review Sandbox
 
-- Path: `/tmp/cat-cafe-review/refresh-independent-workspace-runs/kimi`
+- Path: `/tmp/cat-cafe-review/f001/kimi`
 - Start Command: not required for this docs-only review
 - Ports: web=N/A, api=N/A
 - Bootstrap: `unset NODE_ENV && npm ci`
@@ -229,9 +245,29 @@ root media artifact audit in the feature worktree and committed range → no fin
 designs/**/*.pen glob → no findings
 ```
 
+Current Round-6 delta recheck:
+
+```text
+Archify architecture validate → showcase 9/9; 0 errors; 0 warnings
+Archify workflow validate → showcase 9/9; 0 errors; 0 warnings
+Archify deliver receipts → specification/artifact SHA-256 reproduced exactly
+visual review → architecture passed with 0 correction rounds; workflow passed with 1 correction round
+npm test → 232/232 pass
+npm run test:web → production build + 40/40 pass
+npm --prefix web run lint → exit 0
+git diff --check → exit 0
+relative-link audit → all six changed/new linked Markdown documents resolve
+root media artifact audit → no repository-root findings; PNGs live under docs/diagrams/
+designs/**/*.pen glob → no findings
+```
+
 ### Dogfood-Your-Slice
 
-Scope verdict: docs-only target design and implementation-plan refinement; no runtime or user-visible implementation changed, so runtime dogfood is exempt. The bilingual phase test and focused contract-token/diagram/link audit exercise the documentation contract.
+Scope verdict: docs-only design visualization; no runtime implementation changed.
+The delivered architecture and workflow HTML were opened from this exact
+worktree through the localhost preview, rendered in a capable browser, and
+inspected with an image reader. This exercises the actual interactive artifact
+rather than only trusting schema validation.
 
 ### Architecture ownership
 

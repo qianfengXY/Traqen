@@ -21,6 +21,11 @@ priority: P0
 
 > Feature home: [F001](F001-legacy-system-understanding.md)
 
+> Visual maps:
+> [end-to-end architecture](../diagrams/f001-legacy-system-understanding/understanding-architecture.html) ·
+> [Analysis Agent workflow](../diagrams/f001-legacy-system-understanding/analysis-agent-workflow.html) ·
+> [Archify sources and delivery receipts](../diagrams/f001-legacy-system-understanding/README.md)
+
 ## 1. Design objective
 
 F001 must produce a reviewable Candidate graph that explains an existing system and makes its blind spots measurable. It must not merely finish a file loop, classify path names, or ask one model to summarize a repository.
