@@ -1,4 +1,4 @@
-import { contentId, deepFreeze } from "./canonical-json.js";
+import { canonicalJson, contentId, deepFreeze } from "./canonical-json.js";
 import { requireNonEmptyString } from "./model.js";
 
 export const GraphRevisionStatus = Object.freeze({
@@ -30,6 +30,8 @@ export function createGraphRevision(input, clock = () => new Date()) {
     changeSetId: input.changeSetId ?? null,
     impactAssessmentId: input.impactAssessmentId ?? null,
     evaluationRunId: requireNonEmptyString(input.evaluationRunId, "evaluationRunId"),
+    graphArtifactId: requireNonEmptyString(input.graphArtifactId, "graphArtifactId"),
+    graphArtifactDigest: requireNonEmptyString(input.graphArtifactDigest, "graphArtifactDigest"),
     semanticDigest: requireNonEmptyString(input.semanticDigest, "semanticDigest"),
   };
   return deepFreeze({
@@ -38,6 +40,38 @@ export function createGraphRevision(input, clock = () => new Date()) {
     status: GraphRevisionStatus.BUILDING,
     createdAt: clock().toISOString(),
     publishedAt: null,
+  });
+}
+
+export function createImmutableGraphArtifact(input, clock = () => new Date()) {
+  const nodes = structuredClone(input.nodes ?? []).sort((left, right) => left.id.localeCompare(right.id));
+  const edges = structuredClone(input.edges ?? []).sort((left, right) => left.id.localeCompare(right.id));
+  if (new Set(nodes.map(({ id }) => id)).size !== nodes.length) throw new TypeError("graph nodes must have unique ids");
+  if (new Set(edges.map(({ id }) => id)).size !== edges.length) throw new TypeError("graph edges must have unique ids");
+  const nodeIds = new Set(nodes.map(({ id }) => id));
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      throw new TypeError(`graph edge ${edge.id} must reference graph nodes`);
+    }
+  }
+  const content = {
+    projectId: requireNonEmptyString(input.projectId, "projectId"),
+    snapshotManifestId: requireNonEmptyString(input.snapshotManifestId, "snapshotManifestId"),
+    analysisRunId: requireNonEmptyString(input.analysisRunId, "analysisRunId"),
+    nodes,
+    edges,
+    traceChains: structuredClone(input.traceChains ?? []),
+    gaps: structuredClone(input.gaps ?? []),
+    changeSet: structuredClone(input.changeSet ?? null),
+    impactAssessment: structuredClone(input.impactAssessment ?? null),
+    revalidationPlan: structuredClone(input.revalidationPlan ?? null),
+  };
+  const graphArtifactDigest = contentId("IMMUTABLE-GRAPH-CONTENT", canonicalJson(content));
+  return deepFreeze({
+    id: input.id ?? contentId("IMMUTABLE-GRAPH-ARTIFACT", { ...content, graphArtifactDigest }),
+    ...content,
+    graphArtifactDigest,
+    createdAt: clock().toISOString(),
   });
 }
 

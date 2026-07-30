@@ -10,7 +10,7 @@ const laneByKind = Object.freeze({
 
 function laneFor(artifact) {
   if (artifact.disposition !== "INCLUDED") return "GAP";
-  return laneByKind[artifact.kind] ?? "DIRECT_SOURCE";
+  return artifact.artifactKinds.map((kind) => laneByKind[kind]).find(Boolean) ?? "DIRECT_SOURCE";
 }
 
 function moduleFor(path) {
@@ -42,7 +42,7 @@ export function createUnderstandingPlan(input, clock = () => new Date()) {
   const grouped = new Map();
   for (const artifact of input.inventory.artifacts) {
     const lane = laneFor(artifact);
-    const locality = moduleFor(artifact.path);
+    const locality = moduleFor(artifact.relativePath);
     const key = `${lane}\u0000${locality}`;
     const records = grouped.get(key) ?? [];
     records.push(artifact);
@@ -58,8 +58,8 @@ export function createUnderstandingPlan(input, clock = () => new Date()) {
         lane,
         locality,
         shard: Math.floor(offset / maxArtifacts),
-        artifactRanges: artifacts.map(({ id, contentDigest, byteSize }) => ({
-          artifactId: id, contentDigest, startByte: 0, endByte: byteSize,
+        artifactRanges: artifacts.map(({ id, contentDigest, sizeBytes }) => ({
+          artifactId: id, contentDigest, startByte: 0, endByte: sizeBytes,
         })),
         ...versions,
       };

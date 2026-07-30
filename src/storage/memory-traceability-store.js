@@ -1,4 +1,4 @@
-import { canonicalJson, deepFreeze } from "../domain/index.js";
+import { assertEvaluationPublicationReady, canonicalJson, deepFreeze } from "../domain/index.js";
 import { TraceabilityStore } from "./traceability-store.js";
 import { PersistenceConflictError } from "./errors.js";
 
@@ -1155,7 +1155,9 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     const supported = new Set([
       "ARTIFACT_INVENTORY", "EXTRACTOR_CAPABILITY", "UNDERSTANDING_PLAN", "WORK_UNIT",
       "MODEL_CAPABILITY_PROFILE", "ANALYSIS_ROUTE_DECISION", "SOURCE_SLICE",
-      "RECONCILIATION", "EVALUATION_RUN", "GRAPH_REVISION",
+      "RECONCILIATION", "EVALUATION_RUN", "GRAPH_ARTIFACT", "GRAPH_REVISION",
+      "SOURCE_REGISTRATION", "FACT_BUNDLE", "CANDIDATE_BUNDLE", "EVIDENCE_ALLOWSET",
+      "GAP", "WORKSPACE_ANALYSIS_JOB",
     ]);
     if (!supported.has(recordType)) throw new TypeError(`Unsupported understanding record type ${recordType}`);
     if (!record?.id) throw new TypeError("understanding record id is required");
@@ -1197,8 +1199,19 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     if (!revision) throw new PersistenceConflictError(`GraphRevision ${revisionId} does not exist`);
     if (revision.status !== "EVALUATING") throw new PersistenceConflictError("GraphRevision must be EVALUATING");
     const evaluation = this.#understandingRecords.get(key(projectId, `EVALUATION_RUN\u0000${revision.evaluationRunId}`));
-    if (!evaluation || evaluation.status !== "PASSED") {
-      throw new PersistenceConflictError("GraphRevision evaluation must be PASSED");
+    try {
+      assertEvaluationPublicationReady(evaluation);
+    } catch (error) {
+      throw new PersistenceConflictError(error.message, { cause: error });
+    }
+    const graphArtifact = this.#understandingRecords.get(
+      key(projectId, `GRAPH_ARTIFACT\u0000${revision.graphArtifactId}`),
+    );
+    if (!graphArtifact || graphArtifact.graphArtifactDigest !== revision.graphArtifactDigest
+      || graphArtifact.projectId !== projectId
+      || graphArtifact.snapshotManifestId !== revision.snapshotManifestId
+      || graphArtifact.analysisRunId !== revision.analysisRunId) {
+      throw new PersistenceConflictError("GraphRevision immutable graph artifact is missing or mismatched");
     }
     if (!current && revision.mode !== "FULL") {
       throw new PersistenceConflictError("The first published GraphRevision must be FULL");

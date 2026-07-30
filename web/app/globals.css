@@ -683,6 +683,10 @@ button { color: inherit; }
 .published-understanding-history { display: grid; gap: 6px; min-width: 280px; }
 .published-understanding-history span { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 11px; color: var(--text-secondary); }
 .published-understanding-history span.published { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); color: var(--text-primary); }
+.published-understanding-artifact { display: flex; flex-wrap: wrap; gap: 6px; max-width: 360px; }
+.published-understanding-artifact span, .published-understanding-artifact strong { border: 1px solid var(--border); border-radius: 999px; padding: 6px 9px; font-size: 11px; }
+.published-understanding-artifact .published { border-color: color-mix(in srgb, var(--success) 50%, var(--border)); }
+.published-understanding-artifact .diagnostic { border-style: dashed; }
 .workspace-graph-shell { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; align-items: start; }
 .workspace-graph-main { min-width: 0; }
 .workspace-graph-help { margin: 12px 8px; color: #8e8e93; font-size: 10px; line-height: 1.5; }

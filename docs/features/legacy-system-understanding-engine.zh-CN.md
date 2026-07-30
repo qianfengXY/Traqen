@@ -128,7 +128,7 @@ SourceRegistration
 
 ```json
 {
-  "artifactId": "ART-...",
+  "id": "ART-...",
   "snapshotManifestId": "SNAP-...",
   "relativePath": "src/domain/trace-chain.js",
   "contentDigest": "sha256:...",
@@ -188,8 +188,8 @@ type SourceSliceRequest = {
   selectors: Array<{
     artifactId: string;
     symbolId?: string;
-    startLine?: number;
-    endLine?: number;
+    startByte?: number;
+    endByte?: number;
   }>;
   allowedFactIds: string[];
   maxBytes: number;   // traqen-source-slice-v1 默认/硬上限：64 KiB
@@ -201,20 +201,26 @@ type SourceSliceRequest = {
 type SourceSlice = {
   id: string;
   requestId: string;
+  projectId: string;
+  snapshotManifestId: string;
+  analysisRunId: string;
+  workUnitId: string;
+  status: "COMPLETE" | "TRUNCATED" | "REDACTED" | "REJECTED";
   artifactSlices: Array<{
     artifactId: string;
     relativePath: string;
     contentDigest: string;
-    range: { startLine: number; endLine: number };
-    redactedText?: string;
-    structuralSummary?: object;
+    range: { startByte: number; endByte: number };
+    redactedText: string;
   }>;
   factIds: string[];
   redactions: Array<{ kind: string; range: object }>;
   contentDigest: string;
   truncated: boolean;
   omittedReasons: string[];
+  diagnostics: object[];
   policyDecisionId: string;
+  responseDigest: string;
   createdAt: string;
 };
 ```

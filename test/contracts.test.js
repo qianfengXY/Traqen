@@ -209,7 +209,12 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}"].get.operationId, "getGraphRevision");
   assert.equal(contract.paths["/v1/projects/{projectId}/features/{featureId}/history"].get.operationId, "getFeatureUnderstandingHistory");
   assert.equal(contract.paths["/v1/projects/{projectId}/changes/{changeSetId}/impact"].get.operationId, "getUnderstandingChangeImpact");
-  assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/source-slices"].post.operationId, "requestSourceSlice");
+  assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
+  assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
+  assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");
+  assert.ok(contract.paths["/v1/projects/{projectId}/graph/current"].get.responses["200"].content["application/json"].schema);
+  assert.ok(contract.paths["/v1/projects/{projectId}/graph/revisions"].get.responses["200"].content["application/json"].schema);
+  assert.ok(contract.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/publish"].post.responses["200"].content["application/json"].schema);
   assert.equal(contract.paths["/v1/projects/{projectId}/features/{featureId}/analysis-history"], undefined);
   assert.equal(contract.paths["/v1/reverse-runs"].post.operationId, "executeReverseRun");
   assert.equal(

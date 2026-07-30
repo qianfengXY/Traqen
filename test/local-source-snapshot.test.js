@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, mkdir, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -27,7 +28,7 @@ test("Local Runner captures an immutable allowlisted Snapshot and brokers Artifa
 
   const store = new MemoryTraceabilityStore();
   await store.appendUnderstandingRecord("P", "ARTIFACT_INVENTORY", inventory);
-  const artifact = inventory.artifacts.find(({ path: artifactPath }) => artifactPath === "src/entry.js");
+  const artifact = inventory.artifacts.find(({ relativePath }) => relativePath === "src/entry.js");
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const request = createSourceSliceRequest({
     projectId: "P", snapshotManifestId: "S", analysisRunId: "R", workUnitId: "W",
@@ -37,5 +38,36 @@ test("Local Runner captures an immutable allowlisted Snapshot and brokers Artifa
     serviceIdentity: "worker", projectId: "P", analysisRunId: "R", workUnitArtifactIds: [artifact.id],
   });
   assert.equal(slice.status, "COMPLETE");
-  assert.match(slice.content, /entry = true/);
+  assert.match(slice.artifactSlices[0].redactedText, /entry = true/);
+});
+
+test("Snapshot inventory digest is derived from captured bytes even when live source mutates before sealing", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-race-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  const sourceFile = path.join(source, "entry.js");
+  await writeFile(sourceFile, "export const before = true;\n");
+  const capture = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+  const originalCapture = capture.scanner.capture.bind(capture.scanner);
+  capture.scanner.capture = async (input) => {
+    const captured = await originalCapture(input);
+    await writeFile(sourceFile, "export const after = true;\n");
+    await writeFile(path.join(source, "added.js"), "export const added = true;\n");
+    return captured;
+  };
+  const inventory = await capture.capture({ projectId: "P", snapshotManifestId: "RACE", rootPath: source });
+  const artifact = inventory.artifacts.find(({ relativePath }) => relativePath === "entry.js");
+  const snapshotBytes = await readFile(path.join(snapshots, "RACE", "entry.js"));
+  assert.equal(`sha256:${createHash("sha256").update(snapshotBytes).digest("hex")}`, artifact.contentDigest);
+  assert.match(snapshotBytes.toString("utf8"), /before/);
+  await assert.rejects(readFile(path.join(snapshots, "RACE", "added.js")));
+
+  await unlink(sourceFile);
+  await symlink("/etc/passwd", sourceFile);
+  const second = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+  const inventory2 = await second.capture({ projectId: "P", snapshotManifestId: "SYMLINK", rootPath: source });
+  assert.equal(inventory2.artifacts.find(({ relativePath }) => relativePath === "entry.js").disposition, "EXCLUDED_BY_POLICY");
+  await assert.rejects(readFile(path.join(snapshots, "SYMLINK", "entry.js")));
 });

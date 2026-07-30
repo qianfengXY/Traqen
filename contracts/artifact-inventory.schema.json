@@ -3,29 +3,33 @@
   "$id": "https://traqen.dev/contracts/artifact-inventory.schema.json",
   "title": "ArtifactInventory",
   "type": "object",
-  "required": ["id", "projectId", "snapshotManifestId", "sourceDigest", "sealed", "totalCount", "disposedCount", "artifacts"],
+  "required": ["id", "projectId", "snapshotManifestId", "sourceDigest", "scannerVersion", "sealed", "totalCount", "disposedCount", "dispositionCounts", "artifacts", "createdAt"],
   "properties": {
     "id": { "type": "string", "minLength": 1 },
     "projectId": { "type": "string", "minLength": 1 },
     "snapshotManifestId": { "type": "string", "minLength": 1 },
     "sourceDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "scannerVersion": { "type": "string", "minLength": 1 },
     "sealed": { "type": "boolean" },
     "totalCount": { "type": "integer", "minimum": 0 },
     "disposedCount": { "type": "integer", "minimum": 0 },
+    "dispositionCounts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "createdAt": { "type": "string", "format": "date-time" },
     "artifacts": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "path", "kind", "byteSize", "contentDigest", "disposition"],
+        "required": ["id", "relativePath", "artifactKinds", "mediaType", "sizeBytes", "contentDigest", "disposition", "reasonCode"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
-          "path": { "type": "string", "minLength": 1 },
-          "kind": { "type": "string", "minLength": 1 },
+          "relativePath": { "type": "string", "minLength": 1 },
+          "artifactKinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+          "mediaType": { "type": "string", "minLength": 1 },
           "language": { "type": ["string", "null"] },
-          "byteSize": { "type": "integer", "minimum": 0 },
+          "sizeBytes": { "type": "integer", "minimum": 0 },
           "contentDigest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
-          "disposition": { "enum": ["INCLUDED", "EXCLUDED", "UNSUPPORTED", "GENERATED", "BINARY", "OVERSIZED", "SECRET_REDACTED", "READ_FAILED"] },
-          "reason": { "type": ["string", "null"] }
+          "disposition": { "enum": ["INCLUDED", "EXCLUDED_BY_POLICY", "UNSUPPORTED", "GENERATED", "BINARY", "OVERSIZED", "SECRET_REDACTED", "READ_FAILED"] },
+          "reasonCode": { "type": ["string", "null"] }
         },
         "additionalProperties": false
       }

@@ -1,127 +1,117 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createArtifactInventory, createEvaluationPolicy } from "../src/domain/index.js";
-import { ArtifactInventoryScanner } from "../src/scanner/artifact-inventory-scanner.js";
-import { createUnderstandingPlan } from "../src/analysis/understanding-planner.js";
-import { evaluateUnderstanding } from "../src/application/understanding-evaluator.js";
-import { planIncrementalUnderstanding } from "../src/application/incremental-understanding.js";
+import { LegacyUnderstandingRuntime } from "../src/application/legacy-understanding-runtime.js";
+import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
 
 const repositoryRoot = path.resolve(new URL("..", import.meta.url).pathname);
-const sourceDigest = `sha256:${"a".repeat(64)}`;
 
-test("Traqen analyzes two fixed self Snapshots with complete disposition and atomic FULL to INCREMENTAL head movement", async () => {
+async function runtimeFor(projectId, source, snapshotRoot) {
+  const store = new MemoryTraceabilityStore();
+  const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot });
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot,
+    sourceSliceBroker: broker,
+  });
+  const registration = await runtime.registerSource({ projectId, rootPath: source, displayName: "Traqen" });
+  return { store, runtime, registration };
+}
+
+async function currentArtifact(store, projectId) {
+  const head = await store.getCurrentGraphHead(projectId);
+  const revision = await store.getUnderstandingRecord(projectId, "GRAPH_REVISION", head.graphRevisionId);
+  return {
+    head,
+    revision,
+    artifact: await store.getUnderstandingRecord(projectId, "GRAPH_ARTIFACT", revision.graphArtifactId),
+  };
+}
+
+function semanticGraph(graph) {
+  const labels = new Map(graph.nodes.map((node) => [node.id, `${node.authority}:${node.type}:${node.subjectKey ?? node.label}`]));
+  return {
+    nodes: [...labels.values()].sort(),
+    edges: graph.edges.map((edge) =>
+      `${labels.get(edge.source)}:${edge.type}:${labels.get(edge.target)}`).sort(),
+  };
+}
+
+test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL → independent FULL", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-self-dogfood-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  const independentSnapshots = path.join(temporary, "independent-snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await mkdir(independentSnapshots);
+  for (const directory of ["src", "contracts", "docs/features", "feature-specs", "test", "web/app", "web/tests", "db/migrations"]) {
+    await cp(path.join(repositoryRoot, directory), path.join(source, directory), { recursive: true });
+  }
+
+  const primary = await runtimeFor("TRAQEN-SELF", source, snapshots);
+  const fullOne = await primary.runtime.start({
+    id: "TRAQEN-FULL-1",
+    projectId: "TRAQEN-SELF",
+    sourceRegistrationId: primary.registration.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(fullOne.status, "COMPLETED", JSON.stringify(fullOne.error));
+  const first = await currentArtifact(primary.store, "TRAQEN-SELF");
+  assert.equal(first.revision.mode, "FULL");
+  assert.ok(first.artifact.nodes.some(({ authority }) => authority === "CANDIDATE"));
+  assert.ok(first.artifact.traceChains.some(({ complete }) => complete));
+
+  await mkdir(path.join(source, "review-notes"), { recursive: true });
+  await cp(
+    path.join(repositoryRoot, "review-notes/2026-07-30-F001-kimi-codex-consensus-review.md"),
+    path.join(source, "review-notes/2026-07-30-F001-kimi-codex-consensus-review.md"),
+  );
+  const incremental = await primary.runtime.start({
+    id: "TRAQEN-INCREMENTAL-2",
+    projectId: "TRAQEN-SELF",
+    sourceRegistrationId: primary.registration.id,
+    requestedMode: "AUTO",
+  }, { background: false });
+  assert.equal(incremental.status, "COMPLETED");
+  const second = await currentArtifact(primary.store, "TRAQEN-SELF");
+  assert.equal(second.revision.mode, "INCREMENTAL");
+  assert.equal(second.head.version, 2);
+  assert.ok(second.artifact.changeSet);
+  assert.ok(second.artifact.impactAssessment);
+  assert.ok(second.artifact.revalidationPlan.required);
+
+  const independent = await runtimeFor("TRAQEN-SELF-FULL", source, independentSnapshots);
+  const fullTwo = await independent.runtime.start({
+    id: "TRAQEN-FULL-2",
+    projectId: "TRAQEN-SELF-FULL",
+    sourceRegistrationId: independent.registration.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(fullTwo.status, "COMPLETED");
+  const independentSecond = await currentArtifact(independent.store, "TRAQEN-SELF-FULL");
+  assert.deepEqual(semanticGraph(second.artifact), semanticGraph(independentSecond.artifact));
+
+  // The held-out calibration set is opened only after both production runs finish.
   const truth = JSON.parse(await readFile(
     new URL("./fixtures/understanding/traqen-self-calibration-v1.json", import.meta.url),
     "utf8",
   ));
-  const scanner = new ArtifactInventoryScanner({ allowlistedRoots: [repositoryRoot], maxFileBytes: 2 * 1024 * 1024 });
-  const inventoryA = await scanner.scan({
-    projectId: "TRAQEN-SELF",
-    snapshotManifestId: "TRAQEN-SNAPSHOT-A",
-    sourceDigest,
-    rootPath: repositoryRoot,
-  });
-  assert.equal(inventoryA.disposedCount, inventoryA.totalCount);
-  assert.ok(inventoryA.totalCount > 100);
-  for (const requiredRoot of ["docs/", "feature-specs/", "contracts/", "src/", "test/", "web/"]) {
-    assert.ok(inventoryA.artifacts.some(({ path: artifactPath }) => artifactPath.startsWith(requiredRoot)), requiredRoot);
-  }
-  const planA = createUnderstandingPlan({
-    inventory: inventoryA,
-    plannerVersion: "1.0.0",
-    conventionVersion: "traqen-self-v1",
-    executionPolicyDigest: "SELF-POLICY-1",
-  });
-  assert.equal(planA.unassignedCount, 0);
-  assert.equal(planA.assignedCount, inventoryA.totalCount);
-  assert.ok(truth.anchors.every((anchor) => inventoryA.artifacts.some(({ path: artifactPath }) => artifactPath === anchor.path)));
-
-  const policy = createEvaluationPolicy({
-    id: "traqen-self-v1",
-    version: "1",
-    thresholds: {
-      inventoryDispositionRate: 1,
-      anchorRecall: 0.9,
-      candidatePrecision: 0.9,
-      requiredRelationshipRate: 1,
-      forbiddenRelationshipViolations: 0,
-      sourceAttributionRate: 1,
-      gapHonestyRate: 1,
-      replayEquivalenceRate: 1,
-      incrementalEquivalenceRate: 1,
-    },
-    minimumAnchors: 30,
-    minimumRequiredRelationships: 60,
-  });
-  const evaluationA = evaluateUnderstanding({
-    projectId: "TRAQEN-SELF",
-    analysisRunId: "SELF-RUN-A",
-    policy,
-    truthSet: {
-      ...truth,
-      requiredRelationships: truth.requiredRelationships.map(([subject, predicate, object]) => ({ subject, predicate, object })),
-      forbiddenRelationships: truth.forbiddenRelationships.map(([subject, predicate, object]) => ({ subject, predicate, object })),
-    },
-    truthSetDigest: "TRUTH-SELF-V1",
-    productionInputDigest: planA.planDigest,
-    observedAnchorIds: truth.anchors.map(({ id }) => id),
-    observedRelationships: truth.requiredRelationships.map(([subject, predicate, object]) => ({ subject, predicate, object })),
-    inventory: inventoryA,
-    candidateSample: { total: 30, correct: 27 },
-    sourceAttribution: { total: 60, valid: 60 },
-    gaps: { total: 10, honest: 10 },
-    replayEquivalenceRate: 1,
-    incrementalEquivalenceRate: 1,
-    reviewer: { id: "SELF-CALIBRATION-REVIEWER", role: "technical-reviewer" },
-    implementationAuthorId: "SELF-IMPLEMENTATION-AUTHOR",
-  });
-  assert.equal(evaluationA.status, "PASSED");
-
-  const changed = inventoryA.artifacts.map((artifact, index) => index === 0
-    ? { ...artifact, contentDigest: `sha256:${"b".repeat(64)}` }
-    : artifact);
-  const inventoryB = createArtifactInventory({
-    projectId: "TRAQEN-SELF",
-    snapshotManifestId: "TRAQEN-SNAPSHOT-B",
-    sourceDigest: `sha256:${"b".repeat(64)}`,
-    scannerVersion: inventoryA.scannerVersion,
-    sealed: true,
-    artifacts: changed,
-  });
-  const planB = createUnderstandingPlan({
-    inventory: inventoryB,
-    plannerVersion: "1.0.0",
-    conventionVersion: "traqen-self-v1",
-    executionPolicyDigest: "SELF-POLICY-1",
-  });
-  const incremental = planIncrementalUnderstanding({
-    requestedMode: "AUTO",
-    currentGraphHead: { graphRevisionId: "SELF-GRAPH-A" },
-    previous: { inventory: inventoryA, plan: planA },
-    current: { inventory: inventoryB, plan: planB },
-  });
-  assert.equal(incremental.mode, "INCREMENTAL");
-  assert.equal(incremental.changes.length, 1);
-  assert.ok(incremental.reusedWorkUnitIds.length > 0);
-
-  const store = new MemoryTraceabilityStore();
-  await store.appendUnderstandingRecord("TRAQEN-SELF", "EVALUATION_RUN", evaluationA);
-  await store.appendUnderstandingRecord("TRAQEN-SELF", "GRAPH_REVISION", {
-    id: "SELF-GRAPH-A", projectId: "TRAQEN-SELF", evaluationRunId: evaluationA.id, mode: "FULL",
-    baseRevisionId: null, status: "EVALUATING", createdAt: "2026-07-29T00:00:00.000Z",
-  });
-  await store.publishGraphRevision("TRAQEN-SELF", "SELF-GRAPH-A", 0);
-  const evaluationB = { ...evaluationA, id: "SELF-EVALUATION-B", analysisRunId: "SELF-RUN-B" };
-  await store.appendUnderstandingRecord("TRAQEN-SELF", "EVALUATION_RUN", evaluationB);
-  await store.appendUnderstandingRecord("TRAQEN-SELF", "GRAPH_REVISION", {
-    id: "SELF-GRAPH-B", projectId: "TRAQEN-SELF", evaluationRunId: evaluationB.id, mode: "INCREMENTAL",
-    baseRevisionId: "SELF-GRAPH-A", status: "EVALUATING", createdAt: "2026-07-29T00:01:00.000Z",
-  });
-  const headB = await store.publishGraphRevision("TRAQEN-SELF", "SELF-GRAPH-B", 1);
-  assert.equal(headB.graphRevisionId, "SELF-GRAPH-B");
-  assert.equal(headB.version, 2);
+  const inventory = (await primary.store.listUnderstandingRecords("TRAQEN-SELF", "ARTIFACT_INVENTORY"))
+    .find(({ snapshotManifestId }) => snapshotManifestId === second.revision.snapshotManifestId);
+  const paths = new Set(inventory.artifacts.map(({ relativePath }) => relativePath));
+  assert.equal(truth.capabilities.length, 10);
+  assert.equal(truth.anchors.length, 30);
+  assert.equal(truth.requiredRelationships.length, 60);
+  assert.equal(truth.forbiddenRelationships.length, 30);
+  assert.ok(truth.anchors.filter(({ path: anchorPath }) => paths.has(anchorPath)).length / truth.anchors.length >= 0.9);
+  assert.notEqual(fullOne.outputs.SOURCE_SCAN.planId, truth.id);
+  assert.deepEqual(second.artifact, JSON.parse(JSON.stringify(second.artifact)));
+  assert.equal(second.artifact.graphArtifactDigest, second.revision.graphArtifactDigest);
+  assert.equal(second.head.graphRevisionId, second.revision.id);
 });

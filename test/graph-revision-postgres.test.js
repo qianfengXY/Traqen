@@ -15,12 +15,19 @@ test("PostgreSQL publishes GraphRevision and CurrentGraphHead in one CAS transac
   await database.query("INSERT INTO tenant (id, organization_id, name) VALUES ('T', 'O', 'Tenant')");
   await database.query("INSERT INTO project (id, tenant_id, name) VALUES ('P', 'T', 'Project')");
   const store = new PostgresTraceabilityStore(database);
+  const minimumDenominators = { inventory: 1, anchors: 1, candidateSample: 1, requiredRelationships: 1, forbiddenRelationships: 1, sourceAttributions: 1, gaps: 1, replaySamples: 1, incrementalComparisons: 1 };
   await store.appendUnderstandingRecord("P", "EVALUATION_RUN", {
-    id: "E1", projectId: "P", analysisRunId: "R1", status: "PASSED", completedAt: "2026-07-29T00:00:00.000Z",
+    id: "E1", projectId: "P", analysisRunId: "R1", status: "PASSED", policyVersion: "v1",
+    minimumDenominators, denominators: minimumDenominators, completedAt: "2026-07-29T00:00:00.000Z",
+  });
+  await store.appendUnderstandingRecord("P", "GRAPH_ARTIFACT", {
+    id: "A1", projectId: "P", snapshotManifestId: "S1", analysisRunId: "R1",
+    graphArtifactDigest: "D1", createdAt: "2026-07-29T00:00:00.000Z",
   });
   await store.appendUnderstandingRecord("P", "GRAPH_REVISION", {
     id: "G1", projectId: "P", snapshotManifestId: "S1", analysisRunId: "R1", mode: "FULL",
-    baseRevisionId: null, evaluationRunId: "E1", status: "EVALUATING", createdAt: "2026-07-29T00:00:00.000Z",
+    baseRevisionId: null, evaluationRunId: "E1", graphArtifactId: "A1", graphArtifactDigest: "D1",
+    status: "EVALUATING", createdAt: "2026-07-29T00:00:00.000Z",
   });
   const head = await store.publishGraphRevision("P", "G1", 0);
   assert.equal(head.version, 1);

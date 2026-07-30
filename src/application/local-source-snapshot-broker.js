@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstat, readFile, realpath } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -25,14 +26,18 @@ export function createLocalSourceSnapshotBroker({ store, snapshotRoot, clock = (
       if (!artifact) return null;
       if (artifact.disposition !== "INCLUDED") return artifact;
       const snapshotDirectory = path.join(root, snapshotManifestId);
-      const absolute = path.join(snapshotDirectory, ...artifact.path.split("/"));
+      await readFile(path.join(snapshotDirectory, ".traqen-sealed"), "utf8");
+      const absolute = path.join(snapshotDirectory, ...artifact.relativePath.split("/"));
       const [realSnapshotDirectory, realArtifact] = await Promise.all([realpath(snapshotDirectory), realpath(absolute)]);
       if (realArtifact !== realSnapshotDirectory && !realArtifact.startsWith(`${realSnapshotDirectory}${path.sep}`)) {
         throw new TypeError("Artifact escaped the immutable Snapshot root");
       }
       const metadata = await lstat(realArtifact);
       if (!metadata.isFile() || metadata.isSymbolicLink()) throw new TypeError("Artifact must be a non-symlink file");
-      return { ...artifact, content: await readFile(realArtifact, "utf8") };
+      const content = await readFile(realArtifact, "utf8");
+      const contentDigest = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+      if (contentDigest !== artifact.contentDigest) throw new TypeError("Snapshot Artifact digest verification failed");
+      return { ...artifact, content };
     },
   });
 }

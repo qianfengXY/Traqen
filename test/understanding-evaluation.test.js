@@ -11,7 +11,11 @@ const policy = createEvaluationPolicy({
     requiredRelationshipRate: 1, forbiddenRelationshipViolations: 0,
     sourceAttributionRate: 1, gapHonestyRate: 1, replayEquivalenceRate: 1, incrementalEquivalenceRate: 1,
   },
-  minimumAnchors: 2, minimumRequiredRelationships: 1,
+  minimumDenominators: {
+    inventory: 1, anchors: 2, candidateSample: 1, requiredRelationships: 1,
+    forbiddenRelationships: 1, sourceAttributions: 1, gaps: 1,
+    replaySamples: 1, incrementalComparisons: 1,
+  },
 });
 
 test("multi-dimensional evaluation uses explicit denominators and an independent reviewer", () => {
@@ -28,7 +32,7 @@ test("multi-dimensional evaluation uses explicit denominators and an independent
     inventory: { totalCount: 3, disposedCount: 3 },
     candidateSample: { total: 10, correct: 9 },
     sourceAttribution: { total: 4, valid: 4 }, gaps: { total: 2, honest: 2 },
-    replayEquivalenceRate: 1, incrementalEquivalenceRate: 1,
+    replay: { total: 1, equivalent: 1 }, incrementalComparison: { total: 1, equivalent: 1 },
     reviewer: { id: "reviewer" }, implementationAuthorId: "author",
   });
   assert.equal(result.status, "PASSED");
@@ -40,4 +44,23 @@ test("multi-dimensional evaluation uses explicit denominators and an independent
     }),
     truthSetDigest: "SAME", productionInputDigest: "SAME",
   }), /leakage/);
+});
+
+test("evaluation never treats missing denominators as a perfect score", () => {
+  const result = evaluateUnderstanding({
+    projectId: "P", analysisRunId: "R-ZERO", policy,
+    truthSet: {
+      id: "TRUTH-ZERO", status: "SEALED", anchors: [{ id: "A1" }, { id: "A2" }],
+      requiredRelationships: [{ subject: "A1", predicate: "USES", object: "A2" }],
+      forbiddenRelationships: [],
+    },
+    truthSetDigest: "TRUTH", productionInputDigest: "PRODUCTION",
+    observedAnchorIds: ["A1", "A2"],
+    observedRelationships: [{ subject: "A1", predicate: "USES", object: "A2" }],
+    inventory: { totalCount: 1, disposedCount: 1 },
+    candidateSample: {}, sourceAttribution: {}, gaps: {},
+    reviewer: { id: "reviewer" }, implementationAuthorId: "author",
+  });
+  assert.equal(result.status, "NOT_EVALUATED");
+  assert.ok(result.missingDenominators.length > 0);
 });

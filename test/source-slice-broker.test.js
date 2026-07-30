@@ -19,7 +19,7 @@ test("SourceSlice Broker authorizes Artifact IDs, redacts secrets, and never acc
   const authorized = { serviceIdentity: "worker", projectId: "P", analysisRunId: "R", workUnitArtifactIds: ["A"] };
   const slice = await broker.read(request(), authorized);
   assert.equal(slice.status, "REDACTED");
-  assert.doesNotMatch(slice.content, /raw-secret/);
+  assert.doesNotMatch(slice.artifactSlices[0].redactedText, /raw-secret/);
   const rejected = await broker.read(request(), null);
   assert.equal(rejected.status, "REJECTED");
   assert.throws(() => request({ path: "/etc/passwd" }), /cannot contain path/);
@@ -45,10 +45,33 @@ test("a Direct-source Skill recovers an entry point with no scanner FactBundle",
     },
   }, broker);
   const result = await adapter.analyze({
-    projectId: "P", snapshotManifestId: "S", workUnitId: "W",
+    projectId: "P", snapshotManifestId: "S", analysisRunId: "R", workUnitId: "W",
     sourceSliceRequests: [request()],
     authorization: { serviceIdentity: "worker", projectId: "P", analysisRunId: "R", workUnitArtifactIds: ["A"] },
+    routeDecision: { selected: [{ modelCapabilityProfileId: "M", skillId: "direct-reader", skillVersion: "1" }] },
+    confidenceCap: "LOW",
   });
   assert.equal(result.candidateFeatures[0].id, "MISSED-ENTRY");
   assert.equal(result.candidateFeatures[0].sourceSliceIds.length, 1);
+});
+
+test("a Direct-source Skill rejects foreign SourceSlice evidence before reconciliation", async () => {
+  const broker = new SourceSliceBroker({
+    artifactResolver: async () => ({ disposition: "INCLUDED", relativePath: "src/a.js", contentDigest: "sha256:a", content: "export function allowed() {}" }),
+  });
+  const adapter = createDirectSourceAnalysisAdapter({
+    id: "direct-reader",
+    version: "1",
+    async execute() {
+      return { candidateFeatures: [{ id: "C-FOREIGN", sourceSliceIds: ["SLICE-FOREIGN"], proposal: { name: "foreign" } }] };
+    },
+  }, broker);
+  const result = await adapter.analyze({
+    projectId: "P", snapshotManifestId: "S", analysisRunId: "R", workUnitId: "W",
+    sourceSliceRequests: [request()],
+    authorization: { serviceIdentity: "worker", projectId: "P", analysisRunId: "R", workUnitArtifactIds: ["A"] },
+    routeDecision: { selected: [{ modelCapabilityProfileId: "M", skillId: "direct-reader", skillVersion: "1" }] },
+  });
+  assert.equal(result.candidateFeatures.length, 0);
+  assert.equal(result.gaps[0].code, "CANDIDATE_EVIDENCE_SCOPE_VIOLATION");
 });

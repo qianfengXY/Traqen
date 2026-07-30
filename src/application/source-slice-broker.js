@@ -1,4 +1,4 @@
-import { createSourceSlice, SourceSliceStatus } from "../domain/index.js";
+import { SourceSliceStatus, createSourceSlice } from "../domain/index.js";
 
 const secretPattern = /(?:api[_-]?key|token|password|secret)\s*[:=]\s*["']?[^"'\s]+/gi;
 
@@ -10,41 +10,93 @@ export class SourceSliceBroker {
     this.clock = clock;
   }
 
+  async #reject(request, code) {
+    const rejection = createSourceSlice(request, {
+      status: SourceSliceStatus.REJECTED,
+      artifactSlices: [],
+      diagnostics: [{ code }],
+      omittedReasons: [code],
+    }, this.clock);
+    await this.auditSink(rejection);
+    return rejection;
+  }
+
   async read(request, authorization) {
+    const allowedArtifacts = new Set(authorization?.workUnitArtifactIds ?? []);
+    const allowedFacts = new Set(authorization?.workUnitFactIds ?? []);
     if (!authorization?.serviceIdentity || authorization.projectId !== request.projectId
       || authorization.analysisRunId !== request.analysisRunId
-      || !authorization.workUnitArtifactIds?.includes(request.artifactId)) {
-      const rejection = createSourceSlice(request, {
-        status: SourceSliceStatus.REJECTED,
-        diagnostics: [{ code: "SOURCE_SLICE_FORBIDDEN" }],
-      }, this.clock);
-      await this.auditSink(rejection);
-      return rejection;
+      || request.selectors.some(({ artifactId }) => !allowedArtifacts.has(artifactId))) {
+      return this.#reject(request, "SOURCE_SLICE_SCOPE_VIOLATION");
     }
-    const artifact = await this.artifactResolver(request.projectId, request.snapshotManifestId, request.artifactId);
-    if (!artifact || ["BINARY", "SECRET_REDACTED", "READ_FAILED"].includes(artifact.disposition)) {
-      const rejection = createSourceSlice(request, {
-        status: SourceSliceStatus.REJECTED,
-        diagnostics: [{ code: artifact ? `ARTIFACT_${artifact.disposition}` : "ARTIFACT_NOT_FOUND" }],
-      }, this.clock);
-      await this.auditSink(rejection);
-      return rejection;
+    if (request.allowedFactIds.some((factId) => !allowedFacts.has(factId))) {
+      return this.#reject(request, "FACT_NOT_IN_WORK_UNIT");
     }
-    const bytes = Buffer.from(artifact.content, "utf8");
-    const requestedEnd = request.range.endByte ?? bytes.length;
-    const cappedEnd = Math.min(requestedEnd, request.range.startByte + request.maxBytes, bytes.length);
-    let content = bytes.subarray(request.range.startByte, cappedEnd).toString("utf8");
+
+    let remainingBytes = request.maxBytes;
+    const artifactSlices = [];
     const redactions = [];
-    content = content.replace(secretPattern, (match) => {
-      redactions.push("SECRET_PATTERN");
-      return `[REDACTED:${match.split(/[:=]/, 1)[0].trim()}]`;
-    });
-    const truncated = cappedEnd < requestedEnd || cappedEnd < bytes.length;
+    const omittedReasons = [];
+    let truncated = false;
+    for (const selector of request.selectors) {
+      const artifact = await this.artifactResolver(
+        request.projectId,
+        request.snapshotManifestId,
+        selector.artifactId,
+      );
+      if (!artifact) {
+        omittedReasons.push("ARTIFACT_NOT_IN_SNAPSHOT");
+        continue;
+      }
+      if (["BINARY", "SECRET_REDACTED", "READ_FAILED"].includes(artifact.disposition)) {
+        omittedReasons.push(`ARTIFACT_${artifact.disposition}`);
+        continue;
+      }
+      const bytes = Buffer.from(artifact.content, "utf8");
+      const requestedEnd = selector.endByte ?? bytes.length;
+      const cappedEnd = Math.min(requestedEnd, selector.startByte + remainingBytes, bytes.length);
+      if (cappedEnd <= selector.startByte || remainingBytes <= 0) {
+        truncated = true;
+        omittedReasons.push("SOURCE_SLICE_BUDGET_EXCEEDED");
+        continue;
+      }
+      let redactedText = bytes.subarray(selector.startByte, cappedEnd).toString("utf8");
+      redactedText = redactedText.replace(secretPattern, (match) => {
+        redactions.push({
+          kind: "SECRET_PATTERN",
+          artifactId: selector.artifactId,
+          range: { startByte: selector.startByte, endByte: cappedEnd },
+        });
+        return `[REDACTED:${match.split(/[:=]/, 1)[0].trim()}]`;
+      });
+      const redactedBytes = Buffer.from(redactedText);
+      if (redactedBytes.length > remainingBytes) {
+        redactedText = redactedBytes.subarray(0, remainingBytes).toString("utf8");
+        truncated = true;
+      }
+      remainingBytes -= Buffer.byteLength(redactedText);
+      if (cappedEnd < requestedEnd || cappedEnd < bytes.length) truncated = true;
+      artifactSlices.push({
+        artifactId: selector.artifactId,
+        relativePath: artifact.relativePath,
+        contentDigest: artifact.contentDigest,
+        range: { startByte: selector.startByte, endByte: cappedEnd },
+        redactedText,
+      });
+    }
+    if (artifactSlices.length === 0) {
+      return this.#reject(request, omittedReasons[0] ?? "ARTIFACT_NOT_IN_SNAPSHOT");
+    }
+    const status = redactions.length > 0
+      ? SourceSliceStatus.REDACTED
+      : truncated ? SourceSliceStatus.TRUNCATED : SourceSliceStatus.COMPLETE;
     const slice = createSourceSlice(request, {
-      status: redactions.length ? SourceSliceStatus.REDACTED : truncated ? SourceSliceStatus.TRUNCATED : SourceSliceStatus.COMPLETE,
-      content,
-      range: { startByte: request.range.startByte, endByte: cappedEnd },
+      status,
+      artifactSlices,
+      factIds: request.allowedFactIds,
       redactions,
+      truncated,
+      omittedReasons,
       diagnostics: truncated ? [{ code: "SOURCE_SLICE_TRUNCATED" }] : [],
     }, this.clock);
     await this.auditSink(slice);

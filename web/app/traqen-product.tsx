@@ -54,6 +54,13 @@ function PublishedUnderstandingGraphStatus({ apiBase, apiToken, projectId }: { a
         <strong>{revisions.length} {t("个历史版本", "historical revisions")}</strong>
         {revisions.slice(0, 4).map((revision) => <span key={revision.id} className={revision.status === "PUBLISHED" ? "published" : "diagnostic"}>{revision.mode} · {term(revision.status)} · {revision.snapshotManifestId}</span>)}
       </div>
+      {current && <div className="published-understanding-artifact" data-graph-artifact-id={current.graphArtifact.id}>
+        <strong>{current.graphArtifact.nodes.length} {t("个已发布节点", "published nodes")}</strong>
+        <span className="published">{current.graphArtifact.nodes.filter((node) => node.authority === "GOVERNED").length} {t("个受治理节点", "governed")}</span>
+        <span className="diagnostic">{current.graphArtifact.nodes.filter((node) => node.authority === "CANDIDATE").length} {t("个候选节点", "Candidates")}</span>
+        <span>{current.graphArtifact.traceChains.filter(({ complete }) => complete).length} TraceChain</span>
+        {current.graphArtifact.impactAssessment && <span>{current.graphArtifact.impactAssessment.affectedNodeIds.length} {t("个受影响节点", "impacted nodes")}</span>}
+      </div>}
     </section>
   );
 }
@@ -367,6 +374,43 @@ type FeatureGraphPath = {
   edges: FeatureGraphEdge[];
   hopCount: number | null;
 };
+
+function publishedFeatureGraph(current: CurrentUnderstandingGraph, view: GraphViewPreset): FeatureGraph {
+  const nodes = current.graphArtifact.nodes.map((node) => ({
+    id: node.id,
+    type: node.type,
+    label: node.label,
+    version: current.head.version,
+    status: node.authority === "GAP" ? "GAP" as const : "ACTIVE" as const,
+    risk: null,
+    provenance: `CurrentGraphHead · ${node.authority}`,
+    source: { graphArtifactId: current.graphArtifact.id },
+    details: {
+      authority: node.authority,
+      graphRevisionId: current.revision.id,
+      graphArtifactDigest: current.graphArtifact.graphArtifactDigest,
+    },
+  }));
+  const center = nodes.find((node) => node.details.authority === "GOVERNED")?.id
+    ?? nodes.find((node) => node.details.authority === "CANDIDATE")?.id
+    ?? nodes[0]?.id
+    ?? current.graphArtifact.id;
+  return {
+    center,
+    snapshotManifestId: current.revision.snapshotManifestId,
+    view,
+    depth: 8,
+    nodes,
+    edges: current.graphArtifact.edges.map((edge) => ({
+      ...edge,
+      provenance: `GraphArtifact · ${current.graphArtifact.id}`,
+      status: "ACTIVE" as const,
+      snapshotManifestId: current.revision.snapshotManifestId,
+    })),
+    truncated: false,
+    availableExpansions: [],
+  };
+}
 
 type ChainNode = {
   id: string;
@@ -2981,6 +3025,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   const [nodeTypes, setNodeTypes] = useState("");
   const [relations, setRelations] = useState("");
   const [remoteGraph, setRemoteGraph] = useState<FeatureGraph | null>(null);
+  const [publishedGraphLoaded, setPublishedGraphLoaded] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [pathFrom, setPathFrom] = useState("");
   const [pathTo, setPathTo] = useState("");
@@ -2995,6 +3040,23 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   const effectivePathTo = graph.nodes.some((node) => node.id === pathTo) ? pathTo : (graph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? graph.nodes.at(-1)?.id ?? graph.center);
   const pathNodeIds = useMemo(() => new Set(pathResult?.nodes.map((node) => node.id) ?? []), [pathResult]);
   const pathEdgeIds = useMemo(() => new Set(pathResult?.edges.map((edge) => edge.id) ?? []), [pathResult]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUnderstandingGraph(apiBase, apiToken, projectId).then((current) => {
+      if (cancelled || !current) return;
+      const loadedGraph = publishedFeatureGraph(current, preset);
+      setRemoteGraph(loadedGraph);
+      setPublishedGraphLoaded(true);
+      setSelectedId(loadedGraph.center);
+      setPathFrom(loadedGraph.center);
+      setPathTo(loadedGraph.nodes.at(-1)?.id ?? loadedGraph.center);
+      setPathResult(null);
+    }).catch(() => {
+      // The existing Candidate/demo view remains available when no published graph can be resolved.
+    });
+    return () => { cancelled = true; };
+  }, [apiBase, apiToken, preset, projectId]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -3131,6 +3193,18 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
     setLoading(true);
     setMessage("");
     try {
+      const current = await getCurrentUnderstandingGraph(apiBase, apiToken, projectId);
+      if (current) {
+        const loadedGraph = publishedFeatureGraph(current, preset);
+        setRemoteGraph(loadedGraph);
+        setPublishedGraphLoaded(true);
+        setSelectedId(loadedGraph.center);
+        setPathFrom(loadedGraph.center);
+        setPathTo(loadedGraph.nodes.at(-1)?.id ?? loadedGraph.center);
+        setPathResult(null);
+        setMessage(t("已从 CurrentGraphHead 加载不可变发布图谱；节点、追踪链、变更影响和历史版本均由服务端产物解析。", "Loaded the immutable published graph from CurrentGraphHead; nodes, trace chains, change impact, and history resolve from server artifacts."));
+        return;
+      }
       const base = apiBase.replace(/\/$/, "");
       const parameters = new URLSearchParams({
         snapshotManifestId: snapshotId,
@@ -3153,6 +3227,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
       if (!response.ok) throw new Error(String((body.error as { message?: string } | undefined)?.message ?? `API returned ${response.status}`));
       const loadedGraph = body as unknown as FeatureGraph;
       setRemoteGraph(loadedGraph);
+      setPublishedGraphLoaded(false);
       setSelectedId(loadedGraph.center);
       setPathFrom(loadedGraph.center);
       setPathTo(loadedGraph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? loadedGraph.nodes.at(-1)?.id ?? loadedGraph.center);
@@ -3169,7 +3244,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
     setLoading(true);
     setMessage("");
     try {
-      if (!remoteGraph) {
+      if (!remoteGraph || publishedGraphLoaded) {
         const result = localGraphPath(graph, effectivePathFrom, effectivePathTo);
         setPathResult(result);
         setMessage(result.found ? t(`自 Workspace 路径已锁定：${result.hopCount} 跳。`, `Self-Workspace path locked: ${result.hopCount} hops.`) : t("所选自 Workspace 节点之间不存在路径。", "No path exists between the selected self-Workspace nodes."));
@@ -3204,6 +3279,7 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
     const nextGraph = workspaceAnalysis ? workspaceGraphForAnalysis(workspaceAnalysis, featureId, next) : demoGraphForScenario(scenario, next);
     setPreset(next);
     setRemoteGraph(null);
+    setPublishedGraphLoaded(false);
     setSelectedId(nextGraph.center);
     setPathFrom(nextGraph.center);
     setPathTo(nextGraph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? nextGraph.nodes.at(-1)?.id ?? nextGraph.center);

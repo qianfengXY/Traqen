@@ -29,3 +29,21 @@ test("AUTO resolves FULL then INCREMENTAL, reuses unaffected work, and proves eq
     { nodes: [{ id: "N" }], edges: [] }, { nodes: [{ id: "N" }], edges: [] },
   ).equivalent, true);
 });
+
+test("changed leaf invalidates the full reverse dependency closure", () => {
+  const result = planIncrementalUnderstanding({
+    requestedMode: "INCREMENTAL", currentGraphHead: { graphRevisionId: "G1" },
+    previous: { inventory: { snapshotManifestId: "S1", artifacts: [{ id: "A1", path: "src/a.js", contentDigest: "old" }] } },
+    current: {
+      inventory: { snapshotManifestId: "S2", artifacts: [{ id: "A2", path: "src/a.js", contentDigest: "new" }] },
+      plan: { workUnits: [
+        { id: "LEAF", artifactIds: ["A2"], dependencies: [] },
+        { id: "MODULE", artifactIds: [], dependencies: ["LEAF"] },
+        { id: "PROJECT", artifactIds: [], dependencies: ["MODULE"] },
+        { id: "UNRELATED", artifactIds: [], dependencies: [] },
+      ] },
+    },
+  });
+  assert.deepEqual(result.affectedWorkUnitIds, ["LEAF", "MODULE", "PROJECT"]);
+  assert.deepEqual(result.reusedWorkUnitIds, ["UNRELATED"]);
+});

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, readdir, realpath } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
 import { createArtifactInventory } from "../domain/index.js";
@@ -43,6 +44,10 @@ export class ArtifactInventoryScanner {
   }
 
   async scan({ projectId, snapshotManifestId, sourceDigest, rootPath }) {
+    return (await this.capture({ projectId, snapshotManifestId, sourceDigest, rootPath })).inventory;
+  }
+
+  async capture({ projectId, snapshotManifestId, rootPath }) {
     const root = path.resolve(rootPath);
     const realRoot = await realpath(root);
     const realAllowedRoots = await Promise.all(this.allowlistedRoots.map((allowed) => realpath(allowed)));
@@ -52,6 +57,7 @@ export class ArtifactInventoryScanner {
     const rootMetadata = await lstat(realRoot);
     if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) throw new TypeError("rootPath must be a non-symlink directory");
     const artifacts = [];
+    const capturedFiles = [];
     const visit = async (directory, inheritedGenerated = false) => {
       const entries = await readdir(directory, { withFileTypes: true });
       entries.sort((left, right) => left.name.localeCompare(right.name));
@@ -60,8 +66,9 @@ export class ArtifactInventoryScanner {
         const relative = path.relative(realRoot, absolute).split(path.sep).join("/");
         if (entry.isSymbolicLink()) {
           artifacts.push({
-            id: `ARTIFACT-${digest(relative).slice(7, 31)}`, path: relative, kind: "SOURCE", language: null,
-            byteSize: 0, contentDigest: digest(""), disposition: "EXCLUDED", reason: "SYMLINK_FENCED",
+            id: `ARTIFACT-${digest(relative).slice(7, 31)}`, relativePath: relative,
+            artifactKinds: ["SOURCE"], mediaType: "application/octet-stream", language: null,
+            sizeBytes: 0, contentDigest: digest(""), disposition: "EXCLUDED_BY_POLICY", reasonCode: "SYMLINK_FENCED",
           });
           continue;
         }
@@ -69,13 +76,15 @@ export class ArtifactInventoryScanner {
         if (entry.isDirectory()) {
           if (entry.name === ".git") {
             artifacts.push({
-              id: `ARTIFACT-${digest(relative).slice(7, 31)}`, path: relative, kind: "CONFIG", language: null,
-              byteSize: 0, contentDigest: digest(""), disposition: "EXCLUDED", reason: "VCS_INTERNAL",
+              id: `ARTIFACT-${digest(relative).slice(7, 31)}`, relativePath: relative,
+              artifactKinds: ["CONFIG"], mediaType: "application/octet-stream", language: null,
+              sizeBytes: 0, contentDigest: digest(""), disposition: "EXCLUDED_BY_POLICY", reasonCode: "VCS_INTERNAL",
             });
           } else if (generated) {
             artifacts.push({
-              id: `ARTIFACT-${digest(relative).slice(7, 31)}`, path: relative, kind: "SOURCE", language: null,
-              byteSize: 0, contentDigest: digest(""), disposition: "GENERATED", reason: "GENERATED_DIRECTORY_TREE",
+              id: `ARTIFACT-${digest(relative).slice(7, 31)}`, relativePath: relative,
+              artifactKinds: ["SOURCE"], mediaType: "application/octet-stream", language: null,
+              sizeBytes: 0, contentDigest: digest(""), disposition: "GENERATED", reasonCode: "GENERATED_DIRECTORY_TREE",
             });
           } else {
             await visit(absolute, generated);
@@ -83,7 +92,7 @@ export class ArtifactInventoryScanner {
           continue;
         }
         if (!entry.isFile()) continue;
-        const metadata = await lstat(absolute);
+        let metadata = await lstat(absolute);
         const extension = path.extname(entry.name).toLowerCase();
         let disposition = "INCLUDED";
         let reason;
@@ -96,26 +105,48 @@ export class ArtifactInventoryScanner {
         }
         let content = Buffer.alloc(0);
         try {
-          if (!["SECRET_REDACTED", "BINARY", "OVERSIZED", "GENERATED"].includes(disposition)) content = await readFile(absolute);
+          if (!["SECRET_REDACTED", "BINARY", "OVERSIZED", "GENERATED"].includes(disposition)) {
+            const handle = await open(absolute, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+            try {
+              const before = await handle.stat();
+              if (!before.isFile()) throw new TypeError("captured entry is not a regular file");
+              content = await handle.readFile();
+              const after = await handle.stat();
+              if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
+                || before.mtimeMs !== after.mtimeMs) {
+                throw new TypeError("source changed while its bytes were captured");
+              }
+              metadata = after;
+            } finally {
+              await handle.close();
+            }
+          }
         } catch {
           disposition = "READ_FAILED";
           reason = "READ_ERROR";
+          content = Buffer.alloc(0);
         }
-        artifacts.push({
+        const artifact = {
           id: `ARTIFACT-${digest(relative).slice(7, 31)}`,
-          path: relative,
-          kind: artifactKind(relative),
+          relativePath: relative,
+          artifactKinds: [artifactKind(relative)],
+          mediaType: supportedExtensions.has(extension) ? `text/${languageFor(extension) ?? "plain"}` : "application/octet-stream",
           language: languageFor(extension),
-          byteSize: metadata.size,
+          sizeBytes: metadata.size,
           contentDigest: digest(content),
           disposition,
-          reason,
-        });
+          reasonCode: reason,
+        };
+        artifacts.push(artifact);
+        if (disposition === "INCLUDED") capturedFiles.push({ artifact, content });
       }
     };
     await visit(realRoot);
-    return createArtifactInventory({
+    const sourceDigest = digest(Buffer.from(artifacts.map(({ relativePath, contentDigest }) =>
+      `${relativePath}\u0000${contentDigest}`).join("\n")));
+    const inventory = createArtifactInventory({
       projectId, snapshotManifestId, sourceDigest, scannerVersion: this.scannerVersion, sealed: true, artifacts,
     }, this.clock);
+    return Object.freeze({ inventory, capturedFiles: Object.freeze(capturedFiles), realRoot });
   }
 }

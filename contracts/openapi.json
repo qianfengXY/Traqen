@@ -1223,12 +1223,83 @@
         }
       }
     },
+    "/v1/projects/{projectId}/source-registrations": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "registerUnderstandingSource",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["rootPath"], "properties": {
+            "rootPath": { "type": "string" }, "displayName": { "type": "string" }, "policyVersion": { "type": "string" }
+          }, "additionalProperties": false
+        } } } },
+        "responses": { "201": { "description": "Authorized opaque SourceRegistration", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SourceRegistration" } } } } }
+      }
+    },
+    "/v1/projects/{projectId}/source-registrations/{registrationId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "registrationId", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "operationId": "getUnderstandingSourceRegistration",
+        "responses": {
+          "200": { "description": "SourceRegistration without its private root", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SourceRegistration" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/workspace-analysis-jobs": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "post": {
+        "operationId": "startWorkspaceUnderstandingJob",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "required": ["sourceRegistrationId", "requestedMode"], "properties": {
+            "sourceRegistrationId": { "type": "string" },
+            "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] },
+            "policyDigest": { "type": "string" }
+          }, "additionalProperties": false
+        } } } },
+        "responses": { "202": { "description": "Durable server-owned job", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } } }
+      }
+    },
+    "/v1/projects/{projectId}/workspace-analysis-jobs/{jobId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string" } }
+      ],
+      "get": {
+        "operationId": "getWorkspaceUnderstandingJob",
+        "responses": {
+          "200": { "description": "Durable job checkpoint", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/pause": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }, { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "operationId": "pauseWorkspaceUnderstandingJob", "responses": { "202": { "description": "Pause checkpoint", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } } } }
+    },
+    "/v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/resume": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }, { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "operationId": "resumeWorkspaceUnderstandingJob", "responses": { "202": { "description": "Resumed job", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } } } }
+    },
+    "/v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/cancel": {
+      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }, { "name": "jobId", "in": "path", "required": true, "schema": { "type": "string" } }],
+      "post": { "operationId": "cancelWorkspaceUnderstandingJob", "responses": { "202": { "description": "Cancelled job", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } } } }
+    },
     "/v1/projects/{projectId}/graph/current": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "get": {
         "operationId": "getCurrentUnderstandingGraph",
         "responses": {
-          "200": { "description": "Current atomically published graph head and revision" },
+          "200": { "description": "Current atomically published immutable graph", "content": { "application/json": { "schema": {
+            "type": "object", "required": ["head", "revision", "graphArtifact"],
+            "properties": {
+              "head": { "$ref": "#/components/schemas/CurrentGraphHead" },
+              "revision": { "$ref": "./graph-revision.schema.json" },
+              "graphArtifact": { "$ref": "./immutable-graph-artifact.schema.json" }
+            }, "additionalProperties": false
+          } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -1237,7 +1308,11 @@
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "get": {
         "operationId": "listGraphRevisions",
-        "responses": { "200": { "description": "Immutable graph revision history" } }
+        "responses": { "200": { "description": "Immutable graph revision history", "content": { "application/json": { "schema": {
+          "type": "object", "required": ["revisions"], "properties": {
+            "revisions": { "type": "array", "items": { "$ref": "./graph-revision.schema.json" } }
+          }, "additionalProperties": false
+        } } } } }
       }
     },
     "/v1/projects/{projectId}/graph/revisions/{revisionId}": {
@@ -1248,7 +1323,12 @@
       "get": {
         "operationId": "getGraphRevision",
         "responses": {
-          "200": { "description": "One immutable GraphRevision", "content": { "application/json": { "schema": { "$ref": "./graph-revision.schema.json" } } } },
+          "200": { "description": "One immutable GraphRevision and graph artifact", "content": { "application/json": { "schema": {
+            "type": "object", "required": ["revision", "graphArtifact"], "properties": {
+              "revision": { "$ref": "./graph-revision.schema.json" },
+              "graphArtifact": { "$ref": "./immutable-graph-artifact.schema.json" }
+            }, "additionalProperties": false
+          } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -1270,7 +1350,7 @@
           } } }
         },
         "responses": {
-          "200": { "description": "CurrentGraphHead moved atomically" },
+          "200": { "description": "CurrentGraphHead moved atomically", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CurrentGraphHead" } } } },
           "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
@@ -1283,7 +1363,7 @@
       "get": {
         "operationId": "getFeatureUnderstandingHistory",
         "responses": {
-          "200": { "description": "FeatureVersion, Decision, Snapshot implementation, impact and verification history" },
+          "200": { "description": "FeatureVersion, Decision, Snapshot implementation, impact and verification history", "content": { "application/json": { "schema": { "type": "object" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -1301,10 +1381,11 @@
         }
       }
     },
-    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/source-slices": {
+    "/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
-        { "$ref": "#/components/parameters/AnalysisRunId" }
+        { "$ref": "#/components/parameters/AnalysisRunId" },
+        { "name": "workUnitId", "in": "path", "required": true, "schema": { "type": "string" } }
       ],
       "post": {
         "operationId": "requestSourceSlice",
@@ -1313,7 +1394,7 @@
           "content": { "application/json": { "schema": { "$ref": "./source-slice.schema.json" } } }
         },
         "responses": {
-          "200": { "description": "Policy-bounded SourceSlice" },
+          "200": { "description": "Policy-bounded SourceSlice", "content": { "application/json": { "schema": { "$ref": "./source-slice.schema.json" } } } },
           "403": { "$ref": "#/components/responses/ReviewerForbidden" }
         }
       }
@@ -1576,6 +1657,29 @@
       }
     },
     "schemas": {
+      "CurrentGraphHead": {
+        "type": "object",
+        "required": ["projectId", "graphRevisionId", "version", "updatedAt"],
+        "properties": {
+          "projectId": { "type": "string" },
+          "graphRevisionId": { "type": "string" },
+          "version": { "type": "integer", "minimum": 1 },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "SourceRegistration": {
+        "type": "object",
+        "required": ["id", "projectId", "connectorKind", "displayName", "policyVersion", "status", "createdAt", "updatedAt"],
+        "properties": {
+          "id": { "type": "string" }, "projectId": { "type": "string" },
+          "connectorKind": { "const": "LOCAL_FILESYSTEM" }, "displayName": { "type": "string" },
+          "policyVersion": { "type": "string" }, "status": { "enum": ["ACTIVE", "REVOKED"] },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
       "AnalysisModelProfile": {
         "type": "object",
         "required": ["id", "endpoint", "model", "timeoutMs", "stream", "source", "configuredAt", "verifiedAt", "ready", "active"],

@@ -3,15 +3,30 @@
   "$id": "https://traqen.dev/contracts/workspace-analysis-job.schema.json",
   "title": "WorkspaceAnalysisJob",
   "type": "object",
-  "required": ["id", "projectId", "snapshotManifestId", "requestedMode", "resolvedMode", "baseRevisionId", "policyDigest", "phase", "status", "completedPhases", "outputs", "createdAt", "updatedAt"],
+  "required": ["id", "projectId", "sourceRegistrationId", "snapshotManifestId", "requestedMode", "resolvedMode", "baseRevisionId", "policyDigest", "phase", "desiredState", "status", "version", "completedPhases", "outputs", "createdAt", "updatedAt"],
   "properties": {
-    "id": { "type": "string" }, "projectId": { "type": "string" }, "snapshotManifestId": { "type": "string" },
+    "id": { "type": "string" }, "projectId": { "type": "string" }, "sourceRegistrationId": { "type": "string" }, "snapshotManifestId": { "type": "string" },
     "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] }, "resolvedMode": { "enum": ["FULL", "INCREMENTAL"] },
     "baseRevisionId": { "type": ["string", "null"] }, "policyDigest": { "type": "string" },
     "phase": { "enum": ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING", "COMPLETED"] },
-    "status": { "enum": ["RUNNING", "PAUSED", "COMPLETED", "FAILED"] },
+    "desiredState": { "enum": ["RUNNING", "PAUSED", "CANCELLED"] },
+    "status": { "enum": ["RUNNING", "PAUSED", "COMPLETED", "FAILED", "CANCELLED"] },
+    "version": { "type": "integer", "minimum": 1 },
     "completedPhases": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
-    "outputs": { "type": "object" }, "createdAt": { "type": "string", "format": "date-time" }, "updatedAt": { "type": "string", "format": "date-time" }
+    "outputs": { "type": "object" },
+    "error": {
+      "type": ["object", "null"],
+      "required": ["code", "message", "retryable"],
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": ["string", "null"], "format": "date-time" }
   },
   "additionalProperties": false
 }

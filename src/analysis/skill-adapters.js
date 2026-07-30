@@ -1,3 +1,5 @@
+import { createCandidateEvidenceAllowset, validateCandidateAgainstEvidenceAllowset } from "./candidate-reconciliation.js";
+
 export function createReverseSkillAnalysisAdapter(adapter) {
   if (!adapter || typeof adapter.execute !== "function") throw new TypeError("reverse Skill adapter.execute is required");
   if (typeof adapter.id !== "string" || typeof adapter.version !== "string") throw new TypeError("reverse Skill adapter id and version are required");
@@ -73,17 +75,55 @@ export function createDirectSourceAnalysisAdapter(adapter, sourceSliceBroker) {
           snapshotManifestId: input.snapshotManifestId,
         },
         workUnitId: input.workUnitId,
-        sourceSlices: slices.map(({ id, artifactId, content, contentDigest, range }) => ({
-          id, artifactId, content, contentDigest, range,
-        })),
+        sourceSlices: slices.flatMap(({ id, artifactSlices }) => artifactSlices.map((slice) => ({
+          id,
+          artifactId: slice.artifactId,
+          content: slice.redactedText,
+          contentDigest: slice.contentDigest,
+          range: slice.range,
+        }))),
         optionalFacts: input.optionalFacts ?? null,
       }, { signal });
-      return {
-        candidateFeatures: (raw.candidateFeatures ?? []).map((candidate) => ({
+      const sourceSliceIds = slices.map(({ id }) => id);
+      const allowset = createCandidateEvidenceAllowset({
+        projectId: input.projectId,
+        snapshotManifestId: input.snapshotManifestId,
+        analysisRunId: input.analysisRunId,
+        workUnitId: input.workUnitId,
+        factIds: input.optionalFacts?.ids ?? [],
+        sourceSliceIds,
+        confidenceCap: input.confidenceCap ?? "LOW",
+        routeDecision: input.routeDecision,
+      });
+      const candidateFeatures = [];
+      const gaps = [...(raw.gaps ?? [])];
+      for (const candidate of raw.candidateFeatures ?? []) {
+        const bounded = {
           ...candidate,
-          sourceSliceIds: [...new Set(candidate.sourceSliceIds ?? [])],
-        })),
-        gaps: raw.gaps ?? [],
+          projectId: input.projectId,
+          snapshotManifestId: input.snapshotManifestId,
+          analysisRunId: input.analysisRunId,
+          workUnitId: input.workUnitId,
+          evidenceFactIds: candidate.evidenceFactIds ?? [],
+          sourceSliceIds: candidate.sourceSliceIds ?? [],
+          confidence: candidate.confidence ?? "LOW",
+          producer: candidate.producer ?? input.routeDecision?.selected?.[0] ?? null,
+        };
+        try {
+          validateCandidateAgainstEvidenceAllowset(bounded, allowset);
+          candidateFeatures.push(bounded);
+        } catch (error) {
+          gaps.push({
+            code: "CANDIDATE_EVIDENCE_SCOPE_VIOLATION",
+            candidateId: candidate.id ?? null,
+            message: error.message,
+          });
+        }
+      }
+      return {
+        candidateFeatures,
+        gaps,
+        evidenceAllowset: allowset,
       };
     },
   });

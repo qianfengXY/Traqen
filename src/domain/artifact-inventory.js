@@ -3,7 +3,7 @@ import { requireNonEmptyString } from "./model.js";
 
 export const ArtifactDisposition = Object.freeze({
   INCLUDED: "INCLUDED",
-  EXCLUDED: "EXCLUDED",
+  EXCLUDED_BY_POLICY: "EXCLUDED_BY_POLICY",
   UNSUPPORTED: "UNSUPPORTED",
   GENERATED: "GENERATED",
   BINARY: "BINARY",
@@ -30,31 +30,41 @@ export function createArtifactInventory(input, clock = () => new Date()) {
     }
     const disposition = requireNonEmptyString(artifact.disposition, `artifacts[${index}].disposition`);
     if (!dispositions.has(disposition)) throw new TypeError(`artifacts[${index}].disposition is unsupported`);
-    const reason = disposition === ArtifactDisposition.INCLUDED
+    const reasonCode = disposition === ArtifactDisposition.INCLUDED
       ? null
-      : requireNonEmptyString(artifact.reason, `artifacts[${index}].reason`);
-    const path = requireNonEmptyString(artifact.path, `artifacts[${index}].path`).replaceAll("\\", "/");
-    if (path.startsWith("/") || path.split("/").includes("..")) {
-      throw new TypeError(`artifacts[${index}].path must stay within the Snapshot`);
+      : requireNonEmptyString(artifact.reasonCode ?? artifact.reason, `artifacts[${index}].reasonCode`);
+    const relativePath = requireNonEmptyString(
+      artifact.relativePath ?? artifact.path,
+      `artifacts[${index}].relativePath`,
+    ).replaceAll("\\", "/");
+    if (relativePath.startsWith("/") || relativePath.split("/").includes("..")) {
+      throw new TypeError(`artifacts[${index}].relativePath must stay within the Snapshot`);
     }
+    const artifactKinds = artifact.artifactKinds ?? (artifact.kind ? [artifact.kind] : []);
+    if (!Array.isArray(artifactKinds) || artifactKinds.length === 0
+      || artifactKinds.some((kind) => typeof kind !== "string" || kind.length === 0)) {
+      throw new TypeError(`artifacts[${index}].artifactKinds must contain at least one kind`);
+    }
+    const sizeBytes = artifact.sizeBytes ?? artifact.byteSize;
     return {
       id: requireNonEmptyString(artifact.id, `artifacts[${index}].id`),
-      path,
-      kind: requireNonEmptyString(artifact.kind, `artifacts[${index}].kind`),
+      relativePath,
+      artifactKinds: [...new Set(artifactKinds)].sort(),
+      mediaType: requireNonEmptyString(artifact.mediaType ?? "application/octet-stream", `artifacts[${index}].mediaType`),
       language: artifact.language ?? null,
-      byteSize: Number.isSafeInteger(artifact.byteSize) && artifact.byteSize >= 0
-        ? artifact.byteSize
-        : (() => { throw new TypeError(`artifacts[${index}].byteSize must be a non-negative integer`); })(),
+      sizeBytes: Number.isSafeInteger(sizeBytes) && sizeBytes >= 0
+        ? sizeBytes
+        : (() => { throw new TypeError(`artifacts[${index}].sizeBytes must be a non-negative integer`); })(),
       contentDigest: requireDigest(artifact.contentDigest, `artifacts[${index}].contentDigest`),
       disposition,
-      reason,
+      reasonCode,
     };
-  }).sort((left, right) => left.path.localeCompare(right.path) || left.id.localeCompare(right.id));
+  }).sort((left, right) => left.relativePath.localeCompare(right.relativePath) || left.id.localeCompare(right.id));
   if (new Set(artifacts.map(({ id }) => id)).size !== artifacts.length) {
     throw new TypeError("artifacts must have unique ids");
   }
-  if (new Set(artifacts.map(({ path }) => path)).size !== artifacts.length) {
-    throw new TypeError("artifacts must have unique paths");
+  if (new Set(artifacts.map(({ relativePath }) => relativePath)).size !== artifacts.length) {
+    throw new TypeError("artifacts must have unique relative paths");
   }
   const identity = {
     projectId: requireNonEmptyString(input.projectId, "projectId"),

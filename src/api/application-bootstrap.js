@@ -2,6 +2,7 @@ import { TraceabilityApplication } from "../application/traceability-application
 import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
 import { AnalysisAgent, AnalysisModelRegistry, configuredAnalysisModels, createReverseSkillAnalysisAdapter, defaultAnalysisModelProfileStorePath, EncryptedAnalysisModelProfileStore } from "../analysis/index.js";
 import { createLocalSourceSnapshotBroker } from "../application/local-source-snapshot-broker.js";
+import { LegacyUnderstandingRuntime } from "../application/legacy-understanding-runtime.js";
 
 function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
@@ -62,6 +63,18 @@ export function createConfiguredApplication({ store, env = process.env }) {
   const installedSkills = new Map(
     referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
   );
+  const sourceSliceBroker = env.SOURCE_SNAPSHOT_ROOT
+    ? createLocalSourceSnapshotBroker({ store, snapshotRoot: env.SOURCE_SNAPSHOT_ROOT })
+    : null;
+  const allowedWorkspaceRoots = commaSeparated(env.TRAQEN_ALLOWED_WORKSPACE_ROOTS);
+  const legacyUnderstandingRuntime = sourceSliceBroker && allowedWorkspaceRoots.length > 0
+    ? new LegacyUnderstandingRuntime({
+      store,
+      sourceSliceBroker,
+      snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
+      allowlistedRoots: allowedWorkspaceRoots,
+    })
+    : null;
   const application = new TraceabilityApplication({
     store,
     runnerKeyResolver: (candidateRunnerId) =>
@@ -90,9 +103,8 @@ export function createConfiguredApplication({ store, env = process.env }) {
       skillResolver: (skillId, version) => analysisSkills.get(`${skillId}\u0000${version}`) ?? null,
     }),
     analysisModelRegistry,
-    sourceSliceBroker: env.SOURCE_SNAPSHOT_ROOT
-      ? createLocalSourceSnapshotBroker({ store, snapshotRoot: env.SOURCE_SNAPSHOT_ROOT })
-      : null,
+    sourceSliceBroker,
+    legacyUnderstandingRuntime,
     reviewerResolver: (_projectId, context) => {
       if (configuredReviewers.length > 0) {
         const matched = configuredReviewers.find((entry) => context.authorization === `Bearer ${entry.token}`);

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/immutable-graph-artifact.schema.json",
+  "title": "ImmutableGraphArtifact",
+  "type": "object",
+  "required": ["id", "projectId", "snapshotManifestId", "analysisRunId", "nodes", "edges", "traceChains", "gaps", "changeSet", "impactAssessment", "revalidationPlan", "graphArtifactDigest", "createdAt"],
+  "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "analysisRunId": { "type": "string", "minLength": 1 },
+    "nodes": { "type": "array", "items": { "type": "object", "required": ["id", "type", "authority", "label"], "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "authority": { "enum": ["CANDIDATE", "GOVERNED", "DETERMINISTIC_FACT", "GAP"] }, "label": { "type": "string" } }, "additionalProperties": true } },
+    "edges": { "type": "array", "items": { "type": "object", "required": ["id", "source", "target", "type"], "properties": { "id": { "type": "string" }, "source": { "type": "string" }, "target": { "type": "string" }, "type": { "type": "string" } }, "additionalProperties": true } },
+    "traceChains": { "type": "array", "items": { "type": "object" } },
+    "gaps": { "type": "array", "items": { "type": "object" } },
+    "changeSet": { "type": ["object", "null"] },
+    "impactAssessment": { "type": ["object", "null"] },
+    "revalidationPlan": { "type": ["object", "null"] },
+    "graphArtifactDigest": { "type": "string", "minLength": 1 },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": false
+}

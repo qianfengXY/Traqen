@@ -180,6 +180,7 @@ export class TraceabilityApplication {
   #analysisAgent;
   #analysisModelRegistry;
   #sourceSliceBroker;
+  #legacyUnderstandingRuntime;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -201,6 +202,7 @@ export class TraceabilityApplication {
     analysisAgent = null,
     analysisModelRegistry = null,
     sourceSliceBroker = null,
+    legacyUnderstandingRuntime = null,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -239,6 +241,7 @@ export class TraceabilityApplication {
     this.#analysisAgent = analysisAgent;
     this.#analysisModelRegistry = analysisModelRegistry;
     this.#sourceSliceBroker = sourceSliceBroker;
+    this.#legacyUnderstandingRuntime = legacyUnderstandingRuntime;
   }
 
   async createProject(input) {
@@ -2258,7 +2261,19 @@ export class TraceabilityApplication {
   async getChangeImpact(projectId, changeSetId) {
     requireId(projectId, "projectId");
     requireId(changeSetId, "changeSetId");
-    return this.#store.getChangeImpact(projectId, changeSetId);
+    const governed = await this.#store.getChangeImpact(projectId, changeSetId);
+    if (governed) return governed;
+    for (const artifact of await this.#store.listUnderstandingRecords(projectId, "GRAPH_ARTIFACT")) {
+      if (artifact.changeSet?.id === changeSetId) {
+        return deepFreeze({
+          changeSet: artifact.changeSet,
+          impact: artifact.impactAssessment,
+          revalidationPlan: artifact.revalidationPlan,
+          graphArtifactId: artifact.id,
+        });
+      }
+    }
+    return null;
   }
 
   async getContinuousProtectionAssessment(projectId, changeSetId) {
@@ -2326,6 +2341,47 @@ export class TraceabilityApplication {
     return this.#store.appendUnderstandingRecord(projectId, recordType, record);
   }
 
+  async registerUnderstandingSource(projectId, input) {
+    requireId(projectId, "projectId");
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.registerSource({ ...input, projectId });
+  }
+
+  async getUnderstandingSourceRegistration(projectId, registrationId) {
+    requireId(projectId, "projectId");
+    requireId(registrationId, "registrationId");
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.getSourceRegistration(projectId, registrationId);
+  }
+
+  async startWorkspaceUnderstandingJob(projectId, input, options = {}) {
+    requireId(projectId, "projectId");
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.start({ ...input, projectId }, options);
+  }
+
+  async getWorkspaceUnderstandingJob(projectId, jobId) {
+    requireId(projectId, "projectId");
+    requireId(jobId, "jobId");
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.get(projectId, jobId);
+  }
+
+  async pauseWorkspaceUnderstandingJob(projectId, jobId) {
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.pause(projectId, jobId);
+  }
+
+  async resumeWorkspaceUnderstandingJob(projectId, jobId) {
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.resume(projectId, jobId);
+  }
+
+  async cancelWorkspaceUnderstandingJob(projectId, jobId) {
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.cancel(projectId, jobId);
+  }
+
   async requestSourceSlice(projectId, input, requestContext = {}) {
     requireId(projectId, "projectId");
     if (!this.#sourceSliceBroker) throw new TypeError("SourceSlice Broker is not configured");
@@ -2340,6 +2396,7 @@ export class TraceabilityApplication {
       projectId,
       analysisRunId: request.analysisRunId,
       workUnitArtifactIds: workUnit.artifactIds,
+      workUnitFactIds: workUnit.factIds ?? [],
     } : null);
   }
 
@@ -2355,7 +2412,15 @@ export class TraceabilityApplication {
     if (!revision || revision.status !== "PUBLISHED") {
       throw new PersistenceConflictError("CurrentGraphHead must reference a published GraphRevision");
     }
-    return deepFreeze({ head, revision });
+    const graphArtifact = await this.#store.getUnderstandingRecord(
+      projectId,
+      "GRAPH_ARTIFACT",
+      revision.graphArtifactId,
+    );
+    if (!graphArtifact || graphArtifact.graphArtifactDigest !== revision.graphArtifactDigest) {
+      throw new PersistenceConflictError("CurrentGraphHead graph artifact is missing or digest-mismatched");
+    }
+    return deepFreeze({ head, revision, graphArtifact });
   }
 
   async listGraphRevisions(projectId) {
@@ -2366,7 +2431,15 @@ export class TraceabilityApplication {
   async getGraphRevision(projectId, revisionId) {
     requireId(projectId, "projectId");
     requireId(revisionId, "revisionId");
-    return this.#store.getUnderstandingRecord(projectId, "GRAPH_REVISION", revisionId);
+    const revision = await this.#store.getUnderstandingRecord(projectId, "GRAPH_REVISION", revisionId);
+    if (!revision) return null;
+    const graphArtifact = await this.#store.getUnderstandingRecord(projectId, "GRAPH_ARTIFACT", revision.graphArtifactId);
+    return deepFreeze({ revision, graphArtifact });
+  }
+
+  async getUnderstandingTraceChain(projectId, traceChainId) {
+    const current = await this.getCurrentUnderstandingGraph(projectId);
+    return current?.graphArtifact.traceChains.find(({ id }) => id === traceChainId) ?? null;
   }
 
   async publishGraphRevision(projectId, revisionId, expectedHeadVersion = 0) {

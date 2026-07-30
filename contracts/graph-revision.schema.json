@@ -3,12 +3,13 @@
   "$id": "https://traqen.dev/contracts/graph-revision.schema.json",
   "title": "GraphRevision",
   "type": "object",
-  "required": ["id", "projectId", "snapshotManifestId", "analysisRunId", "mode", "baseRevisionId", "changeSetId", "impactAssessmentId", "evaluationRunId", "semanticDigest", "status", "createdAt", "publishedAt"],
+  "required": ["id", "projectId", "snapshotManifestId", "analysisRunId", "mode", "baseRevisionId", "changeSetId", "impactAssessmentId", "evaluationRunId", "graphArtifactId", "graphArtifactDigest", "semanticDigest", "status", "createdAt", "publishedAt"],
   "properties": {
     "id": { "type": "string" }, "projectId": { "type": "string" }, "snapshotManifestId": { "type": "string" }, "analysisRunId": { "type": "string" },
     "mode": { "enum": ["FULL", "INCREMENTAL"] }, "baseRevisionId": { "type": ["string", "null"] },
     "changeSetId": { "type": ["string", "null"] }, "impactAssessmentId": { "type": ["string", "null"] },
-    "evaluationRunId": { "type": "string" }, "semanticDigest": { "type": "string" },
+    "evaluationRunId": { "type": "string" }, "graphArtifactId": { "type": "string" },
+    "graphArtifactDigest": { "type": "string" }, "semanticDigest": { "type": "string" },
     "status": { "enum": ["BUILDING", "EVALUATING", "PUBLISHED", "REJECTED"] },
     "createdAt": { "type": "string", "format": "date-time" }, "publishedAt": { "type": ["string", "null"], "format": "date-time" }
   },

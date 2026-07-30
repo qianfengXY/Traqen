@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { canonicalJson, deepFreeze } from "../../domain/index.js";
+import { assertEvaluationPublicationReady, canonicalJson, deepFreeze } from "../../domain/index.js";
 import { TraceabilityStore } from "../traceability-store.js";
 import { PersistenceConflictError } from "../errors.js";
 
@@ -2953,8 +2953,22 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
          WHERE project_id = $1 AND record_type = 'EVALUATION_RUN' AND id = $2`,
         [projectId, revision.evaluationRunId],
       );
-      if (evaluationResult.rows[0]?.record_payload?.status !== "PASSED") {
-        throw new PersistenceConflictError("GraphRevision evaluation must be PASSED");
+      try {
+        assertEvaluationPublicationReady(evaluationResult.rows[0]?.record_payload);
+      } catch (error) {
+        throw new PersistenceConflictError(error.message, { cause: error });
+      }
+      const graphArtifactResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'GRAPH_ARTIFACT' AND id = $2`,
+        [projectId, revision.graphArtifactId],
+      );
+      const graphArtifact = graphArtifactResult.rows[0]?.record_payload;
+      if (!graphArtifact || graphArtifact.graphArtifactDigest !== revision.graphArtifactDigest
+        || graphArtifact.projectId !== projectId
+        || graphArtifact.snapshotManifestId !== revision.snapshotManifestId
+        || graphArtifact.analysisRunId !== revision.analysisRunId) {
+        throw new PersistenceConflictError("GraphRevision immutable graph artifact is missing or mismatched");
       }
       if (!current && revision.mode !== "FULL") {
         throw new PersistenceConflictError("The first published GraphRevision must be FULL");

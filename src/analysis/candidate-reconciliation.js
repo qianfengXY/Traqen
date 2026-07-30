@@ -4,8 +4,55 @@ function evidenceKey(candidate) {
   return [...(candidate.evidenceFactIds ?? []), ...(candidate.sourceSliceIds ?? [])].sort().join("\u0000");
 }
 
+const confidenceRank = Object.freeze({ LOW: 1, MEDIUM: 2, HIGH: 3 });
+
+export function createCandidateEvidenceAllowset(input) {
+  const routeDecision = structuredClone(input.routeDecision);
+  return deepFreeze({
+    projectId: input.projectId,
+    snapshotManifestId: input.snapshotManifestId,
+    analysisRunId: input.analysisRunId,
+    workUnitId: input.workUnitId,
+    factIds: [...new Set(input.factIds ?? [])].sort(),
+    sourceSliceIds: [...new Set(input.sourceSliceIds ?? [])].sort(),
+    confidenceCap: input.confidenceCap ?? "LOW",
+    routeDecision,
+  });
+}
+
+export function validateCandidateAgainstEvidenceAllowset(candidate, allowset) {
+  for (const field of ["projectId", "snapshotManifestId", "analysisRunId", "workUnitId"]) {
+    if (candidate[field] !== allowset[field]) throw new TypeError(`Candidate ${candidate.id} ${field} is outside the evidence allowset`);
+  }
+  for (const [field, allowedValues] of [
+    ["evidenceFactIds", allowset.factIds],
+    ["sourceSliceIds", allowset.sourceSliceIds],
+  ]) {
+    const values = candidate[field] ?? [];
+    if (new Set(values).size !== values.length) throw new TypeError(`Candidate ${candidate.id} has duplicate ${field}`);
+    const allowed = new Set(allowedValues);
+    for (const value of values) {
+      if (!allowed.has(value)) throw new TypeError(`Candidate ${candidate.id} cites unauthorized ${field} ${value}`);
+    }
+  }
+  if ((confidenceRank[candidate.confidence] ?? Number.POSITIVE_INFINITY)
+    > (confidenceRank[allowset.confidenceCap] ?? 0)) {
+    throw new TypeError(`Candidate ${candidate.id} confidence exceeds its evidence cap`);
+  }
+  const selectedRoutes = allowset.routeDecision?.selected ?? [];
+  const routeMatches = selectedRoutes.some((route) =>
+    route.modelCapabilityProfileId === candidate.producer?.modelCapabilityProfileId
+    && route.skillId === candidate.producer?.skillId
+    && route.skillVersion === candidate.producer?.skillVersion);
+  if (!routeMatches) throw new TypeError(`Candidate ${candidate.id} producer is not selected by RouteDecision`);
+  return true;
+}
+
 export function reconcileCandidates(input, clock = () => new Date()) {
   const candidates = (input.candidates ?? []).map((candidate) => structuredClone(candidate));
+  if (new Set(candidates.map(({ id }) => id)).size !== candidates.length) {
+    throw new TypeError("Candidate ids must be unique within a reconciliation");
+  }
   for (const candidate of candidates) {
     if ((candidate.evidenceFactIds?.length ?? 0) + (candidate.sourceSliceIds?.length ?? 0) === 0) {
       throw new TypeError(`Candidate ${candidate.id} requires original Fact or SourceSlice evidence`);
@@ -13,6 +60,9 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     if (candidate.summaryEvidence && !candidate.evidenceFactIds?.length && !candidate.sourceSliceIds?.length) {
       throw new TypeError(`Candidate ${candidate.id} cannot use summary-only evidence`);
     }
+    const allowset = input.evidenceAllowsets?.[candidate.workUnitId];
+    if (!allowset) throw new TypeError(`Candidate ${candidate.id} has no immutable evidence allowset`);
+    validateCandidateAgainstEvidenceAllowset(candidate, allowset);
   }
   const groups = new Map();
   for (const candidate of candidates) {

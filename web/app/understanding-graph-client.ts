@@ -8,6 +8,8 @@ export type GraphRevision = {
   changeSetId: string | null;
   impactAssessmentId: string | null;
   evaluationRunId: string;
+  graphArtifactId: string;
+  graphArtifactDigest: string;
   semanticDigest: string;
   status: "BUILDING" | "EVALUATING" | "PUBLISHED" | "REJECTED";
   createdAt: string;
@@ -17,6 +19,17 @@ export type GraphRevision = {
 export type CurrentUnderstandingGraph = {
   head: { projectId: string; graphRevisionId: string; version: number; updatedAt: string };
   revision: GraphRevision;
+  graphArtifact: {
+    id: string;
+    graphArtifactDigest: string;
+    nodes: Array<{ id: string; type: string; authority: "CANDIDATE" | "GOVERNED" | "DETERMINISTIC_FACT" | "GAP"; label: string }>;
+    edges: Array<{ id: string; source: string; target: string; type: string }>;
+    traceChains: Array<{ id: string; status: string; nodeIds: string[]; complete: boolean }>;
+    gaps: Array<{ id?: string; code?: string }>;
+    changeSet: { id: string; changedNodeIds: string[] } | null;
+    impactAssessment: { id: string; affectedNodeIds: string[] } | null;
+    revalidationPlan: { required: boolean; actions: string[] } | null;
+  };
 };
 
 function headers(apiToken: string) {

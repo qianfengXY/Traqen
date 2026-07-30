@@ -1,8 +1,8 @@
 import { canonicalJson, contentId, deepFreeze, resolveUnderstandingMode } from "../domain/index.js";
 
 export function compareUnderstandingSnapshots(previous, current) {
-  const oldArtifacts = new Map((previous?.inventory?.artifacts ?? []).map((artifact) => [artifact.path, artifact]));
-  const newArtifacts = new Map(current.inventory.artifacts.map((artifact) => [artifact.path, artifact]));
+  const oldArtifacts = new Map((previous?.inventory?.artifacts ?? []).map((artifact) => [artifact.relativePath ?? artifact.path, artifact]));
+  const newArtifacts = new Map(current.inventory.artifacts.map((artifact) => [artifact.relativePath ?? artifact.path, artifact]));
   const changes = [];
   for (const path of [...new Set([...oldArtifacts.keys(), ...newArtifacts.keys()])].sort()) {
     const before = oldArtifacts.get(path);
@@ -23,11 +23,30 @@ export function planIncrementalUnderstanding(input) {
   })) : compareUnderstandingSnapshots(input.previous, input.current);
   const changedArtifactIds = new Set(changes.flatMap(({ beforeArtifactId, afterArtifactId }) =>
     [beforeArtifactId, afterArtifactId].filter(Boolean)));
+  const directlyAffected = new Set(input.current.plan.workUnits
+    .filter((unit) => unit.artifactIds.some((id) => changedArtifactIds.has(id)))
+    .map(({ id }) => id));
+  const reverseDependencies = new Map();
+  for (const unit of input.current.plan.workUnits) {
+    for (const dependency of unit.dependencies) {
+      const dependents = reverseDependencies.get(dependency) ?? [];
+      dependents.push(unit.id);
+      reverseDependencies.set(dependency, dependents);
+    }
+  }
+  const affected = new Set(directlyAffected);
+  const pending = [...directlyAffected];
+  while (pending.length > 0) {
+    const dependency = pending.shift();
+    for (const dependent of reverseDependencies.get(dependency) ?? []) {
+      if (affected.has(dependent)) continue;
+      affected.add(dependent);
+      pending.push(dependent);
+    }
+  }
   const affectedWorkUnitIds = input.current.plan.workUnits
-    .filter((unit) => unit.artifactIds.some((id) => changedArtifactIds.has(id))
-      || unit.dependencies.some((dependency) => input.current.plan.workUnits
-        .find(({ id }) => id === dependency)?.artifactIds.some((id) => changedArtifactIds.has(id))))
-    .map(({ id }) => id);
+    .map(({ id }) => id)
+    .filter((id) => affected.has(id));
   const reusedWorkUnitIds = input.current.plan.workUnits.map(({ id }) => id)
     .filter((id) => !affectedWorkUnitIds.includes(id));
   return deepFreeze({

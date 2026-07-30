@@ -918,6 +918,65 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const sourceRegistrationsMatch = /^\/v1\/projects\/([^/]+)\/source-registrations$/.exec(url.pathname);
+      if (request.method === "POST" && sourceRegistrationsMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(sourceRegistrationsMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        sendJson(response, 201, await application.registerUnderstandingSource(projectId, input), id);
+        return;
+      }
+
+      const sourceRegistrationMatch = /^\/v1\/projects\/([^/]+)\/source-registrations\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && sourceRegistrationMatch) {
+        const projectId = decodePathSegment(sourceRegistrationMatch[1]);
+        const registrationId = decodePathSegment(sourceRegistrationMatch[2]);
+        const registration = await application.getUnderstandingSourceRegistration(projectId, registrationId);
+        if (!registration) throw new HttpError(404, "SOURCE_REGISTRATION_NOT_FOUND", "SourceRegistration was not found");
+        sendJson(response, 200, registration, id);
+        return;
+      }
+
+      const workspaceJobsMatch = /^\/v1\/projects\/([^/]+)\/workspace-analysis-jobs$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceJobsMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(workspaceJobsMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const background = url.searchParams.get("async") !== "false";
+        sendJson(response, background ? 202 : 201, await application.startWorkspaceUnderstandingJob(
+          projectId,
+          input,
+          { background },
+        ), id);
+        return;
+      }
+
+      const workspaceJobMatch = /^\/v1\/projects\/([^/]+)\/workspace-analysis-jobs\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceJobMatch) {
+        const projectId = decodePathSegment(workspaceJobMatch[1]);
+        const jobId = decodePathSegment(workspaceJobMatch[2]);
+        const job = await application.getWorkspaceUnderstandingJob(projectId, jobId);
+        if (!job) throw new HttpError(404, "WORKSPACE_ANALYSIS_JOB_NOT_FOUND", "WorkspaceAnalysisJob was not found");
+        sendJson(response, 200, job, id);
+        return;
+      }
+
+      const workspaceJobActionMatch = /^\/v1\/projects\/([^/]+)\/workspace-analysis-jobs\/([^/]+)\/(pause|resume|cancel)$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceJobActionMatch) {
+        const projectId = decodePathSegment(workspaceJobActionMatch[1]);
+        const jobId = decodePathSegment(workspaceJobActionMatch[2]);
+        const action = workspaceJobActionMatch[3];
+        const operation = action === "pause"
+          ? application.pauseWorkspaceUnderstandingJob.bind(application)
+          : action === "resume"
+            ? application.resumeWorkspaceUnderstandingJob.bind(application)
+            : application.cancelWorkspaceUnderstandingJob.bind(application);
+        const job = await operation(projectId, jobId);
+        if (!job) throw new HttpError(404, "WORKSPACE_ANALYSIS_JOB_NOT_FOUND", "WorkspaceAnalysisJob was not found");
+        sendJson(response, 202, job, id);
+        return;
+      }
+
       const analysisPauseMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/pause$/.exec(url.pathname);
       if (request.method === "POST" && analysisPauseMatch) {
         const projectId = decodePathSegment(analysisPauseMatch[1]);
@@ -1015,15 +1074,28 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const understandingTraceMatch = /^\/v1\/projects\/([^/]+)\/graph\/traces\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && understandingTraceMatch) {
+        const projectId = decodePathSegment(understandingTraceMatch[1]);
+        const traceChainId = decodePathSegment(understandingTraceMatch[2]);
+        const trace = await application.getUnderstandingTraceChain(projectId, traceChainId);
+        if (!trace) throw new HttpError(404, "TRACE_CHAIN_NOT_FOUND", "TraceChain was not found in CurrentGraphHead");
+        sendJson(response, 200, trace, id);
+        return;
+      }
+
       const sourceSliceMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/source-slices$/.exec(url.pathname);
-      if (request.method === "POST" && sourceSliceMatch) {
+      const scopedSourceSliceMatch = /^\/v1\/projects\/([^/]+)\/analysis-runs\/([^/]+)\/work-units\/([^/]+)\/source-slices$/.exec(url.pathname);
+      if (request.method === "POST" && (sourceSliceMatch || scopedSourceSliceMatch)) {
         requireJson(request);
-        const projectId = decodePathSegment(sourceSliceMatch[1]);
-        const analysisRunId = decodePathSegment(sourceSliceMatch[2]);
+        const match = scopedSourceSliceMatch ?? sourceSliceMatch;
+        const projectId = decodePathSegment(match[1]);
+        const analysisRunId = decodePathSegment(match[2]);
+        const workUnitId = scopedSourceSliceMatch ? decodePathSegment(scopedSourceSliceMatch[3]) : null;
         const input = await readJson(request, maxBodyBytes);
         const slice = await application.requestSourceSlice(
           projectId,
-          { ...input, projectId, analysisRunId },
+          { ...input, projectId, analysisRunId, ...(workUnitId ? { workUnitId } : {}) },
           { serviceIdentity: request.headers["x-traqen-service-identity"] ?? null },
         );
         if (slice.status === "REJECTED") {
