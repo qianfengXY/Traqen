@@ -17,8 +17,9 @@ status: approved
 Review-Target-ID: f001-product-foundation
 Branch: `design/f001-legacy-system-understanding`
 Base: `origin/design/f001-legacy-system-understanding@84a9548`
-Target: current uncommitted working-tree delta in
-`/Volumes/WorkSSD/projects/Traqen-worktrees/refresh-independent-workspace-runs`
+Reviewed design target: `81546b53f9be757277fc8b2d51eb3f3ec09494cb`
+Final operator delta: remove the last legacy traceability-design compatibility
+documents and load the active F002 truth source in the Web detail model.
 
 ## What
 
@@ -46,7 +47,10 @@ The delta also:
 - records the GPT/Kimi reconciliation and the reasons for accepting or rejecting
   each divergent proposal.
 
-No runtime source code is changed in this design slice.
+The only runtime-source delta is the raw-Markdown import migration from the
+deleted legacy traceability-design path to the active
+`F002-feature-api-traceability` truth source. It does not change the detail
+model's public shape or introduce a new store.
 
 ## Why
 
@@ -141,19 +145,24 @@ The operator then authorized commit and push in message
 `0001785481455857-000264-6c586152` and made one final baseline decision:
 superseded documents must be removed rather than archived.
 
+Kimi's approval covers the product-foundation design committed as `81546b5`.
+The import-only Web delta that follows it implements the operator's explicit
+removal decision and is protected by a red-then-green rendered-HTML test that
+rejects references to `feature-traceability-design`.
+
 ## Review Sandbox
 
 - Review target (read-only): `/Volumes/WorkSSD/projects/Traqen-worktrees/refresh-independent-workspace-runs`
 - Standard sandbox reservation:
   `/tmp/cat-cafe-review/f001-product-foundation/kimi`
-- Start command: not required; this is a docs-only pre-commit reconciliation
-  review.
-- Ports: `web=N/A`, `api=N/A`
+- Web preview command: `npm --prefix web run dev -- --port 3217`
+- Preview URL: `http://localhost:3217/`
+- Ports: `web=3217`, `api=N/A`
 
-Because the explicit gate is review-before-commit, the target cannot yet be
-checked out as a detached commit. Review the shared target read-only using
-`git diff`, `git diff --cached`, and the source files. Any edit requires a
-separate takeover worktree.
+The original review was performed before the design commit, against the shared
+target in read-only mode. The final operator delta is isolated to the two
+deleted compatibility documents, their documentation-index references, the Web
+raw-Markdown import, and its rendered-HTML guard.
 
 ## Self-Check Evidence
 
@@ -182,8 +191,12 @@ semantic ownership is a reviewer focus rather than a skipped local failure.
 
 Pen check: no `designs/**/*.pen` files found.
 
-Dogfood-Your-Slice: exempt because this is docs/design only and does not alter a
-user-visible runtime path.
+Dogfood-Your-Slice: completed for the final import migration. The target
+worktree's Web app was opened in the Hub Browser preview at
+`http://localhost:3217/`; the development server returned HTTP 200 and rendered
+the Feature Traceability product surface. The focused rendered-HTML test first
+failed against the legacy import, then passed after migration to the active F002
+document.
 
 Artifact hygiene:
 
@@ -212,8 +225,12 @@ npm --prefix web run lint
 node --test test/bilingual-documentation.test.js
   -> 2 passed, 0 failed
 
+node --test web/tests/rendered-html.test.mjs
+  -> RED: 1 failed because trace-detail-model still imported the legacy path
+  -> GREEN: 2 passed, 0 failed after the F002 import migration
+
 Markdown relative-link check
-  -> 36 files, 171 links checked, 0 failures
+  -> 38 files, 171 links checked, 0 failures
 
 Archify showcase validation
   -> workspace-analysis-batch.workflow.json: 9/9, 0 errors, 0 warnings
@@ -235,4 +252,4 @@ git diff --cached --check
 - Architecture: `docs/architecture/traqen-product-architecture.md`
 - Features: F001, F002, F003, F004, F005, F006
 
-[CodeX/GPT-5.6🐾]
+[CodeX/GPT-5🐾]

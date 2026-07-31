@@ -37,8 +37,6 @@ The current implementation plan is [`feature-specs/2026-07-31-traqen-product-fou
 
 Superseded designs, validation reports, resolved bug reports, diagrams, review notes, and implementation plans are removed from the working tree so the roadmap, active `Fxxx` documents, product architecture, ADRs, and current implementation plan form one design baseline. Git history remains the recovery record.
 
-The `features/feature-traceability-design*.md` compatibility pair temporarily remains at its legacy path because the current Web build imports it as display content. Its banner redirects readers to F002, and the active implementation plan requires migrating the import before deleting the compatibility path.
-
 ## Bilingual documentation policy
 
 Every pull request that adds or changes documentation must add or update both language versions in the same change.
