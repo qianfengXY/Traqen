@@ -2,21 +2,40 @@
 
 # Documentation
 
-Traqen maintains its product and engineering documentation in English and Simplified Chinese. Both versions describe the same product intent, constraints, implementation state, and operating guidance.
+This directory is organized as a feature lifecycle, not as a chronological pile of design drafts. Traqen maintains the active product and engineering truth in English and Simplified Chinese.
 
-## Documentation map
+## Active truth map
 
 - [Feature roadmap](ROADMAP.md) · [简体中文](ROADMAP.zh-CN.md)
+- [Product architecture](architecture/traqen-product-architecture.md) · [简体中文](architecture/traqen-product-architecture.zh-CN.md)
 - [System requirements: legacy-system understanding and canonical quality traceability](architecture/traqen-system-requirements.md) · [简体中文](architecture/traqen-system-requirements.zh-CN.md)
-- [F001: Legacy-system understanding and canonical graph construction](features/F001-legacy-system-understanding.md) · [简体中文](features/F001-legacy-system-understanding.zh-CN.md)
-- [Legacy-system understanding engine](features/legacy-system-understanding-engine.md) · [简体中文](features/legacy-system-understanding-engine.zh-CN.md)
-- [Architecture and product design](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md) · [中文原文](architecture/enterprise-traceable-quality-platform-design-v0.2.md)
-- [Local Workspace analysis and Feature tree](features/workspace-analysis-design.md) · [简体中文](features/workspace-analysis-design.zh-CN.md)
-- [Durable Workspace scan and Analysis lifecycle](features/workspace-scan-and-analysis-lifecycle.md) · [简体中文](features/workspace-scan-and-analysis-lifecycle.zh-CN.md)
-- [Core Analysis Agent](features/analysis-agent-design.md) · [简体中文](features/analysis-agent-design.zh-CN.md)
-- [Clowder AI real-repository Workspace validation](implementation/clowder-ai-workspace-analysis-2026-07-18.md) · [简体中文](implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)
-- [Implementation validation records](implementation/)
+- [ADR-0001: canonical traceability ontology](decisions/ADR-0001-canonical-traceability-ontology.md) · [简体中文](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)
+- [ADR-0002: Workspace aggregate and execution isolation](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md) · [简体中文](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)
 - [Project overview and operating guide](../README.md) · [简体中文](../README.zh-CN.md)
+
+## Feature truth
+
+| ID | Active Feature document | Supporting design |
+|---|---|---|
+| F001 | [Workspace and Analysis Foundation](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | [Workspace scan and Analysis Agent lifecycle](features/workspace-scan-and-analysis-lifecycle.md) · [中文](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) |
+| F002 | [Feature and API Traceability](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
+| F003 | [Traceability Graph](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | product architecture |
+| F004 | [Claim Review](features/F004-claim-review.md) · [中文](features/F004-claim-review.zh-CN.md) | product architecture |
+| F005 | [Change Impact](features/F005-change-impact.md) · [中文](features/F005-change-impact.zh-CN.md) | product architecture |
+| F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
+
+The current implementation plan is [`feature-specs/2026-07-31-traqen-product-foundation.md`](../feature-specs/2026-07-31-traqen-product-foundation.md). Superseded plan files are removed from the working tree; Git history remains the recovery record.
+
+## Visual design
+
+- [Overall functional architecture — editable Excalidraw](diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw) · [SVG](diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
+- [Workspace same-batch analysis workflow — Archify](diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
+- [Workspace capability resolution — Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)
+- [Graph governance lifecycle — Archify](diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
+
+## Baseline policy
+
+Superseded designs, validation reports, resolved bug reports, diagrams, review notes, and implementation plans are removed from the working tree so the roadmap, active `Fxxx` documents, product architecture, ADRs, and current implementation plan form one design baseline. Git history remains the recovery record.
 
 ## Bilingual documentation policy
 

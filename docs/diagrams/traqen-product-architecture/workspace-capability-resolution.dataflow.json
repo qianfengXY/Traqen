@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Workspace Capability Resolution and Runtime Isolation",
+    "subtitle": "Global definitions are templates; one immutable Workspace revision is the complete runtime capability set",
+    "output": "docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html",
+    "animation": "trace",
+    "visual_preset": "blueprint",
+    "quality_profile": "showcase",
+    "viewBox": [1180, 820],
+    "views": [
+      {
+        "id": "override_path",
+        "label": "Template + override",
+        "focus": ["templates", "catalog", "workspace", "resolver", "profile"],
+        "note": "Workspace additions, removals, and same-name overrides resolve deterministically."
+      },
+      {
+        "id": "secret_path",
+        "label": "Scoped credentials",
+        "focus": ["vault", "grants", "secretresolver", "profile"],
+        "note": "Profiles store credential handles and least-privilege grants, never plaintext secrets."
+      },
+      {
+        "id": "runtime_boundary",
+        "label": "Runtime isolation",
+        "focus": ["profile", "main", "children"],
+        "note": "Agents receive only the pinned revision; no global registry handle is mounted."
+      }
+    ]
+  },
+  "stages": [
+    {"label": "Global templates"},
+    {"label": "Workspace choices"},
+    {"label": "Resolve + validate"},
+    {"label": "Immutable revision"},
+    {"label": "Runtime mount"}
+  ],
+  "nodes": [
+    {
+      "id": "templates",
+      "type": "database",
+      "label": "Model templates",
+      "sublabel": "roles + calibration",
+      "stage": 0,
+      "row": 0,
+      "tag": "authoring only"
+    },
+    {
+      "id": "catalog",
+      "type": "database",
+      "label": "Skill / MCP catalog",
+      "sublabel": "versioned manifests",
+      "stage": 0,
+      "row": 2,
+      "tag": "authoring only",
+      "width": 124
+    },
+    {
+      "id": "vault",
+      "type": "security",
+      "label": "Secret vault",
+      "sublabel": "credential handles",
+      "stage": 0,
+      "row": 4,
+      "tag": "no plaintext"
+    },
+    {
+      "id": "workspace",
+      "type": "frontend",
+      "label": "Workspace config",
+      "sublabel": "add · override · remove",
+      "stage": 1,
+      "row": 1,
+      "tag": "project wins",
+      "width": 118
+    },
+    {
+      "id": "grants",
+      "type": "security",
+      "label": "Workspace grants",
+      "sublabel": "agent-slot scope",
+      "stage": 1,
+      "row": 4,
+      "tag": "least privilege",
+      "width": 118
+    },
+    {
+      "id": "resolver",
+      "type": "backend",
+      "label": "Profile resolver",
+      "sublabel": "merge + capability check",
+      "stage": 2,
+      "row": 1,
+      "tag": "deterministic",
+      "width": 118
+    },
+    {
+      "id": "secretresolver",
+      "type": "security",
+      "label": "Grant resolver",
+      "sublabel": "bind scoped handles",
+      "stage": 2,
+      "row": 4,
+      "tag": "audited",
+      "width": 112
+    },
+    {
+      "id": "profile",
+      "type": "database",
+      "label": "Execution profile",
+      "sublabel": "immutable revision",
+      "stage": 3,
+      "row": 2,
+      "tag": "digest pinned",
+      "width": 118
+    },
+    {
+      "id": "main",
+      "type": "backend",
+      "label": "Main Agent",
+      "sublabel": "plan + reconcile",
+      "stage": 4,
+      "row": 0,
+      "tag": "profile only"
+    },
+    {
+      "id": "children",
+      "type": "backend",
+      "label": "Child roster",
+      "sublabel": "slot-specific routes",
+      "stage": 4,
+      "row": 3,
+      "tag": "profile only",
+      "width": 110
+    }
+  ],
+  "flows": [
+    {
+      "id": "templates_workspace",
+      "from": "templates",
+      "to": "workspace",
+      "label": "models",
+      "classification": "template reference",
+      "variant": "dashed",
+      "route": "auto",
+      "labelAt": [170, 205]
+    },
+    {
+      "id": "catalog_workspace",
+      "from": "catalog",
+      "to": "workspace",
+      "label": "capability defaults",
+      "classification": "template reference",
+      "variant": "dashed",
+      "route": "auto",
+      "labelAt": [255, 428]
+    },
+    {
+      "id": "workspace_resolver",
+      "from": "workspace",
+      "to": "resolver",
+      "label": "effective choices",
+      "classification": "authoritative config",
+      "variant": "emphasis",
+      "route": "auto",
+      "labelDy": 54
+    },
+    {
+      "id": "vault_grants",
+      "from": "vault",
+      "to": "grants",
+      "label": "handle references",
+      "classification": "secret metadata",
+      "variant": "security",
+      "route": "auto"
+    },
+    {
+      "id": "grants_secretresolver",
+      "from": "grants",
+      "to": "secretresolver",
+      "label": "allowed handles",
+      "classification": "least privilege",
+      "variant": "security",
+      "route": "auto"
+    },
+    {
+      "id": "resolver_profile",
+      "from": "resolver",
+      "to": "profile",
+      "label": "resolved set",
+      "classification": "resolved capability set",
+      "variant": "emphasis",
+      "route": "auto",
+      "labelAt": [540, 428]
+    },
+    {
+      "id": "secretresolver_profile",
+      "from": "secretresolver",
+      "to": "profile",
+      "label": "scoped handles",
+      "classification": "credential grants",
+      "variant": "security",
+      "route": "auto"
+    },
+    {
+      "id": "profile_main",
+      "from": "profile",
+      "to": "main",
+      "label": "Main slot",
+      "classification": "runtime mount",
+      "variant": "emphasis",
+      "route": "auto",
+      "labelDy": -58
+    },
+    {
+      "id": "profile_children",
+      "from": "profile",
+      "to": "children",
+      "label": "Child slots 1..N",
+      "classification": "runtime mount",
+      "variant": "emphasis",
+      "route": "auto",
+      "labelDy": 58
+    }
+  ],
+  "cards": [
+    {
+      "dot": "slate",
+      "title": "Global means reusable",
+      "items": [
+        "Global entries are configuration templates",
+        "They never become ambient runtime capabilities",
+        "Same-name Workspace overrides win",
+        "Workspace removal excludes the entry"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "One replayable input",
+      "items": [
+        "A run pins one immutable profile revision",
+        "Model, Skill, MCP, policy, and convention versions are exact",
+        "Configuration changes affect only later runs",
+        "The revision digest is part of every batch input"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Isolation boundary",
+      "items": [
+        "Runtime receives no global registry handle",
+        "Unresolved Skills and MCPs are unavailable",
+        "Credentials are scoped by Workspace and Agent slot",
+        "Denied capability access is audited"
+      ]
+    }
+  ]
+}

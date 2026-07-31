@@ -2,8 +2,9 @@
 
 ---
 feature_ids: [F001]
-related_features: []
+related_features: [F002, F003, F004, F005, F006]
 topics:
+  - workspace
   - legacy-system-understanding
   - canonical-graph
   - source-inventory
@@ -15,23 +16,24 @@ doc_kind: spec
 created: 2026-07-29
 ---
 
-# F001：存量系统理解与 Canonical Graph 构建
+# F001：Workspace 与存量系统分析基础
 
 > **Status**: spec | **Owner**: CodeX | **Priority**: P0
 
 ## Why
 
-Traqen 的首要能力是把存量代码和文件理解到足以构建可审核图谱的程度，在图谱中关联需求、设计、代码、数据、配置、测试、测试结果、Evidence、变更和 Decision。
+Traqen 的首要能力是把存量代码和文件理解到足以构建可审核图谱的程度，在图谱中关联需求、设计、代码、数据、配置、测试、测试结果、Evidence、变更和 Decision。Workspace 是这套理解能力的聚合根：每次分析、树、图谱、审核、影响视图、配置修订和历史查询都必须由 `workspaceId` 定界。
 
 此前 F001 把“执行不依赖浏览器”当成目标。它是必要基础设施，但没有回答核心问题：**Traqen 是否准确恢复了存量系统的重要能力和关系，并明确展示证据与缺口？**
 
 因此，F001 负责完整的理解基础：
 
 ```text
-完整、不可变的源码范围
+选定 Workspace + 不可变执行配置修订
+  → 完整、不可变的源码范围
   → 确定性观察
-  → 独立 Agent/Skill 分析
-  → 有证据边界的 Candidate 对账
+  → 同一 AnalysisBatch 分发给所有已配置子 Agent
+  → 主 Agent 做证据校验与结果对账
   → 正确性评估
   → canonical Candidate graph
 ```
@@ -46,7 +48,8 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 - JavaScript 扫描与浏览器侧多语言启发式扫描；
 - Analysis Agent、Reverse Skill 契约、模型 Adapter 和检查点；
 - 治理、Feature Graph、TraceChain、Impact、TestSpec、Runner、Evidence 和指标领域；
-- 浏览器提交派生观察后，服务端拥有 AnalysisRun。
+- 浏览器提交派生观察后，服务端拥有 AnalysisRun；
+- 浏览器本地项目列表、可见性偏好和 Workspace 分析 UI 骨架。
 
 ### 阻塞本 Feature 的缺口
 
@@ -57,21 +60,25 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 - 没有带正向/负向图谱断言的版本化 Truth Set；
 - 没有全量/增量等价门禁；
 - 没有 Traqen 分析 Traqen 的强制产品验收；
-- 源码扫描仍依赖浏览器，大仓分析可能在 canonical Facts 建立前被中断。
+- 源码扫描仍依赖浏览器，大仓分析可能在 canonical Facts 建立前被中断；
+- 没有服务端权威 Workspace 聚合、生命周期和带版本的切换上下文；
+- 主运行时依赖单一全局 active model profile，另一条运行路径又硬编码本地确定性 Profile；
+- 固定三个子 Agent 的规划/UI 只是装饰或把不同 Module 分给不同 Agent，没有按可配置 roster 执行同一批次；
+- 没有 Workspace 专属 Skill/MCP 能力边界和不可变的解析后执行配置。
 
 ## What
 
-### Phase A：正确性合同与审核真相
+### Phase A：Workspace 根、配置 Profile 与审核真相
 
-定义多维正确性、版本化评估策略、审核 Truth Set Schema、正负关系断言、显式 Unknown 状态和回归阈值。
+定义 Workspace 聚合与生命周期、带版本的 `CurrentWorkspaceContext`，把全局模板与 Workspace 覆盖解析为不可变 `WorkspaceExecutionProfileRevision`，并定义多维正确性、审核 Truth Set Schema、显式 Unknown 状态和回归阈值。
 
 ### Phase B：不可变范围与完整清点
 
 建立授权 SourceRegistration、不可变 Snapshot 捕获、完整 ArtifactInventory、显式处置、提取器能力注册表与安全 SourceSlice Broker。
 
-### Phase C：独立理解通道
+### Phase C：同批次独立理解通道
 
-把确定性提取、文档/契约、测试/配置/结果与 Agent/Skill 源码分析作为可独立观察的通道。任务从完整 Source Manifest 和约定规划，不能只依赖一个扫描器输出。
+把确定性提取与 Agent 源码分析作为可独立观察的通道。确定性 Planner 从完整 Source Manifest 和约定生成有界 `AnalysisBatch`。每个 active 子 Agent 收到完全相同的批次、源码范围和输出合同，但使用各自经 Workspace 许可的模型、Skill、MCP 与 independence group。子 Agent 在完成前不能查看同伴输出；主 Agent 负责任务意图与批次后对账，但不负责全量 Inventory 处置。
 
 ### Phase D：对账与 Lineage
 
@@ -89,17 +96,18 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 ### 主旅程：理解并查看一个存量系统
 
-- **Scope unit**：一个不可变仓库 Snapshot
+- **Scope unit**：一个包含不可变仓库 Snapshot 的 Workspace
 - **Actor**：operator
-- **Entry**：带授权 SourceRegistration 的 Project
+- **Entry**：带授权 SourceRegistration 与已解析执行配置修订的当前 Workspace
 - **Flow**：
-  1. 启动一个持久理解 Job。
-  2. 查看完整 Artifact 分母及不支持/排除原因。
-  3. 观察独立扫描、文档、测试/配置和 Agent/Skill 通道。
-  4. 通过源码证据查看 Candidate 节点/关系、冲突和缺口。
-  5. 对比分维度审核正确性，而不是单一置信度。
-  6. 用 Decision 建立受治理 Feature、Claim、Taxonomy 与 TestSpec。
-  7. 从同一 canonical model 查看 Graph、TraceChain、内容、Impact 与质量投影。
+  1. 选择一个 Workspace；所有模块重新绑定到同一个带版本 Workspace 上下文。
+  2. 把主/子 Agent 模型、Skill、MCP、依赖和规范解析成一份不可变执行配置修订。
+  3. 启动一个持久理解 Job，并查看完整 Artifact 分母。
+  4. 观察静态通道与同批次子 Agent roster，默认两个子 Agent。
+  5. 查看主 Agent 对账、被拒证据、冲突、缺口和已对账 working tree 更新。
+  6. 对比分维度审核正确性，而不是单一置信度。
+  7. 用 Decision 建立受治理 Feature、Claim、Taxonomy 与 TestSpec。
+  8. 从同一 canonical model 查看 Graph、TraceChain、内容、Impact 与质量投影。
 - **Success evidence**：Inventory 报告、评估报告、图谱断言、重放/增量报告、持久 Job 轨迹和产品可见的 Traqen 自身图谱
 - **Non-goals**：自动恢复业务真相、自动批准 Candidate、执行任意源码、第一版支持所有语言
 
@@ -114,12 +122,14 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | J5 | 首次全量分析后，一个文件变化只影响一个图谱区域 | 新 Snapshot、增量/全量等价、原子 CurrentGraphHead 更新与 Impact 路径 |
 | J6 | Traqen 分析固定的自身仓库 | 审核自图谱、缺口、TraceChain 与 Impact 报告 |
 | J7 | 查看一项长期演进的 Feature | FeatureVersion Decision、各 Snapshot 实现映射、ChangeSet、Impact 与验证时间线 |
-| J8 | 分析一个超大、多语言工程 | 完整原始源码处置、确定性分区、动态 DAG 进度、模型/Skill 路由决策、选择性独立 Critic 与显式剩余 Gap |
+| J8 | 分析一个超大、多语言工程 | 完整原始源码处置、确定性分区、动态 DAG 进度、模型/Skill 路由决策、同批子 Agent 相互印证与显式剩余 Gap |
 
 ## Acceptance criteria
 
 ### A. 范围与确定性 Facts
 
+- [ ] **AC-A0**：Workspace 新建、显示/隐藏、切换和经审计删除生命周期由服务端拥有；所有功能界面使用 `workspaceId` 与上下文版本定界，旧 Workspace 的迟到响应不能更新当前 UI。
+- [ ] **AC-A0b**：全局模型/Skill/MCP 仅是模板；Workspace 覆盖与移除解析成不可变 `WorkspaceExecutionProfileRevision`，运行时只接收该修订，不能访问全局 Registry。
 - [ ] **AC-A1**：固定 Snapshot 内每个 Artifact 都有显式 Inventory 处置并留在覆盖分母中。
 - [ ] **AC-A2**：每个受支持提取器声明精确能力，并通过正向、负向、源码跨度和诊断 Fixture。
 - [ ] **AC-A3**：Facts 不可变、绑定 Snapshot、可定位源码，并可按提取器版本重现。
@@ -133,6 +143,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 - [ ] **AC-B5**：每条 ArtifactInventory 记录都必须直接读取不可变 Snapshot 原始源码、交给声明过能力的专用 Skill，或形成显式 Gap；Scanner Facts 只是可选增强，绝不能定义 Agent 任务全集。
 - [ ] **AC-B6**：相同 Snapshot、Planner/Convention 版本、执行策略与源码范围必须产生相同且完整的 `UnderstandingPlan`，其 Partition ID 稳定且 `unassignedCount=0`；动态依赖 DAG 以有界大文件、文件、Module、跨 Module、Critic 与汇总 WorkUnit 处理规模，子任务摘要不能单独作为证据。
 - [ ] **AC-B7**：每个 WorkUnit 都有基于已验证模型能力/校准 Profile 与 Skill 合同、版本固定且已持久化的 `AnalysisRouteDecision`；高风险冗余使用相互独立的 Producer Group 和证据对账，找不到合格 Producer 与未解决分歧必须显式保留，不能 Fallback 或按多数票造真相。
+- [ ] **AC-B8**：每个 Workspace 选择一个主 Agent 和一个或多个子 Agent slot，默认两个；每个 slot 独立固定模型 Profile、Skill、MCP grant、角色策略和 independence group。
+- [ ] **AC-B9**：每个 `AnalysisBatch` 以相同源码范围和输出 Schema 分发给完整 active 子 Agent roster；子 Agent 完成前相互隔离，主 Agent 对完整同批结果集合、静态 Facts 和历史 lineage 做对账，不能多数票裁决。
+- [ ] **AC-B10**：子 Agent 或主 Agent 的原始模型输出不能直接修改 Feature/API working tree；只有通过 Schema 与证据校验的对账结果才能发布批次检查点，不可信证据必须进入隔离区、冲突或 Gap。
 
 ### C. 对账与治理
 
@@ -180,6 +193,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1～F7 | 隔离 Traqen 自分析验收 | [ ] |
 | R6 | “刷新浏览器，当前运行的任务状态未发生变化。” | AC-E1～E2 | Job 身份、进度、WorkUnit 调用 | [ ] |
 | R7 | “第一次全量形成完整图谱；以后增量更新最新图谱，同时保留功能版本变化和每次变更影响。” | AC-D4～D8、AC-F5、AC-F7 | 两个 Snapshot 的 FULL→INCREMENTAL 验收、CurrentGraphHead 与 Feature 历史查询 | [ ] |
+| R8 | “Workspace 切换，则其他功能全部跟随一起变化。” | AC-A0 | 覆盖全部模块的 Workspace 切换集成测试与迟到响应拒绝 | [ ] |
+| R9 | “主 Agent 与一个或多个子 Agent（默认 2 个）；各子 Agent 完成同一批次任务后由主 Agent 对账。” | AC-B8～B10 | 同批分发、隔离、完整集合对账和 working-tree 检查点测试 | [ ] |
+| R10 | “全局 Skill、MCP 仅做模板；运行时仅受项目配置影响，不得访问全局 Skill。” | AC-A0b、AC-B8 | 配置解析 Fixture 与运行时能力拒绝测试 | [ ] |
 
 ### 覆盖检查
 
@@ -191,6 +207,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 ## Dependencies
 
 - **系统需求**：`docs/architecture/traqen-system-requirements.zh-CN.md`
+- **产品架构**：`docs/architecture/traqen-product-architecture.zh-CN.md`
 - **本体权威**：ADR-0001 canonical traceability ontology
 - **已实现前置**：PR #5 服务端 AnalysisRun；只覆盖派生观察后的 Agent 阶段
 - **支撑设计**：现有 Agent、Workspace、Graph、TestSpec、Runner、Evidence 与持久生命周期文档
@@ -210,7 +227,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | 一个扫描器盲点变成整条管线盲点 | Manifest 派生规划与独立源码通道 |
 | “分析所有文件”退化成超大 Prompt 或只分析部分扫描结果 | Snapshot 确定性分区、有界层级 DAG 与 `unassignedCount=0` |
 | 通用或未校准模型静默处理所有语言与角色 | 已验证 ModelCapabilityProfile、版本固定 Skill 合同、持久 Route Decision 与 `NO_ELIGIBLE_PRODUCER` |
-| 多模型把相关猜测变成多数票真相 | 选择性独立 Critic、证据对账与 ConflictLedger 保留 |
+| 多模型把相关猜测变成多数票真相 | 同批隔离的子 Agent 输出、Independence Group 来源、主 Agent 证据对账与 ConflictLedger 保留 |
 | Agent 文字虚构关系 | 结构化 Bundle、有界源码/证据、确定性拒绝 |
 | 把当前代码冻结成业务真相 | Candidate/Decision/受治理对象分离 |
 | 隐藏不支持范围 | 完整 Inventory 分母与显式处置 |
@@ -241,7 +258,12 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | KD-5 | `Fxxx` 生命周期 ID 与受治理 `Feature.id` 分离。 | 工程规划不能创建业务权威。 | 2026-07-29 |
 | KD-6 | 第一次分析强制 FULL，后续默认 INCREMENTAL；当前图谱头与历史账本分离。 | 系统既要提供最新可用图谱，也要长期解释 Feature 如何变化及每次变化影响什么。 | 2026-07-29 |
 | KD-7 | 代码/配置变化不能自行创建 FeatureVersion。 | 业务定义的版本权威来自 Decision，实现演进应记录为 Snapshot 映射、Impact 与验证历史。 | 2026-07-29 |
-| KD-8 | Agent 从完整不可变 Snapshot 规划，通过能力路由的模型/Skill 执行确定性动态分区 DAG，并以选择性多模型证据对账取代 Scanner-only 输入、整仓单 Prompt 或多数票。 | 超大工程需要可审核的完整处置、有界上下文、显式 Producer 适配度并保留分歧，不能让 Scanner 盲点或相关模型猜测定义真相。 | 2026-07-29 |
+| KD-8 | Agent 从完整不可变 Snapshot 规划，执行确定性动态分区 DAG，把每个有界 AnalysisBatch 发送给所有已配置且相互独立的子 Agent slot，再由主 Agent 对照静态 Facts 进行证据对账，禁止多数票。 | 超大工程需要可审核的完整处置、有界上下文、显式 Producer 适配度并保留分歧，不能让 Scanner 盲点或相关模型猜测定义真相。 | 2026-07-29 |
+| KD-9 | Workspace 是所有产品对象和视图的聚合根；显示/隐藏是用户偏好，删除是经审计生命周期。 | 单一 Scope 身份使切换具有原子语义，也避免把 UI 可见性误当成破坏性删除。 | 2026-07-31 |
+| KD-10 | 每个 active 子 Agent 分析同一个有界批次；主 Agent 对完整同批结果集、静态证据和历史做对账。 | 可比较的独立观察才能暴露分歧；把不同 Module 分给不同 Agent 只有吞吐量，没有相互印证。 | 2026-07-31 |
+| KD-11 | 全局能力仅是模板；执行固定到不可变 Workspace Profile，运行时没有回到全局 Skill/MCP 的通路。 | 项目隔离必须可强制、可重放，不能只是 Prompt 约定。 | 2026-07-31 |
+| KD-12 | 现有 `Project.id` 迁入 Canonical Workspace 身份，或仅作为兼容别名；Workspace 与 Project 不再保留为两个独立 1:1 聚合。 | 两套生命周期与授权身份会重新制造 Workspace 本应消除的跨模块漂移。 | 2026-07-31 |
+| KD-13 | F001 的实现切片是活动计划中的 Task，不新增 `F001a`～`F001k` 生命周期 ID。 | 一份 Feature 真相源加可测试的计划任务既能分解交付，也不会再产生竞争的 Feature 命名空间。 | 2026-07-31 |
 
 ## Timeline
 
@@ -250,7 +272,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | 2026-07-29 | F001 最初按持久扫描生命周期立项 |
 | 2026-07-29 | operator 纠正为存量系统理解正确性和 Traqen 自身 Dogfood |
 | 2026-07-29 | operator 明确长期演进模型：首次全量、后续增量、最新图谱投影与 Feature/Impact 历史并存 |
-| 2026-07-29 | operator 明确 Agent 完整原始源码覆盖、确定性分区/DAG、显式模型/Skill 路由与选择性多模型对账 |
+| 2026-07-29 | operator 明确 Agent 完整原始源码覆盖、确定性分区/DAG、显式模型/Skill 路由与多模型对账 |
+| 2026-07-31 | operator 明确 Workspace 全局联动切换、同批次主/子 Agent 相互印证和 Workspace 专属运行时能力 |
+| 2026-07-31 | GPT/Kimi 相互印证确认 F001～F006 边界；operator 选择本次方案作为设计基线并要求删除被替代文档；ADR-0002 裁决 Canonical Workspace 身份、F006 顺序与 Runtime 隔离 |
 
 ## Review gate
 
@@ -264,6 +288,7 @@ Design Gate 必须确认：
 6. 第一阶段 Local Runner 数据边界；
 7. FULL→INCREMENTAL、CurrentGraphHead 原子发布与 Feature 历史语义。
 8. Snapshot 派生的完整 Agent 规划、按能力路由的模型/Skill 执行与基于证据的多模型对账。
+9. Workspace 聚合所有权、上下文版本切换、同批子 Agent 隔离和项目专属能力的不可变解析。
 
 实现随后执行 TDD、Quality Gate、独立 Review 与 Merge Gate。
 
@@ -272,10 +297,12 @@ Design Gate 必须确认：
 | 类型 | 路径 | 说明 |
 |---|---|---|
 | 系统需求 | `docs/architecture/traqen-system-requirements.zh-CN.md` | 产品使命、图谱、旅程、系统需求、Dogfood 合同 |
-| 核心理解引擎 | `docs/features/legacy-system-understanding-engine.zh-CN.md` | Inventory、通道、WorkUnit、对账、评估、增量 |
-| 理解引擎实施计划 | `feature-specs/2026-07-29-legacy-system-understanding-engine.md` | F001 全部 AC 的 TDD 顺序、状态机、契约与 Traqen dogfood |
-| 持久生命周期 | `docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md` | 服务端所有权、检查点、Pause/Resume、Worker 恢复 |
-| 当前 Analysis Agent | `docs/features/analysis-agent-design.zh-CN.md` | 已实现 Agent 契约与当前限制 |
-| 当前 Workspace | `docs/features/workspace-analysis-design.zh-CN.md` | 当前浏览器体验与迁移基线 |
+| 产品架构 | `docs/architecture/traqen-product-architecture.zh-CN.md` | Workspace 根、F001～F006 边界、Agent 拓扑、权威模型和当前实现差距 |
+| 活动实施计划 | `feature-specs/2026-07-31-traqen-product-foundation.md` | F001～F006 的交付顺序、TDD 边界、迁移与验收 |
+| 详细生命周期设计 | `docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md` | 完整 Inventory、同批次主/子 Agent 执行、对账、服务端所有权与恢复 |
+| Excalidraw 整体架构 | `docs/diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw` | 可编辑的 Workspace 根与产品模块架构 |
+| Archify 分析工作流 | `docs/diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html` | 确定性批次、同批子 Agent 隔离、能力路由、对账与 Gap |
+| Archify 能力解析 | `docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html` | 全局模板、Workspace 覆盖、不可变运行 Profile 与 Secret Grant |
+| Archify 图谱生命周期 | `docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html` | Candidate、Decision、评估、发布、拒绝与隔离 |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md` | 真相与权威边界 |
-| 现有详细架构 | `docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md` | 子系统级架构 |
+| Workspace 聚合 ADR | `docs/decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md` | Canonical Workspace 身份、切换、迁移与运行能力隔离 |

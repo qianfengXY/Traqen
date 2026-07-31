@@ -2,7 +2,7 @@
 
 ---
 feature_ids: [F001]
-related_features: []
+related_features: [F002, F003, F004, F005, F006]
 topics:
   - workspace
   - source-scan
@@ -16,9 +16,9 @@ status: proposed
 priority: P0
 ---
 
-# 持久 Workspace 扫描与 Analysis Agent 生命周期
+# Workspace 扫描与 Analysis Agent 生命周期
 
-> [F001](F001-legacy-system-understanding.zh-CN.md) 的支撑执行设计。本文定义持久所有权与恢复；理解正确性、对账和评估由 F001 理解引擎设计定义。
+> [F001](F001-legacy-system-understanding.zh-CN.md) 的详细执行设计。[产品架构](../architecture/traqen-product-architecture.zh-CN.md)负责模块边界；本文负责 Workspace 分析、完整源码覆盖、主/子 Agent 执行、对账与持久恢复。
 
 ## 1. 需求定义
 
@@ -27,7 +27,7 @@ priority: P0
 本需求把 Workspace 分析明确拆成两个独立、可追踪的执行阶段：
 
 1. **SourceScanRun**：在服务端建立不可变源码快照，逐文件提取确定性事实并生成 `FactBundle`。
-2. **AnalysisRun**：基于同一个 Snapshot 的确定性 Facts 规划并执行 Agent/Skill `WorkUnit`，生成 Candidate 投影。
+2. **AnalysisRun**：从完整 `SourceSnapshot` 与 `ArtifactInventory` 规划有界 Agent/Skill `WorkUnit`，直接读取经授权 SourceSlice，并可把确定性 Facts 作为独立参考，生成 Candidate 投影。
 
 父 Job 随后持有对账、评估、图谱投影和发布。后续编排阶段不会把 SourceScanRun 与 AnalysisRun 合并成同一套检查点。
 
@@ -100,43 +100,11 @@ Traqen 故意把观察、解释、对账、治理和发布分成不同权威层�
 
 路径名、模型回答、相似度分数和确定性 Hash 都不能创建或合并受治理的 `Feature.id`。
 
-```mermaid
-flowchart LR
-    A[经过授权的代码或文档工程] --> B[SourceRegistration]
-    B --> C[不可变 SourceSnapshot]
-    C --> D[ArtifactInventory]
-
-    D --> E[确定性 Extractors]
-    E --> F[FactBundle]
-    F --> G[跨文件关系解析]
-
-    D --> H[Manifest 与约定派生计划]
-    G --> I[Fact 增强计划]
-    H --> J[有界 Analysis WorkUnits]
-    I --> J
-    J --> K[Agent 与 Skills]
-    K --> L[CandidateBundles]
-
-    F --> M[Candidate 对账]
-    L --> M
-    M --> N[CandidateGraph]
-    M --> O[ConflictLedger]
-    M --> P[CoverageLedger]
-    M --> Q[CandidateLineage]
-
-    N --> R[EvaluationRun]
-    O --> R
-    P --> R
-    Q --> R
-    N --> S[人工 Review 与 Decision]
-    S --> T[Governed Feature, Claim, TestSpec]
-    T --> U[GraphRevision]
-    R -->|通过| U
-    R -->|拒绝| V[保留旧 CurrentGraphHead]
-    U --> W[原子发布]
-    W --> X[CurrentGraphHead]
-    X --> Y[Feature、API、追溯、影响与质量视图]
-```
+[整体功能架构](../diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
+展示所有模块共享的 Workspace 上下文。自包含
+[图谱治理生命周期](../diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
+及其 [Archify JSON 源](../diagrams/traqen-product-architecture/graph-governance.lifecycle.json)
+明确展示 Candidate、Decision、评估、隔离与发布边界。
 
 ### 3.2 扫描算法：从工程源码到确定性 Facts
 
@@ -145,7 +113,7 @@ flowchart LR
 1. **授权并固定输入。** `SourceRegistration` 证明 Runner 可以读取该根目录；文件进入 content-addressed Snapshot spool，并固定相对路径、内容 Hash、大小、媒体类型、语言以及 scanner/policy 版本。运行期间发生的源码变化属于下一个 Snapshot。
 2. **密封完整清单。** 范围内每个 Artifact 都有明确处置：`INCLUDED`、`EXCLUDED_BY_POLICY`、`UNSUPPORTED`、`GENERATED`、`BINARY`、`OVERSIZED`、`SECRET_REDACTED` 或 `READ_FAILED`。Manifest 密封前分母未知；密封后，覆盖率按完整 Inventory 计算，不能只统计成功解析的文件。
 3. **执行版本化确定性 Extractor。** 代码生成 Module、Symbol、Import、Call、Endpoint、Job、Command；Schema 和迁移生成 DataObject 与 Read/Write；配置生成 Key 与 Consumer 但不保存真实秘密；文档生成可定位的需求/设计段落；测试生成 Case、Assertion、Fixture 与实现关系；结果文件生成执行身份和元数据。
-4. **解析跨文件关系并提交。** Resolver 把 Route 关联 Handler、Call 关联 Symbol、Test 关联实现、Configuration 关联 Consumer、代码关联数据对象。`SnapshotManifest + FactBundle` 原子提交。每个 Fact 保留 Project、Snapshot、源码区间/内容 Hash、Extractor 身份与版本、稳定实体身份和 Snapshot 内不可变 Fact 身份。
+4. **解析跨文件关系并提交。** Resolver 把 Route 关联 Handler、Call 关联 Symbol、Test 关联实现、Configuration 关联 Consumer、代码关联数据对象。`SnapshotManifest + FactBundle` 原子提交。每个 Fact 保留 Workspace、Snapshot、源码区间/内容 Hash、Extractor 身份与版本、稳定实体身份和 Snapshot 内不可变 Fact 身份。
 
 例如确定性层可能产生：
 
@@ -173,6 +141,12 @@ Agent 的任务全集是完整、不可变的 `SourceSnapshot`，不是扫描器
 - 以 Excluded、Unsupported、Policy、Secret、Size、Read Failure 等显式处置/Gap 保留。
 
 Scanner Facts 是并行产生、可选的增强输入。某个 Symbol、Endpoint 或关系 Fact 缺失，不能让对应源码 Artifact 从 Agent 计划中消失。因此，“分析所有文件”指所有 Artifact 在许多有界 WorkUnit 中得到完整、可审核的处置；绝不表示把整个仓库塞进一个 Prompt。
+
+[Workspace 分析交互工作流](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
+展开确定性分区、同批次子 Agent 分发、Workspace 专属能力路由、
+有界源码读取、层级汇总、主 Agent 对账与显式隔离/Gap 路径。对应的
+[Archify JSON 源](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
+是下述算法的可复现视觉投影。
 
 #### 3.3.1 Inventory 分区如何产生
 
@@ -220,46 +194,61 @@ type UnderstandingPlan = {
 
 #### 3.3.2 WorkUnit 如何运行
 
-`UnderstandingPlan` 会变成持久化的依赖 DAG，而不是固定数量的子 Agent：
+`UnderstandingPlan` 会变成由有界 `AnalysisBatch` 组成的持久化依赖 DAG。DAG 控制工程规模；Workspace 执行配置控制逻辑 Agent roster，由一个主 Agent 和一个或多个子 Agent 组成，默认两个子 Agent。这是两个独立维度：增加批次改变吞吐量与 Context 大小，增加子 Agent slot 改变独立印证数量。
 
 ```mermaid
 flowchart TB
     A[完整 SourceSnapshot 与 ArtifactInventory] --> B[确定性 Partition Planner]
-    B --> C1[叶子源码 WorkUnits: 原始 SourceSlices]
-    B --> C2[叶子文档、测试、配置与数据 WorkUnits]
-    B --> C3[专用 Skill 或显式 Gap WorkUnits]
-
+    B --> C[有界 AnalysisBatch DAG]
     A --> D[并行确定性 Scanner]
     D --> E[可选 Fact 增强]
-
-    C1 --> F[文件与 Module 汇总]
-    C2 --> F
-    C3 --> F
-    E --> F
-    F --> G[跨 Module 能力与流程重建]
-    G --> H[Critic、矛盾与缺失关系探针]
-    H --> I[工程级 CandidateBundles]
-    I --> J[Candidate 对账]
-
-    K[Capability Router] --> C1
-    K --> C2
-    K --> C3
-    K --> F
-    K --> G
-    K --> H
+    C --> F[主 Agent 定义批次问题与输出合同]
+    F --> G1[子 Agent 1: 同一批次]
+    F --> G2[子 Agent 2: 同一批次]
+    F --> GN[子 Agent N: 同一批次]
+    G1 --> H[等待完整同批终态集合]
+    G2 --> H
+    GN --> H
+    E --> I[主 Agent 对账]
+    H --> I
+    I --> J[证据有效的批次检查点]
+    J --> K[Feature/API working tree 投影]
+    J --> L[Conflict、隔离与 Gap 账本]
+    J --> M[依赖的文件/Module/跨 Module 批次]
 ```
 
 DAG 分层运行：
 
-1. **叶子读取：** 只有位于本地/私有源码边界内且能力合格的模型/Skill 才能直接读取每个可处理 Artifact 的授权原始 SourceSlice，并输出带源码锚点的 Observation/Candidate。
-2. **文件/Module 汇总：** 合并相关叶子输出、选定原始切片与可选 Facts。只有子任务摘要、没有底层源码证据时不能形成 Candidate。
-3. **跨 Module 重建：** 分析公开接口、Module 间 Call、流程、状态转移、规则、数据/配置影响和测试意图。
-4. **Critic 与 Gap 探针：** 独立挑战高风险结论、矛盾、低置信区域、未分配证据与未解决边界。
-5. **工程级汇总：** 形成有界 CandidateBundle 交给对账；不能创建受治理 Feature 身份。
+1. **形成批次：** 确定性 Planner 把基础、横切、跟进或汇总 Partition 变成不可变 `AnalysisBatch`。由它而不是 LLM 证明 Inventory 全量处置。
+2. **主 Agent 规划：** 主 Agent 增加语义问题、关注点、可用工具和精确输出合同，但不能改变批次授权源码范围，也不能静默丢弃 Artifact。
+3. **同批次分发：** Scheduler 为每个 active 子 Agent slot 创建一个 `ChildWorkUnit`。同批 sibling 收到完全相同的 `analysisBatchId`、SourceSlice 集、可选 Fact 集、任务说明和输出 Schema；每个使用各自固定的模型/Skill/MCP Route，提交前不能查看同伴输出或私有推理。
+4. **完成屏障：** 只有所有必需 sibling 都进入终态才开始对账。成功、显式 `NO_ELIGIBLE_PRODUCER`、超时、预算 Gap 和策略拒绝都是终态；缺少输出不能被当作同意。
+5. **主 Agent 对账：** 主 Agent 把 sibling 输出与确定性 Facts、上一轮 lineage 比较；独立确定性 Validator 仍负责 Schema、证据范围、引用存在性、置信度上限和禁止治理字段。
+6. **检查点与投影：** 只有校验通过的对账结果才能更新 Feature/API working tree。子 Agent 原始输出和未约束的主 Agent 文字不能直接修改 working tree；冲突、被拒证据和 Unknown 必须保留在账本。
+7. **层级接续：** 校验后的叶子批次解锁文件/Module 批次，再解锁跨 Module、矛盾、缺失关系和工程汇总批次；每层都重复相同 roster 分发与对账协议。
 
-每个 WorkUnit 持久化 Dependency ID、Artifact/Range 输入、可选 Fact ID、必需能力、所选 Producer Route、Token/Cost/Deadline 预算、Input/Output Digest、Attempt、Checkpoint 和结构化输出。就绪单元在 Worker 与 Provider 并发配额内并行运行；调度采用 at-least-once，绑定 Input Digest 的结果提交 exactly-once。失败、超时或预算耗尽形成显式 Gap，不能把覆盖的 Artifact 标记为语义完成。
+```ts
+type AnalysisBatch = {
+  id: string;
+  workspaceId: string;
+  analysisRunId: string;
+  executionProfileRevisionId: string;
+  partitionId: string;
+  stage: "LEAF" | "FILE" | "MODULE" | "CROSS_MODULE" | "CHALLENGE" | "PROJECT_SYNTHESIS";
+  dependencyBatchIds: string[];
+  artifactIds: string[];
+  sourceRanges: Array<{ artifactId: string; startLine?: number; endLine?: number }>;
+  optionalFactIds: string[];
+  taskStatement: string;
+  outputSchemaId: string;
+  requiredChildSlotIds: string[];
+  inputDigest: string;
+};
+```
 
-执行期间，某通道可以为未解析 Call、无文档接口、意图不清测试、未知配置 Consumer、矛盾或缺失关系创建有界 `FOLLOW_UP` 单元。跟进深度和总预算由策略固定；触顶记录 `UNEXPLORED_BUDGET_LIMIT`。
+每个 ChildWorkUnit 持久化批次 Input Digest、子 Agent slot、精确模型/Skill/MCP 修订、Attempt、Budget、结构化结果、证据引用和终态原因。就绪批次在 Worker 与 Provider 配额内并行运行，同一批次内的 sibling 也可以并发；调度采用 at-least-once，结果以 `(analysisBatchId, childSlotId, inputDigest)` 幂等提交。主 Agent 对账检查点按排序后的完整 sibling 输出 Digest 幂等提交。
+
+执行期间，对账可以为未解析 Call、无文档接口、意图不清测试、未知配置 Consumer、矛盾或缺失关系创建有界 `FOLLOW_UP` 批次。跟进深度和总预算由策略固定；触顶记录 `UNEXPLORED_BUDGET_LIMIT`。
 
 #### 3.3.3 模型与 Skill 如何选择
 
@@ -270,7 +259,7 @@ type ModelCapabilityProfile = {
   id: string;
   analysisModelProfileId: string;
   modelRevision: string;
-  roles: Array<"SOURCE_READER" | "MODULE_SYNTHESIS" | "CROSS_MODULE_REASONING" | "CRITIC">;
+  roles: Array<"MAIN_PLANNER" | "MAIN_RECONCILER" | "SOURCE_READER" | "MODULE_SYNTHESIS" | "CROSS_MODULE_REASONING" | "CRITIC">;
   languages: string[];
   artifactKinds: string[];
   structuredOutputSchemas: string[];
@@ -291,7 +280,9 @@ type ModelCapabilityProfile = {
 这会修改当前 Reverse Skill 同时强制要求 `PROJECT_SNAPSHOT` 与 `CODE_FACT_BUNDLE` 的基线。
 Direct-source WorkUnit 必须选择 `RAW_SOURCE_LOCAL` 或 `RAW_SOURCE_PRIVATE_RUNNER` Producer Route。声明为 `FACTS_ONLY_EXTERNAL` 的外部模型只能处理策略过滤后的 Facts，绝不能读取原始 SourceSlice；如果没有边界内合格 Producer，则记录 `NO_ELIGIBLE_PRODUCER`。
 
-对每个 WorkUnit，确定性 Capability Router 计算以下交集：
+全局模型、Skill 和 MCP 只是配置模板，不是运行时能力。创建或修改 Workspace 时，把全局模板与 Workspace 新增、覆盖、移除解析成不可变 `WorkspaceExecutionProfileRevision`。运行时只获得该修订及其 Scope Credential；不存在让 Agent 发现或调用未被 Workspace 解析进来的全局 Skill/MCP 的 Registry Handle。
+
+对每个 AnalysisBatch 的主 Agent slot 和各子 Agent slot，确定性 Capability Router 计算以下交集：
 
 - 必需 Role/Capability、语言、Artifact、Context 大小与 Risk Class；
 - 已验证的 ModelCapabilityProfile；
@@ -299,12 +290,14 @@ Direct-source WorkUnit 必须选择 `RAW_SOURCE_LOCAL` 或 `RAW_SOURCE_PRIVATE_R
 - 源码数据边界与 Tenant Policy；
 - 本次运行的质量、成本、截止时间、并发与冗余策略。
 
-Router 持久化 `AnalysisRouteDecision`，记录候选 Producer、选定 Primary/Critic Route、被拒绝 Route 与原因码、精确模型/Skill 版本、Calibration 版本、Independence Group 和预算。模型不能自选任务；未验证 Profile 不得运行；找不到合格 Producer 时记录 `NO_ELIGIBLE_PRODUCER`，不能悄悄换成通用 Fallback。
+Router 持久化 `AnalysisRouteDecision`，记录 Workspace Profile Revision、Agent slot、候选 Producer、选定 Route、被拒绝 Route 与原因码、精确模型/Skill/MCP 版本、Calibration 版本、Independence Group 和预算。模型不能自选任务；未验证 Profile 不得运行；找不到合格 Producer 时，该 slot 记录显式 `NO_ELIGIBLE_PRODUCER`，不能悄悄换成通用 Fallback。
 
 首版 Role/Skill 路由基线如下：
 
 | WorkUnit Role | 模型 Profile 必须证明 | 典型已注册 Skill Capability | 主要证据 |
 |---|---|---|---|
+| `MAIN_PLANNER` | 有界规划、合同遵循、完整 Scope 保留与 Gap 诚实度 | `ANALYSIS_PLANNING`、`CONVENTION_INTERPRETATION` | AnalysisBatch、Inventory Coverage、依赖、Workspace 规范 |
+| `MAIN_RECONCILER` | 多输出比较、源码 Grounding 的矛盾检测、保守置信度与禁止多数票行为 | `REVERSE_REVIEW`、`EVIDENCE_RECONCILIATION` 及批次所需 Domain Capability | 完整 sibling 集、原始证据、确定性 Facts、历史 lineage |
 | `SOURCE_READER` | 语言/Artifact 支持、Schema 遵循、源码 Grounding、有界 Context 行为及本地/私有原始源码资格 | `ARCHITECTURE_REVERSE`、`BUSINESS_RULE_MINING`、`DATA_SEMANTICS`、`CONFIGURATION_ANALYSIS`、`TEST_INVENTORY_REVIEW` | 原始 SourceSlice；Facts 可选 |
 | `MODULE_SYNTHESIS` | 长 Context 汇总不丢引用，并具备校准过的关系精度 | `FEATURE_DISCOVERY`、`ARCHITECTURE_REVERSE`、`DOMAIN_MODELING`、`BUSINESS_RULE_MINING` | 叶子输出及选定 SourceSlice/Facts |
 | `CROSS_MODULE_REASONING` | 跨文件 Graph/Workflow/State 推理及校准过的缺失关系召回 | `FEATURE_DISCOVERY`、`STATE_MACHINE_RECOVERY`、`PERMISSION_ANALYSIS`、`DATA_SEMANTICS`、`CONFIGURATION_ANALYSIS`、`TEST_DESIGN`、`RUNTIME_CORRELATION`、`CHANGE_IMPACT` | Module Candidate/Evidence Index 及选定 SourceSlice/Facts |
@@ -323,14 +316,15 @@ Router 持久化 `AnalysisRouteDecision`，记录候选 Producer、选定 Primar
 - 全局汇总只读取有界 Candidate/Evidence Index 与选定 SourceSlice，不会一次看到所有原始文件；
 - 完成条件包括 `unassignedCount=0`、所有必需 WorkUnit 进入终态，以及所有不支持/预算不足区域都有显式 Gap。
 
-系统支持多个模型，但不会做无控制投票：
+系统通过 Workspace roster 支持多个模型，但不会做无控制投票：
 
-1. **分区并行（默认）：** 不同 WorkUnit 路由给最合适的模型/Skill，并行运行。
-2. **选择性冗余：** 仅对高风险锚点、低置信输出、矛盾、Challenge Sample 或策略抽样使用两个独立校准 Producer；默认不让每个文件重复分析。
-3. **独立 Critic：** 使用不同 `independenceGroup` 的 Producer 只查看 Candidate 与原始证据，不查看 Primary 的私有推理。
-4. **证据对账：** 确定性校验与 Candidate Reconciliation 比较引用、范围、约束和矛盾。同一基础模型/Prompt Family 的两个输出属于相关证据，不算两个独立投票。
+1. **批次并行：** 多个有界批次受 Worker、Provider、Cost 和 Source Broker 配额约束并发运行。
+2. **同批印证：** 每个 active 子 Agent slot 分析每个批次。默认两个子 Agent，Workspace 可以增加；子 Agent 可使用 Claude、Codex、Kimi、其他经校准模型或本地确定性 Producer，但收到相同批次合同。
+3. **独立执行：** 每个子 Agent 有独立 slot 身份和固定 Route；`independenceGroup` 标记相关 Model/Prompt Family，同批 sibling 在完成屏障前不能看到彼此输出。
+4. **层级归约：** 叶子证据形成已对账的文件/Module Index；后续批次只读取有界 Index 与选定原始 SourceSlice，不存在整仓单请求。
+5. **证据对账：** 确定性校验与主 Agent 把引用、范围、约束、遗漏和矛盾与静态 Facts、历史比较；相关一致必须显式标记，不能算独立证明。
 
-一致结果只能在校准过的证据上限内提高 corroboration。分歧进入 ConflictLedger；票数不能产生真相或治理身份。未解决的高风险冲突进入人工 Review/Decision。
+一致结果只能在校准过的证据上限内提高 corroboration。分歧进入 ConflictLedger；票数不能产生真相或治理身份。不可信证据进入隔离区，不能自动纳入或静默丢弃；未解决高风险冲突进入人工 Review/Decision。
 
 #### 3.3.5 Candidate 输出合同
 
@@ -347,7 +341,7 @@ CandidateTestIntent:
   order-submit.test.js 可能覆盖“只有 DRAFT 订单可以提交”
 ```
 
-每个 Candidate 携带原始 SourceSlice 和/或 Fact 证据、Snapshot/WorkUnit、Producer/模型/Skill 版本、Route/Calibration Provenance、分维度置信度、确定性置信度上限、不确定性和替代解释。确定性 Validator 拒绝越过 WorkUnit、跨 Project/Snapshot、缺失、重复或伪造的证据；剥离模型擅自填写的治理 ID/字段；并把置信度限制在证据允许的上限内。
+每个 Candidate 携带原始 SourceSlice 和/或 Fact 证据、Snapshot/WorkUnit、Producer/模型/Skill 版本、Route/Calibration Provenance、分维度置信度、确定性置信度上限、不确定性和替代解释。确定性 Validator 拒绝越过 WorkUnit、跨 Workspace/Snapshot、缺失、重复或伪造的证据；剥离模型擅自填写的治理 ID/字段；并把置信度限制在证据允许的上限内。
 
 ### 3.4 对账算法：保留身份不确定性
 
@@ -401,9 +395,9 @@ BUILDING → EVALUATING → PUBLISHED
 
 ### 3.6 当前实现边界
 
-本节定义 F001 目标，不代表所有组件已经实现。当前代码已经具备 JavaScript/Java 及部分 OpenAPI/SQL/配置/测试确定性扫描、SnapshotManifest 与 FactBundle 关系、以 Fact Root 为中心的有界 Analysis WorkUnit 与 Candidate 校验、一个 Active Model Profile 加可选版本固定 Skill、固定三个子 Agent Slot 的 UI Plan、增量 Candidate Lineage、受治理 Feature/Claim/Decision/TestSpec/Evidence，以及图谱/追溯投影。
+本节定义 F001 目标，不代表所有组件已经实现。当前代码已经具备 JavaScript/Java 及部分 OpenAPI/SQL/配置/测试确定性扫描、SnapshotManifest 与 FactBundle 关系、以 Fact Root 为中心的有界 Analysis WorkUnit 与 Candidate 校验、一个全局 Active Model Profile 加可选版本固定 Skill、固定三个子 Agent slot 但不驱动服务端同批执行的规划/UI 外形、另一条硬编码本地确定性 Profile 的理解运行时、增量 Candidate Lineage、受治理 Feature/Claim/Decision/TestSpec/Evidence，以及图谱/追溯投影。
 
-F001 仍需完成：完整服务端 SourceScanRun、多语言 canonical scanner 等价、完整 ArtifactInventory、独立于 Scanner 的原始源码基础覆盖、确定性 UnderstandingPlan/分区覆盖、动态 WorkUnit DAG 调度、ModelCapabilityProfile 与能力路由、Direct-source Skill 输入、选择性多模型/Critic 执行、SourceSlice Broker、全局对账及账本、EvaluationRun/GraphRevision/CurrentGraphHead 发布，以及“Traqen 分析 Traqen”的双 Snapshot 验收。
+F001 仍需完成：服务端权威 Workspace 聚合与切换上下文、不可变 Workspace 专属执行 Profile、统一分析运行时、完整服务端 SourceScanRun、多语言 canonical scanner 等价、完整 ArtifactInventory、独立于 Scanner 的原始源码基础覆盖、确定性 UnderstandingPlan/分区覆盖、默认两个且可配置 roster 的同批 ChildWorkUnit 调度、主 Agent 规划与对账、Direct-source Skill 输入、SourceSlice Broker、完整结果集对账及账本、EvaluationRun/GraphRevision/CurrentGraphHead 发布，以及“Traqen 分析 Traqen”的双 Snapshot 验收。
 
 ## 4. 用户旅程
 
@@ -436,14 +430,73 @@ F001 仍需完成：完整服务端 SourceScanRun、多语言 canonical scanner 
 
 ## 5. 生命周期对象普查
 
-### 5.1 SourceRegistration
+### 5.1 Workspace 与当前上下文
+
+```ts
+type Workspace = {
+  id: string;
+  displayName: string;
+  status: "ACTIVE" | "DELETION_PENDING" | "DELETED";
+  currentGraphHeadId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CurrentWorkspaceContext = {
+  actorId: string;
+  workspaceId: string;
+  version: number;
+  selectedAt: string;
+};
+
+type WorkspaceViewPreference = {
+  actorId: string;
+  workspaceId: string;
+  visible: boolean;
+};
+```
+
+显示/隐藏只改变 `WorkspaceViewPreference`，绝不删除 Workspace；删除走显式、可审计生命周期。每条 Command、Query、Subscription、Cache Key 和持久分析对象都携带 `workspaceId`；UI 只接收与当前选择上下文版本一致的响应。
+
+### 5.2 WorkspaceExecutionProfileRevision
+
+```ts
+type AgentSlot = {
+  id: string;
+  role: "MAIN" | "CHILD";
+  modelCapabilityProfileId: string;
+  skillRevisionIds: string[];
+  mcpGrantRevisionIds: string[];
+  independenceGroup: string;
+  policyRevisionId: string;
+};
+
+type WorkspaceExecutionProfileRevision = {
+  id: string;
+  workspaceId: string;
+  revision: number;
+  mainAgentSlot: AgentSlot;
+  childAgentSlots: AgentSlot[]; // 至少 1 个；默认模板解析为 2 个
+  dependencyPolicyRevisionId: string;
+  conventionRevisionId: string;
+  resolvedSkillRevisionIds: string[];
+  resolvedMcpGrantRevisionIds: string[];
+  sourceTemplateRevisionIds: string[];
+  digest: string;
+  createdAt: string;
+};
+```
+
+Resolver 合并全局模板与 Workspace 新增、覆盖、移除；存储结果不可变，并且它是运行时唯一装载的能力集合。
+
+### 5.3 SourceRegistration
 
 表示服务端被允许读取的源码位置。
 
 ```ts
 type SourceRegistration = {
   id: string;
-  projectId: string;
+  workspaceId: string;
   connectorKind: "LOCAL_FILESYSTEM";
   displayName: string;
   canonicalRootRef: string; // 加密或服务端私有；普通读取 API 不返回绝对路径
@@ -460,14 +513,14 @@ type SourceRegistration = {
 - 注册时拒绝根目录、home 根目录、设备、socket 和符号链接越界。
 - 撤销 registration 不删除既有历史 Snapshot；只阻止新任务读取。
 
-### 5.2 SourceSnapshot
+### 5.4 SourceSnapshot
 
 一次 WorkspaceAnalysisJob 的不可变源码输入。
 
 ```ts
 type SourceSnapshot = {
   id: string;
-  projectId: string;
+  workspaceId: string;
   sourceRegistrationId: string;
   manifestDigest: string;
   scannerVersion: string;
@@ -482,13 +535,13 @@ type SourceSnapshot = {
 
 Snapshot 在 `SEALED` 后不可追加或替换文件。运行期间源目录发生变化，不改变当前任务；下一次分析创建新的 Snapshot。
 
-### 5.3 SourceScanRun
+### 5.5 SourceScanRun
 
 ```ts
 type SourceScanRun = {
   id: string;
   jobId: string;
-  projectId: string;
+  workspaceId: string;
   sourceSnapshotId: string;
   status:
     | "QUEUED"
@@ -518,25 +571,26 @@ hash(sourceSnapshotId + relativePath + contentHash + scannerVersion + policyVers
 
 已提交为 `COMPLETED` 的扫描 WorkUnit 在恢复时直接跳过。
 
-### 5.4 AnalysisRun
+### 5.6 AnalysisRun
 
 继续复用 canonical `AnalysisRun`，但只能在 SourceScanRun 已产生同一 Snapshot 的完整 FactBundle 后启动。
 
 Analysis WorkUnit 的证据仍必须满足：
 
 - `evidenceFactIds` 属于目标 WorkUnit；
-- Facts 属于同一 Project 与 Snapshot；
+- Facts 属于同一 Workspace 与 Snapshot；
 - 模型置信度不超过确定性证据上限；
 - 已完成 WorkUnit 在恢复时不重复调用模型或 Skill。
 
-### 5.5 WorkspaceAnalysisJob
+### 5.7 WorkspaceAnalysisJob
 
 这是用户看到的唯一任务资源。
 
 ```ts
 type WorkspaceAnalysisJob = {
   id: string;
-  projectId: string;
+  workspaceId: string;
+  executionProfileRevisionId: string;
   sourceRegistrationId: string;
   sourceSnapshotId: string | null;
   scanRunId: string | null;
@@ -572,13 +626,13 @@ type WorkspaceAnalysisJob = {
 
 `connectionStatus` 不属于该对象。浏览器的 `CONNECTED / RECONNECTING / OFFLINE` 只能作为界面派生值，绝不能覆盖服务端 job status。
 
-模式解析必须确定性持久化：Project 没有 `CurrentGraphHead` 时，`AUTO` 解析为 `FULL`，显式 `INCREMENTAL` 被拒绝；已有当前头后，`AUTO` 解析为 `INCREMENTAL`，operator 仍可强制 `FULL`。Resume 不能改变已解析模式。
+模式解析必须确定性持久化：Workspace 没有 `CurrentGraphHead` 时，`AUTO` 解析为 `FULL`，显式 `INCREMENTAL` 被拒绝；已有当前头后，`AUTO` 解析为 `INCREMENTAL`，operator 仍可强制 `FULL`。Resume 不能改变已解析模式。
 
 ### 5.6 BrowserSubscription
 
 IndexedDB 只保存：
 
-- `projectId`
+- `workspaceId`
 - `jobId`
 - 最后观察到的版本和时间
 
@@ -614,9 +668,7 @@ subscription 不保存权威 `RUNNING`、扫描检查点、Fact 或 Candidate。
 | `PROJECTION` | 不可变 GraphRevision 已物化 | `PUBLISHING` |
 | `PUBLISHING` | GraphRevision 变为 `PUBLISHED` 且 CurrentGraphHead 原子移动 | `COMPLETED` / `COMPLETED_WITH_GAPS` |
 
-这些 Job 阶段是
-[`legacy-system-understanding-engine.zh-CN.md`](legacy-system-understanding-engine.zh-CN.md)
-所定义 F001 理解流水线的执行投影。阶段切换必须和输出引用在同一个事务中提交：FactBundle 未提交不能进入 Analysis，对账账本未提交不能进入 Evaluation，GraphRevision 未形成明确的 published/rejected 结果不能完成 Job。
+这些阶段是 F001 的权威执行流水线。阶段切换必须和输出引用在同一个事务中提交：FactBundle 未提交不能进入 Analysis，对账账本未提交不能进入 Evaluation，GraphRevision 未形成明确的 published/rejected 结果不能完成 Job。
 
 ## 7. 扫描检查点设计
 
@@ -668,8 +720,10 @@ SourceScanRun 分五步执行：
 ## 9. Analysis Agent 接续设计
 
 - SourceScanRun 完成后，job 使用固定 `sourceSnapshotId` 和 `factBundleId` 创建 AnalysisRun。
-- Pause 在模型请求进行中时可以中止当前请求，但该 WorkUnit 必须回到 `QUEUED`，且不得误记为已完成。
-- 已经成功提交 CandidateBundle 的 WorkUnit 永不重复执行。
+- AnalysisRun 同时固定到一份不可变 WorkspaceExecutionProfileRevision；Resume 不能静默选择更新的全局或 Workspace 配置。
+- Pause 在子 Agent 或主 Agent 模型请求进行中时可以中止当前请求，但该 WorkUnit 必须回到 `QUEUED`，且不得误记为已完成。
+- 同一 Input Digest 下已成功提交的 ChildWorkUnit 结果或主 Agent 对账检查点永不重复执行。
+- 部分完成的 sibling 集必须持久化；Resume 只调度缺失子 Agent slot，且不把已提交 sibling 输出暴露给仍待执行的子 Agent。
 - Resume 复用同一个 AnalysisRun；不得创建新 run 冒充继续。
 - 模型/Skill 输出校验失败只影响对应 WorkUnit，并保留可诊断错误。
 - 自动重试受 `maxAttemptsPerWorkUnit` 限制；耗尽后按策略进入 `COMPLETED_WITH_GAPS` 或 `PAUSED`，不得无限循环。
@@ -721,19 +775,25 @@ SourceScanRun 分五步执行：
 ## 12. API 草案
 
 ```http
-POST /v1/projects/{projectId}/source-registrations
-GET  /v1/projects/{projectId}/source-registrations/{registrationId}
-POST /v1/projects/{projectId}/source-registrations/{registrationId}/revoke
+POST   /v1/workspaces
+GET    /v1/workspaces
+GET    /v1/workspaces/{workspaceId}
+DELETE /v1/workspaces/{workspaceId}
+PUT    /v1/users/me/workspace-view-preferences/{workspaceId}
 
-POST /v1/projects/{projectId}/workspace-analysis-jobs
-GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}
-POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/pause
-POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/resume
-POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/cancel
-GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/events
+POST /v1/workspaces/{workspaceId}/source-registrations
+GET  /v1/workspaces/{workspaceId}/source-registrations/{registrationId}
+POST /v1/workspaces/{workspaceId}/source-registrations/{registrationId}/revoke
+
+POST /v1/workspaces/{workspaceId}/analysis-jobs
+GET  /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}
+POST /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/pause
+POST /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/resume
+POST /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/cancel
+GET  /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/events
 ```
 
-Start 请求只引用 `sourceRegistrationId`、模型配置和分析模式，不包含文件正文或 derived observations。
+Start 请求只引用 `sourceRegistrationId`、不可变 Workspace 执行配置修订和分析模式，不包含文件正文或 derived observations。
 
 Job 查询返回：
 
@@ -796,13 +856,16 @@ UI 规则：
 - **INV-7**：人工暂停任务在刷新、断网和服务重启后保持暂停。
 - **INV-8**：非人工暂停的运行任务在 worker/API 恢复后自动继续。
 - **INV-9**：客户端连接状态与服务端任务状态是两个不同对象。
-- **INV-10**：SourceScanRun、FactBundle、AnalysisRun 必须属于同一 Project 与 Snapshot。
+- **INV-10**：SourceScanRun、FactBundle、AnalysisRun 必须属于同一 Workspace 与 Snapshot。
 - **INV-11**：外部模型不能接收原始源码或未脱敏 secret。
 - **INV-12**：多语言 scanner 能力未达到现有基线时不能切换。
 - **INV-13**：每条 Inventory 记录有一种基础处置，每个可分析源码 Artifact 都独立于 Scanner Facts 分配给直接 SourceSlice 读取。
 - **INV-14**：相同规划输入得到相同 Partition ID、`unassignedCount=0` 与无依赖环的动态 WorkUnit DAG。
 - **INV-15**：每个可执行 WorkUnit 都有经验证、版本固定的模型/Skill Route；能力缺失必须显式记录。
 - **INV-16**：多模型一致不能算业务真相；只有基于证据的对账与人工 Decision 能越过治理边界。
+- **INV-17**：每个 AnalysisBatch 以相同源码范围和输出 Schema 发给完整 active 子 Agent roster；主 Agent 必须等待每个 slot 的终态结果。
+- **INV-18**：运行时能力只来自不可变 WorkspaceExecutionProfileRevision；全局模型/Skill/MCP 模板在执行期间不可达。
+- **INV-19**：所有模块读写携带 `workspaceId` 与 Workspace 上下文版本；上一 Workspace 的迟到响应必须丢弃。
 
 ## 16. 验收标准
 
@@ -822,8 +885,11 @@ UI 规则：
 - API/worker 重启后继续未完成单元，人工暂停任务不自动恢复。
 - 在 Scanner Fact 输出为空时，证明每个可分析源码 Artifact 仍被直接读取或形成显式 Gap。
 - 对同一超大多语言 Snapshot 重规划，证明 Partition ID 稳定、`unassignedCount=0`、Context 有界、动态 DAG 完成，且 Candidate 不能只有 Summary 证据。
-- 证明每个 WorkUnit Route 记录经验证模型/Skill 能力、精确版本、Calibration、Independence Group、预算与被拒绝备选；能力不支持形成 `NO_ELIGIBLE_PRODUCER`。
-- 证明选择性独立 Critic 把证据分歧保留在 ConflictLedger；相关一致和多数票都不能创建受治理身份。
+- 证明 roster 默认两个子 Agent slot、支持一个或多个，并把相同批次 Digest、源码范围、任务说明与输出 Schema 发给每个 slot。
+- 证明每个主/子 Agent Route 记录不可变 Workspace Profile、经验证模型/Skill/MCP 能力、精确版本、Calibration、Independence Group、预算与被拒绝备选；不支持的 slot 形成 `NO_ELIGIBLE_PRODUCER`。
+- 证明完成屏障前 sibling 不能读取彼此输出，主 Agent 不能从不完整同批结果集发布对账。
+- 证明证据分歧保留在 ConflictLedger，不可信证据进入隔离区；相关一致和多数票都不能创建受治理身份。
+- 证明未出现在 Workspace 执行 Profile 修订中的全局 Skill/MCP 在运行时不可用。
 
 ### 安全与一致性
 
@@ -836,6 +902,7 @@ UI 规则：
 
 - 页面刷新时只短暂显示 connection 恢复，不显示终止或自动暂停。
 - 扫描与 Agent 进度独立可见，并明确当前阶段。
+- 在请求处理中切换 Workspace，证明所有模块重新绑定且迟到响应不能修改新 Workspace。
 - 任意页面只读挂接都不产生 POST。
 
 ## 17. 非目标
@@ -857,5 +924,5 @@ UI 规则：
 6. **兼容迁移与删除旧路径**：迁移 subscription，删除 browser execution/checkpoint authority。
 7. **真实验收**：大仓扫描、多次刷新、断网、人工暂停/恢复、API 重启和视觉证据。
 
-详细 TDD 实施计划见
-[`feature-specs/2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md`](../../feature-specs/2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md)。
+实现统一按单一活动计划推进：
+[`feature-specs/2026-07-31-traqen-product-foundation.md`](../../feature-specs/2026-07-31-traqen-product-foundation.md)。

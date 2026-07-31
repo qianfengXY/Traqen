@@ -2,21 +2,40 @@
 
 # 文档
 
-Traqen 的产品与工程文档同时维护英文和简体中文版本。两个版本必须表达相同的产品意图、约束、实现状态和运行指南。
+这里按 Feature 生命周期组织文档，而不是按时间堆积设计草稿。Traqen 的活动产品与工程真相源同时维护英文和简体中文版本。
 
-## 文档导航
+## 活动真相源导航
 
 - [Feature 路线图](ROADMAP.zh-CN.md) · [English](ROADMAP.md)
+- [产品架构](architecture/traqen-product-architecture.zh-CN.md) · [English](architecture/traqen-product-architecture.md)
 - [系统需求：存量系统理解与统一质量追溯](architecture/traqen-system-requirements.zh-CN.md) · [English](architecture/traqen-system-requirements.md)
-- [F001：存量系统理解与 Canonical Graph 构建](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md)
-- [存量系统理解引擎](features/legacy-system-understanding-engine.zh-CN.md) · [English](features/legacy-system-understanding-engine.md)
-- [架构与产品设计](architecture/enterprise-traceable-quality-platform-design-v0.2.md) · [English](architecture/enterprise-traceable-quality-platform-design-v0.2.en.md)
-- [本地 Workspace 分析与功能树](features/workspace-analysis-design.zh-CN.md) · [English](features/workspace-analysis-design.md)
-- [持久 Workspace 扫描与 Analysis 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md)
-- [核心分析 Agent](features/analysis-agent-design.zh-CN.md) · [English](features/analysis-agent-design.md)
-- [Clowder AI 真实仓库 Workspace 验证](implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md) · [English](implementation/clowder-ai-workspace-analysis-2026-07-18.md)
-- [实现验证记录](implementation/)
+- [ADR-0001：统一追溯本体](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md) · [English](decisions/ADR-0001-canonical-traceability-ontology.md)
+- [ADR-0002：Workspace 聚合与执行隔离](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md) · [English](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md)
 - [项目概览与运行指南](../README.zh-CN.md) · [English](../README.md)
+
+## Feature 真相源
+
+| ID | 活动 Feature 文档 | 支撑设计 |
+|---|---|---|
+| F001 | [Workspace 与分析基础](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | [Workspace 扫描与 Analysis Agent 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md) |
+| F002 | [功能与 API 追溯](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | 产品架构 |
+| F003 | [追溯图谱](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | 产品架构 |
+| F004 | [声明审核](features/F004-claim-review.zh-CN.md) · [English](features/F004-claim-review.md) | 产品架构 |
+| F005 | [变更影响](features/F005-change-impact.zh-CN.md) · [English](features/F005-change-impact.md) | 产品架构 |
+| F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [能力解析图](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
+
+当前实施计划为 [`feature-specs/2026-07-31-traqen-product-foundation.md`](../feature-specs/2026-07-31-traqen-product-foundation.md)。被替代的计划文件从工作树删除；Git 历史仍是可恢复记录。
+
+## 可视化设计
+
+- [整体功能架构——可编辑 Excalidraw](diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw) · [SVG](diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
+- [Workspace 同批分析工作流——Archify](diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
+- [Workspace 能力解析——Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)
+- [图谱治理生命周期——Archify](diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
+
+## 基线规则
+
+被替代的设计、验证报告、已解决 Bug 报告、旧图、review note 和实施计划从工作树删除，使路线图、活动 `Fxxx` 文档、产品架构、ADR 与当前实施计划构成唯一设计基线。Git 历史仍是可恢复记录。
 
 ## 双语文档策略
 

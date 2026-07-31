@@ -2,7 +2,7 @@
 
 ---
 feature_ids: [F001]
-related_features: []
+related_features: [F002, F003, F004, F005, F006]
 topics:
   - workspace
   - source-scan
@@ -16,16 +16,16 @@ status: proposed
 priority: P0
 ---
 
-# Durable Workspace Scan and Analysis Agent Lifecycle
+# Workspace Scan and Analysis Agent Lifecycle
 
-> Supporting execution design for [F001](F001-legacy-system-understanding.md). This document specifies durable ownership and recovery; understanding correctness, reconciliation, and evaluation are defined by the F001 engine design.
+> Detailed execution design for [F001](F001-legacy-system-understanding.md). The [product architecture](../architecture/traqen-product-architecture.md) owns module boundaries; this document owns Workspace analysis, complete source coverage, Main/Child execution, reconciliation, and durable recovery.
 
 ## 1. Requirement
 
 The Workspace flow is one user-visible job with two separately checkpointed execution stages:
 
 1. **SourceScanRun** seals an immutable source Snapshot, extracts deterministic per-file facts, resolves cross-file relations, and commits a `FactBundle`.
-2. **AnalysisRun** plans and executes Agent/Skill `WorkUnit`s from Facts in that same Snapshot and materializes a Candidate projection.
+2. **AnalysisRun** plans bounded Agent/Skill `WorkUnit`s from the complete `SourceSnapshot` and `ArtifactInventory`, reads authorized source slices directly, and may use deterministic Facts as an independent reference while materializing Candidate projections.
 
 The parent job then owns reconciliation, evaluation, graph projection, and publication. These orchestration phases do not collapse SourceScanRun and AnalysisRun into one checkpoint stream.
 
@@ -87,43 +87,11 @@ Traqen deliberately separates observation, interpretation, reconciliation, gover
 
 Neither a path name, a model response, a similarity score, nor a deterministic hash may create or merge a governed `Feature.id`.
 
-```mermaid
-flowchart LR
-    A[Authorized code or document project] --> B[SourceRegistration]
-    B --> C[Immutable SourceSnapshot]
-    C --> D[ArtifactInventory]
-
-    D --> E[Deterministic extractors]
-    E --> F[FactBundle]
-    F --> G[Cross-file relation resolver]
-
-    D --> H[Manifest and convention plan]
-    G --> I[Fact-enrichment plan]
-    H --> J[Bounded Analysis WorkUnits]
-    I --> J
-    J --> K[Agent and Skills]
-    K --> L[CandidateBundles]
-
-    F --> M[Candidate reconciliation]
-    L --> M
-    M --> N[CandidateGraph]
-    M --> O[ConflictLedger]
-    M --> P[CoverageLedger]
-    M --> Q[CandidateLineage]
-
-    N --> R[EvaluationRun]
-    O --> R
-    P --> R
-    Q --> R
-    N --> S[Human review and Decision]
-    S --> T[Governed Feature, Claim, TestSpec]
-    T --> U[GraphRevision]
-    R -->|pass| U
-    R -->|reject| V[Keep prior CurrentGraphHead]
-    U --> W[Atomic publish]
-    W --> X[CurrentGraphHead]
-    X --> Y[Feature, API, trace, impact and quality views]
-```
+The [overall functional architecture](../diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
+shows the Workspace context shared by all modules. The self-contained
+[graph-governance lifecycle](../diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
+and its [Archify JSON source](../diagrams/traqen-product-architecture/graph-governance.lifecycle.json)
+make the Candidate, Decision, evaluation, quarantine, and publication boundaries explicit.
 
 ### 3.2 Scanner algorithm: source to deterministic Facts
 
@@ -132,7 +100,7 @@ Given a project such as an order service, the scanner executes four logical step
 1. **Authorize and freeze the input.** `SourceRegistration` proves that the runner may read the root. Files are copied into a content-addressed Snapshot spool with relative path, content hash, size, media type, detected language, and scanner/policy versions. A source change during the run belongs to the next Snapshot.
 2. **Seal the full inventory.** Every in-scope artifact receives an explicit disposition: `INCLUDED`, `EXCLUDED_BY_POLICY`, `UNSUPPORTED`, `GENERATED`, `BINARY`, `OVERSIZED`, `SECRET_REDACTED`, or `READ_FAILED`. Before manifest seal, the denominator is unknown; after seal, coverage is measured against the exact inventory rather than only successfully parsed files.
 3. **Run versioned deterministic extractors.** Code yields modules, symbols, imports, calls, endpoints, jobs, and commands; schemas and migrations yield data objects and reads/writes; configuration yields keys and consumers without secret values; documents yield addressable requirement/design passages; tests yield cases, assertions, fixtures, and implementation links; result files yield execution identities and metadata.
-4. **Resolve cross-file relations and commit.** The resolver links routes to handlers, calls to symbols, tests to implementation, configuration to consumers, and code to data objects. `SnapshotManifest + FactBundle` commit atomically. Each Fact retains Project, Snapshot, source span/content hash, extractor identity/version, a stable entity identity, and an immutable Snapshot-local Fact identity.
+4. **Resolve cross-file relations and commit.** The resolver links routes to handlers, calls to symbols, tests to implementation, configuration to consumers, and code to data objects. `SnapshotManifest + FactBundle` commit atomically. Each Fact retains Workspace, Snapshot, source span/content hash, extractor identity/version, a stable entity identity, and an immutable Snapshot-local Fact identity.
 
 For example, the deterministic layer may produce:
 
@@ -160,6 +128,13 @@ The Agent's task universe is the complete immutable `SourceSnapshot`, not the sc
 - retained with an explicit excluded, unsupported, policy, secret, size, or read-failure disposition/Gap.
 
 Scanner Facts are a parallel, optional enrichment input. A missing Symbol, Endpoint, or relation Fact must not remove the corresponding source Artifact from the Agent plan. “Analyze every file” therefore means complete, auditable visitation across many bounded WorkUnits; it never means placing the whole repository into one prompt.
+
+The [interactive Workspace analysis workflow](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
+expands deterministic partitioning, same-batch Child
+fan-out, Workspace-scoped capability routes, bounded source reads, hierarchical
+synthesis, Main Agent reconciliation, and explicit quarantine/gap paths. Its
+[Archify JSON source](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
+is the reproducible visual projection of the algorithm below.
 
 #### 3.3.1 How Inventory partitions are derived
 
@@ -207,46 +182,61 @@ The three assigned counts plus `unassignedCount` must equal `inventoryArtifactCo
 
 #### 3.3.2 How WorkUnits execute
 
-An `UnderstandingPlan` becomes a persisted dependency DAG rather than a fixed number of child Agents:
+An `UnderstandingPlan` becomes a persisted dependency DAG of bounded `AnalysisBatch` records. The DAG controls repository scale; the Workspace execution profile controls a logical Agent roster consisting of one Main Agent and one or more Child Agents, defaulting to two. These are separate dimensions: adding batches changes throughput and context size, while adding Child slots changes independent corroboration.
 
 ```mermaid
 flowchart TB
     A[Complete SourceSnapshot and ArtifactInventory] --> B[Deterministic Partition Planner]
-    B --> C1[Leaf source WorkUnits: raw source slices]
-    B --> C2[Leaf document, test, config and data WorkUnits]
-    B --> C3[Specialist or explicit Gap WorkUnits]
-
+    B --> C[Bounded AnalysisBatch DAG]
     A --> D[Deterministic scanner in parallel]
     D --> E[Optional Fact enrichment]
-
-    C1 --> F[File and module synthesis]
-    C2 --> F
-    C3 --> F
-    E --> F
-    F --> G[Cross-module capability and workflow synthesis]
-    G --> H[Critic, contradiction and missing-relation probes]
-    H --> I[Project CandidateBundles]
-    I --> J[Candidate reconciliation]
-
-    K[Capability Router] --> C1
-    K --> C2
-    K --> C3
-    K --> F
-    K --> G
-    K --> H
+    C --> F[Main Agent defines batch question and output contract]
+    F --> G1[Child 1: same batch]
+    F --> G2[Child 2: same batch]
+    F --> GN[Child N: same batch]
+    G1 --> H[Await complete terminal sibling set]
+    G2 --> H
+    GN --> H
+    E --> I[Main Agent reconciliation]
+    H --> I
+    I --> J[Evidence-valid batch checkpoint]
+    J --> K[Feature/API working-tree projection]
+    J --> L[Conflict, quarantine and Gap ledgers]
+    J --> M[Dependent file/module/cross-module batch]
 ```
 
 The DAG runs in layers:
 
-1. **Leaf reading:** a model/Skill eligible inside the local/private source boundary directly reads the authorized raw SourceSlices for every eligible Artifact and emits source-anchored observations/Candidates.
-2. **File/module synthesis:** combine related leaf outputs with selected raw slices and optional Facts. A child summary alone is never sufficient evidence for a Candidate.
-3. **Cross-module reconstruction:** analyze public interfaces, calls between modules, workflows, state transitions, rules, data/configuration influence, and test intent.
-4. **Critic and gap probes:** independently challenge high-risk conclusions, contradictions, low-confidence regions, unassigned evidence, and unresolved boundaries.
-5. **Project synthesis:** form bounded CandidateBundles for reconciliation; it does not mint governed Feature identity.
+1. **Batch formation:** the deterministic planner turns each base, cross-cutting, follow-up, or synthesis partition into an immutable `AnalysisBatch`. It, not an LLM, proves total Inventory disposition.
+2. **Main planning:** the Main Agent adds the semantic question, focus, allowed tools, and exact output contract without changing the batch's authorized source scope or silently dropping Artifacts.
+3. **Same-batch fan-out:** the scheduler creates one `ChildWorkUnit` per active Child slot. Every sibling receives the same `analysisBatchId`, SourceSlice set, optional Fact set, task statement, and output schema. Each uses its own pinned model/Skill/MCP route and cannot see sibling output or private reasoning before committing.
+4. **Completion barrier:** reconciliation begins only when every required sibling is terminal. Success, explicit `NO_ELIGIBLE_PRODUCER`, timeout, budget Gap, and policy refusal are all terminal outcomes; missing output is never treated as agreement.
+5. **Main reconciliation:** the Main Agent compares the sibling outputs with deterministic Facts and prior lineage. A deterministic validator independently enforces schema, evidence scope, citation existence, confidence caps, and forbidden governed fields.
+6. **Checkpoint and projection:** only validated reconciliation output may update the Feature/API working tree. Raw Child output and unconstrained Main prose cannot mutate it. Conflicts, rejected evidence, and unknowns remain visible in ledgers.
+7. **Hierarchical continuation:** validated leaf batches unlock file/module batches; those unlock cross-module, contradiction, missing-relation, and project-synthesis batches. Every such batch repeats the same roster fan-out and reconciliation protocol.
 
-Each WorkUnit persists dependency IDs, Artifact/range inputs, optional Fact IDs, required capabilities, selected producer route, token/cost/deadline budgets, input/output digests, attempts, checkpoint, and structured output. Ready units execute in parallel under worker and provider concurrency quotas. Scheduling is at-least-once; an input-digest-bound result commit is exactly-once. Failure, timeout, or budget exhaustion creates an explicit Gap and never marks the covered Artifacts as semantically complete.
+```ts
+type AnalysisBatch = {
+  id: string;
+  workspaceId: string;
+  analysisRunId: string;
+  executionProfileRevisionId: string;
+  partitionId: string;
+  stage: "LEAF" | "FILE" | "MODULE" | "CROSS_MODULE" | "CHALLENGE" | "PROJECT_SYNTHESIS";
+  dependencyBatchIds: string[];
+  artifactIds: string[];
+  sourceRanges: Array<{ artifactId: string; startLine?: number; endLine?: number }>;
+  optionalFactIds: string[];
+  taskStatement: string;
+  outputSchemaId: string;
+  requiredChildSlotIds: string[];
+  inputDigest: string;
+};
+```
 
-During execution, a lane may enqueue a bounded `FOLLOW_UP` unit for an unresolved call, undocumented interface, unclear test, unknown configuration consumer, contradiction, or missing relation. Follow-up depth and total budget are fixed by policy; reaching either limit records `UNEXPLORED_BUDGET_LIMIT`.
+Each ChildWorkUnit persists the batch input digest, child slot and exact model/Skill/MCP revisions, attempts, budget, structured result, evidence references, and terminal reason. Ready batches execute in parallel under worker and provider quotas; siblings within a batch may also execute concurrently. Scheduling is at-least-once, while commits are idempotent by `(analysisBatchId, childSlotId, inputDigest)`. A Main reconciliation checkpoint is idempotent by the ordered complete sibling-output digest.
+
+During execution, reconciliation may enqueue a bounded `FOLLOW_UP` batch for an unresolved call, undocumented interface, unclear test, unknown configuration consumer, contradiction, or missing relation. Follow-up depth and total budget are fixed by policy; reaching either limit records `UNEXPLORED_BUDGET_LIMIT`.
 
 #### 3.3.3 Model and Skill routing
 
@@ -257,7 +247,7 @@ type ModelCapabilityProfile = {
   id: string;
   analysisModelProfileId: string;
   modelRevision: string;
-  roles: Array<"SOURCE_READER" | "MODULE_SYNTHESIS" | "CROSS_MODULE_REASONING" | "CRITIC">;
+  roles: Array<"MAIN_PLANNER" | "MAIN_RECONCILER" | "SOURCE_READER" | "MODULE_SYNTHESIS" | "CROSS_MODULE_REASONING" | "CRITIC">;
   languages: string[];
   artifactKinds: string[];
   structuredOutputSchemas: string[];
@@ -278,7 +268,9 @@ Signed Skill registrations already declare capabilities, language/framework comp
 This changes the current baseline, where Reverse Skills require both `PROJECT_SNAPSHOT` and `CODE_FACT_BUNDLE`.
 Direct-source WorkUnits require a `RAW_SOURCE_LOCAL` or `RAW_SOURCE_PRIVATE_RUNNER` producer route. An external model declared `FACTS_ONLY_EXTERNAL` may process policy-filtered Facts but never raw SourceSlices. If no in-boundary producer is eligible, analysis records `NO_ELIGIBLE_PRODUCER`.
 
-For each WorkUnit, a deterministic Capability Router intersects:
+Global models, Skills, and MCPs are configuration templates, not runtime capabilities. Creating or changing a Workspace resolves those templates plus Workspace additions, overrides, and removals into an immutable `WorkspaceExecutionProfileRevision`. The runtime is handed only this revision and its scoped credentials; it has no registry handle through which an Agent can discover or invoke a global Skill or MCP that the Workspace did not resolve.
+
+For the Main slot and each Child slot on every AnalysisBatch, a deterministic Capability Router intersects:
 
 - required role/capabilities, languages, artifact kinds, context size, and risk class;
 - verified ModelCapabilityProfiles;
@@ -286,12 +278,14 @@ For each WorkUnit, a deterministic Capability Router intersects:
 - source data boundary and tenant policy;
 - run quality, cost, deadline, concurrency, and redundancy policy.
 
-It persists an `AnalysisRouteDecision` containing eligible producers, the selected primary/critic routes, rejected routes with reason codes, exact model/Skill versions, calibration version, independence groups, and budgets. No model selects itself, no unverified profile is used, and a missing eligible producer becomes `NO_ELIGIBLE_PRODUCER` rather than an invisible generic fallback.
+It persists an `AnalysisRouteDecision` containing the Workspace profile revision, agent slot, eligible producers, selected route, rejected routes with reason codes, exact model/Skill/MCP versions, calibration version, independence group, and budgets. No model selects itself, no unverified profile is used, and a missing eligible producer becomes that slot's explicit `NO_ELIGIBLE_PRODUCER` outcome rather than an invisible generic fallback.
 
 The initial role/Skill routing baseline is:
 
 | WorkUnit role | Model profile must prove | Typical registered Skill capabilities | Primary evidence |
 |---|---|---|---|
+| `MAIN_PLANNER` | bounded planning, contract adherence, complete-scope preservation, and Gap honesty | `ANALYSIS_PLANNING`, `CONVENTION_INTERPRETATION` | AnalysisBatch, Inventory coverage, dependencies, Workspace conventions |
+| `MAIN_RECONCILER` | multi-output comparison, source-grounded contradiction detection, conservative confidence, and no-majority behavior | `REVERSE_REVIEW`, `EVIDENCE_RECONCILIATION`, domain capabilities required by the batch | complete sibling set, raw evidence, deterministic Facts, historical lineage |
 | `SOURCE_READER` | language/artifact support, schema adherence, source grounding, bounded-context behavior, and local/private raw-source eligibility | `ARCHITECTURE_REVERSE`, `BUSINESS_RULE_MINING`, `DATA_SEMANTICS`, `CONFIGURATION_ANALYSIS`, `TEST_INVENTORY_REVIEW` | raw SourceSlices; optional Facts |
 | `MODULE_SYNTHESIS` | long-context synthesis without citation loss and calibrated relation precision | `FEATURE_DISCOVERY`, `ARCHITECTURE_REVERSE`, `DOMAIN_MODELING`, `BUSINESS_RULE_MINING` | leaf outputs plus selected SourceSlices/Facts |
 | `CROSS_MODULE_REASONING` | cross-file graph/workflow/state reasoning and calibrated missing-relation recall | `FEATURE_DISCOVERY`, `STATE_MACHINE_RECOVERY`, `PERMISSION_ANALYSIS`, `DATA_SEMANTICS`, `CONFIGURATION_ANALYSIS`, `TEST_DESIGN`, `RUNTIME_CORRELATION`, `CHANGE_IMPACT` | module Candidates/evidence index plus selected SourceSlices/Facts |
@@ -310,14 +304,15 @@ A full run is one durable `AnalysisRun`, not one model request. Scale comes from
 - global synthesis sees bounded Candidate/evidence indexes plus selected SourceSlices, never every raw file at once;
 - completion requires `unassignedCount=0`, terminal state for every required WorkUnit, and every unsupported/budget-limited region represented as a Gap.
 
-Multiple models are supported, but not as an uncontrolled vote:
+Multiple models are supported through the Workspace roster, but never as an uncontrolled vote:
 
-1. **Partition parallelism (default):** route different WorkUnits to the best eligible model/Skill and run them concurrently.
-2. **Selective redundancy:** run two independently calibrated producers only for high-risk anchors, low-confidence output, contradictions, challenge samples, or policy-selected coverage—not for every file by default.
-3. **Independent critic:** a different `independenceGroup` reviews the Candidate plus its raw evidence without seeing private reasoning from the primary producer.
-4. **Evidence reconciliation:** deterministic validation and Candidate reconciliation compare citations, scopes, constraints, and contradictions. Two outputs from the same base model/prompt family are correlated evidence, not two independent votes.
+1. **Batch parallelism:** many bounded batches run concurrently subject to worker, provider, cost, and source-broker quotas.
+2. **Same-batch corroboration:** every active Child slot analyzes every batch. The default roster has two Child slots; a Workspace may add more. A Child may use Claude, Codex, Kimi, another calibrated model, or a local deterministic producer, but all receive the identical batch contract.
+3. **Independent execution:** each Child has a distinct slot identity and pinned route. `independenceGroup` records correlated model/prompt families, and siblings cannot read one another's outputs before the completion barrier.
+4. **Hierarchical reduction:** leaf evidence becomes reconciled file/module indexes; later batches use those bounded indexes plus selected raw SourceSlices. No request contains the whole repository.
+5. **Evidence reconciliation:** deterministic validation and the Main Agent compare citations, scopes, constraints, omissions, and contradictions against static Facts and history. Correlated agreement is labelled as such and does not count as independent proof.
 
-Agreement may raise corroboration only within calibrated evidence caps. Disagreement is preserved in ConflictLedger; majority count never creates truth or governed identity. An unresolved high-risk conflict goes to human Review/Decision.
+Agreement may raise corroboration only within calibrated evidence caps. Disagreement is preserved in ConflictLedger; majority count never creates truth or governed identity. Evidence-untrusted claims are quarantined rather than admitted or silently discarded. An unresolved high-risk conflict goes to human Review/Decision.
 
 #### 3.3.5 Candidate output contract
 
@@ -334,7 +329,7 @@ CandidateTestIntent:
   order-submit.test.js may exercise "Only DRAFT orders may be submitted"
 ```
 
-Every Candidate carries raw SourceSlice and/or Fact evidence, Snapshot and WorkUnit identity, producer/model/Skill version, route/calibration provenance, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Project, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
+Every Candidate carries raw SourceSlice and/or Fact evidence, Snapshot and WorkUnit identity, producer/model/Skill version, route/calibration provenance, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Workspace, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
 
 ### 3.4 Reconciliation algorithm: preserve identity uncertainty
 
@@ -388,9 +383,9 @@ The first successful project analysis must be `FULL`. A later `INCREMENTAL` run 
 
 ### 3.6 Current implementation boundary
 
-This section defines the F001 target, not a claim that every component already exists. Current code has deterministic JavaScript/Java and partial OpenAPI/SQL/config/test scanning, SnapshotManifest and FactBundle relations, bounded Fact-rooted Analysis WorkUnits and Candidate validation, one active model profile plus optional version-pinned Skills, a UI plan fixed to three child slots, incremental Candidate lineage, governed Feature/Claim/Decision/TestSpec/Evidence objects, and graph/trace projections.
+This section defines the F001 target, not a claim that every component already exists. Current code has deterministic JavaScript/Java and partial OpenAPI/SQL/config/test scanning, SnapshotManifest and FactBundle relations, bounded Fact-rooted Analysis WorkUnits and Candidate validation, one global active model profile plus optional version-pinned Skills, a planning/UI shape fixed to three child slots that does not drive same-batch server execution, a separate hard-coded local deterministic understanding runtime, incremental Candidate lineage, governed Feature/Claim/Decision/TestSpec/Evidence objects, and graph/trace projections.
 
-F001 still requires the complete server-owned SourceScanRun, multilingual canonical-scanner parity, complete ArtifactInventory, scanner-independent raw-source base coverage, deterministic UnderstandingPlan/partition coverage, dynamic WorkUnit DAG scheduling, ModelCapabilityProfile and capability routing, direct-source Skill inputs, selective multi-model/critic execution, SourceSlice Broker, global reconciliation and its ledgers, EvaluationRun/GraphRevision/CurrentGraphHead publication, and the two-Snapshot “Traqen analyzes Traqen” acceptance.
+F001 still requires the canonical server-owned Workspace aggregate and switch context, immutable Workspace-only execution profiles, one unified analysis runtime, complete server-owned SourceScanRun, multilingual canonical-scanner parity, complete ArtifactInventory, scanner-independent raw-source base coverage, deterministic UnderstandingPlan/partition coverage, same-batch ChildWorkUnit scheduling with a default-two configurable roster, Main planning/reconciliation, direct-source Skill inputs, SourceSlice Broker, complete-set reconciliation and its ledgers, EvaluationRun/GraphRevision/CurrentGraphHead publication, and the two-Snapshot “Traqen analyzes Traqen” acceptance.
 
 ## 4. User journey
 
@@ -414,6 +409,65 @@ Pause first persists `PAUSE_REQUESTED`. The worker commits the current atomic un
 
 ## 5. Lifecycle objects
 
+### Workspace and current context
+
+```ts
+type Workspace = {
+  id: string;
+  displayName: string;
+  status: "ACTIVE" | "DELETION_PENDING" | "DELETED";
+  currentGraphHeadId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CurrentWorkspaceContext = {
+  actorId: string;
+  workspaceId: string;
+  version: number;
+  selectedAt: string;
+};
+
+type WorkspaceViewPreference = {
+  actorId: string;
+  workspaceId: string;
+  visible: boolean;
+};
+```
+
+Show/hide changes only `WorkspaceViewPreference`; it never deletes the Workspace. Delete is an explicit audited lifecycle. Every command, query, subscription, cache key, and persisted analysis object carries `workspaceId`. UI responses are accepted only when their Workspace context version matches the current selection.
+
+### WorkspaceExecutionProfileRevision
+
+```ts
+type AgentSlot = {
+  id: string;
+  role: "MAIN" | "CHILD";
+  modelCapabilityProfileId: string;
+  skillRevisionIds: string[];
+  mcpGrantRevisionIds: string[];
+  independenceGroup: string;
+  policyRevisionId: string;
+};
+
+type WorkspaceExecutionProfileRevision = {
+  id: string;
+  workspaceId: string;
+  revision: number;
+  mainAgentSlot: AgentSlot;
+  childAgentSlots: AgentSlot[]; // length >= 1; default template resolves to 2
+  dependencyPolicyRevisionId: string;
+  conventionRevisionId: string;
+  resolvedSkillRevisionIds: string[];
+  resolvedMcpGrantRevisionIds: string[];
+  sourceTemplateRevisionIds: string[];
+  digest: string;
+  createdAt: string;
+};
+```
+
+The resolver merges global templates with Workspace additions, overrides, and removals. The stored result is immutable and is the only capability set mounted into a run.
+
 ### SourceRegistration
 
 Represents a server-authorized source locator.
@@ -421,7 +475,7 @@ Represents a server-authorized source locator.
 ```ts
 type SourceRegistration = {
   id: string;
-  projectId: string;
+  workspaceId: string;
   connectorKind: "LOCAL_FILESYSTEM";
   displayName: string;
   canonicalRootRef: string; // private/encrypted; not returned by normal read APIs
@@ -444,7 +498,7 @@ Registration rules:
 ```ts
 type SourceSnapshot = {
   id: string;
-  projectId: string;
+  workspaceId: string;
   sourceRegistrationId: string;
   manifestDigest: string;
   scannerVersion: string;
@@ -465,7 +519,7 @@ A sealed Snapshot is immutable. Source changes during the run are visible only t
 type SourceScanRun = {
   id: string;
   jobId: string;
-  projectId: string;
+  workspaceId: string;
   sourceSnapshotId: string;
   status:
     | "QUEUED" | "RUNNING" | "PAUSE_REQUESTED" | "PAUSED"
@@ -491,12 +545,12 @@ Completed units are skipped on recovery.
 
 ### AnalysisRun
 
-The canonical AnalysisRun remains the Agent owner. It may start only after a complete FactBundle exists for the same Project and Snapshot.
+The canonical AnalysisRun remains the Agent owner. It may start only after a complete FactBundle exists for the same Workspace and Snapshot.
 
 Every Analysis WorkUnit must preserve these boundaries:
 
 - `evidenceFactIds` belong to the target WorkUnit;
-- Facts belong to the same Project and Snapshot;
+- Facts belong to the same Workspace and Snapshot;
 - model confidence does not exceed deterministic evidence caps;
 - completed WorkUnits do not call the model or Skill again during recovery.
 
@@ -505,7 +559,8 @@ Every Analysis WorkUnit must preserve these boundaries:
 ```ts
 type WorkspaceAnalysisJob = {
   id: string;
-  projectId: string;
+  workspaceId: string;
+  executionProfileRevisionId: string;
   sourceRegistrationId: string;
   sourceSnapshotId: string | null;
   scanRunId: string | null;
@@ -535,13 +590,13 @@ type WorkspaceAnalysisJob = {
 
 Browser connection state is not job state. `CONNECTED / RECONNECTING / OFFLINE` is a client-only projection and may never overwrite the server job.
 
-Mode resolution is deterministic: when the Project has no `CurrentGraphHead`, `AUTO` resolves to `FULL` and explicit `INCREMENTAL` is rejected. Once a head exists, `AUTO` resolves to `INCREMENTAL`; an operator may still force `FULL`. Mode resolution is persisted before work starts and cannot change during Resume.
+Mode resolution is deterministic: when the Workspace has no `CurrentGraphHead`, `AUTO` resolves to `FULL` and explicit `INCREMENTAL` is rejected. Once a head exists, `AUTO` resolves to `INCREMENTAL`; an operator may still force `FULL`. Mode resolution is persisted before work starts and cannot change during Resume.
 
 ### BrowserSubscription
 
 IndexedDB stores only:
 
-- `projectId`;
+- `workspaceId`;
 - `jobId`;
 - the last observed version and timestamp.
 
@@ -577,8 +632,7 @@ The subscription is a non-authoritative pointer. It does not store authoritative
 | `PROJECTION` | immutable GraphRevision materialized | `PUBLISHING` |
 | `PUBLISHING` | GraphRevision becomes `PUBLISHED` and CurrentGraphHead moves atomically | `COMPLETED` / `COMPLETED_WITH_GAPS` |
 
-These job phases project the detailed F001 understanding pipeline defined in
-[`legacy-system-understanding-engine.md`](legacy-system-understanding-engine.md). Phase transitions and their output references commit atomically. A job cannot enter Analysis without a committed FactBundle, enter Evaluation without reconciliation ledgers, or complete without a published-or-rejected GraphRevision result.
+These phases are the authoritative F001 execution pipeline. Phase transitions and their output references commit atomically. A job cannot enter Analysis without a committed FactBundle, enter Evaluation without reconciliation ledgers, or complete without a published-or-rejected GraphRevision result.
 
 ## 7. Scan checkpoints
 
@@ -620,8 +674,10 @@ The browser execution path cannot be removed until required parity is 100%.
 ## 9. Analysis recovery
 
 - The AnalysisRun is pinned to the job's SourceSnapshot and FactBundle.
-- Pause may abort an in-flight model request, but that unit returns to `QUEUED` and is not recorded as complete.
-- A committed CandidateBundle is never recomputed.
+- It is also pinned to one immutable WorkspaceExecutionProfileRevision; Resume cannot silently pick newer global or Workspace configuration.
+- Pause may abort an in-flight Child or Main model request, but that unit returns to `QUEUED` and is not recorded as complete.
+- A committed ChildWorkUnit result or Main reconciliation checkpoint is never recomputed for the same input digest.
+- A partially completed sibling set remains durable; Resume schedules only missing Child slots and does not expose committed sibling output to them.
 - Resume keeps the same AnalysisRun.
 - Retry exhaustion follows an explicit gap/pause policy and never loops indefinitely.
 
@@ -662,19 +718,25 @@ Remote Git and browser source upload connectors are outside the first phase. A c
 ## 12. API draft
 
 ```http
-POST /v1/projects/{projectId}/source-registrations
-GET  /v1/projects/{projectId}/source-registrations/{registrationId}
-POST /v1/projects/{projectId}/source-registrations/{registrationId}/revoke
+POST   /v1/workspaces
+GET    /v1/workspaces
+GET    /v1/workspaces/{workspaceId}
+DELETE /v1/workspaces/{workspaceId}
+PUT    /v1/users/me/workspace-view-preferences/{workspaceId}
 
-POST /v1/projects/{projectId}/workspace-analysis-jobs
-GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}
-POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/pause
-POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/resume
-POST /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/cancel
-GET  /v1/projects/{projectId}/workspace-analysis-jobs/{jobId}/events
+POST /v1/workspaces/{workspaceId}/source-registrations
+GET  /v1/workspaces/{workspaceId}/source-registrations/{registrationId}
+POST /v1/workspaces/{workspaceId}/source-registrations/{registrationId}/revoke
+
+POST /v1/workspaces/{workspaceId}/analysis-jobs
+GET  /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}
+POST /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/pause
+POST /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/resume
+POST /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/cancel
+GET  /v1/workspaces/{workspaceId}/analysis-jobs/{jobId}/events
 ```
 
-Start references a source registration, model profile, and mode. It does not contain source bodies or browser-derived observations.
+Start references a source registration, immutable Workspace execution-profile revision, and mode. It does not contain source bodies or browser-derived observations.
 
 Job reads return:
 
@@ -734,13 +796,16 @@ UI rules:
 - **INV-7:** Manually paused jobs remain paused through refresh and restart.
 - **INV-8:** Running jobs automatically recover after worker/API restart.
 - **INV-9:** Client connection and server job states remain separate.
-- **INV-10:** Scan, Facts, and Analysis belong to the same Project and Snapshot.
+- **INV-10:** Scan, Facts, and Analysis belong to the same Workspace and Snapshot.
 - **INV-11:** External models never receive raw source or secrets.
 - **INV-12:** Scanner capability may not regress at cutover.
 - **INV-13:** every Inventory row has one base disposition and every eligible source Artifact is assigned for direct SourceSlice reading independent of scanner Facts.
 - **INV-14:** the same planning inputs produce the same Partition IDs, `unassignedCount=0`, and a dependency-acyclic dynamic WorkUnit DAG.
 - **INV-15:** every executable WorkUnit has a verified, version-pinned model/Skill route; missing capability is explicit.
 - **INV-16:** multi-model agreement is never counted as business truth; only evidence-backed reconciliation and human Decisions cross the governance boundary.
+- **INV-17:** every AnalysisBatch is sent to the complete active Child roster with identical source scope and output schema; Main reconciliation waits for every slot's terminal outcome.
+- **INV-18:** runtime capabilities come only from the immutable WorkspaceExecutionProfileRevision; global model/Skill/MCP templates are unreachable during execution.
+- **INV-19:** all module reads and writes carry `workspaceId` plus Workspace context version; stale responses from a prior selection are discarded.
 
 ## 16. Acceptance
 
@@ -760,8 +825,11 @@ UI rules:
 - Recover running work after worker/API restart while preserving manual pause.
 - With scanner Fact output empty, prove every eligible source Artifact is directly read or ends in an explicit Gap.
 - Replan the same large mixed-language Snapshot and prove stable Partition IDs, `unassignedCount=0`, bounded contexts, dynamic DAG completion, and no summary-only Candidate evidence.
-- Prove each WorkUnit route records verified model/Skill capabilities, exact versions, calibration, independence group, budgets, and rejected alternatives; unsupported capability becomes `NO_ELIGIBLE_PRODUCER`.
-- Prove selective independent critics preserve evidence disagreement in ConflictLedger and that neither correlated agreement nor majority count creates governed identity.
+- Prove the configured roster defaults to two Child slots, supports one or more, and sends every slot the same batch digest, source scope, task statement, and output schema.
+- Prove each Main/Child route records the immutable Workspace profile, verified model/Skill/MCP capabilities, exact versions, calibration, independence group, budgets, and rejected alternatives; an unsupported slot becomes `NO_ELIGIBLE_PRODUCER`.
+- Prove siblings cannot read one another's output before the completion barrier and Main reconciliation cannot publish from an incomplete sibling set.
+- Prove evidence disagreement remains in ConflictLedger, untrusted evidence is quarantined, and neither correlated agreement nor majority count creates governed identity.
+- Prove a global Skill/MCP absent from the Workspace execution-profile revision is unavailable at runtime.
 
 ### Security and consistency
 
@@ -774,6 +842,7 @@ UI rules:
 
 - Refresh changes connection state only.
 - Scan and Agent progress are independently visible under one job.
+- Switch Workspace during in-flight requests and prove every module rebinds while stale responses cannot alter the newly selected Workspace.
 - Mount, refresh, reconnect, and polling paths are GET-only.
 
 ## 17. Non-goals
@@ -795,5 +864,5 @@ UI rules:
 6. Compatibility migration and removal of browser execution authority.
 7. Large-repository, refresh, disconnect, pause/resume, restart, and visual acceptance.
 
-The detailed TDD plan is
-[`feature-specs/2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md`](../../feature-specs/2026-07-29-server-owned-workspace-scan-and-analysis-lifecycle.md).
+Implementation is sequenced by the single active plan:
+[`feature-specs/2026-07-31-traqen-product-foundation.md`](../../feature-specs/2026-07-31-traqen-product-foundation.md).

@@ -1,7 +1,7 @@
 import traceChainSource from "../../src/domain/trace-chain.js?raw";
 import featureGraphSource from "../../src/domain/feature-graph.js?raw";
-import featureTraceabilityDesignMarkdown from "../../docs/features/feature-traceability-design.zh-CN.md?raw";
-import featureTraceabilityDesignEnglishMarkdown from "../../docs/features/feature-traceability-design.md?raw";
+import featureApiTraceabilityMarkdown from "../../docs/features/F002-feature-api-traceability.zh-CN.md?raw";
+import featureApiTraceabilityEnglishMarkdown from "../../docs/features/F002-feature-api-traceability.md?raw";
 
 export type ConfirmationStatus = "PENDING" | "CONFIRMED" | "REJECTED" | "EXCEPTION_RECORDED";
 export type TestResultStatus = "PASS" | "FAIL" | "ERROR" | "NOT_RUN";
@@ -275,7 +275,7 @@ const testCases: TestCaseDefinition[] = [
     automationStatus: "READY",
     objective: "证明 Traqen Workspace 的 Markdown 设计文档同时存在英文与简体中文版本，并且语言切换链接可被自动发现。",
     preconditions: ["文档位于 docs/ 或仓库 README 边界", "文件名遵守 .zh-CN.md 配对约定"],
-    testData: ["docs/features/feature-traceability-design.md", "docs/features/feature-traceability-design.zh-CN.md"],
+    testData: ["docs/features/F002-feature-api-traceability.md", "docs/features/F002-feature-api-traceability.zh-CN.md"],
     steps: [
       {
         id: "discover-document-pairs",
@@ -326,12 +326,12 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
     status: "APPROVED",
     overview: "应用层加载治理基线、实现 Fact、测试与 Evidence；领域层生成相互独立的可信维度、有序 segment 和 TraceGap；图谱层提供有界投影与路径查询；Web 只展示服务端事实。",
     markdownFile: {
-      path: "docs/features/feature-traceability-design.zh-CN.md",
-      content: featureTraceabilityDesignMarkdown,
+      path: "docs/features/F002-feature-api-traceability.zh-CN.md",
+      content: featureApiTraceabilityMarkdown,
     },
     englishMarkdownFile: {
-      path: "docs/features/feature-traceability-design.md",
-      content: featureTraceabilityDesignEnglishMarkdown,
+      path: "docs/features/F002-feature-api-traceability.md",
+      content: featureApiTraceabilityEnglishMarkdown,
     },
     sourceFiles: [
       {
@@ -570,7 +570,7 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
       expected: "文档首行包含指向简体中文版本的语言切换链接",
       actual: "文档以一级标题开头，语言切换位于标题之后",
       errorCode: "ERR_ASSERTION",
-      errorMessage: "docs/features/feature-traceability-design.md must begin with a bilingual language switch",
+      errorMessage: "docs/features/F002-feature-api-traceability.md must begin with a bilingual language switch",
       evidenceIds: ["EVIDENCE-BILINGUAL-DOC-FAIL-005"],
     },
     {

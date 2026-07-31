@@ -1,5 +1,13 @@
 > Language: **English** · [简体中文](ROADMAP.zh-CN.md)
 
+---
+feature_ids: [F001, F002, F003, F004, F005, F006]
+topics: [roadmap, product-modules, delivery]
+doc_kind: roadmap
+created: 2026-07-29
+updated: 2026-07-31
+---
+
 # Traqen Feature Roadmap
 
 Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle tracking.
@@ -9,9 +17,25 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 - Active Features appear here; completed Features remain permanently addressable from their aggregation document.
 - An `Fxxx` roadmap ID is an engineering-delivery identifier. It is **not** a governed business `Feature.id` in Traqen's traceability ontology.
 - Historical documents may retain topic-style `feature_ids` until they are associated with an `Fxxx`; new formal Features use `Fxxx`.
+- One product module has one active `docs/features/Fxxx-*.md` aggregation source. Detailed shared architecture belongs under `docs/architecture/`; discussions and implementation plans do not compete with Feature truth.
 
 ## Active
 
 | ID | Priority | Feature | Status | Owner | Source | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | Legacy-system understanding and canonical graph construction | spec | CodeX | operator core requirement | [F001](features/F001-legacy-system-understanding.md) |
+| F001 | P0 | Workspace and legacy-system analysis foundation | spec | CodeX | operator core requirement | [F001](features/F001-legacy-system-understanding.md) |
+| F002 | P0 | Feature and API traceability | spec | TBD | operator product plan | [F002](features/F002-feature-api-traceability.md) |
+| F003 | P1 | Traceability graph | spec | TBD | operator product plan | [F003](features/F003-traceability-graph.md) |
+| F004 | P0 | Claim review | spec | TBD | operator product plan | [F004](features/F004-claim-review.md) |
+| F005 | P1 | Change impact | spec | TBD | operator product plan | [F005](features/F005-change-impact.md) |
+| F006 | P0 | Workspace capability settings | spec | TBD | operator product plan | [F006](features/F006-workspace-capability-settings.md) |
+
+## Delivery waves
+
+| Wave | Goal | Features | Exit evidence |
+|---|---|---|---|
+| 0 | Establish one Workspace root and one effective capability profile | F006 + F001 contracts | switching isolation, configuration-resolution tests, no global Skill/MCP access |
+| 1 | Replace competing scan/Agent paths with one durable analysis runtime | F001 | complete inventory, same-batch Child fan-out, reconciliation, published graph |
+| 2 | Make the graph reviewable through current/history trees and a review queue | F002 + F004 | end-to-end evidence journey and batch review |
+| 3 | Explore and evolve the graph | F003 + F005 | explainable graph paths and full-to-incremental impact |
+| 4 | Prove the system on itself | all | two pinned Traqen Snapshots, independent acceptance, no demo fallback |

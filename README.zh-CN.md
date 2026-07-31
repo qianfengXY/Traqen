@@ -8,17 +8,13 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 > 对于每个纳入治理的高价值 Feature，展示一条从已确认业务意图到实际部署 Evidence 的可解释追踪链，并显式暴露每个缺失、陈旧、冲突或失败的环节。
 
-本地 Workspace 分析 Agent 还针对真实的 [`zts212653/clowder-ai`](https://github.com/zts212653/clowder-ai) monorepo 固定提交进行了验证。对应的[双语验证报告](docs/implementation/clowder-ai-workspace-analysis-2026-07-18.zh-CN.md)记录了实际规模、误报修正、领域树、保守的测试/配置关联，以及实现候选与已确认业务 Feature 之间的区别。
-
-扫描器还针对真实的 [`openclaw/openclaw`](https://github.com/openclaw/openclaw) 仓库进行了验证。[OpenClaw 验证报告](docs/implementation/openclaw-workspace-analysis-2026-07-22.zh-CN.md)记录了完整仓库规模、完整核心 `src` 树的有界扫描、OpenClaw 自定义 Gateway/RPC 描述模型的识别修正、实现源码关联，以及仍存在的语言与语义分析缺口。
-
 初始化后的功能树无需重新扫描即可在两种全局投影间切换：纯业务能力视图排除 API 与工程命令，API 视图只包含 HTTP/OpenAPI 接口。Workspace 统计、功能追溯和追溯图谱始终跟随同一个当前投影。
 
 点击侧栏 Workspace 旁的“+”会先创建并持久化项目身份；项目创建成功后，才可选择代码目录并启动首次全量分析。若当前 Workspace 正在分析，新项目只会加入列表，不会切换上下文或清空正在运行的主/子 Agent 会话；待任务完成或暂停后再切换。
 
 Web 工作台现在默认使用[企业蓝主题](docs/design/enterprise-blue-theme.zh-CN.md)，提供全局持久化主题切换，并针对信息密集的 27 英寸桌面进行布局优化。该配色与组件规范统一覆盖 Workspace 分析、功能追溯、图谱、审核、影响、指标、表单、表格和有界 Agent 控制台。
 
-开始本地 Workspace 分析前，先在全局顶部打开“配置分析模型”，添加一个或多个 OpenAI-compatible Profile，填写 API 地址、模型名称、API Key，以及可选的 Stream/SSE 策略。运行时 Profile 与凭据会加密保存在当前设备的 Traqen 配置目录；未变更密钥时，可直接编辑、验证、选择或删除模型，无需重复输入。Web 与 API 进程必须来自同一个仓库版本；旧版 API 不包含模型配置路由。Agent 会话顶部固定一个流式主 Agent 对话，下面固定三个子 Agent 对话；四个窗口高度固定，长会话在窗口内部滚动。进入其他产品页面时，Workspace 会话继续保持挂载，所以返回后仍能看到活动任务、对话、耗时和进度；真正刷新或中断后则恢复成已暂停的持久化检查点进度。公开 Agent 消息采用类似 Codex 的精炼结构，持续展示目标、动作、发现、证据、不确定性、检查点和下一步；原始传输细节只保留在诊断区。主 Agent 的任务地图来自独立 Source Manifest，而不是扫描候选；目标架构让确定性扫描、ECC 类源码 Skill 和 Specone 类规格 Skill 从同一 Snapshot 独立工作后再对账。外部 Skill 未配置时必须明确显示缺席，内置参考适配器不能冒充真实集成。子 Agent 达到上下文安全阈值后，会先完成当前工作单元、保存交接摘要，再在同一槽位启动下一代实例。原始提示词、JSON、请求标识和 Token 诊断只位于默认关闭的“技术诊断”中，绝不展示模型私有推理。模型 JSON 不完整时会识别为截断并自动缩小有界批次重试，不会靠臆造内容补齐。如果最小有界单元仍然无效，Traqen 会保留确定性证据，只把该单元标记为“待模型判定”，保存检查点并继续整轮分析。提取器观察会携带独立旁证、诊断、完整性和置信度上限；AST 或规则匹配绝不会被直接当成业务真相。Workspace 展示管理可以把项目移出侧栏而不删除扫描结果；隐藏项目不会加载源码索引、功能树或追溯快照。
+当前代码已经具备可复用的领域、扫描、图谱、历史、影响分析和模型 Profile 能力，但尚未实现完整目标产品。特别是当前 UI 固定三个子 Agent 面板、旧链路依赖 Scanner/Facts，这些只是实现基线，不是目标合同。活动设计把 Workspace 设为聚合根，默认两个且可配置的子 Agent，把同一个有界批次发给每个活动子 Agent，由主 Agent 对照静态 Facts 对全部 sibling 结果进行对账，并把模型/Skill/MCP 解析成不可变、仅限 Workspace 的执行 Profile。详见[产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)、[F001 生命周期](docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md)和[文档真相源导航](docs/README.zh-CN.md)。
 
 ## 实施基础
 
@@ -264,7 +260,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 Fact API 接受 `POST /v1/projects/{projectId}/fact-scans` 处的签名包，并从 `GET /v1/projects/{projectId}/facts` 返回过滤后的一跳图。其 `type`、`predicate`、`q`、`snapshotManifestId` 和 `limit` 查询参数是可选的。
 
-当所选 Snapshot 已具有确定性 Facts 后，通过 `POST /v1/projects/{projectId}/analysis-runs` 启动分析 Agent。运行默认异步，并可在同一个 `/analysis-runs/{analysisRunId}` 资源下查询、暂停和续跑。从 `/analysis-results/latest` 读取最新当前投影，从 `/features/{featureId}/analysis-history` 查询不可变 Feature 演进历史。运行时模型可通过 `/v1/analysis-model-profiles` 配置并验证，托管模型仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 预置；凭据、有界 Workspace 增强、增量行为与权威继承规则见[双语分析 Agent 设计](docs/features/analysis-agent-design.zh-CN.md)。
+当所选 Snapshot 已具有确定性 Facts 后，通过 `POST /v1/projects/{projectId}/analysis-runs` 启动当前 Analysis Agent。运行默认异步，并可在同一个 `/analysis-runs/{analysisRunId}` 资源下查询、暂停和续跑。从 `/analysis-results/latest` 读取最新当前投影，从 `/features/{featureId}/analysis-history` 查询不可变 Feature 演进历史。运行时模型可通过 `/v1/analysis-model-profiles` 配置并验证，托管模型仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 预置。这些路由描述当前实现基线；目标 Workspace 隔离的主/子 Agent 合同由 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md) 定义。
 
 `npm run pilot:order-submit` 是可复制的存储库内 MVP 证明。它仅使用合成数据以及真实飞行员使用的相同通用Scanner、Skill、审查、TestSpec、Runner、Evidence、影响和修复路径； Traqen 核心中不存在特定于订单的行为。
 
@@ -284,4 +280,4 @@ Reverse Skill 清单在 `POST/GET /v1/skills` 中注册和列出。有界运行�
 
 在新的反向运行中分析更改的实现后，授权开发人员或架构师可以使用 `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses` 修复过时的实现部分。这将为现有 Claim 和 Scope 创建新的 Snapshot 绑定映射和一致性记录；它从不编辑或替换规范的 Decision。
 
-详细设计见 [docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md](docs/architecture/enterprise-traceable-quality-platform-design-v0.2.md)。当前仓库的验收结果和明确的外部试点边界记录在 [docs/implementation/mvp-acceptance-audit-2026-07-14.md](docs/implementation/mvp-acceptance-audit-2026-07-14.md)；生产启动与引导由 [docs/implementation/production-runtime-validation-2026-07-14.md](docs/implementation/production-runtime-validation-2026-07-14.md) 说明。完整约定见[文档导航与双语维护策略](docs/README.zh-CN.md)。
+当前设计从 [Traqen 产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)开始。被替代的设计与验证文档不进入本次基线；Git 历史仍是可恢复记录。完整约定见[文档真相源导航与双语维护策略](docs/README.zh-CN.md)。

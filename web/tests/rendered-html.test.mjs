@@ -90,8 +90,9 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(detailModel, /failedStepId/);
   assert.match(detailModel, /"DEV" \| "SIT" \| "UAT" \| "PROD"/);
   assert.match(detailModel, /applicability: "CURRENT" \| "HISTORICAL"/);
-  assert.match(detailModel, /feature-traceability-design\.zh-CN\.md\?raw/);
-  assert.match(detailModel, /feature-traceability-design\.md\?raw/);
+  assert.match(detailModel, /F002-feature-api-traceability\.zh-CN\.md\?raw/);
+  assert.match(detailModel, /F002-feature-api-traceability\.md\?raw/);
+  assert.doesNotMatch(detailModel, /feature-traceability-design/);
   assert.match(product, /LanguageContext/);
   assert.match(product, /ThemeProvider/);
   assert.match(product, /ThemeSwitcher/);

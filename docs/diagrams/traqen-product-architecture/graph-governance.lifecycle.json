@@ -1,0 +1,198 @@
+{
+  "schema_version": 1,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Candidate Review and Graph Publication Lifecycle",
+    "subtitle": "Automation stays editable; only Decisions and evaluated revisions cross the authority boundary",
+    "output": "docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html",
+    "animation": "trace",
+    "visual_preset": "editorial",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 820],
+    "views": [
+      {
+        "id": "authority_path",
+        "label": "Authority path",
+        "focus": ["raw", "validated", "decision", "evaluating", "published"],
+        "note": "A Candidate becomes governed only through a human Decision and a passing GraphRevision."
+      },
+      {
+        "id": "editable_automation",
+        "label": "Editable automation",
+        "focus": ["validated", "autoadmit", "decision"],
+        "note": "An automated working-tree outcome can be edited and never bypasses governance."
+      },
+      {
+        "id": "visible_uncertainty",
+        "label": "Visible uncertainty",
+        "focus": ["exceptions", "decision"],
+        "note": "Invalid evidence and unresolved alternatives remain visible with reasons."
+      },
+      {
+        "id": "fail_closed",
+        "label": "Fail-closed publish",
+        "focus": ["evaluating", "published", "rejected"],
+        "note": "A rejected revision preserves its diagnostics and cannot move CurrentGraphHead."
+      }
+    ]
+  },
+  "lanes": [
+    {"id": "main", "label": "Authority lifecycle"},
+    {"id": "automation", "label": "Editable automation"},
+    {"id": "uncertainty", "label": "Evidence exceptions"},
+    {"id": "terminal", "label": "Terminal outcomes"}
+  ],
+  "states": [
+    {
+      "id": "raw",
+      "type": "start",
+      "label": "Raw Candidate",
+      "sublabel": "Agent / scanner output",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "no authority",
+      "width": 112
+    },
+    {
+      "id": "validated",
+      "type": "active",
+      "label": "Evidence valid",
+      "sublabel": "schema + scope + citations",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "Candidate only",
+      "width": 118
+    },
+    {
+      "id": "decision",
+      "type": "decision",
+      "label": "Human Decision",
+      "sublabel": "review · edit · accept · reject",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "authority",
+      "width": 122
+    },
+    {
+      "id": "evaluating",
+      "type": "active",
+      "label": "Evaluating",
+      "sublabel": "build GraphRevision",
+      "lane": "main",
+      "col": 3,
+      "step": "04",
+      "tag": "head unchanged"
+    },
+    {
+      "id": "published",
+      "type": "success",
+      "label": "Published",
+      "sublabel": "atomic head move",
+      "lane": "main",
+      "col": 4,
+      "step": "05",
+      "tag": "history kept"
+    },
+    {
+      "id": "autoadmit",
+      "type": "neutral",
+      "label": "Auto outcome",
+      "sublabel": "working tree only",
+      "lane": "automation",
+      "col": 0,
+      "tag": "editable",
+      "yOffset": -76
+    },
+    {
+      "id": "exceptions",
+      "type": "failure",
+      "label": "Quarantine / Conflict",
+      "sublabel": "invalid or contradictory",
+      "lane": "uncertainty",
+      "col": 0,
+      "tag": "never silent",
+      "width": 126,
+      "yOffset": 72
+    },
+    {
+      "id": "rejected",
+      "type": "failure",
+      "label": "Rejected",
+      "sublabel": "prior head remains",
+      "lane": "terminal",
+      "col": 2,
+      "tag": "diagnostics kept"
+    }
+  ],
+  "transitions": [
+    {"id": "raw_validated", "from": "raw", "to": "validated", "variant": "emphasis"},
+    {"id": "validated_decision", "from": "validated", "to": "decision", "variant": "security"},
+    {"id": "decision_evaluate", "from": "decision", "to": "evaluating", "variant": "security"},
+    {"id": "evaluate_publish", "from": "evaluating", "to": "published", "variant": "emphasis"},
+    {
+      "id": "validated_auto",
+      "from": "validated",
+      "to": "autoadmit",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "bottom-channel",
+      "channelY": 215
+    },
+    {
+      "id": "raw_exceptions",
+      "from": "raw",
+      "to": "exceptions",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "bottom-channel",
+      "channelY": 340
+    },
+    {
+      "id": "evaluation_rejected",
+      "from": "evaluating",
+      "to": "rejected",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "bottom-channel",
+      "channelY": 660
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Candidate is not authority",
+      "items": [
+        "Scanner and Agent outputs begin as Candidates",
+        "Evidence validation cannot mint governed identity",
+        "Names, paths, confidence, and votes are insufficient",
+        "Working-tree visibility remains provisional"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Review remains editable",
+      "items": [
+        "Evidence-insufficient items enter a review queue",
+        "Batch review records one explicit policy revision",
+        "Automated outcomes can be opened and edited",
+        "Every outcome preserves actor and evidence provenance"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Publication is fail-closed",
+      "items": [
+        "Only a Decision can change governed objects",
+        "GraphRevision evaluation runs before publication",
+        "A failing revision cannot move CurrentGraphHead",
+        "History, impacts, and evidence remain append-only"
+      ]
+    }
+  ]
+}
