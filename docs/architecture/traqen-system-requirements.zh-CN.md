@@ -246,7 +246,7 @@ Feature
 | SR-020 | 只有 Decision 能创建新的业务 FeatureVersion；代码、配置、测试或部署变化只更新实现、符合性、影响与验证历史，不能静默改变业务定义。 |
 | SR-021 | 从 Snapshot/ArtifactInventory 派生确定性完整 UnderstandingPlan，Partition 稳定、`unassignedCount=0`，并用有界动态 WorkUnit 依赖 DAG 扩展到超出单 Prompt 或固定子任务数量的工程。 |
 | SR-022 | 每个 WorkUnit 都必须基于已验证模型能力/校准 Profile、签名 Skill 合同与部署数据边界持久化版本固定的 AnalysisRouteDecision；能力缺失必须以 `NO_ELIGIBLE_PRODUCER` 关闭失败。 |
-| SR-023 | 默认按 Partition 并行使用模型，只对选定范围采用相互独立的 Producer/Critic 冗余；对原始证据做对账并保留冲突，不能把相关一致或多数票当真相。 |
+| SR-023 | 每个有界 AnalysisBatch 都发送给所有已配置且相互独立的子 Agent；Batch 与同批 sibling 可以并发，但主 Agent 必须对完整终态 sibling 集合与静态 Facts 做对账并保留冲突，不能把相关一致或多数票当真相。 |
 
 ## 9. 核心用户旅程
 
@@ -376,22 +376,23 @@ operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Revi
 
 ## 13. 交付顺序
 
-1. **F001——存量系统理解与 canonical graph 构建**：正确性合同、清点、独立分析通道、对账、持久编排和 Traqen 自分析。
-2. **受治理基线**：operator Decision 把审核 Candidate 转为稳定 FeatureVersion、Claim、Taxonomy 和 TestSpec。
-3. **执行验证**：受控 Runner 产生版本绑定的 VerificationResult 与 Evidence。
-4. **持续保护**：Snapshot Diff 驱动 Impact、失效和重验证。
-5. **企业规模化**：在不削弱真相模型的前提下增加 Connector、策略、分布式 Worker、可观测性与保留策略。
+1. **F006 + F001——Workspace 能力隔离与分析基础**：建立 Workspace 所有权，物化项目专属运行 Profile，扫描完整源码，以相同批次执行相互独立的子 Agent 分析，由主 Agent 对账，并证明持久编排。
+2. **F002 + F004——追溯与审核**：展示最新/历史 Feature 与 API 证据、Gap、批量审核及可编辑的自动通过项。
+3. **F003——图谱投影**：在同一 Canonical Ledger 上提供受治理、Workspace 作用域内的路径探索。
+4. **F005——变更影响**：比较 Snapshot，保留 Feature 历史，计算受影响对象并驱动再验证。
+5. **企业规模化**：核心发布门禁通过后，再增加 Connector、策略、分布式 Worker、可观测性和保留策略。
 
 ## 14. 与现有设计的关系
 
 本文是系统需求真相源，但不替代：
 
-- `enterprise-traceable-quality-platform-design-v0.2.md`：详细架构；
+- `traqen-product-architecture.zh-CN.md`：当前产品架构与实现差距图；
 - ADR-0001：canonical ontology 与权威边界；
-- F001：第一项关键理解引擎交付；
-- 生命周期、Agent、图谱、TestSpec、Runner 和 Evidence 子系统设计。
+- 活动 `F001`～`F006` 文档：Feature 验收合同；
+- 当前实施计划与详细生命周期设计。
 
 这些文档如果和本文产品使命冲突，必须显式解决，不能静默实现。
+被替代设计与历史验证从工作树删除。Git 历史是可恢复记录，不得覆盖上述真相源。
 
 ## 15. 验收状态
 

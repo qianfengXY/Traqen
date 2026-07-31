@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Workspace Analysis · Same-Batch Multi-Agent Reconciliation",
+    "subtitle": "Complete source scope → identical Child inputs → evidence-gated working-tree update",
+    "output": "docs/diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "viewBox": [960, 1120],
+    "views": [
+      {
+        "id": "coverage",
+        "label": "Complete coverage",
+        "focus": ["scope", "partition", "batch"],
+        "note": "Deterministic planning proves total Inventory disposition before model execution."
+      },
+      {
+        "id": "same_batch",
+        "label": "Same-batch roster",
+        "focus": ["batch", "roster", "reconcile"],
+        "note": "Every active Child receives the same source scope, task, and output schema."
+      },
+      {
+        "id": "truth_gate",
+        "label": "Truth boundary",
+        "focus": ["facts", "reconcile", "tree", "exceptions"],
+        "note": "Only evidence-valid reconciliation updates the working tree; conflicts remain visible."
+      }
+    ]
+  },
+  "lanes": [
+    {"id": "source", "label": "Immutable source"},
+    {"id": "planning", "label": "Deterministic planning"},
+    {"id": "batching", "label": "Sealed batch contract"},
+    {"id": "children", "label": "Independent Child roster"},
+    {"id": "reconciliation", "label": "Main reconciliation"},
+    {"id": "static", "label": "Static evidence"},
+    {"id": "projection", "label": "Working projection"},
+    {"id": "exception", "label": "Explicit exceptions", "variant": "exception"}
+  ],
+  "phases": [
+    {"id": "seal", "label": "Seal scope", "fromCol": 0, "toCol": 1},
+    {"id": "analyze", "label": "Plan + analyze", "fromCol": 2, "toCol": 3, "variant": "emphasis"},
+    {"id": "gate", "label": "Reconcile + project", "fromCol": 4, "toCol": 5, "variant": "security"}
+  ],
+  "groups": [
+    {"id": "same_input", "label": "Same AnalysisBatch · isolated execution", "lane": "children", "fromCol": 2, "toCol": 3, "variant": "emphasis"},
+    {"id": "no_raw_output", "label": "Raw model output cannot cross", "lane": "reconciliation", "fromCol": 4, "toCol": 5, "variant": "security"}
+  ],
+  "mainPath": ["scope", "partition", "batch", "roster", "reconcile", "tree"],
+  "nodes": [
+    {
+      "id": "scope",
+      "lane": "source",
+      "col": 0,
+      "type": "database",
+      "label": "Source scope",
+      "sublabel": "Snapshot + Inventory",
+      "tag": "complete"
+    },
+    {
+      "id": "partition",
+      "lane": "planning",
+      "col": 1,
+      "type": "backend",
+      "label": "Partition",
+      "sublabel": "bounded + complete",
+      "tag": "unassigned = 0"
+    },
+    {
+      "id": "batch",
+      "lane": "batching",
+      "col": 2,
+      "type": "messagebus",
+      "label": "AnalysisBatch",
+      "sublabel": "sealed shared input",
+      "tag": "one digest"
+    },
+    {
+      "id": "roster",
+      "lane": "children",
+      "col": 3,
+      "type": "backend",
+      "label": "Child roster",
+      "sublabel": "same input · isolated",
+      "tag": "default 2 · 1..N"
+    },
+    {
+      "id": "reconcile",
+      "lane": "reconciliation",
+      "col": 4,
+      "type": "security",
+      "label": "Main reconcile",
+      "sublabel": "await all terminal",
+      "tag": "evidence gate",
+      "width": 118
+    },
+    {
+      "id": "facts",
+      "lane": "static",
+      "col": 3,
+      "type": "database",
+      "label": "Static facts",
+      "sublabel": "independent reference",
+      "tag": "not task source"
+    },
+    {
+      "id": "tree",
+      "lane": "projection",
+      "col": 5,
+      "type": "frontend",
+      "label": "Working tree",
+      "sublabel": "reconciled only",
+      "tag": "Feature + API"
+    },
+    {
+      "id": "exceptions",
+      "lane": "exception",
+      "col": 5,
+      "type": "security",
+      "label": "Conflict / Gap",
+      "sublabel": "quarantine + reason",
+      "tag": "never silent",
+      "width": 110
+    }
+  ],
+  "edges": [
+    {"id": "scope_partition", "from": "scope", "to": "partition", "variant": "emphasis"},
+    {
+      "id": "partition_batch",
+      "from": "partition",
+      "to": "batch",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "drop",
+      "bias": 0.35
+    },
+    {"id": "batch_roster", "from": "batch", "to": "roster", "variant": "emphasis"},
+    {"id": "roster_reconcile", "from": "roster", "to": "reconcile", "variant": "security"},
+    {"id": "reconcile_tree", "from": "reconcile", "to": "tree", "variant": "emphasis"},
+    {
+      "id": "scope_facts",
+      "from": "scope",
+      "to": "facts",
+      "label": "parallel scan",
+      "variant": "dashed",
+      "role": "async",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "route": "bottom-channel",
+      "channelY": 685,
+      "labelSegment": 1
+    },
+    {
+      "id": "facts_reconcile",
+      "from": "facts",
+      "to": "reconcile",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "right",
+      "toSide": "right",
+      "route": "outside-right",
+      "channelX": 690
+    },
+    {
+      "id": "reconcile_exceptions",
+      "from": "reconcile",
+      "to": "exceptions",
+      "label": "invalid / disputed",
+      "variant": "security",
+      "role": "error",
+      "fromSide": "right",
+      "toSide": "right",
+      "route": "outside-right",
+      "labelSegment": 1
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Large repository",
+      "items": [
+        "The repository becomes many bounded batches",
+        "Batches run concurrently under explicit quotas",
+        "No request contains the whole repository",
+        "Every Inventory row remains accounted for"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Independent corroboration",
+      "items": [
+        "Default roster is two Child slots",
+        "All active Children receive the same batch",
+        "Sibling outputs stay hidden until completion",
+        "Each slot pins its model, Skills, and MCPs"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Truth boundary",
+      "items": [
+        "Agreement cannot bypass evidence caps",
+        "Majority count never creates truth",
+        "Invalid evidence is quarantined with reasons",
+        "Only reconciliation updates the working tree"
+      ]
+    }
+  ]
+}

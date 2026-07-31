@@ -1,5 +1,7 @@
 > 语言：**简体中文** · [English](feature-traceability-design.md)
 
+> **兼容路径：** 当前 Web 构建仍把此文件作为展示内容导入。活动合同见 [F002](F002-feature-api-traceability.zh-CN.md)；实施计划要求迁移导入后删除此路径。
+
 # 功能追溯设计
 
 ## 目标

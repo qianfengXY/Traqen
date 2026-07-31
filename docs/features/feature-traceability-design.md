@@ -1,5 +1,7 @@
 > Language: **English** · [简体中文](feature-traceability-design.zh-CN.md)
 
+> **Compatibility path:** the current Web build imports this file as display content. The active contract is [F002](F002-feature-api-traceability.md); the implementation plan requires migrating the import and then deleting this path.
+
 # Feature traceability design
 
 ## Goal

@@ -246,7 +246,7 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-020 | Let only a Decision create a new business FeatureVersion; code, configuration, test, or deployment changes update implementation, conformance, impact, and verification history instead. |
 | SR-021 | Derive a deterministic complete UnderstandingPlan from Snapshot/ArtifactInventory with stable partitions, `unassignedCount=0`, and a bounded dynamic WorkUnit dependency DAG that scales beyond one prompt or fixed child count. |
 | SR-022 | Persist a version-pinned AnalysisRouteDecision for every WorkUnit using verified model capability/calibration profiles, signed Skill contracts, and deployment data boundaries; missing capability must fail closed as `NO_ELIGIBLE_PRODUCER`. |
-| SR-023 | Use model parallelism by partition and selective independent Producer/Critic redundancy; reconcile raw evidence and preserve conflict instead of using correlated agreement or majority count as truth. |
+| SR-023 | Send each bounded AnalysisBatch to every configured independent Child Agent, allow batches and siblings to run concurrently, and require the Main Agent to reconcile the complete terminal sibling set against static Facts while preserving conflict instead of using correlated agreement or majority count as truth. |
 
 ## 9. Primary user journeys
 
@@ -376,22 +376,23 @@ Thresholds are versioned in the evaluation policy. A threshold change is a gover
 
 ## 13. Delivery sequence
 
-1. **F001 — Legacy-system understanding and canonical graph construction**: correctness contract, inventory, independent analysis lanes, reconciliation, durable orchestration, and Traqen self-analysis.
-2. **Governed baseline**: operator Decisions turn reviewed Candidates into stable FeatureVersions, Claims, taxonomy, and TestSpecs.
-3. **Execution verification**: controlled Runners produce version-bound VerificationResults and Evidence.
-4. **Continuous protection**: Snapshot diffs drive impact analysis, invalidation, and revalidation.
-5. **Enterprise scale**: connectors, policy, distributed workers, observability, and retention without weakening the truth model.
+1. **F006 + F001 — Workspace capability isolation and analysis foundation**: establish Workspace ownership, materialize project-only runtime profiles, scan the complete source, execute same-batch independent Child analysis, reconcile through the Main Agent, and prove durable orchestration.
+2. **F002 + F004 — traceability and review**: expose latest/historical Feature and API evidence, gaps, batch review, and editable automated admissions.
+3. **F003 — graph projection**: provide governed, Workspace-scoped path exploration over the same canonical ledgers.
+4. **F005 — change impact**: compare Snapshots, preserve Feature history, calculate affected objects, and drive revalidation.
+5. **Enterprise scale**: add connectors, policy, distributed workers, observability, and retention after the core release gates pass.
 
 ## 14. Existing design relationship
 
 This document is the system requirements source. It does not replace:
 
-- `enterprise-traceable-quality-platform-design-v0.2.en.md`, which provides the detailed architecture;
+- `traqen-product-architecture.md`, which provides the current product architecture and implementation gap map;
 - ADR-0001, which governs the canonical ontology and authority boundaries;
-- F001, which delivers the first critical understanding engine;
-- lifecycle, Agent, graph, TestSpec, Runner, and Evidence designs, which specify individual subsystems.
+- active `F001`–`F006` documents, which define Feature acceptance;
+- the current implementation plan and detailed lifecycle design.
 
 When those documents conflict with this product mission, the conflict must be resolved explicitly rather than implemented silently.
+Superseded designs and historical validations are removed from the working tree. Git history is the recovery record and does not override these sources.
 
 ## 15. Acceptance status
 
