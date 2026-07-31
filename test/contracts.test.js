@@ -51,7 +51,22 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.ok(contract.components.schemas.WorkspaceModelCandidate.required.includes("evidence"));
   assert.equal(contract.components.schemas.WorkspaceEvidenceAssessment.properties.confidenceCap.enum.includes("HIGH"), true);
   assert.ok(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.responses["200"].content["application/x-ndjson"]);
-  assert.equal(contract.components.schemas.WorkspaceAnalysisPlan.properties.taskAssignments.minItems, 3);
+  assert.equal(contract.components.schemas.WorkspaceAnalysisPlan.properties.taskAssignments.minItems, 1);
+  assert.equal(contract.paths["/v1/workspaces"].get.operationId, "listWorkspaces");
+  assert.equal(contract.paths["/v1/workspaces"].post.operationId, "createWorkspace");
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}"].patch.operationId, "renameWorkspace");
+  assert.equal(
+    contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].post.operationId,
+    "resolveWorkspaceExecutionProfileRevision",
+  );
+  assert.equal(
+    contract.paths["/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/barrier"].post.operationId,
+    "openWorkspaceAnalysisBatchBarrier",
+  );
+  assert.equal(
+    contract.paths["/v1/workspaces/{workspaceId}/review-decisions/batch"].post.operationId,
+    "decideWorkspaceReviewBatch",
+  );
   assert.equal(contract.paths["/v1/projects"].post.operationId, "createProject");
   assert.equal(contract.paths["/v1/projects/{projectId}"].get.operationId, "getProject");
   assert.equal(

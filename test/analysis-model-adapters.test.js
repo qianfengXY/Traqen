@@ -149,14 +149,13 @@ test("stream profiles report output-token truncation instead of a generic incomp
   await assert.rejects(() => adapter.verify(), /output was truncated \(length\)/);
 });
 
-test("Main Agent creates exactly three evidence-bounded child assignments with a public streamed message", async () => {
+test("Main Agent creates the configured evidence-bounded child assignments with a public streamed message", async () => {
   const telemetry = [];
   const plan = {
-    agentMessage: "I will run three balanced module queues and validate each result.",
+    agentMessage: "I will send one sealed batch to two independent Child slots and validate each result.",
     taskAssignments: [
-      { agentId: "SUB_AGENT_1", objective: "Analyze orders", moduleScopes: ["orders"] },
-      { agentId: "SUB_AGENT_2", objective: "Analyze billing", moduleScopes: ["billing"] },
-      { agentId: "SUB_AGENT_3", objective: "Analyze shared APIs", moduleScopes: ["api"] },
+      { agentId: "CHILD-1", objective: "Analyze the sealed batch independently", moduleScopes: ["orders", "billing", "api"] },
+      { agentId: "CHILD-2", objective: "Analyze the sealed batch independently", moduleScopes: ["orders", "billing", "api"] },
     ],
   };
   const adapter = new OpenAICompatibleAnalysisModelAdapter({
@@ -180,7 +179,7 @@ test("Main Agent creates exactly three evidence-bounded child assignments with a
       { name: "api", fileCount: 10, sourceBytes: 9_000, languages: ["ts"] },
     ],
   }, { onTelemetry: (event) => telemetry.push(event) });
-  assert.equal(result.taskAssignments.length, 3);
+  assert.equal(result.taskAssignments.length, 2);
   assert.equal(result.agentMessage, plan.agentMessage);
   assert.ok(telemetry.some((event) => event.type === "RESPONSE_PROGRESS" && event.assistantMessage === plan.agentMessage));
 });

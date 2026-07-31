@@ -13,6 +13,11 @@ import {
   workspaceRunSubscriptionBeforeStart,
   workspaceRunSubscriptionFromServer,
 } from "../app/workspace-analysis-run-client.ts";
+import {
+  getServerWorkspaceUnderstanding,
+  registerServerWorkspaceSource,
+  startServerWorkspaceUnderstanding,
+} from "../app/server-understanding-client.ts";
 
 const apiBase = "http://127.0.0.1:3100";
 const projectId = "PROJECT-WEB";
@@ -223,4 +228,43 @@ test("persists a non-authoritative run pointer before Start can create server wo
   assert.equal(subscription.status, "SUBMITTING");
   assert.equal(subscription.runId, "ANALYSIS-WEB-1");
   assert.equal(subscription.snapshotManifestId, receipt.snapshotManifestId);
+});
+
+test("registers and follows a server-owned source job without browser scan payloads", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/source-registrations")) {
+      return new Response(JSON.stringify({ id: "SOURCE-1", projectId, displayName: "repo", status: "ACTIVE" }), { status: 201 });
+    }
+    return new Response(JSON.stringify({
+      id: "JOB-1",
+      projectId,
+      sourceRegistrationId: "SOURCE-1",
+      snapshotManifestId: "SNAPSHOT-1",
+      workspaceExecutionProfileRevisionId: "PROFILE-1",
+      requestedMode: "AUTO",
+      resolvedMode: "FULL",
+      phase: "SOURCE_SCAN",
+      status: "RUNNING",
+      completedPhases: [],
+      outputs: {},
+    }), { status: String(url).includes("workspace-analysis-jobs/JOB-1") ? 200 : 202 });
+  };
+  try {
+    const registration = await registerServerWorkspaceSource(apiBase, "", projectId, "/srv/repos/orders");
+    const started = await startServerWorkspaceUnderstanding(apiBase, "", projectId, {
+      sourceRegistrationId: registration.id,
+      requestedMode: "AUTO",
+    });
+    const current = await getServerWorkspaceUnderstanding(apiBase, "", projectId, started.id);
+    assert.equal(current.status, "RUNNING");
+    assert.equal(calls.length, 3);
+    assert.equal(JSON.parse(calls[0].options.body).rootPath, "/srv/repos/orders");
+    assert.equal(JSON.parse(calls[1].options.body).sourceRegistrationId, "SOURCE-1");
+    assert.equal(calls[2].options.body, undefined);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

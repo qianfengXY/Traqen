@@ -22,6 +22,15 @@ export class WorkspaceAnalysisJobRunner {
   }
 
   async start(input) {
+    if (typeof input.sourceRegistrationId !== "string" || input.sourceRegistrationId.trim() === "") {
+      throw new TypeError("sourceRegistrationId is required");
+    }
+    if (
+      typeof input.workspaceExecutionProfileRevisionId !== "string"
+      || input.workspaceExecutionProfileRevisionId.trim() === ""
+    ) {
+      throw new TypeError("workspaceExecutionProfileRevisionId is required");
+    }
     const currentGraphHead = await this.store.getCurrentGraphHead(input.projectId);
     const resolvedMode = input.requestedMode === "AUTO"
       ? currentGraphHead ? "INCREMENTAL" : "FULL"
@@ -37,6 +46,7 @@ export class WorkspaceAnalysisJobRunner {
       resolvedMode,
       baseRevisionId: resolvedMode === "INCREMENTAL" ? currentGraphHead.graphRevisionId : null,
       policyDigest: input.policyDigest,
+      workspaceExecutionProfileRevisionId: input.workspaceExecutionProfileRevisionId,
     };
     const job = deepFreeze({
       id: input.id ?? contentId("WORKSPACE-ANALYSIS-JOB", identity),

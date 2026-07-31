@@ -25,5 +25,15 @@ export function extractDocumentContractFacts(artifact, content) {
       authority: "OBSERVED_CANDIDATE_ONLY",
     });
   }
+  for (const match of content.matchAll(/\[[^\]]+\]\(([^)#?]+)(?:#[^)]+)?\)/g)) {
+    facts.push({
+      id: contentId("DOCUMENT-REFERENCE-FACT", { artifactId: artifact.id, index: match.index, targetPath: match[1] }),
+      type: "DOCUMENT_REFERENCE",
+      artifactId: artifact.id,
+      targetPath: match[1].trim(),
+      sourceSpan: { start: match.index, end: match.index + match[0].length },
+      authority: "OBSERVED_CANDIDATE_ONLY",
+    });
+  }
   return deepFreeze(facts);
 }

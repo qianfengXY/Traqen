@@ -271,6 +271,183 @@ export function createTraceabilityHttpHandler({
         }
       }
 
+      if (request.method === "GET" && url.pathname === "/v1/workspaces") {
+        const userId = url.searchParams.get("userId") ?? request.headers["x-traqen-user-id"] ?? null;
+        const includeDeleted = url.searchParams.get("includeDeleted") === "true";
+        sendJson(response, 200, { workspaces: await application.listWorkspaces(userId, { includeDeleted }) }, id);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/workspaces") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        const foundation = input.project
+          ? input
+          : {
+              organization: input.organization ?? { id: input.organizationId ?? "ORG-DEFAULT", name: input.organizationName ?? "Default" },
+              tenant: input.tenant ?? { id: input.tenantId ?? "TENANT-DEFAULT", name: input.tenantName ?? "Default" },
+              project: { id: input.id, name: input.name },
+              principals: input.principals ?? [],
+              actorId: input.actorId,
+            };
+        await application.createProject(foundation);
+        sendJson(response, 201, await application.getWorkspace(foundation.project.id, input.userId ?? null), id);
+        return;
+      }
+
+      const workspaceMatch = /^\/v1\/workspaces\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceMatch) {
+        const workspaceId = decodePathSegment(workspaceMatch[1]);
+        const workspace = await application.getWorkspace(
+          workspaceId,
+          url.searchParams.get("userId") ?? request.headers["x-traqen-user-id"] ?? null,
+        );
+        if (!workspace) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, workspace, id);
+        return;
+      }
+      if (request.method === "PATCH" && workspaceMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const workspace = await application.renameWorkspace(workspaceId, input.name, input.actorId);
+        if (!workspace) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, workspace, id);
+        return;
+      }
+
+      const workspaceLifecycleMatch = /^\/v1\/workspaces\/([^/]+)\/(request-deletion|cancel-deletion|complete-deletion)$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceLifecycleMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceLifecycleMatch[1]);
+        const action = workspaceLifecycleMatch[2];
+        const input = await readJson(request, maxBodyBytes);
+        const operation = action === "request-deletion"
+          ? application.requestWorkspaceDeletion.bind(application)
+          : action === "cancel-deletion"
+            ? application.cancelWorkspaceDeletion.bind(application)
+            : application.completeWorkspaceDeletion.bind(application);
+        const workspace = await operation(workspaceId, input.actorId);
+        if (!workspace) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, workspace, id);
+        return;
+      }
+
+      const workspaceVisibilityMatch = /^\/v1\/workspaces\/([^/]+)\/view-preference$/.exec(url.pathname);
+      if (request.method === "PUT" && workspaceVisibilityMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceVisibilityMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const preference = await application.setWorkspaceVisibility(workspaceId, input.userId, input.hidden);
+        if (!preference) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, preference, id);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/capability-templates") {
+        sendJson(response, 200, { templates: await application.listCapabilityTemplates() }, id);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/capability-templates") {
+        requireJson(request);
+        sendJson(response, 201, await application.registerCapabilityTemplate(
+          await readJson(request, maxBodyBytes),
+        ), id);
+        return;
+      }
+
+      const workspaceCapabilityConfigMatch = /^\/v1\/workspaces\/([^/]+)\/capability-configs$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceCapabilityConfigMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
+        const config = await application.saveWorkspaceCapabilityConfig(workspaceId, await readJson(request, maxBodyBytes));
+        if (!config) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 201, config, id);
+        return;
+      }
+
+      const workspaceProfileMatch = /^\/v1\/workspaces\/([^/]+)\/execution-profile-revisions$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceProfileMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceProfileMatch[1]);
+        const input = await readJson(request, maxBodyBytes);
+        const profile = await application.resolveWorkspaceExecutionProfile(workspaceId, input.configId ?? null);
+        if (!profile) throw new HttpError(404, "WORKSPACE_CAPABILITY_CONFIG_NOT_FOUND", "Workspace capability config was not found");
+        sendJson(response, 201, profile, id);
+        return;
+      }
+
+      const workspaceSecretGrantMatch = /^\/v1\/workspaces\/([^/]+)\/execution-profile-revisions\/([^/]+)\/secret-grants$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceSecretGrantMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceSecretGrantMatch[1]);
+        const profileRevisionId = decodePathSegment(workspaceSecretGrantMatch[2]);
+        const grants = await application.issueWorkspaceSecretGrants(
+          workspaceId,
+          profileRevisionId,
+          await readJson(request, maxBodyBytes),
+        );
+        if (!grants) throw new HttpError(404, "WORKSPACE_PROFILE_NOT_FOUND", "Workspace execution profile was not found");
+        sendJson(response, 201, { grants }, id);
+        return;
+      }
+
+      const analysisBatchCollectionMatch = /^\/v1\/workspaces\/([^/]+)\/analysis-batches$/.exec(url.pathname);
+      if (request.method === "POST" && analysisBatchCollectionMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(analysisBatchCollectionMatch[1]);
+        const result = await application.createWorkspaceAnalysisBatch(workspaceId, await readJson(request, maxBodyBytes));
+        if (!result) throw new HttpError(404, "WORKSPACE_PROFILE_NOT_FOUND", "Workspace execution profile was not found");
+        sendJson(response, 201, result, id);
+        return;
+      }
+
+      const childResultMatch = /^\/v1\/workspaces\/([^/]+)\/analysis-batches\/([^/]+)\/child-results$/.exec(url.pathname);
+      if (request.method === "POST" && childResultMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(childResultMatch[1]);
+        const analysisBatchId = decodePathSegment(childResultMatch[2]);
+        const result = await application.commitWorkspaceChildResult(workspaceId, {
+          ...(await readJson(request, maxBodyBytes)),
+          analysisBatchId,
+        });
+        if (!result) throw new HttpError(404, "CHILD_WORK_UNIT_NOT_FOUND", "Child WorkUnit was not found");
+        sendJson(response, 201, result, id);
+        return;
+      }
+
+      const batchBarrierMatch = /^\/v1\/workspaces\/([^/]+)\/analysis-batches\/([^/]+)\/barrier$/.exec(url.pathname);
+      if (request.method === "POST" && batchBarrierMatch) {
+        const workspaceId = decodePathSegment(batchBarrierMatch[1]);
+        const analysisBatchId = decodePathSegment(batchBarrierMatch[2]);
+        const barrier = await application.openWorkspaceAnalysisBatchBarrier(workspaceId, analysisBatchId);
+        if (!barrier) throw new HttpError(404, "ANALYSIS_BATCH_NOT_FOUND", "AnalysisBatch was not found");
+        sendJson(response, 201, barrier, id);
+        return;
+      }
+
+      const workspaceReviewQueueMatch = /^\/v1\/workspaces\/([^/]+)\/review-queue$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceReviewQueueMatch) {
+        const workspaceId = decodePathSegment(workspaceReviewQueueMatch[1]);
+        const filters = Object.fromEntries(["status", "severity", "evidenceState", "source", "analysisBatchId"]
+          .map((name) => [name, url.searchParams.get(name)])
+          .filter(([, value]) => value));
+        sendJson(response, 200, { items: await application.getWorkspaceReviewQueue(workspaceId, filters) }, id);
+        return;
+      }
+
+      const workspaceReviewDecisionMatch = /^\/v1\/workspaces\/([^/]+)\/review-decisions\/batch$/.exec(url.pathname);
+      if (request.method === "POST" && workspaceReviewDecisionMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(workspaceReviewDecisionMatch[1]);
+        sendJson(response, 201, await application.decideWorkspaceReviewBatch(
+          workspaceId,
+          await readJson(request, maxBodyBytes),
+          { authorization: request.headers.authorization ?? null },
+        ), id);
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/projects") {
         requireJson(request);
         const input = await readJson(request, maxBodyBytes);

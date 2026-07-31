@@ -197,6 +197,42 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async listProjectFoundations() {
+    const result = await this.#database.query("SELECT id FROM project ORDER BY name, id");
+    const foundations = [];
+    for (const row of result.rows) foundations.push(await this.getProjectFoundation(row.id));
+    return deepFreeze(foundations);
+  }
+
+  async appendCapabilityTemplateRevision(template) {
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO capability_template_revision (kind, logical_name, revision, id, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+         ON CONFLICT (kind, logical_name, revision) DO NOTHING`,
+        [template.kind, template.logicalName, template.revision, template.id, JSON.stringify(template), template.createdAt],
+      );
+      const result = await this.#database.query(
+        `SELECT payload FROM capability_template_revision
+         WHERE kind = $1 AND logical_name = $2 AND revision = $3`,
+        [template.kind, template.logicalName, template.revision],
+      );
+      const stored = result.rows[0]?.payload;
+      if (!stored || canonicalJson(stored) !== canonicalJson(template)) {
+        throw new PersistenceConflictError(`Capability template ${template.logicalName} revision ${template.revision} conflicts`);
+      }
+      return deepFreeze(stored);
+    });
+  }
+
+  async listCapabilityTemplateRevisions() {
+    const result = await this.#database.query(
+      `SELECT payload FROM capability_template_revision
+       ORDER BY kind, logical_name, revision DESC`,
+    );
+    return deepFreeze(result.rows.map(({ payload }) => payload));
+  }
+
   async appendSnapshotManifest(projectId, manifest) {
     requireId(projectId, "projectId");
     requireId(manifest?.id, "manifest.id");

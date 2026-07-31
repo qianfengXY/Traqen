@@ -1082,3 +1082,9 @@ export function createLocalWorkspaceAnalysisAccumulator(input: { workspaceName: 
     records() { return records; },
   };
 }
+export const localWorkspaceCompatibilityContract = Object.freeze({
+  owner: "F001_SERVER_SNAPSHOT_CUTOVER",
+  metric: "browser_observation_import_runs",
+  deletionCondition: "Remove after all supported Workspace connectors create server-owned SourceSnapshots without browser observation ingestion.",
+  authority: "UNTRUSTED_MIGRATION_INPUT",
+});

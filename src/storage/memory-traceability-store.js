@@ -18,6 +18,7 @@ function recordIdentity(record) {
 
 export class MemoryTraceabilityStore extends TraceabilityStore {
   #projects = new Map();
+  #capabilityTemplates = new Map();
   #manifests = new Map();
   #chains = new Map();
   #features = new Map();
@@ -64,6 +65,27 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
   async getProjectFoundation(projectId) {
     return this.#projects.get(projectId) ?? null;
+  }
+
+  async listProjectFoundations() {
+    return deepFreeze([...this.#projects.values()]
+      .sort((left, right) => left.project.name.localeCompare(right.project.name) || left.project.id.localeCompare(right.project.id)));
+  }
+
+  async appendCapabilityTemplateRevision(template) {
+    return this.#appendVersion(
+      this.#capabilityTemplates,
+      `${template.kind}\u0000${template.logicalName}\u0000${template.revision}`,
+      template,
+      `Capability template ${template.logicalName} revision ${template.revision}`,
+    );
+  }
+
+  async listCapabilityTemplateRevisions() {
+    return deepFreeze([...this.#capabilityTemplates.values()]
+      .sort((left, right) => left.kind.localeCompare(right.kind)
+        || left.logicalName.localeCompare(right.logicalName)
+        || right.revision - left.revision));
   }
 
   async appendSnapshotManifest(projectId, manifest) {
@@ -1157,7 +1179,11 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       "MODEL_CAPABILITY_PROFILE", "ANALYSIS_ROUTE_DECISION", "SOURCE_SLICE",
       "RECONCILIATION", "EVALUATION_RUN", "GRAPH_ARTIFACT", "GRAPH_REVISION",
       "SOURCE_REGISTRATION", "FACT_BUNDLE", "CANDIDATE_BUNDLE", "EVIDENCE_ALLOWSET",
-      "GAP", "WORKSPACE_ANALYSIS_JOB",
+      "GAP", "WORKSPACE_ANALYSIS_JOB", "WORKSPACE_STATE", "WORKSPACE_EVENT",
+      "WORKSPACE_VIEW_PREFERENCE", "WORKSPACE_CAPABILITY_CONFIG", "WORKSPACE_EXECUTION_PROFILE",
+      "SECRET_GRANT", "ANALYSIS_BATCH", "CHILD_WORK_UNIT", "CHILD_BATCH_RESULT",
+      "BATCH_BARRIER", "CONFLICT_LEDGER", "COVERAGE_LEDGER", "QUARANTINED_CANDIDATE",
+      "REVIEW_QUEUE_ITEM", "REVIEW_BATCH_DECISION", "FEATURE_HISTORY",
     ]);
     if (!supported.has(recordType)) throw new TypeError(`Unsupported understanding record type ${recordType}`);
     if (!record?.id) throw new TypeError("understanding record id is required");

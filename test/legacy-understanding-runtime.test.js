@@ -36,7 +36,10 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
   const revisionA = await store.getUnderstandingRecord("P", "GRAPH_REVISION", currentA.graphRevisionId);
   const artifactA = await store.getUnderstandingRecord("P", "GRAPH_ARTIFACT", revisionA.graphArtifactId);
   assert.ok(artifactA.nodes.some(({ authority }) => authority === "CANDIDATE"));
-  assert.ok(artifactA.traceChains.some(({ complete }) => complete));
+  assert.ok(artifactA.traceChains.some(({ segments, gaps }) =>
+    segments.some(({ type, nodeIds }) => type === "IMPLEMENTATION" && nodeIds.length > 0)
+    && segments.some(({ type, nodeIds }) => type === "EVIDENCE" && nodeIds.length > 0)
+    && gaps.some(({ type }) => type === "MISSING_REQUIREMENT")));
 
   await writeFile(path.join(source, "src", "orders.js"), "export function submitOrder() { return true; }\nexport function cancelOrder() { return true; }\n");
   const second = await runtime.start({

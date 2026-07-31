@@ -1,8 +1,11 @@
+import { readFileSync } from "node:fs";
+
 import { TraceabilityApplication } from "../application/traceability-application.js";
 import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../skills/index.js";
 import { AnalysisAgent, AnalysisModelRegistry, configuredAnalysisModels, createReverseSkillAnalysisAdapter, defaultAnalysisModelProfileStorePath, EncryptedAnalysisModelProfileStore } from "../analysis/index.js";
 import { createLocalSourceSnapshotBroker } from "../application/local-source-snapshot-broker.js";
 import { LegacyUnderstandingRuntime } from "../application/legacy-understanding-runtime.js";
+import { createReviewedUnderstandingEvaluationResolver } from "../application/reviewed-understanding-evaluation.js";
 
 function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
@@ -67,12 +70,67 @@ export function createConfiguredApplication({ store, env = process.env }) {
     ? createLocalSourceSnapshotBroker({ store, snapshotRoot: env.SOURCE_SNAPSHOT_ROOT })
     : null;
   const allowedWorkspaceRoots = commaSeparated(env.TRAQEN_ALLOWED_WORKSPACE_ROOTS);
+  const reviewedEvaluationResolver = env.UNDERSTANDING_TRUTH_SET_PATH
+    ? createReviewedUnderstandingEvaluationResolver({
+        truthSet: JSON.parse(readFileSync(env.UNDERSTANDING_TRUTH_SET_PATH, "utf8")),
+        reviewerId: env.UNDERSTANDING_TRUTH_SET_REVIEWER_ID ?? "INDEPENDENT-TRUTH-SET-REVIEWER",
+        implementationAuthorId: env.UNDERSTANDING_IMPLEMENTATION_AUTHOR_ID ?? "TRAQEN-RUNTIME",
+      })
+    : null;
   const legacyUnderstandingRuntime = sourceSliceBroker && allowedWorkspaceRoots.length > 0
     ? new LegacyUnderstandingRuntime({
       store,
       sourceSliceBroker,
       snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
       allowlistedRoots: allowedWorkspaceRoots,
+      childProducer: async ({ job, assignment, artifact, facts, sourceSlices, candidate }) => {
+        if (assignment.route.model === "LOCAL-DETERMINISTIC-PROFILE") {
+          return { candidates: [{ proposal: candidate.proposal, confidence: candidate.confidence }] };
+        }
+        const adapter = analysisModelRegistry.resolve(assignment.route.model);
+        if (!adapter) {
+          return {
+            gap: {
+              code: "NO_ELIGIBLE_PRODUCER",
+              message: `Pinned model ${assignment.route.model} is not configured and verified`,
+            },
+          };
+        }
+        return adapter.analyze({
+          workUnit: {
+            id: assignment.id,
+            projectId: job.projectId,
+            snapshotManifestId: job.snapshotManifestId,
+            analysisRunId: job.id,
+            factIds: facts.map(({ id }) => id),
+            rootFactIds: facts.slice(0, 1).map(({ id }) => id),
+          },
+          workContext: {
+            scopeKey: artifact.relativePath,
+            rootNodeId: facts[0]?.id ?? artifact.id,
+            inputDigest: assignment.inputDigest,
+            estimatedTokens: Math.min(12_000, Math.ceil(JSON.stringify(sourceSlices).length / 4)),
+          },
+          deterministicCandidates: [{
+            candidateKey: candidate.id,
+            mode: "BUSINESS",
+            name: candidate.proposal.name,
+            description: candidate.proposal.statement,
+            confidence: candidate.confidence,
+            evidenceFactIds: candidate.evidenceFactIds,
+            stableEvidenceNodeIds: candidate.evidenceFactIds,
+          }],
+          evidence: {
+            facts,
+            sourceSlices: sourceSlices.map(({ id, artifactSlices }) => ({
+              id,
+              excerpts: artifactSlices.map(({ redactedText }) => redactedText),
+            })),
+          },
+          context: { maxOutputTokens: 2_048 },
+        });
+      },
+      reviewedEvaluationResolver,
     })
     : null;
   const application = new TraceabilityApplication({

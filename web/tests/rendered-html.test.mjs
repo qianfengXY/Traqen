@@ -196,7 +196,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.match(product, /提取可定位证据/);
   assert.match(product, /理解业务与 API 语义/);
   assert.match(product, /主 Agent 对话/);
-  assert.match(product, /三个子 Agent 对话/);
+  assert.match(product, /子 Agent 对话/);
   assert.match(product, /sub-agent-deck/);
   assert.match(product, /展示公开推理摘要，不展示私有思维链/);
   assert.doesNotMatch(product, /planWorkspaceAnalysis/);
@@ -225,7 +225,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.doesNotMatch(product, /visibleWorkspaceAnalysis\.features\.length\} FEATURES/);
   assert.doesNotMatch(product, /project\.featureCount/);
   assert.doesNotMatch(product, /workspaceGraphForAnalysis\(workspaceAnalysis, featureId, next\) \?\? demoGraphForScenario/);
-  assert.match(product, /workspaceAnalysis \? workspaceGraph as FeatureGraph : demoGraph/);
+  assert.match(product, /remoteGraph \?\? workspaceGraph \?\? emptyGraph/);
   assert.match(product, /const \[workspaceAnalysis, setWorkspaceAnalysis\]/);
   assert.match(product, /const \[workspaceProjectId, setWorkspaceProjectId\]/);
   assert.match(product, /const \[workspaceCandidateId, setWorkspaceCandidateId\]/);
@@ -250,7 +250,7 @@ test("keeps real API loading explicit and ships no disposable preview surface", 
   assert.doesNotMatch(workspaceStatistics, /\bfeatureCount\b|\bexecutedFeatureCount\b|\bnonconformingFeatureCount\b|\bexecution:\s*\{/);
   assert.match(product, /初始化完成：Workspace 已成为全局导航上下文/);
   assert.match(product, /从候选树逐项查看待治理追溯链/);
-  assert.match(product, /十万级工程做有界确定性提取/);
+  assert.match(product, /服务端先建立完整源码清单与不可变快照/);
   assert.match(product, /执行增量分析/);
   assert.match(product, /configureAndVerifyAnalysisModel/);
   assert.match(product, /API Base URL \/ Chat Completions URL/);

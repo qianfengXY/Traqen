@@ -57,9 +57,6 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     if ((candidate.evidenceFactIds?.length ?? 0) + (candidate.sourceSliceIds?.length ?? 0) === 0) {
       throw new TypeError(`Candidate ${candidate.id} requires original Fact or SourceSlice evidence`);
     }
-    if (candidate.summaryEvidence && !candidate.evidenceFactIds?.length && !candidate.sourceSliceIds?.length) {
-      throw new TypeError(`Candidate ${candidate.id} cannot use summary-only evidence`);
-    }
     const allowset = input.evidenceAllowsets?.[candidate.workUnitId];
     if (!allowset) throw new TypeError(`Candidate ${candidate.id} has no immutable evidence allowset`);
     validateCandidateAgainstEvidenceAllowset(candidate, allowset);

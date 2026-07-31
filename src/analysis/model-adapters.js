@@ -389,11 +389,27 @@ function boundedWorkspacePlan(value) {
       ? [...new Set(module.languages.filter((language) => typeof language === "string" && language.trim()).map((language) => language.trim().slice(0, 40)))].slice(0, 24)
       : [],
   })) : [];
+  const childSlots = (Array.isArray(value.childSlots) && value.childSlots.length > 0
+    ? value.childSlots
+    : [
+        { id: "CHILD-1", independenceGroup: "DEFAULT-1" },
+        { id: "CHILD-2", independenceGroup: "DEFAULT-2" },
+      ]).map((slot, index) => ({
+    id: requiredString(slot?.id, `workspace plan childSlots[${index}].id`).slice(0, 100),
+    independenceGroup: requiredString(
+      slot?.independenceGroup,
+      `workspace plan childSlots[${index}].independenceGroup`,
+    ).slice(0, 100),
+  }));
+  if (new Set(childSlots.map(({ id }) => id)).size !== childSlots.length) {
+    throw new TypeError("workspace plan Child slot ids must be unique");
+  }
   return {
     workspaceName: requiredString(value.workspaceName, "workspace plan workspaceName").slice(0, 200),
     mode: value.mode === "INCREMENTAL" ? "INCREMENTAL" : "FULL",
     fileCount: Number.isSafeInteger(value.fileCount) && value.fileCount >= 0 ? value.fileCount : 0,
     modules,
+    childSlots,
   };
 }
 
@@ -522,6 +538,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
   async planWorkspaceAnalysis(value, options = {}) {
     const input = boundedWorkspacePlan(value);
     const moduleNames = new Set(input.modules.map((module) => module.name));
+    const expectedIds = new Set(input.childSlots.map(({ id }) => id));
+    const sharedScopes = [...moduleNames];
     const result = await this.#request({
       maxOutputTokens: 2_048,
       messages: [
@@ -529,8 +547,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
           role: "system",
           content: [
             "You are Traqen's main Workspace orchestration agent.",
-            "Create exactly three parallel child-agent assignments from the supplied repository source manifest.",
-            "The manifest is independent of scanner candidates. Balance source volume and languages while keeping related modules together. Use only supplied module names.",
+            `Create exactly ${input.childSlots.length} child-agent assignments, one for each supplied Child slot.`,
+            "Every Child receives the same sealed AnalysisBatch: identical module scope, task statement, source policy, and output schema. The manifest is independent of scanner candidates.",
             "Return JSON only with agentMessage and taskAssignments.",
             "agentMessage is a concise user-visible execution update, not private reasoning. Use short lines for Goal, Plan, Evidence basis, Risks, and Next action. Do not quote prompts or source code.",
           ].join(" "),
@@ -538,30 +556,32 @@ export class OpenAICompatibleAnalysisModelAdapter {
         {
           role: "user",
           content: JSON.stringify({
-            task: "Plan three bounded source-analysis queues without using deterministic scanner candidates as the task map.",
+            task: "Plan one bounded source-analysis batch for independent execution by every configured Child slot.",
             workspace: input,
             outputContract: {
               agentMessage: "public orchestration plan",
-              taskAssignments: [
-                { agentId: "SUB_AGENT_1", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
-                { agentId: "SUB_AGENT_2", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
-                { agentId: "SUB_AGENT_3", objective: "bounded objective", moduleScopes: ["exact supplied module name"] },
-              ],
+              taskAssignments: input.childSlots.map(({ id }) => ({
+                agentId: id,
+                objective: "same bounded analysis objective",
+                moduleScopes: sharedScopes,
+              })),
             },
           }),
         },
       ],
     }, options);
     if (typeof result?.agentMessage !== "string" || !result.agentMessage.trim()) throw new AnalysisModelConnectionError("Analysis model orchestration plan requires agentMessage");
-    if (!Array.isArray(result.taskAssignments) || result.taskAssignments.length !== 3) throw new AnalysisModelConnectionError("Analysis model orchestration plan requires exactly three task assignments");
-    const expectedIds = new Set(["SUB_AGENT_1", "SUB_AGENT_2", "SUB_AGENT_3"]);
+    if (!Array.isArray(result.taskAssignments) || result.taskAssignments.length !== input.childSlots.length) {
+      throw new AnalysisModelConnectionError(`Analysis model orchestration plan requires exactly ${input.childSlots.length} task assignments`);
+    }
     const assignments = result.taskAssignments.map((assignment, index) => {
       const agentId = requiredString(assignment?.agentId, `task assignment ${index} agentId`);
       if (!expectedIds.delete(agentId)) throw new AnalysisModelConnectionError(`Analysis model orchestration plan returned unsupported or duplicate agent ${agentId}`);
-      const moduleScopes = Array.isArray(assignment.moduleScopes)
-        ? [...new Set(assignment.moduleScopes.filter((scope) => typeof scope === "string" && moduleNames.has(scope)))].slice(0, 120)
-        : [];
-      return { agentId, objective: requiredString(assignment.objective, `task assignment ${index} objective`).slice(0, 500), moduleScopes };
+      return {
+        agentId,
+        objective: requiredString(assignment.objective, `task assignment ${index} objective`).slice(0, 500),
+        moduleScopes: sharedScopes,
+      };
     });
     return { agentMessage: result.agentMessage.trim().slice(0, 4_000), taskAssignments: assignments };
   }

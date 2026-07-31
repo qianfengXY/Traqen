@@ -31,6 +31,100 @@
         }
       }
     },
+    "/v1/workspaces": {
+      "get": {
+        "operationId": "listWorkspaces",
+        "parameters": [
+          { "name": "userId", "in": "query", "schema": { "type": "string" } },
+          { "name": "includeDeleted", "in": "query", "schema": { "type": "boolean", "default": false } }
+        ],
+        "responses": { "200": { "description": "Workspace list with per-user visibility and audited lifecycle state" } }
+      },
+      "post": {
+        "operationId": "createWorkspace",
+        "requestBody": { "$ref": "#/components/requestBodies/ProjectBootstrap" },
+        "responses": {
+          "201": { "description": "Workspace created" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/v1/workspaces/{workspaceId}": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": {
+        "operationId": "getWorkspace",
+        "responses": { "200": { "description": "Workspace" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "patch": {
+        "operationId": "renameWorkspace",
+        "responses": { "200": { "description": "Renamed Workspace" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/view-preference": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "put": {
+        "operationId": "setWorkspaceViewPreference",
+        "responses": { "200": { "description": "Per-user hide/show preference; Workspace data remains intact" } }
+      }
+    },
+    "/v1/workspaces/{workspaceId}/request-deletion": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "requestWorkspaceDeletion", "responses": { "200": { "description": "Audited deletion request accepted" } } }
+    },
+    "/v1/workspaces/{workspaceId}/cancel-deletion": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "cancelWorkspaceDeletion", "responses": { "200": { "description": "Pending deletion cancelled" } } }
+    },
+    "/v1/workspaces/{workspaceId}/complete-deletion": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "completeWorkspaceDeletion", "responses": { "200": { "description": "Audited deletion lifecycle completed" } } }
+    },
+    "/v1/capability-templates": {
+      "get": { "operationId": "listCapabilityTemplateRevisions", "responses": { "200": { "description": "Global capability templates; never a runtime registry handle" } } },
+      "post": { "operationId": "registerCapabilityTemplateRevision", "responses": { "201": { "description": "Immutable template revision" } } }
+    },
+    "/v1/workspaces/{workspaceId}/capability-configs": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "createWorkspaceCapabilityConfig", "responses": { "201": { "description": "Versioned Workspace override/removal configuration" } } }
+    },
+    "/v1/workspaces/{workspaceId}/execution-profile-revisions": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "resolveWorkspaceExecutionProfileRevision", "responses": { "201": { "description": "Immutable Workspace-effective runtime profile" } } }
+    },
+    "/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants": {
+      "parameters": [
+        { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "profileRevisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": { "operationId": "issueWorkspaceSecretGrants", "responses": { "201": { "description": "Least-privilege handle grants scoped to one run and slot; no credential values are returned" } } }
+    },
+    "/v1/workspaces/{workspaceId}/analysis-batches": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "createWorkspaceAnalysisBatch", "responses": { "201": { "description": "Sealed same-input batch and one assignment per configured Child slot" } } }
+    },
+    "/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/child-results": {
+      "parameters": [
+        { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "analysisBatchId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": { "operationId": "commitWorkspaceChildResult", "responses": { "201": { "description": "Idempotent terminal Child result commit by sealed input digest" } } }
+    },
+    "/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/barrier": {
+      "parameters": [
+        { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "analysisBatchId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "post": { "operationId": "openWorkspaceAnalysisBatchBarrier", "responses": { "201": { "description": "Barrier opens only after every required Child slot is terminal" } } }
+    },
+    "/v1/workspaces/{workspaceId}/review-queue": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "getWorkspaceReviewQueue", "responses": { "200": { "description": "Workspace-scoped filterable review queue" } } }
+    },
+    "/v1/workspaces/{workspaceId}/review-decisions/batch": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "decideWorkspaceReviewBatch", "responses": { "201": { "description": "Auditable batch review decision with item version vector" } } }
+    },
     "/v1/projects": {
       "post": {
         "operationId": "createProject",
@@ -1024,10 +1118,10 @@
         "operationId": "planWorkspaceAnalysis",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["workspaceName", "mode", "fileCount", "modules"], "properties": { "workspaceName": { "type": "string", "minLength": 1 }, "mode": { "enum": ["FULL", "INCREMENTAL"] }, "fileCount": { "type": "integer", "minimum": 0 }, "modules": { "type": "array", "maxItems": 120, "description": "Repository source-manifest partitions. They are computed independently of deterministic scanner candidates.", "items": { "type": "object", "required": ["name", "fileCount", "sourceBytes", "languages"], "properties": { "name": { "type": "string", "minLength": 1 }, "fileCount": { "type": "integer", "minimum": 0 }, "sourceBytes": { "type": "integer", "minimum": 0 }, "languages": { "type": "array", "maxItems": 24, "items": { "type": "string", "minLength": 1 } } }, "additionalProperties": false } } }, "additionalProperties": false } } }
+          "content": { "application/json": { "schema": { "type": "object", "required": ["workspaceName", "mode", "fileCount", "modules"], "properties": { "workspaceName": { "type": "string", "minLength": 1 }, "mode": { "enum": ["FULL", "INCREMENTAL"] }, "fileCount": { "type": "integer", "minimum": 0 }, "childSlots": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["id", "independenceGroup"], "properties": { "id": { "type": "string", "minLength": 1 }, "independenceGroup": { "type": "string", "minLength": 1 } }, "additionalProperties": false } }, "modules": { "type": "array", "maxItems": 120, "description": "Repository source-manifest partitions. They are computed independently of deterministic scanner candidates.", "items": { "type": "object", "required": ["name", "fileCount", "sourceBytes", "languages"], "properties": { "name": { "type": "string", "minLength": 1 }, "fileCount": { "type": "integer", "minimum": 0 }, "sourceBytes": { "type": "integer", "minimum": 0 }, "languages": { "type": "array", "maxItems": 24, "items": { "type": "string", "minLength": 1 } } }, "additionalProperties": false } } }, "additionalProperties": false } } }
         },
         "responses": {
-          "200": { "description": "A public Main Agent message and exactly three bounded child-Agent assignments. Send Accept: application/x-ndjson for live public model-message telemetry followed by the validated plan.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "plan"], "properties": { "profileId": { "type": "string" }, "plan": { "$ref": "#/components/schemas/WorkspaceAnalysisPlan" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string" } } } },
+          "200": { "description": "A public Main Agent message and one assignment for every configured Child slot (default two). Every Child receives the same sealed batch. Send Accept: application/x-ndjson for live public model-message telemetry followed by the validated plan.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "plan"], "properties": { "profileId": { "type": "string" }, "plan": { "$ref": "#/components/schemas/WorkspaceAnalysisPlan" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "502": { "description": "Configured model endpoint was unavailable or returned an invalid orchestration plan" }
         }
@@ -1256,7 +1350,8 @@
           "type": "object", "required": ["sourceRegistrationId", "requestedMode"], "properties": {
             "sourceRegistrationId": { "type": "string" },
             "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] },
-            "policyDigest": { "type": "string" }
+            "policyDigest": { "type": "string" },
+            "workspaceExecutionProfileRevisionId": { "type": "string", "description": "Optional only at the API boundary; when omitted the server materializes and pins an immutable local profile before starting." }
           }, "additionalProperties": false
         } } } },
         "responses": { "202": { "description": "Durable server-owned job", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } } }
@@ -1763,7 +1858,7 @@
         "required": ["agentMessage", "taskAssignments"],
         "properties": {
           "agentMessage": { "type": "string", "minLength": 1, "maxLength": 4000 },
-          "taskAssignments": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "object", "required": ["agentId", "objective", "moduleScopes"], "properties": { "agentId": { "enum": ["SUB_AGENT_1", "SUB_AGENT_2", "SUB_AGENT_3"] }, "objective": { "type": "string", "minLength": 1, "maxLength": 500 }, "moduleScopes": { "type": "array", "maxItems": 120, "items": { "type": "string", "minLength": 1, "maxLength": 300 } } }, "additionalProperties": false } }
+          "taskAssignments": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["agentId", "objective", "moduleScopes"], "properties": { "agentId": { "type": "string", "minLength": 1, "maxLength": 100 }, "objective": { "type": "string", "minLength": 1, "maxLength": 500 }, "moduleScopes": { "type": "array", "maxItems": 120, "items": { "type": "string", "minLength": 1, "maxLength": 300 } } }, "additionalProperties": false } }
         },
         "additionalProperties": false
       },

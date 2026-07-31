@@ -16,8 +16,8 @@
   ],
   "anchors": [
     { "id": "A01", "path": "docs/features/F001-legacy-system-understanding.md" },
-    { "id": "A02", "path": "docs/features/legacy-system-understanding-engine.md" },
-    { "id": "A03", "path": "feature-specs/2026-07-29-legacy-system-understanding-engine.md" },
+    { "id": "A02", "path": "docs/architecture/traqen-product-architecture.md" },
+    { "id": "A03", "path": "feature-specs/2026-07-31-traqen-product-foundation.md" },
     { "id": "A04", "path": "contracts/openapi.json" },
     { "id": "A05", "path": "contracts/artifact-inventory.schema.json" },
     { "id": "A06", "path": "contracts/source-slice.schema.json" },

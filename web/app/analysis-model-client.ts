@@ -57,7 +57,7 @@ export type WorkspaceAgentReconciliationDecision = {
 
 export type WorkspaceAnalysisPlan = {
   agentMessage: string;
-  taskAssignments: Array<{ agentId: "SUB_AGENT_1" | "SUB_AGENT_2" | "SUB_AGENT_3"; objective: string; moduleScopes: string[] }>;
+  taskAssignments: Array<{ agentId: string; objective: string; moduleScopes: string[] }>;
 };
 
 export type WorkspaceSourceModule = {

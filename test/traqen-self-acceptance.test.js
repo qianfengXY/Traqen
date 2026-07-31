@@ -6,11 +6,12 @@ import test from "node:test";
 
 import { LegacyUnderstandingRuntime } from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
+import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
 
 const repositoryRoot = path.resolve(new URL("..", import.meta.url).pathname);
 
-async function runtimeFor(projectId, source, snapshotRoot) {
+async function runtimeFor(projectId, source, snapshotRoot, truth) {
   const store = new MemoryTraceabilityStore();
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot });
   const runtime = new LegacyUnderstandingRuntime({
@@ -18,6 +19,10 @@ async function runtimeFor(projectId, source, snapshotRoot) {
     allowlistedRoots: [source],
     snapshotRoot,
     sourceSliceBroker: broker,
+    reviewedEvaluationResolver: createReviewedUnderstandingEvaluationResolver({
+      truthSet: truth,
+      reviewerId: "TRAQEN-SELF-INDEPENDENT-REVIEWER",
+    }),
   });
   const registration = await runtime.registerSource({ projectId, rootPath: source, displayName: "Traqen" });
   return { store, runtime, registration };
@@ -43,6 +48,10 @@ function semanticGraph(graph) {
 }
 
 test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL → independent FULL", async () => {
+  const truth = JSON.parse(await readFile(
+    new URL("./fixtures/understanding/traqen-self-calibration-v1.json", import.meta.url),
+    "utf8",
+  ));
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-self-dogfood-"));
   const source = path.join(temporary, "source");
   const snapshots = path.join(temporary, "snapshots");
@@ -54,7 +63,7 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
     await cp(path.join(repositoryRoot, directory), path.join(source, directory), { recursive: true });
   }
 
-  const primary = await runtimeFor("TRAQEN-SELF", source, snapshots);
+  const primary = await runtimeFor("TRAQEN-SELF", source, snapshots, truth);
   const fullOne = await primary.runtime.start({
     id: "TRAQEN-FULL-1",
     projectId: "TRAQEN-SELF",
@@ -62,10 +71,19 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
     requestedMode: "FULL",
   }, { background: false });
   assert.equal(fullOne.status, "COMPLETED", JSON.stringify(fullOne.error));
+  const firstEvaluation = await primary.store.getUnderstandingRecord(
+    "TRAQEN-SELF",
+    "EVALUATION_RUN",
+    fullOne.outputs.EVALUATION.evaluationRunId,
+  );
+  assert.equal(firstEvaluation.truthSetVersionId, truth.id);
+  assert.equal(firstEvaluation.status, "PASSED");
   const first = await currentArtifact(primary.store, "TRAQEN-SELF");
   assert.equal(first.revision.mode, "FULL");
   assert.ok(first.artifact.nodes.some(({ authority }) => authority === "CANDIDATE"));
-  assert.ok(first.artifact.traceChains.some(({ complete }) => complete));
+  assert.ok(first.artifact.traceChains.some(({ segments }) =>
+    segments.some(({ type, nodeIds }) => type === "IMPLEMENTATION" && nodeIds.length > 0)
+    && segments.some(({ type, nodeIds }) => type === "EVIDENCE" && nodeIds.length > 0)));
 
   await mkdir(path.join(source, "review-notes"), { recursive: true });
   await cp(
@@ -86,7 +104,7 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   assert.ok(second.artifact.impactAssessment);
   assert.ok(second.artifact.revalidationPlan.required);
 
-  const independent = await runtimeFor("TRAQEN-SELF-FULL", source, independentSnapshots);
+  const independent = await runtimeFor("TRAQEN-SELF-FULL", source, independentSnapshots, truth);
   const fullTwo = await independent.runtime.start({
     id: "TRAQEN-FULL-2",
     projectId: "TRAQEN-SELF-FULL",
@@ -97,11 +115,6 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   const independentSecond = await currentArtifact(independent.store, "TRAQEN-SELF-FULL");
   assert.deepEqual(semanticGraph(second.artifact), semanticGraph(independentSecond.artifact));
 
-  // The held-out calibration set is opened only after both production runs finish.
-  const truth = JSON.parse(await readFile(
-    new URL("./fixtures/understanding/traqen-self-calibration-v1.json", import.meta.url),
-    "utf8",
-  ));
   const inventory = (await primary.store.listUnderstandingRecords("TRAQEN-SELF", "ARTIFACT_INVENTORY"))
     .find(({ snapshotManifestId }) => snapshotManifestId === second.revision.snapshotManifestId);
   const paths = new Set(inventory.artifacts.map(({ relativePath }) => relativePath));

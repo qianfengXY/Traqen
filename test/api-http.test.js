@@ -97,6 +97,98 @@ test("health endpoint returns a request correlation ID", async (t) => {
   assert.deepEqual(await response.json(), { status: "ok" });
 });
 
+test("Workspace API owns lifecycle, capability isolation, and same-batch Child execution", async (t) => {
+  const baseUrl = await startServer(t);
+  const created = await postJson(`${baseUrl}/v1/workspaces`, {
+    organization: { id: "O-WORKSPACE", name: "Workspace Org" },
+    tenant: { id: "T-WORKSPACE", name: "Workspace Tenant" },
+    project: { id: "W-HTTP", name: "HTTP Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.workspaceId, "W-HTTP");
+
+  const hiddenResponse = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/view-preference`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId: "OWNER", hidden: true }),
+  });
+  assert.equal(hiddenResponse.status, 200);
+  const listed = await fetch(`${baseUrl}/v1/workspaces?userId=OWNER`);
+  assert.equal((await listed.json()).workspaces[0].hidden, true);
+
+  for (const template of [
+    { kind: "MODEL", logicalName: "main-model", revision: 1, manifest: { provider: "local" } },
+    { kind: "SKILL", logicalName: "source-analysis", revision: 1, manifest: {} },
+    { kind: "MCP", logicalName: "global-not-enabled", revision: 1, manifest: {} },
+  ]) {
+    assert.equal((await postJson(`${baseUrl}/v1/capability-templates`, template)).response.status, 201);
+  }
+  const config = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/capability-configs`, {
+    mainAgent: { model: "main-model", skillNames: ["source-analysis"], mcpNames: [] },
+    childSlots: [
+      { id: "C1", model: "main-model", skillNames: ["source-analysis"], mcpNames: [], independenceGroup: "I1" },
+      { id: "C2", model: "main-model", skillNames: ["source-analysis"], mcpNames: [], independenceGroup: "I2" },
+    ],
+    removals: ["global-not-enabled"],
+  });
+  assert.equal(config.response.status, 201);
+  const profile = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/execution-profile-revisions`, {
+    configId: config.body.id,
+  });
+  assert.equal(profile.response.status, 201);
+  assert.equal(profile.body.entries.some(({ logicalName }) => logicalName === "global-not-enabled"), false);
+
+  const batch = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/analysis-batches`, {
+    snapshotManifestId: "S-HTTP",
+    analysisRunId: "R-HTTP",
+    profileRevisionId: profile.body.id,
+    sequence: 1,
+    sourceScope: { artifactIds: ["A-HTTP"] },
+    taskStatement: "Recover bounded semantics",
+    outputSchema: { type: "object" },
+    sourcePolicy: { maxBytes: 1000 },
+  });
+  assert.equal(batch.response.status, 201);
+  assert.equal(batch.body.assignments.length, 2);
+  assert.equal(batch.body.assignments[0].inputDigest, batch.body.assignments[1].inputDigest);
+
+  const earlyBarrier = await fetch(
+    `${baseUrl}/v1/workspaces/W-HTTP/analysis-batches/${encodeURIComponent(batch.body.batch.id)}/barrier`,
+    { method: "POST" },
+  );
+  assert.equal(earlyBarrier.status, 400);
+  for (const assignment of batch.body.assignments) {
+    const child = await postJson(
+      `${baseUrl}/v1/workspaces/W-HTTP/analysis-batches/${encodeURIComponent(batch.body.batch.id)}/child-results`,
+      {
+        analysisRunId: "R-HTTP",
+        childWorkUnitId: assignment.id,
+        slotId: assignment.slotId,
+        inputDigest: assignment.inputDigest,
+        independenceGroup: assignment.route.independenceGroup,
+        status: "COMPLETED",
+        output: { candidates: [] },
+      },
+    );
+    assert.equal(child.response.status, 201);
+  }
+  const opened = await fetch(
+    `${baseUrl}/v1/workspaces/W-HTTP/analysis-batches/${encodeURIComponent(batch.body.batch.id)}/barrier`,
+    { method: "POST" },
+  );
+  assert.equal(opened.status, 201);
+  assert.equal((await opened.json()).opened, true);
+
+  for (const action of ["request-deletion", "cancel-deletion", "request-deletion", "complete-deletion"]) {
+    const transition = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/${action}`, { actorId: "OWNER" });
+    assert.equal(transition.response.status, 200);
+  }
+  const afterDelete = await fetch(`${baseUrl}/v1/workspaces?includeDeleted=true`);
+  assert.equal((await afterDelete.json()).workspaces[0].lifecycleState, "DELETED");
+});
+
 test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes latest/history projections", async (t) => {
   const calls = [];
   const checkpoint = { run: { id: "ANALYSIS-HTTP", status: "PAUSED" }, workUnits: [] };
@@ -144,7 +236,7 @@ test("analysis model profiles can be configured, verified, and used for bounded 
     selectAnalysisModelProfile(profileId) { calls.push(["select", profileId]); return { id: profileId, ready: true, active: true }; },
     removeAnalysisModelProfile(profileId) { calls.push(["remove", profileId]); return { id: profileId, ready: true, active: false }; },
     async enrichWorkspaceCandidates(profileId, input, options = {}) { calls.push(["enrich", profileId, input]); options.onTelemetry?.({ type: "REQUEST_PREPARED", requestId: "REQ-1" }); return input.candidateBundle; },
-    async planWorkspaceAnalysis(profileId, input, options = {}) { calls.push(["plan", profileId, input]); options.onTelemetry?.({ type: "RESPONSE_PROGRESS", requestId: "REQ-PLAN", assistantMessage: "Three queues planned" }); return { agentMessage: "Three queues planned", taskAssignments: [1, 2, 3].map((slot) => ({ agentId: `SUB_AGENT_${slot}`, objective: `Queue ${slot}`, moduleScopes: [] })) }; },
+    async planWorkspaceAnalysis(profileId, input, options = {}) { calls.push(["plan", profileId, input]); options.onTelemetry?.({ type: "RESPONSE_PROGRESS", requestId: "REQ-PLAN", assistantMessage: "Sealed batch planned" }); return { agentMessage: "Sealed batch planned", taskAssignments: [1, 2].map((slot) => ({ agentId: `CHILD-${slot}`, objective: `Independent analysis ${slot}`, moduleScopes: [] })) }; },
   };
   const baseUrl = await startStubServer(t, application);
 
@@ -180,7 +272,7 @@ test("analysis model profiles can be configured, verified, and used for bounded 
   });
   const planMessages = (await planned.text()).trim().split("\n").map((line) => JSON.parse(line));
   assert.deepEqual(planMessages.map((message) => message.kind), ["telemetry", "result"]);
-  assert.equal(planMessages[1].plan.taskAssignments.length, 3);
+  assert.equal(planMessages[1].plan.taskAssignments.length, 2);
   assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default`, { method: "DELETE" })).status, 200);
   assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "select", "enrich", "enrich", "plan", "remove"]);
 });

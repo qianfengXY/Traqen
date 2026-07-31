@@ -43,6 +43,7 @@ async function migratedDatabase() {
     "0012_feature_evolution",
     "0013_analysis_agent",
     "0014_legacy_understanding_engine",
+    "0015_workspace_product_foundation",
   ]);
   return database;
 }

@@ -26,3 +26,6 @@ export * from "./artifact-inventory.js";
 export * from "./source-slice.js";
 export * from "./graph-revision.js";
 export * from "./understanding-evaluation.js";
+export * from "./workspace.js";
+export * from "./workspace-execution-profile.js";
+export * from "./analysis-batch.js";

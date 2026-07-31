@@ -64,6 +64,7 @@ import {
   ScannerAttestationError,
   SkillAttestationError,
 } from "../storage/index.js";
+import { WorkspaceProductFoundation } from "./workspace-product-foundation.js";
 
 function requireId(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -181,6 +182,7 @@ export class TraceabilityApplication {
   #analysisModelRegistry;
   #sourceSliceBroker;
   #legacyUnderstandingRuntime;
+  #workspaceFoundation;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -203,6 +205,7 @@ export class TraceabilityApplication {
     analysisModelRegistry = null,
     sourceSliceBroker = null,
     legacyUnderstandingRuntime = null,
+    workspaceFoundation = null,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -242,16 +245,94 @@ export class TraceabilityApplication {
     this.#analysisModelRegistry = analysisModelRegistry;
     this.#sourceSliceBroker = sourceSliceBroker;
     this.#legacyUnderstandingRuntime = legacyUnderstandingRuntime;
+    this.#workspaceFoundation = workspaceFoundation ?? new WorkspaceProductFoundation({ store, clock });
   }
 
   async createProject(input) {
     const foundation = createProjectFoundation(input);
-    return this.#store.appendProjectFoundation(foundation);
+    const stored = await this.#store.appendProjectFoundation(foundation);
+    await this.#workspaceFoundation.recordWorkspaceCreated(foundation.project.id, input.actorId ?? "SYSTEM");
+    return stored;
   }
 
   async getProject(projectId) {
     requireId(projectId, "projectId");
     return this.#store.getProjectFoundation(projectId);
+  }
+
+  async listWorkspaces(userId = null, options = {}) {
+    return this.#workspaceFoundation.listWorkspaces(userId, options);
+  }
+
+  async getWorkspace(workspaceId, userId = null) {
+    requireId(workspaceId, "workspaceId");
+    return this.#workspaceFoundation.getWorkspace(workspaceId, userId);
+  }
+
+  async renameWorkspace(workspaceId, name, actorId) {
+    return this.#workspaceFoundation.transitionWorkspace(workspaceId, "WORKSPACE_RENAMED", actorId, { name });
+  }
+
+  async requestWorkspaceDeletion(workspaceId, actorId) {
+    return this.#workspaceFoundation.transitionWorkspace(workspaceId, "DELETION_REQUESTED", actorId);
+  }
+
+  async cancelWorkspaceDeletion(workspaceId, actorId) {
+    return this.#workspaceFoundation.transitionWorkspace(workspaceId, "DELETION_CANCELLED", actorId);
+  }
+
+  async completeWorkspaceDeletion(workspaceId, actorId) {
+    return this.#workspaceFoundation.transitionWorkspace(workspaceId, "DELETION_COMPLETED", actorId);
+  }
+
+  async setWorkspaceVisibility(workspaceId, userId, hidden) {
+    return this.#workspaceFoundation.setWorkspaceVisibility(workspaceId, userId, hidden);
+  }
+
+  async registerCapabilityTemplate(input) {
+    return this.#workspaceFoundation.registerCapabilityTemplate(input);
+  }
+
+  async listCapabilityTemplates() {
+    return this.#workspaceFoundation.listCapabilityTemplates();
+  }
+
+  async saveWorkspaceCapabilityConfig(workspaceId, input) {
+    return this.#workspaceFoundation.saveWorkspaceCapabilityConfig(workspaceId, input);
+  }
+
+  async resolveWorkspaceExecutionProfile(workspaceId, configId = null) {
+    return this.#workspaceFoundation.resolveWorkspaceProfile(workspaceId, configId);
+  }
+
+  async issueWorkspaceSecretGrants(workspaceId, profileRevisionId, input) {
+    return this.#workspaceFoundation.issueSecretGrants(workspaceId, profileRevisionId, input);
+  }
+
+  async createWorkspaceAnalysisBatch(workspaceId, input) {
+    return this.#workspaceFoundation.createBatch(workspaceId, input);
+  }
+
+  async commitWorkspaceChildResult(workspaceId, input) {
+    return this.#workspaceFoundation.commitChildResult(workspaceId, input);
+  }
+
+  async openWorkspaceAnalysisBatchBarrier(workspaceId, batchId) {
+    return this.#workspaceFoundation.openBatchBarrier(workspaceId, batchId);
+  }
+
+  async getWorkspaceReviewQueue(workspaceId, filters = {}) {
+    return this.#workspaceFoundation.getReviewQueue(workspaceId, filters);
+  }
+
+  async decideWorkspaceReviewBatch(workspaceId, input, requestContext = {}) {
+    const reviewer = await this.#reviewerResolver(workspaceId, requestContext);
+    if (!reviewer) throw new ReviewAuthenticationError("a trusted reviewer identity is required");
+    return this.#workspaceFoundation.decideReviewBatch(workspaceId, {
+      ...input,
+      reviewerId: reviewer.actorId,
+      reviewerRole: reviewer.actorRole,
+    });
   }
 
   async registerSnapshot(projectId, input) {

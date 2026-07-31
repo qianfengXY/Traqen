@@ -11,6 +11,8 @@ import { clearLocalWorkspaceAnalysisRun, listLocalWorkspaceProjects, loadLocalWo
 import { localWorkspaceStatisticsForNode } from "./local-workspace-statistics";
 import { buildWorkspaceObservationRequest, ensureWorkspaceProject, getWorkspaceAnalysisRun, ingestWorkspaceObservations, pauseWorkspaceAnalysisRun, resumeWorkspaceAnalysisRun, startWorkspaceAnalysisRun, workspaceEnrichmentsFromAnalysisResult, workspaceRunSubscriptionBeforeStart, workspaceRunSubscriptionFromServer, type ServerAnalysisCheckpoint, type WorkspaceRunSubscription } from "./workspace-analysis-run-client";
 import { getCurrentUnderstandingGraph, listGraphRevisions, type CurrentUnderstandingGraph, type GraphRevision } from "./understanding-graph-client";
+import { getServerWorkspaceUnderstanding, registerServerWorkspaceSource, startServerWorkspaceUnderstanding, type ServerUnderstandingJob } from "./server-understanding-client";
+import { createWorkspace as createServerWorkspace, listWorkspaces as listServerWorkspaces, setWorkspaceVisibility as setServerWorkspaceVisibility, staleWorkspaceResponse, type CurrentWorkspaceContext } from "./workspace-client";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { ThemeProvider } from "./theme-context";
 
@@ -903,7 +905,7 @@ const staleScenario: Scenario = {
   reasons: ["规范性 Claim 与业务 Decision 仍然有效，没有被代码变化自动废弃。", "trace-chain.js 的实现 Fact 已变化，因此实现符合性和后续验证链路被标记为 STALE。", "必须重新分析映射并在当前部署重跑 TestSpec，才能恢复完整可信链。"],
 };
 
-function demoGraphForScenario(scenario: Scenario, view: GraphViewPreset): FeatureGraph {
+export function historicalScenarioGraphFixture(scenario: Scenario, view: GraphViewPreset): FeatureGraph {
   const kindTypes: Record<string, string> = {
     Claim: "CLAIM",
     Scope: "CLAIM_SCOPE",
@@ -1279,6 +1281,8 @@ export function TraqenProduct() {
   const [snapshotId, setSnapshotId] = useState("SNAPSHOT-TRAQEN-7D31E8");
   const [workspaceName, setWorkspaceName] = useState("Traqen Platform");
   const [workspaceProjectId, setWorkspaceProjectId] = useState("PROJECT-TRAQEN");
+  const [workspaceContextVersion, setWorkspaceContextVersion] = useState(1);
+  const workspaceContextRef = useRef<CurrentWorkspaceContext>({ workspaceId: "PROJECT-TRAQEN", contextVersion: 1 });
   const [workspaceAnalysis, setWorkspaceAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
   const [workspaceProgressAnalysis, setWorkspaceProgressAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
   const [workspaceTreeMode, setWorkspaceTreeMode] = useState<LocalCandidateTreeMode>("BUSINESS");
@@ -1319,6 +1323,16 @@ export function TraqenProduct() {
     API: effectiveWorkspaceAnalysis ? localWorkspaceAnalysisForTreeMode(effectiveWorkspaceAnalysis, "API").features.length : 0,
   }), [effectiveWorkspaceAnalysis]);
   const workspaceProjectCreated = useMemo(() => workspaceProjects.some((project) => project.id === workspaceProjectId), [workspaceProjectId, workspaceProjects]);
+  const bindWorkspaceContext = useCallback((workspaceId: string) => {
+    const next = { workspaceId, contextVersion: workspaceContextRef.current.contextVersion + 1 };
+    workspaceContextRef.current = next;
+    setWorkspaceContextVersion(next.contextVersion);
+    setWorkspaceProjectId(workspaceId);
+    setProjectId(workspaceId);
+    setLiveScenario(null);
+    setSelectedTraceBlock("description");
+    setWorkspaceTraceBlock("description");
+  }, []);
   const activateWorkspaceSnapshot = useCallback((snapshot: LocalWorkspaceProjectSnapshot, preserveSelectedFiles = false, treeMode: LocalCandidateTreeMode = "BUSINESS") => {
     const result = snapshot.analysis;
     const projected = localWorkspaceAnalysisForTreeMode(result, treeMode);
@@ -1326,8 +1340,7 @@ export function TraqenProduct() {
     setWorkspaceProgressAnalysis(null);
     setWorkspaceAnalysis(result);
     setWorkspaceName(result.workspaceName);
-    setWorkspaceProjectId(result.projectId);
-    setProjectId(result.projectId);
+    bindWorkspaceContext(result.projectId);
     setWorkspaceDirectoryName(snapshot.project.rootName);
     setWorkspaceRegisteredRootName(snapshot.project.rootName);
     if (!preserveSelectedFiles) setWorkspaceSelectedFiles([]);
@@ -1336,7 +1349,7 @@ export function TraqenProduct() {
     setWorkspaceTraceBlock("description");
     setWorkspaceExpandedNodeIds(new Set(expandableWorkspaceTreeNodeIds(projected.tree)));
     if (firstFeatureId) setFeatureId(firstFeatureId);
-  }, []);
+  }, [bindWorkspaceContext]);
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -1392,8 +1405,25 @@ export function TraqenProduct() {
 
   useEffect(() => {
     let cancelled = false;
-    void listLocalWorkspaceProjects({ includeHidden: true }).then(async (projects) => {
+    void Promise.all([
+      listLocalWorkspaceProjects({ includeHidden: true }),
+      listServerWorkspaces(apiBase, apiToken, "LOCAL-OPERATOR").catch(() => []),
+    ]).then(async ([localProjects, serverWorkspaces]) => {
       if (cancelled) return;
+      const localById = new Map(localProjects.map((project) => [project.id, project]));
+      const projects = serverWorkspaces.length > 0
+        ? serverWorkspaces.map((workspace) => ({
+            id: workspace.id,
+            name: workspace.name,
+            rootName: localById.get(workspace.id)?.rootName ?? "",
+            createdAt: workspace.createdAt,
+            updatedAt: workspace.updatedAt,
+            fileCount: localById.get(workspace.id)?.fileCount ?? 0,
+            supportedFileCount: localById.get(workspace.id)?.supportedFileCount ?? 0,
+            candidateCount: localById.get(workspace.id)?.candidateCount ?? 0,
+            visible: !workspace.hidden,
+          }))
+        : localProjects; // Compatibility read until all pre-Workspace browser records have migrated.
       setWorkspaceProjects(projects);
       const firstVisible = projects.find((project) => project.visible);
       if (!firstVisible) return;
@@ -1404,8 +1434,7 @@ export function TraqenProduct() {
         setWorkspaceProgressAnalysis(null);
         setWorkspaceAnalysis(null);
         setWorkspaceName(firstVisible.name);
-        setWorkspaceProjectId(firstVisible.id);
-        setProjectId(firstVisible.id);
+        bindWorkspaceContext(firstVisible.id);
         setWorkspaceSelectedFiles([]);
         setWorkspaceDirectoryName(firstVisible.rootName);
         setWorkspaceRegisteredRootName(firstVisible.rootName);
@@ -1415,7 +1444,7 @@ export function TraqenProduct() {
       }
     }).catch(() => undefined);
     return () => { cancelled = true; };
-  }, [activateWorkspaceSnapshot]);
+  }, [activateWorkspaceSnapshot, apiBase, apiToken, bindWorkspaceContext]);
 
   const scenario = liveScenario ?? (scenarioKey === "current" ? completeScenario : staleScenario);
   async function initializeWorkspace(result: LocalWorkspaceAnalysis, records: LocalWorkspaceFileRecord[], rootName: string) {
@@ -1450,11 +1479,9 @@ export function TraqenProduct() {
   }
 
   function activateWorkspaceProject(project: LocalWorkspaceProjectSummary) {
-    setLiveScenario(null);
     clearWorkspaceAnalysis();
     setWorkspaceName(project.name);
-    setWorkspaceProjectId(project.id);
-    setProjectId(project.id);
+    bindWorkspaceContext(project.id);
     setWorkspaceSelectedFiles([]);
     setWorkspaceDirectoryName(project.rootName);
     setWorkspaceRegisteredRootName(project.rootName);
@@ -1497,8 +1524,8 @@ export function TraqenProduct() {
     const name = newWorkspaceName.trim();
     const id = newWorkspaceProjectId.trim();
     if (!name || !id || workspaceProjects.some((project) => project.id === id)) return;
-    const now = new Date().toISOString();
-    const project: LocalWorkspaceProjectSummary = { id, name, rootName: "", createdAt: now, updatedAt: now, fileCount: 0, supportedFileCount: 0, candidateCount: 0, visible: true };
+    const workspace = await createServerWorkspace(apiBase, apiToken, { id, name, userId: "LOCAL-OPERATOR" });
+    const project: LocalWorkspaceProjectSummary = { id, name: workspace.name, rootName: "", createdAt: workspace.createdAt, updatedAt: workspace.updatedAt, fileCount: 0, supportedFileCount: 0, candidateCount: 0, visible: !workspace.hidden };
     await saveLocalWorkspaceProjectSummary(project);
     setWorkspaceProjects((current) => [project, ...current].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)));
     setWorkspaceCreationOpen(false);
@@ -1599,6 +1626,7 @@ export function TraqenProduct() {
   }
 
   async function changeWorkspaceVisibility(targetProjectId: string, visible: boolean) {
+    await setServerWorkspaceVisibility(apiBase, apiToken, targetProjectId, "LOCAL-OPERATOR", !visible);
     const updated = await setLocalWorkspaceProjectVisibility(targetProjectId, visible);
     const nextProjects = workspaceProjects.map((project) => project.id === targetProjectId ? updated : project);
     setWorkspaceProjects(nextProjects);
@@ -1636,6 +1664,7 @@ export function TraqenProduct() {
     });
   }
   async function fetchTraceability(targetFeatureId: string, targetSnapshotId: string) {
+    const requestContext = { ...workspaceContextRef.current };
     const base = apiBase.replace(/\/$/, "");
     const url = `${base}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(targetFeatureId)}/traceability?snapshotManifestId=${encodeURIComponent(targetSnapshotId)}`;
     const response = await fetch(url, {
@@ -1647,6 +1676,7 @@ export function TraqenProduct() {
       throw new Error(error?.message ?? `API returned ${response.status}`);
     }
     const normalized = fromApi(body);
+    if (staleWorkspaceResponse(requestContext, workspaceContextRef.current)) return;
     setLiveScenario(normalized);
     setSelectedTraceBlock("description");
     setConnectionOpen(false);
@@ -1843,8 +1873,8 @@ export function TraqenProduct() {
                   <input id="api-base" value={apiBase} onChange={(event) => setApiBase(event.target.value)} />
                 </div>
                 <div className="field">
-                  <label htmlFor="project-id">Project ID</label>
-                  <input id="project-id" value={projectId} onChange={(event) => setProjectId(event.target.value)} />
+                  <label htmlFor="project-id">Workspace ID · context {workspaceContextVersion}</label>
+                  <input id="project-id" value={workspaceProjectId} readOnly aria-readonly="true" />
                 </div>
                 <div className="field">
                   <label htmlFor="feature-id">Feature ID</label>
@@ -1891,8 +1921,12 @@ export function TraqenProduct() {
             {!workspaceCreationOpen && workspaceProjectCreated && <PublishedUnderstandingGraphStatus apiBase={apiBase} apiToken={apiToken} projectId={workspaceProjectId} />}
             {!workspaceCreationOpen && workspaceProjectCreated && <WorkspaceAnalysisView workspaceName={workspaceName} projectId={workspaceProjectId} projectCreated={workspaceProjectCreated} onRequireWorkspace={startNewWorkspace} onRunningChange={setWorkspaceAnalysisRunning} selectedFiles={workspaceSelectedFiles} setSelectedFiles={setWorkspaceSelectedFiles} directoryName={workspaceDirectoryName} setDirectoryName={setWorkspaceDirectoryName} registeredRootName={workspaceRegisteredRootName} analysis={visibleCompletedWorkspaceAnalysis} fileRecords={workspaceFileRecords} onInitialize={initializeWorkspace} onProgressAnalysis={publishWorkspaceProgress} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onOpenTrace={() => navigateToView("trace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} analysisModelProfile={analysisModelReady ? activeAnalysisModelProfile : null} apiBase={apiBase} apiToken={apiToken} onRequireModel={() => { setAnalysisSettingsOpen(true); setConnectionOpen(false); }} />}
           </div>
-          {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} /> : <TraceView scenario={scenario} demo={!liveScenario} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />)}
-          {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceCandidateId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceCandidateId} snapshotId={snapshotId} scenario={scenario} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} scenario={scenario} live={Boolean(liveScenario)} />)}
+          {view === "trace" && (visibleWorkspaceAnalysis && !liveScenario
+            ? <WorkspaceTraceabilityView analysis={visibleWorkspaceAnalysis} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} selectedBlock={workspaceTraceBlock} setSelectedBlock={setWorkspaceTraceBlock} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} onManageWorkspace={() => setView("workspace")} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts} />
+            : liveScenario
+              ? <TraceView scenario={scenario} demo={false} scenarioKey={scenarioKey} setScenarioKey={setScenarioKey} selectedBlock={selectedTraceBlock} setSelectedBlock={setSelectedTraceBlock} />
+              : <section className="panel workspace-stat-empty"><h2>{t("暂无受治理的追溯数据", "No governed traceability data")}</h2><p>{t("先完成服务端分析与授权审核；实时 Workspace 不会回退到演示 Feature。", "Complete server analysis and authorized review first. A live Workspace never falls back to demo Features.")}</p></section>)}
+          {view === "graph" && (visibleWorkspaceAnalysis && !liveScenario ? <WorkspaceGraphSurface analysis={visibleWorkspaceAnalysis} selectedCandidateId={workspaceCandidateId} onSelectCandidate={selectWorkspaceCandidate} expandedNodeIds={workspaceExpandedNodeIds} onToggleNode={toggleWorkspaceTreeNode} treeMode={workspaceTreeMode} onTreeModeChange={changeWorkspaceTreeMode} treeModeCounts={workspaceTreeModeCounts}><GraphView key={`${visibleWorkspaceAnalysis.projectId}:${workspaceTreeMode}:${workspaceCandidateId}`} apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={workspaceCandidateId} snapshotId={snapshotId} live={false} workspaceAnalysis={visibleWorkspaceAnalysis} /></WorkspaceGraphSurface> : <GraphView apiBase={apiBase} apiToken={apiToken} projectId={projectId} featureId={featureId} snapshotId={snapshotId} live={Boolean(liveScenario)} />)}
           {view === "review" && <ReviewView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "impact" && <ImpactView apiBase={apiBase} apiToken={apiToken} projectId={projectId} />}
           {view === "metrics" && <MetricsView apiBase={apiBase} apiToken={apiToken} projectId={projectId} snapshotId={snapshotId} />}
@@ -2181,8 +2215,8 @@ type LocalAnalysisTask = {
 };
 type LocalAgentMessage = { id: string; at: number; actor: "AGENT" | "MODEL" | "VALIDATOR" | "SYSTEM"; text: string; streaming?: boolean; warning?: boolean };
 type LocalSubAgent = {
-  id: "SUB_AGENT_1" | "SUB_AGENT_2" | "SUB_AGENT_3";
-  slot: 1 | 2 | 3;
+  id: string;
+  slot: number;
   generation: number;
   status: "IDLE" | "RUNNING" | "ROTATING" | "COMPLETED" | "PAUSED" | "FAILED";
   taskName: string;
@@ -2197,6 +2231,7 @@ type LocalSubAgent = {
   requestOutputCharacters: number;
   messages: LocalAgentMessage[];
 };
+const defaultChildAgentSlots = [1, 2] as const;
 
 function analysisDuration(milliseconds: number) {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
@@ -2245,6 +2280,8 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const [resumableCheckpoint, setResumableCheckpoint] = useState<LocalWorkspaceAnalysisRunCheckpoint | null>(null);
   const [serverRunSubscription, setServerRunSubscription] = useState<WorkspaceRunSubscription | null>(null);
   const [serverCheckpoint, setServerCheckpoint] = useState<ServerAnalysisCheckpoint | null>(null);
+  const [serverSourceRoot, setServerSourceRoot] = useState("");
+  const [serverUnderstandingJob, setServerUnderstandingJob] = useState<ServerUnderstandingJob | null>(null);
   const serverRunSubscriptionRef = useRef<WorkspaceRunSubscription | null>(null);
   const [progressAnalysis, setProgressAnalysis] = useState<LocalWorkspaceAnalysis | null>(null);
   const [directoryAccessRestoring, setDirectoryAccessRestoring] = useState(false);
@@ -2253,8 +2290,8 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   const hasSavedDirectoryHandle = savedDirectoryHandleProjectId === projectId;
   const [mainModelMessage, setMainModelMessage] = useState("");
   const [mainModelStreaming, setMainModelStreaming] = useState(false);
-  const [subAgents, setSubAgents] = useState<LocalSubAgent[]>(() => ([1, 2, 3] as const).map((slot) => ({
-    id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+  const [subAgents, setSubAgents] = useState<LocalSubAgent[]>(() => defaultChildAgentSlots.map((slot) => ({
+    id: `CHILD-${slot}`, slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
   })));
   const [showTechnicalDiagnostics, setShowTechnicalDiagnostics] = useState(false);
   const [taskClock, setTaskClock] = useState(() => Date.now());
@@ -2283,9 +2320,9 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   }, [analysisTask]);
 
   useEffect(() => {
-    onRunningChange(scanning || serverCheckpoint?.run.status === "RUNNING");
+    onRunningChange(scanning || serverCheckpoint?.run.status === "RUNNING" || serverUnderstandingJob?.status === "RUNNING");
     return () => onRunningChange(false);
-  }, [onRunningChange, scanning, serverCheckpoint?.run.status]);
+  }, [onRunningChange, scanning, serverCheckpoint?.run.status, serverUnderstandingJob?.status]);
 
   useEffect(() => {
     if (analysisTask?.status !== "RUNNING") return;
@@ -2527,6 +2564,66 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     await acceptServerCheckpoint(checkpoint, serverRunSubscription);
   }
 
+  async function startServerOwnedUnderstanding() {
+    if (!projectCreated || !serverSourceRoot.trim()) {
+      setMessage(t("请先创建 Workspace 并填写服务端允许访问的源码根目录。", "Create the Workspace and enter a source root that the server is allowed to access."));
+      return;
+    }
+    setScanning(true);
+    setMessage(t("正在注册服务端源码并创建可恢复分析任务…", "Registering server-owned source and creating a resumable analysis job…"));
+    try {
+      await ensureWorkspaceProject(apiBase, apiToken, workspaceName, projectId);
+      const registration = await registerServerWorkspaceSource(
+        apiBase,
+        apiToken,
+        projectId,
+        serverSourceRoot.trim(),
+      );
+      const job = await startServerWorkspaceUnderstanding(apiBase, apiToken, projectId, {
+        sourceRegistrationId: registration.id,
+        requestedMode: analysis ? "INCREMENTAL" : "AUTO",
+      });
+      setServerUnderstandingJob(job);
+      setMessage(t(
+        `服务端任务 ${job.id} 已启动；关闭浏览器不会停止扫描。`,
+        `Server job ${job.id} started; closing the browser does not stop scanning.`,
+      ));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t("无法启动服务端分析", "Unable to start server analysis"));
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!serverUnderstandingJob || serverUnderstandingJob.status !== "RUNNING") return;
+    let cancelled = false;
+    let timer: ReturnType<typeof window.setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const current = await getServerWorkspaceUnderstanding(
+          apiBase,
+          apiToken,
+          projectId,
+          serverUnderstandingJob.id,
+        );
+        if (cancelled) return;
+        setServerUnderstandingJob(current);
+        if (current.status === "RUNNING") timer = window.setTimeout(() => { void poll(); }, 1_000);
+        else setMessage(current.status === "COMPLETED"
+          ? t("服务端分析完成；不可变图谱与历史已发布。", "Server analysis completed; the immutable graph and history are published.")
+          : current.error?.message ?? t(`服务端任务状态：${current.status}`, `Server job status: ${current.status}`));
+      } catch (error) {
+        if (!cancelled) setMessage(error instanceof Error ? error.message : t("无法读取服务端任务状态", "Unable to read server job status"));
+      }
+    };
+    void poll();
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [apiBase, apiToken, projectId, serverUnderstandingJob, t]);
+
   async function scanWorkspace(analysisFiles = selectedFilesRef.current, analysisDirectoryName = directoryNameRef.current, resumeCheckpoint?: LocalWorkspaceAnalysisRunCheckpoint) {
     if (!projectCreated) {
       setMessage(t("请先创建 Workspace 项目，再选择代码工程并启动分析。", "Create the Workspace project before selecting its code project and starting analysis."));
@@ -2546,8 +2643,8 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
     setTaskClock(taskStartedAt);
     setMainModelMessage("");
     setMainModelStreaming(false);
-    setSubAgents(([1, 2, 3] as const).map((slot) => ({
-      id: `SUB_AGENT_${slot}` as LocalSubAgent["id"], slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
+    setSubAgents(defaultChildAgentSlots.map((slot) => ({
+      id: `CHILD-${slot}`, slot, generation: 1, status: "IDLE", taskName: t("等待任务分配", "Waiting for assignment"), objective: t("等待主 Agent 分配任务", "Waiting for the Main Agent to assign work"), moduleScopes: [], currentTask: t("尚未分配", "Not assigned"), completedTasks: 0, totalTasks: 0, contextCharacters: 0, contextLimit: 160_000, requestInputCharacters: 0, requestOutputCharacters: 0, messages: [],
     })));
     const nextAnalysisTask: LocalAnalysisTask = {
       id: resumeCheckpoint?.id ?? `LOCAL-ANALYSIS-${taskStartedAt}`,
@@ -2910,11 +3007,13 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
   return (
     <>
       <section className="panel workspace-onboarding">
-        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · hybrid profile</p><h1>{t("选择工程，由分析 Agent 建立候选追溯 Workspace", "Select a project and let the Analysis Agent build its Candidate traceability Workspace")}</h1><p>{t("先对十万级工程做有界确定性提取，再由主 Agent 调用当前模型规划三路任务，并启动三个并行子 Agent。顶部主对话流式展示规划、分派与汇总，下面三个独立窗口流式展示各自与模型的公开对话、进度、校验和上下文交接；首次全量、后续增量。", "The Agent first performs bounded deterministic extraction across 100,000-scale projects. The Main Agent then asks the active model to plan three work queues and starts three parallel child Agents. The top conversation streams planning, assignment, and summaries, while three independent windows stream each child's public model conversation, progress, validation, and context handoff. The first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
+        <div className="panel-head"><div><p className="eyebrow">Analysis Agent · Workspace profile</p><h1>{t("选择工程，由分析 Agent 建立候选追溯 Workspace", "Select a project and let the Analysis Agent build its Candidate traceability Workspace")}</h1><p>{t("服务端先建立完整源码清单与不可变快照，再由主 Agent 将同一个密封批次交给工作区配置的一到多个独立子 Agent（默认两个）。所有结果在屏障开启前彼此隔离，随后按证据对账；首次全量、后续增量。", "The server first builds a complete source inventory and immutable Snapshot. The Main Agent then sends the same sealed batch to one or more independently configured Child Agents (two by default). Results stay isolated until the barrier opens and are then reconciled against evidence. The first run is full and later runs are incremental.")}</p></div><span className={`mode-badge ${analysisModelProfile?.ready ? "live" : ""}`}>{analysisModelProfile?.ready ? `${analysisModelProfile.model} · ${t("当前模型", "ACTIVE MODEL")}` : t("需要模型", "MODEL REQUIRED")}</span></div>
         <div className="workspace-setup-grid">
           <div className="field"><label htmlFor="workspace-name">Workspace Name</label><input id="workspace-name" value={workspaceName} readOnly aria-readonly="true" /></div>
           <div className="field"><label htmlFor="workspace-project-id">Project ID</label><input id="workspace-project-id" value={projectId} readOnly aria-readonly="true" /></div>
-          <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" disabled={directoryAccessRestoring} onClick={() => void chooseWorkspaceDirectory()}>{projectCreated ? t("选择代码工程", "Select code project") : t("先创建 Workspace", "Create Workspace first")}</button><span>{directoryName || (hasSavedDirectoryHandle ? t("已保存工程目录", "Saved project directory") : projectCreated ? t("尚未选择目录", "No directory selected") : t("尚未创建项目", "No project created"))}</span><small>{selectedFiles.length > 0 ? `${selectedFiles.length} ${t("个文件", "files")}` : hasSavedDirectoryHandle ? t("目录权限已保存", "Directory access saved") : ""}</small></div>
+          <div className="field full"><label htmlFor="server-source-root">{t("服务端源码根目录（推荐）", "Server source root (recommended)")}</label><input id="server-source-root" placeholder="/srv/workspaces/project" value={serverSourceRoot} onChange={(event) => setServerSourceRoot(event.target.value)} /><small>{t("目录必须在服务端允许列表中。快照、扫描、子 Agent 和发布均在服务端执行，浏览器关闭后继续。", "The directory must be allowlisted by the server. Snapshotting, scanning, Child Agents, and publication all run server-side and continue after the browser closes.")}</small></div>
+          <div className="workspace-analysis-actions"><button className="button primary" disabled={scanning || serverUnderstandingJob?.status === "RUNNING" || !serverSourceRoot.trim()} onClick={() => void startServerOwnedUnderstanding()}>{serverUnderstandingJob?.status === "RUNNING" ? t("服务端分析中…", "Server analysis running…") : t("启动服务端分析", "Start server analysis")}</button>{serverUnderstandingJob && <small>{serverUnderstandingJob.phase} · {serverUnderstandingJob.status}</small>}</div>
+          <div className="workspace-directory"><input ref={inputRef} className="visually-hidden" id="workspace-directory" type="file" multiple onChange={selectDirectory} /><button className="button" disabled={directoryAccessRestoring} onClick={() => void chooseWorkspaceDirectory()}>{projectCreated ? t("兼容导入本地观察", "Compatibility import") : t("先创建 Workspace", "Create Workspace first")}</button><span>{directoryName || (hasSavedDirectoryHandle ? t("已保存兼容导入目录", "Saved compatibility-import directory") : projectCreated ? t("未选择兼容导入目录", "No compatibility-import directory") : t("尚未创建项目", "No project created"))}</span><small>{selectedFiles.length > 0 ? `${selectedFiles.length} ${t("个文件", "files")}` : hasSavedDirectoryHandle ? t("仅用于迁移旧浏览器观察；不构成受治理真相", "Migration-only browser observations; never governed truth") : ""}</small></div>
           <div className="workspace-analysis-actions"><button className="button primary workspace-scan-button" disabled={scanning || serverCheckpoint?.run.status === "RUNNING" || directoryAccessRestoring || checkpointRestoring} onClick={() => void continueWorkspaceAnalysis()}>{scanning ? t("正在准备源码观察…", "Preparing source observations…") : serverCheckpoint?.run.status === "RUNNING" ? t("服务端分析中…", "Server analysis running…") : checkpointRestoring ? t("正在恢复检查点…", "Restoring checkpoint…") : directoryAccessRestoring ? t("正在恢复工程目录…", "Restoring project directory…") : !projectCreated ? t("先创建 Workspace", "Create Workspace first") : !analysisModelProfile?.ready ? t("先配置模型", "Configure model first") : hasResumableRun ? t("恢复任务", "Resume task") : analysis ? t("执行增量分析", "Run incremental analysis") : t("启动首次全量分析", "Start first full analysis")}</button>{serverCheckpoint?.run.status === "RUNNING" && <button className="button" onClick={() => void pauseWorkspaceAnalysis()}>{t("暂停", "Pause")}</button>}</div>
         </div>
         {scanProgress && <div className="analysis-agent-progress"><span style={{ width: `${Math.round((scanProgress.completed / Math.max(1, scanProgress.total)) * 100)}%` }} /><small>{scanProgress.completed.toLocaleString()} / {scanProgress.total.toLocaleString()}</small></div>}
@@ -2935,12 +3034,12 @@ function WorkspaceAnalysisView({ workspaceName, projectId, projectCreated, onReq
               <header><div><span className="agent-live-dot" /><p><b>{t("主 Agent 对话", "Main Agent conversation")}</b><small>{t("规划 · 分派 · 生命周期控制 · 汇总", "Plan · assign · lifecycle control · summarize")}</small></p></div><em>{analysisTask?.status ? term(analysisTask.status) : t("等待", "Waiting")}</em></header>
               <ol className="analysis-task-plan compact">{taskStepDefinitions.map((step, index) => { const done = Boolean(analysisTask) && (analysisTask?.status === "COMPLETED" || activeTaskPhaseIndex > index); const active = activeTaskPhaseIndex === index && analysisTask?.status === "RUNNING"; return <li className={done ? "done" : active ? "active" : "pending"} key={step.id}><i>{done ? "✓" : active ? "●" : index + 1}</i><span><b>{step.label}</b></span></li>; })}</ol>
               <div className="agent-transcript main-transcript" ref={mainTranscriptRef} role="log" aria-live="polite">
-                {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <article className={`agent-message actor-${event.role.toLowerCase()} ${event.kind === "WARNING" ? "warning" : ""}`} key={event.id}><div><b>{activityRoleLabel(event.role)}</b><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time></div><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</article>) : <p className="task-log-empty">{t("主任务启动后，这里会流式显示主 Agent 与模型的公开对话、任务分配和三个子 Agent 的汇总。", "After the main task starts, this window streams the public Main-Agent/model conversation, task assignments, and summaries from all three child Agents.")}</p>}
+                {visibleTaskEvents.length && analysisTask ? visibleTaskEvents.map((event) => <article className={`agent-message actor-${event.role.toLowerCase()} ${event.kind === "WARNING" ? "warning" : ""}`} key={event.id}><div><b>{activityRoleLabel(event.role)}</b><time>+{analysisDuration(event.at - analysisTask.startedAt)}</time></div><p>{event.message}</p>{showTechnicalDiagnostics && event.detail && <details><summary>{t("查看技术数据", "View technical data")}</summary><pre>{event.detail}</pre></details>}</article>) : <p className="task-log-empty">{t("主任务启动后，这里会显示主 Agent 的公开更新、同批次任务分配和全部子 Agent 的对账摘要。", "After the main task starts, this window shows public Main-Agent updates, same-batch assignments, and reconciliation summaries from every Child Agent.")}</p>}
                 {mainModelMessage && <article className={`agent-message actor-model ${mainModelStreaming ? "streaming" : ""}`}><div><b>{t("模型", "Model")}</b><span>{mainModelStreaming ? t("流式回复", "Streaming") : t("阶段结论", "Stage result")}</span></div><p>{mainModelMessage}</p></article>}
               </div>
               <footer><span className="task-pulse" /><small>{analysisTask?.currentWork ?? t("等待主任务启动", "Waiting for the main task to start")}</small><em>{t("展示公开推理摘要，不展示私有思维链", "Public reasoning summaries; no private chain-of-thought")}</em></footer>
             </section>
-            <div className="sub-agent-deck" aria-label={t("三个子 Agent 对话", "Three child-Agent conversations")}>
+            <div className="sub-agent-deck" aria-label={t("子 Agent 对话", "Child-Agent conversations")}>
               {subAgents.map((agent) => <section className={`agent-conversation-window sub-agent-window status-${agent.status.toLowerCase()}`} key={agent.id}>
                 <header><div><span className="agent-live-dot" /><p><b>{t(`子 Agent ${agent.slot}`, `Child Agent ${agent.slot}`)}</b><small>{agent.id} · Generation {agent.generation}</small></p></div><em>{term(agent.status)}</em></header>
                 <div className="sub-agent-objective"><span>{t("当前工作任务", "Current task")}</span><b>{agent.taskName}</b><small>{agent.currentTask}</small></div>
@@ -3017,7 +3116,7 @@ function localGraphPath(graph: FeatureGraph, fromNodeId: string, toNodeId: strin
   };
 }
 
-function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenario, live, workspaceAnalysis = null }: { apiBase: string; apiToken: string; projectId: string; featureId: string; snapshotId: string; scenario: Scenario; live: boolean; workspaceAnalysis?: LocalWorkspaceAnalysis | null }) {
+function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, live, workspaceAnalysis = null }: { apiBase: string; apiToken: string; projectId: string; featureId: string; snapshotId: string; live: boolean; workspaceAnalysis?: LocalWorkspaceAnalysis | null }) {
   const { language, t, term } = useI18n();
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const [preset, setPreset] = useState<GraphViewPreset>("traceability");
@@ -3032,9 +3131,18 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   const [pathResult, setPathResult] = useState<FeatureGraphPath | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const demoGraph = useMemo(() => demoGraphForScenario(scenario, preset), [scenario, preset]);
   const workspaceGraph = useMemo(() => workspaceAnalysis ? workspaceGraphForAnalysis(workspaceAnalysis, featureId, preset) : null, [featureId, preset, workspaceAnalysis]);
-  const graph = remoteGraph ?? (workspaceAnalysis ? workspaceGraph as FeatureGraph : demoGraph);
+  const emptyGraph = useMemo<FeatureGraph>(() => ({
+    center: "",
+    snapshotManifestId: snapshotId,
+    view: preset,
+    depth: 0,
+    nodes: [],
+    edges: [],
+    truncated: false,
+    availableExpansions: [],
+  }), [preset, snapshotId]);
+  const graph = remoteGraph ?? workspaceGraph ?? emptyGraph;
   const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
   const effectivePathFrom = graph.nodes.some((node) => node.id === pathFrom) ? pathFrom : graph.center;
   const effectivePathTo = graph.nodes.some((node) => node.id === pathTo) ? pathTo : (graph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? graph.nodes.at(-1)?.id ?? graph.center);
@@ -3052,11 +3160,12 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
       setPathFrom(loadedGraph.center);
       setPathTo(loadedGraph.nodes.at(-1)?.id ?? loadedGraph.center);
       setPathResult(null);
-    }).catch(() => {
-      // The existing Candidate/demo view remains available when no published graph can be resolved.
-    });
+    }).catch(() => setMessage(t(
+      "当前 Workspace 尚无已发布图谱；不会显示演示节点。",
+      "This Workspace has no published graph yet; demo nodes are never substituted.",
+    )));
     return () => { cancelled = true; };
-  }, [apiBase, apiToken, preset, projectId]);
+  }, [apiBase, apiToken, preset, projectId, t]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -3276,13 +3385,13 @@ function GraphView({ apiBase, apiToken, projectId, featureId, snapshotId, scenar
   }
 
   function changePreset(next: GraphViewPreset) {
-    const nextGraph = workspaceAnalysis ? workspaceGraphForAnalysis(workspaceAnalysis, featureId, next) : demoGraphForScenario(scenario, next);
+    const nextGraph = workspaceAnalysis ? workspaceGraphForAnalysis(workspaceAnalysis, featureId, next) : null;
     setPreset(next);
     setRemoteGraph(null);
     setPublishedGraphLoaded(false);
-    setSelectedId(nextGraph.center);
-    setPathFrom(nextGraph.center);
-    setPathTo(nextGraph.nodes.find((node) => node.type === "EVIDENCE")?.id ?? nextGraph.nodes.at(-1)?.id ?? nextGraph.center);
+    setSelectedId(nextGraph?.center ?? "");
+    setPathFrom(nextGraph?.center ?? "");
+    setPathTo(nextGraph?.nodes.find((node) => node.type === "EVIDENCE")?.id ?? nextGraph?.nodes.at(-1)?.id ?? nextGraph?.center ?? "");
     setPathResult(null);
   }
 
@@ -4380,31 +4489,15 @@ function TestResultDetail({ results, design }: { results: ScenarioTestResult[]; 
   );
 }
 
-const demoCandidate: ReviewCandidate = {
-  id: "CANDIDATE-TRACEABILITY-ENDPOINT-001",
-  featureCandidateId: "CANDIDATE-FEATURE-TRACEABILITY-001",
-  statement: "平台必须针对所选 Snapshot 返回服务端派生的 Feature 追溯视图。",
-  subjectKey: "endpoint:GET /v1/projects/{projectId}/features/{featureId}/traceability",
-  constraint: { dimension: "endpointExposed", operator: "EQUALS", value: true },
-  scope: {
-    workspace: "Traqen Platform",
-    snapshotBoundary: "selected-manifest",
-  },
-  evidence: [
-    { factId: "FACT-ENDPOINT-FEATURE-TRACEABILITY", relation: "SUPPORTS" },
-    { factId: "FACT-TRACE-CHAIN-EVALUATOR", relation: "SUPPORTS" },
-    { factId: "FACT-FEATURE-TRACEABILITY-SCHEMA", relation: "CONTEXT" },
-  ],
-  sources: [
-    {
-      candidateId: "RAW-SPECONE-001",
-      producer: { skillId: "specone-reference", skillVersion: "1.0.0" },
-    },
-    {
-      candidateId: "RAW-GSD-001",
-      producer: { skillId: "gsd-reference", skillVersion: "1.0.0" },
-    },
-  ],
+const emptyReviewCandidate: ReviewCandidate = {
+  id: "",
+  featureCandidateId: "",
+  statement: "",
+  subjectKey: "",
+  constraint: { dimension: "candidateAccepted", operator: "EQUALS", value: true },
+  scope: {},
+  evidence: [],
+  sources: [],
 };
 
 function parseObject(value: string, field: string): Record<string, unknown> {
@@ -4415,7 +4508,7 @@ function parseObject(value: string, field: string): Record<string, unknown> {
 
 function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToken: string; projectId: string }) {
   const { t, term, role } = useI18n();
-  const [candidate, setCandidate] = useState<ReviewCandidate>(demoCandidate);
+  const [candidate, setCandidate] = useState<ReviewCandidate>(emptyReviewCandidate);
   const [liveCandidate, setLiveCandidate] = useState(false);
   const [runId, setRunId] = useState("");
   const [candidateId, setCandidateId] = useState("");
@@ -4428,8 +4521,8 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
   const [claimId, setClaimId] = useState("CLAIM-TRACEABILITY-ENDPOINT-001");
   const [scopeId, setScopeId] = useState("SCOPE-TRAQEN-WORKSPACE-001");
   const [decisionId, setDecisionId] = useState("DECISION-TRACEABILITY-ENDPOINT-001");
-  const [statement, setStatement] = useState(demoCandidate.statement);
-  const [scopeJson, setScopeJson] = useState(JSON.stringify(demoCandidate.scope, null, 2));
+  const [statement, setStatement] = useState(emptyReviewCandidate.statement);
+  const [scopeJson, setScopeJson] = useState(JSON.stringify(emptyReviewCandidate.scope, null, 2));
   const [conflictIds, setConflictIds] = useState("");
   const [associationRationale, setAssociationRationale] = useState("该候选描述既有 Feature 的当前实现。");
   const [message, setMessage] = useState("");
@@ -4481,8 +4574,7 @@ function ReviewView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
 
   async function submitReview(selectedOutcome: "CONFIRMED" | "EXCEPTION_RECORDED" | "REJECTED") {
     if (!liveCandidate) {
-      setOutcome(selectedOutcome);
-      setMessage(t(`自 Workspace 选择：${term(selectedOutcome)}。预览操作不会写入业务基线。`, `Self-Workspace selection: ${term(selectedOutcome)}. Preview actions do not change the business baseline.`));
+      setMessage(t("请先从当前 Workspace 加载真实候选；不会对演示数据执行审核。", "Load a real Candidate from the current Workspace first; review never operates on demo data."));
       return;
     }
     if (!token.trim()) {
@@ -4677,76 +4769,27 @@ function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: st
   const [platformMetrics, setPlatformMetrics] = useState<PlatformMetrics | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const demo: ProductMetrics = {
-    projectId,
-    snapshotManifestId: snapshotId,
-    computedAt: "2026-07-15T09:30:00.000Z",
-    highValueValidTraceChainRate: { numerator: 7, denominator: 10, ratio: 0.7 },
-    claimConfirmationRate: { numerator: 16, denominator: 20, ratio: 0.8 },
-    confirmedRuleTestCoverageRate: {
-      numerator: 12,
-      denominator: 16,
-      ratio: 0.75,
-    },
-    meaningfulAssertionRate: { numerator: 18, denominator: 24, ratio: 0.75 },
-    evidenceFreshness: {
-      FRESH: 7,
-      EXPIRING: 1,
-      STALE: 1,
-      INCOMPLETE: 1,
-      UNKNOWN: 0,
-    },
-    gapBreakdown: {
-      byType: { NO_TEST_SPEC: 2, EVIDENCE_STALE: 1 },
-      bySeverity: { BLOCKING: 2, WARNING: 1 },
-      byOwnerRole: { QUALITY_OWNER: 2, DEVELOPER: 1 },
-    },
-    features: [
-      {
-        featureId: "FEATURE-TRACEABILITY-001",
-        name: "功能追溯",
-        highValue: true,
-        chainComplete: true,
-        coverage: {
-          product: true,
-          rules: true,
-          implementation: true,
-          data: true,
-          configuration: true,
-          tests: true,
-          assertions: true,
-          execution: true,
-          evidence: true,
-        },
-        openGapCount: 0,
-      },
-      {
-        featureId: "FEATURE-CHANGE-IMPACT-001",
-        name: "变更影响分析",
-        highValue: true,
-        chainComplete: false,
-        coverage: {
-          product: true,
-          rules: true,
-          implementation: true,
-          data: true,
-          configuration: false,
-          tests: true,
-          assertions: true,
-          execution: false,
-          evidence: false,
-        },
-        openGapCount: 2,
-      },
-    ],
-    unavailableMetrics: [
-      {
-        metric: "DEFECT_ESCAPE_RATE",
-        reason: "需要外部缺陷管理系统提供结果数据。",
-      },
-    ],
-  };
-  const current = metrics ?? demo;
+  if (!metrics) {
+    return (
+      <section className="panel metrics-head">
+        <div className="panel-head">
+          <div>
+            <h2>{t("产品效果指标", "Product effectiveness metrics")}</h2>
+            <p>{t("当前 Workspace 尚未加载服务端指标；不会以演示数值替代。", "Server metrics have not been loaded for this Workspace; demo values are never substituted.")}</p>
+          </div>
+          <span className="mode-badge">{t("暂无数据", "NO DATA")}</span>
+        </div>
+        <div className="metrics-context">
+          <span>{snapshotId}</span>
+          <button className="button primary" disabled={loading} onClick={() => void loadMetrics()}>
+            {loading ? t("加载中…", "Loading…") : t("加载服务端指标", "Load server metrics")}
+          </button>
+        </div>
+        {message && <div className="inline-message">{message}</div>}
+      </section>
+    );
+  }
+  const current = metrics;
   const rateCards = [
     [t("高价值功能有效追踪链率", "Valid trace-chain rate for high-value features"), current.highValueValidTraceChainRate],
     [t("声明确认率", "Claim confirmation rate"), current.claimConfirmationRate],
@@ -4936,15 +4979,15 @@ function MetricsView({ apiBase, apiToken, projectId, snapshotId }: { apiBase: st
 
 function ImpactView({ apiBase, apiToken, projectId }: { apiBase: string; apiToken: string; projectId: string }) {
   const { t, term } = useI18n();
-  const [changeSetId, setChangeSetId] = useState("CHANGESET-UI-001");
-  const [fromSnapshot, setFromSnapshot] = useState("SNAPSHOT-TRAQEN-7D31E8");
-  const [toSnapshot, setToSnapshot] = useState("SNAPSHOT-TRAQEN-92A44C");
+  const [changeSetId, setChangeSetId] = useState("");
+  const [fromSnapshot, setFromSnapshot] = useState("");
+  const [toSnapshot, setToSnapshot] = useState("");
   const [result, setResult] = useState<ImpactResult | null>(null);
   const [protection, setProtection] = useState<ContinuousProtection | null>(null);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-  const [repairFeatureId, setRepairFeatureId] = useState("FEATURE-TRACEABILITY-001");
-  const [repairClaimId, setRepairClaimId] = useState("CLAIM-TRACEABILITY-PROOF-001");
+  const [repairFeatureId, setRepairFeatureId] = useState("");
+  const [repairClaimId, setRepairClaimId] = useState("");
   const [repairRunId, setRepairRunId] = useState("");
   const [repairCandidateId, setRepairCandidateId] = useState("");
   const [repairAnalysisId, setRepairAnalysisId] = useState("IMPLEMENTATION-REANALYSIS-UI-001");
@@ -4974,6 +5017,10 @@ function ImpactView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
   }
 
   async function compareSnapshots() {
+    if (!changeSetId.trim() || !fromSnapshot.trim() || !toSnapshot.trim()) {
+      setMessage(t("请选择两个不可变 Snapshot 并填写 ChangeSet ID。", "Select two immutable Snapshots and provide a ChangeSet ID."));
+      return;
+    }
     setLoading(true);
     setMessage("");
     try {
@@ -5036,45 +5083,19 @@ function ImpactView({ apiBase, apiToken, projectId }: { apiBase: string; apiToke
     }
   }
 
-  const changes = result?.changeSet.changes ?? [
-    {
-      id: "CHANGE-SELF-WORKSPACE-001",
-      kind: "MODIFIED",
-      changeType: "SOURCE_CODE",
-      artifact: "src/domain/trace-chain.js",
-    },
-  ];
-  const invalidations = result?.impact.invalidations ?? [
-    {
-      id: "INVALIDATION-SELF-WORKSPACE-001",
-      featureId: "FEATURE-TRACEABILITY-001",
-      layers: ["CONFORMANCE", "VERIFICATION", "TRACE_SEGMENTS"],
-      preserves: ["NORMATIVE_CLAIM", "BUSINESS_DECISION", "HISTORICAL_FACTS", "HISTORICAL_EVIDENCE"],
-      reason: "追踪链评估器 Fact 的内容 Hash 发生变化，旧实现映射不能证明新 Snapshot。",
-      recommendedActions: ["REMAP_IMPLEMENTATION_FACTS", "RECOMPUTE_IMPLEMENTATION_CONFORMANCE", "RERUN_AFFECTED_TESTS", "RECOMPUTE_TRACE_CHAIN"],
-    },
-  ];
-  const affectedFeatures = result?.impact.affectedFeatureIds ?? ["FEATURE-TRACEABILITY-001"];
-  const affectedClaims = result?.impact.affectedClaimRefs ?? [{ id: "CLAIM-TRACEABILITY-PROOF-001", version: 2 }];
-  const affectedTests = result?.impact.affectedTestSpecIds ?? ["TEST-TRACEABILITY-COMPLETE-001"];
+  const changes = result?.changeSet.changes ?? [];
+  const invalidations = result?.impact.invalidations ?? [];
+  const affectedFeatures = result?.impact.affectedFeatureIds ?? [];
+  const affectedClaims = result?.impact.affectedClaimRefs ?? [];
+  const affectedTests = result?.impact.affectedTestSpecIds ?? [];
   const qualityGate = protection?.qualityGate ?? {
     status: "BLOCKED" as const,
     policyMode: "ADVISORY" as const,
     enforcement: "WARN" as const,
-    reasons: ["FEATURE_PROOF_CHAIN_INCOMPLETE"],
-    requiredActions: ["REPAIR_TRACE_GAPS", "RERUN_SELECTED_TESTS"],
+    reasons: ["CHANGE_SET_NOT_LOADED"],
+    requiredActions: ["COMPARE_IMMUTABLE_SNAPSHOTS"],
   };
-  const regressionTests = protection?.regressionPlan.selectedTests ?? [
-    {
-      id: "TEST-TRACEABILITY-COMPLETE-001",
-      version: 3,
-      featureId: "FEATURE-TRACEABILITY-001",
-      name: "功能追溯完整链回归",
-      approved: true,
-      operationLevel: "READ_ONLY",
-      reasons: ["MAPPED_IMPLEMENTATION_CHANGE"],
-    },
-  ];
+  const regressionTests = protection?.regressionPlan.selectedTests ?? [];
 
   return (
     <>

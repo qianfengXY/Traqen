@@ -3,11 +3,12 @@
   "$id": "https://traqen.dev/contracts/workspace-analysis-job.schema.json",
   "title": "WorkspaceAnalysisJob",
   "type": "object",
-  "required": ["id", "projectId", "sourceRegistrationId", "snapshotManifestId", "requestedMode", "resolvedMode", "baseRevisionId", "policyDigest", "phase", "desiredState", "status", "version", "completedPhases", "outputs", "createdAt", "updatedAt"],
+  "required": ["id", "projectId", "sourceRegistrationId", "snapshotManifestId", "requestedMode", "resolvedMode", "baseRevisionId", "policyDigest", "workspaceExecutionProfileRevisionId", "phase", "desiredState", "status", "version", "completedPhases", "outputs", "createdAt", "updatedAt"],
   "properties": {
     "id": { "type": "string" }, "projectId": { "type": "string" }, "sourceRegistrationId": { "type": "string" }, "snapshotManifestId": { "type": "string" },
     "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] }, "resolvedMode": { "enum": ["FULL", "INCREMENTAL"] },
     "baseRevisionId": { "type": ["string", "null"] }, "policyDigest": { "type": "string" },
+    "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1, "description": "Immutable Workspace-effective capability profile pinned for the complete run." },
     "phase": { "enum": ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING", "COMPLETED"] },
     "desiredState": { "enum": ["RUNNING", "PAUSED", "CANCELLED"] },
     "status": { "enum": ["RUNNING", "PAUSED", "COMPLETED", "FAILED", "CANCELLED"] },

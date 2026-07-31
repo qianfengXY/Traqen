@@ -260,7 +260,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 Fact API 接受 `POST /v1/projects/{projectId}/fact-scans` 处的签名包，并从 `GET /v1/projects/{projectId}/facts` 返回过滤后的一跳图。其 `type`、`predicate`、`q`、`snapshotManifestId` 和 `limit` 查询参数是可选的。
 
-当所选 Snapshot 已具有确定性 Facts 后，通过 `POST /v1/projects/{projectId}/analysis-runs` 启动当前 Analysis Agent。运行默认异步，并可在同一个 `/analysis-runs/{analysisRunId}` 资源下查询、暂停和续跑。从 `/analysis-results/latest` 读取最新当前投影，从 `/features/{featureId}/analysis-history` 查询不可变 Feature 演进历史。运行时模型可通过 `/v1/analysis-model-profiles` 配置并验证，托管模型仍可通过 `ANALYSIS_MODEL_PROFILES_JSON` 预置。这些路由描述当前实现基线；目标 Workspace 隔离的主/子 Agent 合同由 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md) 定义。
+通过 `/v1/workspaces` 创建并切换聚合根。服务端源码分析需要配置 `TRAQEN_ALLOWED_WORKSPACE_ROOTS` 与 `SOURCE_SNAPSHOT_ROOT`，先通过 `/source-registrations` 注册允许访问的根目录，再启动 `/workspace-analysis-jobs`。作业会持久化完整清单、不可变 Snapshot、静态 Facts、固定的 `WorkspaceExecutionProfileRevision`、发给一个或多个子槽位（默认两个）的相同密封批次、彼此隔离的子结果、对账账本、经审核的评估、图谱修订以及原子当前头。Traqen 自分析验收可通过 `UNDERSTANDING_TRUTH_SET_PATH` 与 `UNDERSTANDING_TRUTH_SET_REVIEWER_ID` 配置独立 Truth Set 审核。旧 `/analysis-runs` 与浏览器观察导入仅为兼容输入，不能创建受治理真相。详见 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md)。
 
 `npm run pilot:order-submit` 是可复制的存储库内 MVP 证明。它仅使用合成数据以及真实飞行员使用的相同通用Scanner、Skill、审查、TestSpec、Runner、Evidence、影响和修复路径； Traqen 核心中不存在特定于订单的行为。
 

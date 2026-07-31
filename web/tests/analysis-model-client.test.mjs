@@ -288,17 +288,17 @@ test("Main Agent reconciles child results with scanner evidence and exposes prov
   assert.ok(workspaceModelCandidateBatches(reconciledRecords, "model-a", workspaceContext).flat().some((candidate) => candidate.id === endpoint.id));
 });
 
-test("streams a validated Main Agent plan with exactly three child assignments", async () => {
+test("streams a validated Main Agent plan with a configurable Child roster", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response([
-    { kind: "telemetry", event: { type: "RESPONSE_PROGRESS", at: "2026-07-22T01:00:00.000Z", assistantMessage: "Planning three queues" } },
-    { kind: "result", plan: { agentMessage: "Planning three queues", taskAssignments: [1, 2, 3].map((slot) => ({ agentId: `SUB_AGENT_${slot}`, objective: `Queue ${slot}`, moduleScopes: [] })) } },
+    { kind: "telemetry", event: { type: "RESPONSE_PROGRESS", at: "2026-07-22T01:00:00.000Z", assistantMessage: "Planning one sealed batch" } },
+    { kind: "result", plan: { agentMessage: "Planning one sealed batch", taskAssignments: [1, 2].map((slot) => ({ agentId: `CHILD-${slot}`, objective: `Independent analysis ${slot}`, moduleScopes: [] })) } },
   ].map((message) => `${JSON.stringify(message)}\n`).join(""), { status: 200, headers: { "content-type": "application/x-ndjson" } });
   try {
     const telemetry = [];
     const plan = await planWorkspaceAnalysis("http://127.0.0.1:3100", "", "model-a", { workspaceName: "Traqen", mode: "FULL", fileCount: 10, modules: [] }, { onTelemetry: (event) => telemetry.push(event) });
-    assert.equal(plan.taskAssignments.length, 3);
-    assert.equal(telemetry[0].assistantMessage, "Planning three queues");
+    assert.equal(plan.taskAssignments.length, 2);
+    assert.equal(telemetry[0].assistantMessage, "Planning one sealed batch");
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -7,6 +7,18 @@ export class TraceabilityStore {
     throw new Error("getProjectFoundation must be implemented");
   }
 
+  async listProjectFoundations() {
+    throw new Error("listProjectFoundations must be implemented");
+  }
+
+  async appendCapabilityTemplateRevision(_template) {
+    throw new Error("appendCapabilityTemplateRevision must be implemented");
+  }
+
+  async listCapabilityTemplateRevisions() {
+    throw new Error("listCapabilityTemplateRevisions must be implemented");
+  }
+
   async appendSnapshotManifest(_projectId, _manifest) {
     throw new Error("appendSnapshotManifest must be implemented");
   }
