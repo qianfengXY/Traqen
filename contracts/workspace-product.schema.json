@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/workspace-product.schema.json",
+  "$defs": {
+    "Id": { "type": "string", "minLength": 1 },
+    "Timestamp": { "type": "string", "format": "date-time" },
+    "Workspace": {
+      "type": "object",
+      "required": ["id", "workspaceId", "tenantId", "name", "lifecycleState", "lifecycleVersion", "createdAt", "updatedAt", "deletionRequestedAt", "deletedAt", "hidden"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "tenantId": { "$ref": "#/$defs/Id" }, "name": { "$ref": "#/$defs/Id" },
+        "lifecycleState": { "enum": ["ACTIVE", "DELETION_REQUESTED", "DELETED"] },
+        "lifecycleVersion": { "type": "integer", "minimum": 1 },
+        "createdAt": { "$ref": "#/$defs/Timestamp" }, "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "deletionRequestedAt": { "oneOf": [{ "$ref": "#/$defs/Timestamp" }, { "type": "null" }] },
+        "deletedAt": { "oneOf": [{ "$ref": "#/$defs/Timestamp" }, { "type": "null" }] },
+        "hidden": { "type": "boolean" }
+      },
+      "additionalProperties": false
+    },
+    "WorkspaceList": {
+      "type": "object", "required": ["workspaces"],
+      "properties": { "workspaces": { "type": "array", "items": { "$ref": "#/$defs/Workspace" } } },
+      "additionalProperties": false
+    },
+    "WorkspaceCreateRequest": {
+      "oneOf": [
+        { "type": "object", "required": ["id", "name"], "properties": {
+          "id": { "$ref": "#/$defs/Id" }, "name": { "$ref": "#/$defs/Id" }, "userId": { "type": "string" }, "actorId": { "type": "string" },
+          "organizationId": { "type": "string" }, "organizationName": { "type": "string" }, "tenantId": { "type": "string" }, "tenantName": { "type": "string" },
+          "principals": { "type": "array", "items": { "type": "object" } }
+        }, "additionalProperties": false },
+        { "type": "object", "required": ["organization", "tenant", "project", "principals"], "properties": {
+          "organization": { "type": "object", "required": ["id", "name"], "properties": { "id": { "$ref": "#/$defs/Id" }, "name": { "$ref": "#/$defs/Id" } }, "additionalProperties": true },
+          "tenant": { "type": "object", "required": ["id", "name"], "properties": { "id": { "$ref": "#/$defs/Id" }, "name": { "$ref": "#/$defs/Id" } }, "additionalProperties": true },
+          "project": { "type": "object", "required": ["id", "name"], "properties": { "id": { "$ref": "#/$defs/Id" }, "name": { "$ref": "#/$defs/Id" } }, "additionalProperties": true },
+          "principals": { "type": "array", "items": { "type": "object" } }, "actorId": { "type": "string" }, "userId": { "type": "string" }
+        }, "additionalProperties": false }
+      ]
+    },
+    "WorkspaceRenameRequest": {
+      "type": "object", "required": ["name", "actorId"],
+      "properties": { "name": { "$ref": "#/$defs/Id" }, "actorId": { "$ref": "#/$defs/Id" } },
+      "additionalProperties": false
+    },
+    "WorkspaceActorRequest": {
+      "type": "object", "required": ["actorId"],
+      "properties": { "actorId": { "$ref": "#/$defs/Id" } }, "additionalProperties": false
+    },
+    "WorkspacePreferenceRequest": {
+      "type": "object", "required": ["userId", "hidden"],
+      "properties": { "userId": { "$ref": "#/$defs/Id" }, "hidden": { "type": "boolean" } },
+      "additionalProperties": false
+    },
+    "WorkspacePreference": {
+      "type": "object", "required": ["id", "workspaceId", "userId", "hidden", "version", "updatedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "userId": { "$ref": "#/$defs/Id" },
+        "hidden": { "type": "boolean" }, "version": { "type": "integer", "minimum": 1 }, "updatedAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "CapabilityTemplateRequest": {
+      "type": "object", "required": ["kind", "logicalName", "revision"],
+      "properties": {
+        "kind": { "enum": ["MODEL", "SKILL", "MCP"] }, "logicalName": { "$ref": "#/$defs/Id" },
+        "revision": { "type": "integer", "minimum": 1 }, "manifest": { "type": "object" },
+        "credentialHandleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/Id" } }
+      }, "additionalProperties": false
+    },
+    "CapabilityTemplate": {
+      "type": "object", "required": ["id", "kind", "logicalName", "revision", "manifest", "credentialHandleIds", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "kind": { "enum": ["MODEL", "SKILL", "MCP"] }, "logicalName": { "$ref": "#/$defs/Id" },
+        "revision": { "type": "integer", "minimum": 1 }, "manifest": { "type": "object" },
+        "credentialHandleIds": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/Id" } },
+        "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "CapabilityTemplateList": {
+      "type": "object", "required": ["templates"],
+      "properties": { "templates": { "type": "array", "items": { "$ref": "#/$defs/CapabilityTemplate" } } }, "additionalProperties": false
+    },
+    "AgentRole": {
+      "type": "object", "required": ["model", "skillNames", "mcpNames"],
+      "properties": {
+        "model": { "$ref": "#/$defs/Id" }, "skillNames": { "type": "array", "items": { "$ref": "#/$defs/Id" } },
+        "mcpNames": { "type": "array", "items": { "$ref": "#/$defs/Id" } }
+      }, "additionalProperties": false
+    },
+    "ChildSlot": {
+      "type": "object", "required": ["id", "model", "skillNames", "mcpNames", "independenceGroup"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "model": { "$ref": "#/$defs/Id" },
+        "skillNames": { "type": "array", "items": { "$ref": "#/$defs/Id" } }, "mcpNames": { "type": "array", "items": { "$ref": "#/$defs/Id" } },
+        "independenceGroup": { "$ref": "#/$defs/Id" }
+      }, "additionalProperties": false
+    },
+    "CapabilityConfigRequest": {
+      "type": "object", "required": ["mainAgent"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 }, "mainAgent": { "$ref": "#/$defs/AgentRole" },
+        "childSlots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ChildSlot" } },
+        "overrides": { "type": "array", "items": { "type": "object", "required": ["logicalName", "kind"], "properties": {
+          "logicalName": { "$ref": "#/$defs/Id" }, "kind": { "enum": ["MODEL", "SKILL", "MCP"] }, "manifest": { "type": "object" },
+          "credentialHandleIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } }
+        }, "additionalProperties": false } },
+        "removals": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/Id" } },
+        "dependencies": { "type": "object" }, "conventions": { "type": "object" }, "policies": { "type": "object" }
+      }, "additionalProperties": false
+    },
+    "CapabilityConfig": {
+      "type": "object", "required": ["id", "workspaceId", "version", "mainAgent", "childSlots", "overrides", "removals", "dependencies", "conventions", "policies", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "version": { "type": "integer", "minimum": 1 },
+        "mainAgent": { "$ref": "#/$defs/AgentRole" }, "childSlots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ChildSlot" } },
+        "overrides": { "type": "array", "items": { "type": "object" } }, "removals": { "type": "array", "items": { "$ref": "#/$defs/Id" } },
+        "dependencies": { "type": "object" }, "conventions": { "type": "object" }, "policies": { "type": "object" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "ExecutionProfileRequest": {
+      "type": "object", "properties": { "configId": { "$ref": "#/$defs/Id" } }, "additionalProperties": false
+    },
+    "ExecutionProfile": {
+      "type": "object", "required": ["id", "workspaceId", "configId", "configVersion", "mainAgent", "childSlots", "entries", "dependencies", "conventions", "policies", "profileDigest", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "configId": { "$ref": "#/$defs/Id" },
+        "configVersion": { "type": "integer", "minimum": 1 }, "mainAgent": { "$ref": "#/$defs/AgentRole" },
+        "childSlots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ChildSlot" } },
+        "entries": { "type": "array", "items": { "type": "object", "required": ["logicalName", "kind", "manifest", "sourceTemplateId", "credentialHandleIds"], "properties": {
+          "logicalName": { "$ref": "#/$defs/Id" }, "kind": { "enum": ["MODEL", "SKILL", "MCP"] }, "manifest": { "type": "object" },
+          "sourceTemplateId": { "type": ["string", "null"] }, "credentialHandleIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } }
+        }, "additionalProperties": false } },
+        "dependencies": { "type": "object" }, "conventions": { "type": "object" }, "policies": { "type": "object" },
+        "profileDigest": { "$ref": "#/$defs/Id" }, "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "SecretGrantRequest": {
+      "type": "object", "required": ["analysisRunId", "expiresAt"],
+      "properties": { "analysisRunId": { "$ref": "#/$defs/Id" }, "expiresAt": { "$ref": "#/$defs/Timestamp" } }, "additionalProperties": false
+    },
+    "SecretGrant": {
+      "type": "object", "required": ["id", "workspaceId", "profileId", "analysisRunId", "slotId", "capabilityName", "credentialHandleId", "expiresAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "profileId": { "$ref": "#/$defs/Id" },
+        "analysisRunId": { "$ref": "#/$defs/Id" }, "slotId": { "$ref": "#/$defs/Id" }, "capabilityName": { "$ref": "#/$defs/Id" },
+        "credentialHandleId": { "$ref": "#/$defs/Id" }, "expiresAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "SecretGrantList": { "type": "object", "required": ["grants"], "properties": { "grants": { "type": "array", "items": { "$ref": "#/$defs/SecretGrant" } } }, "additionalProperties": false },
+    "AnalysisBatchRequest": {
+      "type": "object", "required": ["snapshotManifestId", "analysisRunId", "profileRevisionId", "sequence", "taskStatement"],
+      "properties": {
+        "snapshotManifestId": { "$ref": "#/$defs/Id" }, "analysisRunId": { "$ref": "#/$defs/Id" }, "profileRevisionId": { "$ref": "#/$defs/Id" },
+        "sequence": { "type": "integer", "minimum": 1 }, "sourceScope": { "type": "object" }, "taskStatement": { "$ref": "#/$defs/Id" },
+        "outputSchema": { "type": "object" }, "sourcePolicy": { "type": "object" }
+      }, "additionalProperties": false
+    },
+    "AnalysisBatch": {
+      "type": "object", "required": ["id", "workspaceId", "snapshotManifestId", "analysisRunId", "profileRevisionId", "sequence", "inputDigest", "sourceScope", "taskStatement", "outputSchema", "sourcePolicy", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "snapshotManifestId": { "$ref": "#/$defs/Id" },
+        "analysisRunId": { "$ref": "#/$defs/Id" }, "profileRevisionId": { "$ref": "#/$defs/Id" }, "sequence": { "type": "integer", "minimum": 1 },
+        "inputDigest": { "$ref": "#/$defs/Id" }, "sourceScope": { "type": "object" }, "taskStatement": { "$ref": "#/$defs/Id" },
+        "outputSchema": { "type": "object" }, "sourcePolicy": { "type": "object" }, "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "ChildAssignment": {
+      "type": "object", "required": ["id", "workspaceId", "analysisRunId", "analysisBatchId", "slotId", "inputDigest", "sourceScope", "taskStatement", "outputSchema", "sourcePolicy", "route", "status", "createdAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "analysisRunId": { "$ref": "#/$defs/Id" },
+        "analysisBatchId": { "$ref": "#/$defs/Id" }, "slotId": { "$ref": "#/$defs/Id" }, "inputDigest": { "$ref": "#/$defs/Id" },
+        "sourceScope": { "type": "object" }, "taskStatement": { "$ref": "#/$defs/Id" }, "outputSchema": { "type": "object" }, "sourcePolicy": { "type": "object" },
+        "route": { "type": "object", "required": ["model", "skillNames", "mcpNames", "independenceGroup"], "properties": {
+          "model": { "$ref": "#/$defs/Id" }, "skillNames": { "type": "array", "items": { "$ref": "#/$defs/Id" } },
+          "mcpNames": { "type": "array", "items": { "$ref": "#/$defs/Id" } }, "independenceGroup": { "$ref": "#/$defs/Id" }
+        }, "additionalProperties": false }, "status": { "const": "PENDING" }, "createdAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "AnalysisBatchResult": {
+      "type": "object", "required": ["batch", "assignments"],
+      "properties": { "batch": { "$ref": "#/$defs/AnalysisBatch" }, "assignments": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ChildAssignment" } } }, "additionalProperties": false
+    },
+    "ChildResultRequest": {
+      "type": "object", "required": ["analysisRunId", "childWorkUnitId", "slotId", "inputDigest", "independenceGroup", "status"],
+      "properties": {
+        "analysisRunId": { "$ref": "#/$defs/Id" }, "childWorkUnitId": { "$ref": "#/$defs/Id" }, "slotId": { "$ref": "#/$defs/Id" },
+        "inputDigest": { "$ref": "#/$defs/Id" }, "independenceGroup": { "$ref": "#/$defs/Id" }, "status": { "enum": ["COMPLETED", "FAILED", "GAP"] },
+        "output": {}, "evidenceFactIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } }, "sourceSliceIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } }
+      }, "additionalProperties": false
+    },
+    "ChildResult": {
+      "type": "object", "required": ["id", "workspaceId", "analysisRunId", "analysisBatchId", "childWorkUnitId", "slotId", "inputDigest", "independenceGroup", "status", "output", "outputDigest", "evidenceFactIds", "sourceSliceIds", "completedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "analysisRunId": { "$ref": "#/$defs/Id" },
+        "analysisBatchId": { "$ref": "#/$defs/Id" }, "childWorkUnitId": { "$ref": "#/$defs/Id" }, "slotId": { "$ref": "#/$defs/Id" },
+        "inputDigest": { "$ref": "#/$defs/Id" }, "independenceGroup": { "$ref": "#/$defs/Id" }, "status": { "enum": ["COMPLETED", "FAILED", "GAP"] },
+        "output": {}, "outputDigest": { "$ref": "#/$defs/Id" }, "evidenceFactIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } },
+        "sourceSliceIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } }, "completedAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "BatchBarrier": {
+      "type": "object", "required": ["id", "workspaceId", "analysisRunId", "analysisBatchId", "inputDigest", "resultIds", "independenceGroups", "opened", "openedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "analysisRunId": { "$ref": "#/$defs/Id" },
+        "analysisBatchId": { "$ref": "#/$defs/Id" }, "inputDigest": { "$ref": "#/$defs/Id" },
+        "resultIds": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Id" } },
+        "independenceGroups": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/Id" } },
+        "opened": { "const": true }, "openedAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    },
+    "ReviewQueue": {
+      "type": "object", "required": ["items"],
+      "properties": { "items": { "type": "array", "items": { "type": "object", "required": ["id", "workspaceId", "status", "version"], "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" }, "status": { "$ref": "#/$defs/Id" }, "version": { "type": "integer", "minimum": 1 },
+        "severity": { "type": "string" }, "evidenceState": { "type": "string" }, "source": { "type": "string" }, "analysisBatchId": { "type": "string" }
+      } } } }, "additionalProperties": false
+    },
+    "ReviewDecisionRequest": {
+      "type": "object", "required": ["itemIds", "outcome", "reviewerId", "rationale"],
+      "properties": {
+        "itemIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/Id" } },
+        "outcome": { "enum": ["CONFIRMED", "EDITED", "REJECTED", "DEFERRED", "INSUFFICIENT_EVIDENCE"] },
+        "reviewerId": { "$ref": "#/$defs/Id" }, "rationale": { "$ref": "#/$defs/Id" }, "edits": { "type": "object" }
+      }, "additionalProperties": false
+    },
+    "ReviewDecision": {
+      "type": "object", "required": ["id", "workspaceId", "itemIds", "versionVector", "outcome", "edits", "reviewerId", "rationale", "decidedAt"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
+        "itemIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/Id" } },
+        "versionVector": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 1 } },
+        "outcome": { "enum": ["CONFIRMED", "EDITED", "REJECTED", "DEFERRED", "INSUFFICIENT_EVIDENCE"] },
+        "edits": { "type": "object" }, "reviewerId": { "$ref": "#/$defs/Id" }, "rationale": { "$ref": "#/$defs/Id" },
+        "decidedAt": { "$ref": "#/$defs/Timestamp" }
+      }, "additionalProperties": false
+    }
+  }
+}

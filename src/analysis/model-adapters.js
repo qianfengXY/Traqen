@@ -751,6 +751,54 @@ export class OpenAICompatibleAnalysisModelAdapter {
           ],
     }, { signal });
   }
+
+  async reconcile(input, { signal = null } = {}) {
+    return this.#request({
+      maxOutputTokens: input.context.maxOutputTokens,
+      messages: [
+        {
+          role: "system",
+          content: [
+            "You are Traqen's bounded Main reconciliation Agent.",
+            "Return JSON only with candidateDecisions, relations, and gaps arrays.",
+            "Decide every supplied candidateRef exactly once using ACCEPT, REJECT, CONFLICT, MERGE, or ALTERNATIVE.",
+            "Do not use voting or byte equality. Compare semantic claims and cite only supplied Fact or SourceSlice evidence.",
+            "Relations may reference only supplied Candidate refs or scoped Artifact ids.",
+          ].join(" "),
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            task: "Reconcile the complete terminal Child result set against bounded evidence and prior context.",
+            workUnit: input.workUnit,
+            workContext: input.workContext,
+            candidateOptions: input.candidateOptions,
+            contextCandidates: input.contextCandidates,
+            scopedArtifacts: input.scopedArtifacts,
+            evidence: input.evidence,
+            outputContract: {
+              candidateDecisions: [{
+                candidateRef: "exact supplied ref",
+                disposition: "ACCEPT | REJECT | CONFLICT | MERGE | ALTERNATIVE",
+                rationale: "evidence-bounded reason",
+                relatedCandidateRefs: ["optional supplied refs"],
+              }],
+              relations: [{
+                sourceCandidateRef: "optional supplied ref",
+                sourceArtifactId: "optional supplied Artifact id",
+                predicate: "semantic relationship",
+                targetCandidateRef: "optional supplied ref",
+                targetArtifactId: "optional supplied Artifact id",
+                evidenceFactIds: ["supplied Fact ids"],
+                sourceSliceIds: ["supplied SourceSlice ids"],
+              }],
+              gaps: [{ code: "bounded gap code", message: "explanation" }],
+            },
+          }),
+        },
+      ],
+    }, { signal });
+  }
 }
 
 export class AnalysisModelRegistry {

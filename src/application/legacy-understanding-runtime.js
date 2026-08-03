@@ -110,8 +110,14 @@ function validateMainProducerOutput(output, candidateOptions) {
       throw new TypeError(`Main producer referenced unknown Child Candidate ${decision.candidateRef}`);
     }
     if (decided.has(decision.candidateRef)) throw new TypeError("Main producer decided one Child Candidate more than once");
-    if (!["ACCEPT", "ALTERNATIVE", "CONFLICT", "REJECT"].includes(decision.disposition)) {
+    if (!["ACCEPT", "ALTERNATIVE", "CONFLICT", "MERGE", "REJECT"].includes(decision.disposition)) {
       throw new TypeError("Main producer Candidate disposition is invalid");
+    }
+    if (decision.relatedCandidateRefs !== undefined) {
+      if (!Array.isArray(decision.relatedCandidateRefs)
+        || decision.relatedCandidateRefs.some((ref) => !optionsByRef.has(ref) || ref === decision.candidateRef)) {
+        throw new TypeError("Main producer relatedCandidateRefs must stay inside the sibling Candidate set");
+      }
     }
     if (typeof decision.rationale !== "string" || decision.rationale.trim() === "") {
       throw new TypeError("Main producer Candidate rationale is required");
@@ -120,6 +126,12 @@ function validateMainProducerOutput(output, candidateOptions) {
   }
   if (decided.size !== optionsByRef.size) {
     throw new TypeError("Main producer must decide every schema-valid Child Candidate exactly once");
+  }
+  for (const gap of output.gaps ?? []) {
+    if (typeof gap?.code !== "string" || gap.code.trim() === ""
+      || typeof gap?.message !== "string" || gap.message.trim() === "") {
+      throw new TypeError("Main producer gaps require code and message");
+    }
   }
   return output;
 }
@@ -238,6 +250,7 @@ export class LegacyUnderstandingRuntime {
       workspaceExecutionProfileRevisionId: profileRevisionId,
       implementationAuthorId: this.implementationAuthorId,
       runnerId: this.runnerId,
+      purpose: input.purpose ?? "PUBLICATION",
     });
     if (!background) return this.#run(job);
     queueMicrotask(() => this.#run(job).catch(() => undefined));
@@ -258,6 +271,10 @@ export class LegacyUnderstandingRuntime {
 
   get(projectId, jobId) {
     return this.runner.get(projectId, jobId);
+  }
+
+  list(projectId) {
+    return this.runner.list(projectId, { purpose: "PUBLICATION" });
   }
 
   async pause(projectId, jobId) {
@@ -543,6 +560,7 @@ export class LegacyUnderstandingRuntime {
     const candidates = [];
     const gaps = [];
     const relations = [];
+    const mainConflicts = [];
     const mainResultIds = [];
     const routeDecisionIds = [];
     const analysisBatchIds = [];
@@ -883,6 +901,39 @@ export class LegacyUnderstandingRuntime {
         candidates.push(reconciledCandidate);
         candidateIdByRef.set(decision.candidateRef, reconciledCandidate.id);
       }
+      for (const decision of mainOutput.candidateDecisions.filter(({ disposition }) => disposition === "CONFLICT")) {
+        const candidateIds = [decision.candidateRef, ...(decision.relatedCandidateRefs ?? [])]
+          .map((ref) => candidateIdByRef.get(ref))
+          .filter(Boolean)
+          .sort();
+        mainConflicts.push(deepFreeze({
+          id: contentId("MAIN-CANDIDATE-CONFLICT", {
+            analysisRunId: job.id,
+            analysisBatchId: batch.id,
+            candidateIds,
+            rationale: decision.rationale,
+          }),
+          subject: optionsByRef.get(decision.candidateRef)?.proposal?.subjectKey ?? artifact.relativePath,
+          type: "MAIN_AGENT_CONFLICT",
+          candidateIds,
+          status: "UNRESOLVED",
+          reason: decision.rationale,
+          source: "MAIN_AGENT",
+          mainResultId: mainResult.id,
+          evidence: candidateIds.map((id) => {
+            const candidate = candidates.find((item) => item.id === id);
+            return { id, evidenceFactIds: candidate?.evidenceFactIds ?? [], sourceSliceIds: candidate?.sourceSliceIds ?? [] };
+          }),
+        }));
+      }
+      for (const mainGap of mainOutput.gaps ?? []) {
+        const gap = deepFreeze({
+          ...this.#gap(job, workUnit.id, `MAIN:${mainGap.code}`),
+          details: { message: mainGap.message, mainResultId: mainResult.id },
+        });
+        gaps.push(gap);
+        await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
+      }
       const boundedNodeIds = new Set([
         artifact.id,
         ...scopedArtifacts.map(({ id }) => id),
@@ -925,12 +976,13 @@ export class LegacyUnderstandingRuntime {
       }
     }
     const bundle = deepFreeze({
-      id: contentId("UNDERSTANDING-CANDIDATE-BUNDLE", { analysisRunId: job.id, candidates, relations, gaps }),
+      id: contentId("UNDERSTANDING-CANDIDATE-BUNDLE", { analysisRunId: job.id, candidates, relations, gaps, mainConflicts }),
       projectId: job.projectId,
       snapshotManifestId: job.snapshotManifestId,
       analysisRunId: job.id,
       candidates,
       relations,
+      mainConflicts,
       gaps,
       routeDecisionIds,
       analysisBatchIds,
@@ -1006,6 +1058,7 @@ export class LegacyUnderstandingRuntime {
       candidateAbsences: [],
       evidenceAllowsets: allowsets,
       relations: bundle.relations ?? [],
+      conflicts: bundle.mainConflicts ?? [],
     }, this.clock);
     await this.store.appendUnderstandingRecord(job.projectId, "RECONCILIATION", reconciliation);
     for (const conflict of reconciliation.conflicts) {
@@ -1136,6 +1189,13 @@ export class LegacyUnderstandingRuntime {
       "UNDERSTANDING_SEMANTIC_SURFACE",
       storedSurface,
     );
+    if (job.purpose === "EQUIVALENCE_VERIFICATION") {
+      return {
+        status: "VERIFIED",
+        semanticSurfaceRecordId: storedSurface.id,
+        surfaceDigest: surface.digest,
+      };
+    }
     const equivalenceReport = await measureUnderstandingEquivalence({
       job,
       surface,
@@ -1182,6 +1242,13 @@ export class LegacyUnderstandingRuntime {
   }
 
   async #project(job) {
+    if (job.purpose === "EQUIVALENCE_VERIFICATION") {
+      return {
+        verificationOnly: true,
+        semanticSurfaceRecordId: job.outputs.EVALUATION.semanticSurfaceRecordId,
+        surfaceDigest: job.outputs.EVALUATION.surfaceDigest,
+      };
+    }
     const facts = (await this.store.getUnderstandingRecord(
       job.projectId,
       "FACT_BUNDLE",
@@ -1372,18 +1439,29 @@ export class LegacyUnderstandingRuntime {
     const traceChains = bundle.candidates.map((candidate) => {
       const candidateFacts = facts.filter(({ id }) => candidate.evidenceFactIds.includes(id));
       const candidateArtifacts = [...new Set(candidateFacts.map(({ artifactId }) => artifactId))];
+      const reviewedChain = governedTraceChains.find((chain) => (chain.segments ?? []).some((segment) =>
+        segment.from?.id === candidate.id || segment.to?.id === candidate.id));
+      const reviewedNodeIdsByType = new Map();
+      for (const segment of reviewedChain?.segments ?? []) {
+        for (const endpoint of [segment.from, segment.to]) {
+          const ids = reviewedNodeIdsByType.get(endpoint.type) ?? [];
+          if (!ids.includes(endpoint.id)) ids.push(endpoint.id);
+          reviewedNodeIdsByType.set(endpoint.type, ids);
+        }
+      }
+      const reviewedNodes = (...types) => [...new Set(types.flatMap((type) => reviewedNodeIdsByType.get(type) ?? []))];
       const analysisEvidenceNodeIds = childResults
         .filter(({ id }) => candidate.childResultIds.includes(id))
         .map(({ id }) => id);
       const segments = [
-        { type: "REQUIREMENT", nodeIds: candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "REQUIREMENT_DOCUMENT") },
-        { type: "DESIGN", nodeIds: candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "DESIGN_DOCUMENT") },
-        { type: "GOVERNANCE", nodeIds: [] },
-        { type: "IMPLEMENTATION", nodeIds: [candidate.id, ...candidate.evidenceFactIds, ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "IMPLEMENTATION_ARTIFACT")] },
-        { type: "TEST", nodeIds: candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "TEST_ASSET") },
-        { type: "EXECUTION", nodeIds: [] },
-        { type: "VERIFICATION", nodeIds: [] },
-        { type: "EVIDENCE", nodeIds: [] },
+        { type: "REQUIREMENT", nodeIds: [...reviewedNodes("REQUIREMENT_DOCUMENT"), ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "REQUIREMENT_DOCUMENT")] },
+        { type: "DESIGN", nodeIds: [...reviewedNodes("DESIGN_DOCUMENT"), ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "DESIGN_DOCUMENT")] },
+        { type: "GOVERNANCE", nodeIds: reviewedNodes("FEATURE", "CLAIM", "DECISION", "CLAIM_SCOPE") },
+        { type: "IMPLEMENTATION", nodeIds: [...reviewedNodes("IMPLEMENTATION_CONFORMANCE", "ENDPOINT", "CODE_SYMBOL", "DATA_OBJECT", "CONFIGURATION", "EXTERNAL_DEPENDENCY"), candidate.id, ...candidate.evidenceFactIds, ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "IMPLEMENTATION_ARTIFACT")] },
+        { type: "TEST", nodeIds: [...reviewedNodes("TEST_SPEC", "TEST_ASSERTION"), ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "TEST_ASSET")] },
+        { type: "EXECUTION", nodeIds: reviewedNodes("TEST_EXECUTION") },
+        { type: "VERIFICATION", nodeIds: reviewedChain?.dimensions?.verification === "PASS" ? reviewedNodes("TEST_EXECUTION") : [] },
+        { type: "EVIDENCE", nodeIds: reviewedNodes("EVIDENCE") },
       ];
       const chainGaps = segments.filter(({ nodeIds: segmentNodeIds }) => segmentNodeIds.length === 0)
         .map(({ type }) => ({ type: `MISSING_${type}`, status: "OPEN" }));
@@ -1393,7 +1471,7 @@ export class LegacyUnderstandingRuntime {
           evidenceFactIds: candidate.evidenceFactIds,
         }),
         subject: { kind: "CANDIDATE", id: candidate.id },
-        status: "CANDIDATE_REVIEW_REQUIRED",
+        status: reviewedChain?.complete && chainGaps.length === 0 ? "REVIEWED_COMPLETE" : "CANDIDATE_REVIEW_REQUIRED",
         nodeIds: [...new Set([
           ...segments.flatMap(({ nodeIds: segmentNodeIds }) => segmentNodeIds),
           ...analysisEvidenceNodeIds,
@@ -1529,6 +1607,13 @@ export class LegacyUnderstandingRuntime {
   }
 
   async #publish(job) {
+    if (job.purpose === "EQUIVALENCE_VERIFICATION") {
+      return {
+        verificationOnly: true,
+        published: false,
+        semanticSurfaceRecordId: job.outputs.EVALUATION.semanticSurfaceRecordId,
+      };
+    }
     if (job.outputs.EVALUATION.status !== "PASSED") {
       throw new TypeError(`Evaluation is ${job.outputs.EVALUATION.status}; publication is forbidden`);
     }

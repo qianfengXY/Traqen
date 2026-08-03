@@ -4,13 +4,23 @@ export type ServerUnderstandingJob = {
   sourceRegistrationId: string;
   snapshotManifestId: string;
   workspaceExecutionProfileRevisionId: string;
+  policyDigest: string;
+  baseRevisionId: string | null;
+  implementationAuthorId: string;
+  runnerId: string;
+  purpose: "PUBLICATION" | "EQUIVALENCE_VERIFICATION";
   requestedMode: "AUTO" | "FULL" | "INCREMENTAL";
   resolvedMode: "FULL" | "INCREMENTAL";
   phase: string;
+  desiredState: "RUNNING" | "PAUSED" | "CANCELLED";
   status: "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED";
+  version: number;
   completedPhases: string[];
   outputs: Record<string, unknown>;
   error?: { code: string; message: string; retryable: boolean };
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
 };
 
 function headers(apiToken: string, json = false) {
@@ -89,6 +99,32 @@ export async function getServerWorkspaceUnderstanding(
   const response = await fetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs/${encodeURIComponent(jobId)}`,
     { headers: headers(apiToken) },
+  );
+  return json<ServerUnderstandingJob>(response);
+}
+
+export async function listServerWorkspaceUnderstandingJobs(
+  apiBase: string,
+  apiToken: string,
+  workspaceId: string,
+) {
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs`,
+    { headers: headers(apiToken) },
+  );
+  return (await json<{ jobs: ServerUnderstandingJob[] }>(response)).jobs;
+}
+
+export async function controlServerWorkspaceUnderstanding(
+  apiBase: string,
+  apiToken: string,
+  workspaceId: string,
+  jobId: string,
+  action: "pause" | "resume" | "cancel",
+) {
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs/${encodeURIComponent(jobId)}/${action}`,
+    { method: "POST", headers: headers(apiToken) },
   );
   return json<ServerUnderstandingJob>(response);
 }

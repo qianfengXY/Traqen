@@ -38,13 +38,13 @@
           { "name": "userId", "in": "query", "schema": { "type": "string" } },
           { "name": "includeDeleted", "in": "query", "schema": { "type": "boolean", "default": false } }
         ],
-        "responses": { "200": { "description": "Workspace list with per-user visibility and audited lifecycle state" } }
+        "responses": { "200": { "description": "Workspace list with per-user visibility and audited lifecycle state", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceList" } } } } }
       },
       "post": {
         "operationId": "createWorkspace",
-        "requestBody": { "$ref": "#/components/requestBodies/ProjectBootstrap" },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceCreateRequest" } } } },
         "responses": {
-          "201": { "description": "Workspace created" },
+          "201": { "description": "Workspace created", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "409": { "$ref": "#/components/responses/Conflict" }
         }
@@ -54,76 +54,78 @@
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "get": {
         "operationId": "getWorkspace",
-        "responses": { "200": { "description": "Workspace" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "description": "Workspace", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       },
       "patch": {
         "operationId": "renameWorkspace",
-        "responses": { "200": { "description": "Renamed Workspace" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceRenameRequest" } } } },
+        "responses": { "200": { "description": "Renamed Workspace", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/v1/workspaces/{workspaceId}/view-preference": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "put": {
         "operationId": "setWorkspaceViewPreference",
-        "responses": { "200": { "description": "Per-user hide/show preference; Workspace data remains intact" } }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspacePreferenceRequest" } } } },
+        "responses": { "200": { "description": "Per-user hide/show preference; Workspace data remains intact", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspacePreference" } } } } }
       }
     },
     "/v1/workspaces/{workspaceId}/request-deletion": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "requestWorkspaceDeletion", "responses": { "200": { "description": "Audited deletion request accepted" } } }
+      "post": { "operationId": "requestWorkspaceDeletion", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceActorRequest" } } } }, "responses": { "200": { "description": "Audited deletion request accepted", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/cancel-deletion": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "cancelWorkspaceDeletion", "responses": { "200": { "description": "Pending deletion cancelled" } } }
+      "post": { "operationId": "cancelWorkspaceDeletion", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceActorRequest" } } } }, "responses": { "200": { "description": "Pending deletion cancelled", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/complete-deletion": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "completeWorkspaceDeletion", "responses": { "200": { "description": "Audited deletion lifecycle completed" } } }
+      "post": { "operationId": "completeWorkspaceDeletion", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceActorRequest" } } } }, "responses": { "200": { "description": "Audited deletion lifecycle completed", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } } } }
     },
     "/v1/capability-templates": {
-      "get": { "operationId": "listCapabilityTemplateRevisions", "responses": { "200": { "description": "Global capability templates; never a runtime registry handle" } } },
-      "post": { "operationId": "registerCapabilityTemplateRevision", "responses": { "201": { "description": "Immutable template revision" } } }
+      "get": { "operationId": "listCapabilityTemplateRevisions", "responses": { "200": { "description": "Global capability templates; never a runtime registry handle", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplateList" } } } } } },
+      "post": { "operationId": "registerCapabilityTemplateRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplateRequest" } } } }, "responses": { "201": { "description": "Immutable template revision", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplate" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/capability-configs": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "createWorkspaceCapabilityConfig", "responses": { "201": { "description": "Versioned Workspace override/removal configuration" } } }
+      "post": { "operationId": "createWorkspaceCapabilityConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigRequest" } } } }, "responses": { "201": { "description": "Versioned Workspace override/removal configuration", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfig" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "resolveWorkspaceExecutionProfileRevision", "responses": { "201": { "description": "Immutable Workspace-effective runtime profile" } } }
+      "post": { "operationId": "resolveWorkspaceExecutionProfileRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileRequest" } } } }, "responses": { "201": { "description": "Immutable Workspace-effective runtime profile", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfile" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants": {
       "parameters": [
         { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
         { "name": "profileRevisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
       ],
-      "post": { "operationId": "issueWorkspaceSecretGrants", "responses": { "201": { "description": "Least-privilege handle grants scoped to one run and slot; no credential values are returned" } } }
+      "post": { "operationId": "issueWorkspaceSecretGrants", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/SecretGrantRequest" } } } }, "responses": { "201": { "description": "Least-privilege handle grants scoped to one run and slot; no credential values are returned", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/SecretGrantList" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/analysis-batches": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "createWorkspaceAnalysisBatch", "responses": { "201": { "description": "Sealed same-input batch and one assignment per configured Child slot" } } }
+      "post": { "operationId": "createWorkspaceAnalysisBatch", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/AnalysisBatchRequest" } } } }, "responses": { "201": { "description": "Sealed same-input batch and one assignment per configured Child slot", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/AnalysisBatchResult" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/child-results": {
       "parameters": [
         { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
         { "name": "analysisBatchId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
       ],
-      "post": { "operationId": "commitWorkspaceChildResult", "responses": { "201": { "description": "Idempotent terminal Child result commit by sealed input digest" } } }
+      "post": { "operationId": "commitWorkspaceChildResult", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ChildResultRequest" } } } }, "responses": { "201": { "description": "Idempotent terminal Child result commit by sealed input digest", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ChildResult" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/barrier": {
       "parameters": [
         { "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
         { "name": "analysisBatchId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
       ],
-      "post": { "operationId": "openWorkspaceAnalysisBatchBarrier", "responses": { "201": { "description": "Barrier opens only after every required Child slot is terminal" } } }
+      "post": { "operationId": "openWorkspaceAnalysisBatchBarrier", "responses": { "201": { "description": "Barrier opens only after every required Child slot is terminal", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/BatchBarrier" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/review-queue": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "get": { "operationId": "getWorkspaceReviewQueue", "responses": { "200": { "description": "Workspace-scoped filterable review queue" } } }
+      "get": { "operationId": "getWorkspaceReviewQueue", "responses": { "200": { "description": "Workspace-scoped filterable review queue", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ReviewQueue" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/review-decisions/batch": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "post": { "operationId": "decideWorkspaceReviewBatch", "responses": { "201": { "description": "Auditable batch review decision with item version vector" } } }
+      "post": { "operationId": "decideWorkspaceReviewBatch", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ReviewDecisionRequest" } } } }, "responses": { "201": { "description": "Auditable batch review decision with item version vector", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ReviewDecision" } } } } } }
     },
     "/v1/projects": {
       "post": {
@@ -1353,12 +1355,21 @@
           "schema": { "type": "boolean", "default": true }
         }
       ],
+      "get": {
+        "operationId": "listWorkspaceUnderstandingJobs",
+        "responses": {
+          "200": { "description": "Authoritative durable publication jobs for reconnecting clients", "content": { "application/json": { "schema": {
+            "type": "object", "required": ["jobs"], "properties": { "jobs": { "type": "array", "items": { "$ref": "./workspace-analysis-job.schema.json" } } }, "additionalProperties": false
+          } } } }
+        }
+      },
       "post": {
         "operationId": "startWorkspaceUnderstandingJob",
         "requestBody": { "required": true, "content": { "application/json": { "schema": {
           "type": "object", "required": ["sourceRegistrationId", "requestedMode", "workspaceExecutionProfileRevisionId"], "properties": {
             "sourceRegistrationId": { "type": "string" },
             "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] },
+            "purpose": { "enum": ["PUBLICATION", "EQUIVALENCE_VERIFICATION"], "default": "PUBLICATION", "description": "Verification jobs persist independently produced surfaces but never publish CurrentGraphHead." },
             "policyDigest": { "type": "string" },
             "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1, "description": "Required immutable Workspace-scoped execution profile revision. No global or local fallback is allowed." }
           }, "additionalProperties": false

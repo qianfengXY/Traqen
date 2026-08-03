@@ -34,22 +34,6 @@ export async function persistFixtureExecutionProfile(
   return profile;
 }
 
-export function fixtureReviewedSeedChildProducer(seedGraph) {
-  const anchorPaths = new Set(seedGraph.anchors.map(({ path }) => path));
-  return async (input) => {
-    const candidates = input.scopedArtifacts
-      .filter(({ relativePath }) => anchorPaths.has(relativePath))
-      .filter((artifact) => input.facts.some(({ artifactId }) => artifactId === artifact.id))
-      .map((artifact) => ({
-        name: artifact.relativePath,
-        subjectKey: artifact.relativePath,
-        statement: `Observed reviewed capability anchor in ${artifact.relativePath}`,
-        confidence: "LOW",
-      }));
-    return candidates.length > 0 ? { candidates } : deterministicFixtureChildProducer(input);
-  };
-}
-
 export async function deterministicFixtureMainProducer({ candidateOptions }) {
   return {
     candidateDecisions: candidateOptions.map(({ ref }) => ({
@@ -59,33 +43,6 @@ export async function deterministicFixtureMainProducer({ candidateOptions }) {
     })),
     relations: [],
     gaps: [],
-  };
-}
-
-export function fixtureReviewedSeedMainProducer(seedGraph) {
-  return async (input) => {
-    const base = await deterministicFixtureMainProducer(input);
-    if (input.workUnit.kind !== "PROJECT_SYNTHESIS") return base;
-    const artifactByPath = new Map(input.scopedArtifacts.map((artifact) => [artifact.relativePath, artifact]));
-    const pathByAnchorId = new Map(seedGraph.anchors.map((anchor) => [anchor.id, anchor.path]));
-    const relations = [];
-    for (const [sourceAnchorId, predicate, targetAnchorId] of seedGraph.relations) {
-      const source = artifactByPath.get(pathByAnchorId.get(sourceAnchorId));
-      const target = artifactByPath.get(pathByAnchorId.get(targetAnchorId));
-      if (!source || !target) continue;
-      const evidence = input.facts.find(({ artifactId }) => artifactId === source.id)
-        ?? input.facts.find(({ artifactId }) => artifactId === target.id)
-        ?? input.facts[0];
-      if (!evidence) continue;
-      relations.push({
-        sourceArtifactId: source.id,
-        predicate,
-        targetArtifactId: target.id,
-        evidenceFactIds: [evidence.id],
-        sourceSliceIds: [],
-      });
-    }
-    return { ...base, relations };
   };
 }
 
@@ -107,20 +64,43 @@ export async function persistFixtureIndependentRun({
   };
   const surfaceRecord = createStoredUnderstandingSurface({ job: independentJob, surface });
   await store.appendUnderstandingRecord(job.projectId, "UNDERSTANDING_SEMANTIC_SURFACE", surfaceRecord);
-  const run = createIndependentAnalysisRun({
+  const run = {
     id,
     projectId: job.projectId,
+    sourceRegistrationId: job.sourceRegistrationId,
     snapshotManifestId: job.snapshotManifestId,
     policyDigest: job.policyDigest,
     workspaceExecutionProfileRevisionId: job.workspaceExecutionProfileRevisionId,
-    mode,
+    requestedMode: mode,
+    resolvedMode: mode,
+    purpose: "EQUIVALENCE_VERIFICATION",
     status: "COMPLETED",
-    surfaceRecordId: surfaceRecord.id,
-    surfaceDigest: surface.digest,
-    authorId: independentJob.implementationAuthorId,
+    phase: "COMPLETED",
+    desiredState: "RUNNING",
+    version: 9,
+    completedPhases: ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING"],
+    outputs: {
+      EVALUATION: { status: "VERIFIED", semanticSurfaceRecordId: surfaceRecord.id, surfaceDigest: surface.digest },
+      PROJECTION: { verificationOnly: true, semanticSurfaceRecordId: surfaceRecord.id, surfaceDigest: surface.digest },
+      PUBLISHING: { verificationOnly: true, published: false, semanticSurfaceRecordId: surfaceRecord.id },
+    },
+    implementationAuthorId: independentJob.implementationAuthorId,
     runnerId: independentJob.runnerId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    completedAt: new Date().toISOString(),
+  };
+  await store.appendUnderstandingRecord(job.projectId, "WORKSPACE_ANALYSIS_JOB", {
+    id: `FIXTURE-CHECKPOINT-${id}`,
+    jobId: id,
+    checkpointSequence: 1,
+    projectId: job.projectId,
+    snapshotManifestId: job.snapshotManifestId,
+    analysisRunId: id,
+    artifactIds: [],
+    state: run,
+    createdAt: run.completedAt,
   });
-  await store.appendUnderstandingRecord(job.projectId, "INDEPENDENT_ANALYSIS_RUN", run);
   return run;
 }
 
@@ -256,7 +236,4 @@ export function fixtureReviewedMeasurementResolver(reviewerId, truthSet) {
     };
   };
 }
-import {
-  createIndependentAnalysisRun,
-  createStoredUnderstandingSurface,
-} from "../../src/application/understanding-equivalence.js";
+import { createStoredUnderstandingSurface } from "../../src/application/understanding-equivalence.js";

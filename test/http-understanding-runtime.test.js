@@ -70,6 +70,9 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   const readResponse = await fetch(`${base}/workspace-analysis-jobs/${completed.id}`);
   assert.equal(readResponse.status, 200);
   assert.equal((await readResponse.json()).outputs.PUBLISHING.currentGraphHead.version, 1);
+  const listResponse = await fetch(`${base}/workspace-analysis-jobs`);
+  assert.equal(listResponse.status, 200);
+  assert.deepEqual((await listResponse.json()).jobs.map(({ id }) => id), [completed.id]);
   const graphResponse = await fetch(`${base}/graph/current`);
   assert.equal(graphResponse.status, 200);
   const graph = await graphResponse.json();

@@ -1,4 +1,4 @@
-import { assertEvaluationPublicationReady, canonicalJson, deepFreeze } from "../domain/index.js";
+import { assertEvaluationPublicationReady, canonicalJson, contentId, deepFreeze } from "../domain/index.js";
 import { TraceabilityStore } from "./traceability-store.js";
 import { PersistenceConflictError } from "./errors.js";
 
@@ -1207,6 +1207,41 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       storageKey,
       record,
       `${recordType} ${record.id}`,
+    );
+  }
+
+  async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
+    const records = [...this.#understandingRecords.entries()]
+      .filter(([storageKey, record]) => storageKey.startsWith(key(projectId, "WORKSPACE_ANALYSIS_JOB\u0000"))
+        && record.jobId === checkpoint.jobId)
+      .map(([, record]) => record);
+    const terminal = records
+      .filter(({ state }) => ["CANCELLED", "FAILED", "COMPLETED"].includes(state.status))
+      .sort((left, right) => left.checkpointSequence - right.checkpointSequence)[0];
+    if (terminal) return terminal;
+    const currentSequence = Math.max(0, ...records.map(({ checkpointSequence }) => checkpointSequence));
+    const requestedSequence = checkpoint.checkpointSequence;
+    if (requestedSequence !== currentSequence + 1 && checkpoint.state.status !== "CANCELLED") {
+      return records.sort((left, right) => right.checkpointSequence - left.checkpointSequence)[0];
+    }
+    const sequence = currentSequence + 1;
+    const normalized = {
+      ...structuredClone(checkpoint),
+      id: contentId("WORKSPACE-ANALYSIS-JOB-CHECKPOINT", {
+        jobId: checkpoint.jobId,
+        checkpointSequence: sequence,
+        status: checkpoint.state.status,
+        phase: checkpoint.state.phase,
+        completedPhases: checkpoint.state.completedPhases,
+        outputs: checkpoint.state.outputs,
+      }),
+      checkpointSequence: sequence,
+    };
+    return this.#appendVersion(
+      this.#understandingRecords,
+      key(projectId, `WORKSPACE_ANALYSIS_JOB\u0000${normalized.id}`),
+      normalized,
+      `WORKSPACE_ANALYSIS_JOB ${normalized.id}`,
     );
   }
 

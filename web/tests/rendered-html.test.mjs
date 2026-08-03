@@ -38,11 +38,15 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /resolveServerWorkspaceExecutionProfile/);
   assert.match(product, /startServerWorkspaceUnderstanding/);
   assert.match(product, /getServerWorkspaceUnderstanding/);
+  assert.match(product, /listServerWorkspaceUnderstandingJobs/);
+  assert.match(product, /controlServerWorkspaceUnderstanding/);
+  assert.match(product, /traqen\.activeWorkspaceId/);
   assert.match(product, /getCurrentUnderstandingGraph/);
   assert.match(product, /staleWorkspaceResponse/);
   assert.match(product, /window\.setInterval/);
   assert.match(serverClient, /source-registrations/);
   assert.match(serverClient, /workspace-analysis-jobs/);
+  assert.match(serverClient, /"pause" \| "resume" \| "cancel"/);
   assert.match(serverClient, /execution-profile-revisions/);
   assert.doesNotMatch(serverClient, /workspaceExecutionProfileRevisionId\?:/);
   assert.match(graphClient, /graph\/current/);

@@ -31,6 +31,9 @@ export class WorkspaceAnalysisJobRunner {
     ) {
       throw new TypeError("workspaceExecutionProfileRevisionId is required");
     }
+    if (input.purpose !== undefined && !["PUBLICATION", "EQUIVALENCE_VERIFICATION"].includes(input.purpose)) {
+      throw new TypeError("WorkspaceAnalysisJob purpose is invalid");
+    }
     const currentGraphHead = await this.store.getCurrentGraphHead(input.projectId);
     const resolvedMode = input.requestedMode === "AUTO"
       ? currentGraphHead ? "INCREMENTAL" : "FULL"
@@ -49,6 +52,7 @@ export class WorkspaceAnalysisJobRunner {
       workspaceExecutionProfileRevisionId: input.workspaceExecutionProfileRevisionId,
       implementationAuthorId: input.implementationAuthorId ?? "TRAQEN-RUNTIME",
       runnerId: input.runnerId ?? "TRAQEN-LOCAL-RUNNER",
+      purpose: input.purpose ?? "PUBLICATION",
     };
     const job = deepFreeze({
       id: input.id ?? contentId("WORKSPACE-ANALYSIS-JOB", identity),
@@ -95,8 +99,8 @@ export class WorkspaceAnalysisJobRunner {
       state: structuredClone(job),
       createdAt: job.updatedAt,
     };
-    await this.store.appendUnderstandingRecord(job.projectId, "WORKSPACE_ANALYSIS_JOB", checkpoint);
-    return this.get(job.projectId, job.id);
+    const stored = await this.store.appendWorkspaceAnalysisJobCheckpoint(job.projectId, checkpoint);
+    return deepFreeze(structuredClone(stored.state ?? await this.get(job.projectId, job.id)));
   }
 
   async get(projectId, jobId) {
@@ -109,6 +113,16 @@ export class WorkspaceAnalysisJobRunner {
           - { CANCELLED: 0, FAILED: 1, COMPLETED: 2 }[right.state.status]))[0];
     return terminal?.state ?? matching
       .sort((left, right) => right.checkpointSequence - left.checkpointSequence)[0]?.state ?? null;
+  }
+
+  async list(projectId, { purpose = "PUBLICATION" } = {}) {
+    const checkpoints = await this.store.listUnderstandingRecords(projectId, "WORKSPACE_ANALYSIS_JOB");
+    const jobIds = [...new Set(checkpoints.map(({ jobId }) => jobId))];
+    const jobs = (await Promise.all(jobIds.map((jobId) => this.get(projectId, jobId))))
+      .filter((job) => job && job.purpose === purpose);
+    return deepFreeze(jobs.sort((left, right) =>
+      (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt)
+      || left.id.localeCompare(right.id)));
   }
 
   async run(job, { signal } = {}) {

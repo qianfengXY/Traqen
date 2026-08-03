@@ -55,29 +55,36 @@ async function verifiedComparison(label, currentSurface, runId, job, store) {
   if (typeof runId !== "string" || runId === "" || runId === job.id) {
     throw new TypeError(`${label} equivalence evidence must identify an independent analysis run`);
   }
-  const run = await store.getUnderstandingRecord(job.projectId, "INDEPENDENT_ANALYSIS_RUN", runId);
-  if (!run || run.status !== "COMPLETED" || run.id !== runId) {
-    throw new TypeError(`${label} equivalence evidence must resolve to a persisted terminal independent run`);
+  const checkpoints = (await store.listUnderstandingRecords(job.projectId, "WORKSPACE_ANALYSIS_JOB"))
+    .filter((record) => record.jobId === runId)
+    .sort((left, right) => right.checkpointSequence - left.checkpointSequence);
+  const run = checkpoints.find(({ state }) => state.status === "COMPLETED")?.state ?? null;
+  if (!run || run.id !== runId || run.purpose !== "EQUIVALENCE_VERIFICATION") {
+    throw new TypeError(`${label} equivalence evidence must resolve to an actual terminal server verification AnalysisRun`);
   }
   if (run.snapshotManifestId !== job.snapshotManifestId || run.policyDigest !== job.policyDigest
     || run.workspaceExecutionProfileRevisionId !== job.workspaceExecutionProfileRevisionId) {
     throw new TypeError(`${label} equivalence run is not bound to the current Snapshot, policy, and profile`);
   }
-  if (run.authorId === job.implementationAuthorId || run.runnerId === job.runnerId) {
+  if (run.implementationAuthorId === job.implementationAuthorId || run.runnerId === job.runnerId) {
     throw new TypeError(`${label} equivalence run is not author and runner independent`);
   }
-  if (label === "full" && run.mode !== "FULL") {
-    throw new TypeError("incremental equivalence evidence must be produced by an independent FULL run");
+  if (label === "full" && run.resolvedMode !== "FULL") {
+    throw new TypeError("full equivalence evidence must be produced by an independent FULL run");
   }
-  if (label === "replay" && run.mode !== job.resolvedMode) {
+  if (label === "replay" && run.resolvedMode !== job.resolvedMode) {
     throw new TypeError("replay equivalence evidence must use the current analysis mode");
   }
+  const surfaceRecordId = run.outputs?.EVALUATION?.semanticSurfaceRecordId;
+  const surfaceDigest = run.outputs?.EVALUATION?.surfaceDigest;
   const storedSurface = await store.getUnderstandingRecord(
     job.projectId,
     "UNDERSTANDING_SEMANTIC_SURFACE",
-    run.surfaceRecordId,
+    surfaceRecordId,
   );
-  if (!storedSurface || storedSurface.analysisRunId !== run.id || storedSurface.digest !== run.surfaceDigest) {
+  if (!storedSurface || storedSurface.projectId !== job.projectId
+    || storedSurface.snapshotManifestId !== job.snapshotManifestId
+    || storedSurface.analysisRunId !== run.id || storedSurface.digest !== surfaceDigest) {
     throw new TypeError(`${label} equivalence run does not resolve to its immutable stored surface`);
   }
   const {
@@ -95,8 +102,8 @@ async function verifiedComparison(label, currentSurface, runId, job, store) {
   const equivalent = canonicalJson(currentSurface) === canonicalJson({ digest, ...surfaceContent });
   return {
     analysisRunId: run.id,
-    mode: run.mode,
-    producer: { authorId: run.authorId, runnerId: run.runnerId },
+    mode: run.resolvedMode,
+    producer: { authorId: run.implementationAuthorId, runnerId: run.runnerId },
     surfaceDigest: storedSurface.digest,
     equivalent,
   };

@@ -2475,6 +2475,11 @@ export class TraceabilityApplication {
     return this.#legacyUnderstandingRuntime.get(projectId, jobId);
   }
 
+  async listWorkspaceUnderstandingJobs(projectId) {
+    if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
+    return this.#legacyUnderstandingRuntime.list(projectId);
+  }
+
   async pauseWorkspaceUnderstandingJob(projectId, jobId) {
     if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
     return this.#legacyUnderstandingRuntime.pause(projectId, jobId);

@@ -75,7 +75,14 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     evidenceFactIds: [...new Set(group.flatMap(({ evidenceFactIds = [] }) => evidenceFactIds))].sort(),
     sourceSliceIds: [...new Set(group.flatMap(({ sourceSliceIds = [] }) => sourceSliceIds))].sort(),
   }));
-  const conflicts = [];
+  const conflicts = structuredClone(input.conflicts ?? []);
+  for (const conflict of conflicts) {
+    if (!conflict?.id || conflict.status !== "UNRESOLVED"
+      || !Array.isArray(conflict.candidateIds)
+      || conflict.candidateIds.some((id) => !candidates.some((candidate) => candidate.id === id))) {
+      throw new TypeError("Main reconciliation conflicts must reference admitted Candidates");
+    }
+  }
   const relations = structuredClone(input.relations ?? []);
   for (const relation of relations) {
     if (!relation?.id || typeof relation.predicate !== "string") {

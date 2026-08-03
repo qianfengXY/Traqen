@@ -1131,6 +1131,11 @@ export function createTraceabilityHttpHandler({
       }
 
       const workspaceJobsMatch = /^\/v1\/projects\/([^/]+)\/workspace-analysis-jobs$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceJobsMatch) {
+        const projectId = decodePathSegment(workspaceJobsMatch[1]);
+        sendJson(response, 200, { jobs: await application.listWorkspaceUnderstandingJobs(projectId) }, id);
+        return;
+      }
       if (request.method === "POST" && workspaceJobsMatch) {
         requireJson(request);
         const projectId = decodePathSegment(workspaceJobsMatch[1]);

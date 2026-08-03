@@ -91,6 +91,43 @@ test("configured Analysis Agent models resolve secrets at call time without seri
   assert.equal(request.body.includes("server-only-secret"), false);
 });
 
+test("Main model reconciliation returns its structured decisions instead of an accept-all projection", async () => {
+  const expected = {
+    candidateDecisions: [
+      { candidateRef: "CHILD-A:0", disposition: "CONFLICT", rationale: "The claims disagree.", relatedCandidateRefs: ["CHILD-B:0"] },
+      { candidateRef: "CHILD-B:0", disposition: "REJECT", rationale: "The evidence is weaker." },
+    ],
+    relations: [],
+    gaps: [{ code: "SEMANTIC_CONFLICT", message: "Human review is required." }],
+  };
+  let request;
+  const adapter = new OpenAICompatibleAnalysisModelAdapter({
+    id: "main-model",
+    endpoint: "https://models.example/v1/chat/completions",
+    model: "main-reconciler",
+    apiKeyResolver: () => "secret",
+    fetchImpl: async (_url, options) => {
+      request = JSON.parse(options.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(expected) } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  const output = await adapter.reconcile({
+    workUnit: { id: "MAIN", projectId: "P", snapshotManifestId: "S", analysisRunId: "R", factIds: ["F"], rootFactIds: ["F"] },
+    workContext: { scopeKey: "orders", rootNodeId: "F", inputDigest: "D", estimatedTokens: 10 },
+    candidateOptions: [{ ref: "CHILD-A:0" }, { ref: "CHILD-B:0" }],
+    contextCandidates: [],
+    scopedArtifacts: [{ id: "A", relativePath: "src/orders.js" }],
+    evidence: { facts: [{ id: "F" }], sourceSlices: [] },
+    context: { maxOutputTokens: 1_000 },
+  });
+  assert.deepEqual(output, expected);
+  assert.equal(request.messages[0].content.includes("ACCEPT, REJECT, CONFLICT, MERGE, or ALTERNATIVE"), true);
+  assert.deepEqual(JSON.parse(request.messages[1].content).candidateOptions.map(({ ref }) => ref), ["CHILD-A:0", "CHILD-B:0"]);
+});
+
 test("Analysis Agent model endpoints require HTTPS except for loopback development", () => {
   assert.throws(() => new OpenAICompatibleAnalysisModelAdapter({ id: "unsafe", endpoint: "http://models.example/v1", model: "x" }), /must use HTTPS/);
   assert.doesNotThrow(() => new OpenAICompatibleAnalysisModelAdapter({ id: "local", endpoint: "http://127.0.0.1:11434/v1/chat/completions", model: "x" }));

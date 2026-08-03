@@ -8,6 +8,8 @@ export type Workspace = {
   hidden: boolean;
   createdAt: string;
   updatedAt: string;
+  deletionRequestedAt: string | null;
+  deletedAt: string | null;
 };
 
 export type CurrentWorkspaceContext = {

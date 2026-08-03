@@ -43,22 +43,6 @@ function loadRunEvidence(filePath, job, label) {
   return record;
 }
 
-async function loadEquivalenceEvidence(filePath, job, store) {
-  const document = JSON.parse(readFileSync(filePath, "utf8"));
-  const evidence = loadRunEvidence(filePath, job, "equivalence");
-  const surfaces = Array.isArray(document.surfaces) ? document.surfaces : [];
-  const independentRuns = Array.isArray(document.independentRuns) ? document.independentRuns : [];
-  for (const runId of [evidence.replayAnalysisRunId, evidence.fullAnalysisRunId]) {
-    const run = independentRuns.find(({ id }) => id === runId);
-    if (!run) throw new TypeError(`equivalence evidence run ${runId} is unavailable`);
-    const surface = surfaces.find(({ id }) => id === run.surfaceRecordId);
-    if (!surface) throw new TypeError(`equivalence evidence surface ${run.surfaceRecordId} is unavailable`);
-    await store.appendUnderstandingRecord(job.projectId, "UNDERSTANDING_SEMANTIC_SURFACE", surface);
-    await store.appendUnderstandingRecord(job.projectId, "INDEPENDENT_ANALYSIS_RUN", run);
-  }
-  return evidence;
-}
-
 export function createConfiguredApplication({ store, env = process.env, workspaceMcpExecutor = null }) {
   if (!store) throw new TypeError("store is required");
   const runnerId = env.RUNNER_ID ?? null;
@@ -125,10 +109,10 @@ export function createConfiguredApplication({ store, env = process.env, workspac
       })
     : null;
   const equivalenceResolver = env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH
-    ? async ({ job }) => loadEquivalenceEvidence(
+    ? async ({ job }) => loadRunEvidence(
       env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH,
       job,
-      store,
+      "equivalence",
     )
     : null;
   const legacyUnderstandingRuntime = sourceSliceBroker && allowedWorkspaceRoots.length > 0
@@ -251,7 +235,7 @@ export function createConfiguredApplication({ store, env = process.env, workspac
           ? { candidates, producerOutputs: producerOutputs.map(({ kind, logicalName }) => ({ kind, logicalName })) }
           : { gap: { code: "PRODUCER_RETURNED_NO_CANDIDATE", message: "Configured producers returned no candidates" } };
       },
-      mainProducer: async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions }) => {
+      mainProducer: async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions, contextCandidates, scopedArtifacts }) => {
         const modelEntry = executionProfile.entries?.find((item) =>
           item.kind === "MODEL" && item.logicalName === route.model);
         const adapter = modelEntry ? analysisModelRegistry.resolve(route.model) : null;
@@ -259,7 +243,10 @@ export function createConfiguredApplication({ store, env = process.env, workspac
         if (modelEntry.manifest?.model && adapter.model !== modelEntry.manifest.model) {
           throw new TypeError(`Pinned Main model ${route.model} revision drifted`);
         }
-        const mainModelOutput = await adapter.analyze({
+        if (typeof adapter.reconcile !== "function") {
+          throw new TypeError(`Pinned Main model ${route.model} does not implement reconciliation`);
+        }
+        const mainModelOutput = await adapter.reconcile({
           workUnit: {
             id: `${batch.id}:MAIN`,
             projectId: job.projectId,
@@ -274,16 +261,10 @@ export function createConfiguredApplication({ store, env = process.env, workspac
             inputDigest: batch.inputDigest,
             estimatedTokens: Math.min(12_000, Math.ceil(JSON.stringify(candidateOptions).length / 4)),
           },
-          deterministicCandidates: candidateOptions.map(({ ref, proposal }) => ({
-            candidateKey: ref,
-            mode: "BUSINESS",
-            name: proposal.name ?? proposal.displayName,
-            description: proposal.statement ?? proposal.description,
-            confidence: proposal.confidence ?? "LOW",
-            evidenceFactIds: facts.map(({ id }) => id),
-            stableEvidenceNodeIds: facts.map(({ id }) => id),
-          })),
-          evidence: { facts, childCandidates: structuredClone(candidateOptions) },
+          candidateOptions: structuredClone(candidateOptions),
+          contextCandidates: structuredClone(contextCandidates),
+          scopedArtifacts: structuredClone(scopedArtifacts),
+          evidence: { facts, sourceSlices: [] },
           context: { maxOutputTokens: 2_048 },
         });
         const executedCapabilities = [{ kind: "MODEL", logicalName: route.model }];
@@ -317,13 +298,9 @@ export function createConfiguredApplication({ store, env = process.env, workspac
           executedCapabilities.push({ kind: "MCP", logicalName: mcpName });
         }
         return {
-          candidateDecisions: candidateOptions.map(({ ref }) => ({
-            candidateRef: ref,
-            disposition: "ACCEPT",
-            rationale: `Pinned Main Agent retained the evidence-bounded Child Candidate after complete-set reconciliation (${mainModelOutput.candidates?.length ?? 0} model proposals).`,
-          })),
-          relations: [],
-          gaps: [],
+          candidateDecisions: mainModelOutput.candidateDecisions,
+          relations: mainModelOutput.relations ?? [],
+          gaps: mainModelOutput.gaps ?? [],
           executedCapabilities,
         };
       },

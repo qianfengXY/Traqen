@@ -5,6 +5,7 @@ import test from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
+import { WorkspaceAnalysisJobRunner, WorkspaceAnalysisPhase } from "../src/application/workspace-analysis-job-runner.js";
 import {
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -103,6 +104,82 @@ async function insertSnapshot(database) {
     );
   }
 }
+
+test("PostgreSQL checkpoint fencing keeps cancellation authoritative across runners and recovery", async () => {
+  const database = await migratedDatabase();
+  await insertProjectFoundation(database);
+  const store = new PostgresTraceabilityStore(database);
+  let releasePhase;
+  let phaseStarted;
+  const started = new Promise((resolve) => { phaseStarted = resolve; });
+  const blocked = new Promise((resolve) => { releasePhase = resolve; });
+  const handlers = Object.fromEntries(Object.values(WorkspaceAnalysisPhase).slice(0, -1).map((phase) => [
+    phase,
+    phase === "SOURCE_SCAN" ? async () => { phaseStarted(); await blocked; return { phase }; } : async () => ({ phase }),
+  ]));
+  const firstRunner = new WorkspaceAnalysisJobRunner({ store, handlers });
+  const secondRunner = new WorkspaceAnalysisJobRunner({ store, handlers });
+  const job = await firstRunner.start({
+    id: "POSTGRES-CANCEL-RACE",
+    projectId: "PROJECT-001",
+    sourceRegistrationId: "SOURCE",
+    snapshotManifestId: "SNAPSHOT",
+    requestedMode: "FULL",
+    policyDigest: "POLICY",
+    workspaceExecutionProfileRevisionId: "PROFILE",
+  });
+  const running = firstRunner.run(job);
+  await started;
+  const cancelled = await secondRunner.cancel(await secondRunner.get("PROJECT-001", job.id));
+  releasePhase();
+  assert.equal((await running).status, "CANCELLED");
+  assert.equal(cancelled.status, "CANCELLED");
+  const stale = {
+    id: "STALE-POSTGRES-COMPLETION",
+    jobId: job.id,
+    checkpointSequence: 999,
+    projectId: "PROJECT-001",
+    snapshotManifestId: "SNAPSHOT",
+    analysisRunId: job.id,
+    artifactIds: [],
+    state: { ...job, status: "COMPLETED", phase: "COMPLETED", version: 999 },
+    createdAt: new Date().toISOString(),
+  };
+  assert.equal((await store.appendWorkspaceAnalysisJobCheckpoint("PROJECT-001", stale)).state.status, "CANCELLED");
+  const recovered = new WorkspaceAnalysisJobRunner({ store, handlers });
+  assert.equal((await recovered.get("PROJECT-001", job.id)).status, "CANCELLED");
+
+  let releasePausedPhase;
+  let pausedPhaseStarted;
+  const pauseStarted = new Promise((resolve) => { pausedPhaseStarted = resolve; });
+  const pauseBlocked = new Promise((resolve) => { releasePausedPhase = resolve; });
+  const pauseHandlers = Object.fromEntries(Object.values(WorkspaceAnalysisPhase).slice(0, -1).map((phase) => [
+    phase,
+    phase === "SOURCE_SCAN" ? async () => { pausedPhaseStarted(); await pauseBlocked; return { phase }; } : async () => ({ phase }),
+  ]));
+  const pauseRunner = new WorkspaceAnalysisJobRunner({ store, handlers: pauseHandlers });
+  const controlRunner = new WorkspaceAnalysisJobRunner({ store, handlers: pauseHandlers });
+  const pauseJob = await pauseRunner.start({
+    id: "POSTGRES-PAUSE-RESUME-RACE",
+    projectId: "PROJECT-001",
+    sourceRegistrationId: "SOURCE",
+    snapshotManifestId: "SNAPSHOT",
+    requestedMode: "FULL",
+    policyDigest: "POLICY",
+    workspaceExecutionProfileRevisionId: "PROFILE",
+  });
+  const activeRun = pauseRunner.run(pauseJob);
+  await pauseStarted;
+  const paused = await controlRunner.pause(await controlRunner.get("PROJECT-001", pauseJob.id));
+  releasePausedPhase();
+  assert.equal(paused.status, "PAUSED");
+  assert.equal((await activeRun).status, "PAUSED");
+  const recoveryRunner = new WorkspaceAnalysisJobRunner({ store, handlers: pauseHandlers });
+  const resumed = await recoveryRunner.resume(await recoveryRunner.get("PROJECT-001", pauseJob.id));
+  assert.equal(resumed.status, "RUNNING");
+  assert.equal((await recoveryRunner.run(resumed)).status, "COMPLETED");
+  await database.close();
+});
 
 async function insertTraceabilityChain(database) {
   await database.query("INSERT INTO feature (project_id, id) VALUES ($1, $2)", ["PROJECT-001", "FEATURE-001"]);

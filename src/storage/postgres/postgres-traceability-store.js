@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { assertEvaluationPublicationReady, canonicalJson, deepFreeze } from "../../domain/index.js";
+import { assertEvaluationPublicationReady, canonicalJson, contentId, deepFreeze } from "../../domain/index.js";
 import { TraceabilityStore } from "../traceability-store.js";
 import { PersistenceConflictError } from "../errors.js";
 
@@ -2923,6 +2923,54 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         throw new PersistenceConflictError(`${recordType} ${record.id} conflicts with an existing immutable record`);
       }
       return stored;
+    });
+  }
+
+  async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
+    requireId(projectId, "projectId");
+    requireId(checkpoint?.jobId, "checkpoint.jobId");
+    return this.#transaction(async () => {
+      await this.#database.query(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        [`${projectId}:${checkpoint.jobId}`],
+      );
+      const existing = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'WORKSPACE_ANALYSIS_JOB'
+           AND record_payload->>'jobId' = $2`,
+        [projectId, checkpoint.jobId],
+      );
+      const records = existing.rows.map(({ record_payload: record }) => record);
+      const terminal = records
+        .filter(({ state }) => ["CANCELLED", "FAILED", "COMPLETED"].includes(state.status))
+        .sort((left, right) => left.checkpointSequence - right.checkpointSequence)[0];
+      if (terminal) return deepFreeze(terminal);
+      const currentSequence = Math.max(0, ...records.map(({ checkpointSequence }) => checkpointSequence));
+      if (checkpoint.checkpointSequence !== currentSequence + 1 && checkpoint.state.status !== "CANCELLED") {
+        return deepFreeze(records.sort((left, right) => right.checkpointSequence - left.checkpointSequence)[0]);
+      }
+      const sequence = currentSequence + 1;
+      const normalized = {
+        ...structuredClone(checkpoint),
+        id: contentId("WORKSPACE-ANALYSIS-JOB-CHECKPOINT", {
+          jobId: checkpoint.jobId,
+          checkpointSequence: sequence,
+          status: checkpoint.state.status,
+          phase: checkpoint.state.phase,
+          completedPhases: checkpoint.state.completedPhases,
+          outputs: checkpoint.state.outputs,
+        }),
+        checkpointSequence: sequence,
+      };
+      const createdAt = normalized.createdAt ?? normalized.state.updatedAt;
+      await this.#database.query(
+        `INSERT INTO understanding_record (
+           project_id, record_type, id, snapshot_manifest_id, analysis_run_id, status, record_payload, created_at
+         ) VALUES ($1, 'WORKSPACE_ANALYSIS_JOB', $2, $3, $4, $5, $6::jsonb, $7)`,
+        [projectId, normalized.id, normalized.snapshotManifestId, normalized.analysisRunId,
+          normalized.state.status, JSON.stringify(normalized), createdAt],
+      );
+      return deepFreeze(normalized);
     });
   }
 

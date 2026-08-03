@@ -4,7 +4,11 @@ import test from "node:test";
 import { createEvaluationPolicy } from "../src/domain/index.js";
 import { evaluateUnderstanding } from "../src/application/understanding-evaluator.js";
 import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
-import { measureUnderstandingEquivalence } from "../src/application/understanding-equivalence.js";
+import {
+  createIndependentAnalysisRun,
+  createStoredUnderstandingSurface,
+  measureUnderstandingEquivalence,
+} from "../src/application/understanding-equivalence.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
 
 const policy = createEvaluationPolicy({
@@ -44,7 +48,35 @@ test("equivalence rejects cloned surfaces backed by nonexistent independent run 
       replayAnalysisRunId: "NONEXISTENT-REPLAY",
       fullAnalysisRunId: "NONEXISTENT-FULL",
     }),
-  }), /persisted terminal independent run/);
+  }), /actual terminal server verification AnalysisRun/);
+});
+
+test("equivalence rejects self-declared surfaces and legacy run records without a completed server job", async () => {
+  const store = new MemoryTraceabilityStore();
+  const surface = {
+    digest: "UNDERSTANDING-SEMANTIC-SURFACE:fixture",
+    artifacts: [], facts: [], candidates: [], conflicts: [], gaps: [], relations: [],
+  };
+  const job = {
+    id: "CURRENT", projectId: "P", snapshotManifestId: "S", policyDigest: "POLICY",
+    workspaceExecutionProfileRevisionId: "PROFILE", resolvedMode: "FULL",
+    implementationAuthorId: "AUTHOR", runnerId: "RUNNER",
+  };
+  for (const id of ["DECLARED-REPLAY", "DECLARED-FULL"]) {
+    const declaredJob = { ...job, id, implementationAuthorId: "OTHER-AUTHOR", runnerId: "OTHER-RUNNER" };
+    const storedSurface = createStoredUnderstandingSurface({ job: declaredJob, surface });
+    await store.appendUnderstandingRecord("P", "UNDERSTANDING_SEMANTIC_SURFACE", storedSurface);
+    await store.appendUnderstandingRecord("P", "INDEPENDENT_ANALYSIS_RUN", createIndependentAnalysisRun({
+      id, projectId: "P", snapshotManifestId: "S", policyDigest: "POLICY",
+      workspaceExecutionProfileRevisionId: "PROFILE", surfaceRecordId: storedSurface.id,
+      surfaceDigest: surface.digest, mode: "FULL", status: "COMPLETED",
+      authorId: "OTHER-AUTHOR", runnerId: "OTHER-RUNNER",
+    }));
+  }
+  await assert.rejects(() => measureUnderstandingEquivalence({
+    job, surface, store,
+    resolver: async () => ({ replayAnalysisRunId: "DECLARED-REPLAY", fullAnalysisRunId: "DECLARED-FULL" }),
+  }), /actual terminal server verification AnalysisRun/);
 });
 
 test("multi-dimensional evaluation uses explicit denominators and an independent reviewer", () => {

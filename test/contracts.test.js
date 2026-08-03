@@ -27,6 +27,19 @@ test("trace-chain output contract stays aligned with domain gap types", async ()
   assert.ok(contract.required.includes("conflicts"));
 });
 
+test("Workspace product schemas stay aligned with exported Web client response types", async () => {
+  const [workspaceContract, jobContract, workspaceClient, jobClient] = await Promise.all([
+    readFile(new URL("../contracts/workspace-product.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/workspace-analysis-job.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../web/app/workspace-client.ts", import.meta.url), "utf8"),
+    readFile(new URL("../web/app/server-understanding-client.ts", import.meta.url), "utf8"),
+  ]);
+  const workspaceType = workspaceClient.match(/export type Workspace = \{[\s\S]*?\n\};/)?.[0] ?? "";
+  const jobType = jobClient.match(/export type ServerUnderstandingJob = \{[\s\S]*?\n\};/)?.[0] ?? "";
+  for (const field of workspaceContract.$defs.Workspace.required) assert.match(workspaceType, new RegExp(`\\b${field}[?:]`));
+  for (const field of jobContract.required) assert.match(jobType, new RegExp(`\\b${field}[?:]`));
+});
+
 test("OpenAPI contract exposes the implemented trace-chain routes", async () => {
   const contract = JSON.parse(
     await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"),
@@ -67,6 +80,34 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/workspaces/{workspaceId}/review-decisions/batch"].post.operationId,
     "decideWorkspaceReviewBatch",
   );
+  const workspaceOperations = [
+    ["/v1/workspaces", "get", "200", false],
+    ["/v1/workspaces", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}", "get", "200", false],
+    ["/v1/workspaces/{workspaceId}", "patch", "200", true],
+    ["/v1/workspaces/{workspaceId}/view-preference", "put", "200", true],
+    ["/v1/workspaces/{workspaceId}/request-deletion", "post", "200", true],
+    ["/v1/workspaces/{workspaceId}/cancel-deletion", "post", "200", true],
+    ["/v1/workspaces/{workspaceId}/complete-deletion", "post", "200", true],
+    ["/v1/capability-templates", "get", "200", false],
+    ["/v1/capability-templates", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}/capability-configs", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}/execution-profile-revisions", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}/analysis-batches", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/child-results", "post", "201", true],
+    ["/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/barrier", "post", "201", false],
+    ["/v1/workspaces/{workspaceId}/review-queue", "get", "200", false],
+    ["/v1/workspaces/{workspaceId}/review-decisions/batch", "post", "201", true],
+  ];
+  for (const [path, method, status, requiresBody] of workspaceOperations) {
+    const operation = contract.paths[path][method];
+    assert.ok(operation.responses[status].content["application/json"].schema, `${method.toUpperCase()} ${path} has a success schema`);
+    if (requiresBody) assert.ok(
+      operation.requestBody.$ref || operation.requestBody.content?.["application/json"]?.schema,
+      `${method.toUpperCase()} ${path} has a request schema`,
+    );
+  }
   assert.equal(contract.paths["/v1/projects"].post.operationId, "createProject");
   assert.equal(contract.paths["/v1/projects/{projectId}"].get.operationId, "getProject");
   assert.equal(
@@ -227,6 +268,7 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");
+  assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].get.operationId, "listWorkspaceUnderstandingJobs");
   assert.ok(
     contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].parameters.some(
       ({ name }) => name === "async",
