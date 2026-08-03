@@ -44,6 +44,7 @@ async function migratedDatabase() {
     "0013_analysis_agent",
     "0014_legacy_understanding_engine",
     "0015_workspace_product_foundation",
+    "0016_source_slice_worker_credentials",
   ]);
   return database;
 }
@@ -271,6 +272,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "reverse_open_question",
     "analysis_run_checkpoint",
     "analysis_result",
+    "source_slice_worker_credential_use",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }

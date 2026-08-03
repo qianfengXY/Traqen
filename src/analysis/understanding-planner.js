@@ -54,7 +54,6 @@ export function createUnderstandingPlan(input, clock = () => new Date()) {
     for (let offset = 0; offset < records.length; offset += maxArtifacts) {
       const artifacts = records.slice(offset, offset + maxArtifacts);
       const identity = {
-        snapshotManifestId: input.inventory.snapshotManifestId,
         lane,
         locality,
         shard: Math.floor(offset / maxArtifacts),

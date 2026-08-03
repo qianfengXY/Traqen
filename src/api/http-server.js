@@ -2,6 +2,10 @@ import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { AnalysisModelConnectionError } from "../analysis/index.js";
 import {
+  SourceSliceWorkerAuthenticationError,
+  SourceSliceWorkerAuthorizationError,
+} from "../application/source-slice-worker-credential.js";
+import {
   PersistenceConflictError,
   ReviewAuthenticationError,
   ReviewAuthorizationError,
@@ -189,6 +193,18 @@ function errorResponse(error, id) {
     return {
       status: 403,
       body: { error: { code: "REVIEWER_NOT_AUTHORIZED", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof SourceSliceWorkerAuthenticationError) {
+    return {
+      status: 401,
+      body: { error: { code: "SOURCE_SLICE_WORKER_AUTHENTICATION_REQUIRED", message: error.message, requestId: id } },
+    };
+  }
+  if (error instanceof SourceSliceWorkerAuthorizationError) {
+    return {
+      status: 403,
+      body: { error: { code: "SOURCE_SLICE_WORKER_NOT_AUTHORIZED", message: error.message, requestId: id } },
     };
   }
   return {
@@ -1273,7 +1289,11 @@ export function createTraceabilityHttpHandler({
         const slice = await application.requestSourceSlice(
           projectId,
           { ...input, projectId, analysisRunId, ...(workUnitId ? { workUnitId } : {}) },
-          { serviceIdentity: request.headers["x-traqen-service-identity"] ?? null },
+          {
+            workerCredential: typeof request.headers["x-traqen-worker-credential"] === "string"
+              ? request.headers["x-traqen-worker-credential"]
+              : null,
+          },
         );
         if (slice.status === "REJECTED") {
           throw new HttpError(403, "SOURCE_SLICE_FORBIDDEN", "SourceSlice request was rejected", slice.diagnostics);

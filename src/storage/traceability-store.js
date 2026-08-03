@@ -255,6 +255,10 @@ export class TraceabilityStore {
     throw new Error("listUnderstandingRecords must be implemented");
   }
 
+  async consumeSourceSliceWorkerCredential(_projectId, _consumption) {
+    throw new Error("consumeSourceSliceWorkerCredential must be implemented");
+  }
+
   async getCurrentGraphHead(_projectId) {
     throw new Error("getCurrentGraphHead must be implemented");
   }

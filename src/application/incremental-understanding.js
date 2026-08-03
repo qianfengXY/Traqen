@@ -18,14 +18,30 @@ export function compareUnderstandingSnapshots(previous, current) {
 
 export function planIncrementalUnderstanding(input) {
   const mode = resolveUnderstandingMode(input.requestedMode ?? "AUTO", input.currentGraphHead);
-  const changes = mode === "FULL" ? input.current.inventory.artifacts.map(({ id, path }) => ({
-    path, type: "ADDED", beforeArtifactId: null, afterArtifactId: id,
+  const changes = mode === "FULL" ? input.current.inventory.artifacts.map(({ id, relativePath, path }) => ({
+    path: relativePath ?? path, type: "ADDED", beforeArtifactId: null, afterArtifactId: id,
   })) : compareUnderstandingSnapshots(input.previous, input.current);
   const changedArtifactIds = new Set(changes.flatMap(({ beforeArtifactId, afterArtifactId }) =>
     [beforeArtifactId, afterArtifactId].filter(Boolean)));
   const directlyAffected = new Set(input.current.plan.workUnits
     .filter((unit) => unit.artifactIds.some((id) => changedArtifactIds.has(id)))
     .map(({ id }) => id));
+  const previousPartitionById = new Map((input.previous?.plan?.partitions ?? [])
+    .map((partition) => [partition.id, partition]));
+  const currentPartitionById = new Map((input.current.plan.partitions ?? [])
+    .map((partition) => [partition.id, partition]));
+  for (const change of changes.filter(({ type }) => type === "REMOVED")) {
+    const previousUnit = (input.previous?.plan?.workUnits ?? [])
+      .find((unit) => unit.artifactIds.includes(change.beforeArtifactId));
+    const locality = previousPartitionById.get(previousUnit?.partitionId)?.locality;
+    if (!locality) continue;
+    for (const unit of input.current.plan.workUnits.filter(({ kind }) => kind === "MODULE_SYNTHESIS")) {
+      if (unit.dependencies.some((dependencyId) => {
+        const dependency = input.current.plan.workUnits.find(({ id }) => id === dependencyId);
+        return currentPartitionById.get(dependency?.partitionId)?.locality === locality;
+      })) directlyAffected.add(unit.id);
+    }
+  }
   const reverseDependencies = new Map();
   for (const unit of input.current.plan.workUnits) {
     for (const dependency of unit.dependencies) {

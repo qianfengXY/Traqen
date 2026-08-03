@@ -65,6 +65,10 @@ import {
   SkillAttestationError,
 } from "../storage/index.js";
 import { WorkspaceProductFoundation } from "./workspace-product-foundation.js";
+import {
+  SourceSliceWorkerAuthenticationError,
+  SourceSliceWorkerAuthorizationError,
+} from "./source-slice-worker-credential.js";
 
 function requireId(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -182,6 +186,7 @@ export class TraceabilityApplication {
   #analysisModelRegistry;
   #sourceSliceBroker;
   #legacyUnderstandingRuntime;
+  #sourceSliceWorkerCredentialService;
   #workspaceFoundation;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
@@ -205,6 +210,7 @@ export class TraceabilityApplication {
     analysisModelRegistry = null,
     sourceSliceBroker = null,
     legacyUnderstandingRuntime = null,
+    sourceSliceWorkerCredentialService = null,
     workspaceFoundation = null,
   }) {
     if (!store) throw new TypeError("store is required");
@@ -245,6 +251,7 @@ export class TraceabilityApplication {
     this.#analysisModelRegistry = analysisModelRegistry;
     this.#sourceSliceBroker = sourceSliceBroker;
     this.#legacyUnderstandingRuntime = legacyUnderstandingRuntime;
+    this.#sourceSliceWorkerCredentialService = sourceSliceWorkerCredentialService;
     this.#workspaceFoundation = workspaceFoundation ?? new WorkspaceProductFoundation({ store, clock });
   }
 
@@ -2468,17 +2475,126 @@ export class TraceabilityApplication {
     if (!this.#sourceSliceBroker) throw new TypeError("SourceSlice Broker is not configured");
     if (input.projectId !== projectId) throw new TypeError("SourceSlice projectId must match the route projectId");
     const request = createSourceSliceRequest(input, this.#clock);
-    const workUnit = await this.#store.getUnderstandingRecord(projectId, "WORK_UNIT", request.workUnitId);
-    const authorized = requestContext.serviceIdentity && workUnit
-      && workUnit.analysisRunId === request.analysisRunId
-      && workUnit.snapshotManifestId === request.snapshotManifestId;
-    return this.#sourceSliceBroker.read(request, authorized ? {
-      serviceIdentity: requestContext.serviceIdentity,
+    let claims;
+    try {
+      if (!this.#sourceSliceWorkerCredentialService) {
+        throw new SourceSliceWorkerAuthenticationError("SourceSlice worker authentication is not configured");
+      }
+      claims = this.#sourceSliceWorkerCredentialService.verify(requestContext.workerCredential);
+    } catch (error) {
+      await this.#auditSourceSliceAuthentication(projectId, request, null, "AUTHENTICATION_FAILED");
+      throw error instanceof SourceSliceWorkerAuthenticationError
+        ? error
+        : new SourceSliceWorkerAuthenticationError("Worker credential is invalid");
+    }
+    const workUnit = (await this.#store.listUnderstandingRecords(projectId, "WORK_UNIT"))
+      .find((record) => record.analysisRunId === request.analysisRunId
+        && (record.workUnitId ?? record.id) === request.workUnitId);
+    const routeDecision = await this.#store.getUnderstandingRecord(
+      projectId,
+      "ANALYSIS_ROUTE_DECISION",
+      claims.routeDecisionId,
+    );
+    const job = this.#legacyUnderstandingRuntime
+      ? await this.#legacyUnderstandingRuntime.get(projectId, request.analysisRunId)
+      : null;
+    const scopeMatches = claims.projectId === projectId
+      && claims.snapshotManifestId === request.snapshotManifestId
+      && claims.analysisRunId === request.analysisRunId
+      && claims.workUnitId === request.workUnitId
+      && claims.policyDigest === request.policyId
+      && workUnit?.analysisRunId === request.analysisRunId
+      && workUnit?.snapshotManifestId === request.snapshotManifestId
+      && routeDecision?.analysisRunId === request.analysisRunId
+      && routeDecision?.workUnitId === request.workUnitId
+      && routeDecision?.status !== "NO_ELIGIBLE_PRODUCER"
+      && routeDecision?.selected?.some((producer) => canonicalJson(producer) === claims.producerKey)
+      && job?.status === "RUNNING"
+      && job?.phase === "ANALYSIS"
+      && job?.policyDigest === request.policyId;
+    if (!scopeMatches) {
+      await this.#auditSourceSliceAuthentication(projectId, request, claims, "SCOPE_MISMATCH");
+      throw new SourceSliceWorkerAuthorizationError("Worker credential is not authorized for this active route and WorkUnit");
+    }
+    try {
+      await this.#store.consumeSourceSliceWorkerCredential(projectId, {
+        credentialId: claims.credentialId,
+        analysisRunId: request.analysisRunId,
+        workUnitId: request.workUnitId,
+        routeDecisionId: claims.routeDecisionId,
+        consumedAt: this.#clock().toISOString(),
+      });
+    } catch {
+      await this.#auditSourceSliceAuthentication(projectId, request, claims, "REPLAY_REJECTED");
+      throw new SourceSliceWorkerAuthorizationError("Worker credential has already been used");
+    }
+    await this.#auditSourceSliceAuthentication(projectId, request, claims, "AUTHORIZED");
+    return this.#sourceSliceBroker.read(request, {
+      serviceIdentity: claims.producerKey,
       projectId,
       analysisRunId: request.analysisRunId,
       workUnitArtifactIds: workUnit.artifactIds,
       workUnitFactIds: workUnit.factIds ?? [],
-    } : null);
+    });
+  }
+
+  async issueSourceSliceWorkerCredential(projectId, input) {
+    requireId(projectId, "projectId");
+    if (!this.#sourceSliceWorkerCredentialService) {
+      throw new SourceSliceWorkerAuthenticationError("SourceSlice worker authentication is not configured");
+    }
+    const job = this.#legacyUnderstandingRuntime
+      ? await this.#legacyUnderstandingRuntime.get(projectId, input.analysisRunId)
+      : null;
+    const workUnit = (await this.#store.listUnderstandingRecords(projectId, "WORK_UNIT"))
+      .find((record) => record.analysisRunId === input.analysisRunId
+        && (record.workUnitId ?? record.id) === input.workUnitId);
+    const routeDecision = await this.#store.getUnderstandingRecord(
+      projectId,
+      "ANALYSIS_ROUTE_DECISION",
+      input.routeDecisionId,
+    );
+    const producerKey = canonicalJson(input.producer);
+    if (job?.status !== "RUNNING" || job.phase !== "ANALYSIS"
+      || workUnit?.analysisRunId !== input.analysisRunId
+      || workUnit?.snapshotManifestId !== job.snapshotManifestId
+      || routeDecision?.analysisRunId !== input.analysisRunId
+      || routeDecision?.workUnitId !== input.workUnitId
+      || !routeDecision?.selected?.some((producer) => canonicalJson(producer) === producerKey)) {
+      throw new SourceSliceWorkerAuthorizationError("Only the selected producer for an active WorkUnit can receive a credential");
+    }
+    return this.#sourceSliceWorkerCredentialService.issue({
+      projectId,
+      snapshotManifestId: job.snapshotManifestId,
+      analysisRunId: job.id,
+      workUnitId: input.workUnitId,
+      routeDecisionId: input.routeDecisionId,
+      producerKey,
+      policyDigest: job.policyDigest,
+    });
+  }
+
+  async #auditSourceSliceAuthentication(projectId, request, claims, outcome) {
+    const at = this.#clock().toISOString();
+    const record = {
+      id: contentId("SOURCE-SLICE-AUTH-AUDIT", {
+        projectId,
+        analysisRunId: request.analysisRunId,
+        workUnitId: request.workUnitId,
+        credentialId: claims?.credentialId ?? null,
+        outcome,
+        at,
+      }),
+      projectId,
+      snapshotManifestId: request.snapshotManifestId,
+      analysisRunId: request.analysisRunId,
+      workUnitId: request.workUnitId,
+      credentialId: claims?.credentialId ?? null,
+      routeDecisionId: claims?.routeDecisionId ?? null,
+      outcome,
+      createdAt: at,
+    };
+    await this.#store.appendUnderstandingRecord(projectId, "SOURCE_SLICE_AUTH_AUDIT", record).catch(() => undefined);
   }
 
   async getCurrentUnderstandingGraph(projectId) {

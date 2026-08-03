@@ -217,6 +217,34 @@ test("Analysis Agent HTTP surface starts, checkpoints, resumes, and exposes late
   assert.deepEqual((await history.json()).history, [{ runId: "ANALYSIS-HTTP" }]);
 });
 
+test("Feature understanding history returns the complete canonical response shape", async (t) => {
+  const expected = {
+    feature: { id: "FEATURE-1", version: 1, name: "Checkout" },
+    featureVersions: [{ id: "FEATURE-1", version: 1 }],
+    decisions: [],
+    implementationMappings: [],
+    graphRevisions: [],
+    testSpecs: [],
+    testExecutions: [],
+  };
+  const application = {
+    async getFeatureUnderstandingHistory(projectId, featureId) {
+      assert.equal(projectId, "PROJECT-HTTP");
+      assert.equal(featureId, "FEATURE-1");
+      return expected;
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const response = await fetch(`${baseUrl}/v1/projects/PROJECT-HTTP/features/FEATURE-1/history`);
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), expected);
+  const schema = JSON.parse(
+    await readFile(new URL("../contracts/feature-understanding-history.schema.json", import.meta.url), "utf8"),
+  );
+  assert.deepEqual(Object.keys(expected).sort(), Object.keys(schema.properties).sort());
+});
+
 test("analysis model profiles can be configured, verified, and used for bounded Workspace enrichment without returning secrets", async (t) => {
   const calls = [];
   const enrichmentInput = (candidateId) => {

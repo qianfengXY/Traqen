@@ -52,6 +52,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #analysisCheckpoints = new Map();
   #analysisResults = new Map();
   #understandingRecords = new Map();
+  #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
 
   async appendProjectFoundation(foundation) {
@@ -1184,6 +1185,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       "SECRET_GRANT", "ANALYSIS_BATCH", "CHILD_WORK_UNIT", "CHILD_BATCH_RESULT",
       "BATCH_BARRIER", "CONFLICT_LEDGER", "COVERAGE_LEDGER", "QUARANTINED_CANDIDATE",
       "REVIEW_QUEUE_ITEM", "REVIEW_BATCH_DECISION", "FEATURE_HISTORY",
+      "SOURCE_SLICE_AUTH_AUDIT", "INCREMENTAL_PLAN",
     ]);
     if (!supported.has(recordType)) throw new TypeError(`Unsupported understanding record type ${recordType}`);
     if (!record?.id) throw new TypeError("understanding record id is required");
@@ -1208,6 +1210,16 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       .sort((left, right) => (right.createdAt ?? right.completedAt ?? "").localeCompare(
         left.createdAt ?? left.completedAt ?? "",
       ) || left.id.localeCompare(right.id)));
+  }
+
+  async consumeSourceSliceWorkerCredential(projectId, consumption) {
+    const storageKey = key(projectId, consumption.credentialId);
+    if (this.#sourceSliceCredentialUses.has(storageKey)) {
+      throw new PersistenceConflictError("SourceSlice worker credential has already been consumed");
+    }
+    const stored = deepFreeze(structuredClone(consumption));
+    this.#sourceSliceCredentialUses.set(storageKey, stored);
+    return stored;
   }
 
   async getCurrentGraphHead(projectId) {

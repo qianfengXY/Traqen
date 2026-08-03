@@ -1343,7 +1343,16 @@
       }
     },
     "/v1/projects/{projectId}/workspace-analysis-jobs": {
-      "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        {
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "description": "Defaults to true. Set false only for bounded synchronous execution.",
+          "schema": { "type": "boolean", "default": true }
+        }
+      ],
       "post": {
         "operationId": "startWorkspaceUnderstandingJob",
         "requestBody": { "required": true, "content": { "application/json": { "schema": {
@@ -1354,7 +1363,10 @@
             "workspaceExecutionProfileRevisionId": { "type": "string", "description": "Optional only at the API boundary; when omitted the server materializes and pins an immutable local profile before starting." }
           }, "additionalProperties": false
         } } } },
-        "responses": { "202": { "description": "Durable server-owned job", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } } }
+        "responses": {
+          "201": { "description": "Synchronously completed or terminal durable job when async=false", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } },
+          "202": { "description": "Accepted durable server-owned background job", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } }
+        }
       }
     },
     "/v1/projects/{projectId}/workspace-analysis-jobs/{jobId}": {
@@ -1458,7 +1470,7 @@
       "get": {
         "operationId": "getFeatureUnderstandingHistory",
         "responses": {
-          "200": { "description": "FeatureVersion, Decision, Snapshot implementation, impact and verification history", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "200": { "description": "FeatureVersion, Decision, Snapshot implementation, impact and verification history", "content": { "application/json": { "schema": { "$ref": "./feature-understanding-history.schema.json" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
@@ -1480,16 +1492,22 @@
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
         { "$ref": "#/components/parameters/AnalysisRunId" },
-        { "name": "workUnitId", "in": "path", "required": true, "schema": { "type": "string" } }
+        { "name": "workUnitId", "in": "path", "required": true, "schema": { "type": "string" } },
+        { "$ref": "#/components/parameters/SourceSliceWorkerCredential" }
       ],
       "post": {
         "operationId": "requestSourceSlice",
+        "security": [
+          { "ApiToken": [], "SourceSliceWorkerCredential": [] },
+          { "BearerAuth": [], "SourceSliceWorkerCredential": [] }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "./source-slice.schema.json" } } }
+          "content": { "application/json": { "schema": { "$ref": "./source-slice-request.schema.json" } } }
         },
         "responses": {
-          "200": { "description": "Policy-bounded SourceSlice", "content": { "application/json": { "schema": { "$ref": "./source-slice.schema.json" } } } },
+          "200": { "description": "Policy-bounded SourceSlice", "content": { "application/json": { "schema": { "$ref": "./source-slice.schema.json#/oneOf/1" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
           "403": { "$ref": "#/components/responses/ReviewerForbidden" }
         }
       }
@@ -1506,6 +1524,12 @@
         "type": "apiKey",
         "in": "header",
         "name": "x-traqen-api-token"
+      },
+      "SourceSliceWorkerCredential": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-traqen-worker-credential",
+        "description": "Short-lived, single-use server-attested credential bound to one active job, WorkUnit, selected RouteDecision, producer, Snapshot and source policy. It is never issued to browser clients."
       }
     },
     "parameters": {
@@ -1568,6 +1592,13 @@
         "in": "path",
         "required": true,
         "schema": { "type": "string", "minLength": 1 }
+      },
+      "SourceSliceWorkerCredential": {
+        "name": "x-traqen-worker-credential",
+        "in": "header",
+        "required": true,
+        "schema": { "type": "string", "minLength": 32 },
+        "description": "Server-attested worker credential. Caller-asserted service identity headers are ignored."
       }
     },
     "requestBodies": {

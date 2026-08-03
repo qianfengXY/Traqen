@@ -2941,6 +2941,30 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return deepFreeze(result.rows.map((row) => row.record_payload));
   }
 
+  async consumeSourceSliceWorkerCredential(projectId, consumption) {
+    requireId(projectId, "projectId");
+    requireId(consumption?.credentialId, "consumption.credentialId");
+    const result = await this.#database.query(
+      `INSERT INTO source_slice_worker_credential_use (
+         project_id, credential_id, analysis_run_id, work_unit_id, route_decision_id, consumed_at
+       ) VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (project_id, credential_id) DO NOTHING
+       RETURNING credential_id`,
+      [
+        projectId,
+        consumption.credentialId,
+        consumption.analysisRunId,
+        consumption.workUnitId,
+        consumption.routeDecisionId,
+        consumption.consumedAt,
+      ],
+    );
+    if (result.rows.length === 0) {
+      throw new PersistenceConflictError("SourceSlice worker credential has already been consumed");
+    }
+    return deepFreeze(structuredClone(consumption));
+  }
+
   async getCurrentGraphHead(projectId) {
     requireId(projectId, "projectId");
     const result = await this.#database.query(

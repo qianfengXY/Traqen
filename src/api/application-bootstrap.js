@@ -6,6 +6,7 @@ import { AnalysisAgent, AnalysisModelRegistry, configuredAnalysisModels, createR
 import { createLocalSourceSnapshotBroker } from "../application/local-source-snapshot-broker.js";
 import { LegacyUnderstandingRuntime } from "../application/legacy-understanding-runtime.js";
 import { createReviewedUnderstandingEvaluationResolver } from "../application/reviewed-understanding-evaluation.js";
+import { SourceSliceWorkerCredentialService } from "../application/source-slice-worker-credential.js";
 
 function commaSeparated(value, fallback = "") {
   return (value ?? fallback).split(",").map((item) => item.trim()).filter(Boolean);
@@ -69,6 +70,9 @@ export function createConfiguredApplication({ store, env = process.env }) {
   const sourceSliceBroker = env.SOURCE_SNAPSHOT_ROOT
     ? createLocalSourceSnapshotBroker({ store, snapshotRoot: env.SOURCE_SNAPSHOT_ROOT })
     : null;
+  const sourceSliceWorkerCredentialService = env.SOURCE_SLICE_WORKER_CREDENTIAL_SECRET
+    ? new SourceSliceWorkerCredentialService({ secret: env.SOURCE_SLICE_WORKER_CREDENTIAL_SECRET })
+    : null;
   const allowedWorkspaceRoots = commaSeparated(env.TRAQEN_ALLOWED_WORKSPACE_ROOTS);
   const reviewedEvaluationResolver = env.UNDERSTANDING_TRUTH_SET_PATH
     ? createReviewedUnderstandingEvaluationResolver({
@@ -84,9 +88,6 @@ export function createConfiguredApplication({ store, env = process.env }) {
       snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
       allowlistedRoots: allowedWorkspaceRoots,
       childProducer: async ({ job, assignment, artifact, facts, sourceSlices, candidate }) => {
-        if (assignment.route.model === "LOCAL-DETERMINISTIC-PROFILE") {
-          return { candidates: [{ proposal: candidate.proposal, confidence: candidate.confidence }] };
-        }
         const adapter = analysisModelRegistry.resolve(assignment.route.model);
         if (!adapter) {
           return {
@@ -162,6 +163,7 @@ export function createConfiguredApplication({ store, env = process.env }) {
     }),
     analysisModelRegistry,
     sourceSliceBroker,
+    sourceSliceWorkerCredentialService,
     legacyUnderstandingRuntime,
     reviewerResolver: (_projectId, context) => {
       if (configuredReviewers.length > 0) {
@@ -218,5 +220,8 @@ export function createConfiguredApplication({ store, env = process.env }) {
       },
     }),
   });
+  if (legacyUnderstandingRuntime) {
+    queueMicrotask(() => legacyUnderstandingRuntime.recover().catch(() => undefined));
+  }
   return { application, corsAllowedOrigins };
 }

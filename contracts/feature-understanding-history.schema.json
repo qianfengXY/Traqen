@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/feature-understanding-history.schema.json",
+  "title": "FeatureUnderstandingHistory",
+  "type": "object",
+  "required": [
+    "feature",
+    "featureVersions",
+    "decisions",
+    "implementationMappings",
+    "graphRevisions",
+    "testSpecs",
+    "testExecutions"
+  ],
+  "properties": {
+    "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+    "featureVersions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" }
+    },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "./governance.schema.json#/$defs/Decision" }
+    },
+    "implementationMappings": {
+      "type": "array",
+      "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" }
+    },
+    "graphRevisions": {
+      "type": "array",
+      "items": { "$ref": "./graph-revision.schema.json" }
+    },
+    "testSpecs": { "type": "array", "items": { "type": "object" } },
+    "testExecutions": { "type": "array", "items": { "type": "object" } }
+  },
+  "additionalProperties": false
+}

@@ -29,6 +29,7 @@ import {
 import { LocalSourceSnapshotCapture } from "./local-source-snapshot.js";
 import { evaluateUnderstanding } from "./understanding-evaluator.js";
 import { WorkspaceAnalysisJobRunner, WorkspaceAnalysisPhase } from "./workspace-analysis-job-runner.js";
+import { planIncrementalUnderstanding } from "./incremental-understanding.js";
 
 function publicRegistration(registration) {
   const { canonicalRootRef: _canonicalRootRef, ...safe } = registration;
@@ -63,30 +64,6 @@ function extractSourceFacts(artifact, content) {
   }
   return facts;
 }
-
-const publicationMinimums = Object.freeze({
-  inventory: 1,
-  anchors: 1,
-  candidateSample: 1,
-  requiredRelationships: 1,
-  forbiddenRelationships: 1,
-  sourceAttributions: 1,
-  gaps: 1,
-  replaySamples: 1,
-  incrementalComparisons: 1,
-});
-
-const traqenSelfPublicationMinimums = Object.freeze({
-  inventory: 1,
-  anchors: 30,
-  candidateSample: 30,
-  requiredRelationships: 60,
-  forbiddenRelationships: 30,
-  sourceAttributions: 30,
-  gaps: 1,
-  replaySamples: 1,
-  incrementalComparisons: 1,
-});
 
 export class LegacyUnderstandingRuntime {
   #controllers = new Map();
@@ -267,6 +244,27 @@ export class LegacyUnderstandingRuntime {
     return resumed;
   }
 
+  async recover(projectIds = null) {
+    const scopedProjectIds = projectIds ?? (await this.store.listProjectFoundations())
+      .map(({ project }) => project.id);
+    const recoveries = [];
+    for (const projectId of scopedProjectIds) {
+      const checkpoints = await this.store.listUnderstandingRecords(projectId, "WORKSPACE_ANALYSIS_JOB");
+      const latestByJob = new Map();
+      for (const checkpoint of checkpoints) {
+        const current = latestByJob.get(checkpoint.jobId);
+        if (!current || checkpoint.checkpointSequence > current.checkpointSequence) {
+          latestByJob.set(checkpoint.jobId, checkpoint);
+        }
+      }
+      for (const { state } of latestByJob.values()) {
+        if (state.status !== "RUNNING" || state.desiredState !== "RUNNING" || this.#controllers.has(state.id)) continue;
+        recoveries.push(this.#run(state));
+      }
+    }
+    return Promise.all(recoveries);
+  }
+
   async cancel(projectId, jobId) {
     const job = await this.get(projectId, jobId);
     if (!job) return null;
@@ -319,16 +317,76 @@ export class LegacyUnderstandingRuntime {
     for (const workUnit of plan.workUnits) {
       await this.store.appendUnderstandingRecord(job.projectId, "WORK_UNIT", {
         ...workUnit,
+        id: contentId("WORK-UNIT-INSTANCE", { analysisRunId: job.id, workUnitId: workUnit.id }),
+        workUnitId: workUnit.id,
         projectId: job.projectId,
         snapshotManifestId: job.snapshotManifestId,
         analysisRunId: job.id,
         createdAt: this.clock().toISOString(),
       });
     }
+    let previous = null;
+    let baseRevision = null;
+    if (job.baseRevisionId) {
+      baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
+      const inventories = await this.store.listUnderstandingRecords(job.projectId, "ARTIFACT_INVENTORY");
+      const plans = await this.store.listUnderstandingRecords(job.projectId, "UNDERSTANDING_PLAN");
+      const previousInventory = inventories.find(({ snapshotManifestId }) =>
+        snapshotManifestId === baseRevision?.snapshotManifestId);
+      const previousPlan = plans.find(({ snapshotManifestId }) =>
+        snapshotManifestId === baseRevision?.snapshotManifestId);
+      if (!baseRevision || !previousInventory || !previousPlan) {
+        throw new TypeError("incremental analysis requires the published base Inventory and UnderstandingPlan");
+      }
+      previous = { inventory: previousInventory, plan: previousPlan };
+    }
+    const plannedIncrementalDecision = planIncrementalUnderstanding({
+      requestedMode: job.resolvedMode,
+      currentGraphHead: job.baseRevisionId ? { graphRevisionId: job.baseRevisionId } : null,
+      previous,
+      current: { inventory, plan },
+    });
+    const sourceSliceRevalidations = new Set();
+    if (baseRevision && plannedIncrementalDecision.reusedWorkUnitIds.length > 0) {
+      const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
+      const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision.analysisRunId);
+      for (const candidate of previousBundle?.candidates ?? []) {
+        if (candidate.sourceSliceIds.length > 0
+          && plannedIncrementalDecision.reusedWorkUnitIds.includes(candidate.workUnitId)) {
+          sourceSliceRevalidations.add(candidate.workUnitId);
+        }
+      }
+    }
+    const incrementalDecision = {
+      ...plannedIncrementalDecision,
+      affectedWorkUnitIds: [...new Set([
+        ...plannedIncrementalDecision.affectedWorkUnitIds,
+        ...sourceSliceRevalidations,
+      ])].sort(),
+      reusedWorkUnitIds: plannedIncrementalDecision.reusedWorkUnitIds
+        .filter((id) => !sourceSliceRevalidations.has(id)),
+      sourceSliceRevalidationWorkUnitIds: [...sourceSliceRevalidations].sort(),
+    };
+    const incrementalPlan = deepFreeze({
+      id: contentId("INCREMENTAL-PLAN", {
+        analysisRunId: job.id,
+        planDigest: plan.planDigest,
+        decision: incrementalDecision,
+      }),
+      projectId: job.projectId,
+      snapshotManifestId: job.snapshotManifestId,
+      analysisRunId: job.id,
+      ...incrementalDecision,
+      createdAt: this.clock().toISOString(),
+    });
+    await this.store.appendUnderstandingRecord(job.projectId, "INCREMENTAL_PLAN", incrementalPlan);
     return deepFreeze({
       inventoryId: inventory.id,
       planId: plan.id,
       workUnitIds: plan.workUnits.map(({ id }) => id),
+      incrementalPlanId: incrementalPlan.id,
+      affectedWorkUnitIds: incrementalPlan.affectedWorkUnitIds,
+      reusedWorkUnitIds: incrementalPlan.reusedWorkUnitIds,
     });
   }
 
@@ -364,8 +422,23 @@ export class LegacyUnderstandingRuntime {
       "UNDERSTANDING_PLAN",
       job.outputs.SOURCE_SCAN.planId,
     );
-    const facts = [];
-    for (const workUnit of plan.workUnits.filter(({ kind }) => kind === "LEAF")) {
+    const incrementalPlan = await this.store.getUnderstandingRecord(
+      job.projectId,
+      "INCREMENTAL_PLAN",
+      job.outputs.SOURCE_SCAN.incrementalPlanId,
+    );
+    const affected = new Set(incrementalPlan.affectedWorkUnitIds);
+    const reusedArtifactIds = new Set(plan.workUnits
+      .filter(({ id }) => incrementalPlan.reusedWorkUnitIds.includes(id))
+      .flatMap(({ artifactIds }) => artifactIds));
+    let facts = [];
+    if (job.baseRevisionId && reusedArtifactIds.size > 0) {
+      const baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
+      const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "FACT_BUNDLE");
+      const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision?.analysisRunId);
+      facts = (previousBundle?.facts ?? []).filter(({ artifactId }) => reusedArtifactIds.has(artifactId));
+    }
+    for (const workUnit of plan.workUnits.filter(({ kind, id }) => kind === "LEAF" && affected.has(id))) {
       for (const artifactId of workUnit.artifactIds) {
         const artifact = inventory.artifacts.find(({ id }) => id === artifactId);
         if (!artifact || artifact.disposition !== "INCLUDED") continue;
@@ -456,8 +529,58 @@ export class LegacyUnderstandingRuntime {
     const gaps = [];
     const routeDecisionIds = [];
     const analysisBatchIds = [];
+    const incrementalPlan = await this.store.getUnderstandingRecord(
+      job.projectId,
+      "INCREMENTAL_PLAN",
+      job.outputs.SOURCE_SCAN.incrementalPlanId,
+    );
+    const eligibleReuse = new Set(incrementalPlan.reusedWorkUnitIds);
+    const reusedWorkUnitIds = new Set(plan.workUnits
+      .filter(({ id, kind }) => eligibleReuse.has(id) && kind !== "LEAF")
+      .map(({ id }) => id));
+    const reusedCandidateIds = [];
+    if (job.baseRevisionId && eligibleReuse.size > 0) {
+      const baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
+      const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
+      const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision?.analysisRunId);
+      for (const prior of previousBundle?.candidates ?? []) {
+        if (!eligibleReuse.has(prior.workUnitId) || prior.sourceSliceIds.length > 0) continue;
+        const candidate = deepFreeze({
+          ...structuredClone(prior),
+          snapshotManifestId: job.snapshotManifestId,
+          analysisRunId: job.id,
+          reusedFromAnalysisRunId: prior.analysisRunId,
+        });
+        const allowset = createCandidateEvidenceAllowset({
+          projectId: job.projectId,
+          snapshotManifestId: job.snapshotManifestId,
+          analysisRunId: job.id,
+          workUnitId: candidate.workUnitId,
+          factIds: candidate.evidenceFactIds,
+          sourceSliceIds: [],
+          confidenceCap: candidate.confidence,
+          routeDecision: { selected: [candidate.producer] },
+        });
+        await this.store.appendUnderstandingRecord(job.projectId, "EVIDENCE_ALLOWSET", {
+          id: contentId("EVIDENCE-ALLOWSET", allowset),
+          ...allowset,
+          createdAt: this.clock().toISOString(),
+        });
+        candidates.push(candidate);
+        reusedCandidateIds.push(candidate.id);
+        reusedWorkUnitIds.add(candidate.workUnitId);
+      }
+      for (const previousGap of previousBundle?.gaps ?? []) {
+        if (!eligibleReuse.has(previousGap.workUnitId)) continue;
+        const gap = this.#gap(job, previousGap.workUnitId, previousGap.code);
+        gaps.push(gap);
+        await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
+        reusedWorkUnitIds.add(previousGap.workUnitId);
+      }
+    }
     let batchSequence = 0;
     for (const workUnit of plan.workUnits) {
+      if (reusedWorkUnitIds.has(workUnit.id)) continue;
       const artifact = inventory.artifacts.find(({ id }) => workUnit.artifactIds[0] === id);
       const decision = routeAnalysisWorkUnit({
         projectId: job.projectId,
@@ -582,7 +705,12 @@ export class LegacyUnderstandingRuntime {
                 sourceSlices: slices,
                 candidate: structuredClone(candidate),
               })
-            : { candidates: [{ proposal: candidate.proposal, confidence: candidate.confidence }] };
+            : {
+                gap: {
+                  code: "NO_ELIGIBLE_PRODUCER",
+                  message: `No executable producer is mounted for Child slot ${assignment.slotId}`,
+                },
+              };
         } catch (error) {
           output = { gap: { code: "CHILD_PRODUCER_FAILED", message: error.message } };
         }
@@ -662,6 +790,10 @@ export class LegacyUnderstandingRuntime {
       routeDecisionIds,
       analysisBatchIds,
       gapIds: gaps.map(({ id }) => id),
+      reusedWorkUnitIds: [...reusedWorkUnitIds].sort(),
+      revalidatedWorkUnitIds: plan.workUnits.map(({ id }) => id)
+        .filter((id) => !reusedWorkUnitIds.has(id)),
+      reusedCandidateIds: [...reusedCandidateIds].sort(),
     };
   }
 
@@ -853,63 +985,7 @@ export class LegacyUnderstandingRuntime {
         return { evaluationRunId: evaluation.id, status: evaluation.status };
       }
     }
-    if (job.policyDigest === "traqen-self-v1") {
-      throw new TypeError("traqen-self-v1 requires an independently reviewed Truth Set evaluator");
-    }
-    const evidenceCount = bundle.candidates.reduce((count, candidate) =>
-      count + candidate.evidenceFactIds.length + candidate.sourceSliceIds.length, 0);
-    const denominators = {
-      inventory: inventory.totalCount,
-      anchors: bundle.candidates.length,
-      candidateSample: bundle.candidates.length,
-      requiredRelationships: evidenceCount,
-      forbiddenRelationships: bundle.candidates.length,
-      sourceAttributions: bundle.candidates.length,
-      gaps: bundle.candidates.length + bundle.gaps.length,
-      replaySamples: 1,
-      incrementalComparisons: 1,
-    };
-    const minimumDenominators = job.policyDigest === "traqen-self-v1"
-      ? traqenSelfPublicationMinimums
-      : publicationMinimums;
-    const missingDenominators = Object.entries(minimumDenominators)
-      .filter(([name, minimum]) => denominators[name] < minimum)
-      .map(([dimension, minimum]) => ({ dimension, value: denominators[dimension], minimum }));
-    const failures = [];
-    if (inventory.disposedCount !== inventory.totalCount) failures.push({ dimension: "inventoryDispositionRate" });
-    if (reconciliation.conflicts.length > 0) failures.push({ dimension: "unresolvedConflicts" });
-    const status = missingDenominators.length > 0
-      ? "NOT_EVALUATED"
-      : failures.length > 0 ? "FAILED" : "PASSED";
-    const evaluated = status !== "NOT_EVALUATED";
-    const evaluation = deepFreeze({
-      id: contentId("RUNTIME-EVALUATION", { analysisRunId: job.id, denominators, failures }),
-      projectId: job.projectId,
-      analysisRunId: job.id,
-      truthSetVersionId: "NOT_APPLICABLE_RUNTIME_INVARIANTS",
-      policyId: "traqen-runtime-publication-v1",
-      policyVersion: "traqen-runtime-publication-v1",
-      metrics: {
-        inventoryDispositionRate: inventory.totalCount === 0 ? null : inventory.disposedCount / inventory.totalCount,
-        anchorRecall: evaluated ? 1 : null,
-        candidatePrecision: evaluated ? 1 : null,
-        requiredRelationshipRate: evaluated ? 1 : null,
-        forbiddenRelationshipViolations: 0,
-        sourceAttributionRate: evaluated ? 1 : null,
-        gapHonestyRate: 1,
-        replayEquivalenceRate: 1,
-        incrementalEquivalenceRate: 1,
-      },
-      denominators,
-      minimumDenominators,
-      missingDenominators,
-      failures,
-      status,
-      reviewer: { id: "SERVER-INVARIANT-GATE", independent: true },
-      completedAt: this.clock().toISOString(),
-    });
-    await this.store.appendUnderstandingRecord(job.projectId, "EVALUATION_RUN", evaluation);
-    return { evaluationRunId: evaluation.id, status };
+    throw new TypeError("Publication requires a sealed Truth Set and an independently reviewed evaluation");
   }
 
   async #project(job) {
@@ -957,8 +1033,9 @@ export class LegacyUnderstandingRuntime {
       relativePath: artifact.relativePath,
       disposition: artifact.disposition,
     }));
+    const referencedChildResultIds = new Set(bundle.candidates.flatMap(({ childResultIds = [] }) => childResultIds));
     const childResults = (await this.store.listUnderstandingRecords(job.projectId, "CHILD_BATCH_RESULT"))
-      .filter(({ analysisRunId }) => analysisRunId === job.id);
+      .filter(({ analysisRunId, id }) => analysisRunId === job.id || referencedChildResultIds.has(id));
     const evaluation = await this.store.getUnderstandingRecord(
       job.projectId,
       "EVALUATION_RUN",

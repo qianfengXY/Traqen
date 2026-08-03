@@ -8,6 +8,7 @@ import { LegacyUnderstandingRuntime } from "../src/application/legacy-understand
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
+import { deterministicFixtureChildProducer } from "./helpers/legacy-understanding-fixture.js";
 
 const repositoryRoot = path.resolve(new URL("..", import.meta.url).pathname);
 
@@ -19,6 +20,7 @@ async function runtimeFor(projectId, source, snapshotRoot, truth) {
     allowlistedRoots: [source],
     snapshotRoot,
     sourceSliceBroker: broker,
+    childProducer: deterministicFixtureChildProducer,
     reviewedEvaluationResolver: createReviewedUnderstandingEvaluationResolver({
       truthSet: truth,
       reviewerId: "TRAQEN-SELF-INDEPENDENT-REVIEWER",
@@ -96,7 +98,7 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
     sourceRegistrationId: primary.registration.id,
     requestedMode: "AUTO",
   }, { background: false });
-  assert.equal(incremental.status, "COMPLETED");
+  assert.equal(incremental.status, "COMPLETED", JSON.stringify(incremental.error));
   const second = await currentArtifact(primary.store, "TRAQEN-SELF");
   assert.equal(second.revision.mode, "INCREMENTAL");
   assert.equal(second.head.version, 2);

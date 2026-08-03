@@ -9,6 +9,10 @@ import { createLocalSourceSnapshotBroker } from "../src/application/local-source
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
+import {
+  deterministicFixtureChildProducer,
+  fixtureReviewedEvaluationResolver,
+} from "./helpers/legacy-understanding-fixture.js";
 
 test("allowlisted HTTP SourceRegistration starts and reads the real server-owned F001 job", async (t) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-http-"));
@@ -21,6 +25,8 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const runtime = new LegacyUnderstandingRuntime({
     store, allowlistedRoots: [source], snapshotRoot: snapshots, sourceSliceBroker: broker,
+    childProducer: deterministicFixtureChildProducer,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });
   const application = new TraceabilityApplication({
     store, sourceSliceBroker: broker, legacyUnderstandingRuntime: runtime,

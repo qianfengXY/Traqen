@@ -260,7 +260,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 Fact API 接受 `POST /v1/projects/{projectId}/fact-scans` 处的签名包，并从 `GET /v1/projects/{projectId}/facts` 返回过滤后的一跳图。其 `type`、`predicate`、`q`、`snapshotManifestId` 和 `limit` 查询参数是可选的。
 
-通过 `/v1/workspaces` 创建并切换聚合根。服务端源码分析需要配置 `TRAQEN_ALLOWED_WORKSPACE_ROOTS` 与 `SOURCE_SNAPSHOT_ROOT`，先通过 `/source-registrations` 注册允许访问的根目录，再启动 `/workspace-analysis-jobs`。作业会持久化完整清单、不可变 Snapshot、静态 Facts、固定的 `WorkspaceExecutionProfileRevision`、发给一个或多个子槽位（默认两个）的相同密封批次、彼此隔离的子结果、对账账本、经审核的评估、图谱修订以及原子当前头。Traqen 自分析验收可通过 `UNDERSTANDING_TRUTH_SET_PATH` 与 `UNDERSTANDING_TRUTH_SET_REVIEWER_ID` 配置独立 Truth Set 审核。旧 `/analysis-runs` 与浏览器观察导入仅为兼容输入，不能创建受治理真相。详见 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md)。
+通过 `/v1/workspaces` 创建并切换聚合根。服务端源码分析需要配置 `TRAQEN_ALLOWED_WORKSPACE_ROOTS`、`SOURCE_SNAPSHOT_ROOT` 与高熵的 `SOURCE_SLICE_WORKER_CREDENTIAL_SECRET`，先通过 `/source-registrations` 注册允许访问的根目录，再启动 `/workspace-analysis-jobs`。通过 HTTP 读取 SourceSlice 必须同时具备普通 API 身份与服务端为具体 Project、Snapshot、Run、WorkUnit、选定 Producer 和 Policy 签发的短时一次性 Worker 凭据；调用方自报的 Service Identity 不受信任。作业会持久化完整清单、不可变 Snapshot、静态 Facts、固定的 `WorkspaceExecutionProfileRevision`、发给一个或多个子槽位（默认两个）的相同密封批次、彼此隔离的子结果、对账账本、经审核的评估、图谱修订以及原子当前头。Traqen 自分析验收可通过 `UNDERSTANDING_TRUTH_SET_PATH` 与 `UNDERSTANDING_TRUTH_SET_REVIEWER_ID` 配置独立 Truth Set 审核。旧 `/analysis-runs` 与浏览器观察导入仅为兼容输入，不能创建受治理真相。详见 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md)。
 
 `npm run pilot:order-submit` 是可复制的存储库内 MVP 证明。它仅使用合成数据以及真实飞行员使用的相同通用Scanner、Skill、审查、TestSpec、Runner、Evidence、影响和修复路径； Traqen 核心中不存在特定于订单的行为。
 

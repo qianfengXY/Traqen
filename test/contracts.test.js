@@ -227,6 +227,22 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");
+  assert.ok(
+    contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].parameters.some(
+      ({ name }) => name === "async",
+    ),
+  );
+  assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["201"]);
+  assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["202"]);
+  const sourceSliceOperation = contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post;
+  assert.equal(
+    contract.components.securitySchemes.SourceSliceWorkerCredential.name,
+    "x-traqen-worker-credential",
+  );
+  assert.deepEqual(sourceSliceOperation.security[0], {
+    ApiToken: [],
+    SourceSliceWorkerCredential: [],
+  });
   assert.ok(contract.paths["/v1/projects/{projectId}/graph/current"].get.responses["200"].content["application/json"].schema);
   assert.ok(contract.paths["/v1/projects/{projectId}/graph/revisions"].get.responses["200"].content["application/json"].schema);
   assert.ok(contract.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/publish"].post.responses["200"].content["application/json"].schema);
@@ -251,6 +267,35 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(
     contract.paths["/v1/projects/{projectId}/reverse-runs/{runId}/reviews"].get.operationId,
     "listReverseCandidateReviews",
+  );
+});
+
+test("Feature understanding history and SourceSlice HTTP surfaces have executable contracts", async () => {
+  const [history, sourceSliceRequest, openapi] = await Promise.all([
+    readFile(new URL("../contracts/feature-understanding-history.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/source-slice-request.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+
+  assert.deepEqual(history.required, [
+    "feature",
+    "featureVersions",
+    "decisions",
+    "implementationMappings",
+    "graphRevisions",
+    "testSpecs",
+    "testExecutions",
+  ]);
+  assert.equal(
+    openapi.paths["/v1/projects/{projectId}/features/{featureId}/history"].get.responses["200"]
+      .content["application/json"].schema.$ref,
+    "./feature-understanding-history.schema.json",
+  );
+  assert.deepEqual(sourceSliceRequest.required, ["snapshotManifestId", "selectors", "policyDigest"]);
+  assert.equal(
+    openapi.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"]
+      .post.requestBody.content["application/json"].schema.$ref,
+    "./source-slice-request.schema.json",
   );
 });
 
