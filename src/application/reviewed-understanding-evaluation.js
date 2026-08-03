@@ -13,6 +13,38 @@ function truthRelationParts(relation) {
   return { sourceAnchorId, predicate, targetAnchorId };
 }
 
+export function validateReviewedTruthSet(truthSet) {
+  if (!truthSet || truthSet.status !== "SEALED") throw new TypeError("a sealed reviewed TruthSetVersion is required");
+  if (!Array.isArray(truthSet.assessedRelationPredicates)
+    || truthSet.assessedRelationPredicates.length === 0
+    || truthSet.assessedRelationPredicates.some((predicate) => typeof predicate !== "string" || predicate.trim() === "")
+    || new Set(truthSet.assessedRelationPredicates).size !== truthSet.assessedRelationPredicates.length) {
+    throw new TypeError("Truth Set assessedRelationPredicates must be a non-empty unique string array");
+  }
+  const assessedPredicates = new Set(truthSet.assessedRelationPredicates);
+  const requiredKeys = new Set();
+  const forbiddenKeys = new Set();
+  for (const [label, relationships, keys] of [
+    ["required", truthSet.requiredRelationships, requiredKeys],
+    ["forbidden", truthSet.forbiddenRelationships, forbiddenKeys],
+  ]) {
+    if (!Array.isArray(relationships)) throw new TypeError(`Truth Set ${label}Relationships must be an array`);
+    for (const relationship of relationships) {
+      const key = truthRelationKey(relationship);
+      const { predicate } = truthRelationParts(relationship);
+      if (!assessedPredicates.has(predicate)) {
+        throw new TypeError(`Truth Set ${label} predicate ${predicate} is outside the assessed producer vocabulary`);
+      }
+      if (keys.has(key)) throw new TypeError(`Truth Set ${label}Relationships must be unique`);
+      keys.add(key);
+    }
+  }
+  if ([...forbiddenKeys].some((key) => requiredKeys.has(key))) {
+    throw new TypeError("Truth Set cannot require and forbid the same relationship");
+  }
+  return truthSet;
+}
+
 function requireUniqueReviews(reviews, keyOf, label) {
   if (!Array.isArray(reviews)) throw new TypeError(`${label} must be an array`);
   const keys = reviews.map(keyOf);
@@ -136,7 +168,7 @@ export function createReviewedUnderstandingEvaluationResolver({
   implementationAuthorId = "TRAQEN-RUNTIME",
   measurementResolver,
 }) {
-  if (!truthSet || truthSet.status !== "SEALED") throw new TypeError("a sealed reviewed TruthSetVersion is required");
+  validateReviewedTruthSet(truthSet);
   if (typeof reviewerId !== "string" || reviewerId.trim() === "") throw new TypeError("reviewerId is required");
   if (reviewerId === implementationAuthorId) throw new TypeError("reviewer must be independent from the implementation author");
   if (typeof measurementResolver !== "function") {

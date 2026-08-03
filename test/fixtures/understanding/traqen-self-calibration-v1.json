@@ -2,6 +2,7 @@
   "id": "traqen-self-calibration-v2",
   "status": "SEALED",
   "reviewState": "HELD_OUT_IMPORT_GRAPH",
+  "assessedRelationPredicates": ["REFERENCES"],
   "capabilities": [
     "project-bootstrap", "snapshot-manifest", "fact-scanning", "analysis-agent", "candidate-reconciliation",
     "feature-governance", "test-specification", "controlled-runner", "evidence-lifecycle", "change-impact"
@@ -71,20 +72,20 @@
     ["A19", "REFERENCES", "A02"], ["A19", "REFERENCES", "A03"]
   ],
   "forbiddenRelationships": [
-    ["A01", "MUST_NOT_REFERENCE", "A02"], ["A01", "MUST_NOT_REFERENCE", "A15"],
-    ["A01", "MUST_NOT_REFERENCE", "A27"], ["A01", "MUST_NOT_REFERENCE", "A26"],
-    ["A01", "MUST_NOT_REFERENCE", "A11"], ["A01", "MUST_NOT_REFERENCE", "A12"],
-    ["A01", "MUST_NOT_REFERENCE", "A17"], ["A01", "MUST_NOT_REFERENCE", "A22"],
-    ["A01", "MUST_NOT_REFERENCE", "A23"], ["A01", "MUST_NOT_REFERENCE", "A07"],
-    ["A01", "MUST_NOT_REFERENCE", "A08"], ["A01", "MUST_NOT_REFERENCE", "A19"],
-    ["A01", "MUST_NOT_REFERENCE", "A03"], ["A01", "MUST_NOT_REFERENCE", "A24"],
-    ["A01", "MUST_NOT_REFERENCE", "A20"], ["A01", "MUST_NOT_REFERENCE", "A28"],
-    ["A01", "MUST_NOT_REFERENCE", "A14"], ["A01", "MUST_NOT_REFERENCE", "A06"],
-    ["A01", "MUST_NOT_REFERENCE", "A09"], ["A01", "MUST_NOT_REFERENCE", "A21"],
-    ["A01", "MUST_NOT_REFERENCE", "A10"], ["A01", "MUST_NOT_REFERENCE", "A13"],
-    ["A01", "MUST_NOT_REFERENCE", "A18"], ["A01", "MUST_NOT_REFERENCE", "A05"],
-    ["A01", "MUST_NOT_REFERENCE", "A25"], ["A01", "MUST_NOT_REFERENCE", "A16"],
-    ["A01", "MUST_NOT_REFERENCE", "A29"], ["A01", "MUST_NOT_REFERENCE", "A30"],
-    ["A01", "MUST_NOT_REFERENCE", "A04"], ["A04", "MUST_NOT_REFERENCE", "A02"]
+    ["A02", "REFERENCES", "A01"], ["A15", "REFERENCES", "A01"],
+    ["A27", "REFERENCES", "A01"], ["A26", "REFERENCES", "A01"],
+    ["A11", "REFERENCES", "A01"], ["A12", "REFERENCES", "A01"],
+    ["A17", "REFERENCES", "A01"], ["A22", "REFERENCES", "A01"],
+    ["A23", "REFERENCES", "A01"], ["A07", "REFERENCES", "A01"],
+    ["A08", "REFERENCES", "A01"], ["A19", "REFERENCES", "A01"],
+    ["A03", "REFERENCES", "A01"], ["A24", "REFERENCES", "A01"],
+    ["A20", "REFERENCES", "A01"], ["A28", "REFERENCES", "A01"],
+    ["A14", "REFERENCES", "A01"], ["A06", "REFERENCES", "A01"],
+    ["A09", "REFERENCES", "A01"], ["A21", "REFERENCES", "A01"],
+    ["A10", "REFERENCES", "A01"], ["A13", "REFERENCES", "A01"],
+    ["A18", "REFERENCES", "A01"], ["A05", "REFERENCES", "A01"],
+    ["A25", "REFERENCES", "A01"], ["A16", "REFERENCES", "A01"],
+    ["A29", "REFERENCES", "A01"], ["A30", "REFERENCES", "A01"],
+    ["A04", "REFERENCES", "A01"], ["A02", "REFERENCES", "A04"]
   ]
 }

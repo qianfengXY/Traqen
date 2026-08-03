@@ -88,11 +88,67 @@ function validateChildProducerOutput(output) {
     if (typeof (candidate.name ?? candidate.displayName) !== "string") {
       throw new TypeError(`Child producer candidates[${index}].name is required`);
     }
+    for (const field of ["name", "displayName", "statement", "description", "subjectKey"]) {
+      if (candidate[field] !== undefined
+        && (typeof candidate[field] !== "string" || candidate[field].trim() === "")) {
+        throw new TypeError(`Child producer candidates[${index}].${field} must be a non-empty string`);
+      }
+    }
     if (candidate.confidence && !["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence)) {
       throw new TypeError(`Child producer candidates[${index}].confidence is invalid`);
     }
   }
   return output;
+}
+
+const mergedProposalFields = new Set(["name", "statement", "subjectKey", "confidence"]);
+
+function validateMergedProposal(proposal) {
+  if (!proposal || typeof proposal !== "object" || Array.isArray(proposal)) {
+    throw new TypeError("MERGE decisions require one mergedProposal object");
+  }
+  const unsupported = Object.keys(proposal).filter((field) => !mergedProposalFields.has(field));
+  if (unsupported.length > 0) {
+    throw new TypeError(`mergedProposal contains unsupported field ${unsupported[0]}`);
+  }
+  for (const field of ["name", "statement"]) {
+    if (typeof proposal[field] !== "string" || proposal[field].trim() === "") {
+      throw new TypeError(`mergedProposal.${field} must be a non-empty string`);
+    }
+  }
+  if (proposal.subjectKey !== undefined
+    && (typeof proposal.subjectKey !== "string" || proposal.subjectKey.trim() === "")) {
+    throw new TypeError("mergedProposal.subjectKey must be a non-empty string");
+  }
+  if (proposal.confidence !== undefined && !["LOW", "MEDIUM", "HIGH"].includes(proposal.confidence)) {
+    throw new TypeError("mergedProposal.confidence must be LOW, MEDIUM, or HIGH");
+  }
+  return proposal;
+}
+
+function validateReconciledCandidateProjection(candidate) {
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    throw new TypeError("reconciled Candidate must be an object");
+  }
+  if (!["CANDIDATE_FEATURE", "CANDIDATE_CLAIM"].includes(candidate.kind)) {
+    throw new TypeError("reconciled Candidate kind is invalid");
+  }
+  if (!candidate.proposal || typeof candidate.proposal !== "object" || Array.isArray(candidate.proposal)
+    || typeof candidate.proposal.name !== "string" || candidate.proposal.name.trim() === ""
+    || typeof candidate.proposal.statement !== "string" || candidate.proposal.statement.trim() === "") {
+    throw new TypeError("reconciled Candidate proposal requires string name and statement");
+  }
+  if (!["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence)) {
+    throw new TypeError("reconciled Candidate confidence is invalid");
+  }
+  if (typeof candidate.subjectKey !== "string" || candidate.subjectKey.trim() === "") {
+    throw new TypeError("reconciled Candidate subjectKey is required");
+  }
+  if (!Array.isArray(candidate.evidenceFactIds) || !Array.isArray(candidate.sourceSliceIds)
+    || candidate.evidenceFactIds.length + candidate.sourceSliceIds.length === 0) {
+    throw new TypeError("reconciled Candidate requires original evidence");
+  }
+  return candidate;
 }
 
 function mergeComponentsByRef(decisionsByRef) {
@@ -166,11 +222,7 @@ function validateMainProducerOutput(output, candidateOptions) {
     if (!Array.isArray(decision.relatedCandidateRefs) || decision.relatedCandidateRefs.length === 0) {
       throw new TypeError("MERGE decisions require relatedCandidateRefs");
     }
-    if (!decision.mergedProposal || typeof decision.mergedProposal !== "object" || Array.isArray(decision.mergedProposal)
-      || typeof decision.mergedProposal.name !== "string" || decision.mergedProposal.name.trim() === ""
-      || typeof decision.mergedProposal.statement !== "string" || decision.mergedProposal.statement.trim() === "") {
-      throw new TypeError("MERGE decisions require one mergedProposal with name and statement");
-    }
+    validateMergedProposal(decision.mergedProposal);
     if (decision.relatedCandidateRefs.some((ref) => decisionsByRef.get(ref)?.disposition !== "MERGE")) {
       throw new TypeError("MERGE relatedCandidateRefs must also have MERGE decisions");
     }
@@ -197,6 +249,11 @@ function validateMainProducerOutput(output, candidateOptions) {
 
 export function reviewedCandidateTraceComplete(reviewedChain, chainGaps) {
   return reviewedChain?.complete === true && chainGaps.length === 0;
+}
+
+export function requirePassedUnderstandingEvaluation(status) {
+  if (status !== "PASSED") throw new TypeError(`Evaluation is ${status}; publication is forbidden`);
+  return true;
 }
 
 export class LegacyUnderstandingRuntime {
@@ -944,7 +1001,7 @@ export class LegacyUnderstandingRuntime {
         const semanticCandidate = decision.disposition === "MERGE" ? decision.mergedProposal : option.proposal;
         const selectedSlot = executionProfile.childSlots.find(({ id }) => id === option.slotId);
         const childProducer = selectedSlot ? producerForSlot(selectedSlot) : decision.selected?.[0];
-        const reconciledCandidate = {
+        const reconciledCandidate = validateReconciledCandidateProjection({
           ...candidate,
           id: contentId("UNDERSTANDING-CANDIDATE", {
             workUnitId: workUnit.id,
@@ -957,7 +1014,7 @@ export class LegacyUnderstandingRuntime {
           proposal: {
             ...candidate.proposal,
             name: semanticCandidate.name ?? semanticCandidate.displayName ?? candidate.proposal.name,
-            statement: semanticCandidate.description ?? semanticCandidate.statement ?? candidate.proposal.statement,
+            statement: semanticCandidate.statement ?? semanticCandidate.description ?? candidate.proposal.statement,
           },
           subjectKey: scopedArtifacts.some(({ relativePath }) => relativePath === semanticCandidate.subjectKey)
             ? semanticCandidate.subjectKey
@@ -971,7 +1028,7 @@ export class LegacyUnderstandingRuntime {
           mergedFromCandidateRefs: decision.disposition === "MERGE" ? admittedRefs : [],
           childResultIds: [...new Set(mergedOptions.map(({ childResultId }) => childResultId))].sort(),
           independenceGroups: [...new Set(mergedOptions.map(({ independenceGroup }) => independenceGroup))].sort(),
-        };
+        });
         candidates.push(reconciledCandidate);
         for (const ref of admittedRefs) candidateIdByRef.set(ref, reconciledCandidate.id);
       }
@@ -1688,9 +1745,7 @@ export class LegacyUnderstandingRuntime {
         semanticSurfaceRecordId: job.outputs.EVALUATION.semanticSurfaceRecordId,
       };
     }
-    if (job.outputs.EVALUATION.status !== "PASSED") {
-      throw new TypeError(`Evaluation is ${job.outputs.EVALUATION.status}; publication is forbidden`);
-    }
+    requirePassedUnderstandingEvaluation(job.outputs.EVALUATION.status);
     const current = await this.store.getCurrentGraphHead(job.projectId);
     return {
       currentGraphHead: await this.store.publishGraphRevision(

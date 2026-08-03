@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { cp, mkdtemp, mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { LegacyUnderstandingRuntime } from "../src/application/legacy-understanding-runtime.js";
+import {
+  LegacyUnderstandingRuntime,
+  requirePassedUnderstandingEvaluation,
+} from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
+import { evaluateUnderstanding } from "../src/application/understanding-evaluator.js";
 import { createUnderstandingSemanticSurface } from "../src/application/understanding-equivalence.js";
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
@@ -20,6 +25,7 @@ import {
 } from "./helpers/legacy-understanding-fixture.js";
 
 const repositoryRoot = path.resolve(new URL("..", import.meta.url).pathname);
+const factReferencePredicate = "REFERENCES";
 
 async function factEvidenceChildProducer(input) {
   if (input.candidate.subjectKey.startsWith("@synthesis/")
@@ -65,7 +71,7 @@ async function factReferenceMainProducer(input) {
     if (!source || !target) return [];
     const relation = {
       sourceArtifactId: source.id,
-      predicate: "REFERENCES",
+      predicate: factReferencePredicate,
       targetArtifactId: target.id,
       evidenceFactIds: [fact.id],
       sourceSliceIds: [],
@@ -206,10 +212,11 @@ async function persistTraqenReviewedTrace(store, projectId, snapshotManifest, an
 }
 
 test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL → independent FULL", async (t) => {
-  const truth = JSON.parse(await readFile(
-    new URL("./fixtures/understanding/traqen-self-calibration-v1.json", import.meta.url),
-    "utf8",
-  ));
+  const truthPath = "test/fixtures/understanding/traqen-self-calibration-v1.json";
+  const truthSource = await readFile(new URL(`./fixtures/understanding/${path.basename(truthPath)}`, import.meta.url), "utf8");
+  const truthDigest = `sha256:${createHash("sha256").update(truthSource).digest("hex")}`;
+  const truth = JSON.parse(truthSource);
+  assert.deepEqual(truth.assessedRelationPredicates, [factReferencePredicate]);
   const producerSource = `${factEvidenceChildProducer}\n${factReferenceMainProducer}`;
   assert.equal(producerSource.includes(truth.id), false);
   for (const { path: anchorPath } of truth.anchors) {
@@ -222,8 +229,15 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   await mkdir(source);
   await mkdir(snapshots);
   await mkdir(independentSnapshots);
+  const reviewOnlyPaths = new Set([truthPath, "test/traqen-self-acceptance.test.js"]);
   for (const directory of ["src", "contracts", "docs/features", "docs/architecture", "feature-specs", "test", "web/app", "web/tests", "db/migrations"]) {
-    await cp(path.join(repositoryRoot, directory), path.join(source, directory), { recursive: true });
+    await cp(path.join(repositoryRoot, directory), path.join(source, directory), {
+      recursive: true,
+      filter: (sourcePath) => !reviewOnlyPaths.has(path.relative(repositoryRoot, sourcePath).split(path.sep).join("/")),
+    });
+  }
+  for (const reviewOnlyPath of reviewOnlyPaths) {
+    await assert.rejects(readFile(path.join(source, reviewOnlyPath)), { code: "ENOENT" });
   }
 
   const store = new MemoryTraceabilityStore();
@@ -262,6 +276,29 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   const fullOneInventory = await store.getUnderstandingRecord(
     "TRAQEN-SELF", "ARTIFACT_INVENTORY", fullOne.outputs.SOURCE_SCAN.inventoryId,
   );
+  const fullOneFactBundle = await store.getUnderstandingRecord(
+    "TRAQEN-SELF", "FACT_BUNDLE", fullOne.outputs.FACT_COMMIT.factBundleId,
+  );
+  const fullOneCandidateBundle = await store.getUnderstandingRecord(
+    "TRAQEN-SELF", "CANDIDATE_BUNDLE", fullOne.outputs.ANALYSIS.candidateBundleId,
+  );
+  const fullOneReconciliation = await store.getUnderstandingRecord(
+    "TRAQEN-SELF", "RECONCILIATION", fullOne.outputs.RECONCILIATION.reconciliationId,
+  );
+  const productionSourceSlices = (await store.listUnderstandingRecords("TRAQEN-SELF", "SOURCE_SLICE"))
+    .filter(({ snapshotManifestId }) => snapshotManifestId === snapshotOne.id);
+  const productionInputRecords = canonicalJson({
+    inventory: fullOneInventory,
+    factBundle: fullOneFactBundle,
+    sourceSlices: productionSourceSlices,
+  });
+  for (const reviewOnlyToken of [truthPath, truth.id, truthDigest, truthSource]) {
+    assert.equal(
+      productionInputRecords.includes(reviewOnlyToken),
+      false,
+      `production analysis input must exclude review-only Truth Set token ${reviewOnlyToken.slice(0, 80)}`,
+    );
+  }
   const fullOneArtifactPaths = new Map(fullOneInventory.artifacts.map(({ id, relativePath }) => [id, relativePath]));
   assert.equal(fullOne.status, "COMPLETED", JSON.stringify({
     error: fullOne.error,
@@ -287,6 +324,55 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   );
   assert.equal(firstEvaluation.truthSetVersionId, truth.id);
   assert.equal(firstEvaluation.status, "PASSED");
+  const [forbiddenSourceId, forbiddenPredicate, forbiddenTargetId] = truth.forbiddenRelationships[0];
+  const pathByAnchorId = new Map(truth.anchors.map(({ id, path: anchorPath }) => [id, anchorPath]));
+  const artifactByPath = new Map(fullOneInventory.artifacts.map((artifact) => [artifact.relativePath, artifact]));
+  const injectedRelation = {
+    id: "FAULT-INJECTED-FORBIDDEN-REFERENCES",
+    sourceId: artifactByPath.get(pathByAnchorId.get(forbiddenSourceId)).id,
+    predicate: forbiddenPredicate,
+    targetId: artifactByPath.get(pathByAnchorId.get(forbiddenTargetId)).id,
+    evidenceFactIds: [fullOneFactBundle.facts[0].id],
+    sourceSliceIds: [],
+  };
+  const injectedSurface = createUnderstandingSemanticSurface({
+    inventory: fullOneInventory,
+    factBundle: fullOneFactBundle,
+    candidateBundle: fullOneCandidateBundle,
+    reconciliation: {
+      ...fullOneReconciliation,
+      relations: [...fullOneReconciliation.relations, injectedRelation],
+    },
+  });
+  const injectedReviewedInput = await createReviewedUnderstandingEvaluationResolver({
+    truthSet: truth,
+    reviewerId: "TRAQEN-SELF-INDEPENDENT-REVIEWER",
+    measurementResolver: fixtureReviewedMeasurementResolver("TRAQEN-SELF-INDEPENDENT-REVIEWER", truth),
+  })({
+    job: fullOne,
+    inventory: fullOneInventory,
+    candidateBundle: fullOneCandidateBundle,
+    reconciliation: fullOneReconciliation,
+    semanticSurface: injectedSurface,
+    equivalenceReport: await store.getUnderstandingRecord(
+      "TRAQEN-SELF", "EQUIVALENCE_REPORT", fullOne.outputs.EVALUATION.equivalenceReportId,
+    ),
+  });
+  assert.ok(injectedReviewedInput.reviewedMeasurement.relationReviews.some(({ relationship, verdict }) =>
+    canonicalJson(relationship) === canonicalJson(truth.forbiddenRelationships[0]) && verdict === "VIOLATION"));
+  const { reviewedMeasurement: _injectedMeasurement, ...injectedEvaluationInput } = injectedReviewedInput;
+  const injectedEvaluation = evaluateUnderstanding({
+    ...injectedEvaluationInput,
+    projectId: fullOne.projectId,
+    analysisRunId: fullOne.id,
+    inventory: { totalCount: fullOneInventory.totalCount, disposedCount: fullOneInventory.disposedCount },
+  });
+  assert.equal(injectedEvaluation.status, "FAILED");
+  assert.ok(injectedEvaluation.failures.some(({ dimension }) => dimension === "forbiddenRelationshipViolations"));
+  assert.throws(
+    () => requirePassedUnderstandingEvaluation(injectedEvaluation.status),
+    /publication is forbidden/,
+  );
   const first = await currentArtifact(store, "TRAQEN-SELF");
   assert.equal(first.revision.mode, "FULL");
   assert.ok(first.artifact.nodes.some(({ authority }) => authority === "CANDIDATE"));

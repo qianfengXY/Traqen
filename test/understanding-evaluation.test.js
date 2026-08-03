@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { createEvaluationPolicy } from "../src/domain/index.js";
 import { evaluateUnderstanding } from "../src/application/understanding-evaluator.js";
-import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
+import {
+  createReviewedUnderstandingEvaluationResolver,
+  validateReviewedTruthSet,
+} from "../src/application/reviewed-understanding-evaluation.js";
 import {
   createIndependentAnalysisRun,
   createStoredUnderstandingSurface,
@@ -23,6 +26,29 @@ const policy = createEvaluationPolicy({
     forbiddenRelationships: 1, sourceAttributions: 1, gaps: 1,
     replaySamples: 1, incrementalComparisons: 1,
   },
+});
+
+test("reviewed Truth Sets use the assessed producer predicate vocabulary and disjoint controls", () => {
+  const valid = {
+    id: "TRUTH-CONTROLS", status: "SEALED", assessedRelationPredicates: ["REFERENCES"], anchors: [],
+    requiredRelationships: [["A", "REFERENCES", "B"]],
+    forbiddenRelationships: [["B", "REFERENCES", "A"]],
+  };
+  assert.equal(validateReviewedTruthSet(valid), valid);
+  assert.throws(
+    () => validateReviewedTruthSet({
+      ...valid,
+      forbiddenRelationships: [["B", "MUST_NOT_REFERENCE", "A"]],
+    }),
+    /outside the assessed producer vocabulary/,
+  );
+  assert.throws(
+    () => validateReviewedTruthSet({
+      ...valid,
+      forbiddenRelationships: [["A", "REFERENCES", "B"]],
+    }),
+    /cannot require and forbid the same relationship/,
+  );
 });
 
 test("equivalence rejects cloned surfaces backed by nonexistent independent run IDs", async () => {
@@ -130,6 +156,7 @@ test("production reviewed evaluation cannot derive observations or equivalence f
   const truthSet = {
     id: "TRUTH-REVIEWED",
     status: "SEALED",
+    assessedRelationPredicates: ["USES", "OWNS"],
     anchors: [{ id: "A1", path: "src/a.js" }],
     requiredRelationships: [["A1", "USES", "A1"]],
     forbiddenRelationships: [["A1", "OWNS", "A1"]],

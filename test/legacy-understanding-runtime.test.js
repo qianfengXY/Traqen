@@ -246,6 +246,80 @@ test("Main MERGE produces one reconciled Candidate with complete Child provenanc
     && candidate.independenceGroups.length === 2));
 });
 
+test("malformed Main MERGE proposals become explicit gaps and cannot publish Candidates", async (t) => {
+  const cases = [
+    {
+      name: "uncontracted object description",
+      proposal: {
+        name: "Merged capability",
+        statement: "valid",
+        description: { injected: true },
+        confidence: "CERTAIN",
+      },
+      error: /unsupported field description/,
+    },
+    {
+      name: "invalid confidence",
+      proposal: { name: "Merged capability", statement: "valid", confidence: "CERTAIN" },
+      error: /confidence must be LOW, MEDIUM, or HIGH/,
+    },
+    {
+      name: "non-string statement",
+      proposal: { name: "Merged capability", statement: { injected: true }, confidence: "LOW" },
+      error: /statement must be a non-empty string/,
+    },
+  ];
+  for (const [index, testCase] of cases.entries()) {
+    await t.test(testCase.name, async () => {
+      const projectId = `MALFORMED-MERGE-${index}`;
+      const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-malformed-merge-"));
+      const source = path.join(temporary, "source");
+      const snapshots = path.join(temporary, "snapshots");
+      await mkdir(source);
+      await mkdir(snapshots);
+      await writeFile(path.join(source, "entry.js"), "export function malformedMergeMustFail() { return true; }\n");
+      const store = new MemoryTraceabilityStore();
+      const profile = await persistFixtureExecutionProfile(store, projectId);
+      const runtime = new LegacyUnderstandingRuntime({
+        store,
+        allowlistedRoots: [source],
+        snapshotRoot: snapshots,
+        sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+        childProducer: deterministicFixtureChildProducer,
+        mainProducer: async ({ candidateOptions }) => {
+          const refs = candidateOptions.map(({ ref }) => ref).sort();
+          return {
+            candidateDecisions: refs.map((candidateRef) => ({
+              candidateRef,
+              disposition: "MERGE",
+              relatedCandidateRefs: refs.filter((ref) => ref !== candidateRef),
+              mergedProposal: testCase.proposal,
+              rationale: "Exercise the untrusted Main output boundary.",
+            })),
+            relations: [],
+            gaps: [],
+          };
+        },
+        equivalenceResolver: fixtureEquivalenceResolver,
+        reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+      });
+      const registration = await runtime.registerSource({ projectId, rootPath: source, displayName: projectId });
+      const failed = await runtime.start({
+        id: `${projectId}-JOB`, projectId, sourceRegistrationId: registration.id,
+        workspaceExecutionProfileRevisionId: profile.id, requestedMode: "FULL",
+      }, { background: false });
+      assert.equal(failed.status, "FAILED");
+      assert.equal(await store.getCurrentGraphHead(projectId), null);
+      assert.equal((await store.listUnderstandingRecords(projectId, "MAIN_BATCH_RESULT")).length, 0);
+      const bundle = (await store.listUnderstandingRecords(projectId, "CANDIDATE_BUNDLE")).at(-1);
+      assert.equal(bundle.candidates.length, 0);
+      const diagnosticGaps = await store.listUnderstandingRecords(projectId, "GAP");
+      assert.ok(diagnosticGaps.some(({ code, details }) =>
+        code === "INVALID_OR_FAILED_MAIN_PRODUCER_OUTPUT" && testCase.error.test(details?.message)));
+    });
+  }
+});
+
 test("missing configured Child executors persist explicit gaps and cannot publish synthetic candidates", async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-no-producer-"));
   const source = path.join(temporary, "source");
