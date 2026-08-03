@@ -8,6 +8,30 @@ export async function deterministicFixtureChildProducer({ candidate }) {
   };
 }
 
+export async function fixtureEquivalenceResolver({ job, surface }) {
+  const producer = { id: "FIXTURE-INDEPENDENT-ANALYZER", version: "1" };
+  return {
+    replay: {
+      analysisRunId: `${job.id}:INDEPENDENT-REPLAY`,
+      snapshotManifestId: job.snapshotManifestId,
+      policyDigest: job.policyDigest,
+      mode: job.resolvedMode,
+      independent: true,
+      producer,
+      surface: structuredClone(surface),
+    },
+    full: {
+      analysisRunId: `${job.id}:INDEPENDENT-FULL`,
+      snapshotManifestId: job.snapshotManifestId,
+      policyDigest: job.policyDigest,
+      mode: "FULL",
+      independent: true,
+      producer,
+      surface: structuredClone(surface),
+    },
+  };
+}
+
 export function fixtureReviewedEvaluationResolver(expectedPath) {
   const truthSet = {
     id: `FIXTURE-TRUTH-${expectedPath}`,
@@ -16,7 +40,7 @@ export function fixtureReviewedEvaluationResolver(expectedPath) {
     requiredRelationships: [["EXPECTED-ANCHOR", "IMPLEMENTED_BY", "EXPECTED-ANCHOR"]],
     forbiddenRelationships: [["FORBIDDEN-A", "IMPLEMENTS", "FORBIDDEN-B"]],
   };
-  return async ({ inventory, candidateBundle }) => {
+  return async ({ inventory, candidateBundle, equivalenceReport }) => {
     const observed = inventory.artifacts.some(({ relativePath }) => relativePath === expectedPath);
     const attributed = candidateBundle.candidates.some((candidate) =>
       candidate.evidenceFactIds.length + candidate.sourceSliceIds.length > 0);
@@ -58,8 +82,27 @@ export function fixtureReviewedEvaluationResolver(expectedPath) {
       candidateSample: { total: 1, correct: attributed ? 1 : 0 },
       sourceAttribution: { total: 1, valid: attributed ? 1 : 0 },
       gaps: { total: 1, honest: 1 },
-      replay: { total: 1, equivalent: 1 },
-      incrementalComparison: { total: 1, equivalent: 1 },
+      replay: { total: 1, equivalent: equivalenceReport.replay.equivalent ? 1 : 0 },
+      incrementalComparison: { total: 1, equivalent: equivalenceReport.full.equivalent ? 1 : 0 },
+    };
+  };
+}
+
+export function fixtureReviewedMeasurementResolver(reviewerId, truthSet) {
+  return async ({ inventory, candidateBundle }) => {
+    const paths = new Set(inventory.artifacts.map(({ relativePath }) => relativePath));
+    const observedAnchorIds = truthSet.anchors.filter(({ path }) => paths.has(path)).map(({ id }) => id);
+    return {
+      truthSetVersionId: truthSet.id,
+      reviewerId,
+      independent: true,
+      productionInputDigest: `production:${inventory.inventoryDigest}`,
+      observedAnchorIds,
+      observedRelationships: truthSet.requiredRelationships.filter(([sourceId, , targetId]) =>
+        observedAnchorIds.includes(sourceId) && observedAnchorIds.includes(targetId)),
+      candidateSample: { total: truthSet.anchors.length, correct: observedAnchorIds.length },
+      sourceAttribution: { total: truthSet.anchors.length, valid: observedAnchorIds.length },
+      gaps: { total: Math.max(1, candidateBundle.gaps.length), honest: Math.max(1, candidateBundle.gaps.length) },
     };
   };
 }

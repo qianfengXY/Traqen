@@ -30,16 +30,30 @@ export function planIncrementalUnderstanding(input) {
     .map((partition) => [partition.id, partition]));
   const currentPartitionById = new Map((input.current.plan.partitions ?? [])
     .map((partition) => [partition.id, partition]));
+  const retiredWorkUnitIds = new Set();
   for (const change of changes.filter(({ type }) => type === "REMOVED")) {
     const previousUnit = (input.previous?.plan?.workUnits ?? [])
       .find((unit) => unit.artifactIds.includes(change.beforeArtifactId));
+    if (previousUnit) retiredWorkUnitIds.add(previousUnit.id);
     const locality = previousPartitionById.get(previousUnit?.partitionId)?.locality;
     if (!locality) continue;
+    const matchingCurrentModules = [];
     for (const unit of input.current.plan.workUnits.filter(({ kind }) => kind === "MODULE_SYNTHESIS")) {
       if (unit.dependencies.some((dependencyId) => {
         const dependency = input.current.plan.workUnits.find(({ id }) => id === dependencyId);
         return currentPartitionById.get(dependency?.partitionId)?.locality === locality;
-      })) directlyAffected.add(unit.id);
+      })) {
+        directlyAffected.add(unit.id);
+        matchingCurrentModules.push(unit.id);
+      }
+    }
+    for (const previousModule of (input.previous?.plan?.workUnits ?? []).filter(({ kind }) => kind === "MODULE_SYNTHESIS")) {
+      if (previousModule.dependencies.includes(previousUnit?.id)) retiredWorkUnitIds.add(previousModule.id);
+    }
+    if (matchingCurrentModules.length === 0) {
+      for (const projectUnit of input.current.plan.workUnits.filter(({ kind }) => kind === "PROJECT_SYNTHESIS")) {
+        directlyAffected.add(projectUnit.id);
+      }
     }
   }
   const reverseDependencies = new Map();
@@ -71,6 +85,7 @@ export function planIncrementalUnderstanding(input) {
     changes,
     affectedWorkUnitIds,
     reusedWorkUnitIds,
+    retiredWorkUnitIds: [...retiredWorkUnitIds].sort(),
     changeSetId: contentId("UNDERSTANDING-CHANGE-SET", {
       from: input.previous?.inventory?.snapshotManifestId ?? null,
       to: input.current.inventory.snapshotManifestId,

@@ -30,3 +30,17 @@ test("runtime configuration rejects a malformed multi-reviewer identity director
     /requires token, actorId, and actorRole/,
   );
 });
+
+test("server-owned understanding cannot start with partial correctness evidence configuration", () => {
+  assert.throws(() => createConfiguredApplication({
+    store: new MemoryTraceabilityStore(),
+    env: { UNDERSTANDING_TRUTH_SET_PATH: "/tmp/truth.json" },
+  }), /must be configured together/);
+  assert.throws(() => createConfiguredApplication({
+    store: new MemoryTraceabilityStore(),
+    env: {
+      SOURCE_SNAPSHOT_ROOT: "/tmp/snapshots",
+      TRAQEN_ALLOWED_WORKSPACE_ROOTS: "/tmp/source",
+    },
+  }), /requires Truth Set, reviewed measurement, and equivalence evidence paths/);
+});

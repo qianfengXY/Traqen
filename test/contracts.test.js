@@ -299,6 +299,18 @@ test("Feature understanding history and SourceSlice HTTP surfaces have executabl
   );
 });
 
+test("reviewed correctness and equivalence evidence have fail-closed executable contracts", async () => {
+  const [measurements, equivalence] = await Promise.all([
+    readFile(new URL("../contracts/reviewed-understanding-measurement.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/understanding-equivalence-evidence.schema.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  assert.ok(measurements.required.includes("productionInputDigest"));
+  assert.equal(measurements.properties.independent.const, true);
+  assert.deepEqual(equivalence.required, ["analysisRunId", "snapshotManifestId", "replay", "full"]);
+  assert.equal(equivalence.$defs.IndependentSurface.properties.independent.const, true);
+  assert.ok(equivalence.$defs.IndependentSurface.properties.surface.required.includes("digest"));
+});
+
 test("OpenAPI Workspace enrichment uses the canonical WorkUnit and CandidateBundle envelope", async () => {
   const contract = JSON.parse(
     await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"),

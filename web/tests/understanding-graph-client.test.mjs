@@ -12,12 +12,22 @@ test("understanding graph client uses GET-only current, revision, and Feature hi
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, options) => {
     calls.push({ url: String(url), options });
-    if (String(url).endsWith("/graph/current")) return Response.json({ head: { version: 1 }, revision: { id: "G1" } });
+    if (String(url).endsWith("/graph/current")) return Response.json({ head: { version: 2 }, revision: { id: "G2" } });
     if (String(url).endsWith("/graph/revisions")) return Response.json({ revisions: [{ id: "G1" }] });
-    return Response.json({ feature: { id: "F1" } });
+    return Response.json({
+      feature: { id: "F1", version: 1, name: "Feature" },
+      featureVersions: [{ id: "F1", version: 1, name: "Feature" }],
+      decisions: [],
+      implementationMappings: [],
+      graphRevisions: [],
+      testSpecs: [],
+      testExecutions: [],
+    });
   };
   try {
-    assert.equal((await getCurrentUnderstandingGraph("http://api/", "token", "P")).revision.id, "G1");
+    const current = await getCurrentUnderstandingGraph("http://api/", "token", "P");
+    assert.equal(current.head.version, 2);
+    assert.equal(current.revision.id, "G2");
     assert.equal((await listGraphRevisions("http://api/", "token", "P")).length, 1);
     assert.equal((await getFeatureUnderstandingHistory("http://api/", "token", "P", "F1")).feature.id, "F1");
     assert.ok(calls.every(({ options }) => options.method === "GET"));

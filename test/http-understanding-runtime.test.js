@@ -11,6 +11,7 @@ import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
 import {
   deterministicFixtureChildProducer,
+  fixtureEquivalenceResolver,
   fixtureReviewedEvaluationResolver,
 } from "./helpers/legacy-understanding-fixture.js";
 
@@ -26,6 +27,7 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   const runtime = new LegacyUnderstandingRuntime({
     store, allowlistedRoots: [source], snapshotRoot: snapshots, sourceSliceBroker: broker,
     childProducer: deterministicFixtureChildProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });
   const application = new TraceabilityApplication({

@@ -32,6 +32,28 @@ export type CurrentUnderstandingGraph = {
   };
 };
 
+export type FeatureUnderstandingHistory = {
+  feature: { id: string; version: number; name: string; [key: string]: unknown };
+  featureVersions: Array<{ id: string; version: number; name: string; [key: string]: unknown }>;
+  decisions: Array<{ id: string; [key: string]: unknown }>;
+  implementationMappings: Array<{
+    id: string;
+    featureId: string;
+    snapshotManifestId: string;
+    [key: string]: unknown;
+  }>;
+  graphRevisions: GraphRevision[];
+  testSpecs: Array<{ id: string; version: number; [key: string]: unknown }>;
+  testExecutions: Array<{
+    id: string;
+    testSpecId: string;
+    testSpecVersion: number;
+    snapshotManifestId: string;
+    status: string;
+    [key: string]: unknown;
+  }>;
+};
+
 function headers(apiToken: string) {
   return apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {};
 }
@@ -64,11 +86,11 @@ export async function getFeatureUnderstandingHistory(
   apiToken: string,
   projectId: string,
   featureId: string,
-) {
+): Promise<FeatureUnderstandingHistory | null> {
   const response = await fetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/history`,
     { method: "GET", headers: headers(apiToken) },
   );
   if (response.status === 404) return null;
-  return json<Record<string, unknown>>(response);
+  return json<FeatureUnderstandingHistory>(response);
 }

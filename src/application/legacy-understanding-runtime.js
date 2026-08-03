@@ -6,7 +6,6 @@ import {
   createCandidateEvidenceAllowset,
   createUnderstandingPlan,
   reconcileCandidates,
-  routeAnalysisWorkUnit,
   validateCandidateAgainstEvidenceAllowset,
 } from "../analysis/index.js";
 import {
@@ -30,6 +29,10 @@ import { LocalSourceSnapshotCapture } from "./local-source-snapshot.js";
 import { evaluateUnderstanding } from "./understanding-evaluator.js";
 import { WorkspaceAnalysisJobRunner, WorkspaceAnalysisPhase } from "./workspace-analysis-job-runner.js";
 import { planIncrementalUnderstanding } from "./incremental-understanding.js";
+import {
+  createUnderstandingSemanticSurface,
+  measureUnderstandingEquivalence,
+} from "./understanding-equivalence.js";
 
 function publicRegistration(registration) {
   const { canonicalRootRef: _canonicalRootRef, ...safe } = registration;
@@ -65,6 +68,32 @@ function extractSourceFacts(artifact, content) {
   return facts;
 }
 
+function validateChildProducerOutput(output) {
+  if (!output || typeof output !== "object" || Array.isArray(output)) {
+    throw new TypeError("Child producer output must be an object");
+  }
+  if (output.gap) {
+    if (typeof output.gap.code !== "string" || output.gap.code.trim() === "") {
+      throw new TypeError("Child producer gap.code is required");
+    }
+    return output;
+  }
+  const candidates = output.candidates ?? output.candidateFeatures;
+  if (!Array.isArray(candidates)) throw new TypeError("Child producer output must contain candidates");
+  for (const [index, candidate] of candidates.entries()) {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new TypeError(`Child producer candidates[${index}] must be an object`);
+    }
+    if (typeof (candidate.name ?? candidate.displayName) !== "string") {
+      throw new TypeError(`Child producer candidates[${index}].name is required`);
+    }
+    if (candidate.confidence && !["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence)) {
+      throw new TypeError(`Child producer candidates[${index}].confidence is invalid`);
+    }
+  }
+  return output;
+}
+
 export class LegacyUnderstandingRuntime {
   #controllers = new Map();
 
@@ -75,6 +104,7 @@ export class LegacyUnderstandingRuntime {
     sourceSliceBroker,
     childProducer = null,
     reviewedEvaluationResolver = null,
+    equivalenceResolver = null,
     clock = () => new Date(),
   }) {
     if (!store || !sourceSliceBroker) throw new TypeError("store and sourceSliceBroker are required");
@@ -87,6 +117,7 @@ export class LegacyUnderstandingRuntime {
     this.clock = clock;
     this.childProducer = childProducer;
     this.reviewedEvaluationResolver = reviewedEvaluationResolver;
+    this.equivalenceResolver = equivalenceResolver;
     this.snapshotCapture = new LocalSourceSnapshotCapture({
       allowlistedRoots: this.allowlistedRoots,
       snapshotRoot,
@@ -489,27 +520,6 @@ export class LegacyUnderstandingRuntime {
       "FACT_BUNDLE",
       job.outputs.FACT_COMMIT.factBundleId,
     );
-    const profile = {
-      id: "LOCAL-DETERMINISTIC-PROFILE",
-      modelRevision: "runtime-v1",
-      verificationStatus: "VERIFIED",
-      roles: ["UNDERSTANDING"],
-      languages: ["*"],
-      artifactKinds: ["*"],
-      dataBoundaryClasses: ["LOCAL_PRIVATE"],
-      maxContextTokens: 12_000,
-      qualityTierByRole: { UNDERSTANDING: "DETERMINISTIC" },
-      independenceGroup: "LOCAL",
-      costClass: "LOCAL",
-    };
-    const skill = {
-      id: "legacy-understanding-runtime",
-      version: "1",
-      status: "ACTIVE",
-      roles: ["UNDERSTANDING"],
-      languages: ["*"],
-      inputMode: "DIRECT_SOURCE",
-    };
     const configuredExecutionProfile = await this.store.getUnderstandingRecord(
       job.projectId,
       "WORKSPACE_EXECUTION_PROFILE",
@@ -519,10 +529,14 @@ export class LegacyUnderstandingRuntime {
       throw new TypeError("the pinned WorkspaceExecutionProfileRevision is unavailable");
     }
     const executionProfile = configuredExecutionProfile;
-    await this.store.appendUnderstandingRecord(job.projectId, "MODEL_CAPABILITY_PROFILE", {
-      ...profile,
-      projectId: job.projectId,
-      createdAt: this.clock().toISOString(),
+    const producerForSlot = (slot) => ({
+      modelCapabilityProfileId: slot.model,
+      modelRevision: executionProfile.id,
+      skillId: slot.skillNames.length > 0 ? slot.skillNames.join("+") : "NO_SKILL",
+      skillVersion: executionProfile.id,
+      mcpNames: [...slot.mcpNames],
+      independenceGroup: slot.independenceGroup,
+      workspaceExecutionProfileRevisionId: executionProfile.id,
     });
 
     const candidates = [];
@@ -582,23 +596,25 @@ export class LegacyUnderstandingRuntime {
     for (const workUnit of plan.workUnits) {
       if (reusedWorkUnitIds.has(workUnit.id)) continue;
       const artifact = inventory.artifacts.find(({ id }) => workUnit.artifactIds[0] === id);
-      const decision = routeAnalysisWorkUnit({
+      const selected = workUnit.kind === "GAP" ? [] : executionProfile.childSlots.map(producerForSlot);
+      const decision = deepFreeze({
+        id: contentId("ANALYSIS-ROUTE-DECISION", {
+          projectId: job.projectId,
+          analysisRunId: job.id,
+          workUnitId: workUnit.id,
+          profileRevisionId: executionProfile.id,
+          selected,
+        }),
         projectId: job.projectId,
+        snapshotManifestId: job.snapshotManifestId,
         analysisRunId: job.id,
         workUnitId: workUnit.id,
-        request: {
-          role: "UNDERSTANDING",
-          language: artifact?.language ?? "*",
-          artifactKind: artifact?.artifactKinds[0] ?? "*",
-          dataBoundaryClass: "LOCAL_PRIVATE",
-          contextTokens: 12_000,
-          qualityTier: "DETERMINISTIC",
-          redundancyRequired: false,
-          factBundleAvailable: factBundle.facts.length > 0,
-        },
-        modelCapabilityProfiles: workUnit.kind === "GAP" ? [] : [profile],
-        skills: workUnit.kind === "GAP" ? [] : [skill],
-      }, this.clock);
+        status: selected.length > 0 ? "ROUTED" : "NO_ELIGIBLE_PRODUCER",
+        selected,
+        profileRevisionId: executionProfile.id,
+        gap: selected.length > 0 ? null : { code: "NO_ELIGIBLE_PRODUCER" },
+        createdAt: this.clock().toISOString(),
+      });
       await this.store.appendUnderstandingRecord(job.projectId, "ANALYSIS_ROUTE_DECISION", decision);
       routeDecisionIds.push(decision.id);
       if (decision.status === "NO_ELIGIBLE_PRODUCER") {
@@ -641,7 +657,6 @@ export class LegacyUnderstandingRuntime {
           workUnitId: workUnit.id,
           artifactId: artifact.id,
           evidenceFactIds,
-          sourceSliceIds,
         }),
         projectId: job.projectId,
         snapshotManifestId: job.snapshotManifestId,
@@ -695,11 +710,12 @@ export class LegacyUnderstandingRuntime {
         routeDecisionIds.push(childRouteDecision.id);
         let output;
         try {
-          output = this.childProducer
+          output = validateChildProducerOutput(this.childProducer
             ? await this.childProducer({
                 job: deepFreeze(structuredClone(job)),
                 batch,
                 assignment,
+                executionProfile: deepFreeze(structuredClone(executionProfile)),
                 artifact,
                 facts: workFacts,
                 sourceSlices: slices,
@@ -710,9 +726,9 @@ export class LegacyUnderstandingRuntime {
                   code: "NO_ELIGIBLE_PRODUCER",
                   message: `No executable producer is mounted for Child slot ${assignment.slotId}`,
                 },
-              };
+              });
         } catch (error) {
-          output = { gap: { code: "CHILD_PRODUCER_FAILED", message: error.message } };
+          output = { gap: { code: "INVALID_OR_FAILED_PRODUCER_OUTPUT", message: error.message } };
         }
         const childResult = commitChildBatchResult({
           workspaceId: job.projectId,
@@ -964,12 +980,31 @@ export class LegacyUnderstandingRuntime {
       "RECONCILIATION",
       job.outputs.RECONCILIATION.reconciliationId,
     );
+    const factBundle = await this.store.getUnderstandingRecord(
+      job.projectId,
+      "FACT_BUNDLE",
+      job.outputs.FACT_COMMIT.factBundleId,
+    );
+    const surface = createUnderstandingSemanticSurface({
+      inventory,
+      factBundle,
+      candidateBundle: bundle,
+      reconciliation,
+    });
+    const equivalenceReport = await measureUnderstandingEquivalence({
+      job,
+      surface,
+      resolver: this.equivalenceResolver,
+      clock: this.clock,
+    });
+    await this.store.appendUnderstandingRecord(job.projectId, "EQUIVALENCE_REPORT", equivalenceReport);
     if (this.reviewedEvaluationResolver) {
       const reviewedInput = await this.reviewedEvaluationResolver({
         job: deepFreeze(structuredClone(job)),
         inventory,
         candidateBundle: bundle,
         reconciliation,
+        equivalenceReport,
       });
       if (reviewedInput) {
         const evaluation = evaluateUnderstanding({
@@ -982,7 +1017,11 @@ export class LegacyUnderstandingRuntime {
           },
         }, this.clock);
         await this.store.appendUnderstandingRecord(job.projectId, "EVALUATION_RUN", evaluation);
-        return { evaluationRunId: evaluation.id, status: evaluation.status };
+        return {
+          evaluationRunId: evaluation.id,
+          equivalenceReportId: equivalenceReport.id,
+          status: evaluation.status,
+        };
       }
     }
     throw new TypeError("Publication requires a sealed Truth Set and an independently reviewed evaluation");
@@ -1145,32 +1184,50 @@ export class LegacyUnderstandingRuntime {
       authority: "DETERMINISTIC_FACT",
     }));
     const edges = [...factArtifactEdges, ...referenceEdges, ...candidateEvidenceEdges, ...childEvidenceEdges, ...evaluationEdges];
-    const traceChains = bundle.candidates.slice(0, 1).map((candidate) => {
+    const traceChains = bundle.candidates.map((candidate) => {
       const candidateFacts = facts.filter(({ id }) => candidate.evidenceFactIds.includes(id));
       const candidateArtifacts = [...new Set(candidateFacts.map(({ artifactId }) => artifactId))];
-      const evidenceNodeIds = childResults.filter(({ id }) => candidate.childResultIds.includes(id)).map(({ id }) => id);
+      const analysisEvidenceNodeIds = childResults
+        .filter(({ id }) => candidate.childResultIds.includes(id))
+        .map(({ id }) => id);
       const segments = [
         { type: "REQUIREMENT", nodeIds: candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "REQUIREMENT_DOCUMENT") },
         { type: "DESIGN", nodeIds: candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "DESIGN_DOCUMENT") },
+        { type: "GOVERNANCE", nodeIds: [] },
         { type: "IMPLEMENTATION", nodeIds: [candidate.id, ...candidate.evidenceFactIds, ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "IMPLEMENTATION_ARTIFACT")] },
         { type: "TEST", nodeIds: candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "TEST_ASSET") },
-        { type: "EXECUTION", nodeIds: [evaluation.id] },
-        { type: "EVIDENCE", nodeIds: evidenceNodeIds },
+        { type: "EXECUTION", nodeIds: [] },
+        { type: "VERIFICATION", nodeIds: [] },
+        { type: "EVIDENCE", nodeIds: [] },
       ];
       const chainGaps = segments.filter(({ nodeIds: segmentNodeIds }) => segmentNodeIds.length === 0)
         .map(({ type }) => ({ type: `MISSING_${type}`, status: "OPEN" }));
       return {
-      id: contentId("UNDERSTANDING-TRACE-CHAIN", {
-        candidateId: candidate.id,
-        evidenceFactIds: candidate.evidenceFactIds,
-      }),
-      status: "CANDIDATE_REVIEW_REQUIRED",
-      nodeIds: [...new Set(segments.flatMap(({ nodeIds: segmentNodeIds }) => segmentNodeIds))],
-      segments,
-      gaps: chainGaps,
-      complete: chainGaps.length === 0,
+        id: contentId("UNDERSTANDING-TRACE-CHAIN", {
+          candidateId: candidate.id,
+          evidenceFactIds: candidate.evidenceFactIds,
+        }),
+        subject: { kind: "CANDIDATE", id: candidate.id },
+        status: "CANDIDATE_REVIEW_REQUIRED",
+        nodeIds: [...new Set([
+          ...segments.flatMap(({ nodeIds: segmentNodeIds }) => segmentNodeIds),
+          ...analysisEvidenceNodeIds,
+        ])],
+        segments,
+        analysisEvidenceNodeIds,
+        gaps: chainGaps,
+        complete: chainGaps.length === 0,
       };
     });
+    const relationTraceChains = edges.map((edge) => ({
+      id: contentId("UNDERSTANDING-RELATION-TRACE-CHAIN", { edgeId: edge.id }),
+      subject: { kind: "RELATION", id: edge.id },
+      status: "RELATION_REVIEW_REQUIRED",
+      nodeIds: [edge.source, edge.target],
+      segments: [{ type: "RELATION", nodeIds: [edge.source, edge.target] }],
+      gaps: [{ type: "MISSING_GOVERNED_LINEAGE", status: "OPEN" }],
+      complete: false,
+    }));
 
     const delta = await this.#incrementalDelta(job, nodes, edges);
     const graphArtifact = createImmutableGraphArtifact({
@@ -1179,7 +1236,7 @@ export class LegacyUnderstandingRuntime {
       analysisRunId: job.id,
       nodes,
       edges,
-      traceChains,
+      traceChains: [...traceChains, ...relationTraceChains],
       gaps: bundle.gaps,
       ...delta,
     }, this.clock);

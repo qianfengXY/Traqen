@@ -1185,8 +1185,9 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       "SECRET_GRANT", "ANALYSIS_BATCH", "CHILD_WORK_UNIT", "CHILD_BATCH_RESULT",
       "BATCH_BARRIER", "CONFLICT_LEDGER", "COVERAGE_LEDGER", "QUARANTINED_CANDIDATE",
       "REVIEW_QUEUE_ITEM", "REVIEW_BATCH_DECISION", "FEATURE_HISTORY",
-      "SOURCE_SLICE_AUTH_AUDIT", "INCREMENTAL_PLAN",
-    ]);
+  "SOURCE_SLICE_AUTH_AUDIT", "INCREMENTAL_PLAN",
+  "EQUIVALENCE_REPORT",
+]);
     if (!supported.has(recordType)) throw new TypeError(`Unsupported understanding record type ${recordType}`);
     if (!record?.id) throw new TypeError("understanding record id is required");
     const storageKey = key(projectId, `${recordType}\u0000${record.id}`);

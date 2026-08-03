@@ -47,3 +47,40 @@ test("changed leaf invalidates the full reverse dependency closure", () => {
   assert.deepEqual(result.affectedWorkUnitIds, ["LEAF", "MODULE", "PROJECT"]);
   assert.deepEqual(result.reusedWorkUnitIds, ["UNRELATED"]);
 });
+
+test("removed artifacts retire prior work and invalidate current project synthesis", () => {
+  const result = planIncrementalUnderstanding({
+    requestedMode: "INCREMENTAL",
+    currentGraphHead: { graphRevisionId: "G1" },
+    previous: {
+      inventory: { snapshotManifestId: "S1", artifacts: [
+        { id: "REMOVED", path: "lib/old.js", contentDigest: "old" },
+        { id: "CURRENT", path: "src/current.js", contentDigest: "same" },
+      ] },
+      plan: {
+        partitions: [{ id: "PART-OLD", locality: "lib" }, { id: "PART-CURRENT", locality: "src" }],
+        workUnits: [
+          { id: "LEAF-OLD", partitionId: "PART-OLD", kind: "LEAF", artifactIds: ["REMOVED"], dependencies: [] },
+          { id: "LEAF-CURRENT", partitionId: "PART-CURRENT", kind: "LEAF", artifactIds: ["CURRENT"], dependencies: [] },
+          { id: "MODULE-OLD", partitionId: null, kind: "MODULE_SYNTHESIS", artifactIds: [], dependencies: ["LEAF-OLD"] },
+          { id: "MODULE-CURRENT", partitionId: null, kind: "MODULE_SYNTHESIS", artifactIds: [], dependencies: ["LEAF-CURRENT"] },
+          { id: "PROJECT-OLD", partitionId: null, kind: "PROJECT_SYNTHESIS", artifactIds: [], dependencies: ["MODULE-OLD", "MODULE-CURRENT"] },
+        ],
+      },
+    },
+    current: {
+      inventory: { snapshotManifestId: "S2", artifacts: [{ id: "CURRENT", path: "src/current.js", contentDigest: "same" }] },
+      plan: {
+        partitions: [{ id: "PART-CURRENT", locality: "src" }],
+        workUnits: [
+          { id: "LEAF-CURRENT", partitionId: "PART-CURRENT", kind: "LEAF", artifactIds: ["CURRENT"], dependencies: [] },
+          { id: "MODULE-CURRENT", partitionId: null, kind: "MODULE_SYNTHESIS", artifactIds: [], dependencies: ["LEAF-CURRENT"] },
+          { id: "PROJECT-CURRENT", partitionId: null, kind: "PROJECT_SYNTHESIS", artifactIds: [], dependencies: ["MODULE-CURRENT"] },
+        ],
+      },
+    },
+  });
+  assert.deepEqual(result.retiredWorkUnitIds, ["LEAF-OLD", "MODULE-OLD"]);
+  assert.deepEqual(result.affectedWorkUnitIds, ["PROJECT-CURRENT"]);
+  assert.deepEqual(result.reusedWorkUnitIds, ["LEAF-CURRENT", "MODULE-CURRENT"]);
+});

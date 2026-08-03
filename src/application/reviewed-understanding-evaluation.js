@@ -2,20 +2,33 @@ export function createReviewedUnderstandingEvaluationResolver({
   truthSet,
   reviewerId,
   implementationAuthorId = "TRAQEN-RUNTIME",
+  measurementResolver,
 }) {
   if (!truthSet || truthSet.status !== "SEALED") throw new TypeError("a sealed reviewed TruthSetVersion is required");
   if (typeof reviewerId !== "string" || reviewerId.trim() === "") throw new TypeError("reviewerId is required");
-  return async ({ inventory, candidateBundle }) => {
-    const paths = new Set(inventory.artifacts.map(({ relativePath }) => relativePath));
-    const anchorPathById = new Map(truthSet.anchors.map((anchor) => [anchor.id, anchor.path]));
-    const observedAnchorIds = truthSet.anchors
-      .filter(({ path }) => paths.has(path))
-      .map(({ id }) => id);
-    const observedRelationships = truthSet.requiredRelationships.filter(([sourceId, , targetId]) =>
-      paths.has(anchorPathById.get(sourceId)) && paths.has(anchorPathById.get(targetId)));
-    const attributedCandidates = candidateBundle.candidates.filter((candidate) =>
-      candidate.evidenceFactIds.length + candidate.sourceSliceIds.length > 0).length;
-    const anchorCount = truthSet.anchors.length;
+  if (reviewerId === implementationAuthorId) throw new TypeError("reviewer must be independent from the implementation author");
+  if (typeof measurementResolver !== "function") {
+    throw new TypeError("an independently controlled reviewed measurement resolver is required");
+  }
+  return async ({ job, inventory, candidateBundle, reconciliation, equivalenceReport }) => {
+    const measurements = await measurementResolver({
+      job: structuredClone(job),
+      inventory: structuredClone(inventory),
+      candidateBundle: structuredClone(candidateBundle),
+      reconciliation: structuredClone(reconciliation),
+    });
+    if (!measurements || measurements.truthSetVersionId !== truthSet.id) {
+      throw new TypeError("reviewed measurements must identify the exact TruthSetVersion");
+    }
+    if (measurements.reviewerId !== reviewerId || measurements.independent !== true) {
+      throw new TypeError("reviewed measurements must be approved by the configured independent reviewer");
+    }
+    if (measurements.productionInputDigest !== `production:${inventory.inventoryDigest}`) {
+      throw new TypeError("reviewed measurements are not bound to the current production input");
+    }
+    if (!equivalenceReport || equivalenceReport.analysisRunId !== job.id) {
+      throw new TypeError("server-measured equivalence report is required");
+    }
     return {
       productionInputDigest: `production:${inventory.inventoryDigest}`,
       truthSetDigest: `reviewed:${truthSet.id}`,
@@ -49,16 +62,13 @@ export function createReviewedUnderstandingEvaluationResolver({
       },
       reviewer: { id: reviewerId, independent: true },
       implementationAuthorId,
-      observedAnchorIds,
-      observedRelationships,
-      candidateSample: { total: anchorCount, correct: observedAnchorIds.length },
-      sourceAttribution: {
-        total: anchorCount,
-        valid: Math.min(anchorCount, Math.max(observedAnchorIds.length, attributedCandidates)),
-      },
-      gaps: { total: Math.max(1, candidateBundle.gaps.length), honest: Math.max(1, candidateBundle.gaps.length) },
-      replay: { total: 1, equivalent: 1 },
-      incrementalComparison: { total: 1, equivalent: 1 },
+      observedAnchorIds: structuredClone(measurements.observedAnchorIds ?? []),
+      observedRelationships: structuredClone(measurements.observedRelationships ?? []),
+      candidateSample: structuredClone(measurements.candidateSample ?? {}),
+      sourceAttribution: structuredClone(measurements.sourceAttribution ?? {}),
+      gaps: structuredClone(measurements.gaps ?? {}),
+      replay: { total: 1, equivalent: equivalenceReport.replay.equivalent ? 1 : 0 },
+      incrementalComparison: { total: 1, equivalent: equivalenceReport.full.equivalent ? 1 : 0 },
     };
   };
 }

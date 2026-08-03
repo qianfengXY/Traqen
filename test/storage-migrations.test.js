@@ -45,6 +45,7 @@ async function migratedDatabase() {
     "0014_legacy_understanding_engine",
     "0015_workspace_product_foundation",
     "0016_source_slice_worker_credentials",
+    "0017_understanding_equivalence_report",
   ]);
   return database;
 }

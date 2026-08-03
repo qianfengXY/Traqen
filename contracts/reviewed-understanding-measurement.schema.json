@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/reviewed-understanding-measurement.schema.json",
+  "title": "ReviewedUnderstandingMeasurement",
+  "type": "object",
+  "required": [
+    "analysisRunId", "snapshotManifestId", "truthSetVersionId", "reviewerId", "independent",
+    "productionInputDigest", "observedAnchorIds", "observedRelationships", "candidateSample",
+    "sourceAttribution", "gaps"
+  ],
+  "properties": {
+    "analysisRunId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "truthSetVersionId": { "type": "string", "minLength": 1 },
+    "reviewerId": { "type": "string", "minLength": 1 },
+    "independent": { "const": true },
+    "productionInputDigest": { "type": "string", "minLength": 1 },
+    "observedAnchorIds": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+    "observedRelationships": { "type": "array", "uniqueItems": true, "items": { "type": ["array", "object"] } },
+    "candidateSample": { "$ref": "#/$defs/Count" },
+    "sourceAttribution": { "$ref": "#/$defs/Count" },
+    "gaps": { "$ref": "#/$defs/Count" }
+  },
+  "$defs": {
+    "Count": {
+      "type": "object",
+      "minProperties": 2,
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "additionalProperties": false
+}

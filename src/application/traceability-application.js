@@ -77,6 +77,26 @@ function requireId(value, fieldName) {
   return value;
 }
 
+function validateFeatureUnderstandingHistory(value) {
+  if (!value?.feature || typeof value.feature !== "object") {
+    throw new TypeError("FeatureUnderstandingHistory.feature is required");
+  }
+  for (const field of [
+    "featureVersions",
+    "decisions",
+    "implementationMappings",
+    "graphRevisions",
+    "testSpecs",
+    "testExecutions",
+  ]) {
+    if (!Array.isArray(value[field])) throw new TypeError(`FeatureUnderstandingHistory.${field} must be an array`);
+  }
+  if (value.featureVersions.length < 1) {
+    throw new TypeError("FeatureUnderstandingHistory.featureVersions must contain the current FeatureVersion");
+  }
+  return deepFreeze(value);
+}
+
 function assertOnlyFields(value, allowedFields, fieldName) {
   for (const field of Object.keys(value)) {
     if (!allowedFields.includes(field)) throw new TypeError(`${fieldName}.${field} is not supported`);
@@ -2654,7 +2674,7 @@ export class TraceabilityApplication {
       this.#store.listImplementationMappings(projectId),
       this.#store.listUnderstandingRecords(projectId, "GRAPH_REVISION"),
     ]);
-    return deepFreeze({
+    return validateFeatureUnderstandingHistory({
       feature: baseline.feature,
       featureVersions: baseline.featureHistory ?? [baseline.feature],
       decisions: (baseline.claims ?? []).flatMap(({ decisionHistory = [] }) => decisionHistory),

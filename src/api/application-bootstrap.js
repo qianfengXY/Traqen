@@ -33,7 +33,17 @@ function reviewerDirectory(value) {
   });
 }
 
-export function createConfiguredApplication({ store, env = process.env }) {
+function loadRunEvidence(filePath, job, label) {
+  const document = JSON.parse(readFileSync(filePath, "utf8"));
+  const records = Array.isArray(document) ? document : document.records;
+  if (!Array.isArray(records)) throw new TypeError(`${label} evidence file must contain a records array`);
+  const record = records.find((item) => item.analysisRunId === job.id
+    && item.snapshotManifestId === job.snapshotManifestId);
+  if (!record) throw new TypeError(`${label} evidence is unavailable for analysis run ${job.id}`);
+  return record;
+}
+
+export function createConfiguredApplication({ store, env = process.env, workspaceMcpExecutor = null }) {
   if (!store) throw new TypeError("store is required");
   const runnerId = env.RUNNER_ID ?? null;
   const runnerSharedSecret = env.RUNNER_SHARED_SECRET ?? null;
@@ -74,12 +84,36 @@ export function createConfiguredApplication({ store, env = process.env }) {
     ? new SourceSliceWorkerCredentialService({ secret: env.SOURCE_SLICE_WORKER_CREDENTIAL_SECRET })
     : null;
   const allowedWorkspaceRoots = commaSeparated(env.TRAQEN_ALLOWED_WORKSPACE_ROOTS);
-  const reviewedEvaluationResolver = env.UNDERSTANDING_TRUTH_SET_PATH
+  if (Boolean(env.UNDERSTANDING_TRUTH_SET_PATH) !== Boolean(env.UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH)) {
+    throw new Error("UNDERSTANDING_TRUTH_SET_PATH and UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH must be configured together");
+  }
+  if (sourceSliceBroker && allowedWorkspaceRoots.length > 0
+    && (!env.UNDERSTANDING_TRUTH_SET_PATH
+      || !env.UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH
+      || !env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH)) {
+    throw new Error("server-owned source analysis requires Truth Set, reviewed measurement, and equivalence evidence paths");
+  }
+  const measurementResolver = env.UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH
+    ? async ({ job }) => loadRunEvidence(
+      env.UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH,
+      job,
+      "reviewed measurement",
+    )
+    : null;
+  const reviewedEvaluationResolver = env.UNDERSTANDING_TRUTH_SET_PATH && measurementResolver
     ? createReviewedUnderstandingEvaluationResolver({
         truthSet: JSON.parse(readFileSync(env.UNDERSTANDING_TRUTH_SET_PATH, "utf8")),
         reviewerId: env.UNDERSTANDING_TRUTH_SET_REVIEWER_ID ?? "INDEPENDENT-TRUTH-SET-REVIEWER",
         implementationAuthorId: env.UNDERSTANDING_IMPLEMENTATION_AUTHOR_ID ?? "TRAQEN-RUNTIME",
+        measurementResolver,
       })
+    : null;
+  const equivalenceResolver = env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH
+    ? async ({ job }) => loadRunEvidence(
+      env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH,
+      job,
+      "equivalence",
+    )
     : null;
   const legacyUnderstandingRuntime = sourceSliceBroker && allowedWorkspaceRoots.length > 0
     ? new LegacyUnderstandingRuntime({
@@ -87,7 +121,12 @@ export function createConfiguredApplication({ store, env = process.env }) {
       sourceSliceBroker,
       snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
       allowlistedRoots: allowedWorkspaceRoots,
-      childProducer: async ({ job, assignment, artifact, facts, sourceSlices, candidate }) => {
+      childProducer: async ({ job, assignment, executionProfile, artifact, facts, sourceSlices, candidate }) => {
+        const modelEntry = executionProfile.entries?.find((item) =>
+          item.kind === "MODEL" && item.logicalName === assignment.route.model);
+        if (!modelEntry) {
+          return { gap: { code: "NO_ELIGIBLE_PRODUCER", message: `Pinned model ${assignment.route.model} is absent from the immutable profile` } };
+        }
         const adapter = analysisModelRegistry.resolve(assignment.route.model);
         if (!adapter) {
           return {
@@ -97,7 +136,10 @@ export function createConfiguredApplication({ store, env = process.env }) {
             },
           };
         }
-        return adapter.analyze({
+        if (modelEntry.manifest?.model && adapter.model !== modelEntry.manifest.model) {
+          return { gap: { code: "PINNED_PRODUCER_DRIFT", message: `Pinned model ${assignment.route.model} revision does not match the mounted adapter` } };
+        }
+        const modelOutput = await adapter.analyze({
           workUnit: {
             id: assignment.id,
             projectId: job.projectId,
@@ -130,8 +172,71 @@ export function createConfiguredApplication({ store, env = process.env }) {
           },
           context: { maxOutputTokens: 2_048 },
         });
+        const producerOutputs = [{
+          kind: "MODEL",
+          logicalName: assignment.route.model,
+          output: modelOutput,
+        }];
+        for (const skillName of assignment.route.skillNames) {
+          const entry = executionProfile.entries?.find((item) => item.kind === "SKILL" && item.logicalName === skillName);
+          const adapterId = entry?.manifest?.adapterId ?? entry?.manifest?.id ?? entry?.manifest?.skillId ?? skillName;
+          const adapterVersion = entry?.manifest?.version ?? entry?.manifest?.skillVersion ?? null;
+          const skillAdapter = adapterVersion
+            ? analysisSkills.get(`${adapterId}\u0000${adapterVersion}`)
+            : [...analysisSkills.values()].find(({ id }) => id === adapterId);
+          if (!skillAdapter) {
+            return { gap: { code: "NO_ELIGIBLE_PRODUCER", message: `Pinned Skill ${skillName} is unavailable` } };
+          }
+          producerOutputs.push({
+            kind: "SKILL",
+            logicalName: skillName,
+            output: await skillAdapter.analyze({
+              request: {
+                projectId: job.projectId,
+                snapshotManifestId: job.snapshotManifestId,
+                sourceComponentId: job.snapshotManifestId,
+              },
+              workUnit: {
+                id: assignment.id,
+                projectId: job.projectId,
+                snapshotManifestId: job.snapshotManifestId,
+                analysisRunId: job.id,
+              },
+              workContext: {
+                scopeKey: artifact.relativePath,
+                inputDigest: assignment.inputDigest,
+              },
+              evidence: {
+                nodes: facts.map((fact) => ({ ...fact, id: fact.id, factId: fact.id })),
+                edges: [],
+              },
+            }),
+          });
+        }
+        for (const mcpName of assignment.route.mcpNames) {
+          if (typeof workspaceMcpExecutor !== "function") {
+            return { gap: { code: "NO_ELIGIBLE_PRODUCER", message: `Pinned MCP ${mcpName} has no mounted executor` } };
+          }
+          producerOutputs.push({
+            kind: "MCP",
+            logicalName: mcpName,
+            output: await workspaceMcpExecutor({
+              workspaceId: job.projectId,
+              analysisRunId: job.id,
+              assignment: structuredClone(assignment),
+              capability: executionProfile.entries?.find((item) => item.kind === "MCP" && item.logicalName === mcpName),
+              artifact: { id: artifact.id, relativePath: artifact.relativePath },
+              facts: structuredClone(facts),
+            }),
+          });
+        }
+        const candidates = producerOutputs.flatMap(({ output }) => output.candidates ?? output.candidateFeatures ?? []);
+        return candidates.length > 0
+          ? { candidates, producerOutputs: producerOutputs.map(({ kind, logicalName }) => ({ kind, logicalName })) }
+          : { gap: { code: "PRODUCER_RETURNED_NO_CANDIDATE", message: "Configured producers returned no candidates" } };
       },
       reviewedEvaluationResolver,
+      equivalenceResolver,
     })
     : null;
   const application = new TraceabilityApplication({

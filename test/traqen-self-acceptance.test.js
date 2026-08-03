@@ -7,14 +7,23 @@ import test from "node:test";
 import { LegacyUnderstandingRuntime } from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
+import { createUnderstandingSemanticSurface } from "../src/application/understanding-equivalence.js";
+import { TraceabilityApplication } from "../src/application/traceability-application.js";
+import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
-import { deterministicFixtureChildProducer } from "./helpers/legacy-understanding-fixture.js";
+import { canonicalJson } from "../src/domain/index.js";
+import {
+  deterministicFixtureChildProducer,
+  fixtureEquivalenceResolver,
+  fixtureReviewedMeasurementResolver,
+} from "./helpers/legacy-understanding-fixture.js";
 
 const repositoryRoot = path.resolve(new URL("..", import.meta.url).pathname);
 
 async function runtimeFor(projectId, source, snapshotRoot, truth) {
   const store = new MemoryTraceabilityStore();
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot });
+  const equivalenceState = { fullSurface: null, fullAnalysisRunId: null };
   const runtime = new LegacyUnderstandingRuntime({
     store,
     allowlistedRoots: [source],
@@ -24,10 +33,33 @@ async function runtimeFor(projectId, source, snapshotRoot, truth) {
     reviewedEvaluationResolver: createReviewedUnderstandingEvaluationResolver({
       truthSet: truth,
       reviewerId: "TRAQEN-SELF-INDEPENDENT-REVIEWER",
+      measurementResolver: fixtureReviewedMeasurementResolver("TRAQEN-SELF-INDEPENDENT-REVIEWER", truth),
     }),
+    equivalenceResolver: async (input) => {
+      const evidence = await fixtureEquivalenceResolver(input);
+      if (!equivalenceState.fullSurface) return evidence;
+      return {
+        ...evidence,
+        full: {
+          ...evidence.full,
+          analysisRunId: equivalenceState.fullAnalysisRunId,
+          surface: structuredClone(equivalenceState.fullSurface),
+        },
+      };
+    },
   });
   const registration = await runtime.registerSource({ projectId, rootPath: source, displayName: "Traqen" });
-  return { store, runtime, registration };
+  return { store, runtime, registration, equivalenceState };
+}
+
+async function evaluationSurface(store, projectId, job) {
+  const [inventory, factBundle, candidateBundle, reconciliation] = await Promise.all([
+    store.getUnderstandingRecord(projectId, "ARTIFACT_INVENTORY", job.outputs.SOURCE_SCAN.inventoryId),
+    store.getUnderstandingRecord(projectId, "FACT_BUNDLE", job.outputs.FACT_COMMIT.factBundleId),
+    store.getUnderstandingRecord(projectId, "CANDIDATE_BUNDLE", job.outputs.ANALYSIS.candidateBundleId),
+    store.getUnderstandingRecord(projectId, "RECONCILIATION", job.outputs.RECONCILIATION.reconciliationId),
+  ]);
+  return createUnderstandingSemanticSurface({ inventory, factBundle, candidateBundle, reconciliation });
 }
 
 async function currentArtifact(store, projectId) {
@@ -49,7 +81,7 @@ function semanticGraph(graph) {
   };
 }
 
-test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL → independent FULL", async () => {
+test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL → independent FULL", async (t) => {
   const truth = JSON.parse(await readFile(
     new URL("./fixtures/understanding/traqen-self-calibration-v1.json", import.meta.url),
     "utf8",
@@ -83,29 +115,18 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   const first = await currentArtifact(primary.store, "TRAQEN-SELF");
   assert.equal(first.revision.mode, "FULL");
   assert.ok(first.artifact.nodes.some(({ authority }) => authority === "CANDIDATE"));
-  assert.ok(first.artifact.traceChains.some(({ segments }) =>
-    segments.some(({ type, nodeIds }) => type === "IMPLEMENTATION" && nodeIds.length > 0)
-    && segments.some(({ type, nodeIds }) => type === "EVIDENCE" && nodeIds.length > 0)));
+  assert.ok(first.artifact.traceChains.some(({ subject, segments, analysisEvidenceNodeIds, complete }) =>
+    subject?.kind === "CANDIDATE"
+    && segments.some(({ type, nodeIds }) => type === "IMPLEMENTATION" && nodeIds.length > 0)
+    && segments.some(({ type, nodeIds }) => type === "EVIDENCE" && nodeIds.length === 0)
+    && analysisEvidenceNodeIds.length > 0
+    && complete === false));
 
   await mkdir(path.join(source, "review-notes"), { recursive: true });
   await cp(
     path.join(repositoryRoot, "review-notes/2026-07-30-F001-kimi-codex-consensus-review.md"),
     path.join(source, "review-notes/2026-07-30-F001-kimi-codex-consensus-review.md"),
   );
-  const incremental = await primary.runtime.start({
-    id: "TRAQEN-INCREMENTAL-2",
-    projectId: "TRAQEN-SELF",
-    sourceRegistrationId: primary.registration.id,
-    requestedMode: "AUTO",
-  }, { background: false });
-  assert.equal(incremental.status, "COMPLETED", JSON.stringify(incremental.error));
-  const second = await currentArtifact(primary.store, "TRAQEN-SELF");
-  assert.equal(second.revision.mode, "INCREMENTAL");
-  assert.equal(second.head.version, 2);
-  assert.ok(second.artifact.changeSet);
-  assert.ok(second.artifact.impactAssessment);
-  assert.ok(second.artifact.revalidationPlan.required);
-
   const independent = await runtimeFor("TRAQEN-SELF-FULL", source, independentSnapshots, truth);
   const fullTwo = await independent.runtime.start({
     id: "TRAQEN-FULL-2",
@@ -114,8 +135,53 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
     requestedMode: "FULL",
   }, { background: false });
   assert.equal(fullTwo.status, "COMPLETED");
+  primary.equivalenceState.fullSurface = await evaluationSurface(
+    independent.store,
+    "TRAQEN-SELF-FULL",
+    fullTwo,
+  );
+  primary.equivalenceState.fullAnalysisRunId = fullTwo.id;
+  const incremental = await primary.runtime.start({
+    id: "TRAQEN-INCREMENTAL-2",
+    projectId: "TRAQEN-SELF",
+    sourceRegistrationId: primary.registration.id,
+    requestedMode: "AUTO",
+  }, { background: false });
+  const incrementalReports = await primary.store.listUnderstandingRecords("TRAQEN-SELF", "EQUIVALENCE_REPORT");
+  const primarySurface = await evaluationSurface(primary.store, "TRAQEN-SELF", incremental);
+  assert.equal(incremental.status, "COMPLETED", JSON.stringify({
+    error: incremental.error,
+    equivalence: incrementalReports.find(({ analysisRunId }) => analysisRunId === incremental.id),
+    surfaceCounts: Object.fromEntries(["artifacts", "facts", "candidates", "conflicts", "gaps"].map((key) => [key, [
+      primarySurface[key].length,
+      primary.equivalenceState.fullSurface[key].length,
+    ]])),
+    surfaceEqual: Object.fromEntries(["artifacts", "facts", "candidates", "conflicts", "gaps"].map((key) => [
+      key,
+      canonicalJson(primarySurface[key]) === canonicalJson(primary.equivalenceState.fullSurface[key]),
+    ])),
+    candidateOnlyIncremental: primarySurface.candidates
+      .filter((candidate) => !primary.equivalenceState.fullSurface.candidates.some(({ id }) => id === candidate.id))
+      .slice(0, 3),
+    candidateOnlyFull: primary.equivalenceState.fullSurface.candidates
+      .filter((candidate) => !primarySurface.candidates.some(({ id }) => id === candidate.id))
+      .slice(0, 3),
+  }));
+  const second = await currentArtifact(primary.store, "TRAQEN-SELF");
+  assert.equal(second.revision.mode, "INCREMENTAL");
+  assert.equal(second.head.version, 2);
+  assert.ok(second.artifact.changeSet);
+  assert.ok(second.artifact.impactAssessment);
+  assert.ok(second.artifact.revalidationPlan.required);
   const independentSecond = await currentArtifact(independent.store, "TRAQEN-SELF-FULL");
   assert.deepEqual(semanticGraph(second.artifact), semanticGraph(independentSecond.artifact));
+  const equivalence = await primary.store.getUnderstandingRecord(
+    "TRAQEN-SELF",
+    "EQUIVALENCE_REPORT",
+    incremental.outputs.EVALUATION.equivalenceReportId,
+  );
+  assert.equal(equivalence.full.analysisRunId, fullTwo.id);
+  assert.equal(equivalence.full.equivalent, true);
 
   const inventory = (await primary.store.listUnderstandingRecords("TRAQEN-SELF", "ARTIFACT_INVENTORY"))
     .find(({ snapshotManifestId }) => snapshotManifestId === second.revision.snapshotManifestId);
@@ -129,4 +195,20 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   assert.deepEqual(second.artifact, JSON.parse(JSON.stringify(second.artifact)));
   assert.equal(second.artifact.graphArtifactDigest, second.revision.graphArtifactDigest);
   assert.equal(second.head.graphRevisionId, second.revision.id);
+
+  const application = new TraceabilityApplication({
+    store: primary.store,
+    legacyUnderstandingRuntime: primary.runtime,
+  });
+  const server = createTraceabilityHttpServer({ application });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const browserView = await fetch(
+    `http://127.0.0.1:${server.address().port}/v1/projects/TRAQEN-SELF/graph/current`,
+  ).then((response) => response.json());
+  assert.equal(browserView.head.version, 2);
+  assert.equal(browserView.revision.id, second.revision.id);
 });
