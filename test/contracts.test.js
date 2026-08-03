@@ -108,6 +108,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
       `${method.toUpperCase()} ${path} has a request schema`,
     );
   }
+  const reviewRequest = contract.paths["/v1/workspaces/{workspaceId}/review-decisions/batch"]
+    .post.requestBody.content["application/json"].schema;
+  assert.equal(reviewRequest.$ref, "./workspace-product.schema.json#/$defs/ReviewDecisionRequest");
+  const workspaceProduct = JSON.parse(
+    await readFile(new URL("../contracts/workspace-product.schema.json", import.meta.url), "utf8"),
+  );
+  assert.equal(workspaceProduct.$defs.ReviewDecisionRequest.required.includes("reviewerId"), false);
+  assert.equal(workspaceProduct.$defs.ReviewDecisionRequest.properties.reviewerId, undefined);
   assert.equal(contract.paths["/v1/projects"].post.operationId, "createProject");
   assert.equal(contract.paths["/v1/projects/{projectId}"].get.operationId, "getProject");
   assert.equal(

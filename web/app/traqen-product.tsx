@@ -30,6 +30,7 @@ function ServerOwnedProduct() {
   const [sourceRoot, setSourceRoot] = useState("");
   const [profileRevisionId, setProfileRevisionId] = useState("");
   const [job, setJob] = useState<ServerUnderstandingJob | null>(null);
+  const [jobs, setJobs] = useState<ServerUnderstandingJob[]>([]);
   const [current, setCurrent] = useState<CurrentUnderstandingGraph | null>(null);
   const [revisions, setRevisions] = useState<GraphRevision[]>([]);
   const [message, setMessage] = useState("");
@@ -48,11 +49,15 @@ function ServerOwnedProduct() {
   }, [apiBase, apiToken]);
 
   const reconnectWorkspaceJob = useCallback(async (workspace: Workspace, requestContext: CurrentWorkspaceContext) => {
-    const jobs = await listServerWorkspaceUnderstandingJobs(apiBase, apiToken, workspace.id);
+    const availableJobs = await listServerWorkspaceUnderstandingJobs(apiBase, apiToken, workspace.id);
     if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
-    const latest = jobs[0] ?? null;
-    setJob(latest);
-    setProfileRevisionId(latest?.workspaceExecutionProfileRevisionId ?? "");
+    const recoverable = availableJobs.find(({ status }) => status === "RUNNING")
+      ?? availableJobs.find(({ status }) => status === "PAUSED")
+      ?? availableJobs[0]
+      ?? null;
+    setJobs(availableJobs);
+    setJob(recoverable);
+    setProfileRevisionId(recoverable?.workspaceExecutionProfileRevisionId ?? "");
   }, [apiBase, apiToken]);
 
   async function refreshWorkspaces() {
@@ -96,6 +101,7 @@ function ServerOwnedProduct() {
     window.localStorage.setItem("traqen.activeWorkspaceId", workspace.id);
     setActiveWorkspace(workspace);
     setJob(null);
+    setJobs([]);
     setProfileRevisionId("");
     setCurrent(null);
     setRevisions([]);
@@ -124,6 +130,7 @@ function ServerOwnedProduct() {
       const next = await controlServerWorkspaceUnderstanding(apiBase, apiToken, activeWorkspace.id, job.id, action);
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(next);
+      setJobs((existing) => existing.map((item) => item.id === next.id ? next : item));
       setMessage(t(`服务端任务已${action === "pause" ? "暂停" : action === "resume" ? "恢复" : "取消"}。`, `The server job was ${action === "pause" ? "paused" : action === "resume" ? "resumed" : "cancelled"}.`));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("控制任务失败", "Unable to control the job"));
@@ -147,6 +154,7 @@ function ServerOwnedProduct() {
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setProfileRevisionId(profile.id);
       setJob(started);
+      setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
       setMessage(t("服务端任务已启动；关闭浏览器不会停止分析。", "The server job started; closing the browser does not stop analysis."));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t("启动失败", "Start failed"));
@@ -163,6 +171,7 @@ function ServerOwnedProduct() {
         .then((next) => {
           if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
           setJob(next);
+          setJobs((existing) => existing.map((item) => item.id === next.id ? next : item));
           if (next.status === "COMPLETED") void refreshPublishedGraph(activeWorkspace, requestContext);
         })
         .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
@@ -208,6 +217,7 @@ function ServerOwnedProduct() {
         <label>{t("服务端 allowlisted 源码根目录", "Server allowlisted source root")}<input value={sourceRoot} onChange={(event) => setSourceRoot(event.currentTarget.value)} placeholder="/srv/workspaces/project" /></label>
         <button className="button primary" disabled={working || !sourceRoot.trim() || job?.status === "RUNNING"} onClick={() => void startUnderstanding()}>{t("启动服务端分析", "Start server analysis")}</button>
         <p>{profileRevisionId ? `${t("固定执行 Profile", "Pinned execution profile")}: ${profileRevisionId}` : t("启动时解析当前 Workspace 的不可变执行 Profile；缺少配置将拒绝启动。", "The immutable profile for this Workspace is resolved at start; missing configuration rejects the run.")}</p>
+        {jobs.length > 0 && <div><strong>{t("服务端任务", "Server jobs")}</strong><ol>{jobs.map((item) => <li key={item.id}><button className={job?.id === item.id ? "active" : ""} onClick={() => { setJob(item); setProfileRevisionId(item.workspaceExecutionProfileRevisionId); }}>{item.status} · {item.phase} · {item.id}</button></li>)}</ol></div>}
         {job && <div><strong>{job.status}</strong><span> · {job.phase}</span><p>{job.completedPhases.join(" → ")}</p>{job.error && <p>{job.error.message}</p>}<div>{job.status === "RUNNING" && <button disabled={working} onClick={() => void controlUnderstanding("pause")}>{t("暂停", "Pause")}</button>}{job.status === "PAUSED" && <button disabled={working} onClick={() => void controlUnderstanding("resume")}>{t("恢复", "Resume")}</button>}{!["COMPLETED", "FAILED", "CANCELLED"].includes(job.status) && <button disabled={working} onClick={() => void controlUnderstanding("cancel")}>{t("取消", "Cancel")}</button>}</div></div>}
         <p>{t("浏览器刷新不会改变服务端任务状态；CurrentGraphHead 仅在 reviewed evaluation 通过后原子切换。", "Browser refresh does not change server job state; CurrentGraphHead moves atomically only after reviewed evaluation passes.")}</p>
       </section>}

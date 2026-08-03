@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { LegacyUnderstandingRuntime } from "../src/application/legacy-understanding-runtime.js";
+import {
+  LegacyUnderstandingRuntime,
+  reviewedCandidateTraceComplete,
+} from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { WorkspaceAnalysisJobRunner } from "../src/application/workspace-analysis-job-runner.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
@@ -17,6 +20,13 @@ import {
   persistFixtureExecutionProfile,
   persistFixtureIndependentRun,
 } from "./helpers/legacy-understanding-fixture.js";
+
+test("Candidate completeness cannot exceed its canonical reviewed TraceChain", () => {
+  assert.equal(reviewedCandidateTraceComplete({ complete: true }, []), true);
+  assert.equal(reviewedCandidateTraceComplete({ complete: false }, []), false);
+  assert.equal(reviewedCandidateTraceComplete({ complete: true }, [{ type: "MISSING_EVIDENCE" }]), false);
+  assert.equal(reviewedCandidateTraceComplete(null, []), false);
+});
 
 test("HTTP-owned runtime composes all seven durable phases and publishes immutable FULL then INCREMENTAL graphs", async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-runtime-"));
@@ -180,6 +190,60 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
   assert.equal(currentAfterRejected.graphRevisionId, deleted.outputs.PUBLISHING.currentGraphHead.graphRevisionId);
   const equivalenceReports = await store.listUnderstandingRecords("P", "EQUIVALENCE_REPORT");
   assert.equal(equivalenceReports.find(({ analysisRunId }) => analysisRunId === rejected.id).status, "FAILED");
+});
+
+test("Main MERGE produces one reconciled Candidate with complete Child provenance", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-merge-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export function mergedCapability() { return true; }\n");
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "MERGE");
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer: async ({ candidate, assignment }) => ({ candidates: [{
+      name: `Wording from ${assignment.slotId}`,
+      statement: `${candidate.proposal.statement} via ${assignment.slotId}`,
+      confidence: "LOW",
+    }] }),
+    mainProducer: async ({ candidateOptions }) => {
+      const refs = candidateOptions.map(({ ref }) => ref).sort();
+      const mergedProposal = { name: "Merged capability", statement: "One reconciled semantic claim", confidence: "LOW" };
+      return {
+        candidateDecisions: refs.map((candidateRef) => ({
+          candidateRef,
+          disposition: "MERGE",
+          relatedCandidateRefs: refs.filter((ref) => ref !== candidateRef),
+          mergedProposal,
+          rationale: "Both independent Child outputs describe the same bounded capability.",
+        })),
+        relations: [],
+        gaps: [],
+      };
+    },
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({ projectId: "MERGE", rootPath: source, displayName: "Merge" });
+  const completed = await runtime.start({
+    id: "MERGE-JOB", projectId: "MERGE", sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id, requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(completed.status, "COMPLETED", JSON.stringify(completed.error));
+  const bundle = await store.getUnderstandingRecord("MERGE", "CANDIDATE_BUNDLE", completed.outputs.ANALYSIS.candidateBundleId);
+  const mainResults = await store.listUnderstandingRecords("MERGE", "MAIN_BATCH_RESULT");
+  assert.equal(bundle.candidates.length, mainResults.length);
+  assert.ok(bundle.candidates.every((candidate) =>
+    candidate.mainDisposition === "MERGE"
+    && candidate.proposal.name === "Merged capability"
+    && candidate.mergedFromCandidateRefs.length === 2
+    && candidate.childResultIds.length === 2
+    && candidate.independenceGroups.length === 2));
 });
 
 test("missing configured Child executors persist explicit gaps and cannot publish synthetic candidates", async () => {

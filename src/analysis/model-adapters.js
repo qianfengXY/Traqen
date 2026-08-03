@@ -782,6 +782,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
                 disposition: "ACCEPT | REJECT | CONFLICT | MERGE | ALTERNATIVE",
                 rationale: "evidence-bounded reason",
                 relatedCandidateRefs: ["optional supplied refs"],
+                mergedProposal: { name: "required for MERGE", statement: "one reconciled semantic claim", subjectKey: "optional supplied scoped path", confidence: "LOW" },
               }],
               relations: [{
                 sourceCandidateRef: "optional supplied ref",

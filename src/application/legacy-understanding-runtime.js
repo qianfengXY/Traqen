@@ -95,6 +95,36 @@ function validateChildProducerOutput(output) {
   return output;
 }
 
+function mergeComponentsByRef(decisionsByRef) {
+  const adjacency = new Map(
+    [...decisionsByRef.values()]
+      .filter(({ disposition }) => disposition === "MERGE")
+      .map(({ candidateRef }) => [candidateRef, new Set()]),
+  );
+  for (const decision of decisionsByRef.values()) {
+    if (decision.disposition !== "MERGE") continue;
+    for (const relatedRef of decision.relatedCandidateRefs ?? []) {
+      adjacency.get(decision.candidateRef).add(relatedRef);
+      adjacency.get(relatedRef)?.add(decision.candidateRef);
+    }
+  }
+  const componentByRef = new Map();
+  for (const candidateRef of adjacency.keys()) {
+    if (componentByRef.has(candidateRef)) continue;
+    const component = [];
+    const pending = [candidateRef];
+    while (pending.length > 0) {
+      const ref = pending.pop();
+      if (component.includes(ref)) continue;
+      component.push(ref);
+      pending.push(...(adjacency.get(ref) ?? []));
+    }
+    component.sort();
+    for (const ref of component) componentByRef.set(ref, component);
+  }
+  return componentByRef;
+}
+
 function validateMainProducerOutput(output, candidateOptions) {
   if (!output || typeof output !== "object" || Array.isArray(output)) {
     throw new TypeError("Main producer output must be an object");
@@ -127,6 +157,35 @@ function validateMainProducerOutput(output, candidateOptions) {
   if (decided.size !== optionsByRef.size) {
     throw new TypeError("Main producer must decide every schema-valid Child Candidate exactly once");
   }
+  const decisionsByRef = new Map(output.candidateDecisions.map((decision) => [decision.candidateRef, decision]));
+  for (const decision of output.candidateDecisions) {
+    if (decision.disposition !== "MERGE") {
+      if (decision.mergedProposal !== undefined) throw new TypeError("mergedProposal is only valid for MERGE decisions");
+      continue;
+    }
+    if (!Array.isArray(decision.relatedCandidateRefs) || decision.relatedCandidateRefs.length === 0) {
+      throw new TypeError("MERGE decisions require relatedCandidateRefs");
+    }
+    if (!decision.mergedProposal || typeof decision.mergedProposal !== "object" || Array.isArray(decision.mergedProposal)
+      || typeof decision.mergedProposal.name !== "string" || decision.mergedProposal.name.trim() === ""
+      || typeof decision.mergedProposal.statement !== "string" || decision.mergedProposal.statement.trim() === "") {
+      throw new TypeError("MERGE decisions require one mergedProposal with name and statement");
+    }
+    if (decision.relatedCandidateRefs.some((ref) => decisionsByRef.get(ref)?.disposition !== "MERGE")) {
+      throw new TypeError("MERGE relatedCandidateRefs must also have MERGE decisions");
+    }
+  }
+  const mergeComponents = mergeComponentsByRef(decisionsByRef);
+  const validatedComponents = new Set();
+  for (const decision of output.candidateDecisions.filter(({ disposition }) => disposition === "MERGE")) {
+    const componentRefs = mergeComponents.get(decision.candidateRef);
+    const componentKey = componentRefs.join("\u0000");
+    if (validatedComponents.has(componentKey)) continue;
+    validatedComponents.add(componentKey);
+    if (new Set(componentRefs.map((ref) => canonicalJson(decisionsByRef.get(ref).mergedProposal))).size !== 1) {
+      throw new TypeError("all decisions in a MERGE component must declare the same mergedProposal");
+    }
+  }
   for (const gap of output.gaps ?? []) {
     if (typeof gap?.code !== "string" || gap.code.trim() === ""
       || typeof gap?.message !== "string" || gap.message.trim() === "") {
@@ -134,6 +193,10 @@ function validateMainProducerOutput(output, candidateOptions) {
     }
   }
   return output;
+}
+
+export function reviewedCandidateTraceComplete(reviewedChain, chainGaps) {
+  return reviewedChain?.complete === true && chainGaps.length === 0;
 }
 
 export class LegacyUnderstandingRuntime {
@@ -866,10 +929,19 @@ export class LegacyUnderstandingRuntime {
       mainResultIds.push(mainResult.id);
       const optionsByRef = new Map(candidateOptions.map((option) => [option.ref, option]));
       const admitted = mainOutput.candidateDecisions.filter(({ disposition }) => disposition !== "REJECT");
+      const decisionsByRef = new Map(mainOutput.candidateDecisions.map((decision) => [decision.candidateRef, decision]));
+      const mergeComponents = mergeComponentsByRef(decisionsByRef);
       const candidateIdByRef = new Map();
+      const processedRefs = new Set();
       for (const decision of admitted) {
-        const option = optionsByRef.get(decision.candidateRef);
-        const semanticCandidate = option.proposal;
+        if (processedRefs.has(decision.candidateRef)) continue;
+        const admittedRefs = decision.disposition === "MERGE"
+          ? mergeComponents.get(decision.candidateRef)
+          : [decision.candidateRef];
+        admittedRefs.forEach((ref) => processedRefs.add(ref));
+        const mergedOptions = admittedRefs.map((ref) => optionsByRef.get(ref));
+        const option = mergedOptions[0];
+        const semanticCandidate = decision.disposition === "MERGE" ? decision.mergedProposal : option.proposal;
         const selectedSlot = executionProfile.childSlots.find(({ id }) => id === option.slotId);
         const childProducer = selectedSlot ? producerForSlot(selectedSlot) : decision.selected?.[0];
         const reconciledCandidate = {
@@ -878,7 +950,8 @@ export class LegacyUnderstandingRuntime {
             workUnitId: workUnit.id,
             artifactId: artifact.id,
             evidenceFactIds,
-            slotId: option.slotId,
+            candidateInputs: mergedOptions.map(({ slotId, proposal }) => ({ slotId, proposal }))
+              .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right))),
             proposal: semanticCandidate,
           }),
           proposal: {
@@ -895,11 +968,12 @@ export class LegacyUnderstandingRuntime {
           mainResultId: mainResult.id,
           mainDisposition: decision.disposition,
           mainRationale: decision.rationale,
-          childResultIds: [option.childResultId],
-          independenceGroups: [option.independenceGroup],
+          mergedFromCandidateRefs: decision.disposition === "MERGE" ? admittedRefs : [],
+          childResultIds: [...new Set(mergedOptions.map(({ childResultId }) => childResultId))].sort(),
+          independenceGroups: [...new Set(mergedOptions.map(({ independenceGroup }) => independenceGroup))].sort(),
         };
         candidates.push(reconciledCandidate);
-        candidateIdByRef.set(decision.candidateRef, reconciledCandidate.id);
+        for (const ref of admittedRefs) candidateIdByRef.set(ref, reconciledCandidate.id);
       }
       for (const decision of mainOutput.candidateDecisions.filter(({ disposition }) => disposition === "CONFLICT")) {
         const candidateIds = [decision.candidateRef, ...(decision.relatedCandidateRefs ?? [])]
@@ -1471,7 +1545,7 @@ export class LegacyUnderstandingRuntime {
           evidenceFactIds: candidate.evidenceFactIds,
         }),
         subject: { kind: "CANDIDATE", id: candidate.id },
-        status: reviewedChain?.complete && chainGaps.length === 0 ? "REVIEWED_COMPLETE" : "CANDIDATE_REVIEW_REQUIRED",
+        status: reviewedCandidateTraceComplete(reviewedChain, chainGaps) ? "REVIEWED_COMPLETE" : "CANDIDATE_REVIEW_REQUIRED",
         nodeIds: [...new Set([
           ...segments.flatMap(({ nodeIds: segmentNodeIds }) => segmentNodeIds),
           ...analysisEvidenceNodeIds,
@@ -1479,7 +1553,7 @@ export class LegacyUnderstandingRuntime {
         segments,
         analysisEvidenceNodeIds,
         gaps: chainGaps,
-        complete: chainGaps.length === 0,
+        complete: reviewedCandidateTraceComplete(reviewedChain, chainGaps),
       };
     });
     const relationTraceChains = edges.map((edge) => ({

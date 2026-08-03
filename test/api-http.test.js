@@ -17,6 +17,63 @@ import { createReferenceSkillSet, ReverseSkillOrchestrator } from "../src/skills
 
 const fixedClock = () => new Date("2026-07-14T04:00:00.000Z");
 
+function schemaErrors(value, schema, rootSchema, location = "$") {
+  if (schema.$ref) {
+    const target = schema.$ref.slice(2).split("/").reduce((current, segment) => current[segment], rootSchema);
+    return schemaErrors(value, target, rootSchema, location);
+  }
+  if (schema.oneOf) {
+    return schema.oneOf.filter((option) => schemaErrors(value, option, rootSchema, location).length === 0).length === 1
+      ? []
+      : [`${location} must match exactly one oneOf branch`];
+  }
+  const errors = [];
+  if (schema.enum && !schema.enum.includes(value)) errors.push(`${location} is outside enum`);
+  if (Object.hasOwn(schema, "const") && value !== schema.const) errors.push(`${location} does not match const`);
+  if (schema.type === "null" && value !== null) errors.push(`${location} must be null`);
+  if (schema.type === "string") {
+    if (typeof value !== "string") errors.push(`${location} must be a string`);
+    else {
+      if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${location} is too short`);
+      if (schema.format === "date-time" && Number.isNaN(Date.parse(value))) errors.push(`${location} must be a date-time`);
+    }
+  }
+  if (schema.type === "integer" && !Number.isInteger(value)) errors.push(`${location} must be an integer`);
+  if (schema.minimum !== undefined && typeof value === "number" && value < schema.minimum) {
+    errors.push(`${location} is below minimum`);
+  }
+  if (schema.type === "boolean" && typeof value !== "boolean") errors.push(`${location} must be a boolean`);
+  if (schema.type === "array") {
+    if (!Array.isArray(value)) errors.push(`${location} must be an array`);
+    else {
+      if (schema.minItems !== undefined && value.length < schema.minItems) errors.push(`${location} has too few items`);
+      if (schema.uniqueItems && new Set(value.map((item) => JSON.stringify(item))).size !== value.length) {
+        errors.push(`${location} items must be unique`);
+      }
+      if (schema.items) value.forEach((item, index) => errors.push(
+        ...schemaErrors(item, schema.items, rootSchema, `${location}[${index}]`),
+      ));
+    }
+  }
+  if (schema.type === "object") {
+    if (!value || typeof value !== "object" || Array.isArray(value)) errors.push(`${location} must be an object`);
+    else {
+      for (const required of schema.required ?? []) {
+        if (!Object.hasOwn(value, required)) errors.push(`${location}.${required} is required`);
+      }
+      for (const [key, item] of Object.entries(value)) {
+        const propertySchema = schema.properties?.[key];
+        if (propertySchema) errors.push(...schemaErrors(item, propertySchema, rootSchema, `${location}.${key}`));
+        else if (schema.additionalProperties === false) errors.push(`${location}.${key} is not allowed`);
+        else if (schema.additionalProperties && typeof schema.additionalProperties === "object") {
+          errors.push(...schemaErrors(item, schema.additionalProperties, rootSchema, `${location}.${key}`));
+        }
+      }
+    }
+  }
+  return errors;
+}
+
 async function exampleInput() {
   return JSON.parse(await readFile(new URL("../examples/order-submit.json", import.meta.url), "utf8"));
 }
@@ -37,6 +94,7 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    setup,
     ...serverOptions
   } = options;
   const store = new MemoryTraceabilityStore();
@@ -58,6 +116,7 @@ async function startServer(t, options = {}) {
     analysisAgent,
     analysisModelRegistry,
   });
+  await setup?.({ store, application });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -98,7 +157,22 @@ test("health endpoint returns a request correlation ID", async (t) => {
 });
 
 test("Workspace API owns lifecycle, capability isolation, and same-batch Child execution", async (t) => {
-  const baseUrl = await startServer(t);
+  let workspaceStore;
+  const baseUrl = await startServer(t, {
+    reviewerResolver: (_projectId, context) => context.authorization === "Bearer workspace-reviewer"
+      ? { actorId: "REVIEWER-FROM-AUTH", actorRole: "business-owner" }
+      : null,
+    setup: ({ store }) => { workspaceStore = store; },
+  });
+  const workspaceContract = JSON.parse(await readFile(
+    new URL("../contracts/workspace-product.schema.json", import.meta.url),
+    "utf8",
+  ));
+  const assertPayloadShape = (value, definitionName) => assert.deepEqual(
+    schemaErrors(value, workspaceContract.$defs[definitionName], workspaceContract),
+    [],
+    `${definitionName} must satisfy its executable JSON Schema`,
+  );
   const created = await postJson(`${baseUrl}/v1/workspaces`, {
     organization: { id: "O-WORKSPACE", name: "Workspace Org" },
     tenant: { id: "T-WORKSPACE", name: "Workspace Tenant" },
@@ -108,6 +182,7 @@ test("Workspace API owns lifecycle, capability isolation, and same-batch Child e
   });
   assert.equal(created.response.status, 201);
   assert.equal(created.body.workspaceId, "W-HTTP");
+  assertPayloadShape(created.body, "Workspace");
 
   const hiddenResponse = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/view-preference`, {
     method: "PUT",
@@ -180,6 +255,25 @@ test("Workspace API owns lifecycle, capability isolation, and same-batch Child e
   );
   assert.equal(opened.status, 201);
   assert.equal((await opened.json()).opened, true);
+
+  await workspaceStore.appendUnderstandingRecord("W-HTTP", "REVIEW_QUEUE_ITEM", {
+    id: "REVIEW-HTTP-1", workspaceId: "W-HTTP", version: 1, status: "PENDING",
+    severity: "REVIEW", evidenceState: "EVIDENCE_VALIDATED", source: "RECONCILIATION",
+    analysisBatchId: batch.body.batch.id, createdAt: fixedClock().toISOString(),
+  });
+  const reviewRequest = {
+    itemIds: ["REVIEW-HTTP-1"], outcome: "CONFIRMED",
+    rationale: "The authorized reviewer checked the evidence.", edits: {},
+  };
+  assertPayloadShape(reviewRequest, "ReviewDecisionRequest");
+  const reviewed = await postJson(
+    `${baseUrl}/v1/workspaces/W-HTTP/review-decisions/batch`,
+    reviewRequest,
+    { authorization: "Bearer workspace-reviewer" },
+  );
+  assert.equal(reviewed.response.status, 201);
+  assert.equal(reviewed.body.reviewerId, "REVIEWER-FROM-AUTH");
+  assertPayloadShape(reviewed.body, "ReviewDecision");
 
   for (const action of ["request-deletion", "cancel-deletion", "request-deletion", "complete-deletion"]) {
     const transition = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/${action}`, { actorId: "OWNER" });

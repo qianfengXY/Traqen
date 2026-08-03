@@ -41,6 +41,9 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /listServerWorkspaceUnderstandingJobs/);
   assert.match(product, /controlServerWorkspaceUnderstanding/);
   assert.match(product, /traqen\.activeWorkspaceId/);
+  assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "RUNNING"\)/);
+  assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "PAUSED"\)/);
+  assert.match(product, /jobs\.map\(\(item\)/);
   assert.match(product, /getCurrentUnderstandingGraph/);
   assert.match(product, /staleWorkspaceResponse/);
   assert.match(product, /window\.setInterval/);

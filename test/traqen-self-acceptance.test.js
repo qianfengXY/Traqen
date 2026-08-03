@@ -21,8 +21,9 @@ import {
 
 const repositoryRoot = path.resolve(new URL("..", import.meta.url).pathname);
 
-async function repositoryEvidenceChildProducer(input) {
-  if (input.candidate.subjectKey.startsWith("@synthesis/")) {
+async function factEvidenceChildProducer(input) {
+  if (input.candidate.subjectKey.startsWith("@synthesis/")
+    || input.assignment.slotId !== input.executionProfile.childSlots[0].id) {
     return { candidates: [{
       name: input.candidate.proposal.name,
       subjectKey: input.candidate.subjectKey,
@@ -30,103 +31,47 @@ async function repositoryEvidenceChildProducer(input) {
       confidence: "LOW",
     }] };
   }
-  const semanticAnchor = /^(?:docs\/(?:features\/F001-|architecture\/traqen-product-architecture)|feature-specs\/2026-07-31-traqen-product-foundation|contracts\/(?:openapi|artifact-inventory\.schema|source-slice\.schema|understanding-plan\.schema|model-capability-profile\.schema|analysis-route-decision\.schema|graph-revision\.schema)|src\/(?:domain\/(?:artifact-inventory|source-slice|graph-revision)|analysis\/(?:understanding-planner|analysis-capability-router|candidate-reconciliation)|application\/(?:source-slice-broker|understanding-evaluator|incremental-understanding|workspace-analysis-job-runner)|scanner\/artifact-inventory-scanner|storage\/(?:memory-traceability-store|postgres\/postgres-traceability-store))|db\/migrations\/0014_legacy_understanding_engine|test\/(?:understanding-planner|source-slice-broker|understanding-evaluation|incremental-understanding)\.test|web\/(?:app\/understanding-graph-client|tests\/understanding-graph-client\.test))/;
-  return {
-    candidates: input.scopedArtifacts
-      .filter(({ relativePath }) => semanticAnchor.test(relativePath))
-      .filter((artifact) => input.facts.some(({ artifactId }) => artifactId === artifact.id))
-      .map((artifact) => ({
+  const candidates = input.scopedArtifacts
+    .filter((artifact) => input.facts.some(({ artifactId }) => artifactId === artifact.id))
+    .map((artifact) => ({
         name: path.basename(artifact.relativePath),
         subjectKey: artifact.relativePath,
-        statement: `Repository evidence identifies ${artifact.relativePath}`,
+        statement: `Deterministic extraction produced evidence for ${artifact.relativePath}`,
         confidence: "LOW",
-      })),
-  };
+      }));
+  return candidates.length > 0 ? { candidates } : { candidates: [{
+    name: input.candidate.proposal.name,
+    subjectKey: input.candidate.subjectKey,
+    statement: input.candidate.proposal.statement,
+    confidence: "LOW",
+  }] };
 }
 
-async function repositoryConventionMainProducer(input) {
+async function factReferenceMainProducer(input) {
   const base = await deterministicFixtureMainProducer(input);
   if (input.workUnit.kind !== "PROJECT_SYNTHESIS") return base;
-  const artifacts = input.scopedArtifacts;
-  const find = (suffix) => artifacts.find(({ relativePath }) => relativePath.endsWith(suffix));
-  const all = (pattern) => artifacts.filter(({ relativePath }) => pattern.test(relativePath));
-  const relations = [];
-  const relate = (source, predicate, target) => {
-    if (!source || !target) return;
-    const evidence = input.facts.find(({ artifactId }) => artifactId === source.id)
-      ?? input.facts.find(({ artifactId }) => artifactId === target.id)
-      ?? input.facts[0];
-    if (!evidence) return;
-    relations.push({ sourceArtifactId: source.id, predicate, targetArtifactId: target.id, evidenceFactIds: [evidence.id], sourceSliceIds: [] });
+  const artifactByPath = new Map(input.scopedArtifacts.map((artifact) => [artifact.relativePath, artifact]));
+  const resolveTarget = (sourcePath, targetPath) => {
+    if (typeof targetPath !== "string" || !targetPath.startsWith(".")) return null;
+    const normalized = path.posix.normalize(path.posix.join(path.posix.dirname(sourcePath), targetPath));
+    return [normalized, ...[".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".json", ".md"].map((extension) => `${normalized}${extension}`),
+      ...["index.js", "index.ts", "index.tsx"].map((name) => `${normalized}/${name}`)]
+      .map((candidatePath) => artifactByPath.get(candidatePath)).find(Boolean) ?? null;
   };
-  const requirement = find("docs/features/F001-legacy-system-understanding.md");
-  const architecture = find("docs/architecture/traqen-product-architecture.md");
-  const productPlan = find("feature-specs/2026-07-31-traqen-product-foundation.md");
-  const openapi = find("contracts/openapi.json");
-  const graphRevision = find("src/domain/graph-revision.js");
-  const planner = find("src/analysis/understanding-planner.js");
-  const router = find("src/analysis/analysis-capability-router.js");
-  const reconciliation = find("src/analysis/candidate-reconciliation.js");
-  const broker = find("src/application/source-slice-broker.js");
-  const evaluator = find("src/application/understanding-evaluator.js");
-  const incremental = find("src/application/incremental-understanding.js");
-  const runner = find("src/application/workspace-analysis-job-runner.js");
-  const scanner = find("src/scanner/artifact-inventory-scanner.js");
-  const memoryStore = find("src/storage/memory-traceability-store.js");
-  const postgresStore = find("src/storage/postgres/postgres-traceability-store.js");
-  const migration = find("db/migrations/0014_legacy_understanding_engine.sql");
-  const webClient = find("web/app/understanding-graph-client.ts");
-  const webTest = find("web/tests/understanding-graph-client.test.mjs");
-  relate(requirement, "SPECIFIED_BY", architecture);
-  relate(requirement, "PLANNED_BY", productPlan);
-  relate(productPlan, "EXPOSES", openapi);
-  relate(productPlan, "IMPLEMENTS", runner);
-  relate(requirement, "ACCEPTS", webClient);
-  relate(requirement, "ACCEPTS", webTest);
-  for (const schema of all(/^contracts\/(artifact-inventory|source-slice|understanding-plan|model-capability-profile|analysis-route-decision|graph-revision)\.schema\.json$/)) {
-    relate(productPlan, "CONTRACTS", schema);
-    const stem = path.basename(schema.relativePath, ".schema.json");
-    const implementation = stem === "understanding-plan" ? planner
-      : stem === "model-capability-profile" || stem === "analysis-route-decision" ? router
-        : find(`src/domain/${stem}.js`);
-    relate(schema, stem === "model-capability-profile" ? "ROUTED_BY" : "IMPLEMENTED_BY", implementation);
-    relate(implementation, "BOUND_TO", schema);
-  }
-  relate(planner, "PRODUCES", find("contracts/analysis-route-decision.schema.json"));
-  relate(reconciliation, "EVALUATED_BY", evaluator);
-  relate(find("src/domain/source-slice.js"), "BROKERED_BY", broker);
-  relate(find("src/domain/artifact-inventory.js"), "SCANNED_BY", scanner);
-  relate(scanner, "PRODUCES", find("src/domain/artifact-inventory.js"));
-  relate(planner, "PARTITIONS", find("src/domain/artifact-inventory.js"));
-  relate(router, "ROUTES", planner);
-  relate(reconciliation, "RECONCILES", planner);
-  relate(evaluator, "GATES", graphRevision);
-  relate(incremental, "CREATES", graphRevision);
-  relate(incremental, "PRESERVES", graphRevision);
-  for (const store of [memoryStore, postgresStore]) {
-    relate(graphRevision, "PERSISTED_BY", store);
-    relate(store, "CAS_PUBLISHES", graphRevision);
-  }
-  relate(postgresStore, "MIGRATED_BY", migration);
-  relate(migration, "STORES", graphRevision);
-  relate(runner, "USES", memoryStore);
-  relate(runner, "PUBLISHES", graphRevision);
-  relate(openapi, "READ_BY", webClient);
-  relate(webClient, "TESTED_BY", webTest);
-  relate(webTest, "ASSERTS", webClient);
-  relate(webClient, "DISPLAYS", graphRevision);
-  for (const implementation of [planner, router, reconciliation, evaluator, incremental]) relate(architecture, "DESIGNS", implementation);
-  for (const [implementationSuffix, testSuffix] of [
-    ["src/analysis/understanding-planner.js", "test/understanding-planner.test.js"],
-    ["src/application/source-slice-broker.js", "test/source-slice-broker.test.js"],
-    ["src/application/understanding-evaluator.js", "test/understanding-evaluation.test.js"],
-    ["src/application/incremental-understanding.js", "test/incremental-understanding.test.js"],
-  ]) {
-    const implementation = find(implementationSuffix);
-    const testArtifact = find(testSuffix);
-    relate(implementation, "TESTED_BY", testArtifact);
-    relate(testArtifact, "ASSERTS", implementation);
-  }
+  const relations = [...new Map(input.facts.flatMap((fact) => {
+    if (!["SOURCE_REFERENCE", "DOCUMENT_REFERENCE"].includes(fact.type)) return [];
+    const source = input.scopedArtifacts.find(({ id }) => id === fact.artifactId);
+    const target = source ? resolveTarget(source.relativePath, fact.targetPath) : null;
+    if (!source || !target) return [];
+    const relation = {
+      sourceArtifactId: source.id,
+      predicate: "REFERENCES",
+      targetArtifactId: target.id,
+      evidenceFactIds: [fact.id],
+      sourceSliceIds: [],
+    };
+    return [[`${source.id}\u0000${target.id}`, relation]];
+  })).values()];
   return { ...base, relations };
 }
 
@@ -137,8 +82,8 @@ async function runtimeFor({ projectId, source, snapshotRoot, truth, store, profi
     allowlistedRoots: [source],
     snapshotRoot,
     sourceSliceBroker: broker,
-    childProducer: repositoryEvidenceChildProducer,
-    mainProducer: repositoryConventionMainProducer,
+    childProducer: factEvidenceChildProducer,
+    mainProducer: factReferenceMainProducer,
     implementationAuthorId: independent ? "TRAQEN-INDEPENDENT-IMPLEMENTATION" : "TRAQEN-RUNTIME",
     runnerId: independent ? "TRAQEN-INDEPENDENT-RUNNER" : "TRAQEN-LOCAL-RUNNER",
     reviewedEvaluationResolver: createReviewedUnderstandingEvaluationResolver({
@@ -265,6 +210,11 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
     new URL("./fixtures/understanding/traqen-self-calibration-v1.json", import.meta.url),
     "utf8",
   ));
+  const producerSource = `${factEvidenceChildProducer}\n${factReferenceMainProducer}`;
+  assert.equal(producerSource.includes(truth.id), false);
+  for (const { path: anchorPath } of truth.anchors) {
+    assert.equal(producerSource.includes(anchorPath), false, `producer must not embed truth anchor ${anchorPath}`);
+  }
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-self-dogfood-"));
   const source = path.join(temporary, "source");
   const snapshots = path.join(temporary, "snapshots");
@@ -307,6 +257,12 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
   const fullOne = await run(primaryRuntime, {
     id: "TRAQEN-FULL-1", snapshotManifestId: snapshotOne.id, requestedMode: "FULL",
   });
+  const fullOneSurface = await evaluationSurface(store, "TRAQEN-SELF", fullOne);
+  const verificationOneSurface = await evaluationSurface(store, "TRAQEN-SELF", verificationFullOne);
+  const fullOneInventory = await store.getUnderstandingRecord(
+    "TRAQEN-SELF", "ARTIFACT_INVENTORY", fullOne.outputs.SOURCE_SCAN.inventoryId,
+  );
+  const fullOneArtifactPaths = new Map(fullOneInventory.artifacts.map(({ id, relativePath }) => [id, relativePath]));
   assert.equal(fullOne.status, "COMPLETED", JSON.stringify({
     error: fullOne.error,
     evaluations: await store.listUnderstandingRecords("TRAQEN-SELF", "EVALUATION_RUN"),
@@ -315,6 +271,14 @@ test("Traqen dogfoods two real immutable Snapshots through FULL → INCREMENTAL 
       relationReviews: record.relationReviews.length,
       observedRelations: record.relationReviews.filter(({ verdict }) => verdict === "OBSERVED").length,
     })),
+    currentSurfaceDigest: fullOneSurface.digest,
+    verificationSurfaceDigest: verificationOneSurface.digest,
+    surfaceEqual: Object.fromEntries(["artifacts", "facts", "candidates", "conflicts", "gaps", "relations"].map((key) => [
+      key, canonicalJson(fullOneSurface[key]) === canonicalJson(verificationOneSurface[key]),
+    ])),
+    relations: fullOneSurface.relations.slice(0, 80).map(({ sourceId, predicate, targetId }) => [
+      fullOneArtifactPaths.get(sourceId), predicate, fullOneArtifactPaths.get(targetId),
+    ]),
   }));
   const firstEvaluation = await store.getUnderstandingRecord(
     "TRAQEN-SELF",
