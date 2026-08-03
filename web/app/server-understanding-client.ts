@@ -50,7 +50,7 @@ export async function startServerWorkspaceUnderstanding(
   input: {
     sourceRegistrationId: string;
     requestedMode: "AUTO" | "FULL" | "INCREMENTAL";
-    workspaceExecutionProfileRevisionId?: string;
+    workspaceExecutionProfileRevisionId: string;
   },
 ) {
   const response = await fetch(
@@ -62,6 +62,22 @@ export async function startServerWorkspaceUnderstanding(
     },
   );
   return json<ServerUnderstandingJob>(response);
+}
+
+export async function resolveServerWorkspaceExecutionProfile(
+  apiBase: string,
+  apiToken: string,
+  workspaceId: string,
+) {
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/workspaces/${encodeURIComponent(workspaceId)}/execution-profile-revisions`,
+    {
+      method: "POST",
+      headers: headers(apiToken, true),
+      body: JSON.stringify({}),
+    },
+  );
+  return json<{ id: string; workspaceId: string; profileDigest: string }>(response);
 }
 
 export async function getServerWorkspaceUnderstanding(

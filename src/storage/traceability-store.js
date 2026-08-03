@@ -43,6 +43,10 @@ export class TraceabilityStore {
     throw new Error("getCurrentTraceChain must be implemented");
   }
 
+  async listCurrentTraceChains(_projectId) {
+    throw new Error("listCurrentTraceChains must be implemented");
+  }
+
   async appendFeatureVersion(_projectId, _feature) {
     throw new Error("appendFeatureVersion must be implemented");
   }

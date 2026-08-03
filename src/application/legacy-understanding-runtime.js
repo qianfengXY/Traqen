@@ -30,6 +30,7 @@ import { evaluateUnderstanding } from "./understanding-evaluator.js";
 import { WorkspaceAnalysisJobRunner, WorkspaceAnalysisPhase } from "./workspace-analysis-job-runner.js";
 import { planIncrementalUnderstanding } from "./incremental-understanding.js";
 import {
+  createStoredUnderstandingSurface,
   createUnderstandingSemanticSurface,
   measureUnderstandingEquivalence,
 } from "./understanding-equivalence.js";
@@ -94,6 +95,35 @@ function validateChildProducerOutput(output) {
   return output;
 }
 
+function validateMainProducerOutput(output, candidateOptions) {
+  if (!output || typeof output !== "object" || Array.isArray(output)) {
+    throw new TypeError("Main producer output must be an object");
+  }
+  if (!Array.isArray(output.candidateDecisions) || !Array.isArray(output.relations ?? [])
+    || !Array.isArray(output.gaps ?? [])) {
+    throw new TypeError("Main producer output must contain candidateDecisions, relations, and gaps arrays");
+  }
+  const optionsByRef = new Map(candidateOptions.map((option) => [option.ref, option]));
+  const decided = new Set();
+  for (const decision of output.candidateDecisions) {
+    if (!optionsByRef.has(decision.candidateRef)) {
+      throw new TypeError(`Main producer referenced unknown Child Candidate ${decision.candidateRef}`);
+    }
+    if (decided.has(decision.candidateRef)) throw new TypeError("Main producer decided one Child Candidate more than once");
+    if (!["ACCEPT", "ALTERNATIVE", "CONFLICT", "REJECT"].includes(decision.disposition)) {
+      throw new TypeError("Main producer Candidate disposition is invalid");
+    }
+    if (typeof decision.rationale !== "string" || decision.rationale.trim() === "") {
+      throw new TypeError("Main producer Candidate rationale is required");
+    }
+    decided.add(decision.candidateRef);
+  }
+  if (decided.size !== optionsByRef.size) {
+    throw new TypeError("Main producer must decide every schema-valid Child Candidate exactly once");
+  }
+  return output;
+}
+
 export class LegacyUnderstandingRuntime {
   #controllers = new Map();
 
@@ -103,8 +133,11 @@ export class LegacyUnderstandingRuntime {
     snapshotRoot,
     sourceSliceBroker,
     childProducer = null,
+    mainProducer = null,
     reviewedEvaluationResolver = null,
     equivalenceResolver = null,
+    implementationAuthorId = "TRAQEN-RUNTIME",
+    runnerId = "TRAQEN-LOCAL-RUNNER",
     clock = () => new Date(),
   }) {
     if (!store || !sourceSliceBroker) throw new TypeError("store and sourceSliceBroker are required");
@@ -116,8 +149,11 @@ export class LegacyUnderstandingRuntime {
     this.sourceSliceBroker = sourceSliceBroker;
     this.clock = clock;
     this.childProducer = childProducer;
+    this.mainProducer = mainProducer;
     this.reviewedEvaluationResolver = reviewedEvaluationResolver;
     this.equivalenceResolver = equivalenceResolver;
+    this.implementationAuthorId = implementationAuthorId;
+    this.runnerId = runnerId;
     this.snapshotCapture = new LocalSourceSnapshotCapture({
       allowlistedRoots: this.allowlistedRoots,
       snapshotRoot,
@@ -180,56 +216,18 @@ export class LegacyUnderstandingRuntime {
       requestedMode: input.requestedMode ?? "AUTO",
       requestedAt: this.clock().toISOString(),
     });
-    let profileRevisionId = input.workspaceExecutionProfileRevisionId ?? null;
-    if (!profileRevisionId) {
-      const localProfile = deepFreeze({
-        id: "LOCAL-DETERMINISTIC-PROFILE",
-        workspaceId: input.projectId,
-        configId: "LOCAL-DETERMINISTIC-CONFIG",
-        configVersion: 1,
-        profileDigest: contentId("PROFILE-DIGEST", {
-          workspaceId: input.projectId,
-          kind: "LOCAL_DETERMINISTIC",
-          version: 1,
-        }),
-        mainAgent: {
-          model: "LOCAL-DETERMINISTIC-PROFILE",
-          skillNames: ["legacy-understanding-runtime"],
-          mcpNames: [],
-        },
-        childSlots: [
-          { id: "CHILD-1", model: "LOCAL-DETERMINISTIC-PROFILE", skillNames: ["legacy-understanding-runtime"], mcpNames: [], independenceGroup: "LOCAL-1" },
-          { id: "CHILD-2", model: "LOCAL-DETERMINISTIC-PROFILE", skillNames: ["legacy-understanding-runtime"], mcpNames: [], independenceGroup: "LOCAL-2" },
-        ],
-        entries: [
-          { logicalName: "LOCAL-DETERMINISTIC-PROFILE", kind: "MODEL", manifest: { provider: "LOCAL_DETERMINISTIC" }, sourceTemplateId: null, credentialHandleIds: [] },
-          { logicalName: "legacy-understanding-runtime", kind: "SKILL", manifest: { inputMode: "DIRECT_SOURCE" }, sourceTemplateId: null, credentialHandleIds: [] },
-        ],
-        dependencies: {},
-        conventions: {},
-        policies: { dataBoundary: "LOCAL_PRIVATE" },
-        createdAt: this.clock().toISOString(),
-      });
-      const existing = await this.store.getUnderstandingRecord(
-        input.projectId,
-        "WORKSPACE_EXECUTION_PROFILE",
-        localProfile.id,
-      );
-      if (!existing) {
-        await this.store.appendUnderstandingRecord(
-          input.projectId,
-          "WORKSPACE_EXECUTION_PROFILE",
-          localProfile,
-        );
-      }
-      profileRevisionId = localProfile.id;
+    const profileRevisionId = input.workspaceExecutionProfileRevisionId;
+    if (typeof profileRevisionId !== "string" || profileRevisionId.trim() === "") {
+      throw new TypeError("workspaceExecutionProfileRevisionId is required; implicit runtime profiles are forbidden");
     }
     const pinnedProfile = await this.store.getUnderstandingRecord(
       input.projectId,
       "WORKSPACE_EXECUTION_PROFILE",
       profileRevisionId,
     );
-    if (!pinnedProfile) throw new TypeError("an immutable WorkspaceExecutionProfileRevision is required");
+    if (!pinnedProfile || pinnedProfile.workspaceId !== input.projectId) {
+      throw new TypeError("an immutable Workspace-scoped WorkspaceExecutionProfileRevision is required");
+    }
     const job = await this.runner.start({
       id: jobId,
       projectId: input.projectId,
@@ -238,6 +236,8 @@ export class LegacyUnderstandingRuntime {
       requestedMode: input.requestedMode ?? "AUTO",
       policyDigest: input.policyDigest ?? "traqen-understanding-runtime-v1",
       workspaceExecutionProfileRevisionId: profileRevisionId,
+      implementationAuthorId: this.implementationAuthorId,
+      runnerId: this.runnerId,
     });
     if (!background) return this.#run(job);
     queueMicrotask(() => this.#run(job).catch(() => undefined));
@@ -491,6 +491,7 @@ export class LegacyUnderstandingRuntime {
       id: contentId("UNDERSTANDING-FACT-BUNDLE", {
         projectId: job.projectId,
         snapshotManifestId: job.snapshotManifestId,
+        analysisRunId: job.id,
         facts: uniqueFacts,
       }),
       projectId: job.projectId,
@@ -541,6 +542,8 @@ export class LegacyUnderstandingRuntime {
 
     const candidates = [];
     const gaps = [];
+    const relations = [];
+    const mainResultIds = [];
     const routeDecisionIds = [];
     const analysisBatchIds = [];
     const incrementalPlan = await this.store.getUnderstandingRecord(
@@ -591,11 +594,32 @@ export class LegacyUnderstandingRuntime {
         await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
         reusedWorkUnitIds.add(previousGap.workUnitId);
       }
+      for (const relation of previousBundle?.relations ?? []) {
+        if ((relation.workUnitId && eligibleReuse.has(relation.workUnitId))
+          || candidates.some(({ id }) => id === relation.sourceId || id === relation.targetId)) {
+          relations.push(structuredClone(relation));
+        }
+      }
     }
     let batchSequence = 0;
     for (const workUnit of plan.workUnits) {
       if (reusedWorkUnitIds.has(workUnit.id)) continue;
-      const artifact = inventory.artifacts.find(({ id }) => workUnit.artifactIds[0] === id);
+      const directArtifact = inventory.artifacts.find(({ id }) => workUnit.artifactIds[0] === id) ?? null;
+      const contextCandidates = candidates.filter((candidate) => workUnit.dependencies.includes(candidate.workUnitId));
+      const contextFactIds = new Set(contextCandidates.flatMap(({ evidenceFactIds = [] }) => evidenceFactIds));
+      const workFacts = workUnit.kind === "LEAF"
+        ? factBundle.facts.filter(({ artifactId }) => workUnit.artifactIds.includes(artifactId))
+        : factBundle.facts.filter(({ id }) => contextFactIds.has(id));
+      const scopedArtifacts = workUnit.kind === "PROJECT_SYNTHESIS"
+        ? inventory.artifacts
+        : inventory.artifacts.filter((candidateArtifact) =>
+            workUnit.artifactIds.includes(candidateArtifact.id)
+            || workFacts.some(({ artifactId }) => artifactId === candidateArtifact.id));
+      const artifact = directArtifact ?? {
+        id: workUnit.id,
+        relativePath: `@synthesis/${workUnit.kind}/${workUnit.id}`,
+        artifactKinds: ["SYNTHESIS"],
+      };
       const selected = workUnit.kind === "GAP" ? [] : executionProfile.childSlots.map(producerForSlot);
       const decision = deepFreeze({
         id: contentId("ANALYSIS-ROUTE-DECISION", {
@@ -623,9 +647,6 @@ export class LegacyUnderstandingRuntime {
         await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
         continue;
       }
-      if (workUnit.kind !== "LEAF" || !artifact) continue;
-
-      const workFacts = factBundle.facts.filter(({ artifactId }) => workUnit.artifactIds.includes(artifactId));
       const slices = (await this.store.listUnderstandingRecords(job.projectId, "SOURCE_SLICE"))
         .filter((slice) => slice.analysisRunId === job.id && slice.workUnitId === workUnit.id
           && slice.snapshotManifestId === job.snapshotManifestId && slice.status !== "REJECTED");
@@ -679,7 +700,12 @@ export class LegacyUnderstandingRuntime {
         analysisRunId: job.id,
         profileRevisionId: executionProfile.id,
         sequence: ++batchSequence,
-        sourceScope: { artifactIds: [...workUnit.artifactIds], workUnitId: workUnit.id },
+        sourceScope: {
+          artifactIds: scopedArtifacts.map(({ id }) => id),
+          workUnitId: workUnit.id,
+          dependencyWorkUnitIds: [...workUnit.dependencies],
+          dependencyCandidateIds: contextCandidates.map(({ id }) => id),
+        },
         taskStatement: "Recover evidence-bound capability, API, data, configuration, and test semantics",
         outputSchema: { type: "object", required: ["candidates"], properties: { candidates: { type: "array" } } },
         sourcePolicy: { policyDigest: job.policyDigest, maxBytes: 65_536, maxTokens: 12_000 },
@@ -720,6 +746,8 @@ export class LegacyUnderstandingRuntime {
                 facts: workFacts,
                 sourceSlices: slices,
                 candidate: structuredClone(candidate),
+                contextCandidates: deepFreeze(structuredClone(contextCandidates)),
+                scopedArtifacts: deepFreeze(structuredClone(scopedArtifacts)),
               })
             : {
                 gap: {
@@ -754,50 +782,159 @@ export class LegacyUnderstandingRuntime {
         ...barrier,
         openedAt: this.clock().toISOString(),
       });
-      const validOutputs = childResults.filter(({ status }) => status === "COMPLETED").map(({ output }) => canonicalJson(output));
-      if (validOutputs.length !== childResults.length || new Set(validOutputs).size !== 1) {
-        const conflict = deepFreeze({
-          id: contentId("CONFLICT-LEDGER", { analysisBatchId: batch.id, resultIds: childResults.map(({ id }) => id) }),
-          projectId: job.projectId,
-          snapshotManifestId: job.snapshotManifestId,
-          analysisRunId: job.id,
-          analysisBatchId: batch.id,
-          status: "UNRESOLVED",
-          childResultIds: childResults.map(({ id }) => id),
-          createdAt: this.clock().toISOString(),
-        });
-        await this.store.appendUnderstandingRecord(job.projectId, "CONFLICT_LEDGER", conflict);
-        const gap = this.#gap(job, workUnit.id, "CHILD_RESULTS_CONFLICT");
+      const candidateOptions = childResults.flatMap((result) => {
+        if (result.status !== "COMPLETED") return [];
+        const outputCandidates = result.output?.candidates ?? result.output?.candidateFeatures ?? [];
+        return outputCandidates.map((proposal, index) => ({
+          ref: `${result.id}:${index}`,
+          childResultId: result.id,
+          childWorkUnitId: result.childWorkUnitId,
+          slotId: result.slotId,
+          independenceGroup: result.independenceGroup,
+          proposal: structuredClone(proposal),
+        }));
+      });
+      if (candidateOptions.length === 0) {
+        const gap = this.#gap(job, workUnit.id, "NO_CHILD_CANDIDATE");
         gaps.push(gap);
         await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
         continue;
       }
-      const agreedOutput = childResults[0]?.output;
-      const semanticCandidate = agreedOutput?.candidates?.[0] ?? agreedOutput?.candidateFeatures?.[0] ?? null;
-      candidates.push({
-        ...candidate,
-        proposal: semanticCandidate
-          ? {
-              ...candidate.proposal,
-              name: semanticCandidate.name ?? semanticCandidate.displayName ?? candidate.proposal.name,
-              statement: semanticCandidate.description ?? semanticCandidate.statement ?? candidate.proposal.statement,
-            }
-          : candidate.proposal,
-        confidence: semanticCandidate?.confidence ?? candidate.confidence,
+      let mainOutput;
+      try {
+        mainOutput = validateMainProducerOutput(this.mainProducer
+          ? await this.mainProducer({
+              job: deepFreeze(structuredClone(job)),
+              batch,
+              route: deepFreeze(structuredClone(executionProfile.mainAgent)),
+              executionProfile: deepFreeze(structuredClone(executionProfile)),
+              workUnit: deepFreeze(structuredClone(workUnit)),
+              artifact,
+              facts: deepFreeze(structuredClone(workFacts)),
+              childResults: deepFreeze(structuredClone(childResults)),
+              candidateOptions: deepFreeze(structuredClone(candidateOptions)),
+              contextCandidates: deepFreeze(structuredClone(contextCandidates)),
+              scopedArtifacts: deepFreeze(structuredClone(scopedArtifacts)),
+            })
+          : null, candidateOptions);
+      } catch (error) {
+        const gap = this.#gap(job, workUnit.id, "INVALID_OR_FAILED_MAIN_PRODUCER_OUTPUT");
+        gaps.push(gap);
+        await this.store.appendUnderstandingRecord(job.projectId, "GAP", {
+          ...gap,
+          details: { message: error.message },
+        });
+        continue;
+      }
+      const mainResult = deepFreeze({
+        id: contentId("MAIN-BATCH-RESULT", {
+          analysisBatchId: batch.id,
+          childResultIds: childResults.map(({ id }) => id),
+          output: mainOutput,
+        }),
+        projectId: job.projectId,
+        snapshotManifestId: job.snapshotManifestId,
+        analysisRunId: job.id,
         analysisBatchId: batch.id,
+        route: structuredClone(executionProfile.mainAgent),
+        profileRevisionId: executionProfile.id,
         childResultIds: childResults.map(({ id }) => id),
-        independenceGroups: barrier.independenceGroups,
+        output: structuredClone(mainOutput),
+        outputDigest: contentId("MAIN-BATCH-OUTPUT", mainOutput),
+        status: "COMPLETED",
+        createdAt: this.clock().toISOString(),
       });
+      await this.store.appendUnderstandingRecord(job.projectId, "MAIN_BATCH_RESULT", mainResult);
+      mainResultIds.push(mainResult.id);
+      const optionsByRef = new Map(candidateOptions.map((option) => [option.ref, option]));
+      const admitted = mainOutput.candidateDecisions.filter(({ disposition }) => disposition !== "REJECT");
+      const candidateIdByRef = new Map();
+      for (const decision of admitted) {
+        const option = optionsByRef.get(decision.candidateRef);
+        const semanticCandidate = option.proposal;
+        const selectedSlot = executionProfile.childSlots.find(({ id }) => id === option.slotId);
+        const childProducer = selectedSlot ? producerForSlot(selectedSlot) : decision.selected?.[0];
+        const reconciledCandidate = {
+          ...candidate,
+          id: contentId("UNDERSTANDING-CANDIDATE", {
+            workUnitId: workUnit.id,
+            artifactId: artifact.id,
+            evidenceFactIds,
+            slotId: option.slotId,
+            proposal: semanticCandidate,
+          }),
+          proposal: {
+            ...candidate.proposal,
+            name: semanticCandidate.name ?? semanticCandidate.displayName ?? candidate.proposal.name,
+            statement: semanticCandidate.description ?? semanticCandidate.statement ?? candidate.proposal.statement,
+          },
+          subjectKey: scopedArtifacts.some(({ relativePath }) => relativePath === semanticCandidate.subjectKey)
+            ? semanticCandidate.subjectKey
+            : candidate.subjectKey,
+          confidence: semanticCandidate.confidence ?? candidate.confidence,
+          producer: childProducer,
+          analysisBatchId: batch.id,
+          mainResultId: mainResult.id,
+          mainDisposition: decision.disposition,
+          mainRationale: decision.rationale,
+          childResultIds: [option.childResultId],
+          independenceGroups: [option.independenceGroup],
+        };
+        candidates.push(reconciledCandidate);
+        candidateIdByRef.set(decision.candidateRef, reconciledCandidate.id);
+      }
+      const boundedNodeIds = new Set([
+        artifact.id,
+        ...scopedArtifacts.map(({ id }) => id),
+        ...contextCandidates.map(({ id }) => id),
+        ...candidateIdByRef.values(),
+      ]);
+      const boundedEvidenceIds = new Set([...evidenceFactIds, ...sourceSliceIds]);
+      for (const relation of mainOutput.relations ?? []) {
+        const sourceId = relation.sourceArtifactId ?? candidateIdByRef.get(relation.sourceCandidateRef);
+        const targetId = relation.targetArtifactId ?? candidateIdByRef.get(relation.targetCandidateRef);
+        if (!boundedNodeIds.has(sourceId) || !boundedNodeIds.has(targetId)) {
+          throw new TypeError("Main producer relation escapes the bounded AnalysisBatch nodes");
+        }
+        if (typeof relation.predicate !== "string" || relation.predicate.trim() === "") {
+          throw new TypeError("Main producer relation predicate is required");
+        }
+        const relationEvidenceFactIds = [...new Set(relation.evidenceFactIds ?? [])].sort();
+        const relationSourceSliceIds = [...new Set(relation.sourceSliceIds ?? [])].sort();
+        if (relationEvidenceFactIds.length + relationSourceSliceIds.length === 0
+          || [...relationEvidenceFactIds, ...relationSourceSliceIds].some((id) => !boundedEvidenceIds.has(id))) {
+          throw new TypeError("Main producer relation requires bounded original evidence");
+        }
+        relations.push(deepFreeze({
+          id: contentId("UNDERSTANDING-CANDIDATE-RELATION", {
+            workUnitId: workUnit.id,
+            sourceId,
+            predicate: relation.predicate,
+            targetId,
+            evidenceFactIds: relationEvidenceFactIds,
+            sourceSliceIds: relationSourceSliceIds,
+          }),
+          workUnitId: workUnit.id,
+          sourceId,
+          predicate: relation.predicate,
+          targetId,
+          evidenceFactIds: relationEvidenceFactIds,
+          sourceSliceIds: relationSourceSliceIds,
+          mainResultId: mainResult.id,
+        }));
+      }
     }
     const bundle = deepFreeze({
-      id: contentId("UNDERSTANDING-CANDIDATE-BUNDLE", { analysisRunId: job.id, candidates, gaps }),
+      id: contentId("UNDERSTANDING-CANDIDATE-BUNDLE", { analysisRunId: job.id, candidates, relations, gaps }),
       projectId: job.projectId,
       snapshotManifestId: job.snapshotManifestId,
       analysisRunId: job.id,
       candidates,
+      relations,
       gaps,
       routeDecisionIds,
       analysisBatchIds,
+      mainResultIds,
       createdAt: this.clock().toISOString(),
     });
     await this.store.appendUnderstandingRecord(job.projectId, "CANDIDATE_BUNDLE", bundle);
@@ -805,6 +942,7 @@ export class LegacyUnderstandingRuntime {
       candidateBundleId: bundle.id,
       routeDecisionIds,
       analysisBatchIds,
+      mainResultIds,
       gapIds: gaps.map(({ id }) => id),
       reusedWorkUnitIds: [...reusedWorkUnitIds].sort(),
       revalidatedWorkUnitIds: plan.workUnits.map(({ id }) => id)
@@ -867,6 +1005,7 @@ export class LegacyUnderstandingRuntime {
       candidates: validCandidates,
       candidateAbsences: [],
       evidenceAllowsets: allowsets,
+      relations: bundle.relations ?? [],
     }, this.clock);
     await this.store.appendUnderstandingRecord(job.projectId, "RECONCILIATION", reconciliation);
     for (const conflict of reconciliation.conflicts) {
@@ -991,10 +1130,17 @@ export class LegacyUnderstandingRuntime {
       candidateBundle: bundle,
       reconciliation,
     });
+    const storedSurface = createStoredUnderstandingSurface({ job, surface }, this.clock);
+    await this.store.appendUnderstandingRecord(
+      job.projectId,
+      "UNDERSTANDING_SEMANTIC_SURFACE",
+      storedSurface,
+    );
     const equivalenceReport = await measureUnderstandingEquivalence({
       job,
       surface,
       resolver: this.equivalenceResolver,
+      store: this.store,
       clock: this.clock,
     });
     await this.store.appendUnderstandingRecord(job.projectId, "EQUIVALENCE_REPORT", equivalenceReport);
@@ -1004,11 +1150,19 @@ export class LegacyUnderstandingRuntime {
         inventory,
         candidateBundle: bundle,
         reconciliation,
+        semanticSurface: surface,
         equivalenceReport,
       });
       if (reviewedInput) {
+        const { reviewedMeasurement, ...evaluationInput } = reviewedInput;
+        if (!reviewedMeasurement) throw new TypeError("output-bound reviewed measurement record is required");
+        await this.store.appendUnderstandingRecord(
+          job.projectId,
+          "REVIEWED_MEASUREMENT",
+          reviewedMeasurement,
+        );
         const evaluation = evaluateUnderstanding({
-          ...reviewedInput,
+          ...evaluationInput,
           projectId: job.projectId,
           analysisRunId: job.id,
           inventory: {
@@ -1125,6 +1279,37 @@ export class LegacyUnderstandingRuntime {
         }
       }
     }
+    const governedTraceChains = typeof this.store.listCurrentTraceChains === "function"
+      ? (await this.store.listCurrentTraceChains(job.projectId))
+          .filter(({ snapshotManifestId }) => snapshotManifestId === job.snapshotManifestId)
+          .map((chain) => ({ ...structuredClone(chain), subject: { kind: "FEATURE", id: chain.featureId } }))
+      : [];
+    const governedEdges = [];
+    for (const chain of governedTraceChains) {
+      for (const segment of chain.segments ?? []) {
+        for (const endpoint of [segment.from, segment.to]) {
+          if (!nodes.some(({ id }) => id === endpoint.id)) {
+            nodes.push({
+              id: endpoint.id,
+              type: endpoint.type,
+              authority: "GOVERNED",
+              label: endpoint.id,
+              version: endpoint.version,
+            });
+          }
+        }
+        governedEdges.push({
+          id: segment.id,
+          source: segment.from.id,
+          target: segment.to.id,
+          type: segment.relation,
+          authority: segment.provenance.includes("EVIDENCE") || segment.provenance.includes("RUNNER")
+            ? "DETERMINISTIC_FACT"
+            : "GOVERNED",
+          status: segment.status,
+        });
+      }
+    }
     const nodeIds = new Set(nodes.map(({ id }) => id));
     const byRelativePath = new Map(inventory.artifacts.map((artifact) => [artifact.relativePath, artifact]));
     const resolveReference = (sourceArtifact, targetPath) => {
@@ -1183,7 +1368,7 @@ export class LegacyUnderstandingRuntime {
       type: "EVALUATED_BY",
       authority: "DETERMINISTIC_FACT",
     }));
-    const edges = [...factArtifactEdges, ...referenceEdges, ...candidateEvidenceEdges, ...childEvidenceEdges, ...evaluationEdges];
+    const edges = [...factArtifactEdges, ...referenceEdges, ...candidateEvidenceEdges, ...childEvidenceEdges, ...evaluationEdges, ...governedEdges];
     const traceChains = bundle.candidates.map((candidate) => {
       const candidateFacts = facts.filter(({ id }) => candidate.evidenceFactIds.includes(id));
       const candidateArtifacts = [...new Set(candidateFacts.map(({ artifactId }) => artifactId))];
@@ -1236,7 +1421,7 @@ export class LegacyUnderstandingRuntime {
       analysisRunId: job.id,
       nodes,
       edges,
-      traceChains: [...traceChains, ...relationTraceChains],
+      traceChains: [...traceChains, ...governedTraceChains, ...relationTraceChains],
       gaps: bundle.gaps,
       ...delta,
     }, this.clock);

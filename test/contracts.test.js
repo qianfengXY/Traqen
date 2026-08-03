@@ -234,6 +234,7 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   );
   assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["201"]);
   assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["202"]);
+  assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.requestBody.content["application/json"].schema.required.includes("workspaceExecutionProfileRevisionId"));
   const sourceSliceOperation = contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post;
   assert.equal(
     contract.components.securitySchemes.SourceSliceWorkerCredential.name,
@@ -305,10 +306,13 @@ test("reviewed correctness and equivalence evidence have fail-closed executable 
     readFile(new URL("../contracts/understanding-equivalence-evidence.schema.json", import.meta.url), "utf8").then(JSON.parse),
   ]);
   assert.ok(measurements.required.includes("productionInputDigest"));
+  assert.ok(measurements.required.includes("outputDigest"));
+  assert.ok(measurements.required.includes("candidateReviews"));
   assert.equal(measurements.properties.independent.const, true);
-  assert.deepEqual(equivalence.required, ["analysisRunId", "snapshotManifestId", "replay", "full"]);
-  assert.equal(equivalence.$defs.IndependentSurface.properties.independent.const, true);
-  assert.ok(equivalence.$defs.IndependentSurface.properties.surface.required.includes("digest"));
+  assert.deepEqual(equivalence.required, [
+    "analysisRunId", "snapshotManifestId", "replayAnalysisRunId", "fullAnalysisRunId",
+  ]);
+  assert.equal(equivalence.additionalProperties, false);
 });
 
 test("OpenAPI Workspace enrichment uses the canonical WorkUnit and CandidateBundle envelope", async () => {

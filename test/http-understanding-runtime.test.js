@@ -11,8 +11,10 @@ import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
 import {
   deterministicFixtureChildProducer,
+  deterministicFixtureMainProducer,
   fixtureEquivalenceResolver,
   fixtureReviewedEvaluationResolver,
+  persistFixtureExecutionProfile,
 } from "./helpers/legacy-understanding-fixture.js";
 
 test("allowlisted HTTP SourceRegistration starts and reads the real server-owned F001 job", async (t) => {
@@ -23,10 +25,12 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   await mkdir(snapshots);
   await writeFile(path.join(source, "entry.js"), "export function httpStartedCapability() {}\n");
   const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "P");
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const runtime = new LegacyUnderstandingRuntime({
     store, allowlistedRoots: [source], snapshotRoot: snapshots, sourceSliceBroker: broker,
     childProducer: deterministicFixtureChildProducer,
+    mainProducer: deterministicFixtureMainProducer,
     equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });
@@ -48,10 +52,17 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   assert.equal(registrationResponse.status, 201);
   const registration = await registrationResponse.json();
   assert.equal(Object.hasOwn(registration, "canonicalRootRef"), false);
-  const startResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
+  const missingProfileResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ sourceRegistrationId: registration.id, requestedMode: "AUTO" }),
+  });
+  assert.equal(missingProfileResponse.status, 400);
+  assert.match((await missingProfileResponse.json()).error.message, /workspaceExecutionProfileRevisionId is required/);
+  const startResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sourceRegistrationId: registration.id, requestedMode: "AUTO", workspaceExecutionProfileRevisionId: profile.id }),
   });
   assert.equal(startResponse.status, 201);
   const completed = await startResponse.json();

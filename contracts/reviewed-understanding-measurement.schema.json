@@ -5,8 +5,8 @@
   "type": "object",
   "required": [
     "analysisRunId", "snapshotManifestId", "truthSetVersionId", "reviewerId", "independent",
-    "productionInputDigest", "observedAnchorIds", "observedRelationships", "candidateSample",
-    "sourceAttribution", "gaps"
+    "productionInputDigest", "outputDigest", "anchorReviews", "candidateReviews",
+    "relationReviews", "gapReviews", "reviewedAt"
   ],
   "properties": {
     "analysisRunId": { "type": "string", "minLength": 1 },
@@ -15,18 +15,59 @@
     "reviewerId": { "type": "string", "minLength": 1 },
     "independent": { "const": true },
     "productionInputDigest": { "type": "string", "minLength": 1 },
-    "observedAnchorIds": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
-    "observedRelationships": { "type": "array", "uniqueItems": true, "items": { "type": ["array", "object"] } },
-    "candidateSample": { "$ref": "#/$defs/Count" },
-    "sourceAttribution": { "$ref": "#/$defs/Count" },
-    "gaps": { "$ref": "#/$defs/Count" }
-  },
-  "$defs": {
-    "Count": {
-      "type": "object",
-      "minProperties": 2,
-      "additionalProperties": { "type": "integer", "minimum": 0 }
-    }
+    "outputDigest": { "type": "string", "minLength": 1 },
+    "anchorReviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["anchorId", "verdict"],
+        "properties": {
+          "anchorId": { "type": "string", "minLength": 1 },
+          "artifactId": { "type": ["string", "null"] },
+          "verdict": { "enum": ["OBSERVED", "MISSING"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "candidateReviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["candidateId", "verdict", "evidenceRefIds"],
+        "properties": {
+          "candidateId": { "type": "string", "minLength": 1 },
+          "verdict": { "enum": ["CORRECT", "INCORRECT"] },
+          "evidenceRefIds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+        },
+        "additionalProperties": false
+      }
+    },
+    "relationReviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["relationship", "relationId", "verdict"],
+        "properties": {
+          "relationship": { "type": ["array", "object"] },
+          "relationId": { "type": ["string", "null"] },
+          "verdict": { "enum": ["OBSERVED", "MISSING", "ABSENT", "VIOLATION"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "gapReviews": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["gapId", "verdict"],
+        "properties": {
+          "gapId": { "type": "string", "minLength": 1 },
+          "verdict": { "enum": ["HONEST", "DISHONEST"] }
+        },
+        "additionalProperties": false
+      }
+    },
+    "reviewedAt": { "type": "string", "format": "date-time" }
   },
   "additionalProperties": false
 }

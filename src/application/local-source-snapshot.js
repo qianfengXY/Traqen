@@ -18,6 +18,20 @@ export class LocalSourceSnapshotCapture {
     void sourceDigest;
     await mkdir(this.snapshotRoot, { recursive: true });
     const target = path.join(this.snapshotRoot, snapshotManifestId);
+    const existing = await readFile(path.join(target, ".traqen-inventory.json"), "utf8")
+      .then((content) => JSON.parse(content))
+      .catch((error) => {
+        if (error.code === "ENOENT") return null;
+        throw error;
+      });
+    if (existing) {
+      if (existing.projectId !== projectId || existing.snapshotManifestId !== snapshotManifestId) {
+        throw new TypeError("Sealed Snapshot inventory identity does not match the capture request");
+      }
+      const seal = await readFile(path.join(target, ".traqen-sealed"), "utf8");
+      if (seal !== existing.id) throw new TypeError("Sealed Snapshot inventory digest marker is invalid");
+      return existing;
+    }
     const staging = path.join(this.snapshotRoot, `.staging-${snapshotManifestId}-${randomUUID()}`);
     await mkdir(staging, { recursive: false });
     const createdDirectories = new Set([staging]);

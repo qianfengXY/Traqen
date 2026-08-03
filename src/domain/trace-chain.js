@@ -81,6 +81,22 @@ function createSegments(input, chainId, identity, conformance, executionIsCurren
     }));
   };
   const feature = traceNode("FEATURE", input.feature, identity.featureId);
+  for (const [index, requirement] of (input.requirements ?? []).entries()) {
+    append(
+      traceNode("REQUIREMENT_DOCUMENT", requirement, `REQUIREMENT-DOCUMENT-${index + 1}`),
+      "SPECIFIES",
+      feature,
+      "REVIEWED_SYSTEM_REQUIREMENT",
+    );
+  }
+  for (const [index, design] of (input.designs ?? []).entries()) {
+    append(
+      feature,
+      "DESIGNED_BY",
+      traceNode("DESIGN_DOCUMENT", design, `DESIGN-DOCUMENT-${index + 1}`),
+      "REVIEWED_DESIGN",
+    );
+  }
   const claim = traceNode("CLAIM", input.claim, identity.claimId);
   append(feature, "HAS_RULE", claim, "GOVERNED_BASELINE");
   if (input.decision?.id) {

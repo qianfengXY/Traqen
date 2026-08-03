@@ -1356,11 +1356,11 @@
       "post": {
         "operationId": "startWorkspaceUnderstandingJob",
         "requestBody": { "required": true, "content": { "application/json": { "schema": {
-          "type": "object", "required": ["sourceRegistrationId", "requestedMode"], "properties": {
+          "type": "object", "required": ["sourceRegistrationId", "requestedMode", "workspaceExecutionProfileRevisionId"], "properties": {
             "sourceRegistrationId": { "type": "string" },
             "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] },
             "policyDigest": { "type": "string" },
-            "workspaceExecutionProfileRevisionId": { "type": "string", "description": "Optional only at the API boundary; when omitted the server materializes and pins an immutable local profile before starting." }
+            "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1, "description": "Required immutable Workspace-scoped execution profile revision. No global or local fallback is allowed." }
           }, "additionalProperties": false
         } } } },
         "responses": {

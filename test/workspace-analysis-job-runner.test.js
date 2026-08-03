@@ -60,3 +60,55 @@ test("durable jobs preserve pause, resume, cancel, and pinned profile state", as
   await assert.rejects(() => runner.resume(cancelled), /only a PAUSED job/);
   await assert.rejects(() => runner.cancel(cancelled), /terminal job/);
 });
+
+test("a cancellation persisted while a phase is running cannot be overwritten by stale local state", async () => {
+  const store = new MemoryTraceabilityStore();
+  let releasePhase;
+  const phaseStarted = new Promise((resolve) => {
+    releasePhase = resolve;
+  });
+  let finishHandler;
+  const handlerBlocked = new Promise((resolve) => {
+    finishHandler = resolve;
+  });
+  const handlers = Object.fromEntries(Object.values(WorkspaceAnalysisPhase).slice(0, -1).map((phase) => [
+    phase,
+    phase === WorkspaceAnalysisPhase.SOURCE_SCAN
+      ? async () => {
+          releasePhase();
+          await handlerBlocked;
+          return { phase };
+        }
+      : async () => ({ phase }),
+  ]));
+  const runner = new WorkspaceAnalysisJobRunner({ store, handlers });
+  const job = await runner.start({
+    id: "CANCEL-RACE",
+    projectId: "P",
+    sourceRegistrationId: "SOURCE",
+    snapshotManifestId: "S",
+    requestedMode: "FULL",
+    policyDigest: "POLICY",
+    workspaceExecutionProfileRevisionId: "PROFILE",
+  });
+  const running = runner.run(job);
+  await phaseStarted;
+  const cancelled = await runner.cancel(await runner.get("P", job.id));
+  finishHandler();
+  const result = await running;
+  assert.equal(cancelled.status, "CANCELLED");
+  assert.equal(result.status, "CANCELLED");
+  assert.equal((await runner.get("P", job.id)).status, "CANCELLED");
+  await store.appendUnderstandingRecord("P", "WORKSPACE_ANALYSIS_JOB", {
+    id: "STALE-RUNNER-CHECKPOINT-AFTER-CANCEL",
+    jobId: job.id,
+    checkpointSequence: 999,
+    projectId: "P",
+    snapshotManifestId: "S",
+    analysisRunId: job.id,
+    artifactIds: [],
+    state: { ...job, version: 999, status: "COMPLETED", phase: "COMPLETED" },
+    createdAt: new Date().toISOString(),
+  });
+  assert.equal((await runner.get("P", job.id)).status, "CANCELLED");
+});

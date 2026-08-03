@@ -11,8 +11,11 @@ import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-stor
 import { canonicalJson, contentId } from "../src/domain/index.js";
 import {
   deterministicFixtureChildProducer,
+  deterministicFixtureMainProducer,
   fixtureEquivalenceResolver,
   fixtureReviewedEvaluationResolver,
+  persistFixtureExecutionProfile,
+  persistFixtureIndependentRun,
 } from "./helpers/legacy-understanding-fixture.js";
 
 test("HTTP-owned runtime composes all seven durable phases and publishes immutable FULL then INCREMENTAL graphs", async () => {
@@ -25,13 +28,25 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
   await writeFile(path.join(source, "src", "orders.js"), "export function submitOrder() { return true; }\n");
   await writeFile(path.join(source, "lib", "customers.js"), "export function findCustomer() { return true; }\n");
   const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "P");
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   let producerCalls = 0;
+  let mainCalls = 0;
   const selectedProducer = async (input) => {
     producerCalls += 1;
     assert.equal(input.assignment.route.model, "LOCAL-DETERMINISTIC-PROFILE");
     assert.equal(input.executionProfile.id, "LOCAL-DETERMINISTIC-PROFILE");
-    return deterministicFixtureChildProducer(input);
+    const output = await deterministicFixtureChildProducer(input);
+    return {
+      candidates: output.candidates.map((candidate) => ({
+        ...candidate,
+        statement: `${candidate.statement} (${input.assignment.slotId} independent wording)`,
+      })),
+    };
+  };
+  const selectedMain = async (input) => {
+    mainCalls += 1;
+    return deterministicFixtureMainProducer(input);
   };
   const runtime = new LegacyUnderstandingRuntime({
     store,
@@ -39,6 +54,7 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     snapshotRoot: snapshots,
     sourceSliceBroker: broker,
     childProducer: selectedProducer,
+    mainProducer: selectedMain,
     equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("src/orders.js"),
   });
@@ -47,15 +63,19 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     id: "JOB-1",
     projectId: "P",
     sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
   assert.equal(first.status, "COMPLETED");
-  assert.equal(producerCalls, 4);
+  assert.ok(producerCalls >= 8);
+  assert.equal(mainCalls, producerCalls / 2);
+  assert.equal((await store.listUnderstandingRecords("P", "MAIN_BATCH_RESULT")).length, mainCalls);
   assert.deepEqual(first.completedPhases, ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING"]);
   const currentA = await store.getCurrentGraphHead("P");
   const revisionA = await store.getUnderstandingRecord("P", "GRAPH_REVISION", currentA.graphRevisionId);
   const artifactA = await store.getUnderstandingRecord("P", "GRAPH_ARTIFACT", revisionA.graphArtifactId);
   assert.ok(artifactA.nodes.some(({ authority }) => authority === "CANDIDATE"));
+  assert.ok(artifactA.nodes.filter(({ authority }) => authority === "CANDIDATE").length >= producerCalls);
   const candidateIds = artifactA.nodes.filter(({ type }) => type === "CANDIDATE_FEATURE").map(({ id }) => id);
   const candidateChains = artifactA.traceChains.filter(({ subject }) => subject?.kind === "CANDIDATE");
   assert.deepEqual(candidateChains.map(({ subject }) => subject.id).sort(), candidateIds.sort());
@@ -75,6 +95,7 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     id: "JOB-2",
     projectId: "P",
     sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
   assert.equal(second.status, "COMPLETED", JSON.stringify(second.error));
@@ -93,6 +114,7 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     id: "JOB-3",
     projectId: "P",
     sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
   assert.equal(unchanged.status, "COMPLETED", JSON.stringify(unchanged.error));
@@ -106,6 +128,7 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     id: "JOB-4-DELETED-ARTIFACT",
     projectId: "P",
     sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
   assert.equal(deleted.status, "COMPLETED", JSON.stringify(deleted.error));
@@ -126,32 +149,29 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     snapshotRoot: snapshots,
     sourceSliceBroker: broker,
     childProducer: selectedProducer,
+    mainProducer: selectedMain,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("src/orders.js"),
-    equivalenceResolver: async ({ job, surface }) => {
+    equivalenceResolver: async ({ job, surface, store: evidenceStore }) => {
       const divergentContent = { ...structuredClone(surface), candidates: [] };
       delete divergentContent.digest;
       const divergent = {
         digest: contentId("UNDERSTANDING-SEMANTIC-SURFACE", canonicalJson(divergentContent)),
         ...divergentContent,
       };
-      return {
-        replay: {
-          analysisRunId: `${job.id}:REPLAY`, snapshotManifestId: job.snapshotManifestId,
-          policyDigest: job.policyDigest, mode: job.resolvedMode, independent: true,
-          producer: { id: "INDEPENDENT", version: "1" }, surface,
-        },
-        full: {
-          analysisRunId: `${job.id}:FULL`, snapshotManifestId: job.snapshotManifestId,
-          policyDigest: job.policyDigest, mode: "FULL", independent: true,
-          producer: { id: "INDEPENDENT", version: "1" }, surface: divergent,
-        },
-      };
+      const replay = await persistFixtureIndependentRun({
+        store: evidenceStore, job, surface, id: `${job.id}:REPLAY`, mode: job.resolvedMode,
+      });
+      const full = await persistFixtureIndependentRun({
+        store: evidenceStore, job, surface: divergent, id: `${job.id}:FULL`, mode: "FULL",
+      });
+      return { replayAnalysisRunId: replay.id, fullAnalysisRunId: full.id };
     },
   });
   const rejected = await rejectingRuntime.start({
     id: "JOB-5-EQUIVALENCE-FAIL",
     projectId: "P",
     sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
   assert.equal(rejected.status, "FAILED");
@@ -170,12 +190,14 @@ test("missing configured Child executors persist explicit gaps and cannot publis
   await mkdir(snapshots);
   await writeFile(path.join(source, "entry.js"), "export function realProducerRequired() {}\n");
   const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "NO-PRODUCER");
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const runtime = new LegacyUnderstandingRuntime({
     store,
     allowlistedRoots: [source],
     snapshotRoot: snapshots,
     sourceSliceBroker: broker,
+    mainProducer: deterministicFixtureMainProducer,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
     equivalenceResolver: fixtureEquivalenceResolver,
   });
@@ -184,6 +206,7 @@ test("missing configured Child executors persist explicit gaps and cannot publis
     id: "NO-PRODUCER-JOB",
     projectId: "NO-PRODUCER",
     sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "FULL",
   }, { background: false });
   assert.equal(failed.status, "FAILED");
@@ -193,6 +216,41 @@ test("missing configured Child executors persist explicit gaps and cannot publis
   assert.ok(results.every(({ status, output }) =>
     status === "GAP" && output.gap.code === "NO_ELIGIBLE_PRODUCER"));
   const bundles = await store.listUnderstandingRecords("NO-PRODUCER", "CANDIDATE_BUNDLE");
+  assert.equal(bundles.at(-1).candidates.length, 0);
+});
+
+test("missing pinned Main executor cannot reconcile or publish Child candidates", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-no-main-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export function mainReconciliationRequired() {}\n");
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "NO-MAIN");
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer: deterministicFixtureChildProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({ projectId: "NO-MAIN", rootPath: source, displayName: "No Main" });
+  const failed = await runtime.start({
+    id: "NO-MAIN-JOB",
+    projectId: "NO-MAIN",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(failed.status, "FAILED");
+  assert.equal(await store.getCurrentGraphHead("NO-MAIN"), null);
+  assert.equal((await store.listUnderstandingRecords("NO-MAIN", "MAIN_BATCH_RESULT")).length, 0);
+  const gaps = await store.listUnderstandingRecords("NO-MAIN", "GAP");
+  assert.ok(gaps.some(({ code }) => code === "INVALID_OR_FAILED_MAIN_PRODUCER_OUTPUT"));
+  const bundles = await store.listUnderstandingRecords("NO-MAIN", "CANDIDATE_BUNDLE");
   assert.equal(bundles.at(-1).candidates.length, 0);
 });
 
@@ -212,6 +270,7 @@ test("a restarted runtime automatically recovers persisted running jobs but not 
     snapshotRoot: snapshots,
     sourceSliceBroker: broker,
     childProducer: deterministicFixtureChildProducer,
+    mainProducer: deterministicFixtureMainProducer,
     equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });
@@ -257,6 +316,7 @@ test("a restarted runtime automatically recovers persisted running jobs but not 
     snapshotRoot: snapshots,
     sourceSliceBroker: broker,
     childProducer: deterministicFixtureChildProducer,
+    mainProducer: deterministicFixtureMainProducer,
     equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });

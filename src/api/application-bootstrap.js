@@ -43,6 +43,22 @@ function loadRunEvidence(filePath, job, label) {
   return record;
 }
 
+async function loadEquivalenceEvidence(filePath, job, store) {
+  const document = JSON.parse(readFileSync(filePath, "utf8"));
+  const evidence = loadRunEvidence(filePath, job, "equivalence");
+  const surfaces = Array.isArray(document.surfaces) ? document.surfaces : [];
+  const independentRuns = Array.isArray(document.independentRuns) ? document.independentRuns : [];
+  for (const runId of [evidence.replayAnalysisRunId, evidence.fullAnalysisRunId]) {
+    const run = independentRuns.find(({ id }) => id === runId);
+    if (!run) throw new TypeError(`equivalence evidence run ${runId} is unavailable`);
+    const surface = surfaces.find(({ id }) => id === run.surfaceRecordId);
+    if (!surface) throw new TypeError(`equivalence evidence surface ${run.surfaceRecordId} is unavailable`);
+    await store.appendUnderstandingRecord(job.projectId, "UNDERSTANDING_SEMANTIC_SURFACE", surface);
+    await store.appendUnderstandingRecord(job.projectId, "INDEPENDENT_ANALYSIS_RUN", run);
+  }
+  return evidence;
+}
+
 export function createConfiguredApplication({ store, env = process.env, workspaceMcpExecutor = null }) {
   if (!store) throw new TypeError("store is required");
   const runnerId = env.RUNNER_ID ?? null;
@@ -109,10 +125,10 @@ export function createConfiguredApplication({ store, env = process.env, workspac
       })
     : null;
   const equivalenceResolver = env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH
-    ? async ({ job }) => loadRunEvidence(
+    ? async ({ job }) => loadEquivalenceEvidence(
       env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH,
       job,
-      "equivalence",
+      store,
     )
     : null;
   const legacyUnderstandingRuntime = sourceSliceBroker && allowedWorkspaceRoots.length > 0
@@ -234,6 +250,82 @@ export function createConfiguredApplication({ store, env = process.env, workspac
         return candidates.length > 0
           ? { candidates, producerOutputs: producerOutputs.map(({ kind, logicalName }) => ({ kind, logicalName })) }
           : { gap: { code: "PRODUCER_RETURNED_NO_CANDIDATE", message: "Configured producers returned no candidates" } };
+      },
+      mainProducer: async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions }) => {
+        const modelEntry = executionProfile.entries?.find((item) =>
+          item.kind === "MODEL" && item.logicalName === route.model);
+        const adapter = modelEntry ? analysisModelRegistry.resolve(route.model) : null;
+        if (!modelEntry || !adapter) throw new TypeError(`Pinned Main model ${route.model} is unavailable`);
+        if (modelEntry.manifest?.model && adapter.model !== modelEntry.manifest.model) {
+          throw new TypeError(`Pinned Main model ${route.model} revision drifted`);
+        }
+        const mainModelOutput = await adapter.analyze({
+          workUnit: {
+            id: `${batch.id}:MAIN`,
+            projectId: job.projectId,
+            snapshotManifestId: job.snapshotManifestId,
+            analysisRunId: job.id,
+            factIds: facts.map(({ id }) => id),
+            rootFactIds: facts.slice(0, 1).map(({ id }) => id),
+          },
+          workContext: {
+            scopeKey: artifact?.relativePath ?? workUnit.id,
+            rootNodeId: facts[0]?.id ?? artifact?.id ?? workUnit.id,
+            inputDigest: batch.inputDigest,
+            estimatedTokens: Math.min(12_000, Math.ceil(JSON.stringify(candidateOptions).length / 4)),
+          },
+          deterministicCandidates: candidateOptions.map(({ ref, proposal }) => ({
+            candidateKey: ref,
+            mode: "BUSINESS",
+            name: proposal.name ?? proposal.displayName,
+            description: proposal.statement ?? proposal.description,
+            confidence: proposal.confidence ?? "LOW",
+            evidenceFactIds: facts.map(({ id }) => id),
+            stableEvidenceNodeIds: facts.map(({ id }) => id),
+          })),
+          evidence: { facts, childCandidates: structuredClone(candidateOptions) },
+          context: { maxOutputTokens: 2_048 },
+        });
+        const executedCapabilities = [{ kind: "MODEL", logicalName: route.model }];
+        for (const skillName of route.skillNames) {
+          const entry = executionProfile.entries?.find((item) => item.kind === "SKILL" && item.logicalName === skillName);
+          const adapterId = entry?.manifest?.adapterId ?? entry?.manifest?.id ?? entry?.manifest?.skillId ?? skillName;
+          const adapterVersion = entry?.manifest?.version ?? entry?.manifest?.skillVersion ?? null;
+          const skillAdapter = adapterVersion
+            ? analysisSkills.get(`${adapterId}\u0000${adapterVersion}`)
+            : [...analysisSkills.values()].find(({ id }) => id === adapterId);
+          if (!skillAdapter) throw new TypeError(`Pinned Main Skill ${skillName} is unavailable`);
+          await skillAdapter.analyze({
+            request: { projectId: job.projectId, snapshotManifestId: job.snapshotManifestId, sourceComponentId: job.snapshotManifestId },
+            workUnit: { id: `${batch.id}:MAIN`, projectId: job.projectId, snapshotManifestId: job.snapshotManifestId, analysisRunId: job.id },
+            workContext: { scopeKey: artifact?.relativePath ?? workUnit.id, inputDigest: batch.inputDigest },
+            evidence: { nodes: facts.map((fact) => ({ ...fact, factId: fact.id })), edges: [] },
+          });
+          executedCapabilities.push({ kind: "SKILL", logicalName: skillName });
+        }
+        for (const mcpName of route.mcpNames) {
+          if (typeof workspaceMcpExecutor !== "function") throw new TypeError(`Pinned Main MCP ${mcpName} is unavailable`);
+          await workspaceMcpExecutor({
+            workspaceId: job.projectId,
+            analysisRunId: job.id,
+            assignment: { id: `${batch.id}:MAIN`, route, sourceScope: batch.sourceScope },
+            capability: executionProfile.entries?.find((item) => item.kind === "MCP" && item.logicalName === mcpName),
+            artifact: artifact ? { id: artifact.id, relativePath: artifact.relativePath } : null,
+            facts: structuredClone(facts),
+            childCandidates: structuredClone(candidateOptions),
+          });
+          executedCapabilities.push({ kind: "MCP", logicalName: mcpName });
+        }
+        return {
+          candidateDecisions: candidateOptions.map(({ ref }) => ({
+            candidateRef: ref,
+            disposition: "ACCEPT",
+            rationale: `Pinned Main Agent retained the evidence-bounded Child Candidate after complete-set reconciliation (${mainModelOutput.candidates?.length ?? 0} model proposals).`,
+          })),
+          relations: [],
+          gaps: [],
+          executedCapabilities,
+        };
       },
       reviewedEvaluationResolver,
       equivalenceResolver,

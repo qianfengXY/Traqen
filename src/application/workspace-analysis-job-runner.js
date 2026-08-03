@@ -47,6 +47,8 @@ export class WorkspaceAnalysisJobRunner {
       baseRevisionId: resolvedMode === "INCREMENTAL" ? currentGraphHead.graphRevisionId : null,
       policyDigest: input.policyDigest,
       workspaceExecutionProfileRevisionId: input.workspaceExecutionProfileRevisionId,
+      implementationAuthorId: input.implementationAuthorId ?? "TRAQEN-RUNTIME",
+      runnerId: input.runnerId ?? "TRAQEN-LOCAL-RUNNER",
     };
     const job = deepFreeze({
       id: input.id ?? contentId("WORKSPACE-ANALYSIS-JOB", identity),
@@ -60,12 +62,17 @@ export class WorkspaceAnalysisJobRunner {
       createdAt: this.clock().toISOString(),
       updatedAt: this.clock().toISOString(),
     });
-    await this.#persist(job);
-    return job;
+    return this.#persist(job);
   }
 
   async #persist(job) {
     const existing = await this.store.listUnderstandingRecords(job.projectId, "WORKSPACE_ANALYSIS_JOB");
+    const authoritativeTerminal = existing
+      .filter((record) => record.jobId === job.id && ["CANCELLED", "FAILED", "COMPLETED"].includes(record.state?.status))
+      .sort((left, right) => left.checkpointSequence - right.checkpointSequence
+        || ({ CANCELLED: 0, FAILED: 1, COMPLETED: 2 }[left.state.status]
+          - { CANCELLED: 0, FAILED: 1, COMPLETED: 2 }[right.state.status]))[0];
+    if (authoritativeTerminal) return deepFreeze(structuredClone(authoritativeTerminal.state));
     const checkpointSequence = Math.max(
       0,
       ...existing.filter((record) => record.jobId === job.id).map((record) => record.checkpointSequence ?? 0),
@@ -89,13 +96,18 @@ export class WorkspaceAnalysisJobRunner {
       createdAt: job.updatedAt,
     };
     await this.store.appendUnderstandingRecord(job.projectId, "WORKSPACE_ANALYSIS_JOB", checkpoint);
-    return job;
+    return this.get(job.projectId, job.id);
   }
 
   async get(projectId, jobId) {
     const checkpoints = await this.store.listUnderstandingRecords(projectId, "WORKSPACE_ANALYSIS_JOB");
-    return checkpoints
-      .filter((checkpoint) => checkpoint.jobId === jobId)
+    const matching = checkpoints.filter((checkpoint) => checkpoint.jobId === jobId);
+    const terminal = matching
+      .filter(({ state }) => ["CANCELLED", "FAILED", "COMPLETED"].includes(state.status))
+      .sort((left, right) => left.checkpointSequence - right.checkpointSequence
+        || ({ CANCELLED: 0, FAILED: 1, COMPLETED: 2 }[left.state.status]
+          - { CANCELLED: 0, FAILED: 1, COMPLETED: 2 }[right.state.status]))[0];
+    return terminal?.state ?? matching
       .sort((left, right) => right.checkpointSequence - left.checkpointSequence)[0]?.state ?? null;
   }
 
@@ -103,6 +115,9 @@ export class WorkspaceAnalysisJobRunner {
     let state = structuredClone(job);
     if (state.status === "PAUSED") return deepFreeze(state);
     for (const phase of orderedPhases.slice(0, -1)) {
+      const latestBeforePhase = await this.get(state.projectId, state.id);
+      if (latestBeforePhase && latestBeforePhase.version > state.version) state = structuredClone(latestBeforePhase);
+      if (["CANCELLED", "FAILED", "COMPLETED"].includes(state.status)) return deepFreeze(state);
       if (state.completedPhases.includes(phase)) continue;
       if (signal?.aborted || state.desiredState === "PAUSED") {
         const paused = deepFreeze({
@@ -112,12 +127,25 @@ export class WorkspaceAnalysisJobRunner {
           version: state.version + 1,
           updatedAt: this.clock().toISOString(),
         });
-        await this.#persist(paused);
-        return paused;
+        return this.#persist(paused);
       }
       const handler = this.handlers[phase];
       if (typeof handler !== "function") throw new TypeError(`No handler configured for ${phase}`);
       const output = await handler(deepFreeze(structuredClone(state)), { signal });
+      const latestAfterPhase = await this.get(state.projectId, state.id);
+      if (latestAfterPhase && latestAfterPhase.version > state.version) {
+        if (["CANCELLED", "FAILED"].includes(latestAfterPhase.status)) return deepFreeze(latestAfterPhase);
+        if (latestAfterPhase.desiredState === "PAUSED") {
+          const paused = deepFreeze({
+            ...structuredClone(latestAfterPhase),
+            status: "PAUSED",
+            version: latestAfterPhase.version + 1,
+            updatedAt: this.clock().toISOString(),
+          });
+          return this.#persist(paused);
+        }
+        state = structuredClone(latestAfterPhase);
+      }
       state = {
         ...state,
         phase: orderedPhases[orderedPhases.indexOf(phase) + 1],
@@ -126,7 +154,13 @@ export class WorkspaceAnalysisJobRunner {
         version: state.version + 1,
         updatedAt: this.clock().toISOString(),
       };
-      await this.#persist(deepFreeze(structuredClone(state)));
+      state = structuredClone(await this.#persist(deepFreeze(structuredClone(state))));
+      if (["CANCELLED", "FAILED", "COMPLETED"].includes(state.status)) return deepFreeze(state);
+    }
+    const latestBeforeCompletion = await this.get(state.projectId, state.id);
+    if (latestBeforeCompletion && latestBeforeCompletion.version > state.version
+      && ["CANCELLED", "FAILED"].includes(latestBeforeCompletion.status)) {
+      return deepFreeze(latestBeforeCompletion);
     }
     const completed = deepFreeze({
       ...state,
@@ -136,8 +170,7 @@ export class WorkspaceAnalysisJobRunner {
       completedAt: this.clock().toISOString(),
       updatedAt: this.clock().toISOString(),
     });
-    await this.#persist(completed);
-    return completed;
+    return this.#persist(completed);
   }
 
   async pause(job) {
@@ -149,8 +182,7 @@ export class WorkspaceAnalysisJobRunner {
       version: job.version + 1,
       updatedAt: this.clock().toISOString(),
     });
-    await this.#persist(paused);
-    return paused;
+    return this.#persist(paused);
   }
 
   async resume(job) {
@@ -162,11 +194,13 @@ export class WorkspaceAnalysisJobRunner {
       version: job.version + 1,
       updatedAt: this.clock().toISOString(),
     });
-    await this.#persist(resumed);
-    return resumed;
+    return this.#persist(resumed);
   }
 
   async fail(job, error) {
+    const latest = await this.get(job.projectId, job.id);
+    if (latest && ["CANCELLED", "COMPLETED"].includes(latest.status)) return latest;
+    if (latest && latest.version > job.version) job = latest;
     const failed = deepFreeze({
       ...structuredClone(job),
       status: "FAILED",
@@ -178,8 +212,7 @@ export class WorkspaceAnalysisJobRunner {
       },
       updatedAt: this.clock().toISOString(),
     });
-    await this.#persist(failed);
-    return failed;
+    return this.#persist(failed);
   }
 
   async cancel(job) {
@@ -194,7 +227,6 @@ export class WorkspaceAnalysisJobRunner {
       completedAt: this.clock().toISOString(),
       updatedAt: this.clock().toISOString(),
     });
-    await this.#persist(cancelled);
-    return cancelled;
+    return this.#persist(cancelled);
   }
 }

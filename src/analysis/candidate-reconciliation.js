@@ -76,6 +76,12 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     sourceSliceIds: [...new Set(group.flatMap(({ sourceSliceIds = [] }) => sourceSliceIds))].sort(),
   }));
   const conflicts = [];
+  const relations = structuredClone(input.relations ?? []);
+  for (const relation of relations) {
+    if (!relation?.id || typeof relation.predicate !== "string") {
+      throw new TypeError("reconciled relations require id and predicate");
+    }
+  }
   const bySubject = new Map();
   for (const candidate of candidates) {
     const subject = candidate.subjectKey ?? candidate.proposal?.name ?? null;
@@ -88,7 +94,11 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     const statements = new Set(values.map(({ proposal }) => proposal?.statement ?? proposal?.constraint?.value).filter(Boolean));
     if (statements.size > 1) {
       conflicts.push({
-        id: contentId("CANDIDATE-CONFLICT", { subject, candidateIds: values.map(({ id }) => id).sort() }),
+        id: contentId("CANDIDATE-CONFLICT", {
+          analysisRunId: input.analysisRunId,
+          subject,
+          candidateIds: values.map(({ id }) => id).sort(),
+        }),
         subject,
         candidateIds: values.map(({ id }) => id).sort(),
         status: "UNRESOLVED",
@@ -97,12 +107,13 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     }
   }
   return deepFreeze({
-    id: contentId("RECONCILIATION", { analysisRunId: input.analysisRunId, reconciled, conflicts }),
+    id: contentId("RECONCILIATION", { analysisRunId: input.analysisRunId, reconciled, conflicts, relations }),
     projectId: input.projectId,
     snapshotManifestId: input.snapshotManifestId,
     analysisRunId: input.analysisRunId,
     candidates: reconciled,
     conflicts,
+    relations,
     candidateAbsences: structuredClone(input.candidateAbsences ?? []),
     createdAt: clock().toISOString(),
   });

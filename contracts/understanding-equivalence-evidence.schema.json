@@ -3,40 +3,12 @@
   "$id": "https://traqen.dev/contracts/understanding-equivalence-evidence.schema.json",
   "title": "UnderstandingEquivalenceEvidence",
   "type": "object",
-  "required": ["analysisRunId", "snapshotManifestId", "replay", "full"],
+  "required": ["analysisRunId", "snapshotManifestId", "replayAnalysisRunId", "fullAnalysisRunId"],
   "properties": {
     "analysisRunId": { "type": "string", "minLength": 1 },
     "snapshotManifestId": { "type": "string", "minLength": 1 },
-    "replay": { "$ref": "#/$defs/IndependentSurface" },
-    "full": { "$ref": "#/$defs/IndependentSurface" }
-  },
-  "$defs": {
-    "IndependentSurface": {
-      "type": "object",
-      "required": ["analysisRunId", "snapshotManifestId", "policyDigest", "mode", "independent", "producer", "surface"],
-      "properties": {
-        "analysisRunId": { "type": "string", "minLength": 1 },
-        "snapshotManifestId": { "type": "string", "minLength": 1 },
-        "policyDigest": { "type": "string", "minLength": 1 },
-        "mode": { "enum": ["FULL", "INCREMENTAL"] },
-        "independent": { "const": true },
-        "producer": { "type": "object" },
-        "surface": {
-          "type": "object",
-          "required": ["digest", "artifacts", "facts", "candidates", "conflicts", "gaps"],
-          "properties": {
-            "digest": { "type": "string", "minLength": 1 },
-            "artifacts": { "type": "array" },
-            "facts": { "type": "array" },
-            "candidates": { "type": "array" },
-            "conflicts": { "type": "array" },
-            "gaps": { "type": "array" }
-          },
-          "additionalProperties": false
-        }
-      },
-      "additionalProperties": false
-    }
+    "replayAnalysisRunId": { "type": "string", "minLength": 1 },
+    "fullAnalysisRunId": { "type": "string", "minLength": 1 }
   },
   "additionalProperties": false
 }

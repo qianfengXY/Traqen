@@ -4,6 +4,8 @@ import test from "node:test";
 import { createEvaluationPolicy } from "../src/domain/index.js";
 import { evaluateUnderstanding } from "../src/application/understanding-evaluator.js";
 import { createReviewedUnderstandingEvaluationResolver } from "../src/application/reviewed-understanding-evaluation.js";
+import { measureUnderstandingEquivalence } from "../src/application/understanding-equivalence.js";
+import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
 
 const policy = createEvaluationPolicy({
   version: "traqen-self-v1",
@@ -17,6 +19,32 @@ const policy = createEvaluationPolicy({
     forbiddenRelationships: 1, sourceAttributions: 1, gaps: 1,
     replaySamples: 1, incrementalComparisons: 1,
   },
+});
+
+test("equivalence rejects cloned surfaces backed by nonexistent independent run IDs", async () => {
+  const store = new MemoryTraceabilityStore();
+  const surface = {
+    digest: "UNDERSTANDING-SEMANTIC-SURFACE:fixture",
+    artifacts: [], facts: [], candidates: [], conflicts: [], gaps: [], relations: [],
+  };
+  await assert.rejects(() => measureUnderstandingEquivalence({
+    job: {
+      id: "CURRENT",
+      projectId: "P",
+      snapshotManifestId: "S",
+      policyDigest: "POLICY",
+      workspaceExecutionProfileRevisionId: "PROFILE",
+      resolvedMode: "FULL",
+      implementationAuthorId: "AUTHOR",
+      runnerId: "RUNNER",
+    },
+    surface,
+    store,
+    resolver: async () => ({
+      replayAnalysisRunId: "NONEXISTENT-REPLAY",
+      fullAnalysisRunId: "NONEXISTENT-FULL",
+    }),
+  }), /persisted terminal independent run/);
 });
 
 test("multi-dimensional evaluation uses explicit denominators and an independent reviewer", () => {
@@ -82,19 +110,59 @@ test("production reviewed evaluation cannot derive observations or equivalence f
     truthSet,
     reviewerId: "REVIEWER",
     measurementResolver: async () => ({
+      analysisRunId: "RUN",
+      snapshotManifestId: "SNAPSHOT",
       truthSetVersionId: truthSet.id,
       reviewerId: "REVIEWER",
       independent: true,
       productionInputDigest: "production:WRONG",
-      observedAnchorIds: ["A1"],
-      observedRelationships: truthSet.requiredRelationships,
+      outputDigest: "OUTPUT",
+      anchorReviews: [{ anchorId: "A1", artifactId: null, verdict: "MISSING" }],
+      candidateReviews: [],
+      relationReviews: [
+        { relationship: truthSet.requiredRelationships[0], relationId: null, verdict: "MISSING" },
+        { relationship: truthSet.forbiddenRelationships[0], relationId: null, verdict: "ABSENT" },
+      ],
+      gapReviews: [],
+      reviewedAt: "2026-08-03T00:00:00.000Z",
     }),
   });
   await assert.rejects(() => resolver({
-    job: { id: "RUN", projectId: "P" },
+    job: { id: "RUN", projectId: "P", snapshotManifestId: "SNAPSHOT" },
     inventory: { inventoryDigest: "ACTUAL", artifacts: [] },
     candidateBundle: { candidates: [], gaps: [] },
     reconciliation: { conflicts: [] },
+    semanticSurface: { digest: "OUTPUT", relations: [] },
     equivalenceReport: { analysisRunId: "RUN", replay: { equivalent: true }, full: { equivalent: true } },
   }), /not bound to the current production input/);
+
+  const fabricated = createReviewedUnderstandingEvaluationResolver({
+    truthSet,
+    reviewerId: "REVIEWER",
+    measurementResolver: async () => ({
+      analysisRunId: "RUN",
+      snapshotManifestId: "SNAPSHOT",
+      truthSetVersionId: truthSet.id,
+      reviewerId: "REVIEWER",
+      independent: true,
+      productionInputDigest: "production:ACTUAL",
+      outputDigest: "OUTPUT",
+      anchorReviews: [{ anchorId: "A1", artifactId: "ARTIFACT-A", verdict: "OBSERVED" }],
+      candidateReviews: [{ candidateId: "NONEXISTENT", verdict: "CORRECT", evidenceRefIds: ["FACT-X"] }],
+      relationReviews: [
+        { relationship: truthSet.requiredRelationships[0], relationId: null, verdict: "MISSING" },
+        { relationship: truthSet.forbiddenRelationships[0], relationId: null, verdict: "ABSENT" },
+      ],
+      gapReviews: [],
+      reviewedAt: "2026-08-03T00:00:00.000Z",
+    }),
+  });
+  await assert.rejects(() => fabricated({
+    job: { id: "RUN", projectId: "P", snapshotManifestId: "SNAPSHOT" },
+    inventory: { inventoryDigest: "ACTUAL", artifacts: [{ id: "ARTIFACT-A", relativePath: "src/a.js" }] },
+    candidateBundle: { candidates: [], gaps: [] },
+    reconciliation: { conflicts: [], relations: [] },
+    semanticSurface: { digest: "OUTPUT", relations: [] },
+    equivalenceReport: { analysisRunId: "RUN", replay: { equivalent: true }, full: { equivalent: true } },
+  }), /NONEXISTENT.*absent from the persisted output/);
 });

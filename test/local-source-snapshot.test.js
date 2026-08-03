@@ -25,6 +25,10 @@ test("Local Runner captures an immutable allowlisted Snapshot and brokers Artifa
   assert.equal(inventory.disposedCount, inventory.totalCount);
   assert.equal(await readFile(path.join(snapshots, "S", "src", "entry.js"), "utf8"), "export const entry = true;\n");
   await assert.rejects(readFile(path.join(snapshots, "S", ".env"), "utf8"));
+  await writeFile(path.join(source, "src", "entry.js"), "export const mutated = true;\n");
+  const replayed = await capture.capture({ projectId: "P", snapshotManifestId: "S", rootPath: source });
+  assert.deepEqual(replayed, inventory);
+  assert.equal(await readFile(path.join(snapshots, "S", "src", "entry.js"), "utf8"), "export const entry = true;\n");
 
   const store = new MemoryTraceabilityStore();
   await store.appendUnderstandingRecord("P", "ARTIFACT_INVENTORY", inventory);

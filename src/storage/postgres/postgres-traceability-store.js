@@ -542,6 +542,15 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async listCurrentTraceChains(projectId) {
+    requireId(projectId, "projectId");
+    const result = await this.#database.query(
+      `SELECT chain_id FROM trace_chain_current WHERE project_id = $1 ORDER BY chain_id`,
+      [projectId],
+    );
+    return Promise.all(result.rows.map(({ chain_id: chainId }) => this.getCurrentTraceChain(projectId, chainId)));
+  }
+
   async appendFeatureVersion(projectId, feature) {
     requireId(projectId, "projectId");
     return this.#transaction(async () => {

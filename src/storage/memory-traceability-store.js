@@ -163,6 +163,15 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     return revisions?.at(-1) ?? null;
   }
 
+  async listCurrentTraceChains(projectId) {
+    const prefix = `${projectId}\u0000`;
+    return deepFreeze([...this.#chains.entries()]
+      .filter(([storageKey]) => storageKey.startsWith(prefix))
+      .map(([, revisions]) => revisions.at(-1))
+      .filter(Boolean)
+      .sort((left, right) => left.id.localeCompare(right.id)));
+  }
+
   #appendVersion(collection, storageKey, value, label) {
     const existing = collection.get(storageKey);
     if (existing && canonicalJson(recordIdentity(existing)) !== canonicalJson(recordIdentity(value))) {
@@ -1187,6 +1196,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       "REVIEW_QUEUE_ITEM", "REVIEW_BATCH_DECISION", "FEATURE_HISTORY",
   "SOURCE_SLICE_AUTH_AUDIT", "INCREMENTAL_PLAN",
   "EQUIVALENCE_REPORT",
+  "UNDERSTANDING_SEMANTIC_SURFACE", "INDEPENDENT_ANALYSIS_RUN", "REVIEWED_MEASUREMENT",
+  "MAIN_BATCH_RESULT",
 ]);
     if (!supported.has(recordType)) throw new TypeError(`Unsupported understanding record type ${recordType}`);
     if (!record?.id) throw new TypeError("understanding record id is required");
