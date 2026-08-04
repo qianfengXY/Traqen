@@ -35,6 +35,8 @@ async function factEvidenceChildProducer(input) {
       subjectKey: input.candidate.subjectKey,
       statement: input.candidate.proposal.statement,
       confidence: "LOW",
+      evidenceFactIds: [...input.candidate.evidenceFactIds],
+      sourceSliceIds: [...input.candidate.sourceSliceIds],
     }] };
   }
   const candidates = input.scopedArtifacts
@@ -44,12 +46,16 @@ async function factEvidenceChildProducer(input) {
         subjectKey: artifact.relativePath,
         statement: `Deterministic extraction produced evidence for ${artifact.relativePath}`,
         confidence: "LOW",
+        evidenceFactIds: input.facts.filter(({ artifactId }) => artifactId === artifact.id).map(({ id }) => id),
+        sourceSliceIds: [],
       }));
   return candidates.length > 0 ? { candidates } : { candidates: [{
     name: input.candidate.proposal.name,
     subjectKey: input.candidate.subjectKey,
     statement: input.candidate.proposal.statement,
     confidence: "LOW",
+    evidenceFactIds: [...input.candidate.evidenceFactIds],
+    sourceSliceIds: [...input.candidate.sourceSliceIds],
   }] };
 }
 

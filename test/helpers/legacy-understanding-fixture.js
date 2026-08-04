@@ -4,6 +4,8 @@ export async function deterministicFixtureChildProducer({ candidate }) {
       name: candidate.proposal.name,
       statement: candidate.proposal.statement,
       confidence: candidate.confidence,
+      evidenceFactIds: [...candidate.evidenceFactIds],
+      sourceSliceIds: [...candidate.sourceSliceIds],
     }],
   };
 }

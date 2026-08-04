@@ -34,7 +34,10 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
   const snapshots = path.join(temporary, "snapshots");
   await mkdir(source);
   await mkdir(snapshots);
-  await writeFile(path.join(source, "entry.js"), "export function producerBoundary() { return true; }\n");
+  await writeFile(
+    path.join(source, "entry.js"),
+    "export function producerBoundary() { return true; }\nexport function secondEvidence() { return true; }\n",
+  );
   const store = new MemoryTraceabilityStore();
   const profile = await persistFixtureExecutionProfile(store, projectId);
   const runtime = new LegacyUnderstandingRuntime({
@@ -52,7 +55,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
     id: `${projectId}-JOB`, projectId, sourceRegistrationId: registration.id,
     workspaceExecutionProfileRevisionId: profile.id, requestedMode: "FULL",
   }, { background: false });
-  return { result, store };
+  return { result, store, runtime, registration, profile };
 }
 
 test("HTTP-owned runtime composes all seven durable phases and publishes immutable FULL then INCREMENTAL graphs", async () => {
@@ -225,7 +228,10 @@ test("Main MERGE produces one reconciled Candidate with complete Child provenanc
   const snapshots = path.join(temporary, "snapshots");
   await mkdir(source);
   await mkdir(snapshots);
-  await writeFile(path.join(source, "entry.js"), "export function mergedCapability() { return true; }\n");
+  await writeFile(
+    path.join(source, "entry.js"),
+    "export function mergedCapability() { return true; }\nexport function secondMergeEvidence() { return true; }\n",
+  );
   const store = new MemoryTraceabilityStore();
   const profile = await persistFixtureExecutionProfile(store, "MERGE");
   const runtime = new LegacyUnderstandingRuntime({
@@ -233,11 +239,20 @@ test("Main MERGE produces one reconciled Candidate with complete Child provenanc
     allowlistedRoots: [source],
     snapshotRoot: snapshots,
     sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
-    childProducer: async ({ candidate, assignment }) => ({ candidates: [{
-      name: `Wording from ${assignment.slotId}`,
-      statement: `${candidate.proposal.statement} via ${assignment.slotId}`,
-      confidence: "LOW",
-    }] }),
+    childProducer: async ({ candidate, assignment, executionProfile }) => {
+      const slotIndex = executionProfile.childSlots.findIndex(({ id }) => id === assignment.slotId);
+      return { candidates: [{
+        name: `Wording from ${assignment.slotId}`,
+        statement: `${candidate.proposal.statement} via ${assignment.slotId}`,
+        confidence: "LOW",
+        evidenceFactIds: candidate.evidenceFactIds.length > 0
+          ? [candidate.evidenceFactIds[slotIndex % candidate.evidenceFactIds.length]]
+          : [],
+        sourceSliceIds: candidate.sourceSliceIds.length > 0
+          ? [candidate.sourceSliceIds[slotIndex % candidate.sourceSliceIds.length]]
+          : [],
+      }] };
+    },
     mainProducer: async ({ candidateOptions }) => {
       const refs = candidateOptions.map(({ ref }) => ref).sort();
       const mergedProposal = { name: "Merged capability", statement: "One reconciled semantic claim", confidence: "LOW" };
@@ -264,6 +279,9 @@ test("Main MERGE produces one reconciled Candidate with complete Child provenanc
   assert.equal(completed.status, "COMPLETED", JSON.stringify(completed.error));
   const bundle = await store.getUnderstandingRecord("MERGE", "CANDIDATE_BUNDLE", completed.outputs.ANALYSIS.candidateBundleId);
   const mainResults = await store.listUnderstandingRecords("MERGE", "MAIN_BATCH_RESULT");
+  const childResults = new Map(
+    (await store.listUnderstandingRecords("MERGE", "CHILD_BATCH_RESULT")).map((result) => [result.id, result]),
+  );
   assert.equal(bundle.candidates.length, mainResults.length);
   assert.ok(bundle.candidates.every((candidate) =>
     candidate.mainDisposition === "MERGE"
@@ -271,6 +289,14 @@ test("Main MERGE produces one reconciled Candidate with complete Child provenanc
     && candidate.mergedFromCandidateRefs.length === 2
     && candidate.childResultIds.length === 2
     && candidate.independenceGroups.length === 2));
+  for (const candidate of bundle.candidates) {
+    const expectedFactIds = [...new Set(candidate.childResultIds.flatMap((id) =>
+      childResults.get(id).output.candidates.flatMap(({ evidenceFactIds = [] }) => evidenceFactIds)))].sort();
+    const expectedSliceIds = [...new Set(candidate.childResultIds.flatMap((id) =>
+      childResults.get(id).output.candidates.flatMap(({ sourceSliceIds = [] }) => sourceSliceIds)))].sort();
+    assert.deepEqual(candidate.evidenceFactIds, expectedFactIds);
+    assert.deepEqual(candidate.sourceSliceIds, expectedSliceIds);
+  }
 });
 
 test("malformed Main MERGE proposals become explicit gaps and cannot publish Candidates", async (t) => {
@@ -378,6 +404,126 @@ test("invalid Child candidate fields fail at the first durable producer boundary
       assert.equal((await store.listUnderstandingRecords(projectId, "GRAPH_REVISION")).length, 0);
     });
   }
+});
+
+test("Child candidate evidence is validated before the first durable producer checkpoint", async (t) => {
+  const cases = [
+    {
+      name: "missing evidence",
+      evidence: () => ({}),
+      error: /requires at least one evidenceFactIds or sourceSliceIds/,
+    },
+    {
+      name: "foreign evidence",
+      evidence: () => ({
+        evidenceFactIds: ["FACT-OUTSIDE-ALLOWSET"],
+        sourceSliceIds: ["SLICE-OUTSIDE-ALLOWSET"],
+      }),
+      error: /evidenceFactIds\[0\].*outside the evidence allowset/,
+    },
+    {
+      name: "duplicate evidence",
+      evidence: ({ candidate }) => ({ evidenceFactIds: [candidate.evidenceFactIds[0], candidate.evidenceFactIds[0]] }),
+      error: /duplicate evidenceFactIds/,
+    },
+    {
+      name: "valid and foreign evidence mixed",
+      evidence: ({ candidate }) => ({ evidenceFactIds: [candidate.evidenceFactIds[0], "FACT-OUTSIDE-ALLOWSET"] }),
+      error: /evidenceFactIds\[1\].*outside the evidence allowset/,
+    },
+    {
+      name: "foreign SourceSlice mixed with a valid Fact",
+      evidence: ({ candidate }) => ({
+        evidenceFactIds: [candidate.evidenceFactIds[0]],
+        sourceSliceIds: ["SLICE-OUTSIDE-ALLOWSET"],
+      }),
+      error: /sourceSliceIds\[0\].*outside the evidence allowset/,
+    },
+    {
+      name: "non-array evidence",
+      evidence: () => ({ evidenceFactIds: { injected: true } }),
+      error: /evidenceFactIds must be an array/,
+    },
+    {
+      name: "empty evidence identifier",
+      evidence: () => ({ evidenceFactIds: [""] }),
+      error: /evidenceFactIds\[0\] must be a non-empty string/,
+    },
+    {
+      name: "confidence above the evidence cap",
+      confidence: "HIGH",
+      evidence: ({ candidate }) => ({ evidenceFactIds: [candidate.evidenceFactIds[0]] }),
+      error: /confidence exceeds evidence cap LOW/,
+    },
+  ];
+  for (const [index, testCase] of cases.entries()) {
+    await t.test(testCase.name, async () => {
+      let mainCalls = 0;
+      const projectId = `INVALID-CHILD-EVIDENCE-${index}`;
+      const { result, store } = await runProducerBoundaryScenario(projectId, {
+        childProducer: async (input) => ({ candidates: [{
+          name: input.candidate.proposal.name,
+          statement: "Untrusted statement must never inherit unrelated evidence",
+          confidence: testCase.confidence ?? "LOW",
+          ...testCase.evidence(input),
+        }] }),
+        mainProducer: async (input) => {
+          mainCalls += 1;
+          return deterministicFixtureMainProducer(input);
+        },
+      });
+      assert.equal(result.status, "FAILED");
+      assert.equal(await store.getCurrentGraphHead(projectId), null);
+      const childResults = await store.listUnderstandingRecords(projectId, "CHILD_BATCH_RESULT");
+      assert.ok(childResults.length > 0);
+      assert.ok(childResults.every(({ status, output }) =>
+        status === "GAP"
+        && output.gap.code === "INVALID_OR_FAILED_PRODUCER_OUTPUT"
+        && testCase.error.test(output.gap.message)));
+      assert.equal(mainCalls, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "MAIN_BATCH_RESULT")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "CANDIDATE_BUNDLE")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "GRAPH_REVISION")).length, 0);
+    });
+  }
+});
+
+test("valid Child evidence is preserved without expansion to unrelated WorkUnit evidence", async () => {
+  const projectId = "VALID-CHILD-EVIDENCE";
+  const { result, store, runtime, registration, profile } = await runProducerBoundaryScenario(projectId, {
+    childProducer: async ({ candidate }) => ({ candidates: [{
+      name: candidate.proposal.name,
+      statement: "Only the explicitly cited evidence may support this statement",
+      confidence: "LOW",
+      evidenceFactIds: candidate.evidenceFactIds.slice(0, 1),
+      sourceSliceIds: candidate.sourceSliceIds.slice(0, 1),
+    }] }),
+    mainProducer: deterministicFixtureMainProducer,
+  });
+  assert.equal(result.status, "COMPLETED", JSON.stringify(result.error));
+  const bundle = await store.getUnderstandingRecord(
+    projectId,
+    "CANDIDATE_BUNDLE",
+    result.outputs.ANALYSIS.candidateBundleId,
+  );
+  assert.ok(bundle.candidates.length > 0);
+  assert.ok(bundle.candidates.every(({ evidenceFactIds, sourceSliceIds }) =>
+    evidenceFactIds.length + sourceSliceIds.length === 1));
+  const leafAllowset = (await store.listUnderstandingRecords(projectId, "EVIDENCE_ALLOWSET"))
+    .find(({ factIds }) => factIds.length > 1);
+  assert.ok(leafAllowset);
+  const leafCandidate = bundle.candidates.find(({ workUnitId }) => workUnitId === leafAllowset.workUnitId);
+  assert.equal(leafCandidate.evidenceFactIds.length, 1);
+  assert.ok(leafAllowset.factIds.length > leafCandidate.evidenceFactIds.length);
+  const reused = await runtime.start({
+    id: `${projectId}-REUSE-JOB`,
+    projectId,
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "AUTO",
+  }, { background: false });
+  assert.equal(reused.status, "COMPLETED", JSON.stringify(reused.error));
+  assert.ok(reused.outputs.ANALYSIS.reusedCandidateIds.length > 0);
 });
 
 test("Child output must choose exactly one fully valid Candidate or Gap shape", async (t) => {

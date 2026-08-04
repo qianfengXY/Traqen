@@ -69,7 +69,9 @@ function extractSourceFacts(artifact, content) {
   return facts;
 }
 
-function validateChildProducerOutput(output) {
+const childConfidenceRank = Object.freeze({ LOW: 1, MEDIUM: 2, HIGH: 3 });
+
+function validateChildProducerOutput(output, evidenceAllowset) {
   if (!output || typeof output !== "object" || Array.isArray(output)) {
     throw new TypeError("Child producer output must be an object");
   }
@@ -110,6 +112,46 @@ function validateChildProducerOutput(output) {
     }
     if (candidate.confidence !== undefined && !["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence)) {
       throw new TypeError(`Child producer candidates[${index}].confidence is invalid`);
+    }
+    if (candidate.confidence !== undefined
+      && childConfidenceRank[candidate.confidence] > childConfidenceRank[evidenceAllowset.confidenceCap]) {
+      throw new TypeError(
+        `Child producer candidates[${index}].confidence exceeds evidence cap ${evidenceAllowset.confidenceCap}`,
+      );
+    }
+    let evidenceCount = 0;
+    for (const [field, allowedValues] of [
+      ["evidenceFactIds", evidenceAllowset.factIds],
+      ["sourceSliceIds", evidenceAllowset.sourceSliceIds],
+    ]) {
+      if (candidate[field] !== undefined && !Array.isArray(candidate[field])) {
+        throw new TypeError(`Child producer candidates[${index}].${field} must be an array`);
+      }
+      const values = candidate[field] ?? [];
+      const seen = new Set();
+      const allowed = new Set(allowedValues);
+      for (const [evidenceIndex, value] of values.entries()) {
+        if (typeof value !== "string" || value.trim() === "") {
+          throw new TypeError(
+            `Child producer candidates[${index}].${field}[${evidenceIndex}] must be a non-empty string`,
+          );
+        }
+        if (seen.has(value)) {
+          throw new TypeError(`Child producer candidates[${index}] has duplicate ${field}`);
+        }
+        if (!allowed.has(value)) {
+          throw new TypeError(
+            `Child producer candidates[${index}].${field}[${evidenceIndex}] is outside the evidence allowset`,
+          );
+        }
+        seen.add(value);
+      }
+      evidenceCount += values.length;
+    }
+    if (evidenceCount === 0) {
+      throw new TypeError(
+        `Child producer candidates[${index}] requires at least one evidenceFactIds or sourceSliceIds`,
+      );
     }
   }
   return output;
@@ -712,6 +754,7 @@ export class LegacyUnderstandingRuntime {
       const baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
       const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
       const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision?.analysisRunId);
+      const reusedCandidatesByWorkUnit = new Map();
       for (const prior of previousBundle?.candidates ?? []) {
         if (!eligibleReuse.has(prior.workUnitId) || prior.sourceSliceIds.length > 0) continue;
         const candidate = deepFreeze({
@@ -720,24 +763,32 @@ export class LegacyUnderstandingRuntime {
           analysisRunId: job.id,
           reusedFromAnalysisRunId: prior.analysisRunId,
         });
+        const workUnitCandidates = reusedCandidatesByWorkUnit.get(candidate.workUnitId) ?? [];
+        workUnitCandidates.push(candidate);
+        reusedCandidatesByWorkUnit.set(candidate.workUnitId, workUnitCandidates);
+        candidates.push(candidate);
+        reusedCandidateIds.push(candidate.id);
+        reusedWorkUnitIds.add(candidate.workUnitId);
+      }
+      for (const [workUnitId, workUnitCandidates] of reusedCandidatesByWorkUnit) {
         const allowset = createCandidateEvidenceAllowset({
           projectId: job.projectId,
           snapshotManifestId: job.snapshotManifestId,
           analysisRunId: job.id,
-          workUnitId: candidate.workUnitId,
-          factIds: candidate.evidenceFactIds,
-          sourceSliceIds: [],
-          confidenceCap: candidate.confidence,
-          routeDecision: { selected: [candidate.producer] },
+          workUnitId,
+          factIds: workUnitCandidates.flatMap(({ evidenceFactIds }) => evidenceFactIds),
+          sourceSliceIds: workUnitCandidates.flatMap(({ sourceSliceIds }) => sourceSliceIds),
+          confidenceCap: workUnitCandidates.map(({ confidence }) => confidence)
+            .sort((left, right) => childConfidenceRank[right] - childConfidenceRank[left])[0],
+          routeDecision: {
+            selected: [...new Map(workUnitCandidates.map(({ producer }) => [canonicalJson(producer), producer])).values()],
+          },
         });
         await this.store.appendUnderstandingRecord(job.projectId, "EVIDENCE_ALLOWSET", {
           id: contentId("EVIDENCE-ALLOWSET", allowset),
           ...allowset,
           createdAt: this.clock().toISOString(),
         });
-        candidates.push(candidate);
-        reusedCandidateIds.push(candidate.id);
-        reusedWorkUnitIds.add(candidate.workUnitId);
       }
       for (const previousGap of previousBundle?.gaps ?? []) {
         if (!eligibleReuse.has(previousGap.workUnitId)) continue;
@@ -907,11 +958,18 @@ export class LegacyUnderstandingRuntime {
                   code: "NO_ELIGIBLE_PRODUCER",
                   message: `No executable producer is mounted for Child slot ${assignment.slotId}`,
                 },
-              });
+              }, allowset);
         } catch (error) {
           invalidChildOutput = true;
           output = { gap: { code: "INVALID_OR_FAILED_PRODUCER_OUTPUT", message: error.message } };
         }
+        const outputCandidates = output.candidates ?? output.candidateFeatures ?? [];
+        const childEvidenceFactIds = [...new Set(
+          outputCandidates.flatMap(({ evidenceFactIds: ids = [] }) => ids),
+        )].sort();
+        const childSourceSliceIds = [...new Set(
+          outputCandidates.flatMap(({ sourceSliceIds: ids = [] }) => ids),
+        )].sort();
         const childResult = commitChildBatchResult({
           workspaceId: job.projectId,
           analysisRunId: job.id,
@@ -922,8 +980,8 @@ export class LegacyUnderstandingRuntime {
           independenceGroup: assignment.route.independenceGroup,
           status: output.gap ? "GAP" : "COMPLETED",
           output,
-          evidenceFactIds,
-          sourceSliceIds,
+          evidenceFactIds: childEvidenceFactIds,
+          sourceSliceIds: childSourceSliceIds,
         }, this.clock);
         await this.store.appendUnderstandingRecord(job.projectId, "CHILD_BATCH_RESULT", childResult);
         childResults.push(childResult);
@@ -1021,6 +1079,12 @@ export class LegacyUnderstandingRuntime {
           const mergedOptions = admittedRefs.map((ref) => optionsByRef.get(ref));
           const option = mergedOptions[0];
           const semanticCandidate = decision.disposition === "MERGE" ? decision.mergedProposal : option.proposal;
+          const reconciledEvidenceFactIds = [...new Set(
+            mergedOptions.flatMap(({ proposal }) => proposal.evidenceFactIds ?? []),
+          )].sort();
+          const reconciledSourceSliceIds = [...new Set(
+            mergedOptions.flatMap(({ proposal }) => proposal.sourceSliceIds ?? []),
+          )].sort();
           const selectedSlot = executionProfile.childSlots.find(({ id }) => id === option.slotId);
           const childProducer = selectedSlot ? producerForSlot(selectedSlot) : decision.selected?.[0];
           const reconciledCandidate = validateReconciledCandidateProjection({
@@ -1028,7 +1092,8 @@ export class LegacyUnderstandingRuntime {
             id: contentId("UNDERSTANDING-CANDIDATE", {
               workUnitId: workUnit.id,
               artifactId: artifact.id,
-              evidenceFactIds,
+              evidenceFactIds: reconciledEvidenceFactIds,
+              sourceSliceIds: reconciledSourceSliceIds,
               candidateInputs: mergedOptions.map(({ slotId, proposal }) => ({ slotId, proposal }))
                 .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right))),
               proposal: semanticCandidate,
@@ -1041,6 +1106,8 @@ export class LegacyUnderstandingRuntime {
             subjectKey: scopedArtifacts.some(({ relativePath }) => relativePath === semanticCandidate.subjectKey)
               ? semanticCandidate.subjectKey
               : candidate.subjectKey,
+            evidenceFactIds: reconciledEvidenceFactIds,
+            sourceSliceIds: reconciledSourceSliceIds,
             confidence: semanticCandidate.confidence ?? candidate.confidence,
             producer: childProducer,
             analysisBatchId: batch.id,
@@ -1051,6 +1118,7 @@ export class LegacyUnderstandingRuntime {
             childResultIds: [...new Set(mergedOptions.map(({ childResultId }) => childResultId))].sort(),
             independenceGroups: [...new Set(mergedOptions.map(({ independenceGroup }) => independenceGroup))].sort(),
           });
+          validateCandidateAgainstEvidenceAllowset(reconciledCandidate, allowset);
           batchCandidates.push(reconciledCandidate);
           for (const ref of admittedRefs) candidateIdByRef.set(ref, reconciledCandidate.id);
         }
