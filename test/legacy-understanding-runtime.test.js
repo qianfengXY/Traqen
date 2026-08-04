@@ -647,6 +647,150 @@ test("Main Candidate relations preserve Fact and SourceSlice evidence in canonic
   }
 });
 
+test("SourceSlice revalidation invalidates dependent relation synthesis while preserving unrelated reuse", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-slice-dependency-closure-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(path.join(source, "src"), { recursive: true });
+  await mkdir(path.join(source, "lib"), { recursive: true });
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "src", "mixed.js"), "export function mixedEvidenceLeaf() { return true; }\n");
+  await writeFile(path.join(source, "lib", "unrelated.js"), "export function unrelatedLeaf() { return true; }\n");
+  const backingStore = new MemoryTraceabilityStore();
+  let corruptReconciliationRunId = null;
+  const store = new Proxy(backingStore, {
+    get(target, property) {
+      if (property === "getUnderstandingRecord") {
+        return async (projectId, recordType, recordId) => {
+          const record = await target.getUnderstandingRecord(projectId, recordType, recordId);
+          if (recordType !== "RECONCILIATION"
+            || record?.analysisRunId !== corruptReconciliationRunId
+            || record.relations.length === 0) return record;
+          const corrupted = structuredClone(record);
+          corrupted.relations[0].targetId = "STALE-CANDIDATE-ENDPOINT";
+          return corrupted;
+        };
+      }
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const profile = await persistFixtureExecutionProfile(store, "SLICE-CLOSURE");
+  const childProducer = async ({ artifact, assignment, candidate, sourceSlices }) => {
+    const sourceSliceLeaf = artifact.relativePath === "src/mixed.js"
+      && assignment.slotId === "CHILD-1";
+    return { candidates: [{
+      name: candidate.proposal.name,
+      statement: `${artifact.relativePath} ${assignment.slotId}`,
+      confidence: "LOW",
+      evidenceFactIds: sourceSliceLeaf ? [] : [...candidate.evidenceFactIds],
+      sourceSliceIds: sourceSliceLeaf ? [sourceSlices[0].id] : [],
+    }] };
+  };
+  const mainProducer = async (input) => {
+    const accepted = await deterministicFixtureMainProducer(input);
+    if (input.workUnit.kind === "LEAF") return accepted;
+    const target = input.workUnit.kind === "MODULE_SYNTHESIS"
+      ? input.contextCandidates.find(({ sourceSliceIds }) => sourceSliceIds.length > 0)
+      : input.contextCandidates[0];
+    return {
+      ...accepted,
+      relations: [{
+        sourceCandidateRef: input.candidateOptions[0].ref,
+        predicate: "DEPENDS_ON",
+        targetArtifactId: target.id,
+        evidenceFactIds: [...input.candidateOptions[0].proposal.evidenceFactIds],
+        sourceSliceIds: [],
+      }],
+    };
+  };
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer,
+    mainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("src/mixed.js"),
+  });
+  const registration = await runtime.registerSource({
+    projectId: "SLICE-CLOSURE", rootPath: source, displayName: "SourceSlice closure",
+  });
+  const first = await runtime.start({
+    id: "SLICE-CLOSURE-FULL",
+    projectId: "SLICE-CLOSURE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(first.status, "COMPLETED", JSON.stringify(first.error));
+  const firstBundle = await store.getUnderstandingRecord(
+    "SLICE-CLOSURE", "CANDIDATE_BUNDLE", first.outputs.ANALYSIS.candidateBundleId,
+  );
+  const sourceSliceLeaf = firstBundle.candidates.find(({ sourceSliceIds }) => sourceSliceIds.length > 0);
+  assert.ok(sourceSliceLeaf);
+  assert.ok(firstBundle.relations.some(({ targetId }) => targetId === sourceSliceLeaf.id));
+
+  const incremental = await runtime.start({
+    id: "SLICE-CLOSURE-AUTO",
+    projectId: "SLICE-CLOSURE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "AUTO",
+  }, { background: false });
+  assert.equal(incremental.status, "COMPLETED", JSON.stringify(incremental.error));
+  const incrementalPlan = await store.getUnderstandingRecord(
+    "SLICE-CLOSURE", "INCREMENTAL_PLAN", incremental.outputs.SOURCE_SCAN.incrementalPlanId,
+  );
+  const plan = await store.getUnderstandingRecord(
+    "SLICE-CLOSURE", "UNDERSTANDING_PLAN", incremental.outputs.SOURCE_SCAN.planId,
+  );
+  const dependentIds = new Set([sourceSliceLeaf.workUnitId]);
+  for (const unit of plan.workUnits) {
+    if (unit.dependencies.some((id) => dependentIds.has(id))) dependentIds.add(unit.id);
+  }
+  assert.ok([...dependentIds].every((id) => incrementalPlan.affectedWorkUnitIds.includes(id)));
+  assert.ok([...dependentIds].every((id) => !incrementalPlan.reusedWorkUnitIds.includes(id)));
+  assert.deepEqual(
+    incremental.outputs.ANALYSIS.revalidatedWorkUnitIds,
+    [...incrementalPlan.affectedWorkUnitIds].sort(),
+  );
+  assert.deepEqual(incrementalPlan.sourceSliceRevalidationWorkUnitIds, [sourceSliceLeaf.workUnitId]);
+  assert.deepEqual(incrementalPlan.revalidationPlan.affectedWorkUnitIds, [...incrementalPlan.affectedWorkUnitIds].sort());
+  assert.equal(incrementalPlan.revalidationPlan.required, true);
+  assert.ok(incrementalPlan.revalidationPlan.affectedArtifactIds.length > 0);
+  assert.ok(incrementalPlan.reusedWorkUnitIds.length > 0);
+  const incrementalBundle = await store.getUnderstandingRecord(
+    "SLICE-CLOSURE", "CANDIDATE_BUNDLE", incremental.outputs.ANALYSIS.candidateBundleId,
+  );
+  assert.ok(incrementalBundle.relations.every(({ sourceId, targetId }) =>
+    incrementalBundle.candidates.some(({ id }) => id === sourceId)
+    && incrementalBundle.candidates.some(({ id }) => id === targetId)));
+  const semanticRelations = (bundle) => bundle.relations.map((relation) => [
+    bundle.candidates.find(({ id }) => id === relation.sourceId)?.proposal.statement,
+    relation.predicate,
+    bundle.candidates.find(({ id }) => id === relation.targetId)?.proposal.statement,
+  ]).sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right)));
+  assert.deepEqual(semanticRelations(incrementalBundle), semanticRelations(firstBundle));
+  const current = await store.getCurrentGraphHead("SLICE-CLOSURE");
+  assert.equal(current.version, 2);
+
+  const revisionCount = (await store.listUnderstandingRecords("SLICE-CLOSURE", "GRAPH_REVISION")).length;
+  corruptReconciliationRunId = "SLICE-CLOSURE-STALE-ENDPOINT";
+  const failed = await runtime.start({
+    id: corruptReconciliationRunId,
+    projectId: "SLICE-CLOSURE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "AUTO",
+  }, { background: false });
+  assert.equal(failed.status, "FAILED");
+  assert.match(failed.error.message, /cannot resolve both endpoints/);
+  assert.equal((await store.listUnderstandingRecords("SLICE-CLOSURE", "GRAPH_REVISION")).length, revisionCount);
+  assert.deepEqual(await store.getCurrentGraphHead("SLICE-CLOSURE"), current);
+});
+
 test("Main relation evidence rejects missing, duplicate, foreign, and mixed-valid-foreign references", async (t) => {
   const cases = [
     { name: "missing evidence", evidence: () => ({ evidenceFactIds: [], sourceSliceIds: [] }) },

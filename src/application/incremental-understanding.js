@@ -18,6 +18,16 @@ export function compareUnderstandingSnapshots(previous, current) {
 
 export function planIncrementalUnderstanding(input) {
   const mode = resolveUnderstandingMode(input.requestedMode ?? "AUTO", input.currentGraphHead);
+  const currentWorkUnitIds = new Set(input.current.plan.workUnits.map(({ id }) => id));
+  const revalidationWorkUnitIds = input.revalidationWorkUnitIds ?? [];
+  if (!Array.isArray(revalidationWorkUnitIds)) {
+    throw new TypeError("revalidationWorkUnitIds must contain current UnderstandingPlan WorkUnit IDs");
+  }
+  const revalidationWorkUnitIdSet = new Set(revalidationWorkUnitIds);
+  if (revalidationWorkUnitIdSet.size !== revalidationWorkUnitIds.length
+    || revalidationWorkUnitIds.some((id) => typeof id !== "string" || !currentWorkUnitIds.has(id))) {
+    throw new TypeError("revalidationWorkUnitIds must contain current UnderstandingPlan WorkUnit IDs");
+  }
   const changes = mode === "FULL" ? input.current.inventory.artifacts.map(({ id, relativePath, path }) => ({
     path: relativePath ?? path, type: "ADDED", beforeArtifactId: null, afterArtifactId: id,
   })) : compareUnderstandingSnapshots(input.previous, input.current);
@@ -26,6 +36,7 @@ export function planIncrementalUnderstanding(input) {
   const directlyAffected = new Set(input.current.plan.workUnits
     .filter((unit) => unit.artifactIds.some((id) => changedArtifactIds.has(id)))
     .map(({ id }) => id));
+  for (const workUnitId of revalidationWorkUnitIdSet) directlyAffected.add(workUnitId);
   if (mode === "INCREMENTAL" && input.reuseCompatibility?.compatible === false) {
     for (const { id } of input.current.plan.workUnits) directlyAffected.add(id);
   }
@@ -82,6 +93,12 @@ export function planIncrementalUnderstanding(input) {
     .filter((id) => affected.has(id));
   const reusedWorkUnitIds = input.current.plan.workUnits.map(({ id }) => id)
     .filter((id) => !affectedWorkUnitIds.includes(id));
+  const affectedArtifactIds = new Set(changedArtifactIds);
+  for (const unit of input.current.plan.workUnits) {
+    if (revalidationWorkUnitIdSet.has(unit.id)) {
+      for (const artifactId of unit.artifactIds) affectedArtifactIds.add(artifactId);
+    }
+  }
   return deepFreeze({
     mode,
     baseRevisionId: mode === "INCREMENTAL" ? input.currentGraphHead.graphRevisionId : null,
@@ -95,8 +112,8 @@ export function planIncrementalUnderstanding(input) {
       changes,
     }),
     revalidationPlan: {
-      required: changes.length > 0,
-      affectedArtifactIds: [...changedArtifactIds].sort(),
+      required: affectedWorkUnitIds.length > 0,
+      affectedArtifactIds: [...affectedArtifactIds].sort(),
       affectedWorkUnitIds: [...affectedWorkUnitIds].sort(),
     },
   });

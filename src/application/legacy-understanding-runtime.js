@@ -668,36 +668,32 @@ export class LegacyUnderstandingRuntime {
       currentReuseContract,
       Boolean(job.baseRevisionId),
     );
+    const currentWorkUnitIds = new Set(plan.workUnits.map(({ id }) => id));
+    const sourceSliceRevalidations = new Set();
+    if (baseRevision) {
+      for (const candidate of previousBundle?.candidates ?? []) {
+        if (candidate.sourceSliceIds.length > 0
+          && currentWorkUnitIds.has(candidate.workUnitId)) {
+          sourceSliceRevalidations.add(candidate.workUnitId);
+        }
+      }
+      for (const relation of previousBundle?.relations ?? []) {
+        if ((relation.sourceSliceIds?.length ?? 0) > 0
+          && currentWorkUnitIds.has(relation.workUnitId)) {
+          sourceSliceRevalidations.add(relation.workUnitId);
+        }
+      }
+    }
     const plannedIncrementalDecision = planIncrementalUnderstanding({
       requestedMode: job.resolvedMode,
       currentGraphHead: job.baseRevisionId ? { graphRevisionId: job.baseRevisionId } : null,
       previous,
       current: { inventory, plan },
       reuseCompatibility,
+      revalidationWorkUnitIds: [...sourceSliceRevalidations].sort(),
     });
-    const sourceSliceRevalidations = new Set();
-    if (baseRevision && plannedIncrementalDecision.reusedWorkUnitIds.length > 0) {
-      for (const candidate of previousBundle?.candidates ?? []) {
-        if (candidate.sourceSliceIds.length > 0
-          && plannedIncrementalDecision.reusedWorkUnitIds.includes(candidate.workUnitId)) {
-          sourceSliceRevalidations.add(candidate.workUnitId);
-        }
-      }
-      for (const relation of previousBundle?.relations ?? []) {
-        if ((relation.sourceSliceIds?.length ?? 0) > 0
-          && plannedIncrementalDecision.reusedWorkUnitIds.includes(relation.workUnitId)) {
-          sourceSliceRevalidations.add(relation.workUnitId);
-        }
-      }
-    }
     const incrementalDecision = {
       ...plannedIncrementalDecision,
-      affectedWorkUnitIds: [...new Set([
-        ...plannedIncrementalDecision.affectedWorkUnitIds,
-        ...sourceSliceRevalidations,
-      ])].sort(),
-      reusedWorkUnitIds: plannedIncrementalDecision.reusedWorkUnitIds
-        .filter((id) => !sourceSliceRevalidations.has(id)),
       sourceSliceRevalidationWorkUnitIds: [...sourceSliceRevalidations].sort(),
     };
     const workUnitReuseDecisions = plan.workUnits.map((workUnit) => {
@@ -898,12 +894,23 @@ export class LegacyUnderstandingRuntime {
       const baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
       const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
       const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision?.analysisRunId);
+      const reusableEndpointIds = new Set([
+        ...inventory.artifacts.map(({ id }) => id),
+        ...(previousBundle?.candidates ?? [])
+          .filter((candidate) => eligibleReuse.has(candidate.workUnitId) && candidate.sourceSliceIds.length === 0)
+          .map(({ id }) => id),
+      ]);
       const reusablePreviousRelations = (previousBundle?.relations ?? [])
         .filter((relation) => {
           const reuseDecision = reuseDecisionByWorkUnit.get(relation.workUnitId);
-          return eligibleReuse.has(relation.workUnitId)
+          const selectedForReuse = eligibleReuse.has(relation.workUnitId)
             && reuseDecision?.disposition === "REUSE"
             && reuseDecision.previousRelationIds.includes(relation.id);
+          if (selectedForReuse
+            && (!reusableEndpointIds.has(relation.sourceId) || !reusableEndpointIds.has(relation.targetId))) {
+            throw new TypeError(`Relation ${relation.id} is not bound to fully reusable endpoints`);
+          }
+          return selectedForReuse;
         });
       const reusedCandidatesByWorkUnit = new Map();
       for (const prior of previousBundle?.candidates ?? []) {

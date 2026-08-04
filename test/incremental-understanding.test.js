@@ -48,6 +48,39 @@ test("changed leaf invalidates the full reverse dependency closure", () => {
   assert.deepEqual(result.reusedWorkUnitIds, ["UNRELATED"]);
 });
 
+test("forced SourceSlice revalidation seeds invalidate dependents and share one final plan", () => {
+  const result = planIncrementalUnderstanding({
+    requestedMode: "INCREMENTAL",
+    currentGraphHead: { graphRevisionId: "G1" },
+    previous: { inventory: { snapshotManifestId: "SAME", artifacts: [
+      { id: "A", path: "src/a.js", contentDigest: "same" },
+      { id: "B", path: "lib/b.js", contentDigest: "same" },
+    ] } },
+    current: {
+      inventory: { snapshotManifestId: "SAME", artifacts: [
+        { id: "A", path: "src/a.js", contentDigest: "same" },
+        { id: "B", path: "lib/b.js", contentDigest: "same" },
+      ] },
+      plan: { workUnits: [
+        { id: "LEAF", artifactIds: ["A"], dependencies: [] },
+        { id: "MODULE", artifactIds: [], dependencies: ["LEAF"] },
+        { id: "PROJECT", artifactIds: [], dependencies: ["MODULE", "UNRELATED-MODULE"] },
+        { id: "UNRELATED-LEAF", artifactIds: ["B"], dependencies: [] },
+        { id: "UNRELATED-MODULE", artifactIds: [], dependencies: ["UNRELATED-LEAF"] },
+      ] },
+    },
+    revalidationWorkUnitIds: ["LEAF"],
+  });
+  assert.deepEqual(result.changes, []);
+  assert.deepEqual(result.affectedWorkUnitIds, ["LEAF", "MODULE", "PROJECT"]);
+  assert.deepEqual(result.reusedWorkUnitIds, ["UNRELATED-LEAF", "UNRELATED-MODULE"]);
+  assert.deepEqual(result.revalidationPlan, {
+    required: true,
+    affectedArtifactIds: ["A"],
+    affectedWorkUnitIds: ["LEAF", "MODULE", "PROJECT"],
+  });
+});
+
 test("removed artifacts retire prior work and invalidate current project synthesis", () => {
   const result = planIncrementalUnderstanding({
     requestedMode: "INCREMENTAL",
