@@ -13,6 +13,7 @@ import { createLocalSourceSnapshotBroker } from "../src/application/local-source
 import { WorkspaceAnalysisJobRunner } from "../src/application/workspace-analysis-job-runner.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
 import { canonicalJson, contentId } from "../src/domain/index.js";
+import { validateRelationAgainstEvidenceAllowset } from "../src/analysis/index.js";
 import {
   deterministicFixtureChildProducer,
   deterministicFixtureMainProducer,
@@ -55,6 +56,57 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
   const result = await runtime.start({
     id: `${projectId}-JOB`, projectId, sourceRegistrationId: registration.id,
     workspaceExecutionProfileRevisionId: profile.id, requestedMode: "FULL",
+  }, { background: false });
+  return { result, store, runtime, registration, profile };
+}
+
+async function runCanonicalRelationScenario(projectId, { sourceContent, childEvidence }) {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-canonical-relation-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), sourceContent);
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, projectId);
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer: async ({ candidate, sourceSlices }) => ({
+      candidates: [{
+        name: candidate.proposal.name,
+        statement: `${childEvidence} relation candidate`,
+        confidence: "LOW",
+        evidenceFactIds: childEvidence === "FACT" ? [...candidate.evidenceFactIds] : [],
+        sourceSliceIds: childEvidence === "SOURCE_SLICE" ? [sourceSlices[0].id] : [],
+      }],
+    }),
+    mainProducer: async (input) => {
+      const accepted = await deterministicFixtureMainProducer(input);
+      const option = input.candidateOptions[0];
+      return {
+        ...accepted,
+        relations: [{
+          sourceCandidateRef: option.ref,
+          predicate: "RELATES_TO",
+          targetArtifactId: input.scopedArtifacts[0].id,
+          evidenceFactIds: [...(option.proposal.evidenceFactIds ?? [])],
+          sourceSliceIds: [...(option.proposal.sourceSliceIds ?? [])],
+        }],
+      };
+    },
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({ projectId, rootPath: source, displayName: projectId });
+  const result = await runtime.start({
+    id: `${projectId}-JOB`,
+    projectId,
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "FULL",
   }, { background: false });
   return { result, store, runtime, registration, profile };
 }
@@ -516,6 +568,150 @@ test("foreign SourceSlice scope fails projection without creating a revision or 
   assert.equal(await store.getCurrentGraphHead("FOREIGN-SLICE"), null);
   assert.equal((await store.listUnderstandingRecords("FOREIGN-SLICE", "GRAPH_ARTIFACT")).length, 0);
   assert.equal((await store.listUnderstandingRecords("FOREIGN-SLICE", "GRAPH_REVISION")).length, 0);
+});
+
+test("Main Candidate relations preserve Fact and SourceSlice evidence in canonical graph lineage", async (t) => {
+  const cases = [
+    {
+      name: "Fact-backed relation",
+      projectId: "RELATION-FACT",
+      sourceContent: "export function relatedCapability() { return true; }\n",
+      childEvidence: "FACT",
+    },
+    {
+      name: "SourceSlice-only relation",
+      projectId: "RELATION-SLICE-ONLY",
+      sourceContent: "const opaqueRelatedCapability = true;\n",
+      childEvidence: "SOURCE_SLICE",
+    },
+    {
+      name: "SourceSlice relation in a mixed Fact and SourceSlice WorkUnit",
+      projectId: "RELATION-MIXED-EVIDENCE",
+      sourceContent: "export function mixedRelatedCapability() { return true; }\n",
+      childEvidence: "SOURCE_SLICE",
+    },
+  ];
+  for (const testCase of cases) {
+    await t.test(testCase.name, async () => {
+      const { result, store, runtime, registration, profile } = await runCanonicalRelationScenario(
+        testCase.projectId,
+        testCase,
+      );
+      assert.equal(result.status, "COMPLETED", JSON.stringify(result.error));
+      const bundle = await store.getUnderstandingRecord(
+        testCase.projectId, "CANDIDATE_BUNDLE", result.outputs.ANALYSIS.candidateBundleId,
+      );
+      assert.ok(bundle.relations.length > 0);
+      const revision = await store.getUnderstandingRecord(
+        testCase.projectId, "GRAPH_REVISION", result.outputs.PROJECTION.graphRevisionId,
+      );
+      const graph = await store.getUnderstandingRecord(testCase.projectId, "GRAPH_ARTIFACT", revision.graphArtifactId);
+      for (const relation of bundle.relations) {
+        const edge = graph.edges.find(({ id }) => id === relation.id);
+        assert.equal(edge?.source, relation.sourceId);
+        assert.equal(edge?.target, relation.targetId);
+        assert.equal(edge?.type, relation.predicate);
+        assert.equal(edge?.authority, "CANDIDATE");
+        assert.deepEqual(edge?.evidenceFactIds, relation.evidenceFactIds);
+        assert.deepEqual(edge?.sourceSliceIds, relation.sourceSliceIds);
+        const chain = graph.traceChains.find(({ subject }) =>
+          subject?.kind === "RELATION" && subject.id === relation.id);
+        const evidenceIds = [...relation.evidenceFactIds, ...relation.sourceSliceIds];
+        assert.ok(chain);
+        assert.ok(evidenceIds.every((id) => chain.nodeIds.includes(id)));
+        assert.ok(chain.segments.some(({ type, nodeIds }) =>
+          type === "EVIDENCE" && evidenceIds.every((id) => nodeIds.includes(id))));
+      }
+      const incremental = await runtime.start({
+        id: `${testCase.projectId}-INCREMENTAL-JOB`,
+        projectId: testCase.projectId,
+        sourceRegistrationId: registration.id,
+        workspaceExecutionProfileRevisionId: profile.id,
+        requestedMode: "AUTO",
+      }, { background: false });
+      assert.equal(incremental.status, "COMPLETED", JSON.stringify(incremental.error));
+      const incrementalBundle = await store.getUnderstandingRecord(
+        testCase.projectId, "CANDIDATE_BUNDLE", incremental.outputs.ANALYSIS.candidateBundleId,
+      );
+      const incrementalRevision = await store.getUnderstandingRecord(
+        testCase.projectId, "GRAPH_REVISION", incremental.outputs.PROJECTION.graphRevisionId,
+      );
+      const incrementalGraph = await store.getUnderstandingRecord(
+        testCase.projectId, "GRAPH_ARTIFACT", incrementalRevision.graphArtifactId,
+      );
+      assert.ok(incrementalBundle.relations.every(({ id }) =>
+        incrementalGraph.edges.some((edge) => edge.id === id)
+        && incrementalGraph.traceChains.some(({ subject }) =>
+          subject?.kind === "RELATION" && subject.id === id)));
+    });
+  }
+});
+
+test("Main relation evidence rejects missing, duplicate, foreign, and mixed-valid-foreign references", async (t) => {
+  const cases = [
+    { name: "missing evidence", evidence: () => ({ evidenceFactIds: [], sourceSliceIds: [] }) },
+    { name: "duplicate evidence", evidence: (factId) => ({ evidenceFactIds: [factId, factId], sourceSliceIds: [] }) },
+    { name: "foreign Fact", evidence: () => ({ evidenceFactIds: ["FACT-FOREIGN"], sourceSliceIds: [] }) },
+    { name: "mixed valid and foreign Fact", evidence: (factId) => ({ evidenceFactIds: [factId, "FACT-FOREIGN"], sourceSliceIds: [] }) },
+    { name: "foreign or rejected SourceSlice", evidence: () => ({ evidenceFactIds: [], sourceSliceIds: ["SLICE-FOREIGN"] }) },
+  ];
+  for (const [index, testCase] of cases.entries()) {
+    await t.test(testCase.name, async () => {
+      const projectId = `INVALID-RELATION-EVIDENCE-${index}`;
+      const { result, store } = await runProducerBoundaryScenario(projectId, {
+        childProducer: deterministicFixtureChildProducer,
+        mainProducer: async (input) => ({
+          ...await deterministicFixtureMainProducer(input),
+          relations: [{
+            sourceCandidateRef: input.candidateOptions[0].ref,
+            predicate: "RELATES_TO",
+            targetArtifactId: input.scopedArtifacts[0].id,
+            ...testCase.evidence(input.candidateOptions[0].proposal.evidenceFactIds[0]),
+          }],
+        }),
+      });
+      assert.equal(result.status, "FAILED");
+      assert.equal((await store.listUnderstandingRecords(projectId, "MAIN_BATCH_RESULT")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "CANDIDATE_BUNDLE")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "GRAPH_REVISION")).length, 0);
+      assert.equal(await store.getCurrentGraphHead(projectId), null);
+    });
+  }
+});
+
+test("Candidate relation scope is bound to one Project, Snapshot, AnalysisRun, and WorkUnit", () => {
+  const allowset = {
+    projectId: "PROJECT",
+    snapshotManifestId: "SNAPSHOT",
+    analysisRunId: "RUN",
+    workUnitId: "WORK-UNIT",
+    factIds: ["FACT"],
+    sourceSliceIds: ["SLICE"],
+  };
+  const relation = {
+    id: "RELATION",
+    projectId: allowset.projectId,
+    snapshotManifestId: allowset.snapshotManifestId,
+    analysisRunId: allowset.analysisRunId,
+    workUnitId: allowset.workUnitId,
+    sourceId: "SOURCE",
+    targetId: "TARGET",
+    predicate: "RELATES_TO",
+    evidenceFactIds: ["FACT"],
+    sourceSliceIds: ["SLICE"],
+  };
+  assert.equal(validateRelationAgainstEvidenceAllowset(relation, allowset), true);
+  for (const [field, value] of [
+    ["projectId", "FOREIGN-PROJECT"],
+    ["snapshotManifestId", "FOREIGN-SNAPSHOT"],
+    ["analysisRunId", "FOREIGN-RUN"],
+    ["workUnitId", "FOREIGN-WORK-UNIT"],
+  ]) {
+    assert.throws(
+      () => validateRelationAgainstEvidenceAllowset({ ...relation, [field]: value }, allowset),
+      new RegExp(`${field} is outside`),
+    );
+  }
 });
 
 test("Main MERGE produces one reconciled Candidate with complete Child provenance", async () => {

@@ -58,6 +58,45 @@ export function validateCandidateAgainstEvidenceAllowset(candidate, allowset) {
   return true;
 }
 
+export function validateRelationAgainstEvidenceAllowset(relation, allowset) {
+  if (!relation || typeof relation !== "object" || Array.isArray(relation)) {
+    throw new TypeError("Candidate relation must be an object");
+  }
+  for (const field of ["projectId", "snapshotManifestId", "analysisRunId", "workUnitId"]) {
+    if (relation[field] !== allowset[field]) {
+      throw new TypeError(`Candidate relation ${relation.id ?? "<uncommitted>"} ${field} is outside the evidence allowset`);
+    }
+  }
+  for (const field of ["sourceId", "targetId", "predicate"]) {
+    if (typeof relation[field] !== "string" || relation[field].trim() === "") {
+      throw new TypeError(`Candidate relation ${field} must be a non-empty string`);
+    }
+  }
+  let evidenceCount = 0;
+  for (const [field, allowedValues] of [
+    ["evidenceFactIds", allowset.factIds],
+    ["sourceSliceIds", allowset.sourceSliceIds],
+  ]) {
+    const values = relation[field];
+    if (!Array.isArray(values)) throw new TypeError(`Candidate relation ${field} must be an array`);
+    if (values.some((value) => typeof value !== "string" || value.trim() === "")) {
+      throw new TypeError(`Candidate relation ${field} must contain non-empty strings`);
+    }
+    if (new Set(values).size !== values.length) {
+      throw new TypeError(`Candidate relation has duplicate ${field}`);
+    }
+    const allowed = new Set(allowedValues ?? []);
+    for (const value of values) {
+      if (!allowed.has(value)) {
+        throw new TypeError(`Candidate relation cites unauthorized ${field} ${value}`);
+      }
+    }
+    evidenceCount += values.length;
+  }
+  if (evidenceCount === 0) throw new TypeError("Candidate relation requires bounded original evidence");
+  return true;
+}
+
 export function reconcileCandidates(input, clock = () => new Date()) {
   const candidates = (input.candidates ?? []).map((candidate) => structuredClone(candidate));
   if (new Set(candidates.map(({ id }) => id)).size !== candidates.length) {
@@ -98,6 +137,9 @@ export function reconcileCandidates(input, clock = () => new Date()) {
     if (!relation?.id || typeof relation.predicate !== "string") {
       throw new TypeError("reconciled relations require id and predicate");
     }
+    const allowset = input.evidenceAllowsets?.[relation.workUnitId];
+    if (!allowset) throw new TypeError(`Candidate relation ${relation.id} has no immutable evidence allowset`);
+    validateRelationAgainstEvidenceAllowset(relation, allowset);
   }
   const bySubject = new Map();
   for (const candidate of candidates) {

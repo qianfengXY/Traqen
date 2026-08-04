@@ -7,6 +7,7 @@ import {
   createUnderstandingPlan,
   reconcileCandidates,
   validateCandidateAgainstEvidenceAllowset,
+  validateRelationAgainstEvidenceAllowset,
 } from "../analysis/index.js";
 import {
   canonicalJson,
@@ -682,6 +683,12 @@ export class LegacyUnderstandingRuntime {
           sourceSliceRevalidations.add(candidate.workUnitId);
         }
       }
+      for (const relation of previousBundle?.relations ?? []) {
+        if ((relation.sourceSliceIds?.length ?? 0) > 0
+          && plannedIncrementalDecision.reusedWorkUnitIds.includes(relation.workUnitId)) {
+          sourceSliceRevalidations.add(relation.workUnitId);
+        }
+      }
     }
     const incrementalDecision = {
       ...plannedIncrementalDecision,
@@ -699,6 +706,10 @@ export class LegacyUnderstandingRuntime {
         .filter(({ workUnitId }) => workUnitId === workUnit.id)
         .map(({ id }) => id)
         .sort();
+      const previousRelationIds = (previousBundle?.relations ?? [])
+        .filter(({ workUnitId }) => workUnitId === workUnit.id)
+        .map(({ id }) => id)
+        .sort();
       const reasons = disposition === "REUSE"
         ? ["UNCHANGED_WORK_UNIT_AND_COMPATIBLE_REUSE_CONTRACT"]
         : !reuseCompatibility.compatible
@@ -712,6 +723,7 @@ export class LegacyUnderstandingRuntime {
         disposition,
         previousAnalysisRunId: baseRevision?.analysisRunId ?? null,
         previousCandidateIds,
+        previousRelationIds,
         previousProfileRevisionId: reuseCompatibility.previous?.workspaceExecutionProfileRevisionId ?? null,
         currentProfileRevisionId: currentReuseContract.workspaceExecutionProfileRevisionId,
         previousReuseContractDigest: reuseCompatibility.previous?.digest ?? null,
@@ -886,6 +898,13 @@ export class LegacyUnderstandingRuntime {
       const baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
       const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
       const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision?.analysisRunId);
+      const reusablePreviousRelations = (previousBundle?.relations ?? [])
+        .filter((relation) => {
+          const reuseDecision = reuseDecisionByWorkUnit.get(relation.workUnitId);
+          return eligibleReuse.has(relation.workUnitId)
+            && reuseDecision?.disposition === "REUSE"
+            && reuseDecision.previousRelationIds.includes(relation.id);
+        });
       const reusedCandidatesByWorkUnit = new Map();
       for (const prior of previousBundle?.candidates ?? []) {
         if (!eligibleReuse.has(prior.workUnitId) || prior.sourceSliceIds.length > 0) continue;
@@ -912,17 +931,31 @@ export class LegacyUnderstandingRuntime {
         reusedCandidateIds.push(candidate.id);
         reusedWorkUnitIds.add(candidate.workUnitId);
       }
-      for (const [workUnitId, workUnitCandidates] of reusedCandidatesByWorkUnit) {
+      const reusableEvidenceWorkUnitIds = new Set([
+        ...reusedCandidatesByWorkUnit.keys(),
+        ...reusablePreviousRelations.map(({ workUnitId }) => workUnitId),
+      ]);
+      for (const workUnitId of reusableEvidenceWorkUnitIds) {
+        const workUnitCandidates = reusedCandidatesByWorkUnit.get(workUnitId) ?? [];
         const reuseDecision = reuseDecisionByWorkUnit.get(workUnitId);
+        const workUnitRelations = reusablePreviousRelations.filter((relation) => relation.workUnitId === workUnitId);
         const allowset = createCandidateEvidenceAllowset({
           projectId: job.projectId,
           snapshotManifestId: job.snapshotManifestId,
           analysisRunId: job.id,
           workUnitId,
-          factIds: workUnitCandidates.flatMap(({ evidenceFactIds }) => evidenceFactIds),
-          sourceSliceIds: workUnitCandidates.flatMap(({ sourceSliceIds }) => sourceSliceIds),
-          confidenceCap: workUnitCandidates.map(({ confidence }) => confidence)
-            .sort((left, right) => childConfidenceRank[right] - childConfidenceRank[left])[0],
+          factIds: [
+            ...workUnitCandidates.flatMap(({ evidenceFactIds }) => evidenceFactIds),
+            ...workUnitRelations.flatMap(({ evidenceFactIds = [] }) => evidenceFactIds),
+          ],
+          sourceSliceIds: [
+            ...workUnitCandidates.flatMap(({ sourceSliceIds }) => sourceSliceIds),
+            ...workUnitRelations.flatMap(({ sourceSliceIds = [] }) => sourceSliceIds),
+          ],
+          confidenceCap: workUnitCandidates.length > 0
+            ? workUnitCandidates.map(({ confidence }) => confidence)
+                .sort((left, right) => childConfidenceRank[right] - childConfidenceRank[left])[0]
+            : "LOW",
           reuseDecision: {
             ...reuseDecision,
             authorizedProducers: authorizedReuseProducers,
@@ -933,6 +966,7 @@ export class LegacyUnderstandingRuntime {
           ...allowset,
           createdAt: this.clock().toISOString(),
         });
+        reusedWorkUnitIds.add(workUnitId);
       }
       for (const previousGap of previousBundle?.gaps ?? []) {
         if (!eligibleReuse.has(previousGap.workUnitId)) continue;
@@ -941,11 +975,14 @@ export class LegacyUnderstandingRuntime {
         await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
         reusedWorkUnitIds.add(previousGap.workUnitId);
       }
-      for (const relation of previousBundle?.relations ?? []) {
-        if ((relation.workUnitId && eligibleReuse.has(relation.workUnitId))
-          || candidates.some(({ id }) => id === relation.sourceId || id === relation.targetId)) {
-          relations.push(structuredClone(relation));
-        }
+      for (const relation of reusablePreviousRelations) {
+        relations.push(deepFreeze({
+          ...structuredClone(relation),
+          projectId: job.projectId,
+          snapshotManifestId: job.snapshotManifestId,
+          analysisRunId: job.id,
+          reusedFromAnalysisRunId: relation.analysisRunId,
+        }));
       }
     }
     let batchSequence = 0;
@@ -1303,7 +1340,14 @@ export class LegacyUnderstandingRuntime {
           ...contextCandidates.map(({ id }) => id),
           ...candidateIdByRef.values(),
         ]);
-        const boundedEvidenceIds = new Set([...evidenceFactIds, ...sourceSliceIds]);
+        const siblingEvidenceAllowset = {
+          projectId: job.projectId,
+          snapshotManifestId: job.snapshotManifestId,
+          analysisRunId: job.id,
+          workUnitId: workUnit.id,
+          factIds: [...new Set(candidateOptions.flatMap(({ proposal }) => proposal.evidenceFactIds ?? []))].sort(),
+          sourceSliceIds: [...new Set(candidateOptions.flatMap(({ proposal }) => proposal.sourceSliceIds ?? []))].sort(),
+        };
         for (const relation of mainOutput.relations ?? []) {
           const sourceId = relation.sourceArtifactId ?? candidateIdByRef.get(relation.sourceCandidateRef);
           const targetId = relation.targetArtifactId ?? candidateIdByRef.get(relation.targetCandidateRef);
@@ -1313,18 +1357,9 @@ export class LegacyUnderstandingRuntime {
           if (typeof relation.predicate !== "string" || relation.predicate.trim() === "") {
             throw new TypeError("Main producer relation predicate is required");
           }
-          for (const field of ["evidenceFactIds", "sourceSliceIds"]) {
-            if (relation[field] !== undefined && !Array.isArray(relation[field])) {
-              throw new TypeError(`Main producer relation ${field} must be an array`);
-            }
-          }
-          const relationEvidenceFactIds = [...new Set(relation.evidenceFactIds ?? [])].sort();
-          const relationSourceSliceIds = [...new Set(relation.sourceSliceIds ?? [])].sort();
-          if (relationEvidenceFactIds.length + relationSourceSliceIds.length === 0
-            || [...relationEvidenceFactIds, ...relationSourceSliceIds].some((id) => !boundedEvidenceIds.has(id))) {
-            throw new TypeError("Main producer relation requires bounded original evidence");
-          }
-          batchRelations.push(deepFreeze({
+          const relationEvidenceFactIds = [...(relation.evidenceFactIds ?? [])].sort();
+          const relationSourceSliceIds = [...(relation.sourceSliceIds ?? [])].sort();
+          const candidateRelation = {
             id: contentId("UNDERSTANDING-CANDIDATE-RELATION", {
               workUnitId: workUnit.id,
               sourceId,
@@ -1333,14 +1368,21 @@ export class LegacyUnderstandingRuntime {
               evidenceFactIds: relationEvidenceFactIds,
               sourceSliceIds: relationSourceSliceIds,
             }),
+            projectId: job.projectId,
+            snapshotManifestId: job.snapshotManifestId,
+            analysisRunId: job.id,
             workUnitId: workUnit.id,
             sourceId,
             predicate: relation.predicate,
             targetId,
             evidenceFactIds: relationEvidenceFactIds,
             sourceSliceIds: relationSourceSliceIds,
+            analysisBatchId: batch.id,
             mainResultId: mainResult.id,
-          }));
+          };
+          validateRelationAgainstEvidenceAllowset(candidateRelation, siblingEvidenceAllowset);
+          validateRelationAgainstEvidenceAllowset(candidateRelation, allowset);
+          batchRelations.push(deepFreeze(candidateRelation));
         }
       } catch (error) {
         const gap = deepFreeze({
@@ -1659,7 +1701,22 @@ export class LegacyUnderstandingRuntime {
     const bundle = {
       ...sourceBundle,
       candidates: sourceBundle.candidates.filter(({ id }) => admittedCandidateIds.has(id)),
+      relations: reconciliation.relations ?? [],
     };
+    const evidenceAllowsets = Object.fromEntries(
+      (await this.store.listUnderstandingRecords(job.projectId, "EVIDENCE_ALLOWSET"))
+        .filter(({ analysisRunId }) => analysisRunId === job.id)
+        .map((allowset) => [allowset.workUnitId, allowset]),
+    );
+    const currentFactIds = new Set(facts.map(({ id }) => id));
+    for (const relation of bundle.relations) {
+      const allowset = evidenceAllowsets[relation.workUnitId];
+      if (!allowset) throw new TypeError(`Candidate relation ${relation.id} has no projection evidence allowset`);
+      validateRelationAgainstEvidenceAllowset(relation, allowset);
+      if (relation.evidenceFactIds.some((factId) => !currentFactIds.has(factId))) {
+        throw new TypeError(`Candidate relation ${relation.id} cites a Fact outside the projected FactBundle`);
+      }
+    }
     const referencedSourceSliceIds = new Set([
       ...bundle.candidates.flatMap(({ sourceSliceIds = [] }) => sourceSliceIds),
       ...(bundle.relations ?? []).flatMap(({ sourceSliceIds = [] }) => sourceSliceIds),
@@ -1840,6 +1897,23 @@ export class LegacyUnderstandingRuntime {
         type: "SUPPORTED_BY",
         authority: "CANDIDATE",
       })));
+    const candidateRelationEdges = bundle.relations.map((relation) => {
+      if (!nodeIds.has(relation.sourceId) || !nodeIds.has(relation.targetId)) {
+        throw new TypeError(`Candidate relation ${relation.id} cannot resolve both endpoints in the canonical graph`);
+      }
+      return {
+        id: relation.id,
+        source: relation.sourceId,
+        target: relation.targetId,
+        type: relation.predicate,
+        authority: "CANDIDATE",
+        workUnitId: relation.workUnitId,
+        analysisBatchId: relation.analysisBatchId,
+        mainResultId: relation.mainResultId,
+        evidenceFactIds: [...relation.evidenceFactIds],
+        sourceSliceIds: [...relation.sourceSliceIds],
+      };
+    });
     const childEvidenceEdges = bundle.candidates.flatMap((candidate) =>
       childResults.filter(({ id }) => candidate.childResultIds.includes(id)).map((result) => ({
         id: contentId("GRAPH-EDGE", { source: candidate.id, target: result.id, type: "ANALYZED_BY" }),
@@ -1855,7 +1929,15 @@ export class LegacyUnderstandingRuntime {
       type: "EVALUATED_BY",
       authority: "DETERMINISTIC_FACT",
     }));
-    const edges = [...factArtifactEdges, ...referenceEdges, ...candidateEvidenceEdges, ...childEvidenceEdges, ...evaluationEdges, ...governedEdges];
+    const edges = [
+      ...factArtifactEdges,
+      ...referenceEdges,
+      ...candidateEvidenceEdges,
+      ...candidateRelationEdges,
+      ...childEvidenceEdges,
+      ...evaluationEdges,
+      ...governedEdges,
+    ];
     const traceChains = bundle.candidates.map((candidate) => {
       const candidateFacts = facts.filter(({ id }) => candidate.evidenceFactIds.includes(id));
       const candidateSourceSlices = sourceSlices.filter(({ id }) => candidate.sourceSliceIds.includes(id));
@@ -1908,15 +1990,32 @@ export class LegacyUnderstandingRuntime {
         complete: reviewedCandidateTraceComplete(reviewedChain, chainGaps),
       };
     });
-    const relationTraceChains = edges.map((edge) => ({
-      id: contentId("UNDERSTANDING-RELATION-TRACE-CHAIN", { edgeId: edge.id }),
-      subject: { kind: "RELATION", id: edge.id },
-      status: "RELATION_REVIEW_REQUIRED",
-      nodeIds: [edge.source, edge.target],
-      segments: [{ type: "RELATION", nodeIds: [edge.source, edge.target] }],
-      gaps: [{ type: "MISSING_GOVERNED_LINEAGE", status: "OPEN" }],
-      complete: false,
-    }));
+    const candidateRelationById = new Map(bundle.relations.map((relation) => [relation.id, relation]));
+    const relationTraceChains = edges.map((edge) => {
+      const candidateRelation = candidateRelationById.get(edge.id);
+      const evidenceNodeIds = candidateRelation
+        ? [...candidateRelation.evidenceFactIds, ...candidateRelation.sourceSliceIds]
+        : [];
+      if (evidenceNodeIds.some((id) => !nodeIds.has(id))) {
+        throw new TypeError(`Candidate relation ${edge.id} evidence cannot resolve in the canonical graph`);
+      }
+      return {
+        id: contentId("UNDERSTANDING-RELATION-TRACE-CHAIN", {
+          edgeId: edge.id,
+          evidenceNodeIds,
+        }),
+        subject: { kind: "RELATION", id: edge.id },
+        status: "RELATION_REVIEW_REQUIRED",
+        nodeIds: [...new Set([edge.source, edge.target, ...evidenceNodeIds])],
+        segments: [
+          { type: "RELATION", nodeIds: [edge.source, edge.target] },
+          ...(candidateRelation ? [{ type: "EVIDENCE", nodeIds: evidenceNodeIds }] : []),
+        ],
+        analysisEvidenceNodeIds: evidenceNodeIds,
+        gaps: [{ type: "MISSING_GOVERNED_LINEAGE", status: "OPEN" }],
+        complete: false,
+      };
+    });
 
     const delta = await this.#incrementalDelta(job, nodes, edges);
     const graphArtifact = createImmutableGraphArtifact({
