@@ -28,6 +28,33 @@ test("Candidate completeness cannot exceed its canonical reviewed TraceChain", (
   assert.equal(reviewedCandidateTraceComplete(null, []), false);
 });
 
+async function runProducerBoundaryScenario(projectId, { childProducer, mainProducer }) {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-producer-boundary-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export function producerBoundary() { return true; }\n");
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, projectId);
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer,
+    mainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({ projectId, rootPath: source, displayName: projectId });
+  const result = await runtime.start({
+    id: `${projectId}-JOB`, projectId, sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id, requestedMode: "FULL",
+  }, { background: false });
+  return { result, store };
+}
+
 test("HTTP-owned runtime composes all seven durable phases and publishes immutable FULL then INCREMENTAL graphs", async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-runtime-"));
   const source = path.join(temporary, "source");
@@ -318,6 +345,116 @@ test("malformed Main MERGE proposals become explicit gaps and cannot publish Can
         code === "INVALID_OR_FAILED_MAIN_PRODUCER_OUTPUT" && testCase.error.test(details?.message)));
     });
   }
+});
+
+test("invalid Child candidate fields fail at the first durable producer boundary", async (t) => {
+  const invalidConfidences = [null, false, 0, "", [], {}, "CERTAIN"];
+  for (const [index, confidence] of invalidConfidences.entries()) {
+    await t.test(`${JSON.stringify(confidence)} confidence`, async () => {
+      let mainCalls = 0;
+      const projectId = `INVALID-CHILD-${index}`;
+      const { result, store } = await runProducerBoundaryScenario(projectId, {
+        childProducer: async ({ candidate }) => ({ candidates: [{
+          name: candidate.proposal.name,
+          statement: candidate.proposal.statement,
+          confidence,
+        }] }),
+        mainProducer: async (input) => {
+          mainCalls += 1;
+          return deterministicFixtureMainProducer(input);
+        },
+      });
+      assert.equal(result.status, "FAILED");
+      assert.equal(await store.getCurrentGraphHead(projectId), null);
+      const childResults = await store.listUnderstandingRecords(projectId, "CHILD_BATCH_RESULT");
+      assert.ok(childResults.length > 0);
+      assert.ok(childResults.every(({ status, output }) =>
+        status === "GAP"
+        && output.gap.code === "INVALID_OR_FAILED_PRODUCER_OUTPUT"
+        && /candidates\[0\]\.confidence/.test(output.gap.message)));
+      assert.equal(mainCalls, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "MAIN_BATCH_RESULT")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "CANDIDATE_BUNDLE")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "GRAPH_REVISION")).length, 0);
+    });
+  }
+});
+
+test("Child output must choose exactly one fully valid Candidate or Gap shape", async (t) => {
+  const cases = [
+    {
+      name: "Gap and Candidates together",
+      output: { gap: { code: "DECLARED", message: "ambiguous" }, candidates: [] },
+      error: /exactly one of gap or candidates/,
+    },
+    {
+      name: "both Candidate aliases",
+      output: { candidates: [], candidateFeatures: [] },
+      error: /cannot contain both candidates and candidateFeatures/,
+    },
+    {
+      name: "Gap without message",
+      output: { gap: { code: "DECLARED" } },
+      error: /gap\.message must be a non-empty string/,
+    },
+    {
+      name: "explicit null name with fallback displayName",
+      output: { candidates: [{ name: null, displayName: "fallback", statement: "valid" }] },
+      error: /candidates\[0\]\.name must be a non-empty string/,
+    },
+    {
+      name: "object description",
+      output: { candidates: [{ name: "valid", description: { injected: true } }] },
+      error: /candidates\[0\]\.description must be a non-empty string/,
+    },
+    {
+      name: "array subjectKey",
+      output: { candidates: [{ name: "valid", subjectKey: ["entry.js"] }] },
+      error: /candidates\[0\]\.subjectKey must be a non-empty string/,
+    },
+  ];
+  for (const [index, testCase] of cases.entries()) {
+    await t.test(testCase.name, async () => {
+      const projectId = `INVALID-CHILD-SHAPE-${index}`;
+      const { result, store } = await runProducerBoundaryScenario(projectId, {
+        childProducer: async () => structuredClone(testCase.output),
+        mainProducer: deterministicFixtureMainProducer,
+      });
+      assert.equal(result.status, "FAILED");
+      const childResults = await store.listUnderstandingRecords(projectId, "CHILD_BATCH_RESULT");
+      assert.ok(childResults.every(({ status, output }) =>
+        status === "GAP"
+        && output.gap.code === "INVALID_OR_FAILED_PRODUCER_OUTPUT"
+        && testCase.error.test(output.gap.message)));
+      assert.equal((await store.listUnderstandingRecords(projectId, "MAIN_BATCH_RESULT")).length, 0);
+      assert.equal((await store.listUnderstandingRecords(projectId, "CANDIDATE_BUNDLE")).length, 0);
+      assert.equal(await store.getCurrentGraphHead(projectId), null);
+    });
+  }
+});
+
+test("Main COMPLETED checkpoint waits for relation and Candidate projection validation", async () => {
+  const projectId = "INVALID-MAIN-PROJECTION";
+  const { result, store } = await runProducerBoundaryScenario(projectId, {
+    childProducer: deterministicFixtureChildProducer,
+    mainProducer: async (input) => ({
+      ...await deterministicFixtureMainProducer(input),
+      relations: [{
+        sourceArtifactId: "OUTSIDE-BOUNDARY",
+        predicate: "REFERENCES",
+        targetArtifactId: input.scopedArtifacts[0].id,
+        evidenceFactIds: [input.facts[0].id],
+        sourceSliceIds: [],
+      }],
+    }),
+  });
+  assert.equal(result.status, "FAILED");
+  assert.equal(await store.getCurrentGraphHead(projectId), null);
+  assert.equal((await store.listUnderstandingRecords(projectId, "MAIN_BATCH_RESULT")).length, 0);
+  assert.equal((await store.listUnderstandingRecords(projectId, "CANDIDATE_BUNDLE")).length, 0);
+  const gaps = await store.listUnderstandingRecords(projectId, "GAP");
+  assert.ok(gaps.some(({ code, details }) =>
+    code === "INVALID_OR_FAILED_MAIN_PRODUCER_OUTPUT" && /escapes the bounded/.test(details?.message)));
 });
 
 test("missing configured Child executors persist explicit gaps and cannot publish synthetic candidates", async () => {

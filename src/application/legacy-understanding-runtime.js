@@ -73,19 +73,33 @@ function validateChildProducerOutput(output) {
   if (!output || typeof output !== "object" || Array.isArray(output)) {
     throw new TypeError("Child producer output must be an object");
   }
-  if (output.gap) {
-    if (typeof output.gap.code !== "string" || output.gap.code.trim() === "") {
-      throw new TypeError("Child producer gap.code is required");
+  const hasGap = Object.hasOwn(output, "gap");
+  const hasCandidates = Object.hasOwn(output, "candidates");
+  const hasCandidateFeatures = Object.hasOwn(output, "candidateFeatures");
+  if (hasCandidates && hasCandidateFeatures) {
+    throw new TypeError("Child producer output cannot contain both candidates and candidateFeatures");
+  }
+  if (hasGap === (hasCandidates || hasCandidateFeatures)) {
+    throw new TypeError("Child producer output must contain exactly one of gap or candidates");
+  }
+  if (hasGap) {
+    if (!output.gap || typeof output.gap !== "object" || Array.isArray(output.gap)) {
+      throw new TypeError("Child producer gap must be an object");
+    }
+    for (const field of ["code", "message"]) {
+      if (typeof output.gap[field] !== "string" || output.gap[field].trim() === "") {
+        throw new TypeError(`Child producer gap.${field} must be a non-empty string`);
+      }
     }
     return output;
   }
-  const candidates = output.candidates ?? output.candidateFeatures;
+  const candidates = hasCandidates ? output.candidates : output.candidateFeatures;
   if (!Array.isArray(candidates)) throw new TypeError("Child producer output must contain candidates");
   for (const [index, candidate] of candidates.entries()) {
     if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
       throw new TypeError(`Child producer candidates[${index}] must be an object`);
     }
-    if (typeof (candidate.name ?? candidate.displayName) !== "string") {
+    if (candidate.name === undefined && candidate.displayName === undefined) {
       throw new TypeError(`Child producer candidates[${index}].name is required`);
     }
     for (const field of ["name", "displayName", "statement", "description", "subjectKey"]) {
@@ -94,7 +108,7 @@ function validateChildProducerOutput(output) {
         throw new TypeError(`Child producer candidates[${index}].${field} must be a non-empty string`);
       }
     }
-    if (candidate.confidence && !["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence)) {
+    if (candidate.confidence !== undefined && !["LOW", "MEDIUM", "HIGH"].includes(candidate.confidence)) {
       throw new TypeError(`Child producer candidates[${index}].confidence is invalid`);
     }
   }
@@ -852,6 +866,7 @@ export class LegacyUnderstandingRuntime {
       await this.store.appendUnderstandingRecord(job.projectId, "ANALYSIS_BATCH", batch);
       analysisBatchIds.push(batch.id);
       const childResults = [];
+      let invalidChildOutput = false;
       for (const assignment of assignments) {
         await this.store.appendUnderstandingRecord(job.projectId, "CHILD_WORK_UNIT", assignment);
         const childRouteDecision = deepFreeze({
@@ -894,6 +909,7 @@ export class LegacyUnderstandingRuntime {
                 },
               });
         } catch (error) {
+          invalidChildOutput = true;
           output = { gap: { code: "INVALID_OR_FAILED_PRODUCER_OUTPUT", message: error.message } };
         }
         const childResult = commitChildBatchResult({
@@ -920,6 +936,9 @@ export class LegacyUnderstandingRuntime {
         ...barrier,
         openedAt: this.clock().toISOString(),
       });
+      if (invalidChildOutput) {
+        throw new TypeError("AnalysisBatch contains invalid Child producer output");
+      }
       const candidateOptions = childResults.flatMap((result) => {
         if (result.status !== "COMPLETED") return [];
         const outputCandidates = result.output?.candidates ?? result.output?.candidateFeatures ?? [];
@@ -982,129 +1001,150 @@ export class LegacyUnderstandingRuntime {
         status: "COMPLETED",
         createdAt: this.clock().toISOString(),
       });
-      await this.store.appendUnderstandingRecord(job.projectId, "MAIN_BATCH_RESULT", mainResult);
-      mainResultIds.push(mainResult.id);
-      const optionsByRef = new Map(candidateOptions.map((option) => [option.ref, option]));
-      const admitted = mainOutput.candidateDecisions.filter(({ disposition }) => disposition !== "REJECT");
-      const decisionsByRef = new Map(mainOutput.candidateDecisions.map((decision) => [decision.candidateRef, decision]));
-      const mergeComponents = mergeComponentsByRef(decisionsByRef);
-      const candidateIdByRef = new Map();
-      const processedRefs = new Set();
-      for (const decision of admitted) {
-        if (processedRefs.has(decision.candidateRef)) continue;
-        const admittedRefs = decision.disposition === "MERGE"
-          ? mergeComponents.get(decision.candidateRef)
-          : [decision.candidateRef];
-        admittedRefs.forEach((ref) => processedRefs.add(ref));
-        const mergedOptions = admittedRefs.map((ref) => optionsByRef.get(ref));
-        const option = mergedOptions[0];
-        const semanticCandidate = decision.disposition === "MERGE" ? decision.mergedProposal : option.proposal;
-        const selectedSlot = executionProfile.childSlots.find(({ id }) => id === option.slotId);
-        const childProducer = selectedSlot ? producerForSlot(selectedSlot) : decision.selected?.[0];
-        const reconciledCandidate = validateReconciledCandidateProjection({
-          ...candidate,
-          id: contentId("UNDERSTANDING-CANDIDATE", {
-            workUnitId: workUnit.id,
-            artifactId: artifact.id,
-            evidenceFactIds,
-            candidateInputs: mergedOptions.map(({ slotId, proposal }) => ({ slotId, proposal }))
-              .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right))),
-            proposal: semanticCandidate,
-          }),
-          proposal: {
-            ...candidate.proposal,
-            name: semanticCandidate.name ?? semanticCandidate.displayName ?? candidate.proposal.name,
-            statement: semanticCandidate.statement ?? semanticCandidate.description ?? candidate.proposal.statement,
-          },
-          subjectKey: scopedArtifacts.some(({ relativePath }) => relativePath === semanticCandidate.subjectKey)
-            ? semanticCandidate.subjectKey
-            : candidate.subjectKey,
-          confidence: semanticCandidate.confidence ?? candidate.confidence,
-          producer: childProducer,
-          analysisBatchId: batch.id,
-          mainResultId: mainResult.id,
-          mainDisposition: decision.disposition,
-          mainRationale: decision.rationale,
-          mergedFromCandidateRefs: decision.disposition === "MERGE" ? admittedRefs : [],
-          childResultIds: [...new Set(mergedOptions.map(({ childResultId }) => childResultId))].sort(),
-          independenceGroups: [...new Set(mergedOptions.map(({ independenceGroup }) => independenceGroup))].sort(),
-        });
-        candidates.push(reconciledCandidate);
-        for (const ref of admittedRefs) candidateIdByRef.set(ref, reconciledCandidate.id);
-      }
-      for (const decision of mainOutput.candidateDecisions.filter(({ disposition }) => disposition === "CONFLICT")) {
-        const candidateIds = [decision.candidateRef, ...(decision.relatedCandidateRefs ?? [])]
-          .map((ref) => candidateIdByRef.get(ref))
-          .filter(Boolean)
-          .sort();
-        mainConflicts.push(deepFreeze({
-          id: contentId("MAIN-CANDIDATE-CONFLICT", {
-            analysisRunId: job.id,
+      const batchCandidates = [];
+      const batchConflicts = [];
+      const batchGaps = [];
+      const batchRelations = [];
+      try {
+        const optionsByRef = new Map(candidateOptions.map((option) => [option.ref, option]));
+        const admitted = mainOutput.candidateDecisions.filter(({ disposition }) => disposition !== "REJECT");
+        const decisionsByRef = new Map(mainOutput.candidateDecisions.map((decision) => [decision.candidateRef, decision]));
+        const mergeComponents = mergeComponentsByRef(decisionsByRef);
+        const candidateIdByRef = new Map();
+        const processedRefs = new Set();
+        for (const decision of admitted) {
+          if (processedRefs.has(decision.candidateRef)) continue;
+          const admittedRefs = decision.disposition === "MERGE"
+            ? mergeComponents.get(decision.candidateRef)
+            : [decision.candidateRef];
+          admittedRefs.forEach((ref) => processedRefs.add(ref));
+          const mergedOptions = admittedRefs.map((ref) => optionsByRef.get(ref));
+          const option = mergedOptions[0];
+          const semanticCandidate = decision.disposition === "MERGE" ? decision.mergedProposal : option.proposal;
+          const selectedSlot = executionProfile.childSlots.find(({ id }) => id === option.slotId);
+          const childProducer = selectedSlot ? producerForSlot(selectedSlot) : decision.selected?.[0];
+          const reconciledCandidate = validateReconciledCandidateProjection({
+            ...candidate,
+            id: contentId("UNDERSTANDING-CANDIDATE", {
+              workUnitId: workUnit.id,
+              artifactId: artifact.id,
+              evidenceFactIds,
+              candidateInputs: mergedOptions.map(({ slotId, proposal }) => ({ slotId, proposal }))
+                .sort((left, right) => canonicalJson(left).localeCompare(canonicalJson(right))),
+              proposal: semanticCandidate,
+            }),
+            proposal: {
+              ...candidate.proposal,
+              name: semanticCandidate.name ?? semanticCandidate.displayName ?? candidate.proposal.name,
+              statement: semanticCandidate.statement ?? semanticCandidate.description ?? candidate.proposal.statement,
+            },
+            subjectKey: scopedArtifacts.some(({ relativePath }) => relativePath === semanticCandidate.subjectKey)
+              ? semanticCandidate.subjectKey
+              : candidate.subjectKey,
+            confidence: semanticCandidate.confidence ?? candidate.confidence,
+            producer: childProducer,
             analysisBatchId: batch.id,
+            mainResultId: mainResult.id,
+            mainDisposition: decision.disposition,
+            mainRationale: decision.rationale,
+            mergedFromCandidateRefs: decision.disposition === "MERGE" ? admittedRefs : [],
+            childResultIds: [...new Set(mergedOptions.map(({ childResultId }) => childResultId))].sort(),
+            independenceGroups: [...new Set(mergedOptions.map(({ independenceGroup }) => independenceGroup))].sort(),
+          });
+          batchCandidates.push(reconciledCandidate);
+          for (const ref of admittedRefs) candidateIdByRef.set(ref, reconciledCandidate.id);
+        }
+        for (const decision of mainOutput.candidateDecisions.filter(({ disposition }) => disposition === "CONFLICT")) {
+          const candidateIds = [decision.candidateRef, ...(decision.relatedCandidateRefs ?? [])]
+            .map((ref) => candidateIdByRef.get(ref))
+            .filter(Boolean)
+            .sort();
+          batchConflicts.push(deepFreeze({
+            id: contentId("MAIN-CANDIDATE-CONFLICT", {
+              analysisRunId: job.id,
+              analysisBatchId: batch.id,
+              candidateIds,
+              rationale: decision.rationale,
+            }),
+            subject: optionsByRef.get(decision.candidateRef)?.proposal?.subjectKey ?? artifact.relativePath,
+            type: "MAIN_AGENT_CONFLICT",
             candidateIds,
-            rationale: decision.rationale,
-          }),
-          subject: optionsByRef.get(decision.candidateRef)?.proposal?.subjectKey ?? artifact.relativePath,
-          type: "MAIN_AGENT_CONFLICT",
-          candidateIds,
-          status: "UNRESOLVED",
-          reason: decision.rationale,
-          source: "MAIN_AGENT",
-          mainResultId: mainResult.id,
-          evidence: candidateIds.map((id) => {
-            const candidate = candidates.find((item) => item.id === id);
-            return { id, evidenceFactIds: candidate?.evidenceFactIds ?? [], sourceSliceIds: candidate?.sourceSliceIds ?? [] };
-          }),
-        }));
-      }
-      for (const mainGap of mainOutput.gaps ?? []) {
-        const gap = deepFreeze({
-          ...this.#gap(job, workUnit.id, `MAIN:${mainGap.code}`),
-          details: { message: mainGap.message, mainResultId: mainResult.id },
-        });
-        gaps.push(gap);
-        await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
-      }
-      const boundedNodeIds = new Set([
-        artifact.id,
-        ...scopedArtifacts.map(({ id }) => id),
-        ...contextCandidates.map(({ id }) => id),
-        ...candidateIdByRef.values(),
-      ]);
-      const boundedEvidenceIds = new Set([...evidenceFactIds, ...sourceSliceIds]);
-      for (const relation of mainOutput.relations ?? []) {
-        const sourceId = relation.sourceArtifactId ?? candidateIdByRef.get(relation.sourceCandidateRef);
-        const targetId = relation.targetArtifactId ?? candidateIdByRef.get(relation.targetCandidateRef);
-        if (!boundedNodeIds.has(sourceId) || !boundedNodeIds.has(targetId)) {
-          throw new TypeError("Main producer relation escapes the bounded AnalysisBatch nodes");
+            status: "UNRESOLVED",
+            reason: decision.rationale,
+            source: "MAIN_AGENT",
+            mainResultId: mainResult.id,
+            evidence: candidateIds.map((id) => {
+              const candidate = batchCandidates.find((item) => item.id === id);
+              return { id, evidenceFactIds: candidate?.evidenceFactIds ?? [], sourceSliceIds: candidate?.sourceSliceIds ?? [] };
+            }),
+          }));
         }
-        if (typeof relation.predicate !== "string" || relation.predicate.trim() === "") {
-          throw new TypeError("Main producer relation predicate is required");
+        for (const mainGap of mainOutput.gaps ?? []) {
+          batchGaps.push(deepFreeze({
+            ...this.#gap(job, workUnit.id, `MAIN:${mainGap.code}`),
+            details: { message: mainGap.message, mainResultId: mainResult.id },
+          }));
         }
-        const relationEvidenceFactIds = [...new Set(relation.evidenceFactIds ?? [])].sort();
-        const relationSourceSliceIds = [...new Set(relation.sourceSliceIds ?? [])].sort();
-        if (relationEvidenceFactIds.length + relationSourceSliceIds.length === 0
-          || [...relationEvidenceFactIds, ...relationSourceSliceIds].some((id) => !boundedEvidenceIds.has(id))) {
-          throw new TypeError("Main producer relation requires bounded original evidence");
-        }
-        relations.push(deepFreeze({
-          id: contentId("UNDERSTANDING-CANDIDATE-RELATION", {
+        const boundedNodeIds = new Set([
+          artifact.id,
+          ...scopedArtifacts.map(({ id }) => id),
+          ...contextCandidates.map(({ id }) => id),
+          ...candidateIdByRef.values(),
+        ]);
+        const boundedEvidenceIds = new Set([...evidenceFactIds, ...sourceSliceIds]);
+        for (const relation of mainOutput.relations ?? []) {
+          const sourceId = relation.sourceArtifactId ?? candidateIdByRef.get(relation.sourceCandidateRef);
+          const targetId = relation.targetArtifactId ?? candidateIdByRef.get(relation.targetCandidateRef);
+          if (!boundedNodeIds.has(sourceId) || !boundedNodeIds.has(targetId)) {
+            throw new TypeError("Main producer relation escapes the bounded AnalysisBatch nodes");
+          }
+          if (typeof relation.predicate !== "string" || relation.predicate.trim() === "") {
+            throw new TypeError("Main producer relation predicate is required");
+          }
+          for (const field of ["evidenceFactIds", "sourceSliceIds"]) {
+            if (relation[field] !== undefined && !Array.isArray(relation[field])) {
+              throw new TypeError(`Main producer relation ${field} must be an array`);
+            }
+          }
+          const relationEvidenceFactIds = [...new Set(relation.evidenceFactIds ?? [])].sort();
+          const relationSourceSliceIds = [...new Set(relation.sourceSliceIds ?? [])].sort();
+          if (relationEvidenceFactIds.length + relationSourceSliceIds.length === 0
+            || [...relationEvidenceFactIds, ...relationSourceSliceIds].some((id) => !boundedEvidenceIds.has(id))) {
+            throw new TypeError("Main producer relation requires bounded original evidence");
+          }
+          batchRelations.push(deepFreeze({
+            id: contentId("UNDERSTANDING-CANDIDATE-RELATION", {
+              workUnitId: workUnit.id,
+              sourceId,
+              predicate: relation.predicate,
+              targetId,
+              evidenceFactIds: relationEvidenceFactIds,
+              sourceSliceIds: relationSourceSliceIds,
+            }),
             workUnitId: workUnit.id,
             sourceId,
             predicate: relation.predicate,
             targetId,
             evidenceFactIds: relationEvidenceFactIds,
             sourceSliceIds: relationSourceSliceIds,
-          }),
-          workUnitId: workUnit.id,
-          sourceId,
-          predicate: relation.predicate,
-          targetId,
-          evidenceFactIds: relationEvidenceFactIds,
-          sourceSliceIds: relationSourceSliceIds,
-          mainResultId: mainResult.id,
-        }));
+            mainResultId: mainResult.id,
+          }));
+        }
+      } catch (error) {
+        const gap = deepFreeze({
+          ...this.#gap(job, workUnit.id, "INVALID_OR_FAILED_MAIN_PRODUCER_OUTPUT"),
+          details: { message: error.message },
+        });
+        await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
+        throw new TypeError("Main producer output failed final batch validation", { cause: error });
       }
+      await this.store.appendUnderstandingRecord(job.projectId, "MAIN_BATCH_RESULT", mainResult);
+      for (const gap of batchGaps) await this.store.appendUnderstandingRecord(job.projectId, "GAP", gap);
+      mainResultIds.push(mainResult.id);
+      candidates.push(...batchCandidates);
+      mainConflicts.push(...batchConflicts);
+      gaps.push(...batchGaps);
+      relations.push(...batchRelations);
     }
     const bundle = deepFreeze({
       id: contentId("UNDERSTANDING-CANDIDATE-BUNDLE", { analysisRunId: job.id, candidates, relations, gaps, mainConflicts }),
