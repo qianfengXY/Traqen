@@ -70,6 +70,94 @@ function extractSourceFacts(artifact, content) {
 }
 
 const childConfidenceRank = Object.freeze({ LOW: 1, MEDIUM: 2, HIGH: 3 });
+const runtimePlannerVersion = "legacy-understanding-runtime-v1";
+const runtimeConventionVersion = "legacy-understanding-runtime-v1";
+
+function producerForExecutionSlot(executionProfile, slot) {
+  return {
+    modelCapabilityProfileId: slot.model,
+    modelRevision: executionProfile.id,
+    skillId: slot.skillNames.length > 0 ? slot.skillNames.join("+") : "NO_SKILL",
+    skillVersion: executionProfile.id,
+    mcpNames: [...slot.mcpNames],
+    independenceGroup: slot.independenceGroup,
+    workspaceExecutionProfileRevisionId: executionProfile.id,
+  };
+}
+
+function createReuseContract(job, plan, executionProfile) {
+  const producerContract = {
+    mainAgent: structuredClone(executionProfile.mainAgent),
+    childProducers: executionProfile.childSlots.map((slot) => producerForExecutionSlot(executionProfile, slot)),
+  };
+  const contract = {
+    workspaceExecutionProfileRevisionId: executionProfile.id,
+    workspaceExecutionProfileDigest: executionProfile.profileDigest ?? null,
+    producerContract,
+    producerContractDigest: contentId("UNDERSTANDING-PRODUCER-CONTRACT", producerContract),
+    executionPolicyDigest: job.policyDigest,
+    plannerVersion: plan.plannerVersion,
+    conventionVersion: plan.conventionVersion,
+  };
+  return deepFreeze({
+    ...contract,
+    digest: contentId("UNDERSTANDING-REUSE-CONTRACT", contract),
+  });
+}
+
+function compareReuseContracts(previous, current, incremental) {
+  if (!incremental) {
+    return deepFreeze({ compatible: false, reasons: ["FULL_ANALYSIS"], previous: previous ?? null, current });
+  }
+  if (!previous) {
+    return deepFreeze({
+      compatible: false,
+      reasons: ["PREVIOUS_REUSE_CONTRACT_UNAVAILABLE"],
+      previous: null,
+      current,
+    });
+  }
+  const reasons = [];
+  if (previous.workspaceExecutionProfileRevisionId !== current.workspaceExecutionProfileRevisionId) {
+    reasons.push("WORKSPACE_EXECUTION_PROFILE_REVISION_CHANGED");
+  }
+  if (previous.workspaceExecutionProfileDigest !== current.workspaceExecutionProfileDigest) {
+    reasons.push("WORKSPACE_EXECUTION_PROFILE_DIGEST_CHANGED");
+  }
+  if (previous.producerContractDigest !== current.producerContractDigest) {
+    reasons.push("RESOLVED_PRODUCER_CONTRACT_CHANGED");
+  }
+  if (previous.executionPolicyDigest !== current.executionPolicyDigest) {
+    reasons.push("EXECUTION_POLICY_DIGEST_CHANGED");
+  }
+  if (previous.plannerVersion !== current.plannerVersion) reasons.push("PLANNER_VERSION_CHANGED");
+  if (previous.conventionVersion !== current.conventionVersion) reasons.push("CONVENTION_VERSION_CHANGED");
+  return deepFreeze({ compatible: reasons.length === 0, reasons, previous, current });
+}
+
+export function validateProjectionSourceSliceReferences({ job, candidates, relations = [], sourceSlices }) {
+  const sourceSliceById = new Map(sourceSlices.map((slice) => [slice.id, slice]));
+  for (const subject of [...candidates, ...relations]) {
+    for (const sourceSliceId of subject.sourceSliceIds ?? []) {
+      const slice = sourceSliceById.get(sourceSliceId);
+      if (!slice) throw new TypeError(`SourceSlice ${sourceSliceId} is unavailable for graph projection`);
+      for (const [field, expected] of [
+        ["projectId", job.projectId],
+        ["snapshotManifestId", job.snapshotManifestId],
+        ["analysisRunId", job.id],
+        ["workUnitId", subject.workUnitId],
+      ]) {
+        if (slice[field] !== expected) {
+          throw new TypeError(`SourceSlice ${sourceSliceId} ${field} is outside the graph projection scope`);
+        }
+      }
+      if (slice.status === "REJECTED") {
+        throw new TypeError(`SourceSlice ${sourceSliceId} is rejected and cannot be projected`);
+      }
+    }
+  }
+  return true;
+}
 
 function validateChildProducerOutput(output, evidenceAllowset) {
   if (!output || typeof output !== "object" || Array.isArray(output)) {
@@ -533,8 +621,8 @@ export class LegacyUnderstandingRuntime {
 
     const plan = createUnderstandingPlan({
       inventory,
-      plannerVersion: "legacy-understanding-runtime-v1",
-      conventionVersion: "legacy-understanding-runtime-v1",
+      plannerVersion: runtimePlannerVersion,
+      conventionVersion: runtimeConventionVersion,
       executionPolicyDigest: job.policyDigest,
     }, this.clock);
     await this.store.appendUnderstandingRecord(job.projectId, "UNDERSTANDING_PLAN", plan);
@@ -551,29 +639,43 @@ export class LegacyUnderstandingRuntime {
     }
     let previous = null;
     let baseRevision = null;
+    let previousBundle = null;
     if (job.baseRevisionId) {
       baseRevision = await this.store.getUnderstandingRecord(job.projectId, "GRAPH_REVISION", job.baseRevisionId);
       const inventories = await this.store.listUnderstandingRecords(job.projectId, "ARTIFACT_INVENTORY");
       const plans = await this.store.listUnderstandingRecords(job.projectId, "UNDERSTANDING_PLAN");
+      const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
       const previousInventory = inventories.find(({ snapshotManifestId }) =>
         snapshotManifestId === baseRevision?.snapshotManifestId);
       const previousPlan = plans.find(({ snapshotManifestId }) =>
         snapshotManifestId === baseRevision?.snapshotManifestId);
-      if (!baseRevision || !previousInventory || !previousPlan) {
-        throw new TypeError("incremental analysis requires the published base Inventory and UnderstandingPlan");
+      previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision?.analysisRunId);
+      if (!baseRevision || !previousInventory || !previousPlan || !previousBundle) {
+        throw new TypeError("incremental analysis requires the published base Inventory, UnderstandingPlan, and CandidateBundle");
       }
       previous = { inventory: previousInventory, plan: previousPlan };
     }
+    const executionProfile = await this.store.getUnderstandingRecord(
+      job.projectId,
+      "WORKSPACE_EXECUTION_PROFILE",
+      job.workspaceExecutionProfileRevisionId,
+    );
+    if (!executionProfile) throw new TypeError("the pinned WorkspaceExecutionProfileRevision is unavailable");
+    const currentReuseContract = createReuseContract(job, plan, executionProfile);
+    const reuseCompatibility = compareReuseContracts(
+      previousBundle?.reuseContract ?? null,
+      currentReuseContract,
+      Boolean(job.baseRevisionId),
+    );
     const plannedIncrementalDecision = planIncrementalUnderstanding({
       requestedMode: job.resolvedMode,
       currentGraphHead: job.baseRevisionId ? { graphRevisionId: job.baseRevisionId } : null,
       previous,
       current: { inventory, plan },
+      reuseCompatibility,
     });
     const sourceSliceRevalidations = new Set();
     if (baseRevision && plannedIncrementalDecision.reusedWorkUnitIds.length > 0) {
-      const previousBundles = await this.store.listUnderstandingRecords(job.projectId, "CANDIDATE_BUNDLE");
-      const previousBundle = previousBundles.find(({ analysisRunId }) => analysisRunId === baseRevision.analysisRunId);
       for (const candidate of previousBundle?.candidates ?? []) {
         if (candidate.sourceSliceIds.length > 0
           && plannedIncrementalDecision.reusedWorkUnitIds.includes(candidate.workUnitId)) {
@@ -591,6 +693,37 @@ export class LegacyUnderstandingRuntime {
         .filter((id) => !sourceSliceRevalidations.has(id)),
       sourceSliceRevalidationWorkUnitIds: [...sourceSliceRevalidations].sort(),
     };
+    const workUnitReuseDecisions = plan.workUnits.map((workUnit) => {
+      const disposition = incrementalDecision.reusedWorkUnitIds.includes(workUnit.id) ? "REUSE" : "REVALIDATE";
+      const previousCandidateIds = (previousBundle?.candidates ?? [])
+        .filter(({ workUnitId }) => workUnitId === workUnit.id)
+        .map(({ id }) => id)
+        .sort();
+      const reasons = disposition === "REUSE"
+        ? ["UNCHANGED_WORK_UNIT_AND_COMPATIBLE_REUSE_CONTRACT"]
+        : !reuseCompatibility.compatible
+          ? [...reuseCompatibility.reasons]
+          : sourceSliceRevalidations.has(workUnit.id)
+            ? ["SOURCE_SLICE_REVALIDATION_REQUIRED"]
+            : ["WORK_UNIT_AFFECTED"];
+      const identity = {
+        analysisRunId: job.id,
+        workUnitId: workUnit.id,
+        disposition,
+        previousAnalysisRunId: baseRevision?.analysisRunId ?? null,
+        previousCandidateIds,
+        previousProfileRevisionId: reuseCompatibility.previous?.workspaceExecutionProfileRevisionId ?? null,
+        currentProfileRevisionId: currentReuseContract.workspaceExecutionProfileRevisionId,
+        previousReuseContractDigest: reuseCompatibility.previous?.digest ?? null,
+        currentReuseContractDigest: currentReuseContract.digest,
+        reasons,
+      };
+      return deepFreeze({
+        id: contentId("ANALYSIS-REUSE-DECISION", identity),
+        ...identity,
+        reason: reasons[0],
+      });
+    });
     const incrementalPlan = deepFreeze({
       id: contentId("INCREMENTAL-PLAN", {
         analysisRunId: job.id,
@@ -601,6 +734,9 @@ export class LegacyUnderstandingRuntime {
       snapshotManifestId: job.snapshotManifestId,
       analysisRunId: job.id,
       ...incrementalDecision,
+      reuseCompatibility,
+      reuseContract: currentReuseContract,
+      workUnitReuseDecisions,
       createdAt: this.clock().toISOString(),
     });
     await this.store.appendUnderstandingRecord(job.projectId, "INCREMENTAL_PLAN", incrementalPlan);
@@ -723,15 +859,7 @@ export class LegacyUnderstandingRuntime {
       throw new TypeError("the pinned WorkspaceExecutionProfileRevision is unavailable");
     }
     const executionProfile = configuredExecutionProfile;
-    const producerForSlot = (slot) => ({
-      modelCapabilityProfileId: slot.model,
-      modelRevision: executionProfile.id,
-      skillId: slot.skillNames.length > 0 ? slot.skillNames.join("+") : "NO_SKILL",
-      skillVersion: executionProfile.id,
-      mcpNames: [...slot.mcpNames],
-      independenceGroup: slot.independenceGroup,
-      workspaceExecutionProfileRevisionId: executionProfile.id,
-    });
+    const producerForSlot = (slot) => producerForExecutionSlot(executionProfile, slot);
 
     const candidates = [];
     const gaps = [];
@@ -746,6 +874,10 @@ export class LegacyUnderstandingRuntime {
       job.outputs.SOURCE_SCAN.incrementalPlanId,
     );
     const eligibleReuse = new Set(incrementalPlan.reusedWorkUnitIds);
+    const reuseDecisionByWorkUnit = new Map(
+      incrementalPlan.workUnitReuseDecisions.map((decision) => [decision.workUnitId, decision]),
+    );
+    const authorizedReuseProducers = executionProfile.childSlots.map(producerForSlot);
     const reusedWorkUnitIds = new Set(plan.workUnits
       .filter(({ id, kind }) => eligibleReuse.has(id) && kind !== "LEAF")
       .map(({ id }) => id));
@@ -757,6 +889,16 @@ export class LegacyUnderstandingRuntime {
       const reusedCandidatesByWorkUnit = new Map();
       for (const prior of previousBundle?.candidates ?? []) {
         if (!eligibleReuse.has(prior.workUnitId) || prior.sourceSliceIds.length > 0) continue;
+        const reuseDecision = reuseDecisionByWorkUnit.get(prior.workUnitId);
+        if (reuseDecision?.disposition !== "REUSE"
+          || !reuseDecision.previousCandidateIds.includes(prior.id)
+          || reuseDecision.previousProfileRevisionId !== previousBundle.workspaceExecutionProfileRevisionId
+          || reuseDecision.currentProfileRevisionId !== executionProfile.id) {
+          throw new TypeError(`Candidate ${prior.id} is not bound to an explicit compatible ReuseDecision`);
+        }
+        if (!authorizedReuseProducers.some((producer) => canonicalJson(producer) === canonicalJson(prior.producer))) {
+          throw new TypeError(`Candidate ${prior.id} producer is incompatible with the current execution profile`);
+        }
         const candidate = deepFreeze({
           ...structuredClone(prior),
           snapshotManifestId: job.snapshotManifestId,
@@ -771,6 +913,7 @@ export class LegacyUnderstandingRuntime {
         reusedWorkUnitIds.add(candidate.workUnitId);
       }
       for (const [workUnitId, workUnitCandidates] of reusedCandidatesByWorkUnit) {
+        const reuseDecision = reuseDecisionByWorkUnit.get(workUnitId);
         const allowset = createCandidateEvidenceAllowset({
           projectId: job.projectId,
           snapshotManifestId: job.snapshotManifestId,
@@ -780,8 +923,9 @@ export class LegacyUnderstandingRuntime {
           sourceSliceIds: workUnitCandidates.flatMap(({ sourceSliceIds }) => sourceSliceIds),
           confidenceCap: workUnitCandidates.map(({ confidence }) => confidence)
             .sort((left, right) => childConfidenceRank[right] - childConfidenceRank[left])[0],
-          routeDecision: {
-            selected: [...new Map(workUnitCandidates.map(({ producer }) => [canonicalJson(producer), producer])).values()],
+          reuseDecision: {
+            ...reuseDecision,
+            authorizedProducers: authorizedReuseProducers,
           },
         });
         await this.store.appendUnderstandingRecord(job.projectId, "EVIDENCE_ALLOWSET", {
@@ -1219,6 +1363,9 @@ export class LegacyUnderstandingRuntime {
       projectId: job.projectId,
       snapshotManifestId: job.snapshotManifestId,
       analysisRunId: job.id,
+      workspaceExecutionProfileRevisionId: executionProfile.id,
+      executionPolicyDigest: job.policyDigest,
+      reuseContract: incrementalPlan.reuseContract,
       candidates,
       relations,
       mainConflicts,
@@ -1513,6 +1660,24 @@ export class LegacyUnderstandingRuntime {
       ...sourceBundle,
       candidates: sourceBundle.candidates.filter(({ id }) => admittedCandidateIds.has(id)),
     };
+    const referencedSourceSliceIds = new Set([
+      ...bundle.candidates.flatMap(({ sourceSliceIds = [] }) => sourceSliceIds),
+      ...(bundle.relations ?? []).flatMap(({ sourceSliceIds = [] }) => sourceSliceIds),
+    ]);
+    const sourceSlices = (await this.store.listUnderstandingRecords(job.projectId, "SOURCE_SLICE"))
+      .filter(({ id }) => referencedSourceSliceIds.has(id));
+    validateProjectionSourceSliceReferences({
+      job,
+      candidates: bundle.candidates,
+      relations: bundle.relations,
+      sourceSlices,
+    });
+    const inventoryArtifactIds = new Set(inventory.artifacts.map(({ id }) => id));
+    for (const slice of sourceSlices) {
+      if (slice.artifactSlices.some(({ artifactId }) => !inventoryArtifactIds.has(artifactId))) {
+        throw new TypeError(`SourceSlice ${slice.id} cites an Artifact outside the graph Snapshot`);
+      }
+    }
     const artifactNodeType = (artifact) => {
       const kinds = new Set(artifact.artifactKinds ?? []);
       if (kinds.has("TEST")) return "TEST_ASSET";
@@ -1532,6 +1697,20 @@ export class LegacyUnderstandingRuntime {
       relativePath: artifact.relativePath,
       disposition: artifact.disposition,
     }));
+    const sourceSliceNodes = sourceSlices.map((slice) => ({
+      id: slice.id,
+      type: "SOURCE_SLICE_EVIDENCE",
+      authority: "CANDIDATE",
+      label: `Authorized source evidence (${slice.status})`,
+      workUnitId: slice.workUnitId,
+      artifactIds: [...new Set(slice.artifactSlices.map(({ artifactId }) => artifactId))].sort(),
+      status: slice.status,
+      contentDigest: slice.contentDigest,
+      responseDigest: slice.responseDigest,
+      policyDecisionId: slice.policyDecisionId,
+      redacted: slice.redactions.length > 0,
+      truncated: slice.truncated === true,
+    }));
     const referencedChildResultIds = new Set(bundle.candidates.flatMap(({ childResultIds = [] }) => childResultIds));
     const childResults = (await this.store.listUnderstandingRecords(job.projectId, "CHILD_BATCH_RESULT"))
       .filter(({ analysisRunId, id }) => analysisRunId === job.id || referencedChildResultIds.has(id));
@@ -1542,6 +1721,7 @@ export class LegacyUnderstandingRuntime {
     );
     const nodes = [
       ...artifactNodes,
+      ...sourceSliceNodes,
       ...facts.map((fact) => ({
         id: fact.id,
         type: fact.type,
@@ -1652,10 +1832,11 @@ export class LegacyUnderstandingRuntime {
       }];
     }).map((edge) => [edge.id, edge])).values()];
     const candidateEvidenceEdges = bundle.candidates.flatMap((candidate) =>
-      candidate.evidenceFactIds.filter((factId) => nodeIds.has(factId)).map((factId) => ({
-        id: contentId("GRAPH-EDGE", { source: candidate.id, target: factId, type: "SUPPORTED_BY" }),
+      [...candidate.evidenceFactIds, ...candidate.sourceSliceIds]
+        .filter((evidenceId) => nodeIds.has(evidenceId)).map((evidenceId) => ({
+        id: contentId("GRAPH-EDGE", { source: candidate.id, target: evidenceId, type: "SUPPORTED_BY" }),
         source: candidate.id,
-        target: factId,
+        target: evidenceId,
         type: "SUPPORTED_BY",
         authority: "CANDIDATE",
       })));
@@ -1677,7 +1858,11 @@ export class LegacyUnderstandingRuntime {
     const edges = [...factArtifactEdges, ...referenceEdges, ...candidateEvidenceEdges, ...childEvidenceEdges, ...evaluationEdges, ...governedEdges];
     const traceChains = bundle.candidates.map((candidate) => {
       const candidateFacts = facts.filter(({ id }) => candidate.evidenceFactIds.includes(id));
-      const candidateArtifacts = [...new Set(candidateFacts.map(({ artifactId }) => artifactId))];
+      const candidateSourceSlices = sourceSlices.filter(({ id }) => candidate.sourceSliceIds.includes(id));
+      const candidateArtifacts = [...new Set([
+        ...candidateFacts.map(({ artifactId }) => artifactId),
+        ...candidateSourceSlices.flatMap(({ artifactSlices }) => artifactSlices.map(({ artifactId }) => artifactId)),
+      ])];
       const reviewedChain = governedTraceChains.find((chain) => (chain.segments ?? []).some((segment) =>
         segment.from?.id === candidate.id || segment.to?.id === candidate.id));
       const reviewedNodeIdsByType = new Map();
@@ -1691,7 +1876,8 @@ export class LegacyUnderstandingRuntime {
       const reviewedNodes = (...types) => [...new Set(types.flatMap((type) => reviewedNodeIdsByType.get(type) ?? []))];
       const analysisEvidenceNodeIds = childResults
         .filter(({ id }) => candidate.childResultIds.includes(id))
-        .map(({ id }) => id);
+        .map(({ id }) => id)
+        .concat(candidateSourceSlices.map(({ id }) => id));
       const segments = [
         { type: "REQUIREMENT", nodeIds: [...reviewedNodes("REQUIREMENT_DOCUMENT"), ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "REQUIREMENT_DOCUMENT")] },
         { type: "DESIGN", nodeIds: [...reviewedNodes("DESIGN_DOCUMENT"), ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "DESIGN_DOCUMENT")] },
@@ -1700,7 +1886,7 @@ export class LegacyUnderstandingRuntime {
         { type: "TEST", nodeIds: [...reviewedNodes("TEST_SPEC", "TEST_ASSERTION"), ...candidateArtifacts.filter((id) => nodes.find((node) => node.id === id)?.type === "TEST_ASSET")] },
         { type: "EXECUTION", nodeIds: reviewedNodes("TEST_EXECUTION") },
         { type: "VERIFICATION", nodeIds: reviewedChain?.dimensions?.verification === "PASS" ? reviewedNodes("TEST_EXECUTION") : [] },
-        { type: "EVIDENCE", nodeIds: reviewedNodes("EVIDENCE") },
+        { type: "EVIDENCE", nodeIds: [...reviewedNodes("EVIDENCE"), ...candidateSourceSlices.map(({ id }) => id)] },
       ];
       const chainGaps = segments.filter(({ nodeIds: segmentNodeIds }) => segmentNodeIds.length === 0)
         .map(({ type }) => ({ type: `MISSING_${type}`, status: "OPEN" }));
@@ -1708,6 +1894,7 @@ export class LegacyUnderstandingRuntime {
         id: contentId("UNDERSTANDING-TRACE-CHAIN", {
           candidateId: candidate.id,
           evidenceFactIds: candidate.evidenceFactIds,
+          sourceSliceIds: candidate.sourceSliceIds,
         }),
         subject: { kind: "CANDIDATE", id: candidate.id },
         status: reviewedCandidateTraceComplete(reviewedChain, chainGaps) ? "REVIEWED_COMPLETE" : "CANDIDATE_REVIEW_REQUIRED",

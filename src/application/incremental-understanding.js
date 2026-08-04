@@ -26,6 +26,9 @@ export function planIncrementalUnderstanding(input) {
   const directlyAffected = new Set(input.current.plan.workUnits
     .filter((unit) => unit.artifactIds.some((id) => changedArtifactIds.has(id)))
     .map(({ id }) => id));
+  if (mode === "INCREMENTAL" && input.reuseCompatibility?.compatible === false) {
+    for (const { id } of input.current.plan.workUnits) directlyAffected.add(id);
+  }
   const previousPartitionById = new Map((input.previous?.plan?.partitions ?? [])
     .map((partition) => [partition.id, partition]));
   const currentPartitionById = new Map((input.current.plan.partitions ?? [])

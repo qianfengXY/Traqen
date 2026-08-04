@@ -7,7 +7,11 @@ function evidenceKey(candidate) {
 const confidenceRank = Object.freeze({ LOW: 1, MEDIUM: 2, HIGH: 3 });
 
 export function createCandidateEvidenceAllowset(input) {
-  const routeDecision = structuredClone(input.routeDecision);
+  const routeDecision = structuredClone(input.routeDecision ?? null);
+  const reuseDecision = structuredClone(input.reuseDecision ?? null);
+  if (!routeDecision && !reuseDecision) {
+    throw new TypeError("an evidence allowset requires a RouteDecision or ReuseDecision");
+  }
   return deepFreeze({
     projectId: input.projectId,
     snapshotManifestId: input.snapshotManifestId,
@@ -17,6 +21,7 @@ export function createCandidateEvidenceAllowset(input) {
     sourceSliceIds: [...new Set(input.sourceSliceIds ?? [])].sort(),
     confidenceCap: input.confidenceCap ?? "LOW",
     routeDecision,
+    reuseDecision,
   });
 }
 
@@ -39,12 +44,17 @@ export function validateCandidateAgainstEvidenceAllowset(candidate, allowset) {
     > (confidenceRank[allowset.confidenceCap] ?? 0)) {
     throw new TypeError(`Candidate ${candidate.id} confidence exceeds its evidence cap`);
   }
-  const selectedRoutes = allowset.routeDecision?.selected ?? [];
+  const selectedRoutes = allowset.routeDecision?.selected
+    ?? allowset.reuseDecision?.authorizedProducers
+    ?? [];
   const routeMatches = selectedRoutes.some((route) =>
     route.modelCapabilityProfileId === candidate.producer?.modelCapabilityProfileId
     && route.skillId === candidate.producer?.skillId
     && route.skillVersion === candidate.producer?.skillVersion);
-  if (!routeMatches) throw new TypeError(`Candidate ${candidate.id} producer is not selected by RouteDecision`);
+  if (!routeMatches) {
+    const authority = allowset.reuseDecision ? "ReuseDecision" : "RouteDecision";
+    throw new TypeError(`Candidate ${candidate.id} producer is not selected by ${authority}`);
+  }
   return true;
 }
 

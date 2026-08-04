@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   LegacyUnderstandingRuntime,
   reviewedCandidateTraceComplete,
+  validateProjectionSourceSliceReferences,
 } from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { WorkspaceAnalysisJobRunner } from "../src/application/workspace-analysis-job-runner.js";
@@ -220,6 +221,301 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
   assert.equal(currentAfterRejected.graphRevisionId, deleted.outputs.PUBLISHING.currentGraphHead.graphRevisionId);
   const equivalenceReports = await store.listUnderstandingRecords("P", "EQUIVALENCE_REPORT");
   assert.equal(equivalenceReports.find(({ analysisRunId }) => analysisRunId === rejected.id).status, "FAILED");
+});
+
+test("incremental reuse is invalidated when the pinned execution profile changes", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-profile-reuse-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export function profileBoundCapability() { return true; }\n");
+  const store = new MemoryTraceabilityStore();
+  const profileA = await persistFixtureExecutionProfile(store, "PROFILE-REUSE", "PROFILE-A");
+  const profileB = await persistFixtureExecutionProfile(store, "PROFILE-REUSE", "PROFILE-B");
+  const calls = { "PROFILE-A": 0, "PROFILE-B": 0 };
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer: async (input) => {
+      calls[input.executionProfile.id] += 1;
+      const output = await deterministicFixtureChildProducer(input);
+      return {
+        candidates: output.candidates.map((candidate) => ({
+          ...candidate,
+          name: `${input.executionProfile.id} capability`,
+          statement: `${input.executionProfile.id} produced this statement`,
+        })),
+      };
+    },
+    mainProducer: deterministicFixtureMainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({
+    projectId: "PROFILE-REUSE", rootPath: source, displayName: "Profile reuse",
+  });
+  const first = await runtime.start({
+    id: "PROFILE-A-JOB",
+    projectId: "PROFILE-REUSE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profileA.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(first.status, "COMPLETED", JSON.stringify(first.error));
+  const profileACalls = calls["PROFILE-A"];
+  assert.ok(profileACalls > 0);
+
+  const second = await runtime.start({
+    id: "PROFILE-B-JOB",
+    projectId: "PROFILE-REUSE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profileB.id,
+    requestedMode: "AUTO",
+  }, { background: false });
+  assert.equal(second.status, "COMPLETED", JSON.stringify(second.error));
+  assert.ok(calls["PROFILE-B"] > 0);
+  assert.equal(calls["PROFILE-A"], profileACalls);
+  assert.equal(second.outputs.ANALYSIS.reusedCandidateIds.length, 0);
+  assert.ok(second.outputs.ANALYSIS.routeDecisionIds.length > 0);
+  const plan = await store.getUnderstandingRecord(
+    "PROFILE-REUSE", "INCREMENTAL_PLAN", second.outputs.SOURCE_SCAN.incrementalPlanId,
+  );
+  assert.equal(plan.reuseCompatibility.compatible, false);
+  assert.ok(plan.reuseCompatibility.reasons.includes("WORKSPACE_EXECUTION_PROFILE_REVISION_CHANGED"));
+  assert.ok(plan.workUnitReuseDecisions.every(({ disposition, previousProfileRevisionId, currentProfileRevisionId }) =>
+    disposition === "REVALIDATE"
+    && previousProfileRevisionId === profileA.id
+    && currentProfileRevisionId === profileB.id));
+  const bundle = await store.getUnderstandingRecord(
+    "PROFILE-REUSE", "CANDIDATE_BUNDLE", second.outputs.ANALYSIS.candidateBundleId,
+  );
+  assert.equal(bundle.workspaceExecutionProfileRevisionId, profileB.id);
+  assert.equal(bundle.reuseContract.executionPolicyDigest, "traqen-understanding-runtime-v1");
+  assert.ok(bundle.reuseContract.producerContractDigest);
+  assert.ok(bundle.reuseContract.producerContract.childProducers.every((producer) =>
+    producer.modelRevision === profileB.id
+    && producer.skillVersion === profileB.id
+    && Array.isArray(producer.mcpNames)));
+  assert.ok(bundle.candidates.length > 0);
+  assert.ok(bundle.candidates.every(({ proposal }) => proposal.statement.includes("PROFILE-B")));
+  assert.ok(bundle.candidates.every(({ proposal }) => !proposal.statement.includes("PROFILE-A")));
+});
+
+test("incremental reuse is invalidated when the execution policy digest changes", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-policy-reuse-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export function policyBoundCapability() { return true; }\n");
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "POLICY-REUSE");
+  let producerCalls = 0;
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer: async (input) => {
+      producerCalls += 1;
+      return deterministicFixtureChildProducer(input);
+    },
+    mainProducer: deterministicFixtureMainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({
+    projectId: "POLICY-REUSE", rootPath: source, displayName: "Policy reuse",
+  });
+  const first = await runtime.start({
+    id: "POLICY-A-JOB",
+    projectId: "POLICY-REUSE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    policyDigest: "POLICY-A",
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(first.status, "COMPLETED", JSON.stringify(first.error));
+  const callsAfterFirst = producerCalls;
+  const second = await runtime.start({
+    id: "POLICY-B-JOB",
+    projectId: "POLICY-REUSE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    policyDigest: "POLICY-B",
+    requestedMode: "AUTO",
+  }, { background: false });
+  assert.equal(second.status, "COMPLETED", JSON.stringify(second.error));
+  assert.ok(producerCalls > callsAfterFirst);
+  assert.equal(second.outputs.ANALYSIS.reusedCandidateIds.length, 0);
+  const plan = await store.getUnderstandingRecord(
+    "POLICY-REUSE", "INCREMENTAL_PLAN", second.outputs.SOURCE_SCAN.incrementalPlanId,
+  );
+  assert.equal(plan.reuseCompatibility.compatible, false);
+  assert.ok(plan.reuseCompatibility.reasons.includes("EXECUTION_POLICY_DIGEST_CHANGED"));
+});
+
+test("SourceSlice-only evidence is retained as safe canonical graph lineage", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-source-slice-graph-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  const rawSecret = "do-not-publish-this-secret";
+  await writeFile(path.join(source, "entry.js"), `const api_key = "${rawSecret}";\nconst opaqueCapability = true;\n`);
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "SLICE-GRAPH");
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
+    childProducer: deterministicFixtureChildProducer,
+    mainProducer: deterministicFixtureMainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({
+    projectId: "SLICE-GRAPH", rootPath: source, displayName: "SourceSlice graph",
+  });
+  const completed = await runtime.start({
+    id: "SLICE-GRAPH-JOB",
+    projectId: "SLICE-GRAPH",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(completed.status, "COMPLETED", JSON.stringify(completed.error));
+  const bundle = await store.getUnderstandingRecord(
+    "SLICE-GRAPH", "CANDIDATE_BUNDLE", completed.outputs.ANALYSIS.candidateBundleId,
+  );
+  const sliceIds = [...new Set(bundle.candidates.flatMap(({ sourceSliceIds }) => sourceSliceIds))];
+  assert.ok(sliceIds.length > 0);
+  assert.ok(bundle.candidates.every(({ evidenceFactIds, sourceSliceIds }) =>
+    evidenceFactIds.length === 0 && sourceSliceIds.length > 0));
+  const revision = await store.getUnderstandingRecord(
+    "SLICE-GRAPH", "GRAPH_REVISION", completed.outputs.PROJECTION.graphRevisionId,
+  );
+  const graph = await store.getUnderstandingRecord("SLICE-GRAPH", "GRAPH_ARTIFACT", revision.graphArtifactId);
+  for (const sliceId of sliceIds) {
+    const node = graph.nodes.find(({ id }) => id === sliceId);
+    assert.equal(node?.type, "SOURCE_SLICE_EVIDENCE");
+    assert.equal(node?.authority, "CANDIDATE");
+    assert.ok(graph.edges.some(({ target, type }) => target === sliceId && type === "SUPPORTED_BY"));
+    assert.ok(graph.traceChains.some(({ subject, nodeIds, segments, analysisEvidenceNodeIds }) =>
+      subject?.kind === "CANDIDATE"
+      && nodeIds.includes(sliceId)
+      && analysisEvidenceNodeIds.includes(sliceId)
+      && segments.some(({ type, nodeIds: evidenceIds }) => type === "EVIDENCE" && evidenceIds.includes(sliceId))));
+  }
+  const serializedGraph = canonicalJson(graph);
+  assert.doesNotMatch(serializedGraph, new RegExp(rawSecret));
+  assert.doesNotMatch(serializedGraph, /redactedText/);
+});
+
+test("SourceSlice projection scope validation covers Project, Snapshot, AnalysisRun, and WorkUnit", () => {
+  const job = { id: "RUN", projectId: "PROJECT", snapshotManifestId: "SNAPSHOT" };
+  const candidate = { id: "CANDIDATE", workUnitId: "WORK-UNIT", sourceSliceIds: ["SLICE"] };
+  const validSlice = {
+    id: "SLICE",
+    projectId: job.projectId,
+    snapshotManifestId: job.snapshotManifestId,
+    analysisRunId: job.id,
+    workUnitId: candidate.workUnitId,
+    status: "COMPLETE",
+  };
+  assert.equal(validateProjectionSourceSliceReferences({
+    job, candidates: [candidate], sourceSlices: [validSlice],
+  }), true);
+  for (const [field, value] of [
+    ["projectId", "FOREIGN-PROJECT"],
+    ["snapshotManifestId", "FOREIGN-SNAPSHOT"],
+    ["analysisRunId", "FOREIGN-RUN"],
+    ["workUnitId", "FOREIGN-WORK-UNIT"],
+  ]) {
+    assert.throws(() => validateProjectionSourceSliceReferences({
+      job,
+      candidates: [candidate],
+      sourceSlices: [{ ...validSlice, [field]: value }],
+    }), new RegExp(`${field} is outside`));
+  }
+  assert.throws(() => validateProjectionSourceSliceReferences({
+    job, candidates: [candidate], sourceSlices: [],
+  }), /is unavailable/);
+  assert.throws(() => validateProjectionSourceSliceReferences({
+    job, candidates: [candidate], sourceSlices: [{ ...validSlice, status: "REJECTED" }],
+  }), /is rejected/);
+});
+
+test("foreign SourceSlice scope fails projection without creating a revision or moving GraphHead", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-foreign-slice-projection-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "const opaqueCapability = true;\n");
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, "FOREIGN-SLICE");
+  const sourceSliceBroker = {
+    async read(request) {
+      const artifactId = request.selectors[0].artifactId;
+      const slice = {
+        id: contentId("FOREIGN-PROJECTION-SLICE", { requestId: request.id }),
+        requestId: request.id,
+        projectId: "ANOTHER-PROJECT",
+        snapshotManifestId: request.snapshotManifestId,
+        analysisRunId: request.analysisRunId,
+        workUnitId: request.workUnitId,
+        status: "COMPLETE",
+        artifactSlices: [{
+          artifactId,
+          relativePath: "entry.js",
+          contentDigest: "sha256:fixture",
+          range: { startByte: 0, endByte: 30 },
+          redactedText: "const opaqueCapability = true;",
+        }],
+        factIds: [],
+        redactions: [],
+        contentDigest: "sha256:foreign-slice",
+        truncated: false,
+        omittedReasons: [],
+        diagnostics: [],
+        policyDecisionId: "FOREIGN-POLICY-DECISION",
+        responseDigest: "sha256:foreign-response",
+        createdAt: new Date().toISOString(),
+      };
+      await store.appendUnderstandingRecord(request.projectId, "SOURCE_SLICE", slice);
+      return slice;
+    },
+  };
+  const runtime = new LegacyUnderstandingRuntime({
+    store,
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    sourceSliceBroker,
+    childProducer: deterministicFixtureChildProducer,
+    mainProducer: deterministicFixtureMainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const registration = await runtime.registerSource({
+    projectId: "FOREIGN-SLICE", rootPath: source, displayName: "Foreign SourceSlice",
+  });
+  const failed = await runtime.start({
+    id: "FOREIGN-SLICE-JOB",
+    projectId: "FOREIGN-SLICE",
+    sourceRegistrationId: registration.id,
+    workspaceExecutionProfileRevisionId: profile.id,
+    requestedMode: "FULL",
+  }, { background: false });
+  assert.equal(failed.status, "FAILED");
+  assert.match(failed.error.message, /projectId is outside the graph projection scope/);
+  assert.equal(await store.getCurrentGraphHead("FOREIGN-SLICE"), null);
+  assert.equal((await store.listUnderstandingRecords("FOREIGN-SLICE", "GRAPH_ARTIFACT")).length, 0);
+  assert.equal((await store.listUnderstandingRecords("FOREIGN-SLICE", "GRAPH_REVISION")).length, 0);
 });
 
 test("Main MERGE produces one reconciled Candidate with complete Child provenance", async () => {
