@@ -373,6 +373,13 @@ export function createTraceabilityHttpHandler({
       }
 
       const workspaceCapabilityConfigMatch = /^\/v1\/workspaces\/([^/]+)\/capability-configs$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceCapabilityConfigMatch) {
+        const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
+        const configs = await application.listWorkspaceCapabilityConfigs(workspaceId);
+        if (!configs) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, { configs }, id);
+        return;
+      }
       if (request.method === "POST" && workspaceCapabilityConfigMatch) {
         requireJson(request);
         const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
@@ -383,6 +390,13 @@ export function createTraceabilityHttpHandler({
       }
 
       const workspaceProfileMatch = /^\/v1\/workspaces\/([^/]+)\/execution-profile-revisions$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceProfileMatch) {
+        const workspaceId = decodePathSegment(workspaceProfileMatch[1]);
+        const profiles = await application.listWorkspaceExecutionProfiles(workspaceId);
+        if (!profiles) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, { profiles }, id);
+        return;
+      }
       if (request.method === "POST" && workspaceProfileMatch) {
         requireJson(request);
         const workspaceId = decodePathSegment(workspaceProfileMatch[1]);

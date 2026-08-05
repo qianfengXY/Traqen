@@ -214,6 +214,12 @@ test("Workspace API owns lifecycle, capability isolation, and same-batch Child e
   });
   assert.equal(profile.response.status, 201);
   assert.equal(profile.body.entries.some(({ logicalName }) => logicalName === "global-not-enabled"), false);
+  const listedConfigs = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/capability-configs`);
+  assert.equal(listedConfigs.status, 200);
+  assert.deepEqual((await listedConfigs.json()).configs.map(({ id }) => id), [config.body.id]);
+  const listedProfiles = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/execution-profile-revisions`);
+  assert.equal(listedProfiles.status, 200);
+  assert.deepEqual((await listedProfiles.json()).profiles.map(({ id }) => id), [profile.body.id]);
 
   const batch = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/analysis-batches`, {
     snapshotManifestId: "S-HTTP",

@@ -328,8 +328,16 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.saveWorkspaceCapabilityConfig(workspaceId, input);
   }
 
+  async listWorkspaceCapabilityConfigs(workspaceId) {
+    return this.#workspaceFoundation.listWorkspaceCapabilityConfigs(workspaceId);
+  }
+
   async resolveWorkspaceExecutionProfile(workspaceId, configId = null) {
     return this.#workspaceFoundation.resolveWorkspaceProfile(workspaceId, configId);
+  }
+
+  async listWorkspaceExecutionProfiles(workspaceId) {
+    return this.#workspaceFoundation.listWorkspaceProfiles(workspaceId);
   }
 
   async issueWorkspaceSecretGrants(workspaceId, profileRevisionId, input) {

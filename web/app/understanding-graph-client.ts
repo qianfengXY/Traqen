@@ -81,6 +81,47 @@ export async function listGraphRevisions(apiBase: string, apiToken: string, proj
   return (await json<{ revisions: GraphRevision[] }>(response)).revisions;
 }
 
+export async function getGraphRevision(
+  apiBase: string,
+  apiToken: string,
+  projectId: string,
+  revisionId: string,
+) {
+  const response = await fetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/graph/revisions/${encodeURIComponent(revisionId)}`, {
+    method: "GET",
+    headers: headers(apiToken),
+  });
+  return json<{ revision: GraphRevision; graphArtifact: CurrentUnderstandingGraph["graphArtifact"] }>(response);
+}
+
+export async function getUnderstandingChangeImpact(
+  apiBase: string,
+  apiToken: string,
+  projectId: string,
+  changeSetId: string,
+) {
+  const response = await fetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/changes/${encodeURIComponent(changeSetId)}/impact`, {
+    method: "GET",
+    headers: headers(apiToken),
+  });
+  if (response.status === 404) return null;
+  return json<Record<string, unknown>>(response);
+}
+
+export async function getUnderstandingTraceChain(
+  apiBase: string,
+  apiToken: string,
+  projectId: string,
+  traceChainId: string,
+) {
+  const response = await fetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/graph/traces/${encodeURIComponent(traceChainId)}`, {
+    method: "GET",
+    headers: headers(apiToken),
+  });
+  if (response.status === 404) return null;
+  return json<CurrentUnderstandingGraph["graphArtifact"]["traceChains"][number]>(response);
+}
+
 export async function getFeatureUnderstandingHistory(
   apiBase: string,
   apiToken: string,

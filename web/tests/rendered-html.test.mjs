@@ -19,17 +19,33 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Traqen · 可追溯质量工作台<\/title>/i);
-  for (const text of ["功能追溯", "追溯图谱", "效果指标", "Workspace 分析", "创建第一个 Workspace", "配置分析模型", "新建 Workspace", "尚未创建项目", "中文", "English"]) {
+  for (const text of [
+    "工作台概览",
+    "Workspace 分析",
+    "功能 / API",
+    "理解图谱",
+    "声明审核",
+    "变更影响",
+    "能力设置",
+    "创建第一个 Workspace",
+    "新建 Workspace",
+    "中文",
+    "English",
+  ]) {
     assert.match(html, new RegExp(text));
   }
-  assert.match(html, /所有扫描、模型执行与发布均由服务端任务负责/);
+  for (const text of ["Published Head", "Review Queue", "Impact Actions", "Connection Health", "部署诊断"]) {
+    assert.match(html, new RegExp(text));
+  }
+  assert.doesNotMatch(html, /API 地址.*API token/s);
   assert.doesNotMatch(html, /webkitdirectory|兼容导入|浏览器扫描|SELF WORKSPACE|codex-preview/i);
 });
 
 test("ships only the server-owned understanding path after Web cutover", async () => {
-  const [page, product, serverClient, graphClient] = await Promise.all([
+  const [page, product, surfaces, serverClient, graphClient] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/product-surfaces.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/server-understanding-client.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/understanding-graph-client.ts", import.meta.url), "utf8"),
   ]);
@@ -43,10 +59,20 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /traqen\.activeWorkspaceId/);
   assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "RUNNING"\)/);
   assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "PAUSED"\)/);
-  assert.match(product, /jobs\.map\(\(item\)/);
+  assert.match(surfaces, /jobs\.map\(\(item\)/);
   assert.match(product, /getCurrentUnderstandingGraph/);
   assert.match(product, /staleWorkspaceResponse/);
   assert.match(product, /window\.setInterval/);
+  for (const stage of ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING"]) {
+    assert.match(surfaces, new RegExp(stage));
+  }
+  for (const moduleName of ["FeatureExplorer", "GraphExplorer", "ReviewWorkspace", "ImpactWorkspace", "CapabilitySettings"]) {
+    assert.match(`${product}\n${surfaces}`, new RegExp(moduleName));
+  }
+  assert.match(surfaces, /PUBLISHED/);
+  assert.match(surfaces, /CANDIDATE/);
+  assert.match(surfaces, /Static lane/);
+  assert.match(surfaces, /Agent lane/);
   assert.match(serverClient, /source-registrations/);
   assert.match(serverClient, /workspace-analysis-jobs/);
   assert.match(serverClient, /"pause" \| "resume" \| "cancel"/);

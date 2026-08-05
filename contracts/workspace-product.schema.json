@@ -119,6 +119,12 @@
         "createdAt": { "$ref": "#/$defs/Timestamp" }
       }, "additionalProperties": false
     },
+    "CapabilityConfigList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["configs"],
+      "properties": { "configs": { "type": "array", "items": { "$ref": "#/$defs/CapabilityConfig" } } }
+    },
     "ExecutionProfileRequest": {
       "type": "object", "properties": { "configId": { "$ref": "#/$defs/Id" } }, "additionalProperties": false
     },
@@ -135,6 +141,12 @@
         "dependencies": { "type": "object" }, "conventions": { "type": "object" }, "policies": { "type": "object" },
         "profileDigest": { "$ref": "#/$defs/Id" }, "createdAt": { "$ref": "#/$defs/Timestamp" }
       }, "additionalProperties": false
+    },
+    "ExecutionProfileList": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profiles"],
+      "properties": { "profiles": { "type": "array", "items": { "$ref": "#/$defs/ExecutionProfile" } } }
     },
     "SecretGrantRequest": {
       "type": "object", "required": ["analysisRunId", "expiresAt"],

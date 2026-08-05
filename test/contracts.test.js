@@ -275,6 +275,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/changes/{changeSetId}/impact"].get.operationId, "getUnderstandingChangeImpact");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/capability-configs"].get.operationId, "listWorkspaceCapabilityConfigs");
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].get.operationId, "listWorkspaceExecutionProfileRevisions");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].get.operationId, "listWorkspaceUnderstandingJobs");
   assert.ok(

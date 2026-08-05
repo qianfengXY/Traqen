@@ -88,10 +88,12 @@
     },
     "/v1/workspaces/{workspaceId}/capability-configs": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "listWorkspaceCapabilityConfigs", "responses": { "200": { "description": "Versioned Workspace capability configuration history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "post": { "operationId": "createWorkspaceCapabilityConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigRequest" } } } }, "responses": { "201": { "description": "Versioned Workspace override/removal configuration", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfig" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "listWorkspaceExecutionProfileRevisions", "responses": { "200": { "description": "Immutable Workspace execution profile history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "post": { "operationId": "resolveWorkspaceExecutionProfileRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileRequest" } } } }, "responses": { "201": { "description": "Immutable Workspace-effective runtime profile", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfile" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants": {
