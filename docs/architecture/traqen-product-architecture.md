@@ -10,6 +10,8 @@ topics:
   - traceability
   - governance
   - change-impact
+  - frontend
+  - user-journey
 doc_kind: architecture
 created: 2026-07-31
 status: proposed
@@ -76,6 +78,55 @@ Workspace switcher
 ```
 
 All surfaces read from the same canonical ledgers but use different projections. A working Candidate tree and a published governed tree must remain visually and contractually distinct.
+
+### 4.1 Cross-Feature product experience
+
+The product shell exposes the six modules above as one Workspace-scoped journey rather than as unrelated administration pages:
+
+| Navigation group | Surface | Primary user job |
+|---|---|---|
+| Understand | Workspace Analysis (F001) | establish or refresh system understanding |
+| Understand | Feature / API (F002) | inspect governed capabilities and their evidence chains |
+| Understand | Traceability Graph (F003) | explain relationships and evidence paths |
+| Govern | Claim Review (F004) | decide weak, conflicting, sampled, or stale Candidates |
+| Govern | Change Impact (F005) | explain change and close review/revalidation actions |
+| Configure | Capability Settings (F006) | pin the Workspace execution capabilities and boundaries |
+
+The Workspace root route is a **landing overview**, not a seventh product module. It summarizes the current published head, active job, review queue, open impact actions, configuration validity, and recent immutable activity. Its primary call to action changes with Workspace state: register source, repair configuration, start the first analysis, continue an active job, run an incremental analysis, or resolve a blocking review.
+
+The persistent shell must show:
+
+- the Workspace switcher and current Workspace identity;
+- the current module and selected object as a breadcrumb;
+- the current published `GraphRevision`, or an explicit historical read-only context;
+- Workspace-scoped review and change-impact counts;
+- language, theme, identity, help, and connection health.
+
+API base URLs, tokens, raw object IDs, and other deployment diagnostics are not primary product navigation. When a development or deployment mode still needs them, they belong in an environment-scoped diagnostics drawer. Normal user journeys begin with a Workspace, Job, governed object, review queue, or latest published ChangeSet and never require typing internal IDs.
+
+### 4.2 Authority and visual-state contract
+
+Every product surface must preserve the same authority language:
+
+- **Published:** solid container, `GraphRevision` identifier, and `PUBLISHED` text;
+- **Working Candidate:** dashed container, `CANDIDATE` text, and a persistent non-authoritative explanation;
+- **Historical:** read-only banner with the selected Revision and a direct return to Current Head;
+- **Conflict, Gap, Missing, and Stale:** icon plus text plus color; color alone is insufficient;
+- **Unavailable:** the missing denominator or source and its reason, never an invented zero or perfect score.
+
+Candidate and governed projections may link to one another, but they cannot share a tree, silently merge, or reuse a visual state that hides their authority difference. Graph layout, client selection, and cached preferences never create canonical Nodes, Edges, Decisions, or progress.
+
+### 4.3 Shared interaction and state contract
+
+- Page mount, refresh, reconnect, and Workspace switch are read-only operations. Start, pause, resume, cancel, review, and settings-save transitions require explicit user commands. Publishing follows the governed server workflow and can never be triggered as a page-lifecycle side effect.
+- Switching Workspace disables commands bound to the old context, clears old selections, rebinds subscriptions, and rejects late responses as defined in section 5.2.
+- Empty states explain why no object exists and identify the next valid action. Retry preserves filters and unsaved input.
+- Concurrent commands fail explicitly. Review and settings conflicts preserve both the user's input and the newer server version for comparison.
+- Progress exposes independent inventory, static extraction, Agent work, review, evaluation, and publishing denominators. Traqen never compresses these into a single confidence or understanding score.
+- Desktop layouts may use list/content/evidence panes. Mobile layouts preserve the same tasks through list-to-detail navigation; the graph defaults to an accessible relationship/path list with the canvas as an optional view.
+- Tree navigation, batch selection, review decisions, and graph-path inspection must be keyboard operable. Live progress uses summarized announcements rather than streaming every diagnostic line.
+
+Feature documents F001-F006 own their page-specific journeys, states, authority bindings, and frontend acceptance criteria. [Enterprise Blue](../design/enterprise-blue-theme.md) remains the visual design-system source; this architecture does not duplicate its color or component tokens.
 
 ## 5. Workspace aggregate and lifecycle
 

@@ -3,7 +3,7 @@
 ---
 feature_ids: [F004]
 related_features: [F001, F002]
-topics: [claim-review, batch-review, evidence, governance]
+topics: [claim-review, batch-review, evidence, governance, frontend, user-journey]
 doc_kind: spec
 created: 2026-07-31
 ---
@@ -35,6 +35,38 @@ Automated admission is a reversible review state. Only an authorized Decision cr
 4. Inspect source evidence and conflicts; edit normalized statements, scope, mappings, and rationale.
 5. Confirm, reject, defer, mark insufficient evidence, or record an exception.
 6. See immutable audit events and optimistic-concurrency failures instead of silent overwrites.
+
+## Frontend product experience
+
+### Workspace review queue
+
+F004 opens the current Workspace queue without asking for Run or Candidate IDs. The page contains:
+
+- filters for evidence state, Candidate type, risk, source module, model/Skill provenance, and change state;
+- a queue ordered by blocking risk and staleness, with recoverable selection and filter state;
+- a compatibility-aware batch toolbar that explains why selected entries can or cannot share a command;
+- a detail/decision workspace showing source evidence, Agent provenance, conflicts, confidence caps, immutable history, and editable normalized statement, Scope, Mapping, and Rationale;
+- explicit Confirm, Reject, Defer, Insufficient Evidence, and Record Exception outcomes where the command contract permits them.
+
+Batch selection is a command envelope, not one all-or-nothing Decision. The client validates compatibility before submission; the server records a separate Decision and Audit Event per item, and the result view preserves successes, failures, and retryable items.
+
+### Integrity, conflict, and responsive states
+
+- **Empty queue:** confirm that the current filters or Workspace have no review items and expose completed/history views where authorized.
+- **Invalid evidence:** disable Confirm until the invalid resolver is removed or replaced by authorized evidence, while preserving the proposed edits.
+- **Version conflict:** compare the user's input with the newer server version and require an explicit new command; never silently overwrite either side.
+- **Partial batch failure:** retain the batch receipt and per-item outcome, then allow retry only for eligible failures.
+- **Workspace switch:** clear selection and unsaved commands only after warning about local edits; never submit them to the new Workspace.
+
+Desktop uses queue/detail panes. Mobile uses queue-to-review navigation, keeps the decision summary visible before submission, and returns to the same queue position. Reviewer identity and authority are server-owned and cannot be entered as trusted free text.
+
+### Frontend acceptance
+
+- [ ] Queue entry, filtering, evidence inspection, and decisions never require manual Run or Candidate IDs.
+- [ ] Incompatible batch selections explain the incompatible command or authority boundary before submission.
+- [ ] Every item retains an independent Decision/Audit result, including partial batch failure and retry state.
+- [ ] Invalid evidence, confidence caps, conflicts, automated-admission status, and immutable prior Decisions remain visible during editing.
+- [ ] Concurrent edits preserve both inputs, and desktop, keyboard, and mobile journeys can complete the same governed Decision.
 
 ## Acceptance criteria
 

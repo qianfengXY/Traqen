@@ -3,7 +3,7 @@
 ---
 feature_ids: [F006]
 related_features: [F001]
-topics: [settings, models, skills, mcp, workspace-override, runtime-isolation]
+topics: [settings, models, skills, mcp, workspace-override, runtime-isolation, frontend, user-journey]
 doc_kind: spec
 created: 2026-07-31
 ---
@@ -46,6 +46,37 @@ F006 defines:
 5. Record dependencies, conventions, constraints, budgets, and data-boundary policies.
 6. Preview the effective diff and validation failures.
 7. Save a new revision; new runs use it while existing runs remain pinned to their previous revision.
+
+## Frontend product experience
+
+### Workspace configuration workspace
+
+F006 distinguishes four layers in the interface: read-only global templates, the Workspace draft, the resolved effective diff, and immutable execution-profile revisions. The page is divided into:
+
+- **Agents and capabilities:** one Main slot and one or more Child slots, model profile, Skills, MCP grants, role policy, and independence group;
+- **Dependencies and conventions:** project dependencies, framework/domain conventions, constraints, and their revisions;
+- **Security and boundaries:** data boundary, budget, permissions, Secret handles, and telemetry policy;
+- **Revision history:** effective diff, digest, creator, validation result, and Runs pinned to each revision.
+
+Global templates appear only as import sources. A Workspace draft explicitly imports, overrides, adds, or removes entries and previews the resulting effective diff before Save. Secret values are never displayed; the UI shows only a scoped handle, grant status, and affected capability.
+
+### Validation, conflict, and run pinning
+
+- **No effective revision / invalid draft:** show blocking Model readiness, Skill signature, MCP permission, Secret grant, data-boundary, and cross-reference errors at their exact fields; new Runs remain disabled.
+- **Dirty draft:** show added, changed, removed, inherited, and explicitly removed entries without changing the active effective revision.
+- **Save conflict:** preserve the draft and compare it with the newer Workspace configuration version before an explicit retry.
+- **Saved:** create and display a new immutable `WorkspaceExecutionProfileRevision`; do not mutate the previous revision.
+- **Active Run pinned to an older revision:** identify the pinned revision and state that the new settings apply only to a new Run.
+
+Desktop may use section navigation and an effective-diff side pane. Mobile uses a settings-section list followed by one section and its validation summary; Save always shows the complete effective diff and blocking count first.
+
+### Frontend acceptance
+
+- [ ] Users can distinguish global template, Workspace draft, effective configuration, and immutable revision without inspecting raw configuration JSON.
+- [ ] Main and every Child slot expose independent model, Skill, MCP, role, and independence settings; the default of two Children does not imply a fixed maximum.
+- [ ] Effective Diff deterministically shows imports, overrides, additions, and removals before Save.
+- [ ] Secret values never appear in forms, diffs, prompts, serialized revisions, or diagnostics; only scoped handles and grant status are visible.
+- [ ] Invalid drafts, save conflicts, historical revisions, and active Runs pinned to older revisions preserve user input and authority context on desktop, keyboard, and mobile.
 
 ## Acceptance criteria
 
