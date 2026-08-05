@@ -647,6 +647,16 @@
           "in": "query",
           "required": true,
           "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "selectedObjectId",
+          "in": "query",
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "graphRevisionId",
+          "in": "query",
+          "schema": { "type": "string", "minLength": 1 }
         }
       ],
       "get": {
@@ -672,6 +682,16 @@
           "name": "snapshotManifestId",
           "in": "query",
           "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "rootNodeId",
+          "in": "query",
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "graphRevisionId",
+          "in": "query",
           "schema": { "type": "string", "minLength": 1 }
         },
         {
@@ -1475,10 +1495,31 @@
         }
       }
     },
+    "/v1/projects/{projectId}/graph/revisions/{revisionId}/evidence/{kind}/{evidenceId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["nodes", "edges", "objects"] } },
+        { "name": "evidenceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "snapshotManifestId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "featureId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "rootNodeId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "resolveGraphEvidence",
+        "responses": {
+          "200": { "description": "GraphRevision-bound evidence resolution" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/features/{featureId}/history": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
-        { "$ref": "#/components/parameters/FeatureId" }
+        { "$ref": "#/components/parameters/FeatureId" },
+        { "name": "selectedObjectId", "in": "query", "schema": { "type": "string", "minLength": 1 } },
+        { "name": "graphRevisionId", "in": "query", "schema": { "type": "string", "minLength": 1 } }
       ],
       "get": {
         "operationId": "getFeatureUnderstandingHistory",
@@ -1779,7 +1820,8 @@
                 "toNodeId": { "type": "string", "minLength": 1 },
                 "direction": { "enum": ["ANY", "FORWARD", "REVERSE"], "default": "ANY" },
                 "maxDepth": { "type": "integer", "minimum": 1, "maximum": 12, "default": 8 },
-                "view": { "enum": ["traceability", "business", "implementation", "coverage"] }
+                "view": { "enum": ["traceability", "business", "implementation", "coverage"] },
+                "graphRevisionId": { "type": "string", "minLength": 1 }
               },
               "additionalProperties": false
             }

@@ -14,6 +14,7 @@ export type EvidenceStatus = "VERIFIED" | "MISSING" | "STALE" | "CONFLICTED" | "
 export type ImmutableContext = {
   workspaceId: string;
   featureId: string;
+  selectedObjectId?: string;
   snapshotManifestId: string;
   graphRevisionId: string;
   historical: boolean;
@@ -51,15 +52,17 @@ function identity(value: Record<string, unknown>, fallback: string) {
 }
 
 function immutableResolver(context: ImmutableContext, objectType: string, id: string, executionId?: string) {
-  const base = `/v1/projects/${encodeURIComponent(context.workspaceId)}`;
+  const base = `/v1/projects/${encodeURIComponent(context.workspaceId)}/graph/revisions/${encodeURIComponent(context.graphRevisionId)}/evidence/objects/${encodeURIComponent(id)}`;
   const query = new URLSearchParams({
     snapshotManifestId: context.snapshotManifestId,
-    graphRevisionId: context.graphRevisionId,
+    featureId: context.featureId,
+    rootNodeId: context.selectedObjectId ?? context.featureId,
+    objectType,
   });
   if (objectType === "EVIDENCE" && executionId) {
-    return `${base}/test-executions/${encodeURIComponent(executionId)}/evidence?${query}#${encodeURIComponent(id)}`;
+    query.set("executionId", executionId);
   }
-  return `${base}/features/${encodeURIComponent(context.featureId)}/traceability?${query}#${encodeURIComponent(objectType)}:${encodeURIComponent(id)}`;
+  return `${base}?${query}`;
 }
 
 function sourceLocation(value: Record<string, unknown>) {
@@ -142,7 +145,17 @@ function factObjectType(value: Record<string, unknown>) {
 
 function buildEvidenceItems(traceability: FeatureTraceability, context: ImmutableContext) {
   const items: EvidenceItem[] = [];
-  for (const claimValue of records(traceability.claims)) {
+  const selectedObjectId = traceability.selection?.id ?? context.selectedObjectId ?? context.featureId;
+  const selectedClaims = selectedObjectId === traceability.feature.id
+    ? records(traceability.claims)
+    : records(traceability.claims).filter((claimValue) => {
+        const factNodes = records(record(claimValue.facts).nodes);
+        const chainNodes = records(record(claimValue.traceChain).segments)
+          .flatMap((segment) => [record(segment.from), record(segment.to)]);
+        return [...factNodes, ...chainNodes].some((candidate) =>
+          identity(candidate, text(candidate.factId)) === selectedObjectId || text(candidate.factId) === selectedObjectId);
+      });
+  for (const claimValue of selectedClaims) {
     const claim = record(claimValue.claim);
     items.push(item(context, "REQUIREMENT", claim, {
       status: evidenceStatus(claimValue.authorityStatus),
@@ -193,9 +206,10 @@ function graphResolver(context: ImmutableContext, kind: "node" | "edge", id: str
     snapshotManifestId: context.snapshotManifestId,
     depth: "8",
     limit: "100",
-    graphRevisionId: context.graphRevisionId,
+    featureId: context.featureId,
+    rootNodeId: context.selectedObjectId ?? context.featureId,
   });
-  return `/v1/projects/${encodeURIComponent(context.workspaceId)}/features/${encodeURIComponent(context.featureId)}/graph?${query}#${kind.toUpperCase()}:${encodeURIComponent(id)}`;
+  return `/v1/projects/${encodeURIComponent(context.workspaceId)}/graph/revisions/${encodeURIComponent(context.graphRevisionId)}/evidence/${kind}s/${encodeURIComponent(id)}?${query}`;
 }
 
 function graphNode(node: FeatureGraphNode, context: ImmutableContext) {
@@ -205,7 +219,7 @@ function graphNode(node: FeatureGraphNode, context: ImmutableContext) {
     evidenceStatus: evidenceStatus(node.status),
     snapshotManifestId: context.snapshotManifestId,
     graphRevisionId: context.graphRevisionId,
-    resolver: graphResolver(context, "node", node.id),
+    resolver: node.evidenceResolver ?? graphResolver(context, "node", node.id),
     sourceLocation: sourceLocation(node as unknown as Record<string, unknown>),
     digest: digest(node.details),
   };
@@ -217,7 +231,7 @@ function graphEdge(edge: FeatureGraphEdge, context: ImmutableContext) {
     authority: graphAuthority(edge.provenance),
     evidenceStatus: evidenceStatus(edge.status),
     graphRevisionId: context.graphRevisionId,
-    resolver: graphResolver(context, "edge", edge.id),
+    resolver: edge.evidenceResolver ?? graphResolver(context, "edge", edge.id),
   };
 }
 
@@ -276,6 +290,7 @@ export function buildFeatureDetail(
     context,
     overview: {
       feature: traceability.feature,
+      selectedObject: traceability.selection ?? traceability.feature,
       snapshotManifest: traceability.snapshotManifest,
       computedAt: traceability.computedAt,
       traceChains: records(traceability.claims).map((claim) => record(claim.traceChain)),
@@ -288,7 +303,9 @@ export function buildFeatureDetail(
     relations: { items: relationItems },
     gaps: { items: gaps },
     history: {
-      featureVersions,
+      featureVersions: traceability.selection?.id !== traceability.feature.id && history?.selectionHistory
+        ? history.selectionHistory
+        : featureVersions,
       decisions: history?.decisions ?? [],
       implementationMappings: history?.implementationMappings ?? [],
       graphRevisions: history?.graphRevisions ?? [],

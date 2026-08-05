@@ -52,10 +52,13 @@ export type FeatureUnderstandingHistory = {
     status: string;
     [key: string]: unknown;
   }>;
+  selection?: { id: string; type: string; label: string; authority: string; ownerFeatureId: string };
+  selectionHistory?: Array<Record<string, unknown>>;
 };
 
 export type FeatureTraceability = {
   feature: Record<string, unknown> & { id: string; version?: number; name?: string };
+  selection?: { id: string; type: string; label: string; authority: string; ownerFeatureId: string };
   processModel: (Record<string, unknown> & { designElements?: Array<Record<string, unknown>> }) | null;
   processImplementationFacts: Array<{
     snapshotManifestId: string;
@@ -82,6 +85,7 @@ export type FeatureGraphNode = {
   provenance: string;
   source: Record<string, unknown> | null;
   details: Record<string, unknown>;
+  evidenceResolver?: string;
 };
 
 export type FeatureGraphEdge = {
@@ -92,11 +96,14 @@ export type FeatureGraphEdge = {
   provenance: string;
   status: "ACTIVE" | "PENDING" | "STALE";
   snapshotManifestId: string;
+  evidenceResolver?: string;
 };
 
 export type FeatureGraphProjection = {
   center: string;
   snapshotManifestId: string;
+  graphRevisionId?: string;
+  ownerFeatureId?: string;
   view: "traceability" | "business" | "implementation" | "coverage";
   depth: number;
   nodes: FeatureGraphNode[];
@@ -122,6 +129,8 @@ export type FeatureGraphOptions = {
   limit?: number;
   nodeTypes?: string[];
   relations?: string[];
+  rootNodeId?: string;
+  graphRevisionId?: string;
 };
 
 export type FeatureGraphPathQuery = {
@@ -131,6 +140,29 @@ export type FeatureGraphPathQuery = {
   direction?: "ANY" | "FORWARD" | "REVERSE";
   maxDepth?: number;
   view?: FeatureGraphProjection["view"];
+  graphRevisionId?: string;
+};
+
+export type GovernedSelectionOptions = {
+  selectedObjectId?: string;
+  graphRevisionId?: string;
+};
+
+export type ResolvedGraphEvidence = {
+  resolved: boolean;
+  status: "RESOLVED" | "MISSING";
+  kind: "node" | "edge" | "object";
+  id: string;
+  object: Record<string, unknown> | null;
+  context: {
+    projectId: string;
+    featureId: string;
+    rootNodeId: string;
+    snapshotManifestId: string;
+    graphRevisionId: string;
+    graphArtifactId: string;
+    graphArtifactDigest: string;
+  };
 };
 
 function headers(apiToken: string) {
@@ -206,9 +238,13 @@ export async function getFeatureUnderstandingHistory(
   apiToken: string,
   projectId: string,
   featureId: string,
+  options: GovernedSelectionOptions = {},
 ): Promise<FeatureUnderstandingHistory | null> {
+  const query = new URLSearchParams();
+  if (options.selectedObjectId) query.set("selectedObjectId", options.selectedObjectId);
+  if (options.graphRevisionId) query.set("graphRevisionId", options.graphRevisionId);
   const response = await fetch(
-    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/history`,
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/history${query.size ? `?${query}` : ""}`,
     { method: "GET", headers: headers(apiToken) },
   );
   if (response.status === 404) return null;
@@ -221,8 +257,11 @@ export async function getFeatureTraceability(
   projectId: string,
   featureId: string,
   snapshotManifestId: string,
+  options: GovernedSelectionOptions = {},
 ): Promise<FeatureTraceability | null> {
   const query = new URLSearchParams({ snapshotManifestId });
+  if (options.selectedObjectId) query.set("selectedObjectId", options.selectedObjectId);
+  if (options.graphRevisionId) query.set("graphRevisionId", options.graphRevisionId);
   const response = await fetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/traceability?${query}`,
     { method: "GET", headers: headers(apiToken) },
@@ -243,6 +282,8 @@ export async function getFeatureGraph(
   if (options.view) query.set("view", options.view);
   if (options.depth) query.set("depth", String(options.depth));
   if (options.limit) query.set("limit", String(options.limit));
+  if (options.rootNodeId) query.set("rootNodeId", options.rootNodeId);
+  if (options.graphRevisionId) query.set("graphRevisionId", options.graphRevisionId);
   for (const nodeType of options.nodeTypes ?? []) query.append("nodeType", nodeType);
   for (const relation of options.relations ?? []) query.append("relation", relation);
   const response = await fetch(
@@ -270,4 +311,17 @@ export async function queryFeatureGraphPath(
   );
   if (response.status === 404) return null;
   return json<FeatureGraphPathResult>(response);
+}
+
+export async function resolveGraphEvidence(
+  apiBase: string,
+  apiToken: string,
+  resolver: string,
+): Promise<ResolvedGraphEvidence> {
+  if (!resolver.startsWith("/v1/")) throw new Error("Evidence resolver must be a server-owned /v1 path");
+  const response = await fetch(`${apiBase.replace(/\/$/, "")}${resolver}`, {
+    method: "GET",
+    headers: headers(apiToken),
+  });
+  return json<ResolvedGraphEvidence>(response);
 }

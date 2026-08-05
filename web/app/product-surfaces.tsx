@@ -1,12 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { addChildSlot, removeChildSlot } from "./capability-roster";
 import type { CapabilityTemplate, ChildCapabilityRole, ExecutionProfile, ReviewQueueItem, WorkspaceCapabilityConfig } from "./product-foundation-client";
 import type { ServerUnderstandingJob } from "./server-understanding-client";
 import { buildFeatureDetail, buildGraphInspector, featureDetailTabs, type FeatureDetailTab } from "./traceability-view-model";
-import type { CurrentUnderstandingGraph, FeatureGraphPathResult, FeatureGraphProjection, FeatureTraceability, FeatureUnderstandingHistory, GraphRevision } from "./understanding-graph-client";
+import type { CurrentUnderstandingGraph, FeatureGraphPathResult, FeatureGraphProjection, FeatureTraceability, FeatureUnderstandingHistory, GraphRevision, ResolvedGraphEvidence } from "./understanding-graph-client";
 import type { Workspace } from "./workspace-client";
 
 export type T = (zh: string, en: string) => string;
@@ -176,10 +176,14 @@ export function FeatureExplorer({ t, workspaceId, artifact, revision, revisions,
   const detail = useMemo(() => traceability && revision ? buildFeatureDetail(traceability, graph, {
     workspaceId,
     featureId: traceability.feature.id,
+    selectedObjectId: traceability.selection?.id ?? traceability.feature.id,
     snapshotManifestId: revision.snapshotManifestId,
     graphRevisionId: revision.id,
     historical,
   }, history) : null, [graph, historical, history, revision, traceability, workspaceId]);
+  useEffect(() => {
+    if (visible.length > 0 && !visible.some(({ id }) => id === selectedId)) onSelectNode(visible[0].id);
+  }, [mode, onSelectNode, selectedId, visible]);
   const tabLabels: Record<FeatureDetailTab, string> = {
     overview: t("概览", "Overview"), evidence: t("证据", "Evidence"), relations: t("关系", "Relations"), gaps: "Gaps", history: t("历史", "History"),
   };
@@ -203,7 +207,7 @@ export function FeatureExplorer({ t, workspaceId, artifact, revision, revisions,
   </>;
 }
 
-export function GraphExplorer({ t, workspaceId, artifact, revision, revisions, historical, focusedId, graph, path, loading, error, onFocus, onSelectRevision, onLoadGraph, onQueryPath }: {
+export function GraphExplorer({ t, workspaceId, artifact, revision, revisions, historical, focusedId, graph, path, loading, error, onFocus, onSelectRevision, onLoadGraph, onQueryPath, onResolveEvidence }: {
   t: T;
   workspaceId: string;
   artifact: GraphArtifact | null;
@@ -219,21 +223,38 @@ export function GraphExplorer({ t, workspaceId, artifact, revision, revisions, h
   onSelectRevision: (revisionId: string) => void;
   onLoadGraph: (depth: number, view: FeatureGraphProjection["view"]) => void;
   onQueryPath: (targetNodeId: string, view: FeatureGraphProjection["view"]) => void;
+  onResolveEvidence: (resolver: string) => Promise<ResolvedGraphEvidence>;
 }) {
   const [depth, setDepth] = useState(2);
   const [graphView, setGraphView] = useState<FeatureGraphProjection["view"]>("traceability");
   const [targetId, setTargetId] = useState("");
   const [selectedNodeId, setSelectedNodeId] = useState(focusedId);
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
+  const [resolvedEvidence, setResolvedEvidence] = useState<ResolvedGraphEvidence | null>(null);
+  const [resolverError, setResolverError] = useState("");
   const inspector = useMemo(() => graph && revision ? buildGraphInspector(graph, path, {
     workspaceId,
-    featureId: graph.center,
+    featureId: graph.ownerFeatureId ?? graph.center,
+    selectedObjectId: graph.center,
     snapshotManifestId: graph.snapshotManifestId,
     graphRevisionId: revision.id,
     historical,
   }) : null, [graph, historical, path, revision, workspaceId]);
   const selectedNode = inspector?.nodes.find(({ id }) => id === selectedNodeId) ?? inspector?.nodes.find(({ id }) => id === graph?.center) ?? inspector?.nodes[0];
   const selectedEdge = inspector?.edges.find(({ id }) => id === selectedEdgeId);
+  const selectedResolver = selectedEdge?.resolver ?? selectedNode?.resolver ?? "";
+  useEffect(() => {
+    if (!selectedResolver) return;
+    let current = true;
+    void onResolveEvidence(selectedResolver).then((result) => {
+      if (current) setResolvedEvidence(result);
+    }).catch((failure: unknown) => {
+      if (current) setResolverError(failure instanceof Error ? failure.message : "Evidence resolution failed");
+    });
+    return () => { current = false; };
+  }, [onResolveEvidence, selectedResolver]);
+  const selectedEvidenceId = selectedEdge?.id ?? selectedNode?.id ?? "";
+  const activeResolvedEvidence = resolvedEvidence?.id === selectedEvidenceId ? resolvedEvidence : null;
   const positions = useMemo(() => new Map((inspector?.nodes ?? []).map((node, index, list) => {
     if (node.id === graph?.center) return [node.id, { x: 50, y: 50 }];
     const offset = list.filter(({ id }) => id !== graph?.center).findIndex(({ id }) => id === node.id);
@@ -250,7 +271,7 @@ export function GraphExplorer({ t, workspaceId, artifact, revision, revisions, h
       {loading && <div className="inline-state" role="status">{t("正在查询有界图谱…", "Querying bounded graph…")}</div>}{error && <div className="inline-state error" role="alert">{error}</div>}
       {!graph || !inspector ? <Unavailable t={t} reason={t("有界 Feature Graph 响应不可用；不会退回完整仓库图或 Demo。", "The bounded Feature Graph response is unavailable; no full-repository or demo fallback is used.")} /> : <div className="graph-results">
         <section className={`coverage-state ${inspector.coverage.toLowerCase()}`}><b>{inspector.coverage}</b><span>{graph.truncated ? t("已达到声明边界；结果不代表完整覆盖。", "The declared bound was reached; this result is not complete coverage.") : t("服务端确认当前边界内完整。", "The server confirms completeness within this bound.")}</span>{graph.availableExpansions.map((item) => <em key={`${item.relation}:${item.nodeType}`}>{item.relation} → {item.nodeType} +{item.count}</em>)}</section>
-        <section className="graph-layout panel"><div className="graph-canvas" role="region" aria-label={t("可交互的有界理解图谱", "Interactive bounded understanding graph")}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">{inspector.edges.map((edge) => { const source = positions.get(edge.source); const target = positions.get(edge.target); return source && target ? <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className={edge.status.toLowerCase()} /> : null; })}</svg>{inspector.edges.map((edge) => { const source = positions.get(edge.source); const target = positions.get(edge.target); return source && target ? <button key={edge.id} className={`graph-edge ${edge.status.toLowerCase()} ${edge.id === selectedEdgeId ? "selected" : ""}`} style={{ left: `${(source.x + target.x) / 2}%`, top: `${(source.y + target.y) / 2}%` }} aria-label={`${edge.type}; ID ${edge.id}; ${edge.authority}; ${edge.status}; Snapshot ${edge.snapshotManifestId}; Revision ${edge.graphRevisionId}`} onClick={() => { setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}>{edge.type}</button> : null; })}{inspector.nodes.map((node) => { const position = positions.get(node.id)!; return <button key={node.id} className={`graph-node ${node.authority.toLowerCase()} ${node.id === graph.center ? "focused" : ""} ${node.id === selectedNodeId ? "selected" : ""}`} style={{ left: `${position.x}%`, top: `${position.y}%` }} aria-label={`${node.type} ${node.label}; ID ${node.id}; ${node.authority}; ${node.status}; Snapshot ${node.snapshotManifestId}; Revision ${node.graphRevisionId}`} onClick={() => { setSelectedNodeId(node.id); setSelectedEdgeId(""); onFocus(node.id); }}><b>{node.label}</b><small>{node.status} · {node.authority}</small></button>; })}</div><aside className="graph-inspector">{selectedEdge ? <><p className="eyebrow">EDGE · {selectedEdge.type}</p><h2>{shortId(selectedEdge.id)}</h2><dl><dt>ID</dt><dd>{selectedEdge.id}</dd><dt>{t("语义", "Semantics")}</dt><dd>{selectedEdge.source} → {selectedEdge.target}</dd><dt>{t("权威", "Authority")}</dt><dd>{selectedEdge.authority}</dd><dt>{t("状态", "Status")}</dt><dd>{selectedEdge.status}</dd><dt>Snapshot</dt><dd>{selectedEdge.snapshotManifestId}</dd><dt>Revision</dt><dd>{selectedEdge.graphRevisionId}</dd></dl><h3>Immutable Evidence Resolver</h3><code>{selectedEdge.resolver}</code></> : selectedNode ? <><p className="eyebrow">NODE · {selectedNode.type}</p><h2>{selectedNode.label}</h2><dl><dt>ID</dt><dd>{selectedNode.id}</dd><dt>{t("权威", "Authority")}</dt><dd>{selectedNode.authority}</dd><dt>{t("状态", "Status")}</dt><dd>{selectedNode.status}</dd><dt>Snapshot</dt><dd>{selectedNode.snapshotManifestId}</dd><dt>Revision</dt><dd>{selectedNode.graphRevisionId}</dd><dt>{t("源码", "Source")}</dt><dd>{selectedNode.sourceLocation ?? "NOT_APPLICABLE / MISSING"}</dd></dl><h3>Immutable Evidence Resolver</h3><code>{selectedNode.resolver}</code></> : null}</aside></section>
+        <section className="graph-layout panel"><div className="graph-canvas" role="region" aria-label={t("可交互的有界理解图谱", "Interactive bounded understanding graph")}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">{inspector.edges.map((edge) => { const source = positions.get(edge.source); const target = positions.get(edge.target); return source && target ? <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} className={edge.status.toLowerCase()} /> : null; })}</svg>{inspector.edges.map((edge) => { const source = positions.get(edge.source); const target = positions.get(edge.target); return source && target ? <button key={edge.id} className={`graph-edge ${edge.status.toLowerCase()} ${edge.id === selectedEdgeId ? "selected" : ""}`} style={{ left: `${(source.x + target.x) / 2}%`, top: `${(source.y + target.y) / 2}%` }} aria-label={`${edge.type}; ID ${edge.id}; ${edge.authority}; ${edge.status}; Snapshot ${edge.snapshotManifestId}; Revision ${edge.graphRevisionId}`} onClick={() => { setResolvedEvidence(null); setResolverError(""); setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}>{edge.type}</button> : null; })}{inspector.nodes.map((node) => { const position = positions.get(node.id)!; return <button key={node.id} className={`graph-node ${node.authority.toLowerCase()} ${node.id === graph.center ? "focused" : ""} ${node.id === selectedNodeId ? "selected" : ""}`} style={{ left: `${position.x}%`, top: `${position.y}%` }} aria-label={`${node.type} ${node.label}; ID ${node.id}; ${node.authority}; ${node.status}; Snapshot ${node.snapshotManifestId}; Revision ${node.graphRevisionId}`} onClick={() => { setResolvedEvidence(null); setResolverError(""); setSelectedNodeId(node.id); setSelectedEdgeId(""); onFocus(node.id); }}><b>{node.label}</b><small>{node.status} · {node.authority}</small></button>; })}</div><aside className="graph-inspector">{selectedEdge ? <><p className="eyebrow">EDGE · {selectedEdge.type}</p><h2>{shortId(selectedEdge.id)}</h2><dl><dt>ID</dt><dd>{selectedEdge.id}</dd><dt>{t("语义", "Semantics")}</dt><dd>{selectedEdge.source} → {selectedEdge.target}</dd><dt>{t("权威", "Authority")}</dt><dd>{selectedEdge.authority}</dd><dt>{t("状态", "Status")}</dt><dd>{selectedEdge.status}</dd><dt>Snapshot</dt><dd>{selectedEdge.snapshotManifestId}</dd><dt>Revision</dt><dd>{selectedEdge.graphRevisionId}</dd></dl><h3>Immutable Evidence Resolver</h3><code>{selectedEdge.resolver}</code></> : selectedNode ? <><p className="eyebrow">NODE · {selectedNode.type}</p><h2>{selectedNode.label}</h2><dl><dt>ID</dt><dd>{selectedNode.id}</dd><dt>{t("权威", "Authority")}</dt><dd>{selectedNode.authority}</dd><dt>{t("状态", "Status")}</dt><dd>{selectedNode.status}</dd><dt>Snapshot</dt><dd>{selectedNode.snapshotManifestId}</dd><dt>Revision</dt><dd>{selectedNode.graphRevisionId}</dd><dt>{t("源码", "Source")}</dt><dd>{selectedNode.sourceLocation ?? "NOT_APPLICABLE / MISSING"}</dd></dl><h3>Immutable Evidence Resolver</h3><code>{selectedNode.resolver}</code></> : null}<div className={`resolver-result ${activeResolvedEvidence?.status.toLowerCase() ?? "pending"}`} role="status"><b>{activeResolvedEvidence?.status ?? (resolverError ? "INVALID" : "RESOLVING")}</b>{activeResolvedEvidence && <><span>{activeResolvedEvidence.kind} · {activeResolvedEvidence.id}</span><small>Artifact {shortId(activeResolvedEvidence.context.graphArtifactId)} · digest {shortId(activeResolvedEvidence.context.graphArtifactDigest)}</small></>}{resolverError && <span>{resolverError}</span>}</div></aside></section>
         <section className="panel path-workbench"><header className="panel-head"><div><h2>{t("路径解释", "Path explanation")}</h2><p>{t("从 Feature center 到目标节点执行服务端有界路径查询。", "Run a bounded server path query from the Feature center to a target node.")}</p></div><div className="path-query"><select aria-label={t("路径目标", "Path target")} value={targetId} onChange={(event) => setTargetId(event.currentTarget.value)}><option value="">{t("选择目标节点", "Select target node")}</option>{graph.nodes.filter(({ id }) => id !== graph.center).map((node) => <option key={node.id} value={node.id}>{node.type} · {node.label}</option>)}</select><button className="button primary" disabled={!targetId || loading} onClick={() => onQueryPath(targetId, graphView)}>{t("解释路径", "Explain path")}</button></div></header>{path?.found === false && <p className="verified-empty">VERIFIED NO PATH · {t("服务端在指定 Revision、Snapshot、方向和最大深度内未找到路径。", "The server found no path within the specified Revision, Snapshot, direction, and maximum depth.")}</p>}{path?.found && <ol className="path-hop-list">{inspector.hops.map((hop) => <li key={hop.id}><b>{hop.hop}</b><div><strong>{hop.type}</strong><span>{hop.source} → {hop.target}</span><small>{hop.authority} · {hop.status} · Snapshot {hop.snapshotManifestId} · Revision {hop.graphRevisionId}</small><code>{hop.resolver}</code></div></li>)}</ol>}{!path && <p className="explicit-empty">{t("尚未查询路径；不能把未查询解释为不存在路径。", "No path query has run; an unqueried path is not a verified absence.")}</p>}</section>
         <section className="panel relation-registry"><header className="panel-head"><div><h2>{t("等价关系 / 路径列表", "Equivalent relation / path list")}</h2><p>{t("移动端、键盘和屏幕阅读器无需画布即可读取相同证据。", "Mobile, keyboard, and screen-reader users can inspect the same evidence without the canvas.")}</p></div></header><div className="table-wrap"><table><thead><tr><th>Edge ID</th><th>{t("来源", "Source")}</th><th>{t("关系语义", "Semantics")}</th><th>{t("目标", "Target")}</th><th>{t("状态 / 权威", "Status / authority")}</th><th>Snapshot / Revision / Resolver</th></tr></thead><tbody>{inspector.edges.map((edge) => <tr key={edge.id} className={edge.id === selectedEdgeId ? "selected" : ""}><td><button onClick={() => { setSelectedEdgeId(edge.id); setSelectedNodeId(""); }}>{edge.id}</button></td><td>{edge.source}</td><td>{edge.type}</td><td>{edge.target}</td><td>{edge.status} / {edge.authority}</td><td><small>{edge.snapshotManifestId}<br />{edge.graphRevisionId}</small><code>{edge.resolver}</code></td></tr>)}</tbody></table></div></section>
       </div>}

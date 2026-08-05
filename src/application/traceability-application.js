@@ -77,6 +77,49 @@ function requireId(value, fieldName) {
   return value;
 }
 
+function graphEvidenceResolver(projectId, revisionId, kind, id, { featureId, rootNodeId, snapshotManifestId }) {
+  const query = new URLSearchParams({ featureId, rootNodeId, snapshotManifestId });
+  return `/v1/projects/${encodeURIComponent(projectId)}/graph/revisions/${encodeURIComponent(revisionId)}/evidence/${kind}s/${encodeURIComponent(id)}?${query}`;
+}
+
+function selectedGraphObject(node, featureId) {
+  return deepFreeze({
+    id: node.id,
+    type: node.type,
+    label: node.label,
+    authority: node.provenance,
+    status: node.status,
+    source: node.source,
+    details: node.details,
+    ownerFeatureId: featureId,
+  });
+}
+
+function traceabilityEvidenceObjects(traceability) {
+  const objects = [];
+  const add = (objectType, value, executionId = null) => {
+    if (value?.id) objects.push({ objectType, value, executionId });
+  };
+  for (const claimView of traceability.claims ?? []) {
+    add("REQUIREMENT", claimView.claim);
+    for (const decision of claimView.decisionHistory ?? []) add("DECISION", decision);
+    add("DECISION", claimView.latestDecision);
+    for (const mapping of claimView.implementationMappings ?? []) add("IMPLEMENTATION_MAPPING", mapping);
+    for (const fact of claimView.facts?.nodes ?? []) add(fact.type ?? "IMPLEMENTATION", fact);
+    for (const testSpec of claimView.testSpecs ?? []) add("TEST_SPEC", testSpec);
+    add("TEST_EXECUTION", claimView.execution);
+    for (const attempt of claimView.execution?.attempts ?? []) {
+      for (const result of attempt.assertionResults ?? []) add("VERIFICATION_RESULT", result, claimView.execution.id);
+    }
+    for (const evidence of claimView.evidence ?? []) add("EVIDENCE", evidence, claimView.execution?.id ?? null);
+  }
+  for (const design of traceability.processModel?.designElements ?? []) add("DESIGN", design);
+  for (const factGraph of traceability.processImplementationFacts ?? []) {
+    for (const fact of factGraph.nodes ?? []) add(fact.type ?? "IMPLEMENTATION", fact);
+  }
+  return objects;
+}
+
 function validateFeatureUnderstandingHistory(value) {
   if (!value?.feature || typeof value.feature !== "object") {
     throw new TypeError("FeatureUnderstandingHistory.feature is required");
@@ -2029,7 +2072,11 @@ export class TraceabilityApplication {
     return this.#store.appendImplementationAnalysis(projectId, { implementationMapping, conformance });
   }
 
-  async getFeatureTraceability(projectId, featureId, snapshotManifestId, { persist = false } = {}) {
+  async getFeatureTraceability(projectId, featureId, snapshotManifestId, {
+    persist = false,
+    selectedObjectId = featureId,
+    graphRevisionId = null,
+  } = {}) {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
     requireId(snapshotManifestId, "snapshotManifestId");
@@ -2154,7 +2201,7 @@ export class TraceabilityApplication {
       });
     }
     const traceChains = claimViews.map((item) => item.traceChain);
-    return deepFreeze({
+    const traceability = {
       feature: baseline.feature,
       processModel: baseline.processModel,
       processImplementationFacts,
@@ -2171,6 +2218,19 @@ export class TraceabilityApplication {
       gaps: traceChains.flatMap((chain) => chain.gaps.map((gap) => ({ chainId: chain.id, ...gap }))),
       persisted,
       computedAt: this.#clock().toISOString(),
+    };
+    if (graphRevisionId) await this.#requireGraphRevisionContext(projectId, graphRevisionId, snapshotManifestId);
+    const selectionGraph = createFeatureGraphProjection(traceability, {
+      rootNodeId: selectedObjectId,
+      depth: 8,
+      limit: 100,
+    });
+    const selectionNode = selectionGraph.nodes.find(({ id }) => id === selectedObjectId);
+    if (!selectionNode) throw new TypeError(`selectedObjectId ${selectedObjectId} is not present in Feature ${featureId}`);
+    return deepFreeze({
+      ...traceability,
+      selection: selectedGraphObject(selectionNode, featureId),
+      graphRevisionId,
     });
   }
 
@@ -2179,9 +2239,31 @@ export class TraceabilityApplication {
   }
 
   async getFeatureGraph(projectId, featureId, snapshotManifestId, options = {}) {
-    const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId);
+    const graphRevision = options.graphRevisionId
+      ? await this.#requireGraphRevisionContext(projectId, options.graphRevisionId, snapshotManifestId)
+      : null;
+    const rootNodeId = options.rootNodeId ?? featureId;
+    const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId, {
+      selectedObjectId: rootNodeId,
+      graphRevisionId: options.graphRevisionId ?? null,
+    });
     if (!traceability) return null;
-    return createFeatureGraphProjection(traceability, options);
+    const projection = createFeatureGraphProjection(traceability, options);
+    if (!graphRevision) return projection;
+    const resolverContext = { featureId, rootNodeId, snapshotManifestId };
+    return deepFreeze({
+      ...projection,
+      ownerFeatureId: featureId,
+      graphRevisionId: graphRevision.id,
+      nodes: projection.nodes.map((node) => ({
+        ...node,
+        evidenceResolver: graphEvidenceResolver(projectId, graphRevision.id, "node", node.id, resolverContext),
+      })),
+      edges: projection.edges.map((edge) => ({
+        ...edge,
+        evidenceResolver: graphEvidenceResolver(projectId, graphRevision.id, "edge", edge.id, resolverContext),
+      })),
+    });
   }
 
   async queryFeatureGraphPath(projectId, featureId, input) {
@@ -2192,7 +2274,7 @@ export class TraceabilityApplication {
     }
     assertOnlyFields(
       input,
-      ["snapshotManifestId", "fromNodeId", "toNodeId", "direction", "maxDepth", "view"],
+      ["snapshotManifestId", "fromNodeId", "toNodeId", "direction", "maxDepth", "view", "graphRevisionId"],
       "graphPathQuery",
     );
     const snapshotManifestId = requireId(input.snapshotManifestId, "snapshotManifestId");
@@ -2200,6 +2282,8 @@ export class TraceabilityApplication {
       view: input.view ?? "traceability",
       depth: 8,
       limit: 100,
+      rootNodeId: input.fromNodeId,
+      graphRevisionId: input.graphRevisionId,
     });
     if (!graph) return null;
     return deepFreeze({
@@ -2213,6 +2297,72 @@ export class TraceabilityApplication {
         maxDepth: input.maxDepth ?? 8,
       },
       ...resolveFeatureGraphPath(graph, input),
+    });
+  }
+
+  async #requireGraphRevisionContext(projectId, graphRevisionId, snapshotManifestId) {
+    const revision = await this.#store.getUnderstandingRecord(projectId, "GRAPH_REVISION", graphRevisionId);
+    if (!revision || revision.status !== "PUBLISHED") {
+      throw new PersistenceConflictError(`Published GraphRevision ${graphRevisionId} was not found`);
+    }
+    if (revision.snapshotManifestId !== snapshotManifestId) {
+      throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} does not own SnapshotManifest ${snapshotManifestId}`);
+    }
+    const artifact = await this.#store.getUnderstandingRecord(projectId, "GRAPH_ARTIFACT", revision.graphArtifactId);
+    if (!artifact || artifact.graphArtifactDigest !== revision.graphArtifactDigest) {
+      throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} graph artifact is missing or digest-mismatched`);
+    }
+    return revision;
+  }
+
+  async resolveGraphEvidence(projectId, revisionId, kind, evidenceId, context) {
+    requireId(projectId, "projectId");
+    requireId(revisionId, "revisionId");
+    requireId(evidenceId, "evidenceId");
+    if (!["node", "edge", "object"].includes(kind)) throw new TypeError("evidence kind must be node, edge, or object");
+    const snapshotManifestId = requireId(context?.snapshotManifestId, "snapshotManifestId");
+    const featureId = requireId(context?.featureId, "featureId");
+    const rootNodeId = requireId(context?.rootNodeId, "rootNodeId");
+    const revision = await this.#requireGraphRevisionContext(projectId, revisionId, snapshotManifestId);
+    const projection = await this.getFeatureGraph(projectId, featureId, snapshotManifestId, {
+      rootNodeId,
+      graphRevisionId: revisionId,
+      depth: 8,
+      limit: 100,
+      view: "traceability",
+    });
+    let resolved;
+    if (kind === "edge") {
+      resolved = projection.edges.find(({ id }) => id === evidenceId);
+    } else if (kind === "node") {
+      resolved = projection.nodes.find(({ id }) => id === evidenceId);
+    } else {
+      const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId, {
+        selectedObjectId: rootNodeId,
+        graphRevisionId: revisionId,
+      });
+      resolved = traceabilityEvidenceObjects(traceability).find((candidate) =>
+        candidate.value.id === evidenceId
+        && (!context?.objectType || candidate.objectType === context.objectType)
+        && (!context?.executionId || candidate.executionId === context.executionId))?.value;
+    }
+    return deepFreeze({
+      resolved: Boolean(resolved),
+      status: resolved ? "RESOLVED" : "MISSING",
+      kind,
+      id: evidenceId,
+      object: resolved ?? null,
+      context: {
+        projectId,
+        featureId,
+        rootNodeId,
+        snapshotManifestId,
+        graphRevisionId: revision.id,
+        graphArtifactId: revision.graphArtifactId,
+        graphArtifactDigest: revision.graphArtifactDigest,
+        objectType: context?.objectType ?? null,
+        executionId: context?.executionId ?? null,
+      },
     });
   }
 
@@ -2678,7 +2828,7 @@ export class TraceabilityApplication {
     return this.#store.publishGraphRevision(projectId, revisionId, expectedHeadVersion);
   }
 
-  async getFeatureUnderstandingHistory(projectId, featureId) {
+  async getFeatureUnderstandingHistory(projectId, featureId, { selectedObjectId = featureId, graphRevisionId = null } = {}) {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
     const baseline = await this.#store.getFeatureBaseline(projectId, featureId);
@@ -2687,7 +2837,7 @@ export class TraceabilityApplication {
       this.#store.listImplementationMappings(projectId),
       this.#store.listUnderstandingRecords(projectId, "GRAPH_REVISION"),
     ]);
-    return validateFeatureUnderstandingHistory({
+    const history = validateFeatureUnderstandingHistory({
       feature: baseline.feature,
       featureVersions: baseline.featureHistory ?? [baseline.feature],
       decisions: (baseline.claims ?? []).flatMap(({ decisionHistory = [] }) => decisionHistory),
@@ -2695,6 +2845,28 @@ export class TraceabilityApplication {
       graphRevisions: revisions.filter((revision) => revision.status === "PUBLISHED"),
       testSpecs: baseline.testSpecs ?? [],
       testExecutions: baseline.testExecutions ?? [],
+    });
+    if (graphRevisionId) {
+      const revision = revisions.find(({ id }) => id === graphRevisionId);
+      if (!revision) throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} was not found in Feature history`);
+    }
+    if (selectedObjectId === featureId) return deepFreeze({
+      ...history,
+      selection: { id: featureId, type: "FEATURE", label: baseline.feature.name, authority: "GOVERNED_BASELINE", ownerFeatureId: featureId },
+      selectionHistory: history.featureVersions,
+    });
+    const selectionHistory = [];
+    for (const revision of revisions.filter(({ status }) => status === "PUBLISHED")) {
+      const artifact = await this.#store.getUnderstandingRecord(projectId, "GRAPH_ARTIFACT", revision.graphArtifactId);
+      const node = artifact?.nodes?.find(({ id }) => id === selectedObjectId);
+      if (node) selectionHistory.push({ ...node, graphRevisionId: revision.id, snapshotManifestId: revision.snapshotManifestId });
+    }
+    const current = selectionHistory.find(({ graphRevisionId: id }) => id === graphRevisionId) ?? selectionHistory[0];
+    if (!current) throw new TypeError(`selectedObjectId ${selectedObjectId} has no immutable API history`);
+    return deepFreeze({
+      ...history,
+      selection: { ...current, ownerFeatureId: featureId },
+      selectionHistory,
     });
   }
 }

@@ -196,6 +196,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "queryFeatureGraphPath",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/evidence/{kind}/{evidenceId}"].get.operationId,
+    "resolveGraphEvidence",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute"].post.operationId,
     "recomputeFeatureTraceChains",
   );
@@ -562,6 +566,9 @@ test("Feature graph contract keeps projections bounded, typed, and path-queryabl
   assert.equal(contract.$defs.Projection.properties.depth.maximum, 8);
   assert.equal(contract.$defs.Node.properties.status.enum.includes("GAP"), true);
   assert.ok(contract.$defs.Edge.required.includes("snapshotManifestId"));
+  assert.equal(contract.$defs.Edge.properties.evidenceResolver.pattern, "^/v1/");
+  assert.equal(contract.$defs.Node.properties.evidenceResolver.pattern, "^/v1/");
+  assert.ok(contract.$defs.Projection.properties.graphRevisionId);
   assert.equal(contract.$defs.PathResult.properties.query.properties.maxDepth.maximum, 12);
 });
 

@@ -5,9 +5,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const governanceStart = "<!-- CAT-CAFE-GOVERNANCE-START -->";
-const governanceEnd = "<!-- CAT-CAFE-GOVERNANCE-END -->";
 const policyPath = "docs/policies/branch-review-publication-policy.md";
+const governanceFixturePath = "test/fixtures/project-governance-policy.json";
 const immutableGovernance = [
   "frontend 3003 and API 3004",
   "Redis port 6399",
@@ -15,26 +14,19 @@ const immutableGovernance = [
   "Identity is constant",
 ];
 
-const providerFiles = new Map([
-  ["AGENTS.md", "codex"],
-  ["CLAUDE.md", "claude"],
-  ["GEMINI.md", "gemini"],
-  ["KIMI.md", "kimi"],
-]);
+test("tracked project policy and provider-neutral governance fixture remain enforceable in an exact tree", async () => {
+  const [policy, fixtureSource] = await Promise.all([
+    readFile(path.join(root, policyPath), "utf8"),
+    readFile(path.join(root, governanceFixturePath), "utf8"),
+  ]);
+  const fixture = JSON.parse(fixtureSource);
 
-test("provider instructions preserve managed governance before the project review policy", async () => {
-  for (const [file, provider] of providerFiles) {
-    const content = await readFile(path.join(root, file), "utf8");
-    const startIndex = content.indexOf(governanceStart);
-    const endIndex = content.indexOf(governanceEnd);
-    const policyIndex = content.indexOf(policyPath);
-
-    assert.ok(startIndex >= 0, `${file} is missing the managed governance start marker`);
-    assert.ok(endIndex > startIndex, `${file} is missing the managed governance end marker`);
-    assert.match(content, new RegExp(`Pack version: [^|\\n]+ \\| Provider: ${provider}`));
-    for (const constraint of immutableGovernance) {
-      assert.ok(content.includes(constraint), `${file} is missing immutable governance: ${constraint}`);
-    }
-    assert.ok(policyIndex > endIndex, `${file} must append the project policy after managed governance`);
-  }
+  assert.equal(fixture.reviewPolicy, policyPath);
+  assert.deepEqual(fixture.immutableConstraints, immutableGovernance);
+  assert.match(policy, /At least two distinct models or reviewer identities/);
+  assert.match(policy, /A synthesizer\s+must not impersonate another reviewer/);
+  assert.match(policy, /Issue title and body must be bilingual/);
+  assert.ok(policy.includes("branch-review-publication-policy.zh-CN.md"));
+  assert.ok(fixture.localProviderInstructions.tracked === false);
+  assert.equal(fixture.localProviderInstructions.purpose, "local tool/runtime adaptation only");
 });

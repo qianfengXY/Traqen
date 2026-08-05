@@ -803,7 +803,7 @@ test("Feature graph APIs preserve bounded filters and path-query scope", async (
   const baseUrl = await startStubServer(t, application);
   const graphResponse = await fetch(
     `${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/graph?` +
-      "snapshotManifestId=SNAPSHOT-001&view=coverage&depth=4&limit=25&nodeType=CLAIM&relation=VERIFIED_BY",
+      "snapshotManifestId=SNAPSHOT-001&graphRevisionId=REVISION-001&rootNodeId=ENDPOINT-001&view=coverage&depth=4&limit=25&nodeType=CLAIM&relation=VERIFIED_BY",
   );
   assert.equal(graphResponse.status, 200);
   assert.equal((await graphResponse.json()).view, "coverage");
@@ -813,6 +813,8 @@ test("Feature graph APIs preserve bounded filters and path-query scope", async (
     limit: 25,
     nodeTypes: ["CLAIM"],
     relations: ["VERIFIED_BY"],
+    rootNodeId: "ENDPOINT-001",
+    graphRevisionId: "REVISION-001",
   });
 
   const path = await postJson(
@@ -823,16 +825,55 @@ test("Feature graph APIs preserve bounded filters and path-query scope", async (
       toNodeId: "EVIDENCE-001",
       direction: "FORWARD",
       maxDepth: 6,
+      graphRevisionId: "REVISION-001",
     },
   );
   assert.equal(path.response.status, 200);
   assert.equal(path.body.query.direction, "FORWARD");
   assert.equal(calls[1].operation, "path");
+  assert.equal(calls[1].input.graphRevisionId, "REVISION-001");
 
   const oversized = await fetch(
     `${baseUrl}/v1/projects/PROJECT-001/features/FEATURE-001/graph?snapshotManifestId=SNAPSHOT-001&limit=101`,
   );
   assert.equal(oversized.status, 400);
+});
+
+test("GraphRevision evidence resolver route preserves immutable edge and API-root context", async (t) => {
+  const calls = [];
+  const application = {
+    async resolveGraphEvidence(projectId, revisionId, kind, evidenceId, context) {
+      calls.push({ projectId, revisionId, kind, evidenceId, context });
+      return {
+        resolved: true,
+        status: "RESOLVED",
+        kind,
+        id: evidenceId,
+        object: { id: evidenceId, type: "IMPLEMENTS" },
+        context: { ...context, projectId, graphRevisionId: revisionId, graphArtifactId: "ARTIFACT-001", graphArtifactDigest: "DIGEST-001" },
+      };
+    },
+  };
+  const baseUrl = await startStubServer(t, application);
+  const response = await fetch(
+    `${baseUrl}/v1/projects/PROJECT-001/graph/revisions/REVISION-001/evidence/edges/EDGE-001?` +
+      "snapshotManifestId=SNAPSHOT-001&featureId=FEATURE-001&rootNodeId=ENDPOINT-001",
+  );
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).status, "RESOLVED");
+  assert.deepEqual(calls, [{
+    projectId: "PROJECT-001",
+    revisionId: "REVISION-001",
+    kind: "edge",
+    evidenceId: "EDGE-001",
+    context: {
+      featureId: "FEATURE-001",
+      rootNodeId: "ENDPOINT-001",
+      snapshotManifestId: "SNAPSHOT-001",
+      objectType: null,
+      executionId: null,
+    },
+  }]);
 });
 
 test("continuous-protection endpoint returns the server-derived regression plan and gate", async (t) => {

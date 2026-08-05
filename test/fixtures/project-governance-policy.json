@@ -1,0 +1,13 @@
+{
+  "reviewPolicy": "docs/policies/branch-review-publication-policy.md",
+  "immutableConstraints": [
+    "frontend 3003 and API 3004",
+    "Redis port 6399",
+    "No self-review",
+    "Identity is constant"
+  ],
+  "localProviderInstructions": {
+    "tracked": false,
+    "purpose": "local tool/runtime adaptation only"
+  }
+}

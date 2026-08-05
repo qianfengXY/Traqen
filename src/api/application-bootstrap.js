@@ -43,7 +43,12 @@ function loadRunEvidence(filePath, job, label) {
   return record;
 }
 
-export function createConfiguredApplication({ store, env = process.env, workspaceMcpExecutor = null }) {
+export function createConfiguredApplication({
+  store,
+  env = process.env,
+  workspaceMcpExecutor = null,
+  developmentUnderstanding = null,
+}) {
   if (!store) throw new TypeError("store is required");
   const runnerId = env.RUNNER_ID ?? null;
   const runnerSharedSecret = env.RUNNER_SHARED_SECRET ?? null;
@@ -87,7 +92,7 @@ export function createConfiguredApplication({ store, env = process.env, workspac
   if (Boolean(env.UNDERSTANDING_TRUTH_SET_PATH) !== Boolean(env.UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH)) {
     throw new Error("UNDERSTANDING_TRUTH_SET_PATH and UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH must be configured together");
   }
-  if (sourceSliceBroker && allowedWorkspaceRoots.length > 0
+  if (!developmentUnderstanding && sourceSliceBroker && allowedWorkspaceRoots.length > 0
     && (!env.UNDERSTANDING_TRUTH_SET_PATH
       || !env.UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH
       || !env.UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH)) {
@@ -121,7 +126,7 @@ export function createConfiguredApplication({ store, env = process.env, workspac
       sourceSliceBroker,
       snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
       allowlistedRoots: allowedWorkspaceRoots,
-      childProducer: async ({ job, assignment, executionProfile, artifact, facts, sourceSlices, candidate }) => {
+      childProducer: developmentUnderstanding?.childProducer ?? (async ({ job, assignment, executionProfile, artifact, facts, sourceSlices, candidate }) => {
         const modelEntry = executionProfile.entries?.find((item) =>
           item.kind === "MODEL" && item.logicalName === assignment.route.model);
         if (!modelEntry) {
@@ -234,8 +239,8 @@ export function createConfiguredApplication({ store, env = process.env, workspac
         return candidates.length > 0
           ? { candidates, producerOutputs: producerOutputs.map(({ kind, logicalName }) => ({ kind, logicalName })) }
           : { gap: { code: "PRODUCER_RETURNED_NO_CANDIDATE", message: "Configured producers returned no candidates" } };
-      },
-      mainProducer: async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions, contextCandidates, scopedArtifacts }) => {
+      }),
+      mainProducer: developmentUnderstanding?.mainProducer ?? (async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions, contextCandidates, scopedArtifacts }) => {
         const modelEntry = executionProfile.entries?.find((item) =>
           item.kind === "MODEL" && item.logicalName === route.model);
         const adapter = modelEntry ? analysisModelRegistry.resolve(route.model) : null;
@@ -303,9 +308,11 @@ export function createConfiguredApplication({ store, env = process.env, workspac
           gaps: mainModelOutput.gaps ?? [],
           executedCapabilities,
         };
-      },
-      reviewedEvaluationResolver,
-      equivalenceResolver,
+      }),
+      reviewedEvaluationResolver: developmentUnderstanding?.reviewedEvaluationResolver ?? reviewedEvaluationResolver,
+      equivalenceResolver: developmentUnderstanding?.equivalenceResolver ?? equivalenceResolver,
+      implementationAuthorId: developmentUnderstanding?.implementationAuthorId ?? "TRAQEN-RUNTIME",
+      runnerId: developmentUnderstanding?.runnerId ?? "TRAQEN-SERVER-RUNNER",
     })
     : null;
   const application = new TraceabilityApplication({

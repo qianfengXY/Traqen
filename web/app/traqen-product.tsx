@@ -50,6 +50,7 @@ import {
   getUnderstandingChangeImpact,
   listGraphRevisions,
   queryFeatureGraphPath,
+  resolveGraphEvidence,
   type CurrentUnderstandingGraph,
   type FeatureGraphPathResult,
   type FeatureGraphProjection,
@@ -57,13 +58,14 @@ import {
   type FeatureUnderstandingHistory,
   type GraphRevision,
 } from "./understanding-graph-client";
-import { createWorkspace, listWorkspaces, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
+import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
 type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "settings";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
 
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_TRAQEN_API_BASE ?? "http://127.0.0.1:3100";
+const DEFAULT_SOURCE_ROOT = process.env.NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT ?? "";
 const WEB_OPERATOR = "WEB-OPERATOR";
 
 const modules: Array<{ key: View; icon: string; section: "overview" | "understanding" | "governance" | "configuration"; zh: string; en: string }> = [
@@ -80,12 +82,13 @@ function messageOf(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function findFeatureRootId(artifact: GraphArtifact | null, selectedId: string) {
-  if (!artifact) return "";
+function resolveGovernedSelection(artifact: GraphArtifact | null, selectedId: string) {
+  if (!artifact) return null;
   const selected = artifact.nodes.find(({ id }) => id === selectedId);
-  if (selected && /feature/i.test(selected.type)) return selected.id;
+  if (!selected || selected.authority === "CANDIDATE" || selected.authority === "GAP") return null;
+  if (/feature/i.test(selected.type)) return { ownerFeatureId: selected.id, selectedObjectId: selected.id };
   const features = new Set(artifact.nodes.filter(({ type, authority }) => /feature/i.test(type) && authority !== "CANDIDATE" && authority !== "GAP").map(({ id }) => id));
-  if (!selected || features.size === 0) return [...features][0] ?? "";
+  if (features.size === 0) return null;
   const adjacency = new Map<string, string[]>();
   for (const edge of artifact.edges) {
     adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
@@ -95,7 +98,7 @@ function findFeatureRootId(artifact: GraphArtifact | null, selectedId: string) {
   const visited = new Set(queue);
   while (queue.length) {
     const currentId = queue.shift()!;
-    if (features.has(currentId)) return currentId;
+    if (features.has(currentId)) return { ownerFeatureId: currentId, selectedObjectId: selected.id };
     for (const nextId of adjacency.get(currentId) ?? []) {
       if (!visited.has(nextId)) {
         visited.add(nextId);
@@ -103,7 +106,7 @@ function findFeatureRootId(artifact: GraphArtifact | null, selectedId: string) {
       }
     }
   }
-  return [...features][0] ?? "";
+  return null;
 }
 
 function ServerOwnedProduct() {
@@ -116,7 +119,7 @@ function ServerOwnedProduct() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceName, setWorkspaceName] = useState("");
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
-  const [sourceRoot, setSourceRoot] = useState("");
+  const [sourceRoot, setSourceRoot] = useState(DEFAULT_SOURCE_ROOT);
   const [sourceRegistrationId, setSourceRegistrationId] = useState("");
   const [profileRevisionId, setProfileRevisionId] = useState("");
   const [job, setJob] = useState<ServerUnderstandingJob | null>(null);
@@ -153,7 +156,11 @@ function ServerOwnedProduct() {
   const [working, setWorking] = useState(false);
   const contextRef = useRef<CurrentWorkspaceContext>({ workspaceId: "", contextVersion: 0 });
   const detailRequestRef = useRef(0);
+  const graphRequestRef = useRef(0);
+  const pathRequestRef = useRef(0);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
+  const resolveEvidence = useCallback((resolver: string) =>
+    resolveGraphEvidence(apiBase, apiToken, resolver), [apiBase, apiToken]);
 
   const notify = useCallback((text: string, kind: "info" | "error" = "info") => {
     setMessage(text);
@@ -233,6 +240,8 @@ function ServerOwnedProduct() {
     setGraphPath(null);
     setTraceabilityError("");
     detailRequestRef.current += 1;
+    graphRequestRef.current += 1;
+    pathRequestRef.current += 1;
     setReviewItems([]);
     setSelectedReviewIds([]);
     setImpact(null);
@@ -247,7 +256,7 @@ function ServerOwnedProduct() {
     setMainSkillNames([...skillNames]);
     setMainMcpNames([...mcpNames]);
     setChildSlots(roster ?? createDefaultChildSlots(firstModel, skillNames, mcpNames));
-    setSourceRoot("");
+    setSourceRoot(DEFAULT_SOURCE_ROOT);
     setSourceRegistrationId("");
     setProfileRevisionId("");
     setMessage("");
@@ -328,9 +337,10 @@ function ServerOwnedProduct() {
   }, [activeWorkspace, apiBase, apiToken, artifact?.changeSet?.id]);
 
   useEffect(() => {
-    const featureId = findFeatureRootId(artifact, focusedNodeId);
+    const selection = resolveGovernedSelection(artifact, focusedNodeId);
     const snapshotManifestId = displayRevision?.snapshotManifestId ?? "";
-    if (!activeWorkspace || !featureId || !snapshotManifestId) {
+    const graphRevisionId = displayRevision?.id ?? "";
+    if (!activeWorkspace || !selection || !snapshotManifestId || !graphRevisionId) {
       const timer = window.setTimeout(() => {
         setFeatureHistory(null);
         setFeatureTraceability(null);
@@ -342,6 +352,8 @@ function ServerOwnedProduct() {
     const requestContext = { ...contextRef.current };
     const requestVersion = detailRequestRef.current + 1;
     detailRequestRef.current = requestVersion;
+    graphRequestRef.current += 1;
+    pathRequestRef.current += 1;
     const loadingTimer = window.setTimeout(() => {
       if (requestVersion === detailRequestRef.current) {
         setTraceabilityLoading(true);
@@ -349,11 +361,11 @@ function ServerOwnedProduct() {
       }
     }, 0);
     void Promise.allSettled([
-      getFeatureUnderstandingHistory(apiBase, apiToken, activeWorkspace.id, featureId),
-      getFeatureTraceability(apiBase, apiToken, activeWorkspace.id, featureId, snapshotManifestId),
-      getFeatureGraph(apiBase, apiToken, activeWorkspace.id, featureId, snapshotManifestId, { view: "traceability", depth: 2, limit: 60 }),
+      getFeatureUnderstandingHistory(apiBase, apiToken, activeWorkspace.id, selection.ownerFeatureId, { selectedObjectId: selection.selectedObjectId, graphRevisionId }),
+      getFeatureTraceability(apiBase, apiToken, activeWorkspace.id, selection.ownerFeatureId, snapshotManifestId, { selectedObjectId: selection.selectedObjectId, graphRevisionId }),
+      getFeatureGraph(apiBase, apiToken, activeWorkspace.id, selection.ownerFeatureId, snapshotManifestId, { view: "traceability", depth: 2, limit: 60, rootNodeId: selection.selectedObjectId, graphRevisionId }),
     ]).then(([historyResult, traceabilityResult, graphResult]) => {
-      if (staleWorkspaceResponse(requestContext, contextRef.current) || requestVersion !== detailRequestRef.current) return;
+      if (staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, detailRequestRef.current)) return;
       setFeatureHistory(historyResult.status === "fulfilled" ? historyResult.value : null);
       setFeatureTraceability(traceabilityResult.status === "fulfilled" ? traceabilityResult.value : null);
       setBoundedGraph(graphResult.status === "fulfilled" ? graphResult.value : null);
@@ -364,51 +376,59 @@ function ServerOwnedProduct() {
       if (requestVersion === detailRequestRef.current) setTraceabilityLoading(false);
     });
     return () => window.clearTimeout(loadingTimer);
-  }, [activeWorkspace, apiBase, apiToken, artifact, displayRevision?.snapshotManifestId, focusedNodeId, t]);
+  }, [activeWorkspace, apiBase, apiToken, artifact, displayRevision?.id, displayRevision?.snapshotManifestId, focusedNodeId, t]);
 
   const loadBoundedGraph = useCallback(async (depth: number, graphView: FeatureGraphProjection["view"]) => {
-    const featureId = findFeatureRootId(artifact, focusedNodeId);
+    const selection = resolveGovernedSelection(artifact, focusedNodeId);
     const snapshotManifestId = displayRevision?.snapshotManifestId;
-    if (!activeWorkspace || !featureId || !snapshotManifestId) return;
+    const graphRevisionId = displayRevision?.id;
+    if (!activeWorkspace || !selection || !snapshotManifestId || !graphRevisionId) return;
     const requestContext = { ...contextRef.current };
+    const requestVersion = graphRequestRef.current + 1;
+    graphRequestRef.current = requestVersion;
+    pathRequestRef.current += 1;
     setTraceabilityLoading(true);
     setTraceabilityError("");
     try {
-      const result = await getFeatureGraph(apiBase, apiToken, activeWorkspace.id, featureId, snapshotManifestId, { view: graphView, depth, limit: 60 });
-      if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
+      const result = await getFeatureGraph(apiBase, apiToken, activeWorkspace.id, selection.ownerFeatureId, snapshotManifestId, { view: graphView, depth, limit: 60, rootNodeId: selection.selectedObjectId, graphRevisionId });
+      if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, graphRequestRef.current)) {
         setBoundedGraph(result);
         setGraphPath(null);
       }
     } catch (error) {
-      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setTraceabilityError(messageOf(error, t("有界图谱加载失败", "Bounded graph load failed")));
+      if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, graphRequestRef.current)) setTraceabilityError(messageOf(error, t("有界图谱加载失败", "Bounded graph load failed")));
     } finally {
-      setTraceabilityLoading(false);
+      if (requestVersion === graphRequestRef.current) setTraceabilityLoading(false);
     }
-  }, [activeWorkspace, apiBase, apiToken, artifact, displayRevision?.snapshotManifestId, focusedNodeId, t]);
+  }, [activeWorkspace, apiBase, apiToken, artifact, displayRevision?.id, displayRevision?.snapshotManifestId, focusedNodeId, t]);
 
   const explainGraphPath = useCallback(async (targetNodeId: string, graphView: FeatureGraphProjection["view"]) => {
-    const featureId = findFeatureRootId(artifact, focusedNodeId);
+    const selection = resolveGovernedSelection(artifact, focusedNodeId);
     const snapshotManifestId = displayRevision?.snapshotManifestId;
-    if (!activeWorkspace || !featureId || !snapshotManifestId || !boundedGraph) return;
+    const graphRevisionId = displayRevision?.id;
+    if (!activeWorkspace || !selection || !snapshotManifestId || !graphRevisionId || !boundedGraph) return;
     const requestContext = { ...contextRef.current };
+    const requestVersion = pathRequestRef.current + 1;
+    pathRequestRef.current = requestVersion;
     setTraceabilityLoading(true);
     setTraceabilityError("");
     try {
-      const result = await queryFeatureGraphPath(apiBase, apiToken, activeWorkspace.id, featureId, {
+      const result = await queryFeatureGraphPath(apiBase, apiToken, activeWorkspace.id, selection.ownerFeatureId, {
         snapshotManifestId,
         fromNodeId: boundedGraph.center,
         toNodeId: targetNodeId,
         direction: "ANY",
         maxDepth: 8,
         view: graphView,
+        graphRevisionId,
       });
-      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setGraphPath(result);
+      if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, pathRequestRef.current)) setGraphPath(result);
     } catch (error) {
-      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setTraceabilityError(messageOf(error, t("路径解释失败", "Path explanation failed")));
+      if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, pathRequestRef.current)) setTraceabilityError(messageOf(error, t("路径解释失败", "Path explanation failed")));
     } finally {
-      setTraceabilityLoading(false);
+      if (requestVersion === pathRequestRef.current) setTraceabilityLoading(false);
     }
-  }, [activeWorkspace, apiBase, apiToken, artifact, boundedGraph, displayRevision?.snapshotManifestId, focusedNodeId, t]);
+  }, [activeWorkspace, apiBase, apiToken, artifact, boundedGraph, displayRevision?.id, displayRevision?.snapshotManifestId, focusedNodeId, t]);
 
   async function createFirstWorkspace() {
     if (!workspaceName.trim()) return;
@@ -563,7 +583,7 @@ function ServerOwnedProduct() {
     if (view === "overview") return <WorkspaceOverview t={t} workspace={activeWorkspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
     if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? capabilityConfig?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onResolveProfile={() => void resolveRunProfile()} onPrepareStart={() => setStartConfirmationOpen(true)} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); setProfileRevisionId(selected.workspaceExecutionProfileRevisionId); }} />;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} />;
-    if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} />;
+    if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     return <CapabilitySettings t={t} templates={templates} config={capabilityConfig} profile={executionProfile} capabilityHistory={capabilityHistory} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} working={working} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;

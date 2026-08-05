@@ -76,3 +76,13 @@ export function staleWorkspaceResponse(
   return requestContext.workspaceId !== currentContext.workspaceId
     || requestContext.contextVersion !== currentContext.contextVersion;
 }
+
+export function staleWorkspaceRequestResponse(
+  requestContext: CurrentWorkspaceContext,
+  currentContext: CurrentWorkspaceContext,
+  requestVersion: number,
+  currentRequestVersion: number,
+) {
+  return staleWorkspaceResponse(requestContext, currentContext)
+    || requestVersion !== currentRequestVersion;
+}

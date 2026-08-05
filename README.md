@@ -223,6 +223,10 @@ npm run dev
 
 Open `http://127.0.0.1:3000`. The command starts the in-memory API at `http://127.0.0.1:3100`, configures the exact local CORS origins, and stops both processes when you press `Ctrl+C`. It does not enable production credentials or weaken any governance boundary.
 
+The clean-start development runtime is deliberately self-contained. It registers a no-secret `traqen-local-reference-analyzer` capability template, pre-fills the checked-out repository as the allowlisted source root, and stores every Snapshot under a new temporary directory. In the UI, create a Workspace, save and resolve the default capability configuration, then register the pre-filled source and start analysis. The first run completes all seven phases as `FULL` and publishes a local current graph without external model credentials.
+
+This reference analyzer is evidence-bounded and deterministic, but its generated review and equivalence records are marked `LOCAL_DEVELOPMENT_REFERENCE_ONLY`; they are not production evidence and cannot be enabled through environment variables. `npm run api:serve` continues to use the fail-closed PostgreSQL production bootstrap and still requires independently reviewed measurements and equivalence evidence before publication.
+
 The API can still be run independently on its default port with `npm run api:dev`; this path requires Node.js 20 or newer. Other focused commands remain available:
 
 ```bash
