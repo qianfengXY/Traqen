@@ -5,19 +5,46 @@
   "type": "object",
   "required": ["id", "projectId", "snapshotManifestId", "analysisRunId", "nodes", "edges", "traceChains", "gaps", "changeSet", "impactAssessment", "revalidationPlan", "graphArtifactDigest", "createdAt"],
   "properties": {
+    "artifactSchemaVersion": { "enum": [1, 2] },
     "id": { "type": "string", "minLength": 1 },
     "projectId": { "type": "string", "minLength": 1 },
     "snapshotManifestId": { "type": "string", "minLength": 1 },
     "analysisRunId": { "type": "string", "minLength": 1 },
-    "nodes": { "type": "array", "items": { "type": "object", "required": ["id", "type", "authority", "label"], "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "authority": { "enum": ["CANDIDATE", "GOVERNED", "DETERMINISTIC_FACT", "GAP"] }, "label": { "type": "string" } }, "additionalProperties": true } },
+    "nodes": { "type": "array", "items": { "type": "object", "required": ["id", "type", "authority", "label"], "properties": { "id": { "type": "string" }, "type": { "type": "string" }, "authority": { "enum": ["CANDIDATE", "GOVERNED", "GOVERNED_BASELINE", "DETERMINISTIC_FACT", "GAP", "OBSERVED_CANDIDATE_ONLY"] }, "label": { "type": "string" } }, "additionalProperties": true } },
     "edges": { "type": "array", "items": { "type": "object", "required": ["id", "source", "target", "type"], "properties": { "id": { "type": "string" }, "source": { "type": "string" }, "target": { "type": "string" }, "type": { "type": "string" } }, "additionalProperties": true } },
+    "featureTraceability": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["featureId", "featureVersions", "traceability"],
+        "properties": {
+          "featureId": { "type": "string", "minLength": 1 },
+          "featureVersions": { "type": "array", "minItems": 1, "items": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } },
+          "traceability": { "$ref": "./feature-traceability.schema.json#/$defs/AvailableTraceability" }
+        },
+        "additionalProperties": false
+      }
+    },
     "traceChains": { "type": "array", "items": { "type": "object" } },
     "gaps": { "type": "array", "items": { "type": "object" } },
     "changeSet": { "type": ["object", "null"] },
     "impactAssessment": { "type": ["object", "null"] },
     "revalidationPlan": { "type": ["object", "null"] },
     "graphArtifactDigest": { "type": "string", "minLength": 1 },
+    "dataClassification": { "type": "string", "minLength": 1 },
+    "productionEligible": { "type": "boolean" },
+    "evaluationEvidenceType": { "type": "string", "minLength": 1 },
     "createdAt": { "type": "string", "format": "date-time" }
   },
+  "oneOf": [
+    {
+      "required": ["artifactSchemaVersion", "featureTraceability"],
+      "properties": { "artifactSchemaVersion": { "const": 2 } }
+    },
+    {
+      "not": { "required": ["featureTraceability"] },
+      "properties": { "artifactSchemaVersion": { "enum": [1] } }
+    }
+  ],
   "additionalProperties": false
 }

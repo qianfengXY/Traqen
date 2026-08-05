@@ -53,6 +53,11 @@ export class WorkspaceAnalysisJobRunner {
       implementationAuthorId: input.implementationAuthorId ?? "TRAQEN-RUNTIME",
       runnerId: input.runnerId ?? "TRAQEN-LOCAL-RUNNER",
       purpose: input.purpose ?? "PUBLICATION",
+      ...(input.dataClassification ? {
+        dataClassification: input.dataClassification,
+        productionEligible: input.productionEligible,
+        evaluationEvidenceType: input.evaluationEvidenceType,
+      } : {}),
     };
     const job = deepFreeze({
       id: input.id ?? contentId("WORKSPACE-ANALYSIS-JOB", identity),

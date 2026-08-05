@@ -15,7 +15,8 @@ test("isolated development bootstrap completes source registration and the first
   await writeFile(path.join(sourceRoot, "entry.js"), "export function cleanStart() { return true; }\n");
   t.after(() => rm(temporary, { recursive: true, force: true }));
 
-  const { application, development } = await createIsolatedDevelopmentApplication({ sourceRoot });
+  const store = new MemoryTraceabilityStore();
+  const { application, development } = await createIsolatedDevelopmentApplication({ sourceRoot, store });
   const templates = await application.listCapabilityTemplates();
   assert.ok(templates.some(({ kind, logicalName }) => kind === "MODEL" && logicalName === development.modelName));
 
@@ -46,7 +47,24 @@ test("isolated development bootstrap completes source registration and the first
   assert.equal(job.status, "COMPLETED", JSON.stringify(job.error));
   assert.equal(job.resolvedMode, "FULL");
   assert.deepEqual(job.completedPhases, ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING"]);
-  assert.ok((await application.getCurrentUnderstandingGraph(workspace.id)).head.version >= 1);
+  const current = await application.getCurrentUnderstandingGraph(workspace.id);
+  const evaluation = await store.getUnderstandingRecord(
+    workspace.id,
+    "EVALUATION_RUN",
+    job.outputs.EVALUATION.evaluationRunId,
+  );
+  const measurements = await store.listUnderstandingRecords(workspace.id, "REVIEWED_MEASUREMENT");
+  assert.ok(current.head.version >= 1);
+  for (const record of [job, current.head, current.revision, current.graphArtifact, evaluation]) {
+    assert.equal(record.dataClassification, "LOCAL_DEVELOPMENT_REFERENCE_ONLY");
+    assert.equal(record.productionEligible, false);
+    assert.equal(record.evaluationEvidenceType, "LOCAL_REFERENCE_SYNTHETIC");
+  }
+  assert.equal(evaluation.reviewer.independent, false);
+  assert.equal(evaluation.reviewer.evidenceType, "LOCAL_REFERENCE_SYNTHETIC");
+  assert.equal(measurements.length, 1);
+  assert.equal(measurements[0].independent, false);
+  assert.equal(measurements[0].evaluationEvidenceType, "LOCAL_REFERENCE_SYNTHETIC");
 });
 
 test("environment variables cannot enable local reference publication in the production bootstrap", async (t) => {

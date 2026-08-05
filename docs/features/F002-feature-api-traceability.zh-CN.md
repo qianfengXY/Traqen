@@ -59,6 +59,10 @@ F002 使用 Tree/Detail 工作区：
 - **Revision 不可用 / Evidence 无效：** 保留选中身份，解释不可变引用失败，并提供有效的当前或历史上下文。
 - **Workspace 切换：** 加载新投影前先清除旧 Tree 选择和历史上下文。
 
+### 旧版 GraphArtifact 兼容
+
+GraphArtifact schema v2 将 `featureTraceability` 纳入 artifact digest。此前已发布的 artifact 继续作为不可变 schema v1 记录保留。Traqen 不能使用当前 Feature baseline 重建其缺失的 F002 历史；系统必须保留所选 Revision、Feature/API、Snapshot、artifact identity 与 digest，返回 `UNAVAILABLE_REQUIRES_REANALYSIS`，并明确提供受治理重分析与当前 Published Head 两种后续上下文。
+
 桌面端使用 Tree/Detail 多栏；移动端改为 Tree 到 Detail 的逐级导航，常驻 Revision/Authority 页头，返回后恢复原 Tree 位置。
 
 ### 前端验收标准

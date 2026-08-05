@@ -313,6 +313,7 @@ export function createConfiguredApplication({
       equivalenceResolver: developmentUnderstanding?.equivalenceResolver ?? equivalenceResolver,
       implementationAuthorId: developmentUnderstanding?.implementationAuthorId ?? "TRAQEN-RUNTIME",
       runnerId: developmentUnderstanding?.runnerId ?? "TRAQEN-SERVER-RUNNER",
+      publicationMetadata: developmentUnderstanding?.publicationMetadata ?? null,
     })
     : null;
   const application = new TraceabilityApplication({

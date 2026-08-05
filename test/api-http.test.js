@@ -342,7 +342,12 @@ test("Feature understanding history returns the complete canonical response shap
   const schema = JSON.parse(
     await readFile(new URL("../contracts/feature-understanding-history.schema.json", import.meta.url), "utf8"),
   );
-  assert.deepEqual(Object.keys(expected).sort(), Object.keys(schema.properties).sort());
+  assert.deepEqual(
+    Object.keys(expected).sort(),
+    Object.keys(schema.$defs.AvailableHistory.properties)
+      .filter((property) => Object.hasOwn(expected, property)).sort(),
+  );
+  assert.ok(schema.$defs.HistoricalUnavailable.required.includes("historicalAvailability"));
 });
 
 test("analysis model profiles can be configured, verified, and used for bounded Workspace enrichment without returning secrets", async (t) => {

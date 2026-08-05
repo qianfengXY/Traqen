@@ -121,7 +121,7 @@ async function developmentReviewedEvaluationResolver({ job, inventory, candidate
     policy: {
       id: "traqen-local-reference-policy",
       version: "1",
-      reviewerRequired: true,
+      reviewerRequired: false,
       minimumDenominators: {
         inventory: 1, anchors: 1, candidateSample: 1, requiredRelationships: 1,
         forbiddenRelationships: 1, sourceAttributions: 1, gaps: 1,
@@ -134,7 +134,11 @@ async function developmentReviewedEvaluationResolver({ job, inventory, candidate
         replayEquivalenceRate: 1, incrementalEquivalenceRate: 1,
       },
     },
-    reviewer: { id: "TRAQEN-LOCAL-REFERENCE-REVIEWER", independent: true },
+    reviewer: {
+      id: "TRAQEN-LOCAL-REFERENCE-REVIEWER",
+      independent: false,
+      evidenceType: "LOCAL_REFERENCE_SYNTHETIC",
+    },
     implementationAuthorId: "TRAQEN-LOCAL-DEVELOPMENT-RUNTIME",
     observedAnchorIds: ["LOCAL-REFERENCE-ANCHOR"],
     observedRelationships: truthSet.requiredRelationships,
@@ -150,7 +154,8 @@ async function developmentReviewedEvaluationResolver({ job, inventory, candidate
       analysisRunId: job.id,
       truthSetVersionId: truthSet.id,
       reviewerId: "TRAQEN-LOCAL-REFERENCE-REVIEWER",
-      independent: true,
+      independent: false,
+      evaluationEvidenceType: "LOCAL_REFERENCE_SYNTHETIC",
       productionInputDigest: `local-reference:${inventory.inventoryDigest}`,
       outputDigest: semanticSurface.digest,
       anchorReviews: [], candidateReviews: [], relationReviews: [], gapReviews: [],
@@ -177,6 +182,11 @@ export async function createIsolatedDevelopmentApplication({
     reviewedEvaluationResolver: developmentReviewedEvaluationResolver,
     implementationAuthorId: "TRAQEN-LOCAL-DEVELOPMENT-RUNTIME",
     runnerId: "TRAQEN-LOCAL-DEVELOPMENT-SERVER",
+    publicationMetadata: {
+      dataClassification: "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
+      productionEligible: false,
+      evaluationEvidenceType: "LOCAL_REFERENCE_SYNTHETIC",
+    },
   };
   const configured = createConfiguredApplication({
     store,

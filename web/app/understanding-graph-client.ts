@@ -14,21 +14,51 @@ export type GraphRevision = {
   status: "BUILDING" | "EVALUATING" | "PUBLISHED" | "REJECTED";
   createdAt: string;
   publishedAt: string | null;
+  dataClassification?: string;
+  productionEligible?: boolean;
+  evaluationEvidenceType?: string;
+};
+
+export type HistoricalAvailability = {
+  status: "UNAVAILABLE_REQUIRES_REANALYSIS";
+  reasonCode: "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED";
+  message: string;
+  artifactSchemaVersion: 1;
+  featureId: string;
+  selectedObjectId: string;
+  snapshotManifestId: string;
+  graphRevisionId: string;
+  graphArtifactId: string;
+  graphArtifactDigest: string;
+  recovery: { action: "REANALYZE_FROM_REVISION_SNAPSHOT"; snapshotManifestId: string; endpoint: string };
+  currentContext: { action: "VIEW_CURRENT_PUBLISHED_HEAD"; endpoint: string };
 };
 
 export type CurrentUnderstandingGraph = {
-  head: { projectId: string; graphRevisionId: string; version: number; updatedAt: string };
+  head: {
+    projectId: string; graphRevisionId: string; version: number; updatedAt: string;
+    dataClassification?: string; productionEligible?: boolean; evaluationEvidenceType?: string;
+  };
   revision: GraphRevision;
   graphArtifact: {
     id: string;
+    artifactSchemaVersion?: 1 | 2;
     graphArtifactDigest: string;
-    nodes: Array<{ id: string; type: string; authority: "CANDIDATE" | "GOVERNED" | "DETERMINISTIC_FACT" | "GAP"; label: string }>;
+    dataClassification?: string;
+    productionEligible?: boolean;
+    evaluationEvidenceType?: string;
+    nodes: Array<{ id: string; type: string; authority: "CANDIDATE" | "GOVERNED" | "GOVERNED_BASELINE" | "DETERMINISTIC_FACT" | "GAP" | "OBSERVED_CANDIDATE_ONLY"; label: string }>;
     edges: Array<{ id: string; source: string; target: string; type: string }>;
     traceChains: Array<{ id: string; status: string; nodeIds: string[]; complete: boolean }>;
     gaps: Array<{ id?: string; code?: string }>;
     changeSet: { id: string; changedNodeIds: string[] } | null;
     impactAssessment: { id: string; affectedNodeIds: string[] } | null;
     revalidationPlan: { required: boolean; actions: string[] } | null;
+    featureTraceability?: Array<{
+      featureId: string;
+      featureVersions: Array<Record<string, unknown>>;
+      traceability: FeatureTraceability;
+    }>;
   };
 };
 
@@ -54,6 +84,9 @@ export type FeatureUnderstandingHistory = {
   }>;
   selection?: { id: string; type: string; label: string; authority: string; ownerFeatureId: string };
   selectionHistory?: Array<Record<string, unknown>>;
+  historicalAvailability?: HistoricalAvailability;
+  snapshotManifestId?: string;
+  graphRevisionId?: string;
 };
 
 export type FeatureTraceability = {
@@ -73,6 +106,8 @@ export type FeatureTraceability = {
   gaps: Array<Record<string, unknown>>;
   persisted: Array<Record<string, unknown>>;
   computedAt: string;
+  historicalAvailability?: HistoricalAvailability;
+  graphRevisionId?: string | null;
 };
 
 export type FeatureGraphNode = {
@@ -110,6 +145,7 @@ export type FeatureGraphProjection = {
   edges: FeatureGraphEdge[];
   truncated: boolean;
   availableExpansions: Array<{ relation: string; nodeType: string; count: number }>;
+  historicalAvailability?: HistoricalAvailability;
 };
 
 export type FeatureGraphPathResult = Omit<FeatureGraphProjection, "depth" | "truncated" | "availableExpansions"> & {
@@ -150,10 +186,11 @@ export type GovernedSelectionOptions = {
 
 export type ResolvedGraphEvidence = {
   resolved: boolean;
-  status: "RESOLVED" | "MISSING";
+  status: "RESOLVED" | "MISSING" | "UNAVAILABLE_REQUIRES_REANALYSIS";
   kind: "node" | "edge" | "object";
   id: string;
   object: Record<string, unknown> | null;
+  historicalAvailability?: HistoricalAvailability;
   context: {
     projectId: string;
     featureId: string;

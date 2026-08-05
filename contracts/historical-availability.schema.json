@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/historical-availability.schema.json",
+  "title": "HistoricalTraceabilityAvailability",
+  "type": "object",
+  "required": [
+    "status", "reasonCode", "message", "artifactSchemaVersion", "featureId", "selectedObjectId",
+    "snapshotManifestId", "graphRevisionId", "graphArtifactId", "graphArtifactDigest", "recovery", "currentContext"
+  ],
+  "properties": {
+    "status": { "const": "UNAVAILABLE_REQUIRES_REANALYSIS" },
+    "reasonCode": { "const": "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED" },
+    "message": { "type": "string", "minLength": 1 },
+    "artifactSchemaVersion": { "const": 1 },
+    "featureId": { "type": "string", "minLength": 1 },
+    "selectedObjectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "graphRevisionId": { "type": "string", "minLength": 1 },
+    "graphArtifactId": { "type": "string", "minLength": 1 },
+    "graphArtifactDigest": { "type": "string", "minLength": 1 },
+    "recovery": {
+      "type": "object",
+      "required": ["action", "snapshotManifestId", "endpoint"],
+      "properties": {
+        "action": { "const": "REANALYZE_FROM_REVISION_SNAPSHOT" },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "endpoint": { "type": "string", "pattern": "^/v1/" }
+      },
+      "additionalProperties": false
+    },
+    "currentContext": {
+      "type": "object",
+      "required": ["action", "endpoint"],
+      "properties": {
+        "action": { "const": "VIEW_CURRENT_PUBLISHED_HEAD" },
+        "endpoint": { "type": "string", "pattern": "^/v1/" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

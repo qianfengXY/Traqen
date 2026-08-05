@@ -63,6 +63,7 @@
         "edges": { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
         "truncated": { "type": "boolean" },
         "availableExpansions": { "type": "array", "items": { "$ref": "#/$defs/Expansion" } }
+        ,"historicalAvailability": { "$ref": "./historical-availability.schema.json" }
       },
       "additionalProperties": false
     },
@@ -90,6 +91,7 @@
         "nodes": { "type": "array", "items": { "$ref": "#/$defs/Node" } },
         "edges": { "type": "array", "items": { "$ref": "#/$defs/Edge" } },
         "hopCount": { "type": ["integer", "null"], "minimum": 0 }
+        ,"historicalAvailability": { "$ref": "./historical-availability.schema.json" }
       },
       "additionalProperties": false
     }

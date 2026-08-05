@@ -1846,6 +1846,9 @@
           "graphRevisionId": { "type": "string" },
           "version": { "type": "integer", "minimum": 1 },
           "updatedAt": { "type": "string", "format": "date-time" }
+          ,"dataClassification": { "type": "string", "minLength": 1 }
+          ,"productionEligible": { "type": "boolean" }
+          ,"evaluationEvidenceType": { "type": "string", "minLength": 1 }
         },
         "additionalProperties": false
       },

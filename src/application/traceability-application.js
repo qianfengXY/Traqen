@@ -95,6 +95,158 @@ function selectedGraphObject(node, featureId) {
   });
 }
 
+function graphArtifactSchemaVersion(artifact) {
+  if (Number.isSafeInteger(artifact?.artifactSchemaVersion)) return artifact.artifactSchemaVersion;
+  return Array.isArray(artifact?.featureTraceability) ? 2 : 1;
+}
+
+function historicalTraceabilityAvailability(projectId, { revision, artifact }, featureId, selectedObjectId) {
+  const featureNode = artifact.nodes?.find(({ id }) => id === featureId) ?? null;
+  const selectedNode = artifact.nodes?.find(({ id }) => id === selectedObjectId) ?? featureNode;
+  const selection = selectedNode ? {
+    id: selectedNode.id,
+    type: selectedNode.type,
+    label: selectedNode.label ?? selectedNode.id,
+    authority: selectedNode.authority ?? "UNKNOWN",
+    status: "UNAVAILABLE_REQUIRES_REANALYSIS",
+    source: selectedNode.source ?? null,
+    details: structuredClone(selectedNode),
+    ownerFeatureId: featureId,
+  } : {
+    id: selectedObjectId,
+    type: selectedObjectId === featureId ? "FEATURE" : "UNKNOWN",
+    label: selectedObjectId,
+    authority: "UNKNOWN",
+    status: "UNAVAILABLE_REQUIRES_REANALYSIS",
+    source: null,
+    details: {},
+    ownerFeatureId: featureId,
+  };
+  const historicalAvailability = {
+    status: "UNAVAILABLE_REQUIRES_REANALYSIS",
+    reasonCode: "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED",
+    message: "This published legacy GraphArtifact predates immutable Feature traceability snapshots. Current governed data was not substituted for missing history.",
+    artifactSchemaVersion: graphArtifactSchemaVersion(artifact),
+    featureId,
+    selectedObjectId,
+    snapshotManifestId: revision.snapshotManifestId,
+    graphRevisionId: revision.id,
+    graphArtifactId: revision.graphArtifactId,
+    graphArtifactDigest: revision.graphArtifactDigest,
+    recovery: {
+      action: "REANALYZE_FROM_REVISION_SNAPSHOT",
+      snapshotManifestId: revision.snapshotManifestId,
+      endpoint: `/v1/projects/${encodeURIComponent(projectId)}/workspace-analysis-jobs`,
+    },
+    currentContext: {
+      action: "VIEW_CURRENT_PUBLISHED_HEAD",
+      endpoint: `/v1/projects/${encodeURIComponent(projectId)}/graph/current`,
+    },
+  };
+  return deepFreeze({
+    historicalAvailability,
+    selection,
+    snapshotManifestId: revision.snapshotManifestId,
+    graphRevisionId: revision.id,
+  });
+}
+
+function projectLegacyArtifactGraph(projectId, graphContext, featureId, options) {
+  const { revision, artifact } = graphContext;
+  const rootNodeId = options.rootNodeId ?? featureId;
+  const depth = options.depth ?? 1;
+  const limit = options.limit ?? 30;
+  const view = options.view ?? "traceability";
+  const viewTypes = {
+    traceability: null,
+    business: new Set(["FEATURE", "CLAIM", "CLAIM_SCOPE", "DECISION", "ACTOR_ROLE", "BUSINESS_STATE", "STATE_TRANSITION", "DESIGN_ELEMENT", "CONFLICT", "TRACE_GAP"]),
+    implementation: new Set(["FEATURE", "CLAIM", "IMPLEMENTATION_CONFORMANCE", "ENDPOINT", "CODE_SYMBOL", "DATA_OBJECT", "CONFIGURATION", "EXTERNAL_DEPENDENCY", "CONFLICT", "TRACE_GAP"]),
+    coverage: new Set(["FEATURE", "CLAIM", "TEST_SPEC", "TEST_ASSERTION", "TEST_EXECUTION", "EVIDENCE", "CONFLICT", "TRACE_GAP"]),
+  };
+  if (!Object.hasOwn(viewTypes, view)) throw new TypeError("view must be one of traceability, business, implementation, coverage");
+  if (!Number.isSafeInteger(depth) || depth < 1 || depth > 8) throw new RangeError("depth must be an integer between 1 and 8");
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RangeError("limit must be an integer between 1 and 100");
+  const allNodes = new Map((artifact.nodes ?? []).map((node) => [node.id, node]));
+  if (!allNodes.has(rootNodeId)) {
+    throw new TypeError(`rootNodeId ${rootNodeId} is not present in legacy GraphArtifact ${artifact.id}`);
+  }
+  const requestedNodeTypes = new Set(options.nodeTypes ?? []);
+  const sourceNodes = new Map([...allNodes].filter(([id, node]) => id === rootNodeId || (
+    (viewTypes[view] === null || viewTypes[view].has(node.type))
+    && (requestedNodeTypes.size === 0 || requestedNodeTypes.has(node.type))
+  )));
+  const requestedRelations = new Set(options.relations ?? []);
+  const sourceEdges = (artifact.edges ?? []).filter((edge) =>
+    sourceNodes.has(edge.source)
+    && sourceNodes.has(edge.target)
+    && (requestedRelations.size === 0 || requestedRelations.has(edge.type)));
+  const adjacency = new Map();
+  for (const edge of sourceEdges) {
+    adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
+    adjacency.set(edge.target, [...(adjacency.get(edge.target) ?? []), edge.source]);
+  }
+  const distances = new Map([[rootNodeId, 0]]);
+  const pending = [rootNodeId];
+  while (pending.length > 0) {
+    const current = pending.shift();
+    const currentDepth = distances.get(current);
+    if (currentDepth >= depth) continue;
+    for (const related of adjacency.get(current) ?? []) {
+      if (distances.has(related)) continue;
+      distances.set(related, currentDepth + 1);
+      pending.push(related);
+    }
+  }
+  const orderedIds = [...distances]
+    .sort((left, right) => left[1] - right[1] || left[0].localeCompare(right[0]));
+  const selectedIds = new Set(orderedIds.slice(0, limit).map(([id]) => id));
+  const nodes = [...selectedIds].map((id) => {
+    const node = sourceNodes.get(id);
+    return {
+      id: node.id,
+      type: node.type,
+      label: node.label ?? node.id,
+      version: node.version ?? null,
+      status: node.status ?? (node.authority === "CANDIDATE" ? "PENDING" : node.authority === "GAP" ? "GAP" : "ACTIVE"),
+      risk: node.risk ?? null,
+      provenance: node.authority ?? "LEGACY_GRAPH_ARTIFACT",
+      source: node.source ?? null,
+      details: structuredClone(node),
+    };
+  });
+  const edges = sourceEdges.filter(({ source, target }) => selectedIds.has(source) && selectedIds.has(target)).map((edge) => ({
+    ...structuredClone(edge),
+    provenance: edge.authority ?? "LEGACY_GRAPH_ARTIFACT",
+    status: edge.status ?? (edge.authority === "CANDIDATE" ? "PENDING" : "ACTIVE"),
+    snapshotManifestId: revision.snapshotManifestId,
+  }));
+  const expansionCounts = new Map();
+  for (const edge of sourceEdges) {
+    const sourceVisible = selectedIds.has(edge.source);
+    const targetVisible = selectedIds.has(edge.target);
+    if (sourceVisible === targetVisible) continue;
+    const hidden = sourceNodes.get(sourceVisible ? edge.target : edge.source);
+    const key = `${edge.type}\u0000${hidden?.type ?? "UNKNOWN"}`;
+    expansionCounts.set(key, (expansionCounts.get(key) ?? 0) + 1);
+  }
+  const availableExpansions = [...expansionCounts].map(([key, count]) => {
+    const [relation, nodeType] = key.split("\u0000");
+    return { relation, nodeType, count };
+  });
+  const availability = historicalTraceabilityAvailability(projectId, graphContext, featureId, rootNodeId);
+  return deepFreeze({
+    center: rootNodeId,
+    snapshotManifestId: revision.snapshotManifestId,
+    view,
+    depth,
+    nodes,
+    edges,
+    truncated: selectedIds.size < sourceNodes.size || orderedIds.length > limit,
+    availableExpansions,
+    historicalAvailability: availability.historicalAvailability,
+  });
+}
+
 function traceabilityEvidenceObjects(traceability) {
   const objects = [];
   const add = (objectType, value, executionId = null) => {
@@ -2088,6 +2240,14 @@ export class TraceabilityApplication {
         snapshotManifestId,
       );
       const historical = this.#requireHistoricalFeatureTraceability(graphContext, featureId);
+      if (!historical) {
+        return historicalTraceabilityAvailability(
+          projectId,
+          graphContext,
+          featureId,
+          selectedObjectId,
+        );
+      }
       const selectionGraph = createFeatureGraphProjection(historical.traceability, {
         rootNodeId: selectedObjectId,
         depth: 8,
@@ -2263,12 +2423,19 @@ export class TraceabilityApplication {
       ? await this.#requireGraphRevisionContext(projectId, options.graphRevisionId, snapshotManifestId)
       : null;
     const rootNodeId = options.rootNodeId ?? featureId;
-    const traceability = await this.getFeatureTraceability(projectId, featureId, snapshotManifestId, {
-      selectedObjectId: rootNodeId,
-      graphRevisionId: options.graphRevisionId ?? null,
-    });
-    if (!traceability) return null;
-    const projection = createFeatureGraphProjection(traceability, options);
+    const historical = graphContext
+      ? this.#requireHistoricalFeatureTraceability(graphContext, featureId)
+      : null;
+    const traceability = graphContext && !historical ? null : await this.getFeatureTraceability(
+      projectId,
+      featureId,
+      snapshotManifestId,
+      { selectedObjectId: rootNodeId, graphRevisionId: options.graphRevisionId ?? null },
+    );
+    if (!traceability && !graphContext) return null;
+    const projection = graphContext && !historical
+      ? projectLegacyArtifactGraph(projectId, graphContext, featureId, options)
+      : createFeatureGraphProjection(traceability, options);
     if (!graphContext) return projection;
     const graphRevision = graphContext.revision;
     const resolverContext = { featureId, rootNodeId, snapshotManifestId };
@@ -2310,6 +2477,9 @@ export class TraceabilityApplication {
     return deepFreeze({
       center: graph.center,
       snapshotManifestId: graph.snapshotManifestId,
+      ...(graph.graphRevisionId ? { graphRevisionId: graph.graphRevisionId } : {}),
+      ...(graph.ownerFeatureId ? { ownerFeatureId: graph.ownerFeatureId } : {}),
+      ...(graph.historicalAvailability ? { historicalAvailability: graph.historicalAvailability } : {}),
       view: graph.view,
       query: {
         fromNodeId: input.fromNodeId,
@@ -2339,6 +2509,7 @@ export class TraceabilityApplication {
   #requireHistoricalFeatureTraceability({ revision, artifact }, featureId) {
     const historical = artifact.featureTraceability?.find((item) => item.featureId === featureId);
     if (!historical?.traceability) {
+      if (graphArtifactSchemaVersion(artifact) === 1) return null;
       throw new PersistenceConflictError(
         `GraphRevision ${revision.id} has no immutable traceability snapshot for Feature ${featureId}`,
       );
@@ -2381,6 +2552,27 @@ export class TraceabilityApplication {
         selectedObjectId: rootNodeId,
         graphRevisionId: revisionId,
       });
+      if (traceability.historicalAvailability) {
+        return deepFreeze({
+          resolved: false,
+          status: "UNAVAILABLE_REQUIRES_REANALYSIS",
+          kind,
+          id: evidenceId,
+          object: null,
+          historicalAvailability: traceability.historicalAvailability,
+          context: {
+            projectId,
+            featureId,
+            rootNodeId,
+            snapshotManifestId,
+            graphRevisionId: revision.id,
+            graphArtifactId: revision.graphArtifactId,
+            graphArtifactDigest: revision.graphArtifactDigest,
+            objectType: context?.objectType ?? null,
+            executionId: context?.executionId ?? null,
+          },
+        });
+      }
       resolved = traceabilityEvidenceObjects(traceability).find((candidate) =>
         candidate.value.id === evidenceId
         && (!context?.objectType || candidate.objectType === context.objectType)
@@ -2840,7 +3032,12 @@ export class TraceabilityApplication {
     if (!graphArtifact || graphArtifact.graphArtifactDigest !== revision.graphArtifactDigest) {
       throw new PersistenceConflictError("CurrentGraphHead graph artifact is missing or digest-mismatched");
     }
-    return deepFreeze({ head, revision, graphArtifact });
+    const publication = revision.dataClassification ? {
+      dataClassification: revision.dataClassification,
+      productionEligible: revision.productionEligible,
+      evaluationEvidenceType: revision.evaluationEvidenceType,
+    } : {};
+    return deepFreeze({ head: { ...head, ...publication }, revision, graphArtifact });
   }
 
   async listGraphRevisions(projectId) {
@@ -2874,6 +3071,14 @@ export class TraceabilityApplication {
     if (graphRevisionId) {
       const graphContext = await this.#requireGraphRevisionContext(projectId, graphRevisionId);
       const historical = this.#requireHistoricalFeatureTraceability(graphContext, featureId);
+      if (!historical) {
+        return historicalTraceabilityAvailability(
+          projectId,
+          graphContext,
+          featureId,
+          selectedObjectId,
+        );
+      }
       const traceability = historical.traceability;
       const publishedRevisions = (await this.#store.listUnderstandingRecords(projectId, "GRAPH_REVISION"))
         .filter(({ status }) => status === "PUBLISHED")

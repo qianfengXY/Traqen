@@ -49,6 +49,7 @@ Selecting an Edge explains why the relation exists and resolves its evidence; me
 - **Partial coverage:** render Candidate, Governed, Conflict, Gap, Stale, and Missing with shape/line/text semantics in addition to color.
 - **Historical comparison:** compare current and historical Revisions side by side or as explicit layers; never synthesize them into a false current graph.
 - **Workspace switch:** discard the old root, expansion, and late graph response before loading the equivalent module in the new Workspace.
+- **Pre-v2 artifact:** keep F002 traceability unavailability explicit, while bounded F003 node, edge, path, and resolver reads may use only evidence physically stored in the selected legacy GraphArtifact.
 
 Keyboard and screen-reader users can search a root, expand a bounded relation group, select a path, and inspect every hop through the relationship/path list. On mobile this list is the default view; the canvas is optional.
 

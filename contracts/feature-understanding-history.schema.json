@@ -2,37 +2,48 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://traqen.dev/contracts/feature-understanding-history.schema.json",
   "title": "FeatureUnderstandingHistory",
-  "type": "object",
-  "required": [
-    "feature",
-    "featureVersions",
-    "decisions",
-    "implementationMappings",
-    "graphRevisions",
-    "testSpecs",
-    "testExecutions"
+  "oneOf": [
+    { "$ref": "#/$defs/AvailableHistory" },
+    { "$ref": "#/$defs/HistoricalUnavailable" }
   ],
-  "properties": {
-    "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
-    "featureVersions": {
-      "type": "array",
-      "minItems": 1,
-      "items": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" }
+  "$defs": {
+    "Selection": {
+      "type": "object",
+      "required": ["id", "type", "label", "authority", "ownerFeatureId"],
+      "properties": {
+        "id": { "type": "string" }, "type": { "type": "string" }, "label": { "type": "string" },
+        "authority": { "type": "string" }, "status": { "type": "string" },
+        "source": { "type": ["object", "null"] }, "details": { "type": "object" },
+        "ownerFeatureId": { "type": "string" }
+      },
+      "additionalProperties": true
     },
-    "decisions": {
-      "type": "array",
-      "items": { "$ref": "./governance.schema.json#/$defs/Decision" }
+    "AvailableHistory": {
+      "type": "object",
+      "required": ["feature", "featureVersions", "decisions", "implementationMappings", "graphRevisions", "testSpecs", "testExecutions"],
+      "properties": {
+        "feature": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" },
+        "featureVersions": { "type": "array", "minItems": 1, "items": { "$ref": "./governance.schema.json#/$defs/FeatureVersion" } },
+        "decisions": { "type": "array", "items": { "$ref": "./governance.schema.json#/$defs/Decision" } },
+        "implementationMappings": { "type": "array", "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" } },
+        "graphRevisions": { "type": "array", "items": { "$ref": "./graph-revision.schema.json" } },
+        "testSpecs": { "type": "array", "items": { "type": "object" } },
+        "testExecutions": { "type": "array", "items": { "type": "object" } },
+        "selection": { "$ref": "#/$defs/Selection" },
+        "selectionHistory": { "type": "array", "items": { "type": "object" } }
+      },
+      "additionalProperties": false
     },
-    "implementationMappings": {
-      "type": "array",
-      "items": { "$ref": "./candidate-review.schema.json#/$defs/ImplementationMapping" }
-    },
-    "graphRevisions": {
-      "type": "array",
-      "items": { "$ref": "./graph-revision.schema.json" }
-    },
-    "testSpecs": { "type": "array", "items": { "type": "object" } },
-    "testExecutions": { "type": "array", "items": { "type": "object" } }
-  },
-  "additionalProperties": false
+    "HistoricalUnavailable": {
+      "type": "object",
+      "required": ["historicalAvailability", "selection", "snapshotManifestId", "graphRevisionId"],
+      "properties": {
+        "historicalAvailability": { "$ref": "./historical-availability.schema.json" },
+        "selection": { "$ref": "#/$defs/Selection" },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "graphRevisionId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  }
 }

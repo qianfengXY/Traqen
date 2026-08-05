@@ -38,6 +38,17 @@ test("GraphArtifact digest owns its immutable Feature traceability snapshots", (
   assert.notEqual(first.graphArtifactDigest, second.graphArtifactDigest);
   assert.equal(first.featureTraceability[0].traceability.feature.version, 1);
   assert.ok(Object.isFrozen(first));
+  assert.equal(first.artifactSchemaVersion, 2);
+  assert.throws(() => createImmutableGraphArtifact({
+    ...input,
+    featureTraceability: [{
+      ...input.featureTraceability[0],
+      traceability: {
+        ...input.featureTraceability[0].traceability,
+        snapshotManifest: { id: "S-FOREIGN" },
+      },
+    }],
+  }, fixedClock), /must own SnapshotManifest S1/);
 });
 
 test("GraphRevision publication is evaluation-gated, first-FULL, and head-CAS atomic", async () => {

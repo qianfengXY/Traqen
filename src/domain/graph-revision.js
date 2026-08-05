@@ -8,6 +8,23 @@ export const GraphRevisionStatus = Object.freeze({
   REJECTED: "REJECTED",
 });
 
+export const GraphArtifactSchemaVersion = Object.freeze({
+  LEGACY_WITHOUT_FEATURE_TRACEABILITY: 1,
+  FEATURE_TRACEABILITY_SNAPSHOT: 2,
+});
+
+function publicationMetadata(input) {
+  const present = [input.dataClassification, input.productionEligible, input.evaluationEvidenceType]
+    .some((value) => value !== undefined && value !== null);
+  if (!present) return {};
+  const dataClassification = requireNonEmptyString(input.dataClassification, "dataClassification");
+  const evaluationEvidenceType = requireNonEmptyString(input.evaluationEvidenceType, "evaluationEvidenceType");
+  if (typeof input.productionEligible !== "boolean") {
+    throw new TypeError("productionEligible must be a boolean");
+  }
+  return { dataClassification, productionEligible: input.productionEligible, evaluationEvidenceType };
+}
+
 export function resolveUnderstandingMode(requestedMode, currentGraphHead) {
   if (!["AUTO", "FULL", "INCREMENTAL"].includes(requestedMode)) throw new TypeError("mode must be AUTO, FULL, or INCREMENTAL");
   if (!currentGraphHead && requestedMode === "INCREMENTAL") {
@@ -33,6 +50,7 @@ export function createGraphRevision(input, clock = () => new Date()) {
     graphArtifactId: requireNonEmptyString(input.graphArtifactId, "graphArtifactId"),
     graphArtifactDigest: requireNonEmptyString(input.graphArtifactDigest, "graphArtifactDigest"),
     semanticDigest: requireNonEmptyString(input.semanticDigest, "semanticDigest"),
+    ...publicationMetadata(input),
   };
   return deepFreeze({
     id: input.id ?? contentId("GRAPH-REVISION", identity),
@@ -53,6 +71,20 @@ export function createImmutableGraphArtifact(input, clock = () => new Date()) {
   if (new Set(featureTraceability.map(({ featureId }) => featureId)).size !== featureTraceability.length) {
     throw new TypeError("graph feature traceability snapshots must have unique Feature ids");
   }
+  const projectId = requireNonEmptyString(input.projectId, "projectId");
+  const snapshotManifestId = requireNonEmptyString(input.snapshotManifestId, "snapshotManifestId");
+  for (const snapshot of featureTraceability) {
+    const featureId = requireNonEmptyString(snapshot.featureId, "featureTraceability.featureId");
+    if (snapshot.traceability?.feature?.id !== featureId) {
+      throw new TypeError(`Feature traceability snapshot ${featureId} must own the same Feature id`);
+    }
+    if (snapshot.traceability?.snapshotManifest?.id !== snapshotManifestId) {
+      throw new TypeError(`Feature traceability snapshot ${featureId} must own SnapshotManifest ${snapshotManifestId}`);
+    }
+    if (!Array.isArray(snapshot.featureVersions) || snapshot.featureVersions.length < 1) {
+      throw new TypeError(`Feature traceability snapshot ${featureId} requires FeatureVersion history`);
+    }
+  }
   const nodeIds = new Set(nodes.map(({ id }) => id));
   for (const edge of edges) {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
@@ -60,9 +92,11 @@ export function createImmutableGraphArtifact(input, clock = () => new Date()) {
     }
   }
   const content = {
-    projectId: requireNonEmptyString(input.projectId, "projectId"),
-    snapshotManifestId: requireNonEmptyString(input.snapshotManifestId, "snapshotManifestId"),
+    artifactSchemaVersion: GraphArtifactSchemaVersion.FEATURE_TRACEABILITY_SNAPSHOT,
+    projectId,
+    snapshotManifestId,
     analysisRunId: requireNonEmptyString(input.analysisRunId, "analysisRunId"),
+    ...publicationMetadata(input),
     nodes,
     edges,
     featureTraceability,

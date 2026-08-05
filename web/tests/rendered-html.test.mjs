@@ -62,6 +62,9 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /jobs\.map\(\(item\)/);
   assert.match(product, /getCurrentUnderstandingGraph/);
   assert.match(product, /staleWorkspaceResponse/);
+  assert.match(product, /revisionRequestRef/);
+  assert.match(product, /staleWorkspaceRequestResponse\(requestContext, contextRef\.current, requestVersion, revisionRequestRef\.current\)/);
+  assert.match(product, /REFERENCE ONLY/);
   assert.match(product, /window\.setInterval/);
   for (const stage of ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING"]) {
     assert.match(surfaces, new RegExp(stage));

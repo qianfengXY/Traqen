@@ -59,6 +59,10 @@ Selecting a historical Revision places the entire tree, detail, evidence, and re
 - **Revision unavailable / evidence invalid:** keep the selected identity visible, explain the immutable reference failure, and offer a valid current or historical context.
 - **Workspace switch:** clear the old tree selection and history context before loading the new projection.
 
+### Legacy GraphArtifact compatibility
+
+GraphArtifact schema v2 stores `featureTraceability` inside the artifact digest. Earlier published artifacts remain immutable schema v1 records. Traqen must not reconstruct their missing F002 history from the current Feature baseline. Instead it preserves the selected Revision, Feature/API, Snapshot, artifact identity, and digest, returns `UNAVAILABLE_REQUIRES_REANALYSIS`, and offers both governed reanalysis and the current Published Head as explicit next contexts.
+
 Desktop uses tree/detail panes. Mobile uses tree-to-detail navigation with a persistent revision/authority header and returns to the same tree position.
 
 ### Frontend acceptance

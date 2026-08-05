@@ -21,6 +21,9 @@ export type ServerUnderstandingJob = {
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
+  dataClassification?: string;
+  productionEligible?: boolean;
+  evaluationEvidenceType?: string;
 };
 
 function headers(apiToken: string, json = false) {

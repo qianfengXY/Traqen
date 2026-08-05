@@ -334,7 +334,7 @@ test("Feature understanding history and SourceSlice HTTP surfaces have executabl
     readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8").then(JSON.parse),
   ]);
 
-  assert.deepEqual(history.required, [
+  assert.deepEqual(history.$defs.AvailableHistory.required, [
     "feature",
     "featureVersions",
     "decisions",
@@ -343,6 +343,7 @@ test("Feature understanding history and SourceSlice HTTP surfaces have executabl
     "testSpecs",
     "testExecutions",
   ]);
+  assert.ok(history.$defs.HistoricalUnavailable.required.includes("historicalAvailability"));
   assert.equal(
     openapi.paths["/v1/projects/{projectId}/features/{featureId}/history"].get.responses["200"]
       .content["application/json"].schema.$ref,
@@ -548,10 +549,11 @@ test("Feature traceability contract exposes independent dimensions, ordered chai
   );
 
   assert.equal(contract.title, "FeatureTraceability");
-  assert.ok(contract.required.includes("dimensions"));
-  assert.ok(contract.required.includes("traceChains"));
-  assert.ok(contract.required.includes("gaps"));
-  assert.ok(contract.required.includes("processModel"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("dimensions"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("traceChains"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("gaps"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("processModel"));
+  assert.ok(contract.$defs.HistoricalUnavailable.required.includes("historicalAvailability"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("facts"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("traceChain"));
 });

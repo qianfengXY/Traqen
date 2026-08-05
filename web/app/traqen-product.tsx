@@ -158,6 +158,7 @@ function ServerOwnedProduct() {
   const detailRequestRef = useRef(0);
   const graphRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
+  const revisionRequestRef = useRef(0);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
   const resolveEvidence = useCallback((resolver: string) =>
     resolveGraphEvidence(apiBase, apiToken, resolver), [apiBase, apiToken]);
@@ -168,6 +169,8 @@ function ServerOwnedProduct() {
   }, []);
 
   const refreshWorkspaceReads = useCallback(async (workspace: Workspace, requestContext: CurrentWorkspaceContext) => {
+    const revisionRequestVersion = revisionRequestRef.current + 1;
+    revisionRequestRef.current = revisionRequestVersion;
     const [graphResult, revisionResult, jobResult, reviewResult, configResult, profileResult] = await Promise.allSettled([
       getCurrentUnderstandingGraph(apiBase, apiToken, workspace.id),
       listGraphRevisions(apiBase, apiToken, workspace.id),
@@ -177,7 +180,7 @@ function ServerOwnedProduct() {
       listWorkspaceExecutionProfiles(apiBase, apiToken, workspace.id),
     ]);
     if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
-    if (graphResult.status === "fulfilled") {
+    if (graphResult.status === "fulfilled" && revisionRequestVersion === revisionRequestRef.current) {
       setCurrent(graphResult.value);
       setArtifact(graphResult.value?.graphArtifact ?? null);
       setDisplayRevision(graphResult.value?.revision ?? null);
@@ -238,10 +241,12 @@ function ServerOwnedProduct() {
     setFeatureTraceability(null);
     setBoundedGraph(null);
     setGraphPath(null);
+    setTraceabilityLoading(false);
     setTraceabilityError("");
     detailRequestRef.current += 1;
     graphRequestRef.current += 1;
     pathRequestRef.current += 1;
+    revisionRequestRef.current += 1;
     setReviewItems([]);
     setSelectedReviewIds([]);
     setImpact(null);
@@ -264,6 +269,8 @@ function ServerOwnedProduct() {
   }, [refreshWorkspaceReads, templates]);
 
   const reconnect = useCallback(async (preferRemembered = false) => {
+    revisionRequestRef.current += 1;
+    setTraceabilityLoading(false);
     setHealth("checking");
     try {
       const [available, , availableTemplates] = await Promise.all([
@@ -503,21 +510,35 @@ function ServerOwnedProduct() {
 
   async function selectRevision(revisionId: string) {
     if (!activeWorkspace) return;
+    const requestContext = { ...contextRef.current };
+    const workspaceId = activeWorkspace.id;
+    const requestVersion = revisionRequestRef.current + 1;
+    revisionRequestRef.current = requestVersion;
     if (revisionId === "current") {
       setArtifact(current?.graphArtifact ?? null);
       setDisplayRevision(current?.revision ?? null);
       setHistorical(false);
+      setFocusedNodeId(current?.graphArtifact.nodes[0]?.id ?? "");
+      setTraceabilityLoading(false);
       return;
     }
-    setWorking(true);
+    setTraceabilityLoading(true);
     try {
-      const result = await getGraphRevision(apiBase, apiToken, activeWorkspace.id, revisionId);
+      const result = await getGraphRevision(apiBase, apiToken, workspaceId, revisionId);
+      if (staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, revisionRequestRef.current)) return;
       setArtifact(result.graphArtifact);
       setDisplayRevision(result.revision);
       setHistorical(true);
       setFocusedNodeId(result.graphArtifact.nodes[0]?.id ?? "");
-    } catch (error) { notify(messageOf(error, t("历史版本加载失败", "Unable to load historical revision")), "error"); }
-    finally { setWorking(false); }
+    } catch (error) {
+      if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, revisionRequestRef.current)) {
+        notify(messageOf(error, t("历史版本加载失败", "Unable to load historical revision")), "error");
+      }
+    } finally {
+      if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, revisionRequestRef.current)) {
+        setTraceabilityLoading(false);
+      }
+    }
   }
 
   async function refreshReviewQueue() {
@@ -577,6 +598,9 @@ function ServerOwnedProduct() {
 
   const openReviewCount = reviewItems.filter(({ status }) => ["OPEN", "PENDING", "READY_FOR_REVIEW"].includes(status)).length;
   const impactActionCount = current?.graphArtifact.revalidationPlan?.actions.length ?? 0;
+  const referenceOnly = current?.head.productionEligible === false
+    || current?.revision.productionEligible === false
+    || artifact?.productionEligible === false;
   const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
   const renderView = () => {
     if (!activeWorkspace) return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
@@ -598,7 +622,8 @@ function ServerOwnedProduct() {
       <div className="sidebar-note"><b>{t("权威边界", "Authority boundary")}</b><br />{t("实线为 Published；虚线为 Candidate。历史版本只读。", "Solid is Published; dashed is Candidate. Historical revisions are read-only.")}</div>
     </aside>
     <div className="main">
-      <header className="topbar"><div className="breadcrumb"><span>{activeWorkspace?.name ?? "Traqen"}</span><i>/</i><b>{language === "zh-CN" ? selectedModule.zh : selectedModule.en}</b>{historical && <em>{t("历史只读", "Historical read-only")}</em>}</div><div className="top-actions"><span className={`mode-badge ${current ? "live" : ""}`}>{current ? `PUBLISHED · r${current.head.version}` : t("未发布", "Unpublished")}</span><button className={`connection-button ${health}`} title={t("部署诊断", "Deployment diagnostics")} onClick={() => setDiagnosticsOpen(true)}><i />Connection Health · {health === "healthy" ? t("正常", "Healthy") : health === "checking" ? t("检查中", "Checking") : t("不可用", "Unavailable")}</button><ThemeSwitcher ariaLabel={t("全局主题配色", "Global color theme")} /><div className="language-switch"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>中文</button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>English</button></div><span className="identity-chip" title={t("身份由服务端认证", "Identity is server-authenticated")}>◉ {WEB_OPERATOR}</span></div></header>
+      <header className="topbar"><div className="breadcrumb"><span>{activeWorkspace?.name ?? "Traqen"}</span><i>/</i><b>{language === "zh-CN" ? selectedModule.zh : selectedModule.en}</b>{historical && <em>{t("历史只读", "Historical read-only")}</em>}</div><div className="top-actions"><span className={`mode-badge ${current && !referenceOnly ? "live" : ""}`}>{current ? referenceOnly ? `REFERENCE ONLY · r${current.head.version}` : `PUBLISHED · r${current.head.version}` : t("未发布", "Unpublished")}</span><button className={`connection-button ${health}`} title={t("部署诊断", "Deployment diagnostics")} onClick={() => setDiagnosticsOpen(true)}><i />Connection Health · {health === "healthy" ? t("正常", "Healthy") : health === "checking" ? t("检查中", "Checking") : t("不可用", "Unavailable")}</button><ThemeSwitcher ariaLabel={t("全局主题配色", "Global color theme")} /><div className="language-switch"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>中文</button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>English</button></div><span className="identity-chip" title={t("身份由服务端认证", "Identity is server-authenticated")}>◉ {WEB_OPERATOR}</span></div></header>
+      {referenceOnly && <div className="reference-banner" role="alert"><b>LOCAL REFERENCE · NON-PRODUCTION</b><span>{t("该图谱由本地合成 reference evidence 生成，不是独立生产审核结论。", "This graph was generated from local synthetic reference evidence and is not an independently reviewed production conclusion.")}</span></div>}
       {message && <div className={`toast-message ${messageKind}`} role={messageKind === "error" ? "alert" : "status"}><span>{messageKind === "error" ? "!" : "✓"}</span>{message}<button onClick={() => setMessage("")}>×</button></div>}
       {renderView()}
     </div>

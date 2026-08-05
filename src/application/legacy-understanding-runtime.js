@@ -416,6 +416,7 @@ export class LegacyUnderstandingRuntime {
     equivalenceResolver = null,
     implementationAuthorId = "TRAQEN-RUNTIME",
     runnerId = "TRAQEN-LOCAL-RUNNER",
+    publicationMetadata = null,
     clock = () => new Date(),
   }) {
     if (!store || !sourceSliceBroker) throw new TypeError("store and sourceSliceBroker are required");
@@ -432,6 +433,7 @@ export class LegacyUnderstandingRuntime {
     this.equivalenceResolver = equivalenceResolver;
     this.implementationAuthorId = implementationAuthorId;
     this.runnerId = runnerId;
+    this.publicationMetadata = publicationMetadata ? deepFreeze(structuredClone(publicationMetadata)) : null;
     this.snapshotCapture = new LocalSourceSnapshotCapture({
       allowlistedRoots: this.allowlistedRoots,
       snapshotRoot,
@@ -517,6 +519,7 @@ export class LegacyUnderstandingRuntime {
       implementationAuthorId: this.implementationAuthorId,
       runnerId: this.runnerId,
       purpose: input.purpose ?? "PUBLICATION",
+      ...(this.publicationMetadata ?? {}),
     });
     if (!background) return this.#run(job);
     queueMicrotask(() => this.#run(job).catch(() => undefined));
@@ -1670,12 +1673,15 @@ export class LegacyUnderstandingRuntime {
       if (reviewedInput) {
         const { reviewedMeasurement, ...evaluationInput } = reviewedInput;
         if (!reviewedMeasurement) throw new TypeError("output-bound reviewed measurement record is required");
+        const classifiedMeasurement = this.publicationMetadata
+          ? { ...reviewedMeasurement, ...this.publicationMetadata, independent: false }
+          : reviewedMeasurement;
         await this.store.appendUnderstandingRecord(
           job.projectId,
           "REVIEWED_MEASUREMENT",
-          reviewedMeasurement,
+          classifiedMeasurement,
         );
-        const evaluation = evaluateUnderstanding({
+        const evaluated = evaluateUnderstanding({
           ...evaluationInput,
           projectId: job.projectId,
           analysisRunId: job.id,
@@ -1684,6 +1690,15 @@ export class LegacyUnderstandingRuntime {
             disposedCount: inventory.disposedCount,
           },
         }, this.clock);
+        const evaluation = this.publicationMetadata ? deepFreeze({
+          ...structuredClone(evaluated),
+          ...this.publicationMetadata,
+          reviewer: {
+            ...structuredClone(evaluated.reviewer),
+            independent: false,
+            evidenceType: this.publicationMetadata.evaluationEvidenceType,
+          },
+        }) : evaluated;
         await this.store.appendUnderstandingRecord(job.projectId, "EVALUATION_RUN", evaluation);
         return {
           evaluationRunId: evaluation.id,
@@ -2071,6 +2086,7 @@ export class LegacyUnderstandingRuntime {
       traceChains: [...traceChains, ...governedTraceChains, ...relationTraceChains],
       gaps: bundle.gaps,
       ...delta,
+      ...(this.publicationMetadata ?? {}),
     }, this.clock);
     await this.store.appendUnderstandingRecord(job.projectId, "GRAPH_ARTIFACT", graphArtifact);
     const revision = {
@@ -2086,6 +2102,7 @@ export class LegacyUnderstandingRuntime {
         graphArtifactId: graphArtifact.id,
         graphArtifactDigest: graphArtifact.graphArtifactDigest,
         semanticDigest: contentId("GRAPH-SEMANTIC", canonicalJson({ nodes, edges })),
+        ...(this.publicationMetadata ?? {}),
       }, this.clock),
       status: "EVALUATING",
     };

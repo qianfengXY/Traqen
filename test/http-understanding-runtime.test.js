@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -16,6 +16,21 @@ import {
   fixtureReviewedEvaluationResolver,
   persistFixtureExecutionProfile,
 } from "./helpers/legacy-understanding-fixture.js";
+
+function assertClosedTopLevelSchema(value, schema, label) {
+  const required = new Set(schema.required ?? []);
+  const declared = new Set(Object.keys(schema.properties ?? {}));
+  assert.deepEqual(
+    Object.keys(value).filter((key) => !declared.has(key)),
+    [],
+    `${label} must not contain properties rejected by additionalProperties: false`,
+  );
+  assert.deepEqual(
+    [...required].filter((key) => !Object.hasOwn(value, key)),
+    [],
+    `${label} must contain every required property`,
+  );
+}
 
 test("allowlisted HTTP SourceRegistration starts and reads the real server-owned F001 job", async (t) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-http-"));
@@ -36,6 +51,11 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   });
   const application = new TraceabilityApplication({
     store, sourceSliceBroker: broker, legacyUnderstandingRuntime: runtime,
+  });
+  await application.appendFeatureVersion("P", {
+    id: "FEATURE-HTTP-CONTRACT",
+    version: 1,
+    name: "HTTP contract feature",
   });
   const server = createTraceabilityHttpServer({ application });
   await new Promise((resolve, reject) => {
@@ -78,4 +98,21 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   const graph = await graphResponse.json();
   assert.equal(graph.graphArtifact.id, graph.revision.graphArtifactId);
   assert.ok(graph.graphArtifact.nodes.some(({ authority }) => authority === "CANDIDATE"));
+  const graphArtifactContract = JSON.parse(await readFile(
+    new URL("../contracts/immutable-graph-artifact.schema.json", import.meta.url),
+    "utf8",
+  ));
+  assertClosedTopLevelSchema(graph.graphArtifact, graphArtifactContract, "current GraphArtifact");
+  assert.equal(graph.graphArtifact.artifactSchemaVersion, 2);
+  assert.equal(graph.graphArtifact.featureTraceability.length, 1);
+  assert.equal(graph.graphArtifact.featureTraceability[0].featureId, "FEATURE-HTTP-CONTRACT");
+  assert.equal(
+    graph.graphArtifact.featureTraceability[0].traceability.snapshotManifest.id,
+    graph.revision.snapshotManifestId,
+  );
+  const revisionResponse = await fetch(`${base}/graph/revisions/${encodeURIComponent(graph.revision.id)}`);
+  assert.equal(revisionResponse.status, 200);
+  const historical = await revisionResponse.json();
+  assertClosedTopLevelSchema(historical.graphArtifact, graphArtifactContract, "revision GraphArtifact");
+  assert.deepEqual(historical.graphArtifact, graph.graphArtifact);
 });
