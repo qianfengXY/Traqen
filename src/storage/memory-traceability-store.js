@@ -411,6 +411,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
     return deepFreeze({
       feature: featureVersions[0],
+      featureHistory: [...featureVersions].reverse(),
       processModel: await this.getLatestBusinessProcessModel(projectId, featureId),
       claims,
       testSpecs: [...latestTestSpecs.values()],

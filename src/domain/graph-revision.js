@@ -46,8 +46,13 @@ export function createGraphRevision(input, clock = () => new Date()) {
 export function createImmutableGraphArtifact(input, clock = () => new Date()) {
   const nodes = structuredClone(input.nodes ?? []).sort((left, right) => left.id.localeCompare(right.id));
   const edges = structuredClone(input.edges ?? []).sort((left, right) => left.id.localeCompare(right.id));
+  const featureTraceability = structuredClone(input.featureTraceability ?? [])
+    .sort((left, right) => left.featureId.localeCompare(right.featureId));
   if (new Set(nodes.map(({ id }) => id)).size !== nodes.length) throw new TypeError("graph nodes must have unique ids");
   if (new Set(edges.map(({ id }) => id)).size !== edges.length) throw new TypeError("graph edges must have unique ids");
+  if (new Set(featureTraceability.map(({ featureId }) => featureId)).size !== featureTraceability.length) {
+    throw new TypeError("graph feature traceability snapshots must have unique Feature ids");
+  }
   const nodeIds = new Set(nodes.map(({ id }) => id));
   for (const edge of edges) {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
@@ -60,6 +65,7 @@ export function createImmutableGraphArtifact(input, clock = () => new Date()) {
     analysisRunId: requireNonEmptyString(input.analysisRunId, "analysisRunId"),
     nodes,
     edges,
+    featureTraceability,
     traceChains: structuredClone(input.traceChains ?? []),
     gaps: structuredClone(input.gaps ?? []),
     changeSet: structuredClone(input.changeSet ?? null),

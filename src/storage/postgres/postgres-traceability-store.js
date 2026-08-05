@@ -970,8 +970,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       `SELECT feature_id, version, name, business_domain, description, created_at
        FROM feature_version
        WHERE project_id = $1 AND feature_id = $2
-       ORDER BY version DESC
-       LIMIT 1`,
+       ORDER BY version DESC`,
       [projectId, featureId],
     );
     const featureRow = featureResult.rows[0];
@@ -1114,6 +1113,14 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         description: featureRow.description,
         createdAt: new Date(featureRow.created_at).toISOString(),
       },
+      featureHistory: [...featureResult.rows].reverse().map((row) => ({
+        id: row.feature_id,
+        version: row.version,
+        name: row.name,
+        businessDomain: row.business_domain,
+        description: row.description,
+        createdAt: new Date(row.created_at).toISOString(),
+      })),
       processModel: await this.getLatestBusinessProcessModel(projectId, featureId),
       claims: claimResult.rows.map((row) => {
         const decisionHistory = decisionsByClaim.get(`${row.id}\u0000${row.version}`) ?? [];

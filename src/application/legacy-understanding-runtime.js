@@ -27,6 +27,7 @@ import {
   extractTestConfigResultFacts,
 } from "../scanner/index.js";
 import { LocalSourceSnapshotCapture } from "./local-source-snapshot.js";
+import { TraceabilityApplication } from "./traceability-application.js";
 import { evaluateUnderstanding } from "./understanding-evaluator.js";
 import { WorkspaceAnalysisJobRunner, WorkspaceAnalysisPhase } from "./workspace-analysis-job-runner.js";
 import { planIncrementalUnderstanding } from "./incremental-understanding.js";
@@ -598,6 +599,24 @@ export class LegacyUnderstandingRuntime {
       rootPath: registration.canonicalRootRef,
     });
     await this.store.appendUnderstandingRecord(job.projectId, "ARTIFACT_INVENTORY", inventory);
+    if (!await this.store.getSnapshotManifest(job.projectId, job.snapshotManifestId)) {
+      await this.store.appendSnapshotManifest(job.projectId, {
+        id: job.snapshotManifestId,
+        components: {
+          source: {
+            id: inventory.id,
+            digest: inventory.sourceDigest,
+            kind: "SEALED_ARTIFACT_INVENTORY",
+          },
+        },
+        failedSources: [],
+        observedFrom: inventory.createdAt,
+        observedTo: inventory.createdAt,
+        complete: false,
+        missingComponents: ["build", "deployment", "runtime"],
+        createdAt: inventory.createdAt,
+      });
+    }
 
     const registry = new ExtractorCapabilityRegistry();
     const capabilityInputs = [
@@ -1816,7 +1835,9 @@ export class LegacyUnderstandingRuntime {
         label: `${evaluation.policyVersion} ${evaluation.status}`,
       },
     ];
+    const featureTraceability = [];
     if (typeof this.store.listFeatureIds === "function") {
+      const traceabilityApplication = new TraceabilityApplication({ store: this.store, clock: this.clock });
       for (const featureId of await this.store.listFeatureIds(job.projectId)) {
         const baseline = await this.store.getFeatureBaseline(job.projectId, featureId);
         if (baseline?.feature && !nodes.some(({ id }) => id === baseline.feature.id)) {
@@ -1825,6 +1846,21 @@ export class LegacyUnderstandingRuntime {
             type: "FEATURE",
             authority: "GOVERNED",
             label: baseline.feature.name,
+            version: baseline.feature.version,
+          });
+        }
+        const traceability = baseline?.feature
+          ? await traceabilityApplication.getFeatureTraceability(
+              job.projectId,
+              featureId,
+              job.snapshotManifestId,
+            )
+          : null;
+        if (traceability) {
+          featureTraceability.push({
+            featureId,
+            featureVersions: baseline.featureHistory ?? [baseline.feature],
+            traceability,
           });
         }
       }
@@ -2031,6 +2067,7 @@ export class LegacyUnderstandingRuntime {
       analysisRunId: job.id,
       nodes,
       edges,
+      featureTraceability,
       traceChains: [...traceChains, ...governedTraceChains, ...relationTraceChains],
       gaps: bundle.gaps,
       ...delta,

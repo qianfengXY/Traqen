@@ -154,6 +154,12 @@ export async function startTraceabilityJourneyServer(t) {
     conformance,
   });
 
+  const publishedTraceability = await application.getFeatureTraceability(
+    projectId,
+    featureId,
+    snapshotManifest.id,
+  );
+
   const minimumDenominators = publicationDenominators();
   await store.appendUnderstandingRecord(projectId, "EVALUATION_RUN", {
     id: "EVALUATION-JOURNEY",
@@ -175,6 +181,11 @@ export async function startTraceabilityJourneyServer(t) {
     ],
     edges: [],
     traceChains: [],
+    featureTraceability: [{
+      featureId,
+      featureVersions: [feature],
+      traceability: publishedTraceability,
+    }],
     createdAt: fixedClock().toISOString(),
   });
   await store.appendUnderstandingRecord(projectId, "GRAPH_REVISION", {
@@ -205,5 +216,24 @@ export async function startTraceabilityJourneyServer(t) {
     endpointId: endpoint.id,
     snapshotManifestId: snapshotManifest.id,
     graphRevisionId,
+    graphArtifactDigest,
+    appendCurrentFeatureVersion: async () => {
+      await application.appendFeatureVersion(projectId, {
+        id: featureId,
+        version: 2,
+        name: "Submit order with current-only changes",
+      });
+      await store.appendDecision(projectId, createDecision({
+        id: "DECISION-JOURNEY-CURRENT-ONLY",
+        claimId: claim.id,
+        claimVersion: claim.version,
+        scopeId: scope.id,
+        scopeVersion: scope.version,
+        type: "DEPRECATED",
+        actorId: "PRODUCT-OWNER-JOURNEY",
+        actorRole: "product-owner",
+        evidenceRefs: [],
+      }, fixedClock));
+    },
   };
 }

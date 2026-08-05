@@ -2080,6 +2080,27 @@ export class TraceabilityApplication {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
     requireId(snapshotManifestId, "snapshotManifestId");
+    if (graphRevisionId) {
+      if (persist) throw new TypeError("historical GraphRevision traceability cannot be persisted");
+      const graphContext = await this.#requireGraphRevisionContext(
+        projectId,
+        graphRevisionId,
+        snapshotManifestId,
+      );
+      const historical = this.#requireHistoricalFeatureTraceability(graphContext, featureId);
+      const selectionGraph = createFeatureGraphProjection(historical.traceability, {
+        rootNodeId: selectedObjectId,
+        depth: 8,
+        limit: 100,
+      });
+      const selectionNode = selectionGraph.nodes.find(({ id }) => id === selectedObjectId);
+      if (!selectionNode) throw new TypeError(`selectedObjectId ${selectedObjectId} is not present in Feature ${featureId}`);
+      return deepFreeze({
+        ...structuredClone(historical.traceability),
+        selection: selectedGraphObject(selectionNode, featureId),
+        graphRevisionId: graphContext.revision.id,
+      });
+    }
     const [baseline, snapshotManifest] = await Promise.all([
       this.#store.getFeatureBaseline(projectId, featureId),
       this.#store.getSnapshotManifest(projectId, snapshotManifestId),
@@ -2219,7 +2240,6 @@ export class TraceabilityApplication {
       persisted,
       computedAt: this.#clock().toISOString(),
     };
-    if (graphRevisionId) await this.#requireGraphRevisionContext(projectId, graphRevisionId, snapshotManifestId);
     const selectionGraph = createFeatureGraphProjection(traceability, {
       rootNodeId: selectedObjectId,
       depth: 8,
@@ -2239,7 +2259,7 @@ export class TraceabilityApplication {
   }
 
   async getFeatureGraph(projectId, featureId, snapshotManifestId, options = {}) {
-    const graphRevision = options.graphRevisionId
+    const graphContext = options.graphRevisionId
       ? await this.#requireGraphRevisionContext(projectId, options.graphRevisionId, snapshotManifestId)
       : null;
     const rootNodeId = options.rootNodeId ?? featureId;
@@ -2249,7 +2269,8 @@ export class TraceabilityApplication {
     });
     if (!traceability) return null;
     const projection = createFeatureGraphProjection(traceability, options);
-    if (!graphRevision) return projection;
+    if (!graphContext) return projection;
+    const graphRevision = graphContext.revision;
     const resolverContext = { featureId, rootNodeId, snapshotManifestId };
     return deepFreeze({
       ...projection,
@@ -2300,19 +2321,37 @@ export class TraceabilityApplication {
     });
   }
 
-  async #requireGraphRevisionContext(projectId, graphRevisionId, snapshotManifestId) {
+  async #requireGraphRevisionContext(projectId, graphRevisionId, snapshotManifestId = null) {
     const revision = await this.#store.getUnderstandingRecord(projectId, "GRAPH_REVISION", graphRevisionId);
     if (!revision || revision.status !== "PUBLISHED") {
       throw new PersistenceConflictError(`Published GraphRevision ${graphRevisionId} was not found`);
     }
-    if (revision.snapshotManifestId !== snapshotManifestId) {
+    if (snapshotManifestId && revision.snapshotManifestId !== snapshotManifestId) {
       throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} does not own SnapshotManifest ${snapshotManifestId}`);
     }
     const artifact = await this.#store.getUnderstandingRecord(projectId, "GRAPH_ARTIFACT", revision.graphArtifactId);
     if (!artifact || artifact.graphArtifactDigest !== revision.graphArtifactDigest) {
       throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} graph artifact is missing or digest-mismatched`);
     }
-    return revision;
+    return deepFreeze({ revision, artifact });
+  }
+
+  #requireHistoricalFeatureTraceability({ revision, artifact }, featureId) {
+    const historical = artifact.featureTraceability?.find((item) => item.featureId === featureId);
+    if (!historical?.traceability) {
+      throw new PersistenceConflictError(
+        `GraphRevision ${revision.id} has no immutable traceability snapshot for Feature ${featureId}`,
+      );
+    }
+    if (
+      historical.traceability.feature?.id !== featureId
+      || historical.traceability.snapshotManifest?.id !== revision.snapshotManifestId
+    ) {
+      throw new PersistenceConflictError(
+        `GraphRevision ${revision.id} has an invalid traceability snapshot for Feature ${featureId}`,
+      );
+    }
+    return historical;
   }
 
   async resolveGraphEvidence(projectId, revisionId, kind, evidenceId, context) {
@@ -2323,7 +2362,8 @@ export class TraceabilityApplication {
     const snapshotManifestId = requireId(context?.snapshotManifestId, "snapshotManifestId");
     const featureId = requireId(context?.featureId, "featureId");
     const rootNodeId = requireId(context?.rootNodeId, "rootNodeId");
-    const revision = await this.#requireGraphRevisionContext(projectId, revisionId, snapshotManifestId);
+    const graphContext = await this.#requireGraphRevisionContext(projectId, revisionId, snapshotManifestId);
+    const revision = graphContext.revision;
     const projection = await this.getFeatureGraph(projectId, featureId, snapshotManifestId, {
       rootNodeId,
       graphRevisionId: revisionId,
@@ -2831,6 +2871,80 @@ export class TraceabilityApplication {
   async getFeatureUnderstandingHistory(projectId, featureId, { selectedObjectId = featureId, graphRevisionId = null } = {}) {
     requireId(projectId, "projectId");
     requireId(featureId, "featureId");
+    if (graphRevisionId) {
+      const graphContext = await this.#requireGraphRevisionContext(projectId, graphRevisionId);
+      const historical = this.#requireHistoricalFeatureTraceability(graphContext, featureId);
+      const traceability = historical.traceability;
+      const publishedRevisions = (await this.#store.listUnderstandingRecords(projectId, "GRAPH_REVISION"))
+        .filter(({ status }) => status === "PUBLISHED")
+        .sort((left, right) => (left.publishedAt ?? left.createdAt).localeCompare(right.publishedAt ?? right.createdAt));
+      const selectedRevisionIndex = publishedRevisions.findIndex(({ id }) => id === graphRevisionId);
+      if (selectedRevisionIndex < 0) {
+        throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} was not found in Feature history`);
+      }
+      const graphRevisions = publishedRevisions.slice(0, selectedRevisionIndex + 1);
+      const uniqueByIdentity = (values, identity) => [...new Map(values.map((value) => [identity(value), value])).values()];
+      const history = validateFeatureUnderstandingHistory({
+        feature: traceability.feature,
+        featureVersions: historical.featureVersions ?? [traceability.feature],
+        decisions: uniqueByIdentity(
+          (traceability.claims ?? []).flatMap(({ decisionHistory = [] }) => decisionHistory),
+          ({ id }) => id,
+        ),
+        implementationMappings: uniqueByIdentity(
+          (traceability.claims ?? []).flatMap(({ implementationMappings = [] }) => implementationMappings),
+          ({ id }) => id,
+        ),
+        graphRevisions,
+        testSpecs: uniqueByIdentity(
+          (traceability.claims ?? []).flatMap(({ testSpecs = [] }) => testSpecs),
+          ({ id, version }) => `${id}\u0000${version}`,
+        ),
+        testExecutions: uniqueByIdentity(
+          (traceability.claims ?? []).map(({ execution }) => execution).filter(Boolean),
+          ({ id }) => id,
+        ),
+      });
+      if (selectedObjectId === featureId) return deepFreeze({
+        ...history,
+        selection: {
+          id: featureId,
+          type: "FEATURE",
+          label: traceability.feature.name,
+          authority: "GOVERNED_BASELINE",
+          ownerFeatureId: featureId,
+        },
+        selectionHistory: history.featureVersions,
+      });
+
+      const selectionHistory = [];
+      for (const revision of graphRevisions) {
+        const revisionContext = await this.#requireGraphRevisionContext(projectId, revision.id);
+        const featureSnapshot = revisionContext.artifact.featureTraceability
+          ?.find((item) => item.featureId === featureId);
+        if (!featureSnapshot?.traceability) continue;
+        const projection = createFeatureGraphProjection(featureSnapshot.traceability, {
+          rootNodeId: selectedObjectId,
+          depth: 8,
+          limit: 100,
+        });
+        const node = projection.nodes.find(({ id }) => id === selectedObjectId);
+        if (node) {
+          selectionHistory.push({
+            ...node,
+            graphRevisionId: revision.id,
+            snapshotManifestId: revision.snapshotManifestId,
+          });
+        }
+      }
+      const current = selectionHistory.find(({ graphRevisionId: id }) => id === graphRevisionId);
+      if (!current) throw new TypeError(`selectedObjectId ${selectedObjectId} has no immutable API history`);
+      return deepFreeze({
+        ...history,
+        selection: { ...current, ownerFeatureId: featureId },
+        selectionHistory,
+      });
+    }
     const baseline = await this.#store.getFeatureBaseline(projectId, featureId);
     if (!baseline) return null;
     const [mappings, revisions] = await Promise.all([
@@ -2846,10 +2960,6 @@ export class TraceabilityApplication {
       testSpecs: baseline.testSpecs ?? [],
       testExecutions: baseline.testExecutions ?? [],
     });
-    if (graphRevisionId) {
-      const revision = revisions.find(({ id }) => id === graphRevisionId);
-      if (!revision) throw new PersistenceConflictError(`GraphRevision ${graphRevisionId} was not found in Feature history`);
-    }
     if (selectedObjectId === featureId) return deepFreeze({
       ...history,
       selection: { id: featureId, type: "FEATURE", label: baseline.feature.name, authority: "GOVERNED_BASELINE", ownerFeatureId: featureId },

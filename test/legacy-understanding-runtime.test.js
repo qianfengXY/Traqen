@@ -10,9 +10,10 @@ import {
   validateProjectionSourceSliceReferences,
 } from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
+import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { WorkspaceAnalysisJobRunner } from "../src/application/workspace-analysis-job-runner.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
-import { canonicalJson, contentId } from "../src/domain/index.js";
+import { canonicalJson, contentId, createFeatureVersion } from "../src/domain/index.js";
 import { validateRelationAgainstEvidenceAllowset } from "../src/analysis/index.js";
 import {
   deterministicFixtureChildProducer,
@@ -121,6 +122,11 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
   await writeFile(path.join(source, "src", "orders.js"), "export function submitOrder() { return true; }\n");
   await writeFile(path.join(source, "lib", "customers.js"), "export function findCustomer() { return true; }\n");
   const store = new MemoryTraceabilityStore();
+  await store.appendFeatureVersion("P", createFeatureVersion({
+    id: "FEATURE-RUNTIME-HISTORICAL",
+    version: 1,
+    name: "Runtime historical Feature",
+  }));
   const profile = await persistFixtureExecutionProfile(store, "P");
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   let producerCalls = 0;
@@ -159,7 +165,7 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
     workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
-  assert.equal(first.status, "COMPLETED");
+  assert.equal(first.status, "COMPLETED", JSON.stringify(first.error));
   assert.ok(producerCalls >= 8);
   assert.equal(mainCalls, producerCalls / 2);
   assert.equal((await store.listUnderstandingRecords("P", "MAIN_BATCH_RESULT")).length, mainCalls);
@@ -167,6 +173,50 @@ test("HTTP-owned runtime composes all seven durable phases and publishes immutab
   const currentA = await store.getCurrentGraphHead("P");
   const revisionA = await store.getUnderstandingRecord("P", "GRAPH_REVISION", currentA.graphRevisionId);
   const artifactA = await store.getUnderstandingRecord("P", "GRAPH_ARTIFACT", revisionA.graphArtifactId);
+  assert.equal(artifactA.featureTraceability[0].featureId, "FEATURE-RUNTIME-HISTORICAL");
+  assert.equal(artifactA.featureTraceability[0].traceability.feature.version, 1);
+  assert.equal(artifactA.featureTraceability[0].traceability.snapshotManifest.id, revisionA.snapshotManifestId);
+  assert.equal(artifactA.graphArtifactDigest, revisionA.graphArtifactDigest);
+  const traceabilityApplication = new TraceabilityApplication({ store });
+  await traceabilityApplication.appendFeatureVersion("P", {
+    id: "FEATURE-RUNTIME-HISTORICAL",
+    version: 2,
+    name: "Runtime current Feature",
+  });
+  const historicalTraceability = await traceabilityApplication.getFeatureTraceability(
+    "P",
+    "FEATURE-RUNTIME-HISTORICAL",
+    revisionA.snapshotManifestId,
+    { graphRevisionId: revisionA.id },
+  );
+  const currentTraceability = await traceabilityApplication.getFeatureTraceability(
+    "P",
+    "FEATURE-RUNTIME-HISTORICAL",
+    revisionA.snapshotManifestId,
+  );
+  assert.equal(historicalTraceability.feature.version, 1);
+  assert.equal(currentTraceability.feature.version, 2);
+  const historicalGraph = await traceabilityApplication.getFeatureGraph(
+    "P",
+    "FEATURE-RUNTIME-HISTORICAL",
+    revisionA.snapshotManifestId,
+    { rootNodeId: "FEATURE-RUNTIME-HISTORICAL", graphRevisionId: revisionA.id },
+  );
+  const historicalNode = historicalGraph.nodes.find(({ id }) => id === "FEATURE-RUNTIME-HISTORICAL");
+  assert.equal(historicalNode.label, "Runtime historical Feature");
+  const resolvedHistoricalNode = await traceabilityApplication.resolveGraphEvidence(
+    "P",
+    revisionA.id,
+    "node",
+    historicalNode.id,
+    {
+      featureId: historicalNode.id,
+      rootNodeId: historicalNode.id,
+      snapshotManifestId: revisionA.snapshotManifestId,
+    },
+  );
+  assert.equal(resolvedHistoricalNode.object.label, "Runtime historical Feature");
+  assert.equal(resolvedHistoricalNode.context.graphArtifactDigest, artifactA.graphArtifactDigest);
   assert.ok(artifactA.nodes.some(({ authority }) => authority === "CANDIDATE"));
   assert.ok(artifactA.nodes.filter(({ authority }) => authority === "CANDIDATE").length >= producerCalls);
   const candidateIds = artifactA.nodes.filter(({ type }) => type === "CANDIDATE_FEATURE").map(({ id }) => id);

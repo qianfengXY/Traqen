@@ -1,7 +1,44 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createImmutableGraphArtifact } from "../src/domain/graph-revision.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
+
+const fixedClock = () => new Date("2026-07-29T00:00:00.000Z");
+
+test("GraphArtifact digest owns its immutable Feature traceability snapshots", () => {
+  const input = {
+    projectId: "P",
+    snapshotManifestId: "S1",
+    analysisRunId: "R1",
+    nodes: [{ id: "F1", type: "FEATURE" }],
+    edges: [],
+    featureTraceability: [{
+      featureId: "F1",
+      featureVersions: [{ id: "F1", version: 1, name: "Historical" }],
+      traceability: {
+        feature: { id: "F1", version: 1, name: "Historical" },
+        snapshotManifest: { id: "S1" },
+      },
+    }],
+  };
+  const first = createImmutableGraphArtifact(input, fixedClock);
+  const second = createImmutableGraphArtifact({
+    ...input,
+    featureTraceability: [{
+      featureId: "F1",
+      featureVersions: [{ id: "F1", version: 2, name: "Current" }],
+      traceability: {
+        feature: { id: "F1", version: 2, name: "Current" },
+        snapshotManifest: { id: "S1" },
+      },
+    }],
+  }, fixedClock);
+
+  assert.notEqual(first.graphArtifactDigest, second.graphArtifactDigest);
+  assert.equal(first.featureTraceability[0].traceability.feature.version, 1);
+  assert.ok(Object.isFrozen(first));
+});
 
 test("GraphRevision publication is evaluation-gated, first-FULL, and head-CAS atomic", async () => {
   const store = new MemoryTraceabilityStore();
