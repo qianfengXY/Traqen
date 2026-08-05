@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
+import { createDefaultChildSlots } from "./capability-roster";
 import {
   CapabilitySettings,
   EmptyWorkspace,
@@ -42,11 +43,17 @@ import {
 import { ThemeProvider } from "./theme-context";
 import {
   getCurrentUnderstandingGraph,
+  getFeatureGraph,
+  getFeatureTraceability,
   getFeatureUnderstandingHistory,
   getGraphRevision,
   getUnderstandingChangeImpact,
   listGraphRevisions,
+  queryFeatureGraphPath,
   type CurrentUnderstandingGraph,
+  type FeatureGraphPathResult,
+  type FeatureGraphProjection,
+  type FeatureTraceability,
   type FeatureUnderstandingHistory,
   type GraphRevision,
 } from "./understanding-graph-client";
@@ -73,6 +80,32 @@ function messageOf(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function findFeatureRootId(artifact: GraphArtifact | null, selectedId: string) {
+  if (!artifact) return "";
+  const selected = artifact.nodes.find(({ id }) => id === selectedId);
+  if (selected && /feature/i.test(selected.type)) return selected.id;
+  const features = new Set(artifact.nodes.filter(({ type, authority }) => /feature/i.test(type) && authority !== "CANDIDATE" && authority !== "GAP").map(({ id }) => id));
+  if (!selected || features.size === 0) return [...features][0] ?? "";
+  const adjacency = new Map<string, string[]>();
+  for (const edge of artifact.edges) {
+    adjacency.set(edge.source, [...(adjacency.get(edge.source) ?? []), edge.target]);
+    adjacency.set(edge.target, [...(adjacency.get(edge.target) ?? []), edge.source]);
+  }
+  const queue = [selected.id];
+  const visited = new Set(queue);
+  while (queue.length) {
+    const currentId = queue.shift()!;
+    if (features.has(currentId)) return currentId;
+    for (const nextId of adjacency.get(currentId) ?? []) {
+      if (!visited.has(nextId)) {
+        visited.add(nextId);
+        queue.push(nextId);
+      }
+    }
+  }
+  return [...features][0] ?? "";
+}
+
 function ServerOwnedProduct() {
   const [language, setLanguage] = useState<Language>("zh-CN");
   const [view, setView] = useState<View>("overview");
@@ -95,6 +128,11 @@ function ServerOwnedProduct() {
   const [historical, setHistorical] = useState(false);
   const [focusedNodeId, setFocusedNodeId] = useState("");
   const [featureHistory, setFeatureHistory] = useState<FeatureUnderstandingHistory | null>(null);
+  const [featureTraceability, setFeatureTraceability] = useState<FeatureTraceability | null>(null);
+  const [boundedGraph, setBoundedGraph] = useState<FeatureGraphProjection | null>(null);
+  const [graphPath, setGraphPath] = useState<FeatureGraphPathResult | null>(null);
+  const [traceabilityLoading, setTraceabilityLoading] = useState(false);
+  const [traceabilityError, setTraceabilityError] = useState("");
   const [reviewItems, setReviewItems] = useState<ReviewQueueItem[]>([]);
   const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
   const [reviewOutcome, setReviewOutcome] = useState("CONFIRMED");
@@ -108,16 +146,13 @@ function ServerOwnedProduct() {
   const [mainModel, setMainModel] = useState("");
   const [mainSkillNames, setMainSkillNames] = useState<string[]>([]);
   const [mainMcpNames, setMainMcpNames] = useState<string[]>([]);
-  const [childSlots, setChildSlots] = useState<ChildCapabilityRole[]>([
-    { id: "CHILD-1", model: "", skillNames: [], mcpNames: [], independenceGroup: "GROUP-1" },
-    { id: "CHILD-2", model: "", skillNames: [], mcpNames: [], independenceGroup: "GROUP-2" },
-    { id: "CHILD-3", model: "", skillNames: [], mcpNames: [], independenceGroup: "GROUP-3" },
-  ]);
+  const [childSlots, setChildSlots] = useState<ChildCapabilityRole[]>(() => createDefaultChildSlots());
   const [startConfirmationOpen, setStartConfirmationOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState<"info" | "error">("info");
   const [working, setWorking] = useState(false);
   const contextRef = useRef<CurrentWorkspaceContext>({ workspaceId: "", contextVersion: 0 });
+  const detailRequestRef = useRef(0);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
 
   const notify = useCallback((text: string, kind: "info" | "error" = "info") => {
@@ -178,7 +213,7 @@ function ServerOwnedProduct() {
     if (failures.length > 1) notify(t("部分 Workspace 数据暂时不可用，请检查连接诊断。", "Some Workspace data is unavailable; inspect connection diagnostics."), "error");
   }, [apiBase, apiToken, notify, t]);
 
-  const selectWorkspace = useCallback((workspace: Workspace) => {
+  const selectWorkspace = useCallback((workspace: Workspace, roster?: ChildCapabilityRole[]) => {
     const nextContext = { workspaceId: workspace.id, contextVersion: contextRef.current.contextVersion + 1 };
     contextRef.current = nextContext;
     window.localStorage.setItem("traqen.activeWorkspaceId", workspace.id);
@@ -193,6 +228,11 @@ function ServerOwnedProduct() {
     setHistorical(false);
     setFocusedNodeId("");
     setFeatureHistory(null);
+    setFeatureTraceability(null);
+    setBoundedGraph(null);
+    setGraphPath(null);
+    setTraceabilityError("");
+    detailRequestRef.current += 1;
     setReviewItems([]);
     setSelectedReviewIds([]);
     setImpact(null);
@@ -200,12 +240,19 @@ function ServerOwnedProduct() {
     setExecutionProfile(null);
     setCapabilityHistory([]);
     setProfileHistory([]);
+    const firstModel = roster?.[0]?.model ?? templates.find(({ kind }) => kind === "MODEL")?.logicalName ?? "";
+    const skillNames = roster?.[0]?.skillNames ?? templates.filter(({ kind }) => kind === "SKILL").map(({ logicalName }) => logicalName);
+    const mcpNames = roster?.[0]?.mcpNames ?? templates.filter(({ kind }) => kind === "MCP").map(({ logicalName }) => logicalName);
+    setMainModel(firstModel);
+    setMainSkillNames([...skillNames]);
+    setMainMcpNames([...mcpNames]);
+    setChildSlots(roster ?? createDefaultChildSlots(firstModel, skillNames, mcpNames));
     setSourceRoot("");
     setSourceRegistrationId("");
     setProfileRevisionId("");
     setMessage("");
     void refreshWorkspaceReads(workspace, nextContext);
-  }, [refreshWorkspaceReads]);
+  }, [refreshWorkspaceReads, templates]);
 
   const reconnect = useCallback(async (preferRemembered = false) => {
     setHealth("checking");
@@ -222,6 +269,7 @@ function ServerOwnedProduct() {
       const firstModel = availableTemplates.find(({ kind }) => kind === "MODEL")?.logicalName ?? "";
       const skills = availableTemplates.filter(({ kind }) => kind === "SKILL").map(({ logicalName }) => logicalName);
       const mcps = availableTemplates.filter(({ kind }) => kind === "MCP").map(({ logicalName }) => logicalName);
+      const defaultRoster = createDefaultChildSlots(firstModel, skills, mcps);
       setMainModel((value) => value || firstModel);
       setMainSkillNames((value) => value.length ? value : skills);
       setMainMcpNames((value) => value.length ? value : mcps);
@@ -233,7 +281,7 @@ function ServerOwnedProduct() {
       })));
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
-      if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
+      if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection, defaultRoster);
       if (activeWorkspace && visible.some(({ id }) => id === activeWorkspace.id)) {
         const next = { ...contextRef.current };
         void refreshWorkspaceReads(activeWorkspace, next);
@@ -280,20 +328,87 @@ function ServerOwnedProduct() {
   }, [activeWorkspace, apiBase, apiToken, artifact?.changeSet?.id]);
 
   useEffect(() => {
-    if (!activeWorkspace || !focusedNodeId || !artifact) {
-      const timer = window.setTimeout(() => setFeatureHistory(null), 0);
-      return () => window.clearTimeout(timer);
-    }
-    const node = artifact.nodes.find(({ id }) => id === focusedNodeId);
-    if (!node || node.authority === "CANDIDATE" || node.authority === "GAP" || !/feature/i.test(node.type)) {
-      const timer = window.setTimeout(() => setFeatureHistory(null), 0);
+    const featureId = findFeatureRootId(artifact, focusedNodeId);
+    const snapshotManifestId = displayRevision?.snapshotManifestId ?? "";
+    if (!activeWorkspace || !featureId || !snapshotManifestId) {
+      const timer = window.setTimeout(() => {
+        setFeatureHistory(null);
+        setFeatureTraceability(null);
+        setBoundedGraph(null);
+        setGraphPath(null);
+      }, 0);
       return () => window.clearTimeout(timer);
     }
     const requestContext = { ...contextRef.current };
-    void getFeatureUnderstandingHistory(apiBase, apiToken, activeWorkspace.id, node.id).then((result) => {
-      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setFeatureHistory(result);
-    }).catch(() => setFeatureHistory(null));
-  }, [activeWorkspace, apiBase, apiToken, artifact, focusedNodeId]);
+    const requestVersion = detailRequestRef.current + 1;
+    detailRequestRef.current = requestVersion;
+    const loadingTimer = window.setTimeout(() => {
+      if (requestVersion === detailRequestRef.current) {
+        setTraceabilityLoading(true);
+        setTraceabilityError("");
+      }
+    }, 0);
+    void Promise.allSettled([
+      getFeatureUnderstandingHistory(apiBase, apiToken, activeWorkspace.id, featureId),
+      getFeatureTraceability(apiBase, apiToken, activeWorkspace.id, featureId, snapshotManifestId),
+      getFeatureGraph(apiBase, apiToken, activeWorkspace.id, featureId, snapshotManifestId, { view: "traceability", depth: 2, limit: 60 }),
+    ]).then(([historyResult, traceabilityResult, graphResult]) => {
+      if (staleWorkspaceResponse(requestContext, contextRef.current) || requestVersion !== detailRequestRef.current) return;
+      setFeatureHistory(historyResult.status === "fulfilled" ? historyResult.value : null);
+      setFeatureTraceability(traceabilityResult.status === "fulfilled" ? traceabilityResult.value : null);
+      setBoundedGraph(graphResult.status === "fulfilled" ? graphResult.value : null);
+      setGraphPath(null);
+      const failures = [historyResult, traceabilityResult, graphResult].filter(({ status }) => status === "rejected");
+      if (failures.length) setTraceabilityError(t("部分追溯详情无法加载；不可用证据保持为 MISSING。", "Some traceability details could not load; unavailable evidence remains MISSING."));
+    }).finally(() => {
+      if (requestVersion === detailRequestRef.current) setTraceabilityLoading(false);
+    });
+    return () => window.clearTimeout(loadingTimer);
+  }, [activeWorkspace, apiBase, apiToken, artifact, displayRevision?.snapshotManifestId, focusedNodeId, t]);
+
+  const loadBoundedGraph = useCallback(async (depth: number, graphView: FeatureGraphProjection["view"]) => {
+    const featureId = findFeatureRootId(artifact, focusedNodeId);
+    const snapshotManifestId = displayRevision?.snapshotManifestId;
+    if (!activeWorkspace || !featureId || !snapshotManifestId) return;
+    const requestContext = { ...contextRef.current };
+    setTraceabilityLoading(true);
+    setTraceabilityError("");
+    try {
+      const result = await getFeatureGraph(apiBase, apiToken, activeWorkspace.id, featureId, snapshotManifestId, { view: graphView, depth, limit: 60 });
+      if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
+        setBoundedGraph(result);
+        setGraphPath(null);
+      }
+    } catch (error) {
+      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setTraceabilityError(messageOf(error, t("有界图谱加载失败", "Bounded graph load failed")));
+    } finally {
+      setTraceabilityLoading(false);
+    }
+  }, [activeWorkspace, apiBase, apiToken, artifact, displayRevision?.snapshotManifestId, focusedNodeId, t]);
+
+  const explainGraphPath = useCallback(async (targetNodeId: string, graphView: FeatureGraphProjection["view"]) => {
+    const featureId = findFeatureRootId(artifact, focusedNodeId);
+    const snapshotManifestId = displayRevision?.snapshotManifestId;
+    if (!activeWorkspace || !featureId || !snapshotManifestId || !boundedGraph) return;
+    const requestContext = { ...contextRef.current };
+    setTraceabilityLoading(true);
+    setTraceabilityError("");
+    try {
+      const result = await queryFeatureGraphPath(apiBase, apiToken, activeWorkspace.id, featureId, {
+        snapshotManifestId,
+        fromNodeId: boundedGraph.center,
+        toNodeId: targetNodeId,
+        direction: "ANY",
+        maxDepth: 8,
+        view: graphView,
+      });
+      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setGraphPath(result);
+    } catch (error) {
+      if (!staleWorkspaceResponse(requestContext, contextRef.current)) setTraceabilityError(messageOf(error, t("路径解释失败", "Path explanation failed")));
+    } finally {
+      setTraceabilityLoading(false);
+    }
+  }, [activeWorkspace, apiBase, apiToken, artifact, boundedGraph, displayRevision?.snapshotManifestId, focusedNodeId, t]);
 
   async function createFirstWorkspace() {
     if (!workspaceName.trim()) return;
@@ -447,8 +562,8 @@ function ServerOwnedProduct() {
     if (!activeWorkspace) return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={activeWorkspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
     if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? capabilityConfig?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onResolveProfile={() => void resolveRunProfile()} onPrepareStart={() => setStartConfirmationOpen(true)} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); setProfileRevisionId(selected.workspaceExecutionProfileRevisionId); }} />;
-    if (view === "feature") return <FeatureExplorer t={t} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} />;
-    if (view === "graph") return <GraphExplorer t={t} artifact={artifact} focusedId={focusedNodeId} onFocus={setFocusedNodeId} />;
+    if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} />;
+    if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     return <CapabilitySettings t={t} templates={templates} config={capabilityConfig} profile={executionProfile} capabilityHistory={capabilityHistory} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} working={working} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;

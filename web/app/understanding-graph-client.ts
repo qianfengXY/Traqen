@@ -54,6 +54,85 @@ export type FeatureUnderstandingHistory = {
   }>;
 };
 
+export type FeatureTraceability = {
+  feature: Record<string, unknown> & { id: string; version?: number; name?: string };
+  processModel: (Record<string, unknown> & { designElements?: Array<Record<string, unknown>> }) | null;
+  processImplementationFacts: Array<{
+    snapshotManifestId: string;
+    nodes: Array<Record<string, unknown>>;
+    edges: Array<Record<string, unknown>>;
+    missingFactRefs: string[];
+  }>;
+  snapshotManifest: Record<string, unknown> & { id: string };
+  claims: Array<Record<string, unknown>>;
+  dimensions: Record<string, Array<{ claimId: string; status: string }>>;
+  traceChains: Array<Record<string, unknown>>;
+  gaps: Array<Record<string, unknown>>;
+  persisted: Array<Record<string, unknown>>;
+  computedAt: string;
+};
+
+export type FeatureGraphNode = {
+  id: string;
+  type: string;
+  label: string;
+  version: number | string | null;
+  status: "ACTIVE" | "PENDING" | "STALE" | "CONFLICTED" | "GAP";
+  risk?: string | null;
+  provenance: string;
+  source: Record<string, unknown> | null;
+  details: Record<string, unknown>;
+};
+
+export type FeatureGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type: string;
+  provenance: string;
+  status: "ACTIVE" | "PENDING" | "STALE";
+  snapshotManifestId: string;
+};
+
+export type FeatureGraphProjection = {
+  center: string;
+  snapshotManifestId: string;
+  view: "traceability" | "business" | "implementation" | "coverage";
+  depth: number;
+  nodes: FeatureGraphNode[];
+  edges: FeatureGraphEdge[];
+  truncated: boolean;
+  availableExpansions: Array<{ relation: string; nodeType: string; count: number }>;
+};
+
+export type FeatureGraphPathResult = Omit<FeatureGraphProjection, "depth" | "truncated" | "availableExpansions"> & {
+  query: {
+    fromNodeId: string;
+    toNodeId: string;
+    direction: "ANY" | "FORWARD" | "REVERSE";
+    maxDepth: number;
+  };
+  found: boolean;
+  hopCount: number | null;
+};
+
+export type FeatureGraphOptions = {
+  view?: FeatureGraphProjection["view"];
+  depth?: number;
+  limit?: number;
+  nodeTypes?: string[];
+  relations?: string[];
+};
+
+export type FeatureGraphPathQuery = {
+  snapshotManifestId: string;
+  fromNodeId: string;
+  toNodeId: string;
+  direction?: "ANY" | "FORWARD" | "REVERSE";
+  maxDepth?: number;
+  view?: FeatureGraphProjection["view"];
+};
+
 function headers(apiToken: string) {
   return apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {};
 }
@@ -134,4 +213,61 @@ export async function getFeatureUnderstandingHistory(
   );
   if (response.status === 404) return null;
   return json<FeatureUnderstandingHistory>(response);
+}
+
+export async function getFeatureTraceability(
+  apiBase: string,
+  apiToken: string,
+  projectId: string,
+  featureId: string,
+  snapshotManifestId: string,
+): Promise<FeatureTraceability | null> {
+  const query = new URLSearchParams({ snapshotManifestId });
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/traceability?${query}`,
+    { method: "GET", headers: headers(apiToken) },
+  );
+  if (response.status === 404) return null;
+  return json<FeatureTraceability>(response);
+}
+
+export async function getFeatureGraph(
+  apiBase: string,
+  apiToken: string,
+  projectId: string,
+  featureId: string,
+  snapshotManifestId: string,
+  options: FeatureGraphOptions = {},
+): Promise<FeatureGraphProjection | null> {
+  const query = new URLSearchParams({ snapshotManifestId });
+  if (options.view) query.set("view", options.view);
+  if (options.depth) query.set("depth", String(options.depth));
+  if (options.limit) query.set("limit", String(options.limit));
+  for (const nodeType of options.nodeTypes ?? []) query.append("nodeType", nodeType);
+  for (const relation of options.relations ?? []) query.append("relation", relation);
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/graph?${query}`,
+    { method: "GET", headers: headers(apiToken) },
+  );
+  if (response.status === 404) return null;
+  return json<FeatureGraphProjection>(response);
+}
+
+export async function queryFeatureGraphPath(
+  apiBase: string,
+  apiToken: string,
+  projectId: string,
+  featureId: string,
+  input: FeatureGraphPathQuery,
+): Promise<FeatureGraphPathResult | null> {
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/graph/paths/query`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers(apiToken) },
+      body: JSON.stringify(input),
+    },
+  );
+  if (response.status === 404) return null;
+  return json<FeatureGraphPathResult>(response);
 }

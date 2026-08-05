@@ -79,6 +79,15 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(serverClient, /execution-profile-revisions/);
   assert.doesNotMatch(serverClient, /workspaceExecutionProfileRevisionId\?:/);
   assert.match(graphClient, /graph\/current/);
+  assert.match(graphClient, /features\/\$\{encodeURIComponent\(featureId\)\}\/traceability/);
+  assert.match(graphClient, /features\/\$\{encodeURIComponent\(featureId\)\}\/graph/);
+  assert.match(product, /getFeatureTraceability/);
+  assert.match(product, /getFeatureGraph/);
+  assert.match(product, /queryFeatureGraphPath/);
+  assert.match(surfaces, /featureDetailTabs\.map/);
+  assert.match(surfaces, /VERIFIED NO PATH/);
+  assert.doesNotMatch(surfaces, /for \(let pass = 0; pass < depth/);
+  assert.doesNotMatch(surfaces, /slice\(0, 36\)/);
   assert.doesNotMatch(product, /local-workspace-analysis|local-workspace-store|analysis-model-client|workspace-analysis-run-client/);
   assert.doesNotMatch(product, /scanLocalWorkspaceFile|analyzeLocalWorkspaceRecords|ingestWorkspaceObservations|startWorkspaceAnalysisRun|webkitdirectory|showDirectoryPicker/);
 });
