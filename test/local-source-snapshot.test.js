@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -74,4 +74,50 @@ test("Snapshot inventory digest is derived from captured bytes even when live so
   const inventory2 = await second.capture({ projectId: "P", snapshotManifestId: "SYMLINK", rootPath: source });
   assert.equal(inventory2.artifacts.find(({ relativePath }) => relativePath === "entry.js").disposition, "EXCLUDED_BY_POLICY");
   await assert.rejects(readFile(path.join(snapshots, "SYMLINK", "entry.js")));
+});
+
+test("sealed Snapshot loading verifies payload bytes, file type, and presence", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-sealed-verification-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  const original = Buffer.from("export const sealed = true;\n");
+  await writeFile(path.join(source, "entry.js"), original);
+  const capture = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+  const inventory = await capture.capture({ projectId: "P", snapshotManifestId: "SEALED", rootPath: source });
+  assert.deepEqual(
+    await capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    inventory,
+  );
+
+  const snapshotDirectory = path.join(snapshots, "SEALED");
+  const payload = path.join(snapshotDirectory, "entry.js");
+  await chmod(payload, 0o640);
+  await writeFile(payload, "export const tampered = true;\n");
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /digest verification failed/,
+  );
+
+  await writeFile(payload, original);
+  await chmod(payload, 0o440);
+  assert.deepEqual(
+    await capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    inventory,
+  );
+
+  await chmod(snapshotDirectory, 0o750);
+  await unlink(payload);
+  await symlink(path.join(source, "entry.js"), payload);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /non-symlink file/,
+  );
+
+  await unlink(payload);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    { code: "ENOENT" },
+  );
 });

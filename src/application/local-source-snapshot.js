@@ -1,9 +1,86 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { ArtifactInventoryScanner } from "../scanner/index.js";
+
+function isContainedPath(parent, candidate) {
+  return candidate !== parent && candidate.startsWith(`${parent}${path.sep}`);
+}
+
+async function createVerificationContext({ snapshotRoot, snapshotManifestId, inventoryId }) {
+  const root = path.resolve(snapshotRoot);
+  const snapshotDirectory = path.resolve(root, snapshotManifestId);
+  if (!isContainedPath(root, snapshotDirectory)) {
+    throw new TypeError("Snapshot directory escaped the configured Snapshot root");
+  }
+  const directoryMetadata = await lstat(snapshotDirectory);
+  if (!directoryMetadata.isDirectory() || directoryMetadata.isSymbolicLink()) {
+    throw new TypeError("Snapshot package must be a non-symlink directory");
+  }
+  const [realRoot, realSnapshotDirectory, seal] = await Promise.all([
+    realpath(root),
+    realpath(snapshotDirectory),
+    readFile(path.join(snapshotDirectory, ".traqen-sealed"), "utf8"),
+  ]);
+  if (!isContainedPath(realRoot, realSnapshotDirectory)) {
+    throw new TypeError("Snapshot package escaped the configured Snapshot root");
+  }
+  if (seal !== inventoryId) throw new TypeError("Sealed Snapshot inventory digest marker is invalid");
+  return { snapshotDirectory, realSnapshotDirectory };
+}
+
+async function readVerifiedArtifactPayload(context, artifact) {
+  const absolute = path.resolve(context.snapshotDirectory, ...artifact.relativePath.split("/"));
+  if (!isContainedPath(context.snapshotDirectory, absolute)) {
+    throw new TypeError("Artifact escaped the immutable Snapshot root");
+  }
+  const metadata = await lstat(absolute);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new TypeError("Artifact must be a non-symlink file");
+  }
+  const realArtifact = await realpath(absolute);
+  if (!isContainedPath(context.realSnapshotDirectory, realArtifact)) {
+    throw new TypeError("Artifact escaped the immutable Snapshot root");
+  }
+  const content = await readFile(realArtifact);
+  const contentDigest = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+  if (contentDigest !== artifact.contentDigest) {
+    throw new TypeError("Snapshot Artifact digest verification failed");
+  }
+  return content;
+}
+
+export async function readVerifiedLocalSnapshotArtifact({
+  snapshotRoot, snapshotManifestId, inventoryId, artifact,
+}) {
+  const context = await createVerificationContext({ snapshotRoot, snapshotManifestId, inventoryId });
+  return readVerifiedArtifactPayload(context, artifact);
+}
+
+export async function verifyLocalSnapshotArtifactPayloads({
+  snapshotRoot, snapshotManifestId, inventory,
+}) {
+  const includedArtifacts = inventory.artifacts.filter(({ disposition }) => disposition === "INCLUDED");
+  const context = await createVerificationContext({
+    snapshotRoot,
+    snapshotManifestId,
+    inventoryId: inventory.id,
+  });
+  let cursor = 0;
+  const verifyNext = async () => {
+    while (cursor < includedArtifacts.length) {
+      const artifact = includedArtifacts[cursor];
+      cursor += 1;
+      await readVerifiedArtifactPayload(context, artifact);
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(8, Math.max(1, includedArtifacts.length)) },
+    verifyNext,
+  ));
+}
 
 export class LocalSourceSnapshotCapture {
   constructor({ allowlistedRoots, snapshotRoot, maxFileBytes = 1024 * 1024, clock = () => new Date() }) {
@@ -20,6 +97,11 @@ export class LocalSourceSnapshotCapture {
     const target = path.join(this.snapshotRoot, snapshotManifestId);
     const existing = await this.#readSealedInventory(projectId, snapshotManifestId);
     if (existing) {
+      await verifyLocalSnapshotArtifactPayloads({
+        snapshotRoot: this.snapshotRoot,
+        snapshotManifestId,
+        inventory: existing,
+      });
       return existing;
     }
     const staging = path.join(this.snapshotRoot, `.staging-${snapshotManifestId}-${randomUUID()}`);
@@ -71,6 +153,11 @@ export class LocalSourceSnapshotCapture {
     if (!existing) {
       throw new TypeError(`Sealed source Snapshot ${snapshotManifestId} is unavailable for historical reanalysis`);
     }
+    await verifyLocalSnapshotArtifactPayloads({
+      snapshotRoot: this.snapshotRoot,
+      snapshotManifestId,
+      inventory: existing,
+    });
     return existing;
   }
 

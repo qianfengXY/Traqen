@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -128,7 +128,7 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   assert.deepEqual(historical.graphArtifact, graph.graphArtifact);
 });
 
-test("historical reanalysis reuses the sealed Revision Snapshot without moving CurrentGraphHead", async (t) => {
+test("historical reanalysis reuses an intact sealed Snapshot and fails closed on tampered or missing payloads", async (t) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-historical-reanalysis-http-"));
   const source = path.join(temporary, "source");
   const unrelatedSource = path.join(temporary, "unrelated-source");
@@ -287,6 +287,56 @@ test("historical reanalysis reuses the sealed Revision Snapshot without moving C
   const originalAfterRecovery = await application.getGraphRevision(projectId, legacyRevisionId);
   assert.equal(originalAfterRecovery.graphArtifact.artifactSchemaVersion, undefined);
   assert.equal(originalAfterRecovery.graphArtifact.featureTraceability, undefined);
+
+  const snapshotDirectory = path.join(snapshots, first.snapshotManifestId);
+  const sealedPayload = path.join(snapshotDirectory, "entry.js");
+  const originalPayload = await readFile(sealedPayload);
+  await chmod(sealedPayload, 0o640);
+  await writeFile(sealedPayload, "export function tamperedHistoricalSource() { return false; }\n");
+  const tamperedAvailabilityResponse = await fetch(
+    `${base}/features/${featureId}/traceability?${new URLSearchParams({
+      snapshotManifestId: first.snapshotManifestId,
+      graphRevisionId: legacyRevisionId,
+    })}`,
+  );
+  assert.equal(tamperedAvailabilityResponse.status, 200);
+  const tamperedAvailability = (await tamperedAvailabilityResponse.json()).historicalAvailability;
+  assert.equal(tamperedAvailability.recovery.executable, false);
+  assert.equal(tamperedAvailability.recovery.action, "HISTORICAL_REANALYSIS_UNAVAILABLE");
+  assert.equal(tamperedAvailability.recovery.reasonCode, "SEALED_SOURCE_SNAPSHOT_NOT_RETAINED");
+  assert.equal(Object.hasOwn(tamperedAvailability.recovery, "method"), false);
+  assert.equal(Object.hasOwn(tamperedAvailability.recovery, "endpoint"), false);
+  await assertHistoricalAvailabilityContract(tamperedAvailability);
+
+  await writeFile(sealedPayload, originalPayload);
+  await chmod(sealedPayload, 0o440);
+  const restoredAvailabilityResponse = await fetch(
+    `${base}/features/${featureId}/traceability?${new URLSearchParams({
+      snapshotManifestId: first.snapshotManifestId,
+      graphRevisionId: legacyRevisionId,
+    })}`,
+  );
+  assert.equal(restoredAvailabilityResponse.status, 200);
+  const restoredAvailability = (await restoredAvailabilityResponse.json()).historicalAvailability;
+  assert.equal(restoredAvailability.recovery.executable, true);
+  await assertHistoricalAvailabilityContract(restoredAvailability);
+
+  await chmod(snapshotDirectory, 0o750);
+  await rm(sealedPayload);
+  const missingAvailabilityResponse = await fetch(
+    `${base}/features/${featureId}/traceability?${new URLSearchParams({
+      snapshotManifestId: first.snapshotManifestId,
+      graphRevisionId: legacyRevisionId,
+    })}`,
+  );
+  assert.equal(missingAvailabilityResponse.status, 200);
+  const missingAvailability = (await missingAvailabilityResponse.json()).historicalAvailability;
+  assert.equal(missingAvailability.recovery.executable, false);
+  assert.equal(missingAvailability.recovery.action, "HISTORICAL_REANALYSIS_UNAVAILABLE");
+  assert.equal(missingAvailability.recovery.reasonCode, "SEALED_SOURCE_SNAPSHOT_NOT_RETAINED");
+  assert.equal(Object.hasOwn(missingAvailability.recovery, "method"), false);
+  assert.equal(Object.hasOwn(missingAvailability.recovery, "endpoint"), false);
+  await assertHistoricalAvailabilityContract(missingAvailability);
 });
 
 test("published pre-v2 Revisions without a retained source Job expose no executable recovery", async (t) => {

@@ -87,12 +87,26 @@
         "independent": { "const": true }
       },
       "not": {
-        "required": ["dataClassification", "productionEligible", "evaluationEvidenceType"],
-        "properties": {
-          "dataClassification": { "const": "LOCAL_DEVELOPMENT_REFERENCE_ONLY" },
-          "productionEligible": { "const": false },
-          "evaluationEvidenceType": { "const": "LOCAL_REFERENCE_SYNTHETIC" }
-        }
+        "anyOf": [
+          {
+            "required": ["dataClassification"],
+            "properties": {
+              "dataClassification": { "const": "LOCAL_DEVELOPMENT_REFERENCE_ONLY" }
+            }
+          },
+          {
+            "required": ["productionEligible"],
+            "properties": {
+              "productionEligible": { "const": false }
+            }
+          },
+          {
+            "required": ["evaluationEvidenceType"],
+            "properties": {
+              "evaluationEvidenceType": { "const": "LOCAL_REFERENCE_SYNTHETIC" }
+            }
+          }
+        ]
       }
     },
     "LocalReferenceSynthetic": {

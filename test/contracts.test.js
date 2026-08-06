@@ -397,12 +397,33 @@ test("reviewed correctness and equivalence evidence have fail-closed executable 
     createdAt: "2026-08-06T00:00:00.000Z",
   };
   assert.equal(validateMeasurement(independentMeasurement), true, JSON.stringify(validateMeasurement.errors));
-  assert.equal(validateMeasurement({
+  const independentProductionMeasurement = {
     ...independentMeasurement,
+    dataClassification: "INTERNAL",
+    productionEligible: true,
+    evaluationEvidenceType: "INDEPENDENT_REVIEW",
+  };
+  assert.equal(
+    validateMeasurement(independentProductionMeasurement),
+    true,
+    JSON.stringify(validateMeasurement.errors),
+  );
+  const localSyntheticAuthority = {
     dataClassification: "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
     productionEligible: false,
     evaluationEvidenceType: "LOCAL_REFERENCE_SYNTHETIC",
-  }), false, "independent evidence must reject the complete local synthetic authority tuple");
+  };
+  const localSyntheticAuthorityKeys = Object.keys(localSyntheticAuthority);
+  for (let mask = 1; mask < (1 << localSyntheticAuthorityKeys.length); mask += 1) {
+    const authoritySubset = Object.fromEntries(localSyntheticAuthorityKeys
+      .filter((_, index) => mask & (1 << index))
+      .map((key) => [key, localSyntheticAuthority[key]]));
+    assert.equal(
+      validateMeasurement({ ...independentMeasurement, ...authoritySubset }),
+      false,
+      `independent evidence must reject local synthetic authority subset ${JSON.stringify(authoritySubset)}`,
+    );
+  }
   assert.deepEqual(equivalence.required, [
     "analysisRunId", "snapshotManifestId", "replayAnalysisRunId", "fullAnalysisRunId",
   ]);
