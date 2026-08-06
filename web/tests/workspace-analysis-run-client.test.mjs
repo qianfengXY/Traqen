@@ -261,20 +261,14 @@ test("registers and follows a server-owned source job without browser scan paylo
       workspaceExecutionProfileRevisionId: "PROFILE-1",
     });
     const current = await getServerWorkspaceUnderstanding(apiBase, "", projectId, started.id);
-    await startHistoricalRevisionReanalysis(apiBase, "", projectId, "GRAPH-LEGACY-1", {
-      sourceRegistrationId: registration.id,
-      workspaceExecutionProfileRevisionId: "PROFILE-1",
-    });
+    await startHistoricalRevisionReanalysis(apiBase, "", projectId, "GRAPH-LEGACY-1");
     assert.equal(current.status, "RUNNING");
     assert.equal(calls.length, 4);
     assert.equal(JSON.parse(calls[0].options.body).rootPath, "/srv/repos/orders");
     assert.equal(JSON.parse(calls[1].options.body).sourceRegistrationId, "SOURCE-1");
     assert.equal(calls[2].options.body, undefined);
     assert.match(calls[3].url, /graph\/revisions\/GRAPH-LEGACY-1\/reanalysis-jobs$/);
-    assert.deepEqual(JSON.parse(calls[3].options.body), {
-      sourceRegistrationId: "SOURCE-1",
-      workspaceExecutionProfileRevisionId: "PROFILE-1",
-    });
+    assert.deepEqual(JSON.parse(calls[3].options.body), {});
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import Ajv2020 from "ajv/dist/2020.js";
 
 import { TraceGapType } from "../src/domain/index.js";
 
@@ -377,6 +378,31 @@ test("reviewed correctness and equivalence evidence have fail-closed executable 
     "LOCAL_REFERENCE_SYNTHETIC",
   );
   assert.equal(measurements.oneOf.length, 2);
+  const validateMeasurement = new Ajv2020({ strict: false, validateFormats: false }).compile(measurements);
+  const independentMeasurement = {
+    id: "MEASUREMENT-CONTRACT-1",
+    projectId: "PROJECT-CONTRACT-1",
+    analysisRunId: "ANALYSIS-CONTRACT-1",
+    snapshotManifestId: "SNAPSHOT-CONTRACT-1",
+    truthSetVersionId: "TRUTH-CONTRACT-1",
+    reviewerId: "REVIEWER-CONTRACT-1",
+    independent: true,
+    productionInputDigest: "sha256:production",
+    outputDigest: "sha256:output",
+    anchorReviews: [],
+    candidateReviews: [],
+    relationReviews: [],
+    gapReviews: [],
+    reviewedAt: "2026-08-06T00:00:00.000Z",
+    createdAt: "2026-08-06T00:00:00.000Z",
+  };
+  assert.equal(validateMeasurement(independentMeasurement), true, JSON.stringify(validateMeasurement.errors));
+  assert.equal(validateMeasurement({
+    ...independentMeasurement,
+    dataClassification: "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
+    productionEligible: false,
+    evaluationEvidenceType: "LOCAL_REFERENCE_SYNTHETIC",
+  }), false, "independent evidence must reject the complete local synthetic authority tuple");
   assert.deepEqual(equivalence.required, [
     "analysisRunId", "snapshotManifestId", "replayAnalysisRunId", "fullAnalysisRunId",
   ]);
@@ -389,15 +415,25 @@ test("legacy GraphRevision recovery is an executable Snapshot-bound server comma
     readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8").then(JSON.parse),
     readFile(new URL("../contracts/workspace-analysis-job.schema.json", import.meta.url), "utf8").then(JSON.parse),
   ]);
-  assert.equal(availability.properties.recovery.properties.method.const, "POST");
+  assert.equal(availability.properties.recovery.oneOf.length, 2);
+  assert.equal(availability.$defs.ExecutableRecovery.properties.executable.const, true);
+  assert.equal(availability.$defs.ExecutableRecovery.properties.method.const, "POST");
   assert.equal(
-    availability.properties.recovery.properties.endpoint.pattern,
+    availability.$defs.ExecutableRecovery.properties.endpoint.pattern,
     "^/v1/projects/[^/]+/graph/revisions/[^/]+/reanalysis-jobs$",
+  );
+  assert.ok(availability.$defs.ExecutableRecovery.required.includes("sourceRegistrationId"));
+  assert.ok(availability.$defs.ExecutableRecovery.required.includes("workspaceExecutionProfileRevisionId"));
+  assert.equal(availability.$defs.UnavailableRecovery.properties.executable.const, false);
+  assert.equal(
+    availability.$defs.UnavailableRecovery.properties.action.const,
+    "HISTORICAL_REANALYSIS_UNAVAILABLE",
   );
   const operation = openapi.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/reanalysis-jobs"].post;
   assert.equal(operation.operationId, "reanalyzeHistoricalGraphRevision");
   const request = operation.requestBody.content["application/json"].schema;
-  assert.deepEqual(request.required, ["sourceRegistrationId", "workspaceExecutionProfileRevisionId"]);
+  assert.equal(request.required, undefined);
+  assert.deepEqual(Object.keys(request.properties), ["policyDigest"]);
   assert.equal(request.additionalProperties, false);
   assert.equal(operation.responses["202"].content["application/json"].schema.$ref, "./workspace-analysis-job.schema.json");
   assert.ok(job.properties.purpose.enum.includes("HISTORICAL_REANALYSIS"));

@@ -483,6 +483,88 @@ export class LegacyUnderstandingRuntime {
     return record ? publicRegistration(record) : null;
   }
 
+  async describeHistoricalReanalysis(projectId, graphRevisionId) {
+    const revision = await this.store.getUnderstandingRecord(projectId, "GRAPH_REVISION", graphRevisionId);
+    if (!revision || revision.status !== "PUBLISHED") {
+      throw new TypeError("historical reanalysis requires a published source GraphRevision");
+    }
+    const unavailable = (reasonCode, message) => deepFreeze({
+      executable: false,
+      reasonCode,
+      message,
+      snapshotManifestId: revision.snapshotManifestId,
+      graphRevisionId: revision.id,
+    });
+    const sourceJob = await this.runner.get(projectId, revision.analysisRunId);
+    if (
+      !sourceJob
+      || sourceJob.status !== "COMPLETED"
+      || sourceJob.snapshotManifestId !== revision.snapshotManifestId
+    ) {
+      return unavailable(
+        "SOURCE_ANALYSIS_JOB_NOT_RETAINED",
+        "The completed source analysis Job checkpoint for this Revision and Snapshot was not retained.",
+      );
+    }
+    const registration = await this.store.getUnderstandingRecord(
+      projectId,
+      "SOURCE_REGISTRATION",
+      sourceJob.sourceRegistrationId,
+    );
+    if (!registration || registration.status !== "ACTIVE") {
+      return unavailable(
+        "SOURCE_REGISTRATION_NOT_ACTIVE",
+        "The source Revision's authorized SourceRegistration is no longer active.",
+      );
+    }
+    const profile = await this.store.getUnderstandingRecord(
+      projectId,
+      "WORKSPACE_EXECUTION_PROFILE",
+      sourceJob.workspaceExecutionProfileRevisionId,
+    );
+    if (!profile || profile.workspaceId !== projectId) {
+      return unavailable(
+        "WORKSPACE_EXECUTION_PROFILE_NOT_RETAINED",
+        "The source Revision's immutable WorkspaceExecutionProfileRevision was not retained.",
+      );
+    }
+    const manifest = await this.store.getSnapshotManifest(projectId, revision.snapshotManifestId);
+    if (!manifest) {
+      return unavailable(
+        "IMMUTABLE_SNAPSHOT_MANIFEST_NOT_RETAINED",
+        "The source Revision's immutable SnapshotManifest was not retained.",
+      );
+    }
+    let sealedInventory;
+    try {
+      sealedInventory = await this.snapshotCapture.loadExisting({
+        projectId,
+        snapshotManifestId: revision.snapshotManifestId,
+      });
+    } catch {
+      return unavailable(
+        "SEALED_SOURCE_SNAPSHOT_NOT_RETAINED",
+        "The source Revision's sealed local source Snapshot package is unavailable or invalid.",
+      );
+    }
+    const inventories = await this.store.listUnderstandingRecords(projectId, "ARTIFACT_INVENTORY");
+    const storedInventory = inventories.find(({ id, snapshotManifestId }) =>
+      id === sealedInventory.id && snapshotManifestId === revision.snapshotManifestId);
+    if (!storedInventory) {
+      return unavailable(
+        "ARTIFACT_INVENTORY_NOT_RETAINED",
+        "The source Revision's persisted ArtifactInventory no longer matches its sealed Snapshot package.",
+      );
+    }
+    return deepFreeze({
+      executable: true,
+      snapshotManifestId: revision.snapshotManifestId,
+      graphRevisionId: revision.id,
+      sourceRegistrationId: sourceJob.sourceRegistrationId,
+      workspaceExecutionProfileRevisionId: sourceJob.workspaceExecutionProfileRevisionId,
+    });
+  }
+
   async start(input, { background = true } = {}) {
     const registration = await this.store.getUnderstandingRecord(
       input.projectId,
@@ -493,33 +575,23 @@ export class LegacyUnderstandingRuntime {
     const purpose = input.purpose ?? "PUBLICATION";
     const requestedMode = input.requestedMode ?? "AUTO";
     if (purpose === "HISTORICAL_REANALYSIS") {
-      const sourceRevision = await this.store.getUnderstandingRecord(
+      const recovery = await this.describeHistoricalReanalysis(
         input.projectId,
-        "GRAPH_REVISION",
         input.reanalysisOfGraphRevisionId,
       );
-      if (!sourceRevision || sourceRevision.status !== "PUBLISHED") {
-        throw new TypeError("historical reanalysis requires a published source GraphRevision");
+      if (!recovery.executable) {
+        throw new TypeError(`[${recovery.reasonCode}] ${recovery.message}`);
       }
-      if (sourceRevision.snapshotManifestId !== input.snapshotManifestId) {
+      if (recovery.snapshotManifestId !== input.snapshotManifestId) {
         throw new TypeError("historical reanalysis Snapshot must match its source GraphRevision");
       }
-      const sourceJob = await this.runner.get(input.projectId, sourceRevision.analysisRunId);
-      if (!sourceJob || sourceJob.sourceRegistrationId !== input.sourceRegistrationId) {
+      if (recovery.sourceRegistrationId !== input.sourceRegistrationId) {
         throw new TypeError("historical reanalysis must reuse the source Revision's SourceRegistration");
       }
-      const [manifest, inventories, sealedInventory] = await Promise.all([
-        this.store.getSnapshotManifest(input.projectId, input.snapshotManifestId),
-        this.store.listUnderstandingRecords(input.projectId, "ARTIFACT_INVENTORY"),
-        this.snapshotCapture.loadExisting({
-          projectId: input.projectId,
-          snapshotManifestId: input.snapshotManifestId,
-        }),
-      ]);
-      const storedInventory = inventories.find(({ id, snapshotManifestId }) => id === sealedInventory.id
-        && snapshotManifestId === input.snapshotManifestId);
-      if (!manifest || !storedInventory) {
-        throw new TypeError("historical reanalysis requires the persisted immutable Snapshot and sealed Inventory");
+      if (recovery.workspaceExecutionProfileRevisionId !== input.workspaceExecutionProfileRevisionId) {
+        throw new TypeError(
+          "historical reanalysis must reuse the source Revision's WorkspaceExecutionProfileRevision",
+        );
       }
     }
     const jobId = input.id ?? contentId("WORKSPACE-ANALYSIS-START", {

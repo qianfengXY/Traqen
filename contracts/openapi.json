@@ -1487,13 +1487,10 @@
       ],
       "post": {
         "operationId": "reanalyzeHistoricalGraphRevision",
-        "description": "Reanalyze the source Revision's sealed Snapshot into a new published historical GraphRevision without moving CurrentGraphHead.",
+        "description": "Reanalyze the source Revision's sealed Snapshot using server-derived SourceRegistration and WorkspaceExecutionProfile bindings. The command creates a new published historical GraphRevision without moving CurrentGraphHead.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": {
           "type": "object",
-          "required": ["sourceRegistrationId", "workspaceExecutionProfileRevisionId"],
           "properties": {
-            "sourceRegistrationId": { "type": "string", "minLength": 1 },
-            "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1 },
             "policyDigest": { "type": "string", "minLength": 1 }
           },
           "additionalProperties": false

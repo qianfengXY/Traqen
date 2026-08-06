@@ -288,7 +288,7 @@ The default Feature/API tree uses the latest published head. A Feature history v
 - ChangeSets and ImpactAssessments;
 - review events, conflicts, gaps, and verification results.
 
-Historical compatibility is fail-closed. A pre-v2 artifact can expose only nodes and edges whose ownership by the requested Feature is uniquely provable from immutable artifact content. Missing F002 snapshots expose a server-owned reanalysis command bound to the original sealed Snapshot. Its new linked historical GraphRevision is published without rewriting the source Revision or changing `CurrentGraphHead`.
+Historical compatibility is fail-closed. A pre-v2 artifact can expose only nodes and edges whose ownership by the requested Feature is uniquely provable from immutable artifact content. Missing F002 snapshots expose a server-owned reanalysis command only when the original Job, source/profile bindings, sealed Snapshot, and persisted Inventory are all verified; otherwise they expose a non-executable prerequisite reason with no command endpoint. The server derives recovery bindings from the source Revision, and its new linked historical GraphRevision is published without rewriting the source Revision or changing `CurrentGraphHead`.
 
 ## 9. Implementation gap at `1682d7d`
 

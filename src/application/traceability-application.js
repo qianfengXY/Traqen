@@ -180,7 +180,13 @@ function legacyEdgeOwnedByFeature(edge, featureId, ownership) {
     && targetOwners.size === 1 && targetOwners.has(featureId);
 }
 
-function historicalTraceabilityAvailability(projectId, { revision, artifact }, featureId, selectedObjectId) {
+function historicalTraceabilityAvailability(
+  projectId,
+  { revision, artifact },
+  featureId,
+  selectedObjectId,
+  recoveryDescriptor,
+) {
   const ownership = legacySelectedObjectOwnership(artifact, featureId, selectedObjectId);
   const selectedNode = ownership.verified ? ownership.nodes.get(selectedObjectId) : null;
   const selection = selectedNode ? {
@@ -220,12 +226,14 @@ function historicalTraceabilityAvailability(projectId, { revision, artifact }, f
     graphRevisionId: revision.id,
     graphArtifactId: revision.graphArtifactId,
     graphArtifactDigest: revision.graphArtifactDigest,
-    recovery: {
+    recovery: recoveryDescriptor.executable ? {
+      ...structuredClone(recoveryDescriptor),
       action: "REANALYZE_FROM_REVISION_SNAPSHOT",
       method: "POST",
-      snapshotManifestId: revision.snapshotManifestId,
-      graphRevisionId: revision.id,
       endpoint: `/v1/projects/${encodeURIComponent(projectId)}/graph/revisions/${encodeURIComponent(revision.id)}/reanalysis-jobs`,
+    } : {
+      ...structuredClone(recoveryDescriptor),
+      action: "HISTORICAL_REANALYSIS_UNAVAILABLE",
     },
     currentContext: {
       action: "VIEW_CURRENT_PUBLISHED_HEAD",
@@ -241,7 +249,7 @@ function historicalTraceabilityAvailability(projectId, { revision, artifact }, f
   });
 }
 
-function projectLegacyArtifactGraph(projectId, graphContext, featureId, options) {
+function projectLegacyArtifactGraph(projectId, graphContext, featureId, options, recoveryDescriptor) {
   const { revision, artifact } = graphContext;
   const rootNodeId = options.rootNodeId ?? featureId;
   const depth = options.depth ?? 1;
@@ -257,7 +265,13 @@ function projectLegacyArtifactGraph(projectId, graphContext, featureId, options)
   if (!Number.isSafeInteger(depth) || depth < 1 || depth > 8) throw new RangeError("depth must be an integer between 1 and 8");
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new RangeError("limit must be an integer between 1 and 100");
   const ownership = legacySelectedObjectOwnership(artifact, featureId, rootNodeId);
-  const availability = historicalTraceabilityAvailability(projectId, graphContext, featureId, rootNodeId);
+  const availability = historicalTraceabilityAvailability(
+    projectId,
+    graphContext,
+    featureId,
+    rootNodeId,
+    recoveryDescriptor,
+  );
   if (!ownership.verified) {
     return deepFreeze({
       center: rootNodeId,
@@ -2351,6 +2365,7 @@ export class TraceabilityApplication {
           graphContext,
           featureId,
           selectedObjectId,
+          await this.#historicalReanalysisRecovery(projectId, graphContext),
         );
       }
       const selectionGraph = createFeatureGraphProjection(historical.traceability, {
@@ -2539,7 +2554,13 @@ export class TraceabilityApplication {
     );
     if (!traceability && !graphContext) return null;
     const projection = graphContext && !historical
-      ? projectLegacyArtifactGraph(projectId, graphContext, featureId, options)
+      ? projectLegacyArtifactGraph(
+          projectId,
+          graphContext,
+          featureId,
+          options,
+          await this.#historicalReanalysisRecovery(projectId, graphContext),
+        )
       : createFeatureGraphProjection(traceability, options);
     if (!graphContext) return projection;
     const graphRevision = graphContext.revision;
@@ -2594,6 +2615,19 @@ export class TraceabilityApplication {
       },
       ...resolveFeatureGraphPath(graph, input),
     });
+  }
+
+  async #historicalReanalysisRecovery(projectId, { revision }) {
+    if (!this.#legacyUnderstandingRuntime) {
+      return deepFreeze({
+        executable: false,
+        reasonCode: "HISTORICAL_REANALYSIS_RUNTIME_NOT_CONFIGURED",
+        message: "Historical reanalysis is not configured on this Traqen server.",
+        snapshotManifestId: revision.snapshotManifestId,
+        graphRevisionId: revision.id,
+      });
+    }
+    return this.#legacyUnderstandingRuntime.describeHistoricalReanalysis(projectId, revision.id);
   }
 
   async #requireGraphRevisionContext(projectId, graphRevisionId, snapshotManifestId = null) {
@@ -2980,22 +3014,23 @@ export class TraceabilityApplication {
     }
     assertOnlyFields(
       input,
-      ["sourceRegistrationId", "workspaceExecutionProfileRevisionId", "policyDigest"],
+      ["policyDigest"],
       "historicalReanalysis",
-    );
-    const sourceRegistrationId = requireId(input.sourceRegistrationId, "sourceRegistrationId");
-    const workspaceExecutionProfileRevisionId = requireId(
-      input.workspaceExecutionProfileRevisionId,
-      "workspaceExecutionProfileRevisionId",
     );
     const graphContext = await this.#requireGraphRevisionContext(projectId, graphRevisionId);
     if (graphArtifactSchemaVersion(graphContext.artifact) !== 1) {
       throw new TypeError("historical reanalysis is available only for pre-v2 GraphArtifacts");
     }
+    const recovery = await this.#historicalReanalysisRecovery(projectId, graphContext);
+    if (!recovery.executable) {
+      throw new PersistenceConflictError(
+        `Historical reanalysis is unavailable [${recovery.reasonCode}]: ${recovery.message}`,
+      );
+    }
     return this.#legacyUnderstandingRuntime.start({
       projectId,
-      sourceRegistrationId,
-      workspaceExecutionProfileRevisionId,
+      sourceRegistrationId: recovery.sourceRegistrationId,
+      workspaceExecutionProfileRevisionId: recovery.workspaceExecutionProfileRevisionId,
       snapshotManifestId: graphContext.revision.snapshotManifestId,
       requestedMode: "FULL",
       purpose: "HISTORICAL_REANALYSIS",
@@ -3223,6 +3258,7 @@ export class TraceabilityApplication {
           graphContext,
           featureId,
           selectedObjectId,
+          await this.#historicalReanalysisRecovery(projectId, graphContext),
         );
       }
       const traceability = historical.traceability;

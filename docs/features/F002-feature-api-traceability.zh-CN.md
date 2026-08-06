@@ -63,7 +63,7 @@ F002 使用 Tree/Detail 工作区：
 
 GraphArtifact schema v2 将 `featureTraceability` 纳入 artifact digest。此前已发布的 artifact 继续作为不可变 schema v1 记录保留。Traqen 不能使用当前 Feature baseline 重建其缺失的 F002 历史。只有当不可变 artifact 包含请求的准确 Feature，并且能证明所选对象只有一个 Feature Owner 时，旧版 Feature 或对象才可使用；Feature 缺失、对象缺失、无主、歧义或跨 Feature Evidence 一律 Fail Closed，以具体 Reason Code 返回 `UNAVAILABLE_REQUIRES_REANALYSIS`。
 
-恢复上下文必须可执行：`POST /v1/projects/{projectId}/graph/revisions/{graphRevisionId}/reanalysis-jobs` 将命令固定到所选 Revision 的封存 Snapshot。命令创建并发布一个由 `reanalysisOfGraphRevisionId` 关联的新 `HISTORICAL_REANALYSIS` GraphRevision；它既不改写来源 Revision，也不移动 `CurrentGraphHead`。当前 Published Head 仍是独立、显式的 `GET` 上下文。
+只有服务端核验所选 Revision 的已完成来源 Job、原始 SourceRegistration、WorkspaceExecutionProfileRevision、SnapshotManifest、封存源码包与持久化 ArtifactInventory 后，恢复上下文才声明为可执行。`POST /v1/projects/{projectId}/graph/revisions/{graphRevisionId}/reanalysis-jobs` 从来源 Revision 推导这些绑定，客户端不能用当前 Workspace 状态替换。命令创建并发布一个由 `reanalysisOfGraphRevisionId` 关联的新 `HISTORICAL_REANALYSIS` GraphRevision；它既不改写来源 Revision，也不移动 `CurrentGraphHead`。迁移而来的旧记录若缺少任何前提，availability 必须返回独立的不可执行恢复状态且不提供 endpoint。当前 Published Head 仍是独立、显式的 `GET` 上下文。
 
 桌面端使用 Tree/Detail 多栏；移动端改为 Tree 到 Detail 的逐级导航，常驻 Revision/Authority 页头，返回后恢复原 Tree 位置。
 

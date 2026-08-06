@@ -85,6 +85,14 @@
       "required": ["independent"],
       "properties": {
         "independent": { "const": true }
+      },
+      "not": {
+        "required": ["dataClassification", "productionEligible", "evaluationEvidenceType"],
+        "properties": {
+          "dataClassification": { "const": "LOCAL_DEVELOPMENT_REFERENCE_ONLY" },
+          "productionEligible": { "const": false },
+          "evaluationEvidenceType": { "const": "LOCAL_REFERENCE_SYNTHETIC" }
+        }
       }
     },
     "LocalReferenceSynthetic": {

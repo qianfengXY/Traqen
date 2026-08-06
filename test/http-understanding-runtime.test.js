@@ -3,12 +3,14 @@ import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import Ajv2020 from "ajv/dist/2020.js";
 
 import { LegacyUnderstandingRuntime } from "../src/application/legacy-understanding-runtime.js";
 import { createLocalSourceSnapshotBroker } from "../src/application/local-source-snapshot-broker.js";
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { MemoryTraceabilityStore } from "../src/storage/index.js";
+import { completeInput } from "./fixtures.js";
 import {
   deterministicFixtureChildProducer,
   deterministicFixtureMainProducer,
@@ -30,6 +32,15 @@ function assertClosedTopLevelSchema(value, schema, label) {
     [],
     `${label} must contain every required property`,
   );
+}
+
+async function assertHistoricalAvailabilityContract(value) {
+  const schema = JSON.parse(await readFile(
+    new URL("../contracts/historical-availability.schema.json", import.meta.url),
+    "utf8",
+  ));
+  const validate = new Ajv2020({ strict: false, validateFormats: false }).compile(schema);
+  assert.equal(validate(value), true, JSON.stringify(validate.errors));
 }
 
 test("allowlisted HTTP SourceRegistration starts and reads the real server-owned F001 job", async (t) => {
@@ -120,17 +131,20 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
 test("historical reanalysis reuses the sealed Revision Snapshot without moving CurrentGraphHead", async (t) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-historical-reanalysis-http-"));
   const source = path.join(temporary, "source");
+  const unrelatedSource = path.join(temporary, "unrelated-source");
   const snapshots = path.join(temporary, "snapshots");
   await mkdir(source);
+  await mkdir(unrelatedSource);
   await mkdir(snapshots);
   await writeFile(path.join(source, "entry.js"), "export function immutableHistoricalSource() { return 'v1'; }\n");
+  await writeFile(path.join(unrelatedSource, "entry.js"), "export function unrelatedCurrentSource() { return true; }\n");
   const projectId = "P-HISTORICAL-REANALYSIS";
   const featureId = "FEATURE-HISTORICAL-REANALYSIS";
   const store = new MemoryTraceabilityStore();
   const profile = await persistFixtureExecutionProfile(store, projectId, "PROFILE-HISTORICAL-REANALYSIS");
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const runtime = new LegacyUnderstandingRuntime({
-    store, allowlistedRoots: [source], snapshotRoot: snapshots, sourceSliceBroker: broker,
+    store, allowlistedRoots: [source, unrelatedSource], snapshotRoot: snapshots, sourceSliceBroker: broker,
     childProducer: deterministicFixtureChildProducer,
     mainProducer: deterministicFixtureMainProducer,
     equivalenceResolver: fixtureEquivalenceResolver,
@@ -215,21 +229,41 @@ test("historical reanalysis reuses the sealed Revision Snapshot without moving C
   );
   assert.equal(availabilityResponse.status, 200);
   const availability = (await availabilityResponse.json()).historicalAvailability;
+  assert.equal(availability.recovery.executable, true);
   assert.equal(availability.recovery.method, "POST");
   assert.equal(availability.recovery.snapshotManifestId, first.snapshotManifestId);
   assert.equal(availability.recovery.graphRevisionId, legacyRevisionId);
+  assert.equal(availability.recovery.sourceRegistrationId, registration.id);
+  assert.equal(availability.recovery.workspaceExecutionProfileRevisionId, profile.id);
+  await assertHistoricalAvailabilityContract(availability);
   assert.equal(
     availability.recovery.endpoint,
     `/v1/projects/${projectId}/graph/revisions/${legacyRevisionId}/reanalysis-jobs`,
   );
 
-  const recoveryResponse = await fetch(`${origin}${availability.recovery.endpoint}?async=false`, {
+  const unrelatedRegistrationResponse = await fetch(`${base}/source-registrations`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ rootPath: unrelatedSource, displayName: "Unrelated current source" }),
+  });
+  assert.equal(unrelatedRegistrationResponse.status, 201);
+  const unrelatedRegistration = await unrelatedRegistrationResponse.json();
+  assert.notEqual(unrelatedRegistration.id, availability.recovery.sourceRegistrationId);
+  const substitutedBindingResponse = await fetch(`${origin}${availability.recovery.endpoint}?async=false`, {
     method: availability.recovery.method,
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      sourceRegistrationId: registration.id,
+      sourceRegistrationId: unrelatedRegistration.id,
       workspaceExecutionProfileRevisionId: profile.id,
     }),
+  });
+  assert.equal(substitutedBindingResponse.status, 400);
+  assert.match((await substitutedBindingResponse.json()).error.message, /sourceRegistrationId is not supported/);
+
+  const recoveryResponse = await fetch(`${origin}${availability.recovery.endpoint}?async=false`, {
+    method: availability.recovery.method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({}),
   });
   assert.equal(recoveryResponse.status, 201);
   const recovered = await recoveryResponse.json();
@@ -253,4 +287,130 @@ test("historical reanalysis reuses the sealed Revision Snapshot without moving C
   const originalAfterRecovery = await application.getGraphRevision(projectId, legacyRevisionId);
   assert.equal(originalAfterRecovery.graphArtifact.artifactSchemaVersion, undefined);
   assert.equal(originalAfterRecovery.graphArtifact.featureTraceability, undefined);
+});
+
+test("published pre-v2 Revisions without a retained source Job expose no executable recovery", async (t) => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-historical-reanalysis-unavailable-http-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export function currentSourceCannotRepairLegacyHistory() { return true; }\n");
+  const projectId = "P-HISTORICAL-REANALYSIS-NO-JOB";
+  const featureId = "FEATURE-HISTORICAL-REANALYSIS-NO-JOB";
+  const revisionId = "GRAPH-REVISION-PRE-V2-NO-JOB";
+  const artifactId = "GRAPH-ARTIFACT-PRE-V2-NO-JOB";
+  const analysisRunId = "ANALYSIS-PRE-V2-NO-RETAINED-JOB";
+  const digest = `sha256:${"d".repeat(64)}`;
+  const now = "2026-08-06T05:00:00.000Z";
+  const store = new MemoryTraceabilityStore();
+  const profile = await persistFixtureExecutionProfile(store, projectId, "PROFILE-NO-JOB");
+  const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
+  const runtime = new LegacyUnderstandingRuntime({
+    store, allowlistedRoots: [source], snapshotRoot: snapshots, sourceSliceBroker: broker,
+    childProducer: deterministicFixtureChildProducer,
+    mainProducer: deterministicFixtureMainProducer,
+    equivalenceResolver: fixtureEquivalenceResolver,
+    reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
+  });
+  const application = new TraceabilityApplication({
+    store, sourceSliceBroker: broker, legacyUnderstandingRuntime: runtime,
+  });
+  await application.appendFeatureVersion(projectId, {
+    id: featureId,
+    version: 1,
+    name: "Legacy Revision without retained Job",
+  });
+  const currentRegistration = await application.registerUnderstandingSource(projectId, {
+    rootPath: source,
+    displayName: "Current unrelated recovery candidate",
+  });
+  const snapshot = await application.registerSnapshot(projectId, completeInput().snapshotManifest);
+  const denominators = {
+    inventory: 1, anchors: 1, candidateSample: 1, requiredRelationships: 1,
+    forbiddenRelationships: 1, sourceAttributions: 1, gaps: 1,
+    replaySamples: 1, incrementalComparisons: 1,
+  };
+  await store.appendUnderstandingRecord(projectId, "EVALUATION_RUN", {
+    id: "EVALUATION-PRE-V2-NO-JOB",
+    status: "PASSED",
+    policyVersion: "review-v1",
+    minimumDenominators: denominators,
+    denominators,
+    completedAt: now,
+  });
+  await store.appendUnderstandingRecord(projectId, "GRAPH_ARTIFACT", {
+    id: artifactId,
+    projectId,
+    snapshotManifestId: snapshot.id,
+    analysisRunId,
+    graphArtifactDigest: digest,
+    nodes: [{
+      id: featureId,
+      type: "FEATURE",
+      label: "Legacy Revision without retained Job",
+      authority: "GOVERNED_BASELINE",
+    }],
+    edges: [], traceChains: [], gaps: [], changeSet: null,
+    impactAssessment: null, revalidationPlan: null, createdAt: now,
+  });
+  await store.appendUnderstandingRecord(projectId, "GRAPH_REVISION", {
+    id: revisionId,
+    projectId,
+    evaluationRunId: "EVALUATION-PRE-V2-NO-JOB",
+    mode: "FULL",
+    baseRevisionId: null,
+    changeSetId: null,
+    impactAssessmentId: null,
+    snapshotManifestId: snapshot.id,
+    analysisRunId,
+    graphArtifactId: artifactId,
+    graphArtifactDigest: digest,
+    semanticDigest: `sha256:${"e".repeat(64)}`,
+    status: "EVALUATING",
+    createdAt: now,
+    publishedAt: null,
+  });
+  await store.publishGraphRevision(projectId, revisionId, 0);
+
+  const server = createTraceabilityHttpServer({ application });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const base = `${origin}/v1/projects/${projectId}`;
+  const availabilityResponse = await fetch(
+    `${base}/features/${featureId}/traceability?${new URLSearchParams({
+      snapshotManifestId: snapshot.id,
+      graphRevisionId: revisionId,
+    })}`,
+  );
+  assert.equal(availabilityResponse.status, 200);
+  const availability = (await availabilityResponse.json()).historicalAvailability;
+  assert.equal(availability.recovery.executable, false);
+  assert.equal(availability.recovery.action, "HISTORICAL_REANALYSIS_UNAVAILABLE");
+  assert.equal(availability.recovery.reasonCode, "SOURCE_ANALYSIS_JOB_NOT_RETAINED");
+  assert.equal(availability.recovery.graphRevisionId, revisionId);
+  assert.equal(availability.recovery.snapshotManifestId, snapshot.id);
+  assert.equal(Object.hasOwn(availability.recovery, "method"), false);
+  assert.equal(Object.hasOwn(availability.recovery, "endpoint"), false);
+  assert.equal(Object.hasOwn(availability.recovery, "sourceRegistrationId"), false);
+  assert.equal(Object.hasOwn(availability.recovery, "workspaceExecutionProfileRevisionId"), false);
+  await assertHistoricalAvailabilityContract(availability);
+  assert.equal(currentRegistration.status, "ACTIVE");
+  assert.equal(profile.workspaceId, projectId);
+
+  const guessedRecoveryResponse = await fetch(
+    `${base}/graph/revisions/${revisionId}/reanalysis-jobs?async=false`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+  assert.equal(guessedRecoveryResponse.status, 409);
+  const guessedRecoveryBody = await guessedRecoveryResponse.json();
+  assert.match(guessedRecoveryBody.error.message, /SOURCE_ANALYSIS_JOB_NOT_RETAINED/);
 });

@@ -36,11 +36,28 @@ export type HistoricalAvailability = {
   graphArtifactId: string;
   graphArtifactDigest: string;
   recovery: {
+    executable: true;
     action: "REANALYZE_FROM_REVISION_SNAPSHOT";
     method: "POST";
     snapshotManifestId: string;
     graphRevisionId: string;
+    sourceRegistrationId: string;
+    workspaceExecutionProfileRevisionId: string;
     endpoint: string;
+  } | {
+    executable: false;
+    action: "HISTORICAL_REANALYSIS_UNAVAILABLE";
+    reasonCode:
+      | "HISTORICAL_REANALYSIS_RUNTIME_NOT_CONFIGURED"
+      | "SOURCE_ANALYSIS_JOB_NOT_RETAINED"
+      | "SOURCE_REGISTRATION_NOT_ACTIVE"
+      | "WORKSPACE_EXECUTION_PROFILE_NOT_RETAINED"
+      | "IMMUTABLE_SNAPSHOT_MANIFEST_NOT_RETAINED"
+      | "SEALED_SOURCE_SNAPSHOT_NOT_RETAINED"
+      | "ARTIFACT_INVENTORY_NOT_RETAINED";
+    message: string;
+    snapshotManifestId: string;
+    graphRevisionId: string;
   };
   currentContext: { action: "VIEW_CURRENT_PUBLISHED_HEAD"; method: "GET"; endpoint: string };
 };

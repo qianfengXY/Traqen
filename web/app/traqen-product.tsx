@@ -545,9 +545,8 @@ function ServerOwnedProduct() {
 
   async function reanalyzeHistoricalRevision(availability: HistoricalAvailability) {
     if (!activeWorkspace) return;
-    if (!sourceRegistrationId || !profileRevisionId) {
-      notify(t("请先在 Workspace 分析中注册授权源码并固定 Execution Profile。", "Register an authorized source and pin an Execution Profile in Workspace analysis first."), "error");
-      setView("workspace");
+    if (!availability.recovery.executable) {
+      notify(availability.recovery.message, "error");
       return;
     }
     const requestContext = { ...contextRef.current };
@@ -558,10 +557,6 @@ function ServerOwnedProduct() {
         apiToken,
         activeWorkspace.id,
         availability.graphRevisionId,
-        {
-          sourceRegistrationId,
-          workspaceExecutionProfileRevisionId: profileRevisionId,
-        },
       );
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);

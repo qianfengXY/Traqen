@@ -83,17 +83,13 @@ export async function startHistoricalRevisionReanalysis(
   apiToken: string,
   workspaceId: string,
   graphRevisionId: string,
-  input: {
-    sourceRegistrationId: string;
-    workspaceExecutionProfileRevisionId: string;
-  },
 ) {
   const response = await fetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/graph/revisions/${encodeURIComponent(graphRevisionId)}/reanalysis-jobs`,
     {
       method: "POST",
       headers: headers(apiToken, true),
-      body: JSON.stringify(input),
+      body: JSON.stringify({}),
     },
   );
   return json<ServerUnderstandingJob>(response);
