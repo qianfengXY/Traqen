@@ -74,6 +74,8 @@ Governed Features and Claims still require human Decisions. Test execution and E
 
 Define the Workspace aggregate and lifecycle, versioned `CurrentWorkspaceContext`, global-template/Workspace-override resolution into an immutable `WorkspaceExecutionProfileRevision`, multi-dimensional correctness, reviewed truth-set schema, explicit Unknown states, and regression thresholds.
 
+`ReviewedUnderstandingMeasurement` is a closed, discriminated evidence contract. Production evaluation accepts an independently controlled record with `independent: true`. The isolated development bootstrap may persist only the explicit `LocalReferenceSynthetic` variant with `independent: false`, `dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`, `productionEligible: false`, and `evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`; that variant can exercise the product but can never satisfy a production publication gate.
+
 ### Phase B: Immutable scope and complete inventory
 
 Create authorized source registration, immutable Snapshot capture, complete ArtifactInventory, explicit dispositions, extractor capability registry, and safe source-slice broker.

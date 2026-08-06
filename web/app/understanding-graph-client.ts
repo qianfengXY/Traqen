@@ -17,11 +17,16 @@ export type GraphRevision = {
   dataClassification?: string;
   productionEligible?: boolean;
   evaluationEvidenceType?: string;
+  reanalysisOfGraphRevisionId?: string;
 };
 
 export type HistoricalAvailability = {
   status: "UNAVAILABLE_REQUIRES_REANALYSIS";
-  reasonCode: "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED";
+  reasonCode:
+    | "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED"
+    | "REQUESTED_FEATURE_NOT_PRESENT_IN_IMMUTABLE_ARTIFACT"
+    | "SELECTED_OBJECT_NOT_PRESENT_IN_IMMUTABLE_ARTIFACT"
+    | "SELECTED_OBJECT_FEATURE_OWNERSHIP_NOT_PROVABLE";
   message: string;
   artifactSchemaVersion: 1;
   featureId: string;
@@ -30,8 +35,14 @@ export type HistoricalAvailability = {
   graphRevisionId: string;
   graphArtifactId: string;
   graphArtifactDigest: string;
-  recovery: { action: "REANALYZE_FROM_REVISION_SNAPSHOT"; snapshotManifestId: string; endpoint: string };
-  currentContext: { action: "VIEW_CURRENT_PUBLISHED_HEAD"; endpoint: string };
+  recovery: {
+    action: "REANALYZE_FROM_REVISION_SNAPSHOT";
+    method: "POST";
+    snapshotManifestId: string;
+    graphRevisionId: string;
+    endpoint: string;
+  };
+  currentContext: { action: "VIEW_CURRENT_PUBLISHED_HEAD"; method: "GET"; endpoint: string };
 };
 
 export type CurrentUnderstandingGraph = {

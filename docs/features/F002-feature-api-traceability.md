@@ -61,7 +61,9 @@ Selecting a historical Revision places the entire tree, detail, evidence, and re
 
 ### Legacy GraphArtifact compatibility
 
-GraphArtifact schema v2 stores `featureTraceability` inside the artifact digest. Earlier published artifacts remain immutable schema v1 records. Traqen must not reconstruct their missing F002 history from the current Feature baseline. Instead it preserves the selected Revision, Feature/API, Snapshot, artifact identity, and digest, returns `UNAVAILABLE_REQUIRES_REANALYSIS`, and offers both governed reanalysis and the current Published Head as explicit next contexts.
+GraphArtifact schema v2 stores `featureTraceability` inside the artifact digest. Earlier published artifacts remain immutable schema v1 records. Traqen must not reconstruct their missing F002 history from the current Feature baseline. A legacy Feature or selected object is usable only when the immutable artifact contains that exact Feature and proves the object has one unique Feature owner; absent, ambiguous, orphaned, or cross-Feature evidence fails closed as `UNAVAILABLE_REQUIRES_REANALYSIS` with a specific reason code.
+
+The recovery context is executable: `POST /v1/projects/{projectId}/graph/revisions/{graphRevisionId}/reanalysis-jobs` binds the command to the selected Revision's sealed Snapshot. It creates and publishes a new `HISTORICAL_REANALYSIS` GraphRevision linked by `reanalysisOfGraphRevisionId`; it never rewrites the source Revision and never moves `CurrentGraphHead`. The current Published Head remains a separate explicit `GET` context.
 
 Desktop uses tree/detail panes. Mobile uses tree-to-detail navigation with a persistent revision/authority header and returns to the same tree position.
 

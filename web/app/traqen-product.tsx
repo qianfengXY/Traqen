@@ -37,6 +37,7 @@ import {
   listServerWorkspaceUnderstandingJobs,
   registerServerWorkspaceSource,
   resolveServerWorkspaceExecutionProfile,
+  startHistoricalRevisionReanalysis,
   startServerWorkspaceUnderstanding,
   type ServerUnderstandingJob,
 } from "./server-understanding-client";
@@ -57,6 +58,7 @@ import {
   type FeatureTraceability,
   type FeatureUnderstandingHistory,
   type GraphRevision,
+  type HistoricalAvailability,
 } from "./understanding-graph-client";
 import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
@@ -541,6 +543,40 @@ function ServerOwnedProduct() {
     }
   }
 
+  async function reanalyzeHistoricalRevision(availability: HistoricalAvailability) {
+    if (!activeWorkspace) return;
+    if (!sourceRegistrationId || !profileRevisionId) {
+      notify(t("请先在 Workspace 分析中注册授权源码并固定 Execution Profile。", "Register an authorized source and pin an Execution Profile in Workspace analysis first."), "error");
+      setView("workspace");
+      return;
+    }
+    const requestContext = { ...contextRef.current };
+    setWorking(true);
+    try {
+      const started = await startHistoricalRevisionReanalysis(
+        apiBase,
+        apiToken,
+        activeWorkspace.id,
+        availability.graphRevisionId,
+        {
+          sourceRegistrationId,
+          workspaceExecutionProfileRevisionId: profileRevisionId,
+        },
+      );
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+      setJob(started);
+      setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
+      setView("workspace");
+      notify(t("已从原不可变 Snapshot 启动历史重分析；完成后会生成不移动当前 Head 的新历史 Revision。", "Historical reanalysis started from the original immutable Snapshot. Completion creates a new historical Revision without moving the current Head."));
+    } catch (error) {
+      if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
+        notify(messageOf(error, t("历史重分析启动失败", "Unable to start historical reanalysis")), "error");
+      }
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function refreshReviewQueue() {
     if (!activeWorkspace) return;
     setWorking(true);
@@ -606,8 +642,8 @@ function ServerOwnedProduct() {
     if (!activeWorkspace) return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={activeWorkspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
     if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? capabilityConfig?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onResolveProfile={() => void resolveRunProfile()} onPrepareStart={() => setStartConfirmationOpen(true)} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); setProfileRevisionId(selected.workspaceExecutionProfileRevisionId); }} />;
-    if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} />;
-    if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} />;
+    if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
+    if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     return <CapabilitySettings t={t} templates={templates} config={capabilityConfig} profile={executionProfile} capabilityHistory={capabilityHistory} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} working={working} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;

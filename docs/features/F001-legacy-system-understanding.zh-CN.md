@@ -74,6 +74,8 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 定义 Workspace 聚合与生命周期、带版本的 `CurrentWorkspaceContext`，把全局模板与 Workspace 覆盖解析为不可变 `WorkspaceExecutionProfileRevision`，并定义多维正确性、审核 Truth Set Schema、显式 Unknown 状态和回归阈值。
 
+`ReviewedUnderstandingMeasurement` 是封闭且带判别字段的 Evidence 合同。生产评估只接受由独立控制方生成且 `independent: true` 的记录。隔离开发启动只能持久化显式的 `LocalReferenceSynthetic` 变体：`independent: false`、`dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`、`productionEligible: false`、`evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`；该变体可用于跑通产品，但绝不能满足生产发布 Gate。
+
 ### Phase B：不可变范围与完整清点
 
 建立授权 SourceRegistration、不可变 Snapshot 捕获、完整 ArtifactInventory、显式处置、提取器能力注册表与安全 SourceSlice Broker。

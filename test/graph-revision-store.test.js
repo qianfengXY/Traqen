@@ -65,6 +65,18 @@ test("GraphRevision publication is evaluation-gated, first-FULL, and head-CAS at
   assert.equal(first.version, 1);
   assert.equal((await store.getUnderstandingRecord("P", "GRAPH_REVISION", "G1")).status, "PUBLISHED");
   await assert.rejects(store.publishGraphRevision("P", "G1", 0), /version 1 does not match 0/);
+  await store.appendUnderstandingRecord("P", "EVALUATION_RUN", { id: "EH", status: "PASSED", policyVersion: "v1", minimumDenominators, denominators: minimumDenominators, completedAt: "2026-07-29T00:00:30.000Z" });
+  await store.appendUnderstandingRecord("P", "GRAPH_ARTIFACT", { id: "AH", projectId: "P", snapshotManifestId: "S1", analysisRunId: "RH", graphArtifactDigest: "DH", createdAt: "2026-07-29T00:00:30.000Z" });
+  await store.appendUnderstandingRecord("P", "GRAPH_REVISION", {
+    id: "GH", projectId: "P", evaluationRunId: "EH", mode: "FULL", baseRevisionId: null,
+    snapshotManifestId: "S1", analysisRunId: "RH", graphArtifactId: "AH", graphArtifactDigest: "DH",
+    reanalysisOfGraphRevisionId: "G1", status: "EVALUATING", createdAt: "2026-07-29T00:00:30.000Z",
+  });
+  await assert.rejects(store.publishGraphRevision("P", "GH", 1), /must use historical publication/);
+  const historical = await store.publishHistoricalGraphRevision("P", "GH", "G1");
+  assert.equal(historical.status, "PUBLISHED");
+  assert.equal((await store.getCurrentGraphHead("P")).graphRevisionId, "G1");
+  assert.equal((await store.getCurrentGraphHead("P")).version, 1);
   await store.appendUnderstandingRecord("P", "EVALUATION_RUN", { id: "E2", status: "FAILED", policyVersion: "v1", minimumDenominators, denominators: minimumDenominators, completedAt: "2026-07-29T00:01:00.000Z" });
   await store.appendUnderstandingRecord("P", "GRAPH_ARTIFACT", { id: "A2", projectId: "P", snapshotManifestId: "S2", analysisRunId: "R2", graphArtifactDigest: "D2", createdAt: "2026-07-29T00:01:00.000Z" });
   await store.appendUnderstandingRecord("P", "GRAPH_REVISION", {

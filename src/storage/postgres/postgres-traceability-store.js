@@ -3072,6 +3072,9 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       const revision = revisionResult.rows[0]?.record_payload;
       if (!revision) throw new PersistenceConflictError(`GraphRevision ${revisionId} does not exist`);
       if (revision.status !== "EVALUATING") throw new PersistenceConflictError("GraphRevision must be EVALUATING");
+      if (revision.reanalysisOfGraphRevisionId !== undefined) {
+        throw new PersistenceConflictError("Historical reanalysis GraphRevision must use historical publication");
+      }
       const evaluationResult = await this.#database.query(
         `SELECT record_payload FROM understanding_record
          WHERE project_id = $1 AND record_type = 'EVALUATION_RUN' AND id = $2`,
@@ -3123,6 +3126,72 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         [projectId, currentVersion + 1, revisionId, publishedAt],
       );
       return this.getCurrentGraphHead(projectId);
+    });
+  }
+
+  async publishHistoricalGraphRevision(projectId, revisionId, sourceRevisionId) {
+    requireId(projectId, "projectId");
+    requireId(revisionId, "revisionId");
+    requireId(sourceRevisionId, "sourceRevisionId");
+    return this.#transaction(async () => {
+      const revisionResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'GRAPH_REVISION' AND id = $2 FOR UPDATE`,
+        [projectId, revisionId],
+      );
+      const sourceRevisionResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'GRAPH_REVISION' AND id = $2 FOR UPDATE`,
+        [projectId, sourceRevisionId],
+      );
+      const revision = revisionResult.rows[0]?.record_payload;
+      const sourceRevision = sourceRevisionResult.rows[0]?.record_payload;
+      if (!revision || revision.status !== "EVALUATING") {
+        throw new PersistenceConflictError("Historical reanalysis GraphRevision must be EVALUATING");
+      }
+      if (!sourceRevision || sourceRevision.status !== "PUBLISHED") {
+        throw new PersistenceConflictError(`Published source GraphRevision ${sourceRevisionId} does not exist`);
+      }
+      if (revision.reanalysisOfGraphRevisionId !== sourceRevisionId
+        || revision.snapshotManifestId !== sourceRevision.snapshotManifestId
+        || revision.mode !== "FULL"
+        || revision.baseRevisionId !== null) {
+        throw new PersistenceConflictError("Historical reanalysis must be FULL and bound to its source Revision Snapshot");
+      }
+      const evaluationResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'EVALUATION_RUN' AND id = $2`,
+        [projectId, revision.evaluationRunId],
+      );
+      try {
+        assertEvaluationPublicationReady(evaluationResult.rows[0]?.record_payload);
+      } catch (error) {
+        throw new PersistenceConflictError(error.message, { cause: error });
+      }
+      const graphArtifactResult = await this.#database.query(
+        `SELECT record_payload FROM understanding_record
+         WHERE project_id = $1 AND record_type = 'GRAPH_ARTIFACT' AND id = $2`,
+        [projectId, revision.graphArtifactId],
+      );
+      const graphArtifact = graphArtifactResult.rows[0]?.record_payload;
+      if (!graphArtifact || graphArtifact.graphArtifactDigest !== revision.graphArtifactDigest
+        || graphArtifact.projectId !== projectId
+        || graphArtifact.snapshotManifestId !== revision.snapshotManifestId
+        || graphArtifact.analysisRunId !== revision.analysisRunId) {
+        throw new PersistenceConflictError("Historical reanalysis graph artifact is missing or mismatched");
+      }
+      const published = {
+        ...revision,
+        status: "PUBLISHED",
+        publishedAt: new Date().toISOString(),
+      };
+      await this.#database.query(
+        `UPDATE understanding_record
+         SET status = 'PUBLISHED', record_payload = $3::jsonb
+         WHERE project_id = $1 AND record_type = 'GRAPH_REVISION' AND id = $2`,
+        [projectId, revisionId, JSON.stringify(published)],
+      );
+      return deepFreeze(published);
     });
   }
 }

@@ -274,4 +274,8 @@ export class TraceabilityStore {
   async publishGraphRevision(_projectId, _revisionId, _expectedHeadVersion = 0) {
     throw new Error("publishGraphRevision must be implemented");
   }
+
+  async publishHistoricalGraphRevision(_projectId, _revisionId, _sourceRevisionId) {
+    throw new Error("publishHistoricalGraphRevision must be implemented");
+  }
 }

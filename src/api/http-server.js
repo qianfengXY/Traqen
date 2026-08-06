@@ -1257,6 +1257,22 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const historicalReanalysisMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)\/reanalysis-jobs$/.exec(url.pathname);
+      if (request.method === "POST" && historicalReanalysisMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(historicalReanalysisMatch[1]);
+        const revisionId = decodePathSegment(historicalReanalysisMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        const background = url.searchParams.get("async") !== "false";
+        sendJson(response, background ? 202 : 201, await application.reanalyzeHistoricalGraphRevision(
+          projectId,
+          revisionId,
+          input,
+          { background },
+        ), id);
+        return;
+      }
+
       const graphEvidenceMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)\/evidence\/(nodes|edges|objects)\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && graphEvidenceMatch) {
         const projectId = decodePathSegment(graphEvidenceMatch[1]);

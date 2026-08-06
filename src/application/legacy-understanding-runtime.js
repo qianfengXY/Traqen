@@ -490,10 +490,45 @@ export class LegacyUnderstandingRuntime {
       input.sourceRegistrationId,
     );
     if (!registration || registration.status !== "ACTIVE") throw new TypeError("an active SourceRegistration is required");
+    const purpose = input.purpose ?? "PUBLICATION";
+    const requestedMode = input.requestedMode ?? "AUTO";
+    if (purpose === "HISTORICAL_REANALYSIS") {
+      const sourceRevision = await this.store.getUnderstandingRecord(
+        input.projectId,
+        "GRAPH_REVISION",
+        input.reanalysisOfGraphRevisionId,
+      );
+      if (!sourceRevision || sourceRevision.status !== "PUBLISHED") {
+        throw new TypeError("historical reanalysis requires a published source GraphRevision");
+      }
+      if (sourceRevision.snapshotManifestId !== input.snapshotManifestId) {
+        throw new TypeError("historical reanalysis Snapshot must match its source GraphRevision");
+      }
+      const sourceJob = await this.runner.get(input.projectId, sourceRevision.analysisRunId);
+      if (!sourceJob || sourceJob.sourceRegistrationId !== input.sourceRegistrationId) {
+        throw new TypeError("historical reanalysis must reuse the source Revision's SourceRegistration");
+      }
+      const [manifest, inventories, sealedInventory] = await Promise.all([
+        this.store.getSnapshotManifest(input.projectId, input.snapshotManifestId),
+        this.store.listUnderstandingRecords(input.projectId, "ARTIFACT_INVENTORY"),
+        this.snapshotCapture.loadExisting({
+          projectId: input.projectId,
+          snapshotManifestId: input.snapshotManifestId,
+        }),
+      ]);
+      const storedInventory = inventories.find(({ id, snapshotManifestId }) => id === sealedInventory.id
+        && snapshotManifestId === input.snapshotManifestId);
+      if (!manifest || !storedInventory) {
+        throw new TypeError("historical reanalysis requires the persisted immutable Snapshot and sealed Inventory");
+      }
+    }
     const jobId = input.id ?? contentId("WORKSPACE-ANALYSIS-START", {
       projectId: input.projectId,
       sourceRegistrationId: input.sourceRegistrationId,
-      requestedMode: input.requestedMode ?? "AUTO",
+      snapshotManifestId: input.snapshotManifestId ?? null,
+      requestedMode,
+      purpose,
+      reanalysisOfGraphRevisionId: input.reanalysisOfGraphRevisionId ?? null,
       requestedAt: this.clock().toISOString(),
     });
     const profileRevisionId = input.workspaceExecutionProfileRevisionId;
@@ -513,12 +548,15 @@ export class LegacyUnderstandingRuntime {
       projectId: input.projectId,
       sourceRegistrationId: input.sourceRegistrationId,
       snapshotManifestId: input.snapshotManifestId ?? contentId("SOURCE-SNAPSHOT", { jobId }),
-      requestedMode: input.requestedMode ?? "AUTO",
+      requestedMode,
       policyDigest: input.policyDigest ?? "traqen-understanding-runtime-v1",
       workspaceExecutionProfileRevisionId: profileRevisionId,
       implementationAuthorId: this.implementationAuthorId,
       runnerId: this.runnerId,
-      purpose: input.purpose ?? "PUBLICATION",
+      purpose,
+      ...(purpose === "HISTORICAL_REANALYSIS"
+        ? { reanalysisOfGraphRevisionId: input.reanalysisOfGraphRevisionId }
+        : {}),
       ...(this.publicationMetadata ?? {}),
     });
     if (!background) return this.#run(job);
@@ -543,7 +581,7 @@ export class LegacyUnderstandingRuntime {
   }
 
   list(projectId) {
-    return this.runner.list(projectId, { purpose: "PUBLICATION" });
+    return this.runner.list(projectId, { purposes: ["PUBLICATION", "HISTORICAL_REANALYSIS"] });
   }
 
   async pause(projectId, jobId) {
@@ -596,11 +634,16 @@ export class LegacyUnderstandingRuntime {
       job.sourceRegistrationId,
     );
     if (!registration || registration.status !== "ACTIVE") throw new TypeError("SourceRegistration is no longer active");
-    const inventory = await this.snapshotCapture.capture({
-      projectId: job.projectId,
-      snapshotManifestId: job.snapshotManifestId,
-      rootPath: registration.canonicalRootRef,
-    });
+    const inventory = job.purpose === "HISTORICAL_REANALYSIS"
+      ? await this.snapshotCapture.loadExisting({
+          projectId: job.projectId,
+          snapshotManifestId: job.snapshotManifestId,
+        })
+      : await this.snapshotCapture.capture({
+          projectId: job.projectId,
+          snapshotManifestId: job.snapshotManifestId,
+          rootPath: registration.canonicalRootRef,
+        });
     await this.store.appendUnderstandingRecord(job.projectId, "ARTIFACT_INVENTORY", inventory);
     if (!await this.store.getSnapshotManifest(job.projectId, job.snapshotManifestId)) {
       await this.store.appendSnapshotManifest(job.projectId, {
@@ -2102,6 +2145,9 @@ export class LegacyUnderstandingRuntime {
         graphArtifactId: graphArtifact.id,
         graphArtifactDigest: graphArtifact.graphArtifactDigest,
         semanticDigest: contentId("GRAPH-SEMANTIC", canonicalJson({ nodes, edges })),
+        ...(job.reanalysisOfGraphRevisionId
+          ? { reanalysisOfGraphRevisionId: job.reanalysisOfGraphRevisionId }
+          : {}),
         ...(this.publicationMetadata ?? {}),
       }, this.clock),
       status: "EVALUATING",
@@ -2201,6 +2247,17 @@ export class LegacyUnderstandingRuntime {
       };
     }
     requirePassedUnderstandingEvaluation(job.outputs.EVALUATION.status);
+    if (job.purpose === "HISTORICAL_REANALYSIS") {
+      return {
+        historicalGraphRevision: await this.store.publishHistoricalGraphRevision(
+          job.projectId,
+          job.outputs.PROJECTION.graphRevisionId,
+          job.reanalysisOfGraphRevisionId,
+        ),
+        published: true,
+        currentGraphHeadChanged: false,
+      };
+    }
     const current = await this.store.getCurrentGraphHead(job.projectId);
     return {
       currentGraphHead: await this.store.publishGraphRevision(

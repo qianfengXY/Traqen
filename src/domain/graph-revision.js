@@ -50,6 +50,9 @@ export function createGraphRevision(input, clock = () => new Date()) {
     graphArtifactId: requireNonEmptyString(input.graphArtifactId, "graphArtifactId"),
     graphArtifactDigest: requireNonEmptyString(input.graphArtifactDigest, "graphArtifactDigest"),
     semanticDigest: requireNonEmptyString(input.semanticDigest, "semanticDigest"),
+    ...(input.reanalysisOfGraphRevisionId
+      ? { reanalysisOfGraphRevisionId: requireNonEmptyString(input.reanalysisOfGraphRevisionId, "reanalysisOfGraphRevisionId") }
+      : {}),
     ...publicationMetadata(input),
   };
   return deepFreeze({

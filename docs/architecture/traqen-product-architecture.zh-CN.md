@@ -288,6 +288,8 @@ Candidate 可以进入 Working Tree，但不能创建或修改受治理 Feature�
 - ChangeSet 与 ImpactAssessment；
 - Review Event、Conflict、Gap 和 VerificationResult。
 
+历史兼容必须 Fail Closed。v2 之前的 artifact 只能暴露那些可由不可变 artifact 内容唯一证明归属于请求 Feature 的 Node 和 Edge。缺少 F002 Snapshot 时，系统提供绑定原始封存 Snapshot 的服务端重分析命令；新生成的关联历史 GraphRevision 会被发布，但不会改写来源 Revision，也不会改变 `CurrentGraphHead`。
+
 ## 9. `1682d7d` 实现差距
 
 下表描述仓库实现，而不是设计意图。

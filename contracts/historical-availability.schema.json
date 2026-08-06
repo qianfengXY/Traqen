@@ -9,7 +9,14 @@
   ],
   "properties": {
     "status": { "const": "UNAVAILABLE_REQUIRES_REANALYSIS" },
-    "reasonCode": { "const": "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED" },
+    "reasonCode": {
+      "enum": [
+        "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED",
+        "REQUESTED_FEATURE_NOT_PRESENT_IN_IMMUTABLE_ARTIFACT",
+        "SELECTED_OBJECT_NOT_PRESENT_IN_IMMUTABLE_ARTIFACT",
+        "SELECTED_OBJECT_FEATURE_OWNERSHIP_NOT_PROVABLE"
+      ]
+    },
     "message": { "type": "string", "minLength": 1 },
     "artifactSchemaVersion": { "const": 1 },
     "featureId": { "type": "string", "minLength": 1 },
@@ -20,19 +27,25 @@
     "graphArtifactDigest": { "type": "string", "minLength": 1 },
     "recovery": {
       "type": "object",
-      "required": ["action", "snapshotManifestId", "endpoint"],
+      "required": ["action", "method", "snapshotManifestId", "graphRevisionId", "endpoint"],
       "properties": {
         "action": { "const": "REANALYZE_FROM_REVISION_SNAPSHOT" },
+        "method": { "const": "POST" },
         "snapshotManifestId": { "type": "string", "minLength": 1 },
-        "endpoint": { "type": "string", "pattern": "^/v1/" }
+        "graphRevisionId": { "type": "string", "minLength": 1 },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^/v1/projects/[^/]+/graph/revisions/[^/]+/reanalysis-jobs$"
+        }
       },
       "additionalProperties": false
     },
     "currentContext": {
       "type": "object",
-      "required": ["action", "endpoint"],
+      "required": ["action", "method", "endpoint"],
       "properties": {
         "action": { "const": "VIEW_CURRENT_PUBLISHED_HEAD" },
+        "method": { "const": "GET" },
         "endpoint": { "type": "string", "pattern": "^/v1/" }
       },
       "additionalProperties": false

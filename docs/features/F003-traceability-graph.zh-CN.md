@@ -49,7 +49,7 @@ F003 从当前 F002 Feature/API 选择进入，或通过显式受治理对象搜
 - **部分覆盖：** Candidate、Governed、Conflict、Gap、Stale 与 Missing 除颜色外，还必须使用形状、线型与文字表达。
 - **历史比较：** 并排或以明确图层比较 Current 与 Historical Revision，绝不能合成虚假当前图。
 - **Workspace 切换：** 加载新 Workspace 同一模块前，丢弃旧 Root、展开状态与迟到图谱响应。
-- **v2 之前的 artifact：** F002 追溯不可用状态必须保持明确；F003 的有界 Node、Edge、Path 与 Resolver 只能读取所选旧 GraphArtifact 中实际保存的证据。
+- **v2 之前的 artifact：** F002 追溯不可用状态必须保持明确；F003 的有界 Node、Edge、Path 与 Resolver 只能读取所选旧 GraphArtifact 中实际保存、且能唯一归属于请求的不可变 Feature 的 Evidence。归属缺失或存在歧义时返回空 Projection 或不可用 Resolver 响应，绝不能把另一 Feature 的 Evidence 重新贴标签。
 
 键盘和屏幕阅读器用户可以通过关系/路径列表搜索 Root、展开有界关系组、选择路径并检查每一跳。移动端默认使用该列表，画布为可选视图。
 

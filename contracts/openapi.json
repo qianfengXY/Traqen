@@ -1473,6 +1473,39 @@
         }
       }
     },
+    "/v1/projects/{projectId}/graph/revisions/{revisionId}/reanalysis-jobs": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        {
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "description": "Defaults to true. Set false only for bounded synchronous execution.",
+          "schema": { "type": "boolean", "default": true }
+        }
+      ],
+      "post": {
+        "operationId": "reanalyzeHistoricalGraphRevision",
+        "description": "Reanalyze the source Revision's sealed Snapshot into a new published historical GraphRevision without moving CurrentGraphHead.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object",
+          "required": ["sourceRegistrationId", "workspaceExecutionProfileRevisionId"],
+          "properties": {
+            "sourceRegistrationId": { "type": "string", "minLength": 1 },
+            "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1 },
+            "policyDigest": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        } } } },
+        "responses": {
+          "201": { "description": "Synchronously completed historical reanalysis when async=false", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } },
+          "202": { "description": "Accepted server-owned historical reanalysis", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/graph/revisions/{revisionId}/publish": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },

@@ -365,11 +365,44 @@ test("reviewed correctness and equivalence evidence have fail-closed executable 
   assert.ok(measurements.required.includes("productionInputDigest"));
   assert.ok(measurements.required.includes("outputDigest"));
   assert.ok(measurements.required.includes("candidateReviews"));
-  assert.equal(measurements.properties.independent.const, true);
+  assert.equal(measurements.$defs.IndependentReview.properties.independent.const, true);
+  assert.equal(measurements.$defs.LocalReferenceSynthetic.properties.independent.const, false);
+  assert.equal(
+    measurements.$defs.LocalReferenceSynthetic.properties.dataClassification.const,
+    "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
+  );
+  assert.equal(measurements.$defs.LocalReferenceSynthetic.properties.productionEligible.const, false);
+  assert.equal(
+    measurements.$defs.LocalReferenceSynthetic.properties.evaluationEvidenceType.const,
+    "LOCAL_REFERENCE_SYNTHETIC",
+  );
+  assert.equal(measurements.oneOf.length, 2);
   assert.deepEqual(equivalence.required, [
     "analysisRunId", "snapshotManifestId", "replayAnalysisRunId", "fullAnalysisRunId",
   ]);
   assert.equal(equivalence.additionalProperties, false);
+});
+
+test("legacy GraphRevision recovery is an executable Snapshot-bound server command", async () => {
+  const [availability, openapi, job] = await Promise.all([
+    readFile(new URL("../contracts/historical-availability.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/workspace-analysis-job.schema.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  assert.equal(availability.properties.recovery.properties.method.const, "POST");
+  assert.equal(
+    availability.properties.recovery.properties.endpoint.pattern,
+    "^/v1/projects/[^/]+/graph/revisions/[^/]+/reanalysis-jobs$",
+  );
+  const operation = openapi.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/reanalysis-jobs"].post;
+  assert.equal(operation.operationId, "reanalyzeHistoricalGraphRevision");
+  const request = operation.requestBody.content["application/json"].schema;
+  assert.deepEqual(request.required, ["sourceRegistrationId", "workspaceExecutionProfileRevisionId"]);
+  assert.equal(request.additionalProperties, false);
+  assert.equal(operation.responses["202"].content["application/json"].schema.$ref, "./workspace-analysis-job.schema.json");
+  assert.ok(job.properties.purpose.enum.includes("HISTORICAL_REANALYSIS"));
+  assert.equal(job.properties.reanalysisOfGraphRevisionId.type, "string");
+  assert.deepEqual(job.allOf[0].else.not.required, ["reanalysisOfGraphRevisionId"]);
 });
 
 test("OpenAPI Workspace enrichment uses the canonical WorkUnit and CandidateBundle envelope", async () => {

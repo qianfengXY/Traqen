@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -65,6 +65,26 @@ test("isolated development bootstrap completes source registration and the first
   assert.equal(measurements.length, 1);
   assert.equal(measurements[0].independent, false);
   assert.equal(measurements[0].evaluationEvidenceType, "LOCAL_REFERENCE_SYNTHETIC");
+  const measurementContract = JSON.parse(await readFile(
+    new URL("../contracts/reviewed-understanding-measurement.schema.json", import.meta.url),
+    "utf8",
+  ));
+  const declaredMeasurementFields = new Set(Object.keys(measurementContract.properties));
+  assert.deepEqual(
+    Object.keys(measurements[0]).filter((field) => !declaredMeasurementFields.has(field)),
+    [],
+    "the actual persisted reference measurement must satisfy the closed canonical record shape",
+  );
+  assert.deepEqual(
+    measurementContract.required.filter((field) => !Object.hasOwn(measurements[0], field)),
+    [],
+  );
+  const referenceVariant = measurementContract.$defs.LocalReferenceSynthetic;
+  assert.equal(referenceVariant.properties.independent.const, false);
+  assert.equal(referenceVariant.properties.dataClassification.const, "LOCAL_DEVELOPMENT_REFERENCE_ONLY");
+  assert.equal(referenceVariant.properties.productionEligible.const, false);
+  assert.equal(referenceVariant.properties.evaluationEvidenceType.const, "LOCAL_REFERENCE_SYNTHETIC");
+  assert.ok(referenceVariant.required.every((field) => Object.hasOwn(measurements[0], field)));
 });
 
 test("environment variables cannot enable local reference publication in the production bootstrap", async (t) => {

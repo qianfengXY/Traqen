@@ -53,6 +53,7 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /registerServerWorkspaceSource/);
   assert.match(product, /resolveServerWorkspaceExecutionProfile/);
   assert.match(product, /startServerWorkspaceUnderstanding/);
+  assert.match(product, /startHistoricalRevisionReanalysis/);
   assert.match(product, /getServerWorkspaceUnderstanding/);
   assert.match(product, /listServerWorkspaceUnderstandingJobs/);
   assert.match(product, /controlServerWorkspaceUnderstanding/);
@@ -78,6 +79,7 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /Agent lane/);
   assert.match(serverClient, /source-registrations/);
   assert.match(serverClient, /workspace-analysis-jobs/);
+  assert.match(serverClient, /graph\/revisions\/\$\{encodeURIComponent\(graphRevisionId\)\}\/reanalysis-jobs/);
   assert.match(serverClient, /"pause" \| "resume" \| "cancel"/);
   assert.match(serverClient, /execution-profile-revisions/);
   assert.doesNotMatch(serverClient, /workspaceExecutionProfileRevisionId\?:/);
@@ -88,6 +90,7 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /getFeatureGraph/);
   assert.match(product, /queryFeatureGraphPath/);
   assert.match(surfaces, /featureDetailTabs\.map/);
+  assert.match(surfaces, /Reanalyze immutable Snapshot/);
   assert.match(surfaces, /VERIFIED NO PATH/);
   assert.doesNotMatch(surfaces, /for \(let pass = 0; pass < depth/);
   assert.doesNotMatch(surfaces, /slice\(0, 36\)/);
