@@ -76,7 +76,7 @@ test("Snapshot inventory digest is derived from captured bytes even when live so
   await assert.rejects(readFile(path.join(snapshots, "SYMLINK", "entry.js")));
 });
 
-test("sealed Snapshot loading verifies payload bytes, file type, and presence", async () => {
+test("sealed Snapshot loading verifies inventory, metadata files, and payloads", async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-sealed-verification-"));
   const source = path.join(temporary, "source");
   const snapshots = path.join(temporary, "snapshots");
@@ -92,6 +92,49 @@ test("sealed Snapshot loading verifies payload bytes, file type, and presence", 
   );
 
   const snapshotDirectory = path.join(snapshots, "SEALED");
+  const inventoryPath = path.join(snapshotDirectory, ".traqen-inventory.json");
+  const sealPath = path.join(snapshotDirectory, ".traqen-sealed");
+  const originalInventoryBytes = await readFile(inventoryPath);
+  const originalSeal = await readFile(sealPath, "utf8");
+  const truncatedInventory = JSON.parse(originalInventoryBytes.toString("utf8"));
+  truncatedInventory.artifacts = [];
+  await chmod(inventoryPath, 0o640);
+  await writeFile(inventoryPath, JSON.stringify(truncatedInventory));
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /inventory integrity verification failed/,
+  );
+
+  await writeFile(inventoryPath, originalInventoryBytes);
+  await chmod(inventoryPath, 0o440);
+  assert.deepEqual(
+    await capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    inventory,
+  );
+
+  await chmod(snapshotDirectory, 0o750);
+  const externalInventoryPath = path.join(temporary, "external-inventory.json");
+  await writeFile(externalInventoryPath, originalInventoryBytes);
+  await unlink(inventoryPath);
+  await symlink(externalInventoryPath, inventoryPath);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /Snapshot metadata must be a non-symlink file/,
+  );
+  await unlink(inventoryPath);
+  await writeFile(inventoryPath, originalInventoryBytes, { mode: 0o440 });
+
+  const externalSealPath = path.join(temporary, "external-seal");
+  await writeFile(externalSealPath, originalSeal);
+  await unlink(sealPath);
+  await symlink(externalSealPath, sealPath);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /Snapshot metadata must be a non-symlink file/,
+  );
+  await unlink(sealPath);
+  await writeFile(sealPath, originalSeal, { mode: 0o440 });
+
   const payload = path.join(snapshotDirectory, "entry.js");
   await chmod(payload, 0o640);
   await writeFile(payload, "export const tampered = true;\n");
@@ -107,7 +150,6 @@ test("sealed Snapshot loading verifies payload bytes, file type, and presence", 
     inventory,
   );
 
-  await chmod(snapshotDirectory, 0o750);
   await unlink(payload);
   await symlink(path.join(source, "entry.js"), payload);
   await assert.rejects(
@@ -119,5 +161,26 @@ test("sealed Snapshot loading verifies payload bytes, file type, and presence", 
   await assert.rejects(
     capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
     { code: "ENOENT" },
+  );
+});
+
+test("Snapshot manifest IDs cannot escape or create nested paths under the Snapshot root", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-snapshot-id-fence-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export const bounded = true;\n");
+  const capture = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+
+  for (const snapshotManifestId of ["", ".", "..", "../escaped", "nested/escaped", "nested\\escaped"]) {
+    await assert.rejects(
+      capture.capture({ projectId: "P", snapshotManifestId, rootPath: source }),
+      /snapshotManifestId must be a single safe path segment/,
+    );
+  }
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "../escaped" }),
+    /snapshotManifestId must be a single safe path segment/,
   );
 });

@@ -3,15 +3,50 @@ import { chmod, lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "
 import os from "node:os";
 import path from "node:path";
 
+import { canonicalJson, createArtifactInventory } from "../domain/index.js";
 import { ArtifactInventoryScanner } from "../scanner/index.js";
 
 function isContainedPath(parent, candidate) {
   return candidate !== parent && candidate.startsWith(`${parent}${path.sep}`);
 }
 
+function requireSnapshotManifestId(value) {
+  if (typeof value !== "string" || value.length === 0 || value === "." || value === ".."
+    || value.includes("/") || value.includes("\\") || value.includes("\0")) {
+    throw new TypeError("snapshotManifestId must be a single safe path segment");
+  }
+  return value;
+}
+
+function snapshotDirectoryFor(snapshotRoot, snapshotManifestId) {
+  return path.join(path.resolve(snapshotRoot), requireSnapshotManifestId(snapshotManifestId));
+}
+
+async function readSnapshotMetadataFile(absolute, encoding = null) {
+  const metadata = await lstat(absolute);
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new TypeError("Snapshot metadata must be a non-symlink file");
+  }
+  return readFile(absolute, encoding ?? undefined);
+}
+
+function verifySealedInventoryIntegrity(inventory) {
+  try {
+    if (inventory?.sealed !== true) throw new TypeError("Sealed Snapshot inventory must be sealed");
+    const createdAt = new Date(inventory.createdAt);
+    const normalized = createArtifactInventory(inventory, () => createdAt);
+    if (canonicalJson(normalized) !== canonicalJson(inventory)) {
+      throw new TypeError("Sealed Snapshot inventory does not match its content-derived identity");
+    }
+    return normalized;
+  } catch (error) {
+    throw new TypeError("Sealed Snapshot inventory integrity verification failed", { cause: error });
+  }
+}
+
 async function createVerificationContext({ snapshotRoot, snapshotManifestId, inventoryId }) {
   const root = path.resolve(snapshotRoot);
-  const snapshotDirectory = path.resolve(root, snapshotManifestId);
+  const snapshotDirectory = snapshotDirectoryFor(root, snapshotManifestId);
   if (!isContainedPath(root, snapshotDirectory)) {
     throw new TypeError("Snapshot directory escaped the configured Snapshot root");
   }
@@ -22,7 +57,7 @@ async function createVerificationContext({ snapshotRoot, snapshotManifestId, inv
   const [realRoot, realSnapshotDirectory, seal] = await Promise.all([
     realpath(root),
     realpath(snapshotDirectory),
-    readFile(path.join(snapshotDirectory, ".traqen-sealed"), "utf8"),
+    readSnapshotMetadataFile(path.join(snapshotDirectory, ".traqen-sealed"), "utf8"),
   ]);
   if (!isContainedPath(realRoot, realSnapshotDirectory)) {
     throw new TypeError("Snapshot package escaped the configured Snapshot root");
@@ -94,7 +129,8 @@ export class LocalSourceSnapshotCapture {
   async capture({ projectId, snapshotManifestId, rootPath, sourceDigest }) {
     void sourceDigest;
     await mkdir(this.snapshotRoot, { recursive: true });
-    const target = path.join(this.snapshotRoot, snapshotManifestId);
+    const safeSnapshotManifestId = requireSnapshotManifestId(snapshotManifestId);
+    const target = snapshotDirectoryFor(this.snapshotRoot, safeSnapshotManifestId);
     const existing = await this.#readSealedInventory(projectId, snapshotManifestId);
     if (existing) {
       await verifyLocalSnapshotArtifactPayloads({
@@ -104,12 +140,12 @@ export class LocalSourceSnapshotCapture {
       });
       return existing;
     }
-    const staging = path.join(this.snapshotRoot, `.staging-${snapshotManifestId}-${randomUUID()}`);
+    const staging = path.join(this.snapshotRoot, `.staging-${safeSnapshotManifestId}-${randomUUID()}`);
     await mkdir(staging, { recursive: false });
     const createdDirectories = new Set([staging]);
     try {
       const { inventory, capturedFiles } = await this.scanner.capture({
-        projectId, snapshotManifestId, rootPath,
+        projectId, snapshotManifestId: safeSnapshotManifestId, rootPath,
       });
       for (const { artifact, content } of capturedFiles) {
         const destination = path.join(staging, ...artifact.relativePath.split("/"));
@@ -162,9 +198,9 @@ export class LocalSourceSnapshotCapture {
   }
 
   async #readSealedInventory(projectId, snapshotManifestId) {
-    const target = path.join(this.snapshotRoot, snapshotManifestId);
-    const existing = await readFile(path.join(target, ".traqen-inventory.json"), "utf8")
-      .then((content) => JSON.parse(content))
+    const target = snapshotDirectoryFor(this.snapshotRoot, snapshotManifestId);
+    const existing = await readSnapshotMetadataFile(path.join(target, ".traqen-inventory.json"), "utf8")
+      .then((content) => verifySealedInventoryIntegrity(JSON.parse(content)))
       .catch((error) => {
         if (error.code === "ENOENT") return null;
         throw error;
@@ -173,7 +209,7 @@ export class LocalSourceSnapshotCapture {
     if (existing.projectId !== projectId || existing.snapshotManifestId !== snapshotManifestId) {
       throw new TypeError("Sealed Snapshot inventory identity does not match the capture request");
     }
-    const seal = await readFile(path.join(target, ".traqen-sealed"), "utf8");
+    const seal = await readSnapshotMetadataFile(path.join(target, ".traqen-sealed"), "utf8");
     if (seal !== existing.id) throw new TypeError("Sealed Snapshot inventory digest marker is invalid");
     return existing;
   }

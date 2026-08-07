@@ -128,7 +128,7 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   assert.deepEqual(historical.graphArtifact, graph.graphArtifact);
 });
 
-test("historical reanalysis reuses an intact sealed Snapshot and fails closed on tampered or missing payloads", async (t) => {
+test("historical reanalysis requires an intact sealed Snapshot package and fails closed on metadata or payload drift", async (t) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-historical-reanalysis-http-"));
   const source = path.join(temporary, "source");
   const unrelatedSource = path.join(temporary, "unrelated-source");
@@ -289,6 +289,44 @@ test("historical reanalysis reuses an intact sealed Snapshot and fails closed on
   assert.equal(originalAfterRecovery.graphArtifact.featureTraceability, undefined);
 
   const snapshotDirectory = path.join(snapshots, first.snapshotManifestId);
+  const sealedInventoryPath = path.join(snapshotDirectory, ".traqen-inventory.json");
+  const originalInventoryBytes = await readFile(sealedInventoryPath);
+  const truncatedInventory = JSON.parse(originalInventoryBytes.toString("utf8"));
+  truncatedInventory.artifacts = [];
+  await chmod(sealedInventoryPath, 0o640);
+  await writeFile(sealedInventoryPath, JSON.stringify(truncatedInventory));
+  const truncatedInventoryAvailabilityResponse = await fetch(
+    `${base}/features/${featureId}/traceability?${new URLSearchParams({
+      snapshotManifestId: first.snapshotManifestId,
+      graphRevisionId: legacyRevisionId,
+    })}`,
+  );
+  assert.equal(truncatedInventoryAvailabilityResponse.status, 200);
+  const truncatedInventoryAvailability = (
+    await truncatedInventoryAvailabilityResponse.json()
+  ).historicalAvailability;
+  assert.equal(truncatedInventoryAvailability.recovery.executable, false);
+  assert.equal(truncatedInventoryAvailability.recovery.action, "HISTORICAL_REANALYSIS_UNAVAILABLE");
+  assert.equal(truncatedInventoryAvailability.recovery.reasonCode, "SEALED_SOURCE_SNAPSHOT_NOT_RETAINED");
+  assert.equal(Object.hasOwn(truncatedInventoryAvailability.recovery, "method"), false);
+  assert.equal(Object.hasOwn(truncatedInventoryAvailability.recovery, "endpoint"), false);
+  await assertHistoricalAvailabilityContract(truncatedInventoryAvailability);
+
+  await writeFile(sealedInventoryPath, originalInventoryBytes);
+  await chmod(sealedInventoryPath, 0o440);
+  const restoredInventoryAvailabilityResponse = await fetch(
+    `${base}/features/${featureId}/traceability?${new URLSearchParams({
+      snapshotManifestId: first.snapshotManifestId,
+      graphRevisionId: legacyRevisionId,
+    })}`,
+  );
+  assert.equal(restoredInventoryAvailabilityResponse.status, 200);
+  const restoredInventoryAvailability = (
+    await restoredInventoryAvailabilityResponse.json()
+  ).historicalAvailability;
+  assert.equal(restoredInventoryAvailability.recovery.executable, true);
+  await assertHistoricalAvailabilityContract(restoredInventoryAvailability);
+
   const sealedPayload = path.join(snapshotDirectory, "entry.js");
   const originalPayload = await readFile(sealedPayload);
   await chmod(sealedPayload, 0o640);

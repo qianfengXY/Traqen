@@ -550,7 +550,7 @@ export class LegacyUnderstandingRuntime {
     const inventories = await this.store.listUnderstandingRecords(projectId, "ARTIFACT_INVENTORY");
     const storedInventory = inventories.find(({ id, snapshotManifestId }) =>
       id === sealedInventory.id && snapshotManifestId === revision.snapshotManifestId);
-    if (!storedInventory) {
+    if (!storedInventory || canonicalJson(storedInventory) !== canonicalJson(sealedInventory)) {
       return unavailable(
         "ARTIFACT_INVENTORY_NOT_RETAINED",
         "The source Revision's persisted ArtifactInventory no longer matches its sealed Snapshot package.",
