@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import Ajv2020 from "ajv/dist/2020.js";
 
 import { TraceGapType } from "../src/domain/index.js";
 
@@ -196,6 +197,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "queryFeatureGraphPath",
   );
   assert.equal(
+    contract.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/evidence/{kind}/{evidenceId}"].get.operationId,
+    "resolveGraphEvidence",
+  );
+  assert.equal(
     contract.paths["/v1/projects/{projectId}/features/{featureId}/trace-chains/recompute"].post.operationId,
     "recomputeFeatureTraceChains",
   );
@@ -275,6 +280,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/changes/{changeSetId}/impact"].get.operationId, "getUnderstandingChangeImpact");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/capability-configs"].get.operationId, "listWorkspaceCapabilityConfigs");
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].get.operationId, "listWorkspaceExecutionProfileRevisions");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].get.operationId, "listWorkspaceUnderstandingJobs");
   assert.ok(
@@ -328,7 +335,7 @@ test("Feature understanding history and SourceSlice HTTP surfaces have executabl
     readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8").then(JSON.parse),
   ]);
 
-  assert.deepEqual(history.required, [
+  assert.deepEqual(history.$defs.AvailableHistory.required, [
     "feature",
     "featureVersions",
     "decisions",
@@ -337,6 +344,7 @@ test("Feature understanding history and SourceSlice HTTP surfaces have executabl
     "testSpecs",
     "testExecutions",
   ]);
+  assert.ok(history.$defs.HistoricalUnavailable.required.includes("historicalAvailability"));
   assert.equal(
     openapi.paths["/v1/projects/{projectId}/features/{featureId}/history"].get.responses["200"]
       .content["application/json"].schema.$ref,
@@ -358,11 +366,100 @@ test("reviewed correctness and equivalence evidence have fail-closed executable 
   assert.ok(measurements.required.includes("productionInputDigest"));
   assert.ok(measurements.required.includes("outputDigest"));
   assert.ok(measurements.required.includes("candidateReviews"));
-  assert.equal(measurements.properties.independent.const, true);
+  assert.equal(measurements.$defs.IndependentReview.properties.independent.const, true);
+  assert.equal(measurements.$defs.LocalReferenceSynthetic.properties.independent.const, false);
+  assert.equal(
+    measurements.$defs.LocalReferenceSynthetic.properties.dataClassification.const,
+    "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
+  );
+  assert.equal(measurements.$defs.LocalReferenceSynthetic.properties.productionEligible.const, false);
+  assert.equal(
+    measurements.$defs.LocalReferenceSynthetic.properties.evaluationEvidenceType.const,
+    "LOCAL_REFERENCE_SYNTHETIC",
+  );
+  assert.equal(measurements.oneOf.length, 2);
+  const validateMeasurement = new Ajv2020({ strict: false, validateFormats: false }).compile(measurements);
+  const independentMeasurement = {
+    id: "MEASUREMENT-CONTRACT-1",
+    projectId: "PROJECT-CONTRACT-1",
+    analysisRunId: "ANALYSIS-CONTRACT-1",
+    snapshotManifestId: "SNAPSHOT-CONTRACT-1",
+    truthSetVersionId: "TRUTH-CONTRACT-1",
+    reviewerId: "REVIEWER-CONTRACT-1",
+    independent: true,
+    productionInputDigest: "sha256:production",
+    outputDigest: "sha256:output",
+    anchorReviews: [],
+    candidateReviews: [],
+    relationReviews: [],
+    gapReviews: [],
+    reviewedAt: "2026-08-06T00:00:00.000Z",
+    createdAt: "2026-08-06T00:00:00.000Z",
+  };
+  assert.equal(validateMeasurement(independentMeasurement), true, JSON.stringify(validateMeasurement.errors));
+  const independentProductionMeasurement = {
+    ...independentMeasurement,
+    dataClassification: "INTERNAL",
+    productionEligible: true,
+    evaluationEvidenceType: "INDEPENDENT_REVIEW",
+  };
+  assert.equal(
+    validateMeasurement(independentProductionMeasurement),
+    true,
+    JSON.stringify(validateMeasurement.errors),
+  );
+  const localSyntheticAuthority = {
+    dataClassification: "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
+    productionEligible: false,
+    evaluationEvidenceType: "LOCAL_REFERENCE_SYNTHETIC",
+  };
+  const localSyntheticAuthorityKeys = Object.keys(localSyntheticAuthority);
+  for (let mask = 1; mask < (1 << localSyntheticAuthorityKeys.length); mask += 1) {
+    const authoritySubset = Object.fromEntries(localSyntheticAuthorityKeys
+      .filter((_, index) => mask & (1 << index))
+      .map((key) => [key, localSyntheticAuthority[key]]));
+    assert.equal(
+      validateMeasurement({ ...independentMeasurement, ...authoritySubset }),
+      false,
+      `independent evidence must reject local synthetic authority subset ${JSON.stringify(authoritySubset)}`,
+    );
+  }
   assert.deepEqual(equivalence.required, [
     "analysisRunId", "snapshotManifestId", "replayAnalysisRunId", "fullAnalysisRunId",
   ]);
   assert.equal(equivalence.additionalProperties, false);
+});
+
+test("legacy GraphRevision recovery is an executable Snapshot-bound server command", async () => {
+  const [availability, openapi, job] = await Promise.all([
+    readFile(new URL("../contracts/historical-availability.schema.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8").then(JSON.parse),
+    readFile(new URL("../contracts/workspace-analysis-job.schema.json", import.meta.url), "utf8").then(JSON.parse),
+  ]);
+  assert.equal(availability.properties.recovery.oneOf.length, 2);
+  assert.equal(availability.$defs.ExecutableRecovery.properties.executable.const, true);
+  assert.equal(availability.$defs.ExecutableRecovery.properties.method.const, "POST");
+  assert.equal(
+    availability.$defs.ExecutableRecovery.properties.endpoint.pattern,
+    "^/v1/projects/[^/]+/graph/revisions/[^/]+/reanalysis-jobs$",
+  );
+  assert.ok(availability.$defs.ExecutableRecovery.required.includes("sourceRegistrationId"));
+  assert.ok(availability.$defs.ExecutableRecovery.required.includes("workspaceExecutionProfileRevisionId"));
+  assert.equal(availability.$defs.UnavailableRecovery.properties.executable.const, false);
+  assert.equal(
+    availability.$defs.UnavailableRecovery.properties.action.const,
+    "HISTORICAL_REANALYSIS_UNAVAILABLE",
+  );
+  const operation = openapi.paths["/v1/projects/{projectId}/graph/revisions/{revisionId}/reanalysis-jobs"].post;
+  assert.equal(operation.operationId, "reanalyzeHistoricalGraphRevision");
+  const request = operation.requestBody.content["application/json"].schema;
+  assert.equal(request.required, undefined);
+  assert.deepEqual(Object.keys(request.properties), ["policyDigest"]);
+  assert.equal(request.additionalProperties, false);
+  assert.equal(operation.responses["202"].content["application/json"].schema.$ref, "./workspace-analysis-job.schema.json");
+  assert.ok(job.properties.purpose.enum.includes("HISTORICAL_REANALYSIS"));
+  assert.equal(job.properties.reanalysisOfGraphRevisionId.type, "string");
+  assert.deepEqual(job.allOf[0].else.not.required, ["reanalysisOfGraphRevisionId"]);
 });
 
 test("OpenAPI Workspace enrichment uses the canonical WorkUnit and CandidateBundle envelope", async () => {
@@ -542,10 +639,11 @@ test("Feature traceability contract exposes independent dimensions, ordered chai
   );
 
   assert.equal(contract.title, "FeatureTraceability");
-  assert.ok(contract.required.includes("dimensions"));
-  assert.ok(contract.required.includes("traceChains"));
-  assert.ok(contract.required.includes("gaps"));
-  assert.ok(contract.required.includes("processModel"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("dimensions"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("traceChains"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("gaps"));
+  assert.ok(contract.$defs.AvailableTraceability.required.includes("processModel"));
+  assert.ok(contract.$defs.HistoricalUnavailable.required.includes("historicalAvailability"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("facts"));
   assert.ok(contract.$defs.ClaimTraceability.required.includes("traceChain"));
 });
@@ -560,6 +658,9 @@ test("Feature graph contract keeps projections bounded, typed, and path-queryabl
   assert.equal(contract.$defs.Projection.properties.depth.maximum, 8);
   assert.equal(contract.$defs.Node.properties.status.enum.includes("GAP"), true);
   assert.ok(contract.$defs.Edge.required.includes("snapshotManifestId"));
+  assert.equal(contract.$defs.Edge.properties.evidenceResolver.pattern, "^/v1/");
+  assert.equal(contract.$defs.Node.properties.evidenceResolver.pattern, "^/v1/");
+  assert.ok(contract.$defs.Projection.properties.graphRevisionId);
   assert.equal(contract.$defs.PathResult.properties.query.properties.maxDepth.maximum, 12);
 });
 

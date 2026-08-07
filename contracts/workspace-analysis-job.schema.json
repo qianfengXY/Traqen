@@ -11,7 +11,11 @@
     "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1, "description": "Immutable Workspace-effective capability profile pinned for the complete run." },
     "implementationAuthorId": { "type": "string", "minLength": 1 },
     "runnerId": { "type": "string", "minLength": 1 },
-    "purpose": { "enum": ["PUBLICATION", "EQUIVALENCE_VERIFICATION"] },
+    "purpose": { "enum": ["PUBLICATION", "EQUIVALENCE_VERIFICATION", "HISTORICAL_REANALYSIS"] },
+    "reanalysisOfGraphRevisionId": { "type": "string", "minLength": 1 },
+    "dataClassification": { "type": "string", "minLength": 1 },
+    "productionEligible": { "type": "boolean" },
+    "evaluationEvidenceType": { "type": "string", "minLength": 1 },
     "phase": { "enum": ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING", "COMPLETED"] },
     "desiredState": { "enum": ["RUNNING", "PAUSED", "CANCELLED"] },
     "status": { "enum": ["RUNNING", "PAUSED", "COMPLETED", "FAILED", "CANCELLED"] },
@@ -32,5 +36,18 @@
     "updatedAt": { "type": "string", "format": "date-time" },
     "completedAt": { "type": ["string", "null"], "format": "date-time" }
   },
+  "allOf": [
+    {
+      "if": { "properties": { "purpose": { "const": "HISTORICAL_REANALYSIS" } } },
+      "then": {
+        "required": ["reanalysisOfGraphRevisionId"],
+        "properties": {
+          "requestedMode": { "const": "FULL" },
+          "resolvedMode": { "const": "FULL" }
+        }
+      },
+      "else": { "not": { "required": ["reanalysisOfGraphRevisionId"] } }
+    }
+  ],
   "additionalProperties": false
 }

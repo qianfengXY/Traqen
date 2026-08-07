@@ -9,7 +9,11 @@
     "mode": { "enum": ["FULL", "INCREMENTAL"] }, "baseRevisionId": { "type": ["string", "null"] },
     "changeSetId": { "type": ["string", "null"] }, "impactAssessmentId": { "type": ["string", "null"] },
     "evaluationRunId": { "type": "string" }, "graphArtifactId": { "type": "string" },
+    "reanalysisOfGraphRevisionId": { "type": "string", "minLength": 1 },
     "graphArtifactDigest": { "type": "string" }, "semanticDigest": { "type": "string" },
+    "dataClassification": { "type": "string", "minLength": 1 },
+    "productionEligible": { "type": "boolean" },
+    "evaluationEvidenceType": { "type": "string", "minLength": 1 },
     "status": { "enum": ["BUILDING", "EVALUATING", "PUBLISHED", "REJECTED"] },
     "createdAt": { "type": "string", "format": "date-time" }, "publishedAt": { "type": ["string", "null"], "format": "date-time" }
   },

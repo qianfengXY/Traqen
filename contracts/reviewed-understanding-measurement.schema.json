@@ -4,16 +4,21 @@
   "title": "ReviewedUnderstandingMeasurement",
   "type": "object",
   "required": [
-    "analysisRunId", "snapshotManifestId", "truthSetVersionId", "reviewerId", "independent",
+    "id", "projectId", "analysisRunId", "snapshotManifestId", "truthSetVersionId", "reviewerId", "independent",
     "productionInputDigest", "outputDigest", "anchorReviews", "candidateReviews",
-    "relationReviews", "gapReviews", "reviewedAt"
+    "relationReviews", "gapReviews", "reviewedAt", "createdAt"
   ],
   "properties": {
+    "id": { "type": "string", "minLength": 1 },
+    "projectId": { "type": "string", "minLength": 1 },
     "analysisRunId": { "type": "string", "minLength": 1 },
     "snapshotManifestId": { "type": "string", "minLength": 1 },
     "truthSetVersionId": { "type": "string", "minLength": 1 },
     "reviewerId": { "type": "string", "minLength": 1 },
-    "independent": { "const": true },
+    "independent": { "type": "boolean" },
+    "dataClassification": { "type": "string", "minLength": 1 },
+    "productionEligible": { "type": "boolean" },
+    "evaluationEvidenceType": { "type": "string", "minLength": 1 },
     "productionInputDigest": { "type": "string", "minLength": 1 },
     "outputDigest": { "type": "string", "minLength": 1 },
     "anchorReviews": {
@@ -67,7 +72,55 @@
         "additionalProperties": false
       }
     },
-    "reviewedAt": { "type": "string", "format": "date-time" }
+    "reviewedAt": { "type": "string", "format": "date-time" },
+    "createdAt": { "type": "string", "format": "date-time" }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/IndependentReview" },
+    { "$ref": "#/$defs/LocalReferenceSynthetic" }
+  ],
+  "$defs": {
+    "IndependentReview": {
+      "type": "object",
+      "required": ["independent"],
+      "properties": {
+        "independent": { "const": true }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": ["dataClassification"],
+            "properties": {
+              "dataClassification": { "const": "LOCAL_DEVELOPMENT_REFERENCE_ONLY" }
+            }
+          },
+          {
+            "required": ["productionEligible"],
+            "properties": {
+              "productionEligible": { "const": false }
+            }
+          },
+          {
+            "required": ["evaluationEvidenceType"],
+            "properties": {
+              "evaluationEvidenceType": { "const": "LOCAL_REFERENCE_SYNTHETIC" }
+            }
+          }
+        ]
+      }
+    },
+    "LocalReferenceSynthetic": {
+      "type": "object",
+      "required": [
+        "independent", "dataClassification", "productionEligible", "evaluationEvidenceType"
+      ],
+      "properties": {
+        "independent": { "const": false },
+        "dataClassification": { "const": "LOCAL_DEVELOPMENT_REFERENCE_ONLY" },
+        "productionEligible": { "const": false },
+        "evaluationEvidenceType": { "const": "LOCAL_REFERENCE_SYNTHETIC" }
+      }
+    }
   },
   "additionalProperties": false
 }

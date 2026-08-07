@@ -1,7 +1,55 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createImmutableGraphArtifact } from "../src/domain/graph-revision.js";
 import { MemoryTraceabilityStore } from "../src/storage/memory-traceability-store.js";
+
+const fixedClock = () => new Date("2026-07-29T00:00:00.000Z");
+
+test("GraphArtifact digest owns its immutable Feature traceability snapshots", () => {
+  const input = {
+    projectId: "P",
+    snapshotManifestId: "S1",
+    analysisRunId: "R1",
+    nodes: [{ id: "F1", type: "FEATURE" }],
+    edges: [],
+    featureTraceability: [{
+      featureId: "F1",
+      featureVersions: [{ id: "F1", version: 1, name: "Historical" }],
+      traceability: {
+        feature: { id: "F1", version: 1, name: "Historical" },
+        snapshotManifest: { id: "S1" },
+      },
+    }],
+  };
+  const first = createImmutableGraphArtifact(input, fixedClock);
+  const second = createImmutableGraphArtifact({
+    ...input,
+    featureTraceability: [{
+      featureId: "F1",
+      featureVersions: [{ id: "F1", version: 2, name: "Current" }],
+      traceability: {
+        feature: { id: "F1", version: 2, name: "Current" },
+        snapshotManifest: { id: "S1" },
+      },
+    }],
+  }, fixedClock);
+
+  assert.notEqual(first.graphArtifactDigest, second.graphArtifactDigest);
+  assert.equal(first.featureTraceability[0].traceability.feature.version, 1);
+  assert.ok(Object.isFrozen(first));
+  assert.equal(first.artifactSchemaVersion, 2);
+  assert.throws(() => createImmutableGraphArtifact({
+    ...input,
+    featureTraceability: [{
+      ...input.featureTraceability[0],
+      traceability: {
+        ...input.featureTraceability[0].traceability,
+        snapshotManifest: { id: "S-FOREIGN" },
+      },
+    }],
+  }, fixedClock), /must own SnapshotManifest S1/);
+});
 
 test("GraphRevision publication is evaluation-gated, first-FULL, and head-CAS atomic", async () => {
   const store = new MemoryTraceabilityStore();
@@ -17,6 +65,18 @@ test("GraphRevision publication is evaluation-gated, first-FULL, and head-CAS at
   assert.equal(first.version, 1);
   assert.equal((await store.getUnderstandingRecord("P", "GRAPH_REVISION", "G1")).status, "PUBLISHED");
   await assert.rejects(store.publishGraphRevision("P", "G1", 0), /version 1 does not match 0/);
+  await store.appendUnderstandingRecord("P", "EVALUATION_RUN", { id: "EH", status: "PASSED", policyVersion: "v1", minimumDenominators, denominators: minimumDenominators, completedAt: "2026-07-29T00:00:30.000Z" });
+  await store.appendUnderstandingRecord("P", "GRAPH_ARTIFACT", { id: "AH", projectId: "P", snapshotManifestId: "S1", analysisRunId: "RH", graphArtifactDigest: "DH", createdAt: "2026-07-29T00:00:30.000Z" });
+  await store.appendUnderstandingRecord("P", "GRAPH_REVISION", {
+    id: "GH", projectId: "P", evaluationRunId: "EH", mode: "FULL", baseRevisionId: null,
+    snapshotManifestId: "S1", analysisRunId: "RH", graphArtifactId: "AH", graphArtifactDigest: "DH",
+    reanalysisOfGraphRevisionId: "G1", status: "EVALUATING", createdAt: "2026-07-29T00:00:30.000Z",
+  });
+  await assert.rejects(store.publishGraphRevision("P", "GH", 1), /must use historical publication/);
+  const historical = await store.publishHistoricalGraphRevision("P", "GH", "G1");
+  assert.equal(historical.status, "PUBLISHED");
+  assert.equal((await store.getCurrentGraphHead("P")).graphRevisionId, "G1");
+  assert.equal((await store.getCurrentGraphHead("P")).version, 1);
   await store.appendUnderstandingRecord("P", "EVALUATION_RUN", { id: "E2", status: "FAILED", policyVersion: "v1", minimumDenominators, denominators: minimumDenominators, completedAt: "2026-07-29T00:01:00.000Z" });
   await store.appendUnderstandingRecord("P", "GRAPH_ARTIFACT", { id: "A2", projectId: "P", snapshotManifestId: "S2", analysisRunId: "R2", graphArtifactDigest: "D2", createdAt: "2026-07-29T00:01:00.000Z" });
   await store.appendUnderstandingRecord("P", "GRAPH_REVISION", {

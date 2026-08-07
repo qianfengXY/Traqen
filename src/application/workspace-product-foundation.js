@@ -121,6 +121,12 @@ export class WorkspaceProductFoundation {
     return this.store.appendUnderstandingRecord(workspaceId, "WORKSPACE_CAPABILITY_CONFIG", config);
   }
 
+  async listWorkspaceCapabilityConfigs(workspaceId) {
+    if (!await this.getWorkspace(workspaceId)) return null;
+    return Object.freeze([...(await this.store.listUnderstandingRecords(workspaceId, "WORKSPACE_CAPABILITY_CONFIG"))]
+      .sort((left, right) => right.version - left.version));
+  }
+
   async resolveWorkspaceProfile(workspaceId, configId = null) {
     const configs = [...(await this.store.listUnderstandingRecords(workspaceId, "WORKSPACE_CAPABILITY_CONFIG"))];
     const config = configId
@@ -135,6 +141,12 @@ export class WorkspaceProductFoundation {
     });
     await this.store.appendUnderstandingRecord(workspaceId, "WORKSPACE_EXECUTION_PROFILE", profile);
     return profile;
+  }
+
+  async listWorkspaceProfiles(workspaceId) {
+    if (!await this.getWorkspace(workspaceId)) return null;
+    return Object.freeze([...(await this.store.listUnderstandingRecords(workspaceId, "WORKSPACE_EXECUTION_PROFILE"))]
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))));
   }
 
   async issueSecretGrants(workspaceId, profileId, input) {

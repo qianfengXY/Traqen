@@ -411,6 +411,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
     return deepFreeze({
       feature: featureVersions[0],
+      featureHistory: [...featureVersions].reverse(),
       processModel: await this.getLatestBusinessProcessModel(projectId, featureId),
       claims,
       testSpecs: [...latestTestSpecs.values()],
@@ -1283,6 +1284,9 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     const revision = this.#understandingRecords.get(revisionKey);
     if (!revision) throw new PersistenceConflictError(`GraphRevision ${revisionId} does not exist`);
     if (revision.status !== "EVALUATING") throw new PersistenceConflictError("GraphRevision must be EVALUATING");
+    if (revision.reanalysisOfGraphRevisionId !== undefined) {
+      throw new PersistenceConflictError("Historical reanalysis GraphRevision must use historical publication");
+    }
     const evaluation = this.#understandingRecords.get(key(projectId, `EVALUATION_RUN\u0000${revision.evaluationRunId}`));
     try {
       assertEvaluationPublicationReady(evaluation);
@@ -1315,5 +1319,49 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     });
     this.#currentGraphHeads.set(projectId, head);
     return head;
+  }
+
+  async publishHistoricalGraphRevision(projectId, revisionId, sourceRevisionId) {
+    const revisionKey = key(projectId, `GRAPH_REVISION\u0000${revisionId}`);
+    const revision = this.#understandingRecords.get(revisionKey);
+    const sourceRevision = this.#understandingRecords.get(
+      key(projectId, `GRAPH_REVISION\u0000${sourceRevisionId}`),
+    );
+    if (!revision || revision.status !== "EVALUATING") {
+      throw new PersistenceConflictError("Historical reanalysis GraphRevision must be EVALUATING");
+    }
+    if (!sourceRevision || sourceRevision.status !== "PUBLISHED") {
+      throw new PersistenceConflictError(`Published source GraphRevision ${sourceRevisionId} does not exist`);
+    }
+    if (revision.reanalysisOfGraphRevisionId !== sourceRevisionId
+      || revision.snapshotManifestId !== sourceRevision.snapshotManifestId
+      || revision.mode !== "FULL"
+      || revision.baseRevisionId !== null) {
+      throw new PersistenceConflictError("Historical reanalysis must be FULL and bound to its source Revision Snapshot");
+    }
+    const evaluation = this.#understandingRecords.get(
+      key(projectId, `EVALUATION_RUN\u0000${revision.evaluationRunId}`),
+    );
+    try {
+      assertEvaluationPublicationReady(evaluation);
+    } catch (error) {
+      throw new PersistenceConflictError(error.message, { cause: error });
+    }
+    const graphArtifact = this.#understandingRecords.get(
+      key(projectId, `GRAPH_ARTIFACT\u0000${revision.graphArtifactId}`),
+    );
+    if (!graphArtifact || graphArtifact.graphArtifactDigest !== revision.graphArtifactDigest
+      || graphArtifact.projectId !== projectId
+      || graphArtifact.snapshotManifestId !== revision.snapshotManifestId
+      || graphArtifact.analysisRunId !== revision.analysisRunId) {
+      throw new PersistenceConflictError("Historical reanalysis graph artifact is missing or mismatched");
+    }
+    const published = deepFreeze({
+      ...structuredClone(revision),
+      status: "PUBLISHED",
+      publishedAt: new Date().toISOString(),
+    });
+    this.#understandingRecords.set(revisionKey, published);
+    return published;
   }
 }

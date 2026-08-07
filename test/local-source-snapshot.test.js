@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, symlink, unlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -74,4 +74,190 @@ test("Snapshot inventory digest is derived from captured bytes even when live so
   const inventory2 = await second.capture({ projectId: "P", snapshotManifestId: "SYMLINK", rootPath: source });
   assert.equal(inventory2.artifacts.find(({ relativePath }) => relativePath === "entry.js").disposition, "EXCLUDED_BY_POLICY");
   await assert.rejects(readFile(path.join(snapshots, "SYMLINK", "entry.js")));
+});
+
+test("sealed Snapshot loading verifies inventory, metadata files, and payloads", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-sealed-verification-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  const original = Buffer.from("export const sealed = true;\n");
+  await writeFile(path.join(source, "entry.js"), original);
+  const capture = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+  const inventory = await capture.capture({ projectId: "P", snapshotManifestId: "SEALED", rootPath: source });
+  assert.deepEqual(
+    await capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    inventory,
+  );
+
+  const snapshotDirectory = path.join(snapshots, "SEALED");
+  const inventoryPath = path.join(snapshotDirectory, ".traqen-inventory.json");
+  const sealPath = path.join(snapshotDirectory, ".traqen-sealed");
+  const originalInventoryBytes = await readFile(inventoryPath);
+  const originalSeal = await readFile(sealPath, "utf8");
+  const truncatedInventory = JSON.parse(originalInventoryBytes.toString("utf8"));
+  truncatedInventory.artifacts = [];
+  await chmod(inventoryPath, 0o640);
+  await writeFile(inventoryPath, JSON.stringify(truncatedInventory));
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /inventory integrity verification failed/,
+  );
+
+  await writeFile(inventoryPath, originalInventoryBytes);
+  await chmod(inventoryPath, 0o440);
+  assert.deepEqual(
+    await capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    inventory,
+  );
+
+  await chmod(snapshotDirectory, 0o750);
+  const externalInventoryPath = path.join(temporary, "external-inventory.json");
+  await writeFile(externalInventoryPath, originalInventoryBytes);
+  await unlink(inventoryPath);
+  await symlink(externalInventoryPath, inventoryPath);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /Snapshot metadata must be a non-symlink file/,
+  );
+  await unlink(inventoryPath);
+  await writeFile(inventoryPath, originalInventoryBytes, { mode: 0o440 });
+
+  const externalSealPath = path.join(temporary, "external-seal");
+  await writeFile(externalSealPath, originalSeal);
+  await unlink(sealPath);
+  await symlink(externalSealPath, sealPath);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /Snapshot metadata must be a non-symlink file/,
+  );
+  await unlink(sealPath);
+  await writeFile(sealPath, originalSeal, { mode: 0o440 });
+
+  const payload = path.join(snapshotDirectory, "entry.js");
+  await chmod(payload, 0o640);
+  await writeFile(payload, "export const tampered = true;\n");
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /digest verification failed/,
+  );
+
+  await writeFile(payload, original);
+  await chmod(payload, 0o440);
+  assert.deepEqual(
+    await capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    inventory,
+  );
+
+  await unlink(payload);
+  await symlink(path.join(source, "entry.js"), payload);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    /non-symlink file/,
+  );
+
+  await unlink(payload);
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "SEALED" }),
+    { code: "ENOENT" },
+  );
+});
+
+test("sealed Snapshot verification coalesces concurrent reads, reuses receipts, and stops workers after drift", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-verification-receipt-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  const artifactCount = 512;
+  const originalPayload = "export const immutablePayload = true;\n";
+  await Promise.all(Array.from({ length: artifactCount }, (_, index) => writeFile(
+    path.join(source, `artifact-${String(index).padStart(4, "0")}.js`),
+    originalPayload,
+  )));
+  const writer = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+  const inventory = await writer.capture({
+    projectId: "P",
+    snapshotManifestId: "RECEIPT",
+    rootPath: source,
+  });
+  const verificationEvents = [];
+  const reader = new LocalSourceSnapshotCapture({
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    verificationObserver: (event) => verificationEvents.push(event),
+  });
+
+  const firstBatch = await Promise.all(Array.from({ length: 3 }, () => reader.loadExisting({
+    projectId: "P",
+    snapshotManifestId: "RECEIPT",
+  })));
+  assert.deepEqual(firstBatch, [inventory, inventory, inventory]);
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "FULL_PAYLOAD_VERIFICATION_STARTED").length,
+    1,
+  );
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length,
+    artifactCount,
+  );
+
+  await reader.loadExisting({ projectId: "P", snapshotManifestId: "RECEIPT" });
+  await reader.loadExisting({ projectId: "P", snapshotManifestId: "RECEIPT" });
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "FULL_PAYLOAD_VERIFICATION_STARTED").length,
+    1,
+  );
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length,
+    artifactCount,
+  );
+
+  const firstPayload = path.join(snapshots, "RECEIPT", "artifact-0000.js");
+  await chmod(firstPayload, 0o640);
+  await writeFile(firstPayload, "export const immutablePayload = null;\n");
+  await chmod(firstPayload, 0o440);
+  await assert.rejects(
+    reader.loadExisting({ projectId: "P", snapshotManifestId: "RECEIPT" }),
+    /digest verification failed/,
+  );
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "FULL_PAYLOAD_VERIFICATION_STARTED").length,
+    2,
+  );
+  const readsAfterDrift = verificationEvents
+    .filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length - artifactCount;
+  assert.ok(
+    readsAfterDrift >= 1 && readsAfterDrift < artifactCount,
+    `expected workers to stop before scanning all artifacts, got ${readsAfterDrift}`,
+  );
+  const firstFailureIndex = verificationEvents.findIndex(({ type }) => type === "ARTIFACT_PAYLOAD_READ_FAILED");
+  assert.notEqual(firstFailureIndex, -1);
+  assert.equal(
+    verificationEvents.slice(firstFailureIndex + 1)
+      .filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length,
+    0,
+  );
+});
+
+test("Snapshot manifest IDs cannot escape or create nested paths under the Snapshot root", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-snapshot-id-fence-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  await writeFile(path.join(source, "entry.js"), "export const bounded = true;\n");
+  const capture = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+
+  for (const snapshotManifestId of ["", ".", "..", "../escaped", "nested/escaped", "nested\\escaped"]) {
+    await assert.rejects(
+      capture.capture({ projectId: "P", snapshotManifestId, rootPath: source }),
+      /snapshotManifestId must be a single safe path segment/,
+    );
+  }
+  await assert.rejects(
+    capture.loadExisting({ projectId: "P", snapshotManifestId: "../escaped" }),
+    /snapshotManifestId must be a single safe path segment/,
+  );
 });

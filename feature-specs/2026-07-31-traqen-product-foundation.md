@@ -300,6 +300,8 @@ Add migration and compatibility tests for existing projects, local Workspace vis
 - materialize initial Workspace profile revisions from existing configuration;
 - remove browser execution authority, split project selectors, fixed-three planner assumptions, unused orchestration paths, and live demo fallback;
 - keep temporary compatibility reads only when they have an owner, metric, and deletion condition.
+- version immutable GraphArtifacts explicitly. Schema v2 owns `featureTraceability` in its digest. A pre-v2 artifact remains immutable and addressable; it is never rewritten or backfilled from the current Feature baseline.
+- when a pre-v2 artifact cannot recover F002 detail, preserve its Revision, selected object, Snapshot, artifact ID, and digest; return `UNAVAILABLE_REQUIRES_REANALYSIS` with governed reanalysis and current-head actions. F003 may still expose node/edge/path evidence that is present in the legacy artifact itself.
 
 ### Gate
 

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/historical-availability.schema.json",
+  "title": "HistoricalTraceabilityAvailability",
+  "type": "object",
+  "required": [
+    "status", "reasonCode", "message", "artifactSchemaVersion", "featureId", "selectedObjectId",
+    "snapshotManifestId", "graphRevisionId", "graphArtifactId", "graphArtifactDigest", "recovery", "currentContext"
+  ],
+  "properties": {
+    "status": { "const": "UNAVAILABLE_REQUIRES_REANALYSIS" },
+    "reasonCode": {
+      "enum": [
+        "IMMUTABLE_TRACEABILITY_SNAPSHOT_NOT_CAPTURED",
+        "REQUESTED_FEATURE_NOT_PRESENT_IN_IMMUTABLE_ARTIFACT",
+        "SELECTED_OBJECT_NOT_PRESENT_IN_IMMUTABLE_ARTIFACT",
+        "SELECTED_OBJECT_FEATURE_OWNERSHIP_NOT_PROVABLE"
+      ]
+    },
+    "message": { "type": "string", "minLength": 1 },
+    "artifactSchemaVersion": { "const": 1 },
+    "featureId": { "type": "string", "minLength": 1 },
+    "selectedObjectId": { "type": "string", "minLength": 1 },
+    "snapshotManifestId": { "type": "string", "minLength": 1 },
+    "graphRevisionId": { "type": "string", "minLength": 1 },
+    "graphArtifactId": { "type": "string", "minLength": 1 },
+    "graphArtifactDigest": { "type": "string", "minLength": 1 },
+    "recovery": {
+      "oneOf": [
+        { "$ref": "#/$defs/ExecutableRecovery" },
+        { "$ref": "#/$defs/UnavailableRecovery" }
+      ]
+    },
+    "currentContext": {
+      "type": "object",
+      "required": ["action", "method", "endpoint"],
+      "properties": {
+        "action": { "const": "VIEW_CURRENT_PUBLISHED_HEAD" },
+        "method": { "const": "GET" },
+        "endpoint": { "type": "string", "pattern": "^/v1/" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "ExecutableRecovery": {
+      "type": "object",
+      "required": [
+        "executable", "action", "method", "snapshotManifestId", "graphRevisionId",
+        "sourceRegistrationId", "workspaceExecutionProfileRevisionId", "endpoint"
+      ],
+      "properties": {
+        "executable": { "const": true },
+        "action": { "const": "REANALYZE_FROM_REVISION_SNAPSHOT" },
+        "method": { "const": "POST" },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "graphRevisionId": { "type": "string", "minLength": 1 },
+        "sourceRegistrationId": { "type": "string", "minLength": 1 },
+        "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1 },
+        "endpoint": {
+          "type": "string",
+          "pattern": "^/v1/projects/[^/]+/graph/revisions/[^/]+/reanalysis-jobs$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "UnavailableRecovery": {
+      "type": "object",
+      "required": [
+        "executable", "action", "reasonCode", "message", "snapshotManifestId", "graphRevisionId"
+      ],
+      "properties": {
+        "executable": { "const": false },
+        "action": { "const": "HISTORICAL_REANALYSIS_UNAVAILABLE" },
+        "reasonCode": {
+          "enum": [
+            "HISTORICAL_REANALYSIS_RUNTIME_NOT_CONFIGURED",
+            "SOURCE_ANALYSIS_JOB_NOT_RETAINED",
+            "SOURCE_REGISTRATION_NOT_ACTIVE",
+            "WORKSPACE_EXECUTION_PROFILE_NOT_RETAINED",
+            "IMMUTABLE_SNAPSHOT_MANIFEST_NOT_RETAINED",
+            "SEALED_SOURCE_SNAPSHOT_NOT_RETAINED",
+            "ARTIFACT_INVENTORY_NOT_RETAINED"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "snapshotManifestId": { "type": "string", "minLength": 1 },
+        "graphRevisionId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

@@ -3,7 +3,7 @@
 ---
 feature_ids: [F004]
 related_features: [F001, F002]
-topics: [claim-review, batch-review, evidence, governance]
+topics: [claim-review, batch-review, evidence, governance, frontend, user-journey]
 doc_kind: spec
 created: 2026-07-31
 ---
@@ -35,6 +35,38 @@ F004 负责以下对象的 Review Projection 与 Decision Command：
 4. 检查源码证据与冲突；编辑规范化陈述、Scope、Mapping 与 Rationale。
 5. 确认、驳回、延期、标记证据不足或记录例外。
 6. 查看不可变 Audit Event；遇到乐观并发冲突时明确失败，不能静默覆盖。
+
+## 前端产品体验
+
+### Workspace 审核队列
+
+F004 直接打开当前 Workspace 队列，不能要求输入 Run 或 Candidate ID。页面包含：
+
+- 按证据状态、Candidate 类型、风险、源码 Module、模型/Skill Provenance 和变化状态筛选；
+- 按阻断风险与陈旧程度排序的队列，并保留可恢复的选择与筛选状态；
+- 具备兼容性校验的批量工具栏，解释所选条目为何能或不能共用命令；
+- Detail/Decision 工作区，展示源码证据、Agent Provenance、Conflict、Confidence Cap、不可变历史，以及可编辑的规范化陈述、Scope、Mapping 与 Rationale；
+- 在命令合同允许时提供明确的 Confirm、Reject、Defer、Insufficient Evidence 与 Record Exception 结果。
+
+批量选择只是命令包络，不是一条全有或全无的 Decision。客户端在提交前校验兼容性；服务端为每项记录独立 Decision 与 Audit Event，结果视图保留成功、失败和可重试条目。
+
+### 完整性、冲突与响应式状态
+
+- **空队列：** 说明当前筛选或 Workspace 没有审核项，并在授权时提供已完成/历史视图。
+- **Evidence 无效：** 在删除无效 Resolver 或替换为授权证据前禁用 Confirm，同时保留已编辑内容。
+- **版本冲突：** 对比用户输入与服务端新版本，并要求显式提交新命令；绝不能静默覆盖任一方。
+- **批次部分失败：** 保留批次回执与逐项结果，只允许重试符合条件的失败项。
+- **Workspace 切换：** 有本地编辑时先提示，随后清除选择与未提交命令；绝不能把它们提交给新 Workspace。
+
+桌面端使用 Queue/Detail 多栏；移动端改为 Queue 到 Review 的逐级导航，提交前始终显示 Decision 摘要，返回后恢复队列位置。Reviewer Identity 与 Authority 由服务端拥有，不能用自由文本冒充可信身份。
+
+### 前端验收标准
+
+- [ ] 队列进入、筛选、证据检查与 Decision 都不要求手工输入 Run 或 Candidate ID。
+- [ ] 不兼容批量选择在提交前解释不兼容的命令或 Authority Boundary。
+- [ ] 每项保留独立 Decision/Audit 结果，包括批次部分失败与重试状态。
+- [ ] 编辑期间始终展示无效 Evidence、Confidence Cap、Conflict、自动准入状态和不可变历史 Decision。
+- [ ] 并发编辑保留双方输入，桌面、键盘与移动端旅程均能完成同一受治理 Decision。
 
 ## 验收标准
 

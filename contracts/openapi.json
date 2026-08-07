@@ -88,10 +88,12 @@
     },
     "/v1/workspaces/{workspaceId}/capability-configs": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "listWorkspaceCapabilityConfigs", "responses": { "200": { "description": "Versioned Workspace capability configuration history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "post": { "operationId": "createWorkspaceCapabilityConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigRequest" } } } }, "responses": { "201": { "description": "Versioned Workspace override/removal configuration", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfig" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "listWorkspaceExecutionProfileRevisions", "responses": { "200": { "description": "Immutable Workspace execution profile history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "post": { "operationId": "resolveWorkspaceExecutionProfileRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileRequest" } } } }, "responses": { "201": { "description": "Immutable Workspace-effective runtime profile", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfile" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants": {
@@ -645,6 +647,16 @@
           "in": "query",
           "required": true,
           "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "selectedObjectId",
+          "in": "query",
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "graphRevisionId",
+          "in": "query",
+          "schema": { "type": "string", "minLength": 1 }
         }
       ],
       "get": {
@@ -670,6 +682,16 @@
           "name": "snapshotManifestId",
           "in": "query",
           "required": true,
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "rootNodeId",
+          "in": "query",
+          "schema": { "type": "string", "minLength": 1 }
+        },
+        {
+          "name": "graphRevisionId",
+          "in": "query",
           "schema": { "type": "string", "minLength": 1 }
         },
         {
@@ -1451,6 +1473,36 @@
         }
       }
     },
+    "/v1/projects/{projectId}/graph/revisions/{revisionId}/reanalysis-jobs": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        {
+          "name": "async",
+          "in": "query",
+          "required": false,
+          "description": "Defaults to true. Set false only for bounded synchronous execution.",
+          "schema": { "type": "boolean", "default": true }
+        }
+      ],
+      "post": {
+        "operationId": "reanalyzeHistoricalGraphRevision",
+        "description": "Reanalyze the source Revision's sealed Snapshot using server-derived SourceRegistration and WorkspaceExecutionProfile bindings. The command creates a new published historical GraphRevision without moving CurrentGraphHead.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object",
+          "properties": {
+            "policyDigest": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        } } } },
+        "responses": {
+          "201": { "description": "Synchronously completed historical reanalysis when async=false", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } },
+          "202": { "description": "Accepted server-owned historical reanalysis", "content": { "application/json": { "schema": { "$ref": "./workspace-analysis-job.schema.json" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/graph/revisions/{revisionId}/publish": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
@@ -1473,10 +1525,31 @@
         }
       }
     },
+    "/v1/projects/{projectId}/graph/revisions/{revisionId}/evidence/{kind}/{evidenceId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/ProjectId" },
+        { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["nodes", "edges", "objects"] } },
+        { "name": "evidenceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "snapshotManifestId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "featureId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } },
+        { "name": "rootNodeId", "in": "query", "required": true, "schema": { "type": "string", "minLength": 1 } }
+      ],
+      "get": {
+        "operationId": "resolveGraphEvidence",
+        "responses": {
+          "200": { "description": "GraphRevision-bound evidence resolution" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
     "/v1/projects/{projectId}/features/{featureId}/history": {
       "parameters": [
         { "$ref": "#/components/parameters/ProjectId" },
-        { "$ref": "#/components/parameters/FeatureId" }
+        { "$ref": "#/components/parameters/FeatureId" },
+        { "name": "selectedObjectId", "in": "query", "schema": { "type": "string", "minLength": 1 } },
+        { "name": "graphRevisionId", "in": "query", "schema": { "type": "string", "minLength": 1 } }
       ],
       "get": {
         "operationId": "getFeatureUnderstandingHistory",
@@ -1777,7 +1850,8 @@
                 "toNodeId": { "type": "string", "minLength": 1 },
                 "direction": { "enum": ["ANY", "FORWARD", "REVERSE"], "default": "ANY" },
                 "maxDepth": { "type": "integer", "minimum": 1, "maximum": 12, "default": 8 },
-                "view": { "enum": ["traceability", "business", "implementation", "coverage"] }
+                "view": { "enum": ["traceability", "business", "implementation", "coverage"] },
+                "graphRevisionId": { "type": "string", "minLength": 1 }
               },
               "additionalProperties": false
             }
@@ -1802,6 +1876,9 @@
           "graphRevisionId": { "type": "string" },
           "version": { "type": "integer", "minimum": 1 },
           "updatedAt": { "type": "string", "format": "date-time" }
+          ,"dataClassification": { "type": "string", "minLength": 1 }
+          ,"productionEligible": { "type": "boolean" }
+          ,"evaluationEvidenceType": { "type": "string", "minLength": 1 }
         },
         "additionalProperties": false
       },

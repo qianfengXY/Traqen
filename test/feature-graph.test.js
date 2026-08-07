@@ -84,6 +84,23 @@ test("Feature graph projection uses the same governed chain and exposes progress
   assert.ok(full.edges.every((edge) => edge.snapshotManifestId === full.snapshotManifestId));
 });
 
+test("bounded projections preserve a selected governed API as the graph root", () => {
+  const projection = createFeatureGraphProjection(traceability(), {
+    rootNodeId: "ENDPOINT-ORDER-SUBMIT",
+    depth: 1,
+    limit: 30,
+  });
+
+  assert.equal(projection.center, "ENDPOINT-ORDER-SUBMIT");
+  assert.equal(projection.nodes.find(({ id }) => id === projection.center)?.type, "ENDPOINT");
+  assert.ok(projection.edges.some(({ source, target }) =>
+    source === projection.center || target === projection.center));
+  assert.throws(
+    () => createFeatureGraphProjection(traceability(), { rootNodeId: "UNKNOWN" }),
+    /rootNodeId UNKNOWN is not present/,
+  );
+});
+
 test("Feature graph presets suppress unrelated noise without creating a second truth model", () => {
   const source = traceability();
   const business = createFeatureGraphProjection(source, { view: "business", depth: 8, limit: 100 });

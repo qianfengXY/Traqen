@@ -12,6 +12,8 @@ topics:
   - correctness-evaluation
   - traceability
   - dogfood
+  - frontend
+  - user-journey
 doc_kind: spec
 created: 2026-07-29
 ---
@@ -72,6 +74,8 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 定义 Workspace 聚合与生命周期、带版本的 `CurrentWorkspaceContext`，把全局模板与 Workspace 覆盖解析为不可变 `WorkspaceExecutionProfileRevision`，并定义多维正确性、审核 Truth Set Schema、显式 Unknown 状态和回归阈值。
 
+`ReviewedUnderstandingMeasurement` 是封闭且带判别字段的 Evidence 合同。生产评估只接受由独立控制方生成且 `independent: true` 的记录。隔离开发启动只能持久化显式的 `LocalReferenceSynthetic` 变体：`independent: false`、`dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`、`productionEligible: false`、`evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`；该变体可用于跑通产品，但绝不能满足生产发布 Gate。
+
 ### Phase B：不可变范围与完整清点
 
 建立授权 SourceRegistration、不可变 Snapshot 捕获、完整 ArtifactInventory、显式处置、提取器能力注册表与安全 SourceSlice Broker。
@@ -123,6 +127,51 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 | J6 | Traqen 分析固定的自身仓库 | 审核自图谱、缺口、TraceChain 与 Impact 报告 |
 | J7 | 查看一项长期演进的 Feature | FeatureVersion Decision、各 Snapshot 实现映射、ChangeSet、Impact 与验证时间线 |
 | J8 | 分析一个超大、多语言工程 | 完整原始源码处置、确定性分区、动态 DAG 进度、模型/Skill 路由决策、同批子 Agent 相互印证与显式剩余 Gap |
+
+## 前端产品体验
+
+### 入口与首次设置
+
+Workspace 落地总览应把用户引导到第一个未满足的前置条件，而不是直接展示空白分析控制台。设置顺序为：
+
+1. 创建或选择 Workspace；
+2. 登记经过授权的源码；
+3. 在 F006 解析并校验 Workspace 执行 Profile Revision；
+4. 启动第一次 `FULL` 分析。
+
+创建 Workspace 与启动分析是两个独立的显式命令。Start 前确认摘要必须展示选中的 `SourceRegistration`，恢复任务时还要展示已固定 Snapshot，并同时展示执行 Profile Revision、Main/Child roster、数据边界、预算策略，以及选中的 `AUTO`、`FULL` 或 `INCREMENTAL` 模式。高级模式选择也不能绕过“第一次发布图谱必须使用 `FULL`”的规则。
+
+### 分析指挥台
+
+F001 界面围绕一个持久 `WorkspaceAnalysisJob` 展示：
+
+- 七阶段轨道：`SOURCE_SCAN`、`FACT_COMMIT`、`ANALYSIS`、`RECONCILIATION`、`EVALUATION`、`PROJECTION`、`PUBLISHING`；
+- 独立 Static 通道：展示完整 Inventory 分母及每项处置，包括排除、不支持、二进制、超大、Secret 脱敏和读取失败 Artifact；
+- 独立 Agent 通道：展示 Batch/WorkUnit 进度、Main Agent、每个已配置 Child 槽位、相同批次 Scope、各自结果和对账状态；
+- 视觉独立的 Working Candidate Tree，展示 Candidate、Conflict、Quarantine 与 Gap 数量；
+- 显式 Start、Pause、Resume、Cancel 命令，以及持久 Job/Event 历史。
+
+Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、确定性 Facts 和历史做对账”，绝不能显示为投票。原始 Prompt、模型响应、Digest 与 Trace ID 放入技术详情；默认事件流只解释用户可理解的进度与阻塞。
+
+### 页面状态与恢复
+
+- **无 Source / Profile 无效：** 展示未满足的前置条件并深链到 F006 的准确位置；Start 保持禁用。
+- **Running：** 用户可以离开页面，服务端 Job 继续运行；刷新与重连恢复同一个 Job，不能发出生命周期命令。
+- **Pause requested / paused / recovering：** 保留固定 Snapshot 与 Profile Revision，并解释当前是在等待原子 WorkUnit 提交还是恢复 Worker Lease。
+- **Partial failure / completed with gaps：** 保留已完成检查点，列出可重试单元与 Gap，并说明是否阻断发布。
+- **Completed but unpublished：** 展示评估/发布 Gate 与非权威 Working Candidate，不能把它跳转成 F002 受治理树。
+- **Failed / cancelled：** 保留历史和诊断；重试只能通过受支持的显式命令创建或恢复，不能覆盖失败记录。
+
+桌面端可以在阶段轨道下并排展示 Static 与 Agent 通道；移动端改为按顺序展开，但阶段、命令状态、各自分母、阻塞项和 Candidate 权威标签必须保留。
+
+### 前端验收标准
+
+- [ ] 首次与回访 Workspace 旅程始终给出一个有效下一步，不要求手工输入 Job、Snapshot 或 Candidate ID。
+- [ ] 七个持久阶段与 Static/Agent 通道分母独立可见，不能用复合理解度总分替代。
+- [ ] 每个 Active Child 槽位都显示相同 Batch Scope 与输出合同，Main 对账不能表现为多数票。
+- [ ] Working Candidate 在视觉和文字上明确非权威，绝不能进入 F002 Governed Tree。
+- [ ] 刷新、重连、页面导航和 Workspace 切换都是 GET-only，不能暂停或取消服务端 Job。
+- [ ] 所有非终态、部分失败、配置阻断、旧 Workspace 迟到响应和历史 Job 都有明确且可恢复的界面状态。
 
 ## Acceptance criteria
 

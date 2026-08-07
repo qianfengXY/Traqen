@@ -34,5 +34,33 @@ test("PostgreSQL publishes GraphRevision and CurrentGraphHead in one CAS transac
   assert.equal(head.graphRevisionId, "G1");
   assert.equal((await store.getUnderstandingRecord("P", "GRAPH_REVISION", "G1")).status, "PUBLISHED");
   await assert.rejects(store.publishGraphRevision("P", "G1", 0), /version 1 does not match 0/);
+
+  await store.appendUnderstandingRecord("P", "EVALUATION_RUN", {
+    id: "E2", projectId: "P", analysisRunId: "R2", status: "PASSED", policyVersion: "v1",
+    minimumDenominators, denominators: minimumDenominators, completedAt: "2026-07-29T00:01:00.000Z",
+  });
+  await store.appendUnderstandingRecord("P", "GRAPH_ARTIFACT", {
+    id: "A2", projectId: "P", snapshotManifestId: "S1", analysisRunId: "R2",
+    graphArtifactDigest: "D2", createdAt: "2026-07-29T00:01:00.000Z",
+  });
+  await store.appendUnderstandingRecord("P", "GRAPH_REVISION", {
+    id: "G2", projectId: "P", snapshotManifestId: "S1", analysisRunId: "R2", mode: "FULL",
+    baseRevisionId: null, evaluationRunId: "E2", graphArtifactId: "A2", graphArtifactDigest: "D2",
+    reanalysisOfGraphRevisionId: "G1", status: "EVALUATING", createdAt: "2026-07-29T00:01:00.000Z",
+  });
+  await assert.rejects(
+    store.publishGraphRevision("P", "G2", 1),
+    /must use historical publication/,
+  );
+  const historical = await store.publishHistoricalGraphRevision("P", "G2", "G1");
+  const unchangedHead = await store.getCurrentGraphHead("P");
+  assert.equal(historical.status, "PUBLISHED");
+  assert.equal(historical.reanalysisOfGraphRevisionId, "G1");
+  assert.equal(unchangedHead.graphRevisionId, "G1");
+  assert.equal(unchangedHead.version, 1);
+  await assert.rejects(
+    store.publishHistoricalGraphRevision("P", "G2", "G1"),
+    /must be EVALUATING/,
+  );
   await database.close();
 });

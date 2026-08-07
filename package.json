@@ -24,7 +24,8 @@
     "quality-gate": "node src/cli/evaluate-quality-gate.js"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "0.5.4"
+    "@electric-sql/pglite": "0.5.4",
+    "ajv": "8.17.1"
   },
   "dependencies": {
     "@ast-grep/lang-java": "0.0.7",

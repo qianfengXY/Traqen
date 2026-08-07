@@ -12,6 +12,11 @@ export const WorkspaceAnalysisPhase = Object.freeze({
 });
 
 const orderedPhases = Object.values(WorkspaceAnalysisPhase);
+const WorkspaceAnalysisPurpose = Object.freeze({
+  PUBLICATION: "PUBLICATION",
+  EQUIVALENCE_VERIFICATION: "EQUIVALENCE_VERIFICATION",
+  HISTORICAL_REANALYSIS: "HISTORICAL_REANALYSIS",
+});
 
 export class WorkspaceAnalysisJobRunner {
   constructor({ store, handlers, clock = () => new Date() }) {
@@ -31,8 +36,17 @@ export class WorkspaceAnalysisJobRunner {
     ) {
       throw new TypeError("workspaceExecutionProfileRevisionId is required");
     }
-    if (input.purpose !== undefined && !["PUBLICATION", "EQUIVALENCE_VERIFICATION"].includes(input.purpose)) {
+    if (input.purpose !== undefined && !Object.values(WorkspaceAnalysisPurpose).includes(input.purpose)) {
       throw new TypeError("WorkspaceAnalysisJob purpose is invalid");
+    }
+    const purpose = input.purpose ?? WorkspaceAnalysisPurpose.PUBLICATION;
+    if (purpose === WorkspaceAnalysisPurpose.HISTORICAL_REANALYSIS) {
+      if (input.requestedMode !== "FULL" || typeof input.reanalysisOfGraphRevisionId !== "string"
+        || input.reanalysisOfGraphRevisionId.trim() === "") {
+        throw new TypeError("historical reanalysis requires FULL mode and reanalysisOfGraphRevisionId");
+      }
+    } else if (input.reanalysisOfGraphRevisionId !== undefined) {
+      throw new TypeError("reanalysisOfGraphRevisionId is allowed only for historical reanalysis");
     }
     const currentGraphHead = await this.store.getCurrentGraphHead(input.projectId);
     const resolvedMode = input.requestedMode === "AUTO"
@@ -52,7 +66,15 @@ export class WorkspaceAnalysisJobRunner {
       workspaceExecutionProfileRevisionId: input.workspaceExecutionProfileRevisionId,
       implementationAuthorId: input.implementationAuthorId ?? "TRAQEN-RUNTIME",
       runnerId: input.runnerId ?? "TRAQEN-LOCAL-RUNNER",
-      purpose: input.purpose ?? "PUBLICATION",
+      purpose,
+      ...(purpose === WorkspaceAnalysisPurpose.HISTORICAL_REANALYSIS
+        ? { reanalysisOfGraphRevisionId: input.reanalysisOfGraphRevisionId }
+        : {}),
+      ...(input.dataClassification ? {
+        dataClassification: input.dataClassification,
+        productionEligible: input.productionEligible,
+        evaluationEvidenceType: input.evaluationEvidenceType,
+      } : {}),
     };
     const job = deepFreeze({
       id: input.id ?? contentId("WORKSPACE-ANALYSIS-JOB", identity),
@@ -115,11 +137,12 @@ export class WorkspaceAnalysisJobRunner {
       .sort((left, right) => right.checkpointSequence - left.checkpointSequence)[0]?.state ?? null;
   }
 
-  async list(projectId, { purpose = "PUBLICATION" } = {}) {
+  async list(projectId, { purpose = "PUBLICATION", purposes = null } = {}) {
     const checkpoints = await this.store.listUnderstandingRecords(projectId, "WORKSPACE_ANALYSIS_JOB");
     const jobIds = [...new Set(checkpoints.map(({ jobId }) => jobId))];
+    const acceptedPurposes = new Set(purposes ?? [purpose]);
     const jobs = (await Promise.all(jobIds.map((jobId) => this.get(projectId, jobId))))
-      .filter((job) => job && job.purpose === purpose);
+      .filter((job) => job && acceptedPurposes.has(job.purpose));
     return deepFreeze(jobs.sort((left, right) =>
       (right.updatedAt ?? right.createdAt).localeCompare(left.updatedAt ?? left.createdAt)
       || left.id.localeCompare(right.id)));

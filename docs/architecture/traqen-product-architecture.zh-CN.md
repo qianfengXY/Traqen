@@ -10,6 +10,8 @@ topics:
   - traceability
   - governance
   - change-impact
+  - frontend
+  - user-journey
 doc_kind: architecture
 created: 2026-07-31
 status: proposed
@@ -76,6 +78,55 @@ Workspace 切换器
 ```
 
 所有模块读取相同 Canonical Ledgers，但使用不同投影。Working Candidate Tree 与已发布 Governed Tree 必须在视觉和契约上严格区分。
+
+### 4.1 跨 Feature 产品体验
+
+产品 Shell 把上述六个模块组织成一条受 Workspace 定界的用户旅程，而不是六个互不相干的管理页面：
+
+| 导航分组 | 产品界面 | 用户首要任务 |
+|---|---|---|
+| 理解 | Workspace 分析（F001） | 建立或更新系统理解 |
+| 理解 | 功能 / API（F002） | 核对受治理能力及其证据链 |
+| 理解 | 追溯图谱（F003） | 解释关系与证据路径 |
+| 治理 | 声明审核（F004） | 裁决弱证据、冲突、抽样或过期 Candidate |
+| 治理 | 变更影响（F005） | 解释变化并关闭审核/重验证动作 |
+| 配置 | 能力设置（F006） | 固定 Workspace 执行能力与边界 |
+
+Workspace 根路径是**落地总览**，不是第七个产品模块。总览汇总当前 Published Head、活跃 Job、审核队列、未关闭影响动作、配置有效性和最近的不可变活动。主操作随 Workspace 状态变化：登记源码、修复配置、开始首次分析、继续活跃 Job、启动增量分析，或处理阻断审核。
+
+常驻 Shell 必须展示：
+
+- Workspace 切换器与当前 Workspace 身份；
+- 当前模块与选中对象的面包屑；
+- 当前已发布 `GraphRevision`，或明确的历史只读上下文；
+- 当前 Workspace 的审核与变更影响数量；
+- 语言、主题、身份、帮助和连接健康状态。
+
+API Base URL、Token、原始对象 ID 等部署诊断不是产品主导航。开发或部署模式仍需要时，应放入环境级诊断抽屉。正常用户旅程从 Workspace、Job、受治理对象、审核队列或最新已发布 ChangeSet 进入，绝不能要求用户手工输入内部 ID。
+
+### 4.2 权威与视觉状态合同
+
+所有产品界面必须使用一致的权威语言：
+
+- **Published：** 实线容器、`GraphRevision` 标识和 `PUBLISHED` 文字；
+- **Working Candidate：** 虚线容器、`CANDIDATE` 文字和固定的非权威说明；
+- **Historical：** 显示选中 Revision 的只读横幅，并提供直接返回 Current Head 的入口；
+- **Conflict、Gap、Missing、Stale：** 同时使用图标、文字和颜色，颜色不能成为唯一编码；
+- **Unavailable：** 展示缺失的分母或来源及其原因，不能编造 0 分或满分。
+
+Candidate 与 Governed Projection 可以互相跳转，但不能共用一棵树、静默合并，或复用会隐藏权威差异的视觉状态。Graph 布局、客户端选择与缓存偏好都不能创建 Canonical Node、Edge、Decision 或进度。
+
+### 4.3 共享交互与状态合同
+
+- 页面 Mount、刷新、重连和 Workspace 切换都是只读操作。Start、Pause、Resume、Cancel、Review 与保存设置只能由用户显式命令触发；Publishing 遵循受治理的服务端工作流，绝不能作为页面生命周期副作用触发。
+- 切换 Workspace 时禁用旧上下文命令、清除旧选择、重绑订阅，并按 5.2 节拒绝迟到响应。
+- 空状态解释对象为什么不存在，并指出下一项有效动作；重试必须保留筛选和未保存输入。
+- 并发命令必须明确失败；审核与设置冲突要同时保留用户输入和服务端新版本以供比较。
+- 进度独立展示 Inventory、静态提取、Agent 工作、审核、评估与发布分母；Traqen 不能把它们压缩成一个置信度或理解度总分。
+- 桌面端可以使用列表/内容/证据多栏；移动端通过列表到详情的逐级导航保留相同任务，Graph 默认展示可访问的关系/路径列表，画布是可选视图。
+- Tree 导航、批量选择、审核 Decision 与图谱路径查看必须支持键盘；实时进度使用摘要播报，不能逐条朗读高频诊断。
+
+F001-F006 Feature 文档分别负责本页面的旅程、状态、权威绑定和前端验收标准。[Enterprise Blue](../design/enterprise-blue-theme.zh-CN.md) 继续作为视觉设计系统真相源；本文不重复其颜色或组件 Token。
 
 ## 5. Workspace 聚合与生命周期
 
@@ -236,6 +287,8 @@ Candidate 可以进入 Working Tree，但不能创建或修改受治理 Feature�
 - 需求、设计、数据、配置、测试和结果证据；
 - ChangeSet 与 ImpactAssessment；
 - Review Event、Conflict、Gap 和 VerificationResult。
+
+历史兼容必须 Fail Closed。v2 之前的 artifact 只能暴露那些可由不可变 artifact 内容唯一证明归属于请求 Feature 的 Node 和 Edge。缺少 F002 Snapshot 时，只有原始 Job、来源/执行配置绑定、封存 Snapshot 与持久化 Inventory 均通过核验，系统才提供服务端重分析命令；否则返回不带命令 endpoint 的不可执行前提原因。恢复绑定由服务端从来源 Revision 推导；新生成的关联历史 GraphRevision 会被发布，但不会改写来源 Revision，也不会改变 `CurrentGraphHead`。
 
 ## 9. `1682d7d` 实现差距
 

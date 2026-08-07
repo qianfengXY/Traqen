@@ -12,6 +12,8 @@ topics:
   - correctness-evaluation
   - traceability
   - dogfood
+  - frontend
+  - user-journey
 doc_kind: spec
 created: 2026-07-29
 ---
@@ -72,6 +74,8 @@ Governed Features and Claims still require human Decisions. Test execution and E
 
 Define the Workspace aggregate and lifecycle, versioned `CurrentWorkspaceContext`, global-template/Workspace-override resolution into an immutable `WorkspaceExecutionProfileRevision`, multi-dimensional correctness, reviewed truth-set schema, explicit Unknown states, and regression thresholds.
 
+`ReviewedUnderstandingMeasurement` is a closed, discriminated evidence contract. Production evaluation accepts an independently controlled record with `independent: true`. The isolated development bootstrap may persist only the explicit `LocalReferenceSynthetic` variant with `independent: false`, `dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`, `productionEligible: false`, and `evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`; that variant can exercise the product but can never satisfy a production publication gate.
+
 ### Phase B: Immutable scope and complete inventory
 
 Create authorized source registration, immutable Snapshot capture, complete ArtifactInventory, explicit dispositions, extractor capability registry, and safe source-slice broker.
@@ -123,6 +127,51 @@ Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth se
 | J6 | Traqen analyzes its own pinned repository | reviewed self-graph, gaps, TraceChain, and impact report |
 | J7 | Inspect a long-lived Feature | FeatureVersion Decisions, implementation mappings by Snapshot, ChangeSets, impacts, and verification timeline |
 | J8 | Analyze a very large mixed-language repository | complete raw-source disposition, deterministic partitions, dynamic DAG progress, model/Skill route decisions, same-batch Child corroboration, and explicit residual gaps |
+
+## Frontend product experience
+
+### Entry and first-run setup
+
+The Workspace landing overview routes the user to the first unmet prerequisite instead of presenting an empty analysis console. The setup sequence is:
+
+1. create or select a Workspace;
+2. register an authorized source;
+3. resolve and validate a Workspace execution-profile revision in F006;
+4. start the first `FULL` analysis.
+
+Creating a Workspace and starting an analysis are separate explicit commands. Before Start, the confirmation summary shows the selected `SourceRegistration` and, when resuming, the pinned Snapshot, plus the execution-profile revision, Main/Child roster, data boundary, budget policy, and selected `AUTO`, `FULL`, or `INCREMENTAL` mode. Advanced mode selection cannot bypass the rule that the first published graph requires `FULL`.
+
+### Analysis command center
+
+The F001 surface presents one durable `WorkspaceAnalysisJob` with:
+
+- a seven-stage track: `SOURCE_SCAN`, `FACT_COMMIT`, `ANALYSIS`, `RECONCILIATION`, `EVALUATION`, `PROJECTION`, and `PUBLISHING`;
+- an independent Static lane showing the complete inventory denominator and every disposition, including excluded, unsupported, binary, oversized, secret-redacted, and read-failed artifacts;
+- an independent Agent lane showing Batch/WorkUnit progress, the Main Agent, every configured Child slot, identical same-batch scope, individual results, and reconciliation status;
+- a visually separate Working Candidate tree with Candidate, conflict, quarantine, and Gap counts;
+- explicit Start, Pause, Resume, and Cancel commands plus a durable job/event history.
+
+The Main Agent is described as reconciling the complete sibling result set against source evidence, deterministic Facts, and history. The UI never represents the result as a vote. Raw prompts, model responses, digests, and trace identifiers stay in a technical-details view; the default event stream explains user-relevant progress and blockers.
+
+### Page states and recovery
+
+- **No source / invalid profile:** show the unmet prerequisite and deep-link to its exact F006 section; Start remains disabled.
+- **Running:** allow navigation away while the server job continues; refresh and reconnect restore the same Job without issuing a lifecycle command.
+- **Pause requested / paused / recovering:** preserve the pinned Snapshot and profile revision and explain whether an atomic WorkUnit is draining or a worker lease is being recovered.
+- **Partial failure / completed with gaps:** preserve completed checkpoints, list retryable units and gaps, and state whether publishing is blocked.
+- **Completed but unpublished:** show evaluation and publishing gates plus the non-authoritative Working Candidate; do not redirect it into the governed F002 tree.
+- **Failed / cancelled:** retain history and diagnostics; retry creates or resumes only through an explicit supported command and never overwrites the failed record.
+
+On desktop, Static and Agent lanes can appear side by side beneath the stage track. On mobile they become ordered sections, while the stage track, command state, denominators, blockers, and Candidate authority label remain available.
+
+### Frontend acceptance
+
+- [ ] The first-run and returning-Workspace journeys always expose one valid next action without requiring a Job, Snapshot, or Candidate ID.
+- [ ] The seven persisted phases and the Static/Agent lane denominators are visible independently; no composite understanding score replaces them.
+- [ ] Every active Child slot is shown against the same Batch scope and output contract, and Main reconciliation never appears as majority voting.
+- [ ] Working Candidate content is visually and textually non-authoritative and never appears inside the governed F002 tree.
+- [ ] Refresh, reconnect, navigation, and Workspace switching are GET-only; they neither pause nor cancel a server job.
+- [ ] All non-terminal states, partial failures, configuration blockers, late Workspace responses, and historical Jobs have explicit recoverable UI states.
 
 ## Acceptance criteria
 

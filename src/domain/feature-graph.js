@@ -384,6 +384,13 @@ export function createFeatureGraphProjection(traceability, options = {}) {
   const nodeTypes = requireStringArray(options.nodeTypes, "nodeTypes");
   const relations = requireStringArray(options.relations, "relations");
   const complete = buildCompleteGraph(traceability);
+  if (options.rootNodeId !== undefined && options.rootNodeId !== null) {
+    const rootNodeId = requireNonEmptyString(options.rootNodeId, "rootNodeId");
+    if (!complete.nodes.has(rootNodeId)) {
+      throw new TypeError(`rootNodeId ${rootNodeId} is not present in the governed Feature graph`);
+    }
+    complete.center = rootNodeId;
+  }
   const filtered = viewFilteredGraph(complete, view, nodeTypes, relations);
   const bounded = boundedBreadthFirst(filtered, depth, limit);
   return deepFreeze({

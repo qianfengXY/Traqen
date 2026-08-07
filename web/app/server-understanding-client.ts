@@ -8,7 +8,8 @@ export type ServerUnderstandingJob = {
   baseRevisionId: string | null;
   implementationAuthorId: string;
   runnerId: string;
-  purpose: "PUBLICATION" | "EQUIVALENCE_VERIFICATION";
+  purpose: "PUBLICATION" | "EQUIVALENCE_VERIFICATION" | "HISTORICAL_REANALYSIS";
+  reanalysisOfGraphRevisionId?: string;
   requestedMode: "AUTO" | "FULL" | "INCREMENTAL";
   resolvedMode: "FULL" | "INCREMENTAL";
   phase: string;
@@ -21,6 +22,9 @@ export type ServerUnderstandingJob = {
   createdAt: string;
   updatedAt: string;
   completedAt?: string | null;
+  dataClassification?: string;
+  productionEligible?: boolean;
+  evaluationEvidenceType?: string;
 };
 
 function headers(apiToken: string, json = false) {
@@ -69,6 +73,23 @@ export async function startServerWorkspaceUnderstanding(
       method: "POST",
       headers: headers(apiToken, true),
       body: JSON.stringify(input),
+    },
+  );
+  return json<ServerUnderstandingJob>(response);
+}
+
+export async function startHistoricalRevisionReanalysis(
+  apiBase: string,
+  apiToken: string,
+  workspaceId: string,
+  graphRevisionId: string,
+) {
+  const response = await fetch(
+    `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/graph/revisions/${encodeURIComponent(graphRevisionId)}/reanalysis-jobs`,
+    {
+      method: "POST",
+      headers: headers(apiToken, true),
+      body: JSON.stringify({}),
     },
   );
   return json<ServerUnderstandingJob>(response);

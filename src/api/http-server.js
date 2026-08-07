@@ -373,6 +373,13 @@ export function createTraceabilityHttpHandler({
       }
 
       const workspaceCapabilityConfigMatch = /^\/v1\/workspaces\/([^/]+)\/capability-configs$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceCapabilityConfigMatch) {
+        const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
+        const configs = await application.listWorkspaceCapabilityConfigs(workspaceId);
+        if (!configs) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, { configs }, id);
+        return;
+      }
       if (request.method === "POST" && workspaceCapabilityConfigMatch) {
         requireJson(request);
         const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
@@ -383,6 +390,13 @@ export function createTraceabilityHttpHandler({
       }
 
       const workspaceProfileMatch = /^\/v1\/workspaces\/([^/]+)\/execution-profile-revisions$/.exec(url.pathname);
+      if (request.method === "GET" && workspaceProfileMatch) {
+        const workspaceId = decodePathSegment(workspaceProfileMatch[1]);
+        const profiles = await application.listWorkspaceExecutionProfiles(workspaceId);
+        if (!profiles) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, { profiles }, id);
+        return;
+      }
       if (request.method === "POST" && workspaceProfileMatch) {
         requireJson(request);
         const workspaceId = decodePathSegment(workspaceProfileMatch[1]);
@@ -740,7 +754,10 @@ export function createTraceabilityHttpHandler({
         const featureId = decodePathSegment(featureTraceabilityMatch[2]);
         const snapshotManifestId = url.searchParams.get("snapshotManifestId");
         if (!snapshotManifestId) throw new HttpError(400, "SNAPSHOT_REQUIRED", "snapshotManifestId is required");
-        const traceability = await application.getFeatureTraceability(projectId, featureId, snapshotManifestId);
+        const traceability = await application.getFeatureTraceability(projectId, featureId, snapshotManifestId, {
+          selectedObjectId: url.searchParams.get("selectedObjectId") ?? featureId,
+          graphRevisionId: url.searchParams.get("graphRevisionId"),
+        });
         if (!traceability) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, traceability, id);
         return;
@@ -774,6 +791,8 @@ export function createTraceabilityHttpHandler({
           limit: boundedQueryInteger(url, "limit", 30, 100),
           nodeTypes: repeatedEnumFilter(url, "nodeType"),
           relations: repeatedEnumFilter(url, "relation"),
+          rootNodeId: url.searchParams.get("rootNodeId") ?? featureId,
+          graphRevisionId: url.searchParams.get("graphRevisionId"),
         });
         if (!graph) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, graph, id);
@@ -1238,6 +1257,38 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      const historicalReanalysisMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)\/reanalysis-jobs$/.exec(url.pathname);
+      if (request.method === "POST" && historicalReanalysisMatch) {
+        requireJson(request);
+        const projectId = decodePathSegment(historicalReanalysisMatch[1]);
+        const revisionId = decodePathSegment(historicalReanalysisMatch[2]);
+        const input = await readJson(request, maxBodyBytes);
+        const background = url.searchParams.get("async") !== "false";
+        sendJson(response, background ? 202 : 201, await application.reanalyzeHistoricalGraphRevision(
+          projectId,
+          revisionId,
+          input,
+          { background },
+        ), id);
+        return;
+      }
+
+      const graphEvidenceMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)\/evidence\/(nodes|edges|objects)\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && graphEvidenceMatch) {
+        const projectId = decodePathSegment(graphEvidenceMatch[1]);
+        const revisionId = decodePathSegment(graphEvidenceMatch[2]);
+        const kind = graphEvidenceMatch[3].slice(0, -1);
+        const evidenceId = decodePathSegment(graphEvidenceMatch[4]);
+        sendJson(response, 200, await application.resolveGraphEvidence(projectId, revisionId, kind, evidenceId, {
+          featureId: url.searchParams.get("featureId"),
+          rootNodeId: url.searchParams.get("rootNodeId"),
+          snapshotManifestId: url.searchParams.get("snapshotManifestId"),
+          objectType: url.searchParams.get("objectType"),
+          executionId: url.searchParams.get("executionId"),
+        }), id);
+        return;
+      }
+
       const graphPublishMatch = /^\/v1\/projects\/([^/]+)\/graph\/revisions\/([^/]+)\/publish$/.exec(url.pathname);
       if (request.method === "POST" && graphPublishMatch) {
         requireJson(request);
@@ -1256,7 +1307,10 @@ export function createTraceabilityHttpHandler({
       if (request.method === "GET" && featureHistoryMatch) {
         const projectId = decodePathSegment(featureHistoryMatch[1]);
         const featureId = decodePathSegment(featureHistoryMatch[2]);
-        const history = await application.getFeatureUnderstandingHistory(projectId, featureId);
+        const history = await application.getFeatureUnderstandingHistory(projectId, featureId, {
+          selectedObjectId: url.searchParams.get("selectedObjectId") ?? featureId,
+          graphRevisionId: url.searchParams.get("graphRevisionId"),
+        });
         if (!history) throw new HttpError(404, "FEATURE_NOT_FOUND", "Feature was not found");
         sendJson(response, 200, history, id);
         return;

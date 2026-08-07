@@ -3,7 +3,7 @@
 ---
 feature_ids: [F005]
 related_features: [F001, F002, F003]
-topics: [change-impact, incremental-analysis, revalidation, history]
+topics: [change-impact, incremental-analysis, revalidation, history, frontend, user-journey]
 doc_kind: spec
 created: 2026-07-31
 ---
@@ -34,6 +34,38 @@ F005 消费一次已发布的增量迁移并生成：
 4. 选择影响后展示每一跳的图谱路径与证据。
 5. 用户启动必需 Review/Revalidation，并追踪关闭状态。
 6. 发布更新 Head 后，Feature 历史仍保留该影响记录。
+
+## 前端产品体验
+
+### Published ChangeSet 工作区
+
+一次增量分析发布后，F005 默认打开该 Workspace 最新的 ChangeSet。历史 Revision Pair 选择器是次级入口，用户不能靠手填 Snapshot 或 ChangeSet ID 进入。页面包含：
+
+- `fromGraphRevision → toGraphRevision` 页头，展示 ChangeSet 身份与 Action 关闭摘要；
+- Direct、Transitive、Uncertain、Policy-mandated Impact 筛选，以及 Feature/API/Claim/TestSpec/Data/Configuration/Dependency 类型筛选；
+- 按风险与未解决必需 Action 排序的 Impact 列表；
+- Path/Evidence 检查器，解释每一跳、失效 Mapping 和过期 Verification；
+- 持久 Review/Revalidation Action，展示来源 Impact Path、状态、支持时的 Owner 与关闭历史。
+
+选择受影响对象可以打开其 F002 Governed History 或 F003 Impact Path，但不能改变 Revision Pair。关闭 Action 绝不能删除 Impact；该记录继续保留在 Feature/API 历史中。
+
+### 状态与响应式行为
+
+- **无已发布增量 ChangeSet：** 解释 Workspace 是没有 Head、只有 FULL Baseline，还是存在未发布/失败的增量 Job，并链接到有效 F001 动作。
+- **Unknown 或断裂路径：** 展示 `UNCERTAIN`/Gap 与缺失覆盖，绝不能翻译成 No Impact。
+- **Action Open / Partially Closed / Closed：** 展示分母与每个持久 Action 状态，不能用一个聚合置信分代替。
+- **Historical Pair：** 使用只读横幅，并保留直接返回最新 ChangeSet 的入口。
+- **Workspace 切换：** 加载新 Workspace 最新 Published ChangeSet 前，丢弃旧 Revision Pair、筛选、选择和迟到响应。
+
+桌面端使用 Impact List/Path Detail 多栏；移动端依次展示 Impact 摘要、选中路径与必需 Action，同时保留 Revision Pair 与 Uncertainty 标签。
+
+### 前端验收标准
+
+- [ ] 最新 Published Incremental Result 不需要手工输入 Snapshot、GraphRevision 或 ChangeSet ID 即可打开。
+- [ ] Direct、Transitive、Uncertain 与 Policy-mandated Impact 可以分别筛选和解释。
+- [ ] 每条 Impact Path 解析每一跳，并区分覆盖不完整与已验证 No Impact。
+- [ ] Review/Revalidation Action 持久化、链接回来源 Path，并保留 Open、Partial 与 Closed 历史。
+- [ ] Current/Historical Pair、Workspace 切换、键盘导航与移动端详情都保持正确 Revision 上下文。
 
 ## 验收标准
 
