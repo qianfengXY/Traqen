@@ -10,6 +10,51 @@ function isContainedPath(parent, candidate) {
   return candidate !== parent && candidate.startsWith(`${parent}${path.sep}`);
 }
 
+function emitVerificationEvent(observer, event) {
+  if (typeof observer !== "function") return;
+  try {
+    observer(Object.freeze(event));
+  } catch {
+    // Observability must never change Snapshot integrity decisions.
+  }
+}
+
+function statSignature(metadata) {
+  return [
+    metadata.dev,
+    metadata.ino,
+    metadata.mode,
+    metadata.nlink,
+    metadata.size,
+    metadata.mtimeNs,
+    metadata.ctimeNs,
+  ].join(":");
+}
+
+async function mapWithWorkers(values, limit, mapper) {
+  const results = new Array(values.length);
+  let cursor = 0;
+  let failure = null;
+  const next = async () => {
+    while (!failure) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= values.length) return;
+      try {
+        results[index] = await mapper(values[index], index);
+      } catch (error) {
+        failure = error;
+      }
+    }
+  };
+  await Promise.all(Array.from(
+    { length: Math.min(limit, Math.max(1, values.length)) },
+    next,
+  ));
+  if (failure) throw failure;
+  return results;
+}
+
 function requireSnapshotManifestId(value) {
   if (typeof value !== "string" || value.length === 0 || value === "." || value === ".."
     || value.includes("/") || value.includes("\\") || value.includes("\0")) {
@@ -50,7 +95,7 @@ async function createVerificationContext({ snapshotRoot, snapshotManifestId, inv
   if (!isContainedPath(root, snapshotDirectory)) {
     throw new TypeError("Snapshot directory escaped the configured Snapshot root");
   }
-  const directoryMetadata = await lstat(snapshotDirectory);
+  const directoryMetadata = await lstat(snapshotDirectory, { bigint: true });
   if (!directoryMetadata.isDirectory() || directoryMetadata.isSymbolicLink()) {
     throw new TypeError("Snapshot package must be a non-symlink directory");
   }
@@ -63,7 +108,11 @@ async function createVerificationContext({ snapshotRoot, snapshotManifestId, inv
     throw new TypeError("Snapshot package escaped the configured Snapshot root");
   }
   if (seal !== inventoryId) throw new TypeError("Sealed Snapshot inventory digest marker is invalid");
-  return { snapshotDirectory, realSnapshotDirectory };
+  return {
+    snapshotDirectory,
+    realSnapshotDirectory,
+    snapshotDirectorySignature: statSignature(directoryMetadata),
+  };
 }
 
 async function readVerifiedArtifactPayload(context, artifact) {
@@ -71,7 +120,7 @@ async function readVerifiedArtifactPayload(context, artifact) {
   if (!isContainedPath(context.snapshotDirectory, absolute)) {
     throw new TypeError("Artifact escaped the immutable Snapshot root");
   }
-  const metadata = await lstat(absolute);
+  const metadata = await lstat(absolute, { bigint: true });
   if (!metadata.isFile() || metadata.isSymbolicLink()) {
     throw new TypeError("Artifact must be a non-symlink file");
   }
@@ -80,49 +129,213 @@ async function readVerifiedArtifactPayload(context, artifact) {
     throw new TypeError("Artifact escaped the immutable Snapshot root");
   }
   const content = await readFile(realArtifact);
+  const metadataAfterRead = await lstat(absolute, { bigint: true });
+  if (statSignature(metadataAfterRead) !== statSignature(metadata)) {
+    throw new TypeError("Snapshot Artifact changed during digest verification");
+  }
   const contentDigest = `sha256:${createHash("sha256").update(content).digest("hex")}`;
   if (contentDigest !== artifact.contentDigest) {
     throw new TypeError("Snapshot Artifact digest verification failed");
   }
-  return content;
+  return { content, signature: statSignature(metadataAfterRead) };
 }
 
 export async function readVerifiedLocalSnapshotArtifact({
   snapshotRoot, snapshotManifestId, inventoryId, artifact,
 }) {
   const context = await createVerificationContext({ snapshotRoot, snapshotManifestId, inventoryId });
-  return readVerifiedArtifactPayload(context, artifact);
+  const { content } = await readVerifiedArtifactPayload(context, artifact);
+  return content;
+}
+
+function artifactDirectoryPaths(snapshotDirectory, includedArtifacts) {
+  const directories = new Set();
+  for (const artifact of includedArtifacts) {
+    let relativeDirectory = path.posix.dirname(artifact.relativePath);
+    while (relativeDirectory !== ".") {
+      const absolute = path.resolve(snapshotDirectory, ...relativeDirectory.split("/"));
+      if (!isContainedPath(snapshotDirectory, absolute)) {
+        throw new TypeError("Artifact directory escaped the immutable Snapshot root");
+      }
+      directories.add(absolute);
+      relativeDirectory = path.posix.dirname(relativeDirectory);
+    }
+  }
+  return [...directories].sort();
+}
+
+async function readArtifactStatSignature(context, artifact) {
+  const absolute = path.resolve(context.snapshotDirectory, ...artifact.relativePath.split("/"));
+  if (!isContainedPath(context.snapshotDirectory, absolute)) {
+    throw new TypeError("Artifact escaped the immutable Snapshot root");
+  }
+  const metadata = await lstat(absolute, { bigint: true });
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new TypeError("Artifact must be a non-symlink file");
+  }
+  return statSignature(metadata);
+}
+
+async function readDirectoryStatSignatures(context, includedArtifacts) {
+  const directories = artifactDirectoryPaths(context.snapshotDirectory, includedArtifacts);
+  return mapWithWorkers(directories, 16, async (absolute) => {
+    const metadata = await lstat(absolute, { bigint: true });
+    if (!metadata.isDirectory() || metadata.isSymbolicLink()) {
+      throw new TypeError("Artifact directory must be a non-symlink directory");
+    }
+    return [path.relative(context.snapshotDirectory, absolute), statSignature(metadata)];
+  });
+}
+
+function verificationStateDigest(context, directorySignatures, artifactSignatures, includedArtifacts) {
+  const digest = createHash("sha256");
+  digest.update(`snapshot\0${context.snapshotDirectorySignature}\0`);
+  for (const [relativePath, signature] of directorySignatures) {
+    digest.update(`directory\0${relativePath}\0${signature}\0`);
+  }
+  for (let index = 0; index < includedArtifacts.length; index += 1) {
+    digest.update(`artifact\0${includedArtifacts[index].relativePath}\0${artifactSignatures[index]}\0`);
+  }
+  return `sha256:${digest.digest("hex")}`;
 }
 
 export async function verifyLocalSnapshotArtifactPayloads({
-  snapshotRoot, snapshotManifestId, inventory,
+  snapshotRoot, snapshotManifestId, inventory, verificationObserver = null,
 }) {
   const includedArtifacts = inventory.artifacts.filter(({ disposition }) => disposition === "INCLUDED");
-  const context = await createVerificationContext({
-    snapshotRoot,
+  emitVerificationEvent(verificationObserver, {
+    type: "FULL_PAYLOAD_VERIFICATION_STARTED",
     snapshotManifestId,
     inventoryId: inventory.id,
+    artifactCount: includedArtifacts.length,
   });
-  let cursor = 0;
-  const verifyNext = async () => {
-    while (cursor < includedArtifacts.length) {
-      const artifact = includedArtifacts[cursor];
-      cursor += 1;
-      await readVerifiedArtifactPayload(context, artifact);
-    }
-  };
-  await Promise.all(Array.from(
-    { length: Math.min(8, Math.max(1, includedArtifacts.length)) },
-    verifyNext,
-  ));
+  try {
+    const context = await createVerificationContext({
+      snapshotRoot,
+      snapshotManifestId,
+      inventoryId: inventory.id,
+    });
+    const directorySignatures = await readDirectoryStatSignatures(context, includedArtifacts);
+    const artifactSignatures = await mapWithWorkers(includedArtifacts, 8, async (artifact) => {
+      emitVerificationEvent(verificationObserver, {
+        type: "ARTIFACT_PAYLOAD_READ_STARTED",
+        snapshotManifestId,
+        inventoryId: inventory.id,
+        artifactId: artifact.id,
+        relativePath: artifact.relativePath,
+      });
+      try {
+        const { signature } = await readVerifiedArtifactPayload(context, artifact);
+        return signature;
+      } catch (error) {
+        emitVerificationEvent(verificationObserver, {
+          type: "ARTIFACT_PAYLOAD_READ_FAILED",
+          snapshotManifestId,
+          inventoryId: inventory.id,
+          artifactId: artifact.id,
+          relativePath: artifact.relativePath,
+        });
+        throw error;
+      }
+    });
+    const receipt = Object.freeze({
+      inventoryId: inventory.id,
+      artifactCount: includedArtifacts.length,
+      stateDigest: verificationStateDigest(
+        context,
+        directorySignatures,
+        artifactSignatures,
+        includedArtifacts,
+      ),
+    });
+    emitVerificationEvent(verificationObserver, {
+      type: "FULL_PAYLOAD_VERIFICATION_SUCCEEDED",
+      snapshotManifestId,
+      inventoryId: inventory.id,
+      artifactCount: includedArtifacts.length,
+    });
+    return receipt;
+  } catch (error) {
+    emitVerificationEvent(verificationObserver, {
+      type: "FULL_PAYLOAD_VERIFICATION_FAILED",
+      snapshotManifestId,
+      inventoryId: inventory.id,
+      artifactCount: includedArtifacts.length,
+    });
+    throw error;
+  }
+}
+
+async function validateLocalSnapshotVerificationReceipt({
+  snapshotRoot, snapshotManifestId, inventory, receipt, verificationObserver = null,
+}) {
+  const includedArtifacts = inventory.artifacts.filter(({ disposition }) => disposition === "INCLUDED");
+  emitVerificationEvent(verificationObserver, {
+    type: "VERIFICATION_RECEIPT_VALIDATION_STARTED",
+    snapshotManifestId,
+    inventoryId: inventory.id,
+    artifactCount: includedArtifacts.length,
+  });
+  try {
+    if (receipt.inventoryId !== inventory.id || receipt.artifactCount !== includedArtifacts.length) return false;
+    const context = await createVerificationContext({
+      snapshotRoot,
+      snapshotManifestId,
+      inventoryId: inventory.id,
+    });
+    const [directorySignatures, artifactSignatures] = await Promise.all([
+      readDirectoryStatSignatures(context, includedArtifacts),
+      mapWithWorkers(includedArtifacts, 32, (artifact) => readArtifactStatSignature(context, artifact)),
+    ]);
+    const valid = verificationStateDigest(
+      context,
+      directorySignatures,
+      artifactSignatures,
+      includedArtifacts,
+    ) === receipt.stateDigest;
+    emitVerificationEvent(verificationObserver, {
+      type: valid ? "VERIFICATION_RECEIPT_VALID" : "VERIFICATION_RECEIPT_INVALID",
+      snapshotManifestId,
+      inventoryId: inventory.id,
+      artifactCount: includedArtifacts.length,
+    });
+    return valid;
+  } catch {
+    emitVerificationEvent(verificationObserver, {
+      type: "VERIFICATION_RECEIPT_INVALID",
+      snapshotManifestId,
+      inventoryId: inventory.id,
+      artifactCount: includedArtifacts.length,
+    });
+    return false;
+  }
 }
 
 export class LocalSourceSnapshotCapture {
-  constructor({ allowlistedRoots, snapshotRoot, maxFileBytes = 1024 * 1024, clock = () => new Date() }) {
+  #verificationReceipts = new Map();
+
+  #verificationInFlight = new Map();
+
+  constructor({
+    allowlistedRoots,
+    snapshotRoot,
+    maxFileBytes = 1024 * 1024,
+    clock = () => new Date(),
+    verificationObserver = null,
+    maxVerificationReceipts = 16,
+  }) {
     this.snapshotRoot = path.resolve(snapshotRoot);
     if (this.snapshotRoot === path.parse(this.snapshotRoot).root || this.snapshotRoot === path.resolve(os.homedir())) {
       throw new TypeError("snapshotRoot cannot be the filesystem root or home directory");
     }
+    if (verificationObserver !== null && typeof verificationObserver !== "function") {
+      throw new TypeError("verificationObserver must be a function");
+    }
+    if (!Number.isSafeInteger(maxVerificationReceipts) || maxVerificationReceipts < 1) {
+      throw new TypeError("maxVerificationReceipts must be a positive safe integer");
+    }
+    this.verificationObserver = verificationObserver;
+    this.maxVerificationReceipts = maxVerificationReceipts;
     this.scanner = new ArtifactInventoryScanner({ allowlistedRoots, maxFileBytes, clock });
   }
 
@@ -133,11 +346,7 @@ export class LocalSourceSnapshotCapture {
     const target = snapshotDirectoryFor(this.snapshotRoot, safeSnapshotManifestId);
     const existing = await this.#readSealedInventory(projectId, snapshotManifestId);
     if (existing) {
-      await verifyLocalSnapshotArtifactPayloads({
-        snapshotRoot: this.snapshotRoot,
-        snapshotManifestId,
-        inventory: existing,
-      });
+      await this.#ensureVerifiedPayloads(snapshotManifestId, existing);
       return existing;
     }
     const staging = path.join(this.snapshotRoot, `.staging-${safeSnapshotManifestId}-${randomUUID()}`);
@@ -189,12 +398,47 @@ export class LocalSourceSnapshotCapture {
     if (!existing) {
       throw new TypeError(`Sealed source Snapshot ${snapshotManifestId} is unavailable for historical reanalysis`);
     }
-    await verifyLocalSnapshotArtifactPayloads({
-      snapshotRoot: this.snapshotRoot,
-      snapshotManifestId,
-      inventory: existing,
-    });
+    await this.#ensureVerifiedPayloads(snapshotManifestId, existing);
     return existing;
+  }
+
+  async #ensureVerifiedPayloads(snapshotManifestId, inventory) {
+    const key = `${snapshotManifestId}\0${inventory.id}`;
+    const inFlight = this.#verificationInFlight.get(key);
+    if (inFlight) return inFlight;
+    const verification = (async () => {
+      const receipt = this.#verificationReceipts.get(key);
+      if (receipt && await validateLocalSnapshotVerificationReceipt({
+        snapshotRoot: this.snapshotRoot,
+        snapshotManifestId,
+        inventory,
+        receipt,
+        verificationObserver: this.verificationObserver,
+      })) {
+        this.#verificationReceipts.delete(key);
+        this.#verificationReceipts.set(key, receipt);
+        return;
+      }
+      this.#verificationReceipts.delete(key);
+      const nextReceipt = await verifyLocalSnapshotArtifactPayloads({
+        snapshotRoot: this.snapshotRoot,
+        snapshotManifestId,
+        inventory,
+        verificationObserver: this.verificationObserver,
+      });
+      this.#verificationReceipts.set(key, nextReceipt);
+      while (this.#verificationReceipts.size > this.maxVerificationReceipts) {
+        this.#verificationReceipts.delete(this.#verificationReceipts.keys().next().value);
+      }
+    })();
+    this.#verificationInFlight.set(key, verification);
+    try {
+      await verification;
+    } finally {
+      if (this.#verificationInFlight.get(key) === verification) {
+        this.#verificationInFlight.delete(key);
+      }
+    }
   }
 
   async #readSealedInventory(projectId, snapshotManifestId) {

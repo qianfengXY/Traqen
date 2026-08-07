@@ -164,6 +164,83 @@ test("sealed Snapshot loading verifies inventory, metadata files, and payloads",
   );
 });
 
+test("sealed Snapshot verification coalesces concurrent reads, reuses receipts, and stops workers after drift", async () => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-verification-receipt-"));
+  const source = path.join(temporary, "source");
+  const snapshots = path.join(temporary, "snapshots");
+  await mkdir(source);
+  await mkdir(snapshots);
+  const artifactCount = 512;
+  const originalPayload = "export const immutablePayload = true;\n";
+  await Promise.all(Array.from({ length: artifactCount }, (_, index) => writeFile(
+    path.join(source, `artifact-${String(index).padStart(4, "0")}.js`),
+    originalPayload,
+  )));
+  const writer = new LocalSourceSnapshotCapture({ allowlistedRoots: [source], snapshotRoot: snapshots });
+  const inventory = await writer.capture({
+    projectId: "P",
+    snapshotManifestId: "RECEIPT",
+    rootPath: source,
+  });
+  const verificationEvents = [];
+  const reader = new LocalSourceSnapshotCapture({
+    allowlistedRoots: [source],
+    snapshotRoot: snapshots,
+    verificationObserver: (event) => verificationEvents.push(event),
+  });
+
+  const firstBatch = await Promise.all(Array.from({ length: 3 }, () => reader.loadExisting({
+    projectId: "P",
+    snapshotManifestId: "RECEIPT",
+  })));
+  assert.deepEqual(firstBatch, [inventory, inventory, inventory]);
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "FULL_PAYLOAD_VERIFICATION_STARTED").length,
+    1,
+  );
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length,
+    artifactCount,
+  );
+
+  await reader.loadExisting({ projectId: "P", snapshotManifestId: "RECEIPT" });
+  await reader.loadExisting({ projectId: "P", snapshotManifestId: "RECEIPT" });
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "FULL_PAYLOAD_VERIFICATION_STARTED").length,
+    1,
+  );
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length,
+    artifactCount,
+  );
+
+  const firstPayload = path.join(snapshots, "RECEIPT", "artifact-0000.js");
+  await chmod(firstPayload, 0o640);
+  await writeFile(firstPayload, "export const immutablePayload = null;\n");
+  await chmod(firstPayload, 0o440);
+  await assert.rejects(
+    reader.loadExisting({ projectId: "P", snapshotManifestId: "RECEIPT" }),
+    /digest verification failed/,
+  );
+  assert.equal(
+    verificationEvents.filter(({ type }) => type === "FULL_PAYLOAD_VERIFICATION_STARTED").length,
+    2,
+  );
+  const readsAfterDrift = verificationEvents
+    .filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length - artifactCount;
+  assert.ok(
+    readsAfterDrift >= 1 && readsAfterDrift < artifactCount,
+    `expected workers to stop before scanning all artifacts, got ${readsAfterDrift}`,
+  );
+  const firstFailureIndex = verificationEvents.findIndex(({ type }) => type === "ARTIFACT_PAYLOAD_READ_FAILED");
+  assert.notEqual(firstFailureIndex, -1);
+  assert.equal(
+    verificationEvents.slice(firstFailureIndex + 1)
+      .filter(({ type }) => type === "ARTIFACT_PAYLOAD_READ_STARTED").length,
+    0,
+  );
+});
+
 test("Snapshot manifest IDs cannot escape or create nested paths under the Snapshot root", async () => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-source-snapshot-id-fence-"));
   const source = path.join(temporary, "source");
