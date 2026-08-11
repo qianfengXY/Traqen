@@ -247,13 +247,15 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-021 | Derive a deterministic complete UnderstandingPlan from Snapshot/ArtifactInventory with stable partitions, `unassignedCount=0`, and a bounded dynamic WorkUnit dependency DAG that scales beyond one prompt or fixed child count. |
 | SR-022 | Persist a version-pinned AnalysisRouteDecision for every WorkUnit using verified model capability/calibration profiles, signed Skill contracts, and deployment data boundaries; missing capability must fail closed as `NO_ELIGIBLE_PRODUCER`. |
 | SR-023 | Send each bounded AnalysisBatch to every configured independent Child Agent, allow batches and siblings to run concurrently, and require the Main Agent to reconcile the complete terminal sibling set against static Facts while preserving conflict instead of using correlated agreement or majority count as truth. |
+| SR-024 | Execute `SOURCE_SCAN`, `FACT_COMMIT`, `ANALYSIS`, `RECONCILIATION`, `EVALUATION`, `PROJECTION`, and `PUBLISHING` as a durable dependency DAG: fork Static and Agent lanes after immutable Snapshot/Inventory sealing, join terminal inputs per scope partition, and expose multiple active nodes instead of one authoritative phase cursor. |
+| SR-025 | Render every user-visible label, command, status, error, progress field, empty/loading state, notification, dialog, and accessibility string coherently in the selected language. Chinese keeps only controlled standard abbreviations, brands, model names, and `Agent`; backend codes remain canonical and are never raw primary UI copy. |
 
 ## 9. Primary user journeys
 
 ### 9.1 Understand an existing repository
 
 1. The operator registers a source and starts an analysis.
-2. Traqen shows inventory coverage, supported/unsupported areas, and durable phase progress.
+2. Traqen shows inventory coverage, supported/unsupported areas, and durable DAG progress with independently active Static and Agent lanes.
 3. Deterministic Facts and independent Candidates become inspectable with source links.
 4. Conflicts, suspected duplicates, missing relations, and low-evidence areas remain visible.
 5. The operator reviews Candidates and creates governed Features/Claims only through Decisions.
@@ -388,6 +390,7 @@ This document is the system requirements source. It does not replace:
 
 - `traqen-product-architecture.md`, which provides the current product architecture and implementation gap map;
 - ADR-0001, which governs the canonical ontology and authority boundaries;
+- ADR-0003, which governs the F001 fork-join execution DAG and reconciliation barriers;
 - active `F001`–`F006` documents, which define Feature acceptance;
 - the current implementation plan and detailed lifecycle design.
 
@@ -396,4 +399,4 @@ Superseded designs and historical validations are removed from the working tree.
 
 ## 15. Acceptance status
 
-This specification is **proposed**. Design Gate approval establishes the mission, correctness contract, F001 priority, and Traqen-on-Traqen release gate. It does not claim the current implementation already satisfies them.
+This specification is **proposed**. Design Gate approval establishes the mission, correctness contract, F001 priority, and Traqen-on-Traqen release gate. The operator accepted SR-024's execution DAG and SR-025's bilingual display contract on 2026-08-11; that decision does not claim the current implementation already satisfies them.

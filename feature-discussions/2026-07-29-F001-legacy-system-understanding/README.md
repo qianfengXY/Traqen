@@ -103,11 +103,47 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 - retained the contract-gated delivery order in the product architecture and active Codex plan;
 - retained Kimi's independently confirmed product boundaries without importing invalid or stale artifacts.
 
+## 2026-08-11 execution-DAG and language convergence
+
+### Operator decisions
+
+> “七阶段需从线性状态机改为执行 DAG，然后中文术语白名单是采用‘尽量中文，仅保留标准缩写、品牌、模型名和 Agent’。”
+
+The operator confirmed both decisions after the initial independent proposals. GPT then read Kimi's full public thread response and routed the remaining differences back to Kimi. Kimi explicitly accepted both execution semantics and supplied failure-mode checks. This section records an actual two-way validation, not parallel-answer inference.
+
+### Resolved design differences
+
+| Topic | Initially competing interpretations | Validated decision |
+|---|---|---|
+| Seven stages | retain one authoritative phase cursor; or draw parallel lanes over it | seven durable activities form a real execution DAG represented by `phaseStates`, `activePhases`, `laneProgress`, and `joinGates`; one `phase` is not scheduler authority |
+| Fork point | wait for whole `SOURCE_SCAN` or final FactBundle | the internal `snapshotInventorySeal` checkpoint seals immutable source and the complete inventory, immediately unlocking `ANALYSIS` while Static extraction continues toward `FACT_COMMIT` |
+| Static authority | call deterministic observations and semantic Candidates one pool | preserve `DeterministicObservationPool → StaticCandidateProjection`; the projection matches the Candidate envelope without converting inference into Fact |
+| Missing facets | optional fields or `null` | all six facet arrays are required and empty without evidence; a separate coverage state distinguishes found, no evidence, not yet analyzed, unsupported, and failed |
+| Real-time reconciliation | merge each arrival; or wait for the whole repository | Main may observe pools in real time, but only a complete `scopePartitionId` barrier commits a working-tree checkpoint; unrelated partitions continue concurrently |
+| Cross-partition identity | treat each local checkpoint as final | cross-partition/module/project synthesis consumes lower-level checkpoints, later relation evidence, and the terminal FactBundle through append-only deltas before global evaluation |
+| Missing/slow Child | wait indefinitely or ignore the slot | close with an explicit terminal Gap such as `NO_ELIGIBLE_PRODUCER`, timeout, budget Gap, or policy refusal; absence never counts as agreement |
+| Interaction history | sample or expire event data to control size | keep append-only structured events durable by default; store large protected bodies content-addressably, record explicit redaction, and never store private reasoning |
+| Chinese product terminology | mix familiar English product words ad hoc | use natural Chinese throughout, retaining only controlled standard abbreviations, brands, model names, and `Agent`; English mode is fully English |
+
+### UI authority and failure-mode checks
+
+- An unreconciled pool is a labelled technical observation view, not the working Feature/API tree.
+- A committed partition checkpoint is locally valid but provisional for repository-wide identity.
+- Cross-file relations discovered later produce append-only reconciliation deltas rather than rewriting old checkpoints.
+- Partition granularity follows the deterministic UnderstandingPlan and cannot collapse to line-level checkpoint explosion.
+- Global `EVALUATION` waits for the terminal FactBundle and every required partition and synthesis gate.
+
+### Actions
+
+- ADR-0003 records the accepted fork-join DAG and rejected serial alternatives.
+- F001 lifecycle, Feature, product architecture, system requirements, and ADR-0001 now distinguish authority order from execution order.
+- The product architecture now owns the global bilingual display contract; this discussion does not claim that backend, frontend, or schemas are already implemented.
+
 ## Convergence checks
 
-1. Rejected alternatives → ADR? **Yes — recorded in ADR-0002.**
-2. Reusable operational lesson → public lessons? **No separate lesson; the current Web build's Markdown import compatibility dependency is recorded in the documentation index and migration plan.**
-3. New repository-wide operating rule → instruction file? **No; Feature truth and baseline-removal rules are already recorded in the roadmap and documentation index.**
+1. Rejected alternatives → ADR? **Yes — Workspace alternatives are in ADR-0002; serial execution, final-Fact blocking, optimistic reconciliation, and collapsed Fact/Candidate authority are in ADR-0003.**
+2. Reusable operational lesson → public lessons? **No separate lesson. The new material is a product architecture decision and is retained in ADR-0003 plus F001 acceptance contracts.**
+3. New repository-wide operating rule → instruction file? **No. Bilingual display is a Traqen product contract, not a repository contributor rule, and belongs in product architecture and Feature acceptance.**
 
 ## Design Gate items
 
@@ -119,3 +155,5 @@ The first F001 draft made browser-independent scanning the Feature goal. The ope
 - approve first-FULL/later-INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature/Impact history semantics.
 - approve complete Snapshot-derived Agent planning, same-batch Child execution, and evidence-based Main reconciliation.
 - approve Workspace-rooted module rebinding and Workspace-only runtime capability isolation.
+- **accepted 2026-08-11:** replace the linear seven-stage cursor with the fork-join execution DAG and partition/synthesis barriers.
+- **accepted 2026-08-11:** use coherent English or Chinese product copy; Chinese retains only controlled standard abbreviations, brands, model names, and `Agent`.

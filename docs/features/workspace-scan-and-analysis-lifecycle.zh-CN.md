@@ -24,12 +24,12 @@ priority: P0
 
 > “我说的是扫描阶段，扫描文件这一步。另外将扫描文件与分析 Agent 这一步的逻辑单独列为一个需求，作为重点需求推进。”
 
-本需求把 Workspace 分析明确拆成两个独立、可追踪的执行阶段：
+本需求把 Workspace 分析明确拆成分叉—汇合 DAG 下两个独立、可追踪的执行通道：
 
-1. **SourceScanRun**：在服务端建立不可变源码快照，逐文件提取确定性事实并生成 `FactBundle`。
-2. **AnalysisRun**：从完整 `SourceSnapshot` 与 `ArtifactInventory` 规划有界 Agent/Skill `WorkUnit`，直接读取经授权 SourceSlice，并可把确定性 Facts 作为独立参考，生成 Candidate 投影。
+1. **SourceScanRun**：发现并密封不可变源码快照与完整 `ArtifactInventory`，随后继续逐文件提取确定性观察、解析跨文件关系，并生成 `FactBundle` 与 `StaticCandidateProjection`。
+2. **AnalysisRun**：在不可变 Snapshot 与 Inventory 密封后立即启动，从二者规划有界 Agent/Skill `WorkUnit`，直接读取经授权 SourceSlice，并可把版本固定的 Fact 检查点作为独立增强，为每个子 Agent 生成独立 Candidate Pool。
 
-父 Job 随后持有对账、评估、图谱投影和发布。后续编排阶段不会把 SourceScanRun 与 AnalysisRun 合并成同一套检查点。
+父 Job 随后按分区汇合两条通道，并持有对账、评估、图谱投影和发布。后续编排节点既不会把 SourceScanRun 与 AnalysisRun 合并成同一套检查点，也不会强加串行的 `FACT_COMMIT → ANALYSIS` 依赖。
 
 二者由一个用户可见的 **WorkspaceAnalysisJob** 串联。浏览器不拥有任何执行器，只负责：
 
@@ -60,18 +60,20 @@ User
   │ Start / Pause / Resume / Cancel
   ▼
 WorkspaceAnalysisJob                         ← 用户看到的唯一任务
-  │
-  ├─ SourceRegistration                      ← 经过授权的源码位置
-  │    └─ SourceSnapshot                     ← 本次任务固定的不可变输入
-  │         └─ SourceScanRun                  ← 服务端逐文件扫描
-  │              └─ FactBundle               ← Snapshot-bound Facts
-  │
-  └─ AnalysisRun                             ← 服务端 Agent/Skill WorkUnits
-       └─ CandidateBundles
-            └─ CandidateReconciliation
-                 └─ EvaluationRun
-                      └─ GraphRevision 投影
-                           └─ 原子发布 → CurrentGraphHead
+  └─ SourceRegistration
+       └─ SourceSnapshot + ArtifactInventory 密封
+                    │
+          ┌─────────┴─────────┐
+          ▼                   ▼
+     SourceScanRun        AnalysisRun
+       ├─ FactBundle        ├─ 子 Agent A CandidatePool
+       └─ StaticCandidate   ├─ 子 Agent B CandidatePool
+          Projection        └─ 子 Agent N CandidatePool
+          └─────────┬─────────┘
+                    ▼
+                 分区对账屏障
+                    ▼
+ EvaluationRun → GraphRevision → 原子发布 → CurrentGraphHead
 
 BrowserSubscription                          ← 非权威只读指针
 ```
@@ -80,7 +82,7 @@ BrowserSubscription                          ← 非权威只读指针
 
 - 点击 Start 后，API 先持久化任务 ID，再异步执行。
 - SourceScanRun 与 AnalysisRun 都由服务端 worker 持有。
-- SourceScanRun 和 AnalysisRun 分别拥有自己的检查点、进度和失败语义。
+- SourceScanRun 和 AnalysisRun 分别拥有自己的检查点、进度和失败语义，并在不可变分叉点后允许同时运行。
 - WorkspaceAnalysisJob 使用同一个 ID 串联两个阶段。
 - 只有用户命令能够进入人工暂停状态。
 - 服务崩溃或进程重启后，非人工暂停任务从最后一个已提交检查点重新租约执行。
@@ -113,7 +115,7 @@ Traqen 故意把观察、解释、对账、治理和发布分成不同权威层�
 1. **授权并固定输入。** `SourceRegistration` 证明 Runner 可以读取该根目录；文件进入 content-addressed Snapshot spool，并固定相对路径、内容 Hash、大小、媒体类型、语言以及 scanner/policy 版本。运行期间发生的源码变化属于下一个 Snapshot。
 2. **密封完整清单。** 范围内每个 Artifact 都有明确处置：`INCLUDED`、`EXCLUDED_BY_POLICY`、`UNSUPPORTED`、`GENERATED`、`BINARY`、`OVERSIZED`、`SECRET_REDACTED` 或 `READ_FAILED`。Manifest 密封前分母未知；密封后，覆盖率按完整 Inventory 计算，不能只统计成功解析的文件。
 3. **执行版本化确定性 Extractor。** 代码生成 Module、Symbol、Import、Call、Endpoint、Job、Command；Schema 和迁移生成 DataObject 与 Read/Write；配置生成 Key 与 Consumer 但不保存真实秘密；文档生成可定位的需求/设计段落；测试生成 Case、Assertion、Fixture 与实现关系；结果文件生成执行身份和元数据。
-4. **解析跨文件关系并提交。** Resolver 把 Route 关联 Handler、Call 关联 Symbol、Test 关联实现、Configuration 关联 Consumer、代码关联数据对象。`SnapshotManifest + FactBundle` 原子提交。每个 Fact 保留 Workspace、Snapshot、源码区间/内容 Hash、Extractor 身份与版本、稳定实体身份和 Snapshot 内不可变 Fact 身份。
+4. **解析跨文件关系并提交。** Resolver 把 Route 关联 Handler、Call 关联 Symbol、Test 关联实现、Configuration 关联 Consumer、代码关联数据对象。`SourceSnapshot + ArtifactInventory` 在分叉前原子密封；最终 `FactBundle` 随后作为静态通道的独立不可变输出提交。每个 Fact 保留 Workspace、Snapshot、源码区间/内容 Hash、Extractor 身份与版本、稳定实体身份和 Snapshot 内不可变 Fact 身份。
 
 例如确定性层可能产生：
 
@@ -227,6 +229,8 @@ DAG 分层运行：
 6. **检查点与投影：** 只有校验通过的对账结果才能更新 Feature/API working tree。子 Agent 原始输出和未约束的主 Agent 文字不能直接修改 working tree；冲突、被拒证据和 Unknown 必须保留在账本。
 7. **层级接续：** 校验后的叶子批次解锁文件/Module 批次，再解锁跨 Module、矛盾、缺失关系和工程汇总批次；每层都重复相同 roster 分发与对账协议。
 
+基础 `scopePartitionId` 遵循稳定理解计划的局部性，不是仓库级身份的最终边界。跨分区和项目汇总批次依赖所需的下层对账检查点及后续静态关系检查点，最终汇总还依赖终态 `FactBundle`。局部检查点之后才发现的跨文件证据产生追加式对账增量。必需子 Agent 槽位必须以成功、`NO_ELIGIBLE_PRODUCER`、超时、预算缺口或策略拒绝显式关闭；门禁既不能把缺失算作一致，也不能无限等待。
+
 ```ts
 type AnalysisBatch = {
   id: string;
@@ -330,6 +334,24 @@ Router 持久化 `AnalysisRouteDecision`，记录 Workspace Profile Revision、A
 
 输出是结构化 `CandidateBundle`，不是自由文本总结：
 
+静态分析保留 `DeterministicObservationPool → StaticCandidateProjection` 两层；每个子 Agent 分别拥有一个 `ChildCandidatePool`。它们使用相同的六维封装，但不能假装不同 Producer 拥有相同的认知权威：
+
+```ts
+type CandidateFeatureFacets = {
+  business: CandidateObservation[];
+  design: CandidateObservation[];
+  code: CandidateObservation[];
+  testCases: CandidateObservation[];
+  testResults: CandidateObservation[];
+  configuration: CandidateObservation[];
+};
+
+type FacetCoverage =
+  | "FOUND" | "NO_EVIDENCE" | "NOT_YET_ANALYZED" | "UNSUPPORTED" | "FAILED";
+```
+
+六个数组全部必填；没有证据时保持为空。覆盖状态负责区分“没有证据”“尚未分析”“不支持”与“失败”。候选本身必须至少包含一条合法证据；没有证据的断言是 Gap。测试文件只是测试用例线索，不能成为测试结果；`testResults` 只接受已捕获的结果 Artifact 或执行 Evidence。静态侧的业务与设计维度没有明确源码证据时必须为空。
+
 ```text
 CandidateFeature: “提交订单”
 CandidateClaim: “只有 DRAFT 订单可以提交”
@@ -341,7 +363,7 @@ CandidateTestIntent:
   order-submit.test.js 可能覆盖“只有 DRAFT 订单可以提交”
 ```
 
-每个 Candidate 携带原始 SourceSlice 和/或 Fact 证据、Snapshot/WorkUnit、Producer/模型/Skill 版本、Route/Calibration Provenance、分维度置信度、确定性置信度上限、不确定性和替代解释。确定性 Validator 拒绝越过 WorkUnit、跨 Workspace/Snapshot、缺失、重复或伪造的证据；剥离模型擅自填写的治理 ID/字段；并把置信度限制在证据允许的上限内。
+每个 Candidate 携带候选池与 Producer 类别、原始 SourceSlice 和/或 Fact 证据、Snapshot/WorkUnit、Producer/模型/Skill 版本、Route/Calibration Provenance、分维度置信度、确定性置信度上限、不确定性和替代解释。确定性 Validator 拒绝越过 WorkUnit、跨 Workspace/Snapshot、缺失、重复或伪造的证据；剥离模型擅自填写的治理 ID/字段；并把置信度限制在证据允许的上限内。
 
 ### 3.4 对账算法：保留身份不确定性
 
@@ -408,7 +430,7 @@ F001 仍需完成：服务端权威 Workspace 聚合与切换上下文、不可�
 3. 用户选择模型配置并点击“开始分析”。
 4. API 返回 `202 Accepted` 和稳定的 `jobId`；页面立即展示服务端任务状态。
 5. 服务端建立源码快照并执行 SourceScanRun。
-6. 扫描完成后，服务端基于 FactBundle 创建 AnalysisRun。
+6. Snapshot/Inventory 密封后，观察静态提取与 AnalysisRun 同时推进，并随后进入分区对账屏障。
 7. 项目首次运行时评估并发布 FULL GraphRevision；后续 Snapshot 评估 INCREMENTAL Revision，只有通过后才原子移动 CurrentGraphHead。
 
 ### 4.2 刷新、关闭和重新打开
@@ -573,7 +595,7 @@ hash(sourceSnapshotId + relativePath + contentHash + scannerVersion + policyVers
 
 ### 5.6 AnalysisRun
 
-继续复用 canonical `AnalysisRun`，但只能在 SourceScanRun 已产生同一 Snapshot 的完整 FactBundle 后启动。
+继续复用 canonical `AnalysisRun`。同一 Workspace 的完整 `SourceSnapshot` 与 `ArtifactInventory` 一经密封即可启动，不等待最终 FactBundle。使用 Scanner 增强的 WorkUnit 必须把已提交的 `factCheckpointId` 固定进 Input Digest；缺少该检查点不能把任何源码 Artifact 排除出 Agent 计划。
 
 Analysis WorkUnit 的证据仍必须满足：
 
@@ -610,14 +632,16 @@ type WorkspaceAnalysisJob = {
     | "COMPLETED_WITH_GAPS"
     | "FAILED"
     | "CANCELLED";
-  phase:
-    | "SOURCE_SCAN"
-    | "FACT_COMMIT"
-    | "ANALYSIS"
-    | "RECONCILIATION"
-    | "EVALUATION"
-    | "PROJECTION"
-    | "PUBLISHING";
+  phaseStates: Record<WorkspaceAnalysisPhase, {
+    status: "BLOCKED" | "READY" | "RUNNING" | "PAUSED" | "COMPLETED"
+      | "COMPLETED_WITH_GAPS" | "FAILED" | "CANCELLED";
+    outputRef: string | null;
+    updatedAt: string;
+  }>;
+  activePhases: WorkspaceAnalysisPhase[];
+  completedPhases: WorkspaceAnalysisPhase[]; // 派生兼容视图
+  laneProgress: WorkspaceAnalysisLaneProgress;
+  joinGates: ReconciliationJoinGate[];
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -655,30 +679,32 @@ subscription 不保存权威 `RUNNING`、扫描检查点、Fact 或 Candidate。
 | 非终态 | 显式 Cancel | `CANCELLED` | 保留历史检查点，不自动恢复 |
 | 任意 | 浏览器刷新/断网/GET | 不变 | 无生命周期副作用 |
 
-### 6.2 阶段切换
+### 6.2 DAG 依赖切换
 
-| 当前阶段 | 已提交事件 | 后续阶段或状态 |
+| DAG 节点或门禁 | 已提交事件 | 解锁节点 |
 |---|---|---|
-| `SOURCE_SCAN` | 所有扫描 WorkUnit 完成 | `FACT_COMMIT` |
-| `FACT_COMMIT` | SnapshotManifest 与 FactBundle 已提交 | `ANALYSIS` |
-| `ANALYSIS` | 所有必需 CandidateBundle 已提交 | `RECONCILIATION` |
-| `RECONCILIATION` | CandidateGraph、ConflictLedger、CoverageLedger 与 lineage 已提交 | `EVALUATION` |
+| `SOURCE_SCAN` 捕获 | `SourceSnapshot` 与完整 `ArtifactInventory` 已密封 | 静态提取继续，`ANALYSIS` 同时启动 |
+| 静态分区 | 确定性观察与静态 Candidate Projection 终态 | 对应分区的对账门禁记录静态侧就绪 |
+| Agent 分区 | 每个必需子 Agent Candidate Pool 终态且已校验 | 对应分区的对账门禁记录 Agent 侧就绪 |
+| 分区 Join Gate | 静态就绪 + Agent 就绪 + 证据校验完成 | 其他分区仍运行时，`RECONCILIATION` 可以提交该分区 |
+| 依赖汇总门禁 | 所需下层检查点 + 相关静态关系检查点终态 | 跨分区/模块/项目对账追加增量 |
+| 全局 `RECONCILIATION` | 所有分区与汇总门禁终态、最终 FactBundle 已提交、`unassignedCount=0`、CandidateGraph 与账本已提交 | `EVALUATION` |
 | `EVALUATION` | EvaluationRun 通过 | `PROJECTION` |
 | `EVALUATION` | EvaluationRun 拒绝本次 Revision | 以 gap/failure 终止；保留旧 `CurrentGraphHead` |
 | `PROJECTION` | 不可变 GraphRevision 已物化 | `PUBLISHING` |
 | `PUBLISHING` | GraphRevision 变为 `PUBLISHED` 且 CurrentGraphHead 原子移动 | `COMPLETED` / `COMPLETED_WITH_GAPS` |
 
-这些阶段是 F001 的权威执行流水线。阶段切换必须和输出引用在同一个事务中提交：FactBundle 未提交不能进入 Analysis，对账账本未提交不能进入 Evaluation，GraphRevision 未形成明确的 published/rejected 结果不能完成 Job。
+这七个名称是持久 DAG 节点，不是单一线性游标。`SOURCE_SCAN`、`ANALYSIS` 与分区级 `RECONCILIATION` 可以同时处于活动状态。每个节点切换必须和输出引用在同一个事务中提交：不可变 Snapshot 与 Inventory 未密封不能启动 Agent，所有对账门禁与账本未终态不能进入 Evaluation，GraphRevision 未形成明确的 published/rejected 结果不能完成 Job。
 
 ## 7. 扫描检查点设计
 
 SourceScanRun 分五步执行：
 
 1. **DISCOVERY**：遍历 allowlisted root，建立有序文件清单。
-2. **SNAPSHOTTING**：读取文件并写入 content-addressed 本地 spool，固定 content hash。
+2. **SNAPSHOTTING**：读取文件并写入 content-addressed 本地 spool，固定 content hash，随后原子密封 `SourceSnapshot + ArtifactInventory`；这是解锁 `ANALYSIS` 的分叉点。
 3. **EXTRACTION**：对每个不可变 blob 提取 Artifact、Symbol、Endpoint、Configuration、Test Asset 等 Facts。
 4. **RELATION_RESOLUTION**：跨文件解析 import/call/test linkage。
-5. **FACT_COMMIT**：原子写入 SnapshotManifest 和 FactBundle。
+5. **FACT_COMMIT**：针对已密封 Snapshot 原子写入最终静态 `FactBundle`、覆盖输出与 `StaticCandidateProjection`。
 
 检查点要求：
 
@@ -688,6 +714,20 @@ SourceScanRun 分五步执行：
 - `RUNNING` 状态必须有有效 worker lease；租约过期进入 `RECOVERING`。
 - 扫描失败分为 `SKIPPED`、可重试 `FAILED` 和致命根目录错误。
 - 文件总数在 manifest seal 前显示为不确定；seal 后显示准确分母。
+
+### 7.1 静态分析进度合同
+
+静态进度来自服务端已提交检查点，不能由前端估算：
+
+| 扫描子阶段 | 权威分母 | 用户看到的进度 |
+|---|---|---|
+| `DISCOVERY` | 有序发现结束前未知 | 已发现资产数与“正在确定总数”；不显示百分比或预计完成时间 |
+| `SNAPSHOTTING` | 已发现文件数 | 已完成不可变内容块 / 已发现文件；读取失败与策略处置仍保留 |
+| `EXTRACTION` | 清单密封后已规划的提取工作单元 | 已完成 / 已规划，可按语言与资产类型展开；可选的近期处理速率只作说明 |
+| `RELATION_RESOLUTION` | 已规划的关系解析工作单元 | 已完成 / 已规划，可按导入、调用、API→处理器、测试→代码、配置→使用方等关系类型展开 |
+| `FACT_COMMIT` | 已规划的原子静态检查点 | 已提交 / 已规划，同时展示接受/拒绝观察数；候选与事实总数是产出指标，不能充当进度分母 |
+
+每份进度数据包含 `denominatorFinal`、完成/运行/失败/缺口计数、当前检查点与各类处置总数。只有 `denominatorFinal=true` 时页面才能显示百分比，前端不能编造预计完成时间。技术详情可以按源码策略与脱敏要求显示安全相对路径。纳入、排除、不支持、生成、二进制、过大、秘密脱敏和读取失败必须分别可见，合计等于已密封清单分母。
 
 ## 8. 扫描器能力等价门禁
 
@@ -719,7 +759,7 @@ SourceScanRun 分五步执行：
 
 ## 9. Analysis Agent 接续设计
 
-- SourceScanRun 完成后，job 使用固定 `sourceSnapshotId` 和 `factBundleId` 创建 AnalysisRun。
+- Snapshot 与完整 Inventory 密封后，job 使用固定 `sourceSnapshotId` 创建 AnalysisRun；任何 Fact 增强都固定到不可变 `factCheckpointId`，最终对账还会消费终态 FactBundle。
 - AnalysisRun 同时固定到一份不可变 WorkspaceExecutionProfileRevision；Resume 不能静默选择更新的全局或 Workspace 配置。
 - Pause 在子 Agent 或主 Agent 模型请求进行中时可以中止当前请求，但该 WorkUnit 必须回到 `QUEUED`，且不得误记为已完成。
 - 同一 Input Digest 下已成功提交的 ChildWorkUnit 结果或主 Agent 对账检查点永不重复执行。
@@ -797,7 +837,7 @@ Start 请求只引用 `sourceRegistrationId`、不可变 Workspace 执行配置�
 
 Job 查询返回：
 
-- job status、phase 和 desiredState
+- job status、phaseStates、activePhases、joinGates 和 desiredState
 - SourceScanRun 文件计数
 - AnalysisRun WorkUnit 计数
 - Snapshot/FactBundle/AnalysisRun 引用
@@ -809,48 +849,48 @@ Job 查询返回：
 任务卡同时展示两个独立阶段：
 
 ```text
-Workspace analysis · JOB-123                     [RUNNING]
+工作空间分析 · JOB-123                           [运行中]
 
-1. Source scan
-   Snapshot sealed · 5,240 / 12,480 files · 42%
+静态分析通道                      Agent 分析通道
+源码快照已密封                    2 个子 Agent 运行中
+5,240 / 12,480 个提取单元         180 / 420 个工作单元终态
+事实提交：待处理                  对账：24 个分区已就绪
 
-2. Analysis Agent
-   Waiting for FactBundle · 0 / 0 WorkUnits
-
-Connection: reconnecting…
-[Pause] [Cancel]
+连接：正在重新连接……
+[暂停] [取消]
 ```
 
 UI 规则：
 
-- Connection 与 Job status 分开展示。
+- 连接状态与任务状态分开展示。
 - 刷新后先显示“正在重新连接”，不得显示“任务终止”或“已暂停”。
 - 只根据服务端响应显示 `RUNNING/PAUSED/COMPLETED`。
 - `PAUSE_REQUESTED` 期间禁用重复 Pause，显示“正在保存检查点”。
 - `PAUSED` 时仅用户点击 Resume 才能继续。
 - 页面 mount、refresh 和 polling 路径必须是 GET-only。
+- 静态进度只能使用服务端检查点分母；候选/事实数量不能提高进度百分比。
 
 ## 14. 错误与恢复矩阵
 
 | 故障 | Job 行为 | 用户看到 |
 |---|---|---|
 | 浏览器刷新/关闭 | 不变，服务端继续 | 重新连接后恢复同一 job |
-| 浏览器断网 | 不变，服务端继续 | Connection=OFFLINE |
-| API 暂时不可达 | 状态未知但不改为失败 | RECONNECTING |
-| worker 崩溃 | lease 过期后自动恢复 | RECOVERING → RUNNING |
+| 浏览器断网 | 不变，服务端继续 | 连接已断开 |
+| API 暂时不可达 | 状态未知但不改为失败 | 正在重新连接 |
+| worker 崩溃 | lease 过期后自动恢复 | 正在恢复 → 运行中 |
 | API 进程重启 | 持久 job 重新租约 | 同一 job 从检查点继续 |
 | 源目录权限失效 | 扫描暂停或失败，保留检查点 | 明确授权错误 |
 | 单文件无法读取 | 按策略 gap 或失败 | 文件级 diagnostics |
 | 源文件运行中变化 | 当前 Snapshot 不变 | 下次运行提示有新 Snapshot |
 | 模型超时 | 当前 WorkUnit 重试 | 已完成单元保持 |
-| 人工 Pause | 保存边界后暂停 | PAUSE_REQUESTED → PAUSED |
+| 人工 Pause | 保存边界后暂停 | 正在保存检查点 → 已暂停 |
 
 ## 15. 不变量
 
 - **INV-1**：浏览器生命周期事件永不改变 job 状态。
 - **INV-2**：只有服务端 lease owner 可以执行扫描或 Analysis WorkUnit。
 - **INV-3**：一个 job 固定引用一个不可变 SourceSnapshot。
-- **INV-4**：SourceScanRun 完成前不得启动 AnalysisRun。
+- **INV-4**：不可变 SourceSnapshot 与完整 ArtifactInventory 密封前不得启动 AnalysisRun；AnalysisRun 不得等待最终 FactBundle。
 - **INV-5**：已完成扫描 WorkUnit 和 Analysis WorkUnit 不重复执行。
 - **INV-6**：只有显式 Pause 命令能把 desiredState 改为 `PAUSED`。
 - **INV-7**：人工暂停任务在刷新、断网和服务重启后保持暂停。
@@ -866,6 +906,11 @@ UI 规则：
 - **INV-17**：每个 AnalysisBatch 以相同源码范围和输出 Schema 发给完整 active 子 Agent roster；主 Agent 必须等待每个 slot 的终态结果。
 - **INV-18**：运行时能力只来自不可变 WorkspaceExecutionProfileRevision；全局模型/Skill/MCP 模板在执行期间不可达。
 - **INV-19**：所有模块读写携带 `workspaceId` 与 Workspace 上下文版本；上一 Workspace 的迟到响应必须丢弃。
+- **INV-20**：七项持久活动组成依赖 DAG；单值 `phase` 游标不能作为权威状态，`SOURCE_SCAN`、`ANALYSIS` 与分区对账允许重叠。
+- **INV-21**：同一 `scopePartitionId` 的静态处置、每个必需子 Agent 终态结果和确定性校验全部终态后，才能提交已对账分区检查点。
+- **INV-22**：基础分区检查点不能确定仓库级候选身份；跨分区/模块/项目汇总必须在全局评估前消费下层检查点、后续关系证据与终态 FactBundle。
+- **INV-23**：未对账候选池只能出现在明确标注的技术观测视图；工作中的功能/API 树只能消费已提交对账检查点。
+- **INV-24**：分区粒度遵循确定性理解计划，每个必需子 Agent 必须以显式终态关闭，不能无限等待或被默认为同意。
 
 ## 16. 验收标准
 
@@ -876,9 +921,12 @@ UI 规则：
 - 扫描中人工 Pause，达到 `PAUSED` 后计数停止；刷新仍暂停。
 - Resume 后从同一 Snapshot 继续，已完成 file WorkUnit 的执行计数不增加。
 - API 进程在扫描中重启，任务自动从最后提交检查点恢复。
+- 证明 `DISCOVERY` 分母开放时不显示百分比；密封后所有处置计数之和等于准确清单分母。
+- 证明提取/关系解析/检查点进度使用已规划工作单元或检查点，且不受候选/事实产出数量影响；页面不出现前端推算的预计完成时间。
 
 ### Analysis Agent 阶段
 
+- 密封 Snapshot/Inventory、暂缓最终 FactBundle 提交，证明 `SOURCE_SCAN` 与 `ANALYSIS` 同时活动且 Agent WorkUnit 持续推进。
 - 刷新、关闭和断网不终止 AnalysisRun。
 - Pause/Resume 复用同一 `analysisRunId`。
 - 已完成 Agent WorkUnit 不再次调用模型或 Skill。
@@ -888,6 +936,10 @@ UI 规则：
 - 证明 roster 默认两个子 Agent slot、支持一个或多个，并把相同批次 Digest、源码范围、任务说明与输出 Schema 发给每个 slot。
 - 证明每个主/子 Agent Route 记录不可变 Workspace Profile、经验证模型/Skill/MCP 能力、精确版本、Calibration、Independence Group、预算与被拒绝备选；不支持的 slot 形成 `NO_ELIGIBLE_PRODUCER`。
 - 证明完成屏障前 sibling 不能读取彼此输出，主 Agent 不能从不完整同批结果集发布对账。
+- 证明同一 `scopePartitionId` 的静态处置、每个必需子 Agent 终态结果与证据校验全部终态后，才能提交已对账分区检查点。
+- 证明基础检查点后发现的跨文件证据形成追加式跨分区对账增量；最终 FactBundle 与全部必需汇总门禁终态前，全局评估不能启动。
+- 证明不可用或预算耗尽的必需子 Agent 以显式缺口终态关闭，未对账候选池不能进入工作中的功能/API 树。
+- 证明 StaticCandidateProjection 与每个 ChildCandidatePool 都包含必填的业务、设计、代码、测试用例、测试结果与配置数组；没有证据时数组为空，并带明确覆盖状态。
 - 证明证据分歧保留在 ConflictLedger，不可信证据进入隔离区；相关一致和多数票都不能创建受治理身份。
 - 证明未出现在 Workspace 执行 Profile 修订中的全局 Skill/MCP 在运行时不可用。
 
@@ -901,7 +953,8 @@ UI 规则：
 ### 用户体验
 
 - 页面刷新时只短暂显示 connection 恢复，不显示终止或自动暂停。
-- 扫描与 Agent 进度独立可见，并明确当前阶段。
+- 扫描与 Agent 进度在同一 Job 下独立可见；DAG 正确展示同时活动节点，不能伪造线性游标。
+- 分别渲染完整中英文 F001 页面；系统标签、状态、错误、进度、无障碍文本与命令不混用语言，原始 Enum 只能出现在技术详情中。
 - 在请求处理中切换 Workspace，证明所有模块重新绑定且迟到响应不能修改新 Workspace。
 - 任意页面只读挂接都不产生 POST。
 
@@ -918,7 +971,7 @@ UI 规则：
 
 1. **契约与持久化基线**：SourceRegistration、SourceSnapshot、SourceScanRun、WorkspaceAnalysisJob schema 与 store。
 2. **Canonical server scanner**：Snapshot spool、逐文件检查点、跨文件关系解析和多语言能力对账。
-3. **统一 job orchestrator**：扫描 → Fact commit → Analysis → Reconciliation → Evaluation → Projection → Publishing。
+3. **依赖感知 Job Orchestrator**：密封 Snapshot/Inventory，分叉静态与 Agent 通道，按分区汇合，再进入评估、图谱生成与发布。
 4. **租约与恢复**：heartbeat、fencing token、API/worker restart recovery。
 5. **浏览器瘦客户端**：移除 page-owned scanner，保留 start/pause/resume/status。
 6. **兼容迁移与删除旧路径**：迁移 subscription，删除 browser execution/checkpoint authority。

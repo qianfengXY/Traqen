@@ -22,12 +22,12 @@ priority: P0
 
 ## 1. Requirement
 
-The Workspace flow is one user-visible job with two separately checkpointed execution stages:
+The Workspace flow is one user-visible job with two separately checkpointed execution lanes under a fork-join DAG:
 
-1. **SourceScanRun** seals an immutable source Snapshot, extracts deterministic per-file facts, resolves cross-file relations, and commits a `FactBundle`.
-2. **AnalysisRun** plans bounded Agent/Skill `WorkUnit`s from the complete `SourceSnapshot` and `ArtifactInventory`, reads authorized source slices directly, and may use deterministic Facts as an independent reference while materializing Candidate projections.
+1. **SourceScanRun** discovers and seals an immutable source Snapshot and complete ArtifactInventory, then continues extracting deterministic per-file observations, resolving cross-file relations, and committing a `FactBundle` plus `StaticCandidateProjection`.
+2. **AnalysisRun** starts once that immutable Snapshot and Inventory are sealed, plans bounded Agent/Skill `WorkUnit`s from them, reads authorized source slices directly, and may use version-pinned deterministic Fact checkpoints as independent enrichment while materializing one Candidate pool per Child Agent.
 
-The parent job then owns reconciliation, evaluation, graph projection, and publication. These orchestration phases do not collapse SourceScanRun and AnalysisRun into one checkpoint stream.
+The parent job then joins both lanes by partition and owns reconciliation, evaluation, graph projection, and publication. These orchestration nodes do not collapse SourceScanRun and AnalysisRun into one checkpoint stream or impose a serial `FACT_COMMIT → ANALYSIS` dependency.
 
 The parent **WorkspaceAnalysisJob** is the only task exposed to the user. The browser may create commands and observe state, but it never owns a scanner, model executor, pause flag, run clock, or authoritative status.
 
@@ -53,23 +53,25 @@ User
   │ Start / Pause / Resume / Cancel
   ▼
 WorkspaceAnalysisJob                         ← the only user-visible task
-  │
-  ├─ SourceRegistration                      ← explicitly authorized source
-  │    └─ SourceSnapshot                     ← immutable input for this job
-  │         └─ SourceScanRun                  ← server-owned per-file work
-  │              └─ FactBundle               ← Snapshot-bound Facts
-  │
-  └─ AnalysisRun                             ← server-owned Agent/Skill WorkUnits
-       └─ CandidateBundles
-            └─ CandidateReconciliation
-                 └─ EvaluationRun
-                      └─ GraphRevision projection
-                           └─ atomic publication → CurrentGraphHead
+  └─ SourceRegistration
+       └─ SourceSnapshot + ArtifactInventory sealed
+                    │
+          ┌─────────┴─────────┐
+          ▼                   ▼
+     SourceScanRun        AnalysisRun
+       ├─ FactBundle        ├─ Child A CandidatePool
+       └─ StaticCandidate   ├─ Child B CandidatePool
+          Projection        └─ Child N CandidatePool
+          └─────────┬─────────┘
+                    ▼
+       partition reconciliation barriers
+                    ▼
+ EvaluationRun → GraphRevision → atomic publication → CurrentGraphHead
 
 BrowserSubscription                          ← non-authoritative read pointer
 ```
 
-The API persists the job ID before returning `202 Accepted`. SourceScanRun and AnalysisRun have separate checkpoints and progress, but remain linked by one job and one source Snapshot.
+The API persists the job ID before returning `202 Accepted`. SourceScanRun and AnalysisRun have separate checkpoints and progress, may be active concurrently after the immutable fork point, and remain linked by one job and one source Snapshot.
 
 Only an explicit user command can manually pause a job. A crashed worker or restarted API automatically re-leases work from the last committed checkpoint when `desiredState=RUNNING`.
 
@@ -100,7 +102,7 @@ Given a project such as an order service, the scanner executes four logical step
 1. **Authorize and freeze the input.** `SourceRegistration` proves that the runner may read the root. Files are copied into a content-addressed Snapshot spool with relative path, content hash, size, media type, detected language, and scanner/policy versions. A source change during the run belongs to the next Snapshot.
 2. **Seal the full inventory.** Every in-scope artifact receives an explicit disposition: `INCLUDED`, `EXCLUDED_BY_POLICY`, `UNSUPPORTED`, `GENERATED`, `BINARY`, `OVERSIZED`, `SECRET_REDACTED`, or `READ_FAILED`. Before manifest seal, the denominator is unknown; after seal, coverage is measured against the exact inventory rather than only successfully parsed files.
 3. **Run versioned deterministic extractors.** Code yields modules, symbols, imports, calls, endpoints, jobs, and commands; schemas and migrations yield data objects and reads/writes; configuration yields keys and consumers without secret values; documents yield addressable requirement/design passages; tests yield cases, assertions, fixtures, and implementation links; result files yield execution identities and metadata.
-4. **Resolve cross-file relations and commit.** The resolver links routes to handlers, calls to symbols, tests to implementation, configuration to consumers, and code to data objects. `SnapshotManifest + FactBundle` commit atomically. Each Fact retains Workspace, Snapshot, source span/content hash, extractor identity/version, a stable entity identity, and an immutable Snapshot-local Fact identity.
+4. **Resolve cross-file relations and commit.** The resolver links routes to handlers, calls to symbols, tests to implementation, configuration to consumers, and code to data objects. `SourceSnapshot + ArtifactInventory` seal atomically before the fork; the final `FactBundle` then commits as a separate immutable output of the static lane. Each Fact retains Workspace, Snapshot, source span/content hash, extractor identity/version, a stable entity identity, and an immutable Snapshot-local Fact identity.
 
 For example, the deterministic layer may produce:
 
@@ -215,6 +217,8 @@ The DAG runs in layers:
 6. **Checkpoint and projection:** only validated reconciliation output may update the Feature/API working tree. Raw Child output and unconstrained Main prose cannot mutate it. Conflicts, rejected evidence, and unknowns remain visible in ledgers.
 7. **Hierarchical continuation:** validated leaf batches unlock file/module batches; those unlock cross-module, contradiction, missing-relation, and project-synthesis batches. Every such batch repeats the same roster fan-out and reconciliation protocol.
 
+A base `scopePartitionId` follows stable UnderstandingPlan locality and is not a final repository-wide identity boundary. Cross-partition and project-synthesis batches depend on the required lower-level reconciliation checkpoints plus later static relation checkpoints; the final synthesis also depends on the terminal FactBundle. Cross-file evidence discovered after a local checkpoint produces an append-only reconciliation delta. Required Child slots close explicitly with success, `NO_ELIGIBLE_PRODUCER`, timeout, budget Gap, or policy refusal, so a gate neither treats absence as agreement nor waits forever.
+
 ```ts
 type AnalysisBatch = {
   id: string;
@@ -318,6 +322,24 @@ Agreement may raise corroboration only within calibrated evidence caps. Disagree
 
 The output is a structured `CandidateBundle`, not a free-form summary:
 
+Static analysis preserves `DeterministicObservationPool → StaticCandidateProjection`; each Child Agent owns a separate `ChildCandidatePool`. Their entries share one six-facet envelope without pretending that the producers have equal epistemic authority:
+
+```ts
+type CandidateFeatureFacets = {
+  business: CandidateObservation[];
+  design: CandidateObservation[];
+  code: CandidateObservation[];
+  testCases: CandidateObservation[];
+  testResults: CandidateObservation[];
+  configuration: CandidateObservation[];
+};
+
+type FacetCoverage =
+  | "FOUND" | "NO_EVIDENCE" | "NOT_YET_ANALYZED" | "UNSUPPORTED" | "FAILED";
+```
+
+All six arrays are required and remain empty when evidence is absent. Coverage state distinguishes absence from unfinished or unsupported work. A Candidate requires at least one valid evidence reference; an evidence-free assertion is a Gap. A test file is a test-case clue, never a test result. `testResults` accepts only captured result artifacts or execution evidence. Static business and design facets remain empty unless explicit source evidence supports them.
+
 ```text
 CandidateFeature: "Submit order"
 CandidateClaim: "Only DRAFT orders may be submitted"
@@ -329,7 +351,7 @@ CandidateTestIntent:
   order-submit.test.js may exercise "Only DRAFT orders may be submitted"
 ```
 
-Every Candidate carries raw SourceSlice and/or Fact evidence, Snapshot and WorkUnit identity, producer/model/Skill version, route/calibration provenance, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Workspace, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
+Every Candidate carries its pool and producer class, raw SourceSlice and/or Fact evidence, Snapshot and WorkUnit identity, producer/model/Skill version, route/calibration provenance, per-dimension confidence, deterministic confidence caps, uncertainty, and alternative explanations. A deterministic validator rejects out-of-scope, cross-Workspace, cross-Snapshot, missing, duplicate, or fabricated evidence; strips forbidden governed IDs/fields; and caps confidence to what the evidence supports.
 
 ### 3.4 Reconciliation algorithm: preserve identity uncertainty
 
@@ -396,7 +418,7 @@ F001 still requires the canonical server-owned Workspace aggregate and switch co
 3. Select a model profile and click Start.
 4. Receive a stable `jobId` immediately.
 5. Observe the server building a SourceSnapshot and executing SourceScanRun.
-6. Observe the server transition to AnalysisRun after the FactBundle commits.
+6. After Snapshot/Inventory sealing, observe static extraction and AnalysisRun progressing concurrently, followed by partition reconciliation barriers.
 7. On the first project run, evaluate and publish the FULL GraphRevision. On later Snapshots, evaluate the INCREMENTAL revision and atomically move CurrentGraphHead only after it passes.
 
 ### Refresh and reconnect
@@ -545,7 +567,7 @@ Completed units are skipped on recovery.
 
 ### AnalysisRun
 
-The canonical AnalysisRun remains the Agent owner. It may start only after a complete FactBundle exists for the same Workspace and Snapshot.
+The canonical AnalysisRun remains the Agent owner. It may start as soon as the complete `SourceSnapshot` and `ArtifactInventory` are sealed for the same Workspace. It does not wait for the final FactBundle. A WorkUnit that consumes scanner enrichment pins a committed `factCheckpointId` in its input digest; absence of that checkpoint cannot remove source artifacts from the Agent plan.
 
 Every Analysis WorkUnit must preserve these boundaries:
 
@@ -574,14 +596,16 @@ type WorkspaceAnalysisJob = {
     | "QUEUED" | "RUNNING" | "PAUSE_REQUESTED" | "PAUSED"
     | "RECOVERING" | "COMPLETED" | "COMPLETED_WITH_GAPS"
     | "FAILED" | "CANCELLED";
-  phase:
-    | "SOURCE_SCAN"
-    | "FACT_COMMIT"
-    | "ANALYSIS"
-    | "RECONCILIATION"
-    | "EVALUATION"
-    | "PROJECTION"
-    | "PUBLISHING";
+  phaseStates: Record<WorkspaceAnalysisPhase, {
+    status: "BLOCKED" | "READY" | "RUNNING" | "PAUSED" | "COMPLETED"
+      | "COMPLETED_WITH_GAPS" | "FAILED" | "CANCELLED";
+    outputRef: string | null;
+    updatedAt: string;
+  }>;
+  activePhases: WorkspaceAnalysisPhase[];
+  completedPhases: WorkspaceAnalysisPhase[]; // derived compatibility view
+  laneProgress: WorkspaceAnalysisLaneProgress;
+  joinGates: ReconciliationJoinGate[];
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -619,30 +643,32 @@ The subscription is a non-authoritative pointer. It does not store authoritative
 | non-terminal | explicit Cancel | `CANCELLED` | Never auto-resume |
 | any | refresh/offline/GET | unchanged | No side effect |
 
-### 6.2 Phase transitions
+### 6.2 DAG dependency transitions
 
-| Current phase | Committed event | Next phase or state |
+| DAG node or gate | Committed event | Nodes unblocked |
 |---|---|---|
-| `SOURCE_SCAN` | all scan WorkUnits complete | `FACT_COMMIT` |
-| `FACT_COMMIT` | SnapshotManifest and FactBundle committed | `ANALYSIS` |
-| `ANALYSIS` | all required CandidateBundles committed | `RECONCILIATION` |
-| `RECONCILIATION` | CandidateGraph, ConflictLedger, CoverageLedger, and lineage committed | `EVALUATION` |
+| `SOURCE_SCAN` capture | `SourceSnapshot` and complete `ArtifactInventory` sealed | static extraction continues and `ANALYSIS` starts concurrently |
+| static partition | deterministic observations and static Candidate projection terminal | that partition's reconciliation gate records static readiness |
+| Agent partition | every required Child Candidate pool terminal and validated | that partition's reconciliation gate records Agent readiness |
+| partition join gate | static readiness + Agent readiness + evidence validation | `RECONCILIATION` may commit that partition while other partitions still run |
+| dependent synthesis gate | required lower-level checkpoints + relevant static relation checkpoint terminal | cross-partition/module/project reconciliation appends its delta |
+| global `RECONCILIATION` | every partition and synthesis gate terminal, final FactBundle committed, `unassignedCount=0`, CandidateGraph and ledgers committed | `EVALUATION` |
 | `EVALUATION` | EvaluationRun passes | `PROJECTION` |
 | `EVALUATION` | EvaluationRun rejects the revision | terminal gap/failure; keep the prior `CurrentGraphHead` |
 | `PROJECTION` | immutable GraphRevision materialized | `PUBLISHING` |
 | `PUBLISHING` | GraphRevision becomes `PUBLISHED` and CurrentGraphHead moves atomically | `COMPLETED` / `COMPLETED_WITH_GAPS` |
 
-These phases are the authoritative F001 execution pipeline. Phase transitions and their output references commit atomically. A job cannot enter Analysis without a committed FactBundle, enter Evaluation without reconciliation ledgers, or complete without a published-or-rejected GraphRevision result.
+These seven names are durable DAG nodes, not one linear cursor. `SOURCE_SCAN`, `ANALYSIS`, and partition-level `RECONCILIATION` may all be active at once. Each node transition and output reference commits atomically. A job cannot start Agent work before the immutable Snapshot and Inventory seal, enter Evaluation before every reconciliation gate and ledger is terminal, or complete without a published-or-rejected GraphRevision result.
 
 ## 7. Scan checkpoints
 
 SourceScanRun executes:
 
 1. **DISCOVERY** — enumerate an ordered manifest below the authorized root.
-2. **SNAPSHOTTING** — write content-addressed blobs and fixed content hashes.
+2. **SNAPSHOTTING** — write content-addressed blobs and fixed content hashes, then atomically seal `SourceSnapshot + ArtifactInventory`; this is the fork point that unblocks `ANALYSIS`.
 3. **EXTRACTION** — extract per-file deterministic Facts.
 4. **RELATION_RESOLUTION** — resolve imports, calls, tests, and other cross-file links.
-5. **FACT_COMMIT** — atomically persist SnapshotManifest and FactBundle.
+5. **FACT_COMMIT** — atomically persist the final static `FactBundle`, coverage output, and `StaticCandidateProjection` against the already sealed Snapshot.
 
 Each file or bounded batch commits atomically. A crash may repeat at most one uncommitted unit. Deterministic IDs make retries idempotent. A `RUNNING` scan must have a valid worker lease.
 
@@ -653,6 +679,20 @@ Scan outcomes are classified rather than collapsed:
 - fatal source-root/authorization failure, which fails the scan without pretending the remaining inventory was examined.
 
 Before the manifest is sealed, `plannedFileCount` is `null` and the UI states that the denominator is still being discovered. After seal it is exact; progress must never display an estimated count as a complete denominator.
+
+### 7.1 Static-analysis progress contract
+
+Static progress is server-computed checkpoint state, not a frontend estimate:
+
+| Scan substage | Authoritative denominator | User-visible progress |
+|---|---|---|
+| `DISCOVERY` | unknown until ordered discovery closes | discovered artifact count plus “establishing total”; no percentage or ETA |
+| `SNAPSHOTTING` | discovered file count | immutable blobs completed / discovered files, with read failures and policy dispositions retained |
+| `EXTRACTION` | planned Extractor WorkUnits after inventory seal | completed / planned WorkUnits, expandable by language and artifact kind; an optional trailing processing rate is descriptive only |
+| `RELATION_RESOLUTION` | planned Resolver WorkUnits | completed / planned WorkUnits, expandable by relation family such as import, call, API→handler, test→code, and configuration→consumer |
+| `FACT_COMMIT` | planned atomic static checkpoints | committed / planned checkpoints plus accepted/rejected observation counts; Candidate and Fact totals are output metrics, not progress denominators |
+
+Every progress payload includes `denominatorFinal`, completed/running/failed/Gap counts, the current checkpoint, and disposition totals. The client displays a percentage only when `denominatorFinal=true`; it never invents an ETA. Safe relative paths may identify the current unit in technical detail, subject to source policy and redaction. Included, excluded, unsupported, generated, binary, oversized, secret-redacted, and read-failed counts remain separately visible and sum to the sealed inventory denominator.
 
 ## 8. Scanner parity gate
 
@@ -673,7 +713,7 @@ The browser execution path cannot be removed until required parity is 100%.
 
 ## 9. Analysis recovery
 
-- The AnalysisRun is pinned to the job's SourceSnapshot and FactBundle.
+- The AnalysisRun is pinned to the job's SourceSnapshot and complete ArtifactInventory. Any Fact enrichment is pinned by immutable `factCheckpointId`; final reconciliation also consumes the terminal FactBundle.
 - It is also pinned to one immutable WorkspaceExecutionProfileRevision; Resume cannot silently pick newer global or Workspace configuration.
 - Pause may abort an in-flight Child or Main model request, but that unit returns to `QUEUED` and is not recorded as complete.
 - A committed ChildWorkUnit result or Main reconciliation checkpoint is never recomputed for the same input digest.
@@ -740,7 +780,7 @@ Start references a source registration, immutable Workspace execution-profile re
 
 Job reads return:
 
-- job `status`, `phase`, and `desiredState`;
+- job `status`, `phaseStates`, `activePhases`, `joinGates`, and `desiredState`;
 - SourceScanRun file counts and AnalysisRun WorkUnit counts;
 - Snapshot, FactBundle, AnalysisRun, CandidateGraph, EvaluationRun, and GraphRevision references;
 - the most recent error and whether it is retryable;
@@ -749,13 +789,12 @@ Job reads return:
 ## 13. UI contract
 
 ```text
-Workspace analysis · JOB-123                     [RUNNING]
+Workspace analysis · JOB-123                     [Running]
 
-1. Source scan
-   Snapshot sealed · 5,240 / 12,480 files · 42%
-
-2. Analysis Agent
-   Waiting for FactBundle · 0 / 0 WorkUnits
+Static analysis lane              Agent analysis lane
+Snapshot sealed                   2 Child Agents running
+5,240 / 12,480 extraction units   180 / 420 WorkUnits terminal
+Fact commit: pending               Reconciliation: 24 partitions ready
 
 Connection: reconnecting…
 [Pause] [Cancel]
@@ -769,6 +808,7 @@ UI rules:
 - disable duplicate Pause while `PAUSE_REQUESTED` and show that a checkpoint is being saved;
 - allow only an explicit user Resume from `PAUSED`;
 - keep mount, refresh, reconnect, and polling paths GET-only.
+- render static progress only from server checkpoint denominators; Candidate/Fact volume never increases the progress percentage.
 
 ## 14. Failure and recovery
 
@@ -790,7 +830,7 @@ UI rules:
 - **INV-1:** Browser lifecycle events never change job state.
 - **INV-2:** Only the current server lease owner executes scan or analysis units.
 - **INV-3:** One job is pinned to one immutable SourceSnapshot.
-- **INV-4:** AnalysisRun cannot start before SourceScanRun and Fact commit finish.
+- **INV-4:** AnalysisRun cannot start before the immutable SourceSnapshot and complete ArtifactInventory are sealed; it must not wait for the final FactBundle.
 - **INV-5:** Completed scan and analysis units are never repeated.
 - **INV-6:** Only explicit Pause changes desired state to paused.
 - **INV-7:** Manually paused jobs remain paused through refresh and restart.
@@ -806,6 +846,11 @@ UI rules:
 - **INV-17:** every AnalysisBatch is sent to the complete active Child roster with identical source scope and output schema; Main reconciliation waits for every slot's terminal outcome.
 - **INV-18:** runtime capabilities come only from the immutable WorkspaceExecutionProfileRevision; global model/Skill/MCP templates are unreachable during execution.
 - **INV-19:** all module reads and writes carry `workspaceId` plus Workspace context version; stale responses from a prior selection are discarded.
+- **INV-20:** the seven durable activities form a dependency DAG; a single `phase` cursor cannot be authoritative and `SOURCE_SCAN`, `ANALYSIS`, and partition reconciliation may overlap.
+- **INV-21:** a reconciled partition checkpoint requires terminal static disposition, every required Child terminal result, and terminal deterministic validation for the same `scopePartitionId`.
+- **INV-22:** a base-partition checkpoint cannot finalize repository-wide Candidate identity; cross-partition/module/project synthesis consumes lower-level checkpoints, later relation evidence, and the terminal FactBundle before global evaluation.
+- **INV-23:** unreconciled pool entries appear only in a labelled technical observation view; the working Feature/API tree consumes committed reconciliation checkpoints only.
+- **INV-24:** partition granularity follows the deterministic UnderstandingPlan, and every required Child closes with an explicit terminal outcome rather than an infinite wait or implicit agreement.
 
 ## 16. Acceptance
 
@@ -816,9 +861,12 @@ UI rules:
 - Pause scanning; after `PAUSED`, progress stops and refresh preserves pause.
 - Resume the same Snapshot and prove completed file units were not executed again.
 - Restart the API during scan and prove automatic recovery from the last committed checkpoint.
+- Prove `DISCOVERY` shows no percentage while its denominator is open; after seal, all disposition counts sum to the exact inventory denominator.
+- Prove Extractor/Resolver/checkpoint progress uses planned WorkUnits or checkpoints and is unchanged by Candidate/Fact output volume; no client-derived ETA appears.
 
 ### Analysis stage
 
+- Seal Snapshot/Inventory, hold the final FactBundle open, and prove `SOURCE_SCAN` and `ANALYSIS` are concurrently active while Agent WorkUnits make progress.
 - Refresh, close, and disconnect without terminating AnalysisRun.
 - Pause and resume the same analysis run.
 - Prove completed Agent WorkUnits do not call model or Skill again.
@@ -828,6 +876,10 @@ UI rules:
 - Prove the configured roster defaults to two Child slots, supports one or more, and sends every slot the same batch digest, source scope, task statement, and output schema.
 - Prove each Main/Child route records the immutable Workspace profile, verified model/Skill/MCP capabilities, exact versions, calibration, independence group, budgets, and rejected alternatives; an unsupported slot becomes `NO_ELIGIBLE_PRODUCER`.
 - Prove siblings cannot read one another's output before the completion barrier and Main reconciliation cannot publish from an incomplete sibling set.
+- Prove a reconciled partition checkpoint requires terminal static disposition, every required Child terminal result, and terminal evidence validation for the same `scopePartitionId`.
+- Prove cross-file evidence discovered after a base checkpoint produces an append-only cross-partition reconciliation delta, and global Evaluation cannot start before the final FactBundle and every required synthesis gate are terminal.
+- Prove an unavailable or exhausted required Child closes as an explicit terminal Gap, while unreconciled pool entries remain outside the working Feature/API tree.
+- Prove StaticCandidateProjection and every ChildCandidatePool expose required business, design, code, test-case, test-result, and configuration arrays; absent evidence stays empty with an explicit coverage state.
 - Prove evidence disagreement remains in ConflictLedger, untrusted evidence is quarantined, and neither correlated agreement nor majority count creates governed identity.
 - Prove a global Skill/MCP absent from the Workspace execution-profile revision is unavailable at runtime.
 
@@ -841,7 +893,8 @@ UI rules:
 ### User experience
 
 - Refresh changes connection state only.
-- Scan and Agent progress are independently visible under one job.
+- Scan and Agent progress are independently visible under one job, and the DAG shows simultaneous active nodes without a fabricated linear cursor.
+- Render the complete F001 surface in Chinese and English; system labels, statuses, errors, progress, accessibility text, and commands never mix languages or display raw enums outside technical details.
 - Switch Workspace during in-flight requests and prove every module rebinds while stale responses cannot alter the newly selected Workspace.
 - Mount, refresh, reconnect, and polling paths are GET-only.
 
@@ -858,7 +911,7 @@ UI rules:
 
 1. Contracts and persistence for registrations, Snapshots, scan runs, and jobs.
 2. Canonical server scanner with spool, checkpoints, relation resolution, and language parity.
-3. Unified orchestration from scan through Analysis, Reconciliation, Evaluation, Projection, and Publishing.
+3. Dependency-aware orchestration that seals Snapshot/Inventory, forks Static and Agent lanes, joins them by partition, then evaluates, projects, and publishes.
 4. Worker lease, fencing, and restart recovery.
 5. Browser thin client with command and read-only subscription surfaces.
 6. Compatibility migration and removal of browser execution authority.

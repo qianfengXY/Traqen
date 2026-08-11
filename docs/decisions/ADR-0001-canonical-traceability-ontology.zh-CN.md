@@ -46,6 +46,8 @@ Snapshot/源码
   → 功能树、图谱、TraceChain、Impact 与 Metrics 投影
 ```
 
+这条链路定义权威与来源顺序，不代表串行执行顺序。根据 [ADR-0003](ADR-0003-workspace-analysis-execution-dag.zh-CN.md)，确定性观察与 Agent 候选可以从同一份已密封源码快照并行产生，在进入治理前通过已校验的对账检查点汇合。
+
 ### 规范实体与关系
 
 ```text

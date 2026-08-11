@@ -32,10 +32,11 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 ```text
 选定 Workspace + 不可变执行配置修订
-  → 完整、不可变的源码范围
-  → 确定性观察
-  → 同一 AnalysisBatch 分发给所有已配置子 Agent
-  → 主 Agent 做证据校验与结果对账
+  → 密封 SourceSnapshot + 完整 ArtifactInventory
+  → 分叉执行静态提取与同批次子 Agent 分析
+  → 确定性观察 + StaticCandidateProjection
+     以及每个子 Agent 各自独立的 CandidatePool
+  → 分区屏障与主 Agent 证据对账
   → 正确性评估
   → canonical Candidate graph
 ```
@@ -80,9 +81,9 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 建立授权 SourceRegistration、不可变 Snapshot 捕获、完整 ArtifactInventory、显式处置、提取器能力注册表与安全 SourceSlice Broker。
 
-### Phase C：同批次独立理解通道
+### Phase C：分叉的同批次独立理解通道
 
-把确定性提取与 Agent 源码分析作为可独立观察的通道。确定性 Planner 从完整 Source Manifest 和约定生成有界 `AnalysisBatch`。每个 active 子 Agent 收到完全相同的批次、源码范围和输出合同，但使用各自经 Workspace 许可的模型、Skill、MCP 与 independence group。子 Agent 在完成前不能查看同伴输出；主 Agent 负责任务意图与批次后对账，但不负责全量 Inventory 处置。
+`SourceSnapshot + ArtifactInventory` 密封后，把确定性提取与 Agent 源码分析作为同时运行、可独立观察的通道。静态分析保留 `DeterministicObservationPool → StaticCandidateProjection` 两层；每个 active 子 Agent 收到完全相同的确定性 `AnalysisBatch`、源码范围和输出合同，但使用各自经 Workspace 许可的模型、Skill、MCP 与 independence group。子 Agent 在完成前不能查看同伴输出。主 Agent 可以实时观察已提交候选池，但同一 Scope 的静态处置、全部必需子 Agent 终态结果与证据校验终态前，不能提交已对账分区检查点。
 
 ### Phase D：对账与 Lineage
 
@@ -145,7 +146,7 @@ Workspace 落地总览应把用户引导到第一个未满足的前置条件，�
 
 F001 界面围绕一个持久 `WorkspaceAnalysisJob` 展示：
 
-- 七阶段轨道：`SOURCE_SCAN`、`FACT_COMMIT`、`ANALYSIS`、`RECONCILIATION`、`EVALUATION`、`PROJECTION`、`PUBLISHING`；
+- 七节点执行 DAG：Snapshot/Inventory 密封后分叉 `SOURCE_SCAN` 与 `ANALYSIS`，`FACT_COMMIT` 留在静态通道，分区 `RECONCILIATION` 汇合两路，全局对账后进入 `EVALUATION → PROJECTION → PUBLISHING`；
 - 独立 Static 通道：展示完整 Inventory 分母及每项处置，包括排除、不支持、二进制、超大、Secret 脱敏和读取失败 Artifact；
 - 独立 Agent 通道：展示 Batch/WorkUnit 进度、Main Agent、每个已配置 Child 槽位、相同批次 Scope、各自结果和对账状态；
 - 视觉独立的 Working Candidate Tree，展示 Candidate、Conflict、Quarantine 与 Gap 数量；
@@ -162,16 +163,17 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 - **Completed but unpublished：** 展示评估/发布 Gate 与非权威 Working Candidate，不能把它跳转成 F002 受治理树。
 - **Failed / cancelled：** 保留历史和诊断；重试只能通过受支持的显式命令创建或恢复，不能覆盖失败记录。
 
-桌面端可以在阶段轨道下并排展示 Static 与 Agent 通道；移动端改为按顺序展开，但阶段、命令状态、各自分母、阻塞项和 Candidate 权威标签必须保留。
+桌面端可以在 DAG 下并排展示静态与 Agent 通道；移动端改为按顺序展开，但 DAG 依赖状态、并发活动节点、命令状态、各自分母、阻塞项和 Candidate 权威标签必须保留。
 
 ### 前端验收标准
 
 - [ ] 首次与回访 Workspace 旅程始终给出一个有效下一步，不要求手工输入 Job、Snapshot 或 Candidate ID。
-- [ ] 七个持久阶段与 Static/Agent 通道分母独立可见，不能用复合理解度总分替代。
+- [ ] 七个持久 DAG 节点与静态/Agent 通道分母独立可见；并发节点不能压平成线性游标，也不能用复合理解度总分替代。
 - [ ] 每个 Active Child 槽位都显示相同 Batch Scope 与输出合同，Main 对账不能表现为多数票。
 - [ ] Working Candidate 在视觉和文字上明确非权威，绝不能进入 F002 Governed Tree。
 - [ ] 刷新、重连、页面导航和 Workspace 切换都是 GET-only，不能暂停或取消服务端 Job。
 - [ ] 所有非终态、部分失败、配置阻断、旧 Workspace 迟到响应和历史 Job 都有明确且可恢复的界面状态。
+- [ ] 完整 F001 页面分别以连贯中文或英文渲染；系统标签、状态、错误、进度、命令和无障碍文本不能混用语言，原始机器 Enum 只能出现在技术详情中。
 
 ## Acceptance criteria
 
@@ -193,8 +195,9 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 - [ ] **AC-B6**：相同 Snapshot、Planner/Convention 版本、执行策略与源码范围必须产生相同且完整的 `UnderstandingPlan`，其 Partition ID 稳定且 `unassignedCount=0`；动态依赖 DAG 以有界大文件、文件、Module、跨 Module、Critic 与汇总 WorkUnit 处理规模，子任务摘要不能单独作为证据。
 - [ ] **AC-B7**：每个 WorkUnit 都有基于已验证模型能力/校准 Profile 与 Skill 合同、版本固定且已持久化的 `AnalysisRouteDecision`；高风险冗余使用相互独立的 Producer Group 和证据对账，找不到合格 Producer 与未解决分歧必须显式保留，不能 Fallback 或按多数票造真相。
 - [ ] **AC-B8**：每个 Workspace 选择一个主 Agent 和一个或多个子 Agent slot，默认两个；每个 slot 独立固定模型 Profile、Skill、MCP grant、角色策略和 independence group。
-- [ ] **AC-B9**：每个 `AnalysisBatch` 以相同源码范围和输出 Schema 分发给完整 active 子 Agent roster；子 Agent 完成前相互隔离，主 Agent 对完整同批结果集合、静态 Facts 和历史 lineage 做对账，不能多数票裁决。
+- [ ] **AC-B9**：每个 `AnalysisBatch` 以相同源码范围和输出 Schema 分发给完整 active 子 Agent roster；子 Agent 完成前相互隔离，匹配的静态分区、完整同批结果集合与确定性证据校验全部终态后，主 Agent 才能对账，不能多数票裁决。
 - [ ] **AC-B10**：子 Agent 或主 Agent 的原始模型输出不能直接修改 Feature/API working tree；只有通过 Schema 与证据校验的对账结果才能发布批次检查点，不可信证据必须进入隔离区、冲突或 Gap。
+- [ ] **AC-B11**：基础分区检查点保持暂定；跨分区/模块/项目汇总消费所需下层检查点、后续关系证据与终态 FactBundle，不可用的必需子 Agent 以显式缺口终态关闭，未对账候选池只能作为技术观测。
 
 ### C. 对账与治理
 
@@ -216,7 +219,7 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 
 ### E. 持久生命周期与安全
 
-- [ ] **AC-E1**：扫描与 Agent 阶段运行在一个持久 Job 下；刷新、关闭、重连或另一浏览器接入不会改变状态。
+- [ ] **AC-E1**：Snapshot/Inventory 密封后，扫描与 Agent 通道在一个持久 DAG Job 下并行；刷新、关闭、重连或另一浏览器接入不会改变状态。
 - [ ] **AC-E2**：人工 Pause/Resume 保留相同 Snapshot 并跳过已提交 WorkUnit；运行任务在 Worker 重启后恢复，人工暂停任务保持暂停。
 - [ ] **AC-E3**：Local Runner Allowlist、路径/Symlink fencing、SourceSlice 策略、秘密脱敏和隔离评估 Store 通过安全测试。
 - [ ] **AC-E4**：切换后浏览器不包含权威扫描或模型执行循环。
@@ -313,6 +316,8 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 | KD-11 | 全局能力仅是模板；执行固定到不可变 Workspace Profile，运行时没有回到全局 Skill/MCP 的通路。 | 项目隔离必须可强制、可重放，不能只是 Prompt 约定。 | 2026-07-31 |
 | KD-12 | 现有 `Project.id` 迁入 Canonical Workspace 身份，或仅作为兼容别名；Workspace 与 Project 不再保留为两个独立 1:1 聚合。 | 两套生命周期与授权身份会重新制造 Workspace 本应消除的跨模块漂移。 | 2026-07-31 |
 | KD-13 | F001 的实现切片是活动计划中的 Task，不新增 `F001a`～`F001k` 生命周期 ID。 | 一份 Feature 真相源加可测试的计划任务既能分解交付，也不会再产生竞争的 Feature 命名空间。 | 2026-07-31 |
+| KD-14 | 七项持久活动组成分叉—汇合执行 DAG，不再使用线性阶段游标。 | 在串行执行上只画并行页面属于虚假可观测性；不可变源码密封后，两条独立证据通道必须真实重叠。 | 2026-08-11 |
+| KD-15 | 中文界面在存在自然中文产品术语时尽量使用中文，只保留受控的标准缩写、品牌、模型名与 `Agent`；英文界面全部使用英文。 | 混杂语言会降低易用性，并让跨模块状态、错误与进度语义不一致。 | 2026-08-11 |
 
 ## Timeline
 
@@ -324,10 +329,11 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 | 2026-07-29 | operator 明确 Agent 完整原始源码覆盖、确定性分区/DAG、显式模型/Skill 路由与多模型对账 |
 | 2026-07-31 | operator 明确 Workspace 全局联动切换、同批次主/子 Agent 相互印证和 Workspace 专属运行时能力 |
 | 2026-07-31 | GPT/Kimi 相互印证确认 F001～F006 边界；operator 选择本次方案作为设计基线并要求删除被替代文档；ADR-0002 裁决 Canonical Workspace 身份、F006 顺序与 Runtime 隔离 |
+| 2026-08-11 | operator 把线性七阶段模型改为分叉—汇合执行 DAG，并接受全产品受控中文术语白名单 |
 
 ## Review gate
 
-Design Gate 必须确认：
+Design Gate 必须确认第 1～9 项，并按 operator 已接受的第 10～11 项验证实现：
 
 1. 系统使命与 canonical graph 终态；
 2. 多维正确性合同；
@@ -338,6 +344,8 @@ Design Gate 必须确认：
 7. FULL→INCREMENTAL、CurrentGraphHead 原子发布与 Feature 历史语义。
 8. Snapshot 派生的完整 Agent 规划、按能力路由的模型/Skill 执行与基于证据的多模型对账。
 9. Workspace 聚合所有权、上下文版本切换、同批子 Agent 隔离和项目专属能力的不可变解析。
+10. **已于 2026-08-11 接受：**分叉—汇合 DAG、静态观察/候选分层与分区/汇总对账屏障。
+11. **已于 2026-08-11 接受：**全局中英文显示合同与受控中文术语白名单。
 
 实现随后执行 TDD、Quality Gate、独立 Review 与 Merge Gate。
 
@@ -355,3 +363,5 @@ Design Gate 必须确认：
 | Archify 图谱生命周期 | `docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html` | Candidate、Decision、评估、发布、拒绝与隔离 |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md` | 真相与权威边界 |
 | Workspace 聚合 ADR | `docs/decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md` | Canonical Workspace 身份、切换、迁移与运行能力隔离 |
+| 工作空间分析 DAG ADR | `docs/decisions/ADR-0003-workspace-analysis-execution-dag.zh-CN.md` | 不可变分叉点、静态/Agent 并行通道、分区汇合门禁与被拒绝的串行方案 |
+| F001 收敛记录 | `feature-discussions/2026-07-29-F001-legacy-system-understanding/README.zh-CN.md` | operator 决策、跨模型讨论与 2026-08-11 DAG/本地化收敛 |

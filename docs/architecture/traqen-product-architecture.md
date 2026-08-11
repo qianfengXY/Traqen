@@ -32,7 +32,7 @@ This document is the product-level architecture source of truth. It defines:
 - canonical graph authority and history;
 - the verified gap between the target architecture and implementation commit `1682d7d`.
 
-Detailed execution contracts remain in [F001 Workspace scan and Analysis Agent lifecycle](../features/workspace-scan-and-analysis-lifecycle.md). Canonical entity authority remains in [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md); Workspace identity, switching, and capability isolation are fixed by [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md).
+Detailed execution contracts remain in [F001 Workspace scan and Analysis Agent lifecycle](../features/workspace-scan-and-analysis-lifecycle.md). Canonical entity authority remains in [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md); Workspace identity, switching, and capability isolation are fixed by [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md); the fork-join execution model is fixed by [ADR-0003](../decisions/ADR-0003-workspace-analysis-execution-dag.md).
 
 ## 2. Architecture invariants
 
@@ -46,6 +46,8 @@ Detailed execution contracts remain in [F001 Workspace scan and Analysis Agent l
 8. **Untrusted evidence never silently passes.** Invalid, out-of-scope, contradictory, or unverifiable evidence quarantines the Candidate or records a Gap. It is never discarded without a ledger entry and never promoted by vote.
 9. **Live trees are projections, not authority.** The Workspace Analysis tree may stream reconciled working Candidates. Governed Feature/API trees default to the latest published `CurrentGraphHead`.
 10. **History is append-only.** A new Snapshot or implementation mapping does not rewrite a business Feature version. Decisions, mappings, GraphRevisions, ChangeSets, impacts, tests, and results remain queryable.
+11. **Seven activities form a DAG, not a cursor.** Sealing the immutable Snapshot and complete inventory forks Static and Agent work. Reconciliation joins terminal inputs per scope partition; a single `phase` cannot represent authoritative execution state.
+12. **Display language is coherent across the product.** Canonical backend codes remain locale-neutral. Every user-visible field uses the selected language, with Chinese retaining only controlled standard abbreviations, brand names, model names, and `Agent`.
 
 ## 3. Product Feature map
 
@@ -128,6 +130,19 @@ Candidate and governed projections may link to one another, but they cannot shar
 
 Feature documents F001-F006 own their page-specific journeys, states, authority bindings, and frontend acceptance criteria. [Enterprise Blue](../design/enterprise-blue-theme.md) remains the visual design-system source; this architecture does not duplicate its color or component tokens.
 
+### 4.4 Global language contract
+
+Language selection applies to the whole product, not to individual pages or components:
+
+- English renders all product labels, commands, states, errors, progress text, empty/loading states, notifications, dialogs, and accessibility strings in English.
+- Chinese uses natural Chinese wording wherever a product concept has an established translation. The controlled whitelist retains standard abbreviations, brands, model names, and `Agent`; examples include `Traqen`, `API`, `HTTP`, `JSON`, `SQL`, `URL`, `Git`, `MCP`, and model identifiers.
+- Raw source paths, class/function names, API paths, configuration keys, model names, evidence excerpts, and other inspected technical identifiers remain unchanged. They are content, not product copy.
+- Backend enums and error codes remain canonical and locale-neutral. The client maps them through typed translation keys; raw enums may appear only in an explicitly technical details view.
+- The language preference is user-global and persistent. It sets the document `lang`, date/number formatting, accessible names, and every Workspace-scoped module after navigation, refresh, reconnect, or Workspace switching.
+- Chinese and English catalogs must have key parity. Missing translations, untranslated user-visible literals, or mixed-language fallbacks fail the frontend acceptance gate.
+
+Examples of product-copy translation include `Workspace analysis` → `工作空间分析`, `Source snapshot` → `源码快照`, `Feature tree` → `功能树`, `Claim review` → `声明审核`, `Current published revision` → `当前发布版本`, and `Configuration` → `配置`. Whitelisted technical terms do not authorize arbitrary English product copy.
+
 ## 5. Workspace aggregate and lifecycle
 
 ### 5.1 Canonical objects
@@ -178,10 +193,12 @@ This prevents data from one Workspace appearing under another after a slow respo
 
 ### 6.1 Independent lanes
 
-One immutable Snapshot feeds two independent lanes:
+Source discovery first seals one immutable `SourceSnapshot` and complete `ArtifactInventory`. That seal is the fork point; it is distinct from the final Fact commit. The same sealed input then feeds two independent lanes:
 
-- **Static scan lane:** inventories files, code, configuration, documents, images, tests, results, and unsupported/binary content; extracts deterministic Facts where capability exists.
-- **Agent lane:** derives deterministic `AnalysisBatch` objects from the complete inventory, then lets every configured Child Agent read policy-bounded raw `SourceSlice` inputs from the same batch.
+- **Static scan lane:** continues extraction and relation resolution, preserving `DeterministicObservationPool → StaticCandidateProjection`, and commits the terminal `FactBundle` for the Snapshot.
+- **Agent lane:** starts without waiting for the final FactBundle, derives deterministic `AnalysisBatch` objects from the complete inventory, then lets every configured Child Agent read policy-bounded raw `SourceSlice` inputs from the same batch and write its own `ChildCandidatePool`.
+
+Scanner Facts are optional, version-pinned enrichment for Agent WorkUnits. Any consumer pins an immutable `factCheckpointId`; no worker reads a changing “latest Facts” view. Static and Child Candidate envelopes contain required arrays for business, design, code, test cases, test results, and configuration. An empty array is truthful absence, while a separate coverage state distinguishes no evidence, not yet analyzed, unsupported, and failed.
 
 Images and other binary artifacts remain in the inventory denominator. They are analyzed only when a declared media/OCR specialist is installed; otherwise they produce an explicit unsupported or unprocessed Gap.
 
@@ -202,20 +219,25 @@ The default Workspace template creates two Child slots. Users may configure one 
 
 ### 6.3 Batch fan-out and reconciliation
 
-For every batch:
+For every scope partition:
 
-1. the deterministic planner seals the shared input;
+1. the deterministic planner seals the shared input and stable `scopePartitionId`;
 2. the scheduler creates one `ChildWorkUnit` per active Child slot;
 3. all ChildWorkUnits run independently and may execute concurrently;
 4. evidence validation rejects references outside the Snapshot, batch, or SourceSlice allowset;
-5. the Main Agent compares every valid Child result with static Facts and historical lineage;
-6. exact agreement becomes corroboration only within calibrated confidence limits;
-7. disagreement becomes a `ConflictLedger` entry, not a majority decision;
-8. evidence-invalid output becomes a quarantined Candidate or Gap;
-9. a reconciled batch projection updates the working Feature/API tree;
-10. module and project synthesis consume reconciled outputs plus original evidence references, never child summaries alone.
+5. the join gate waits for terminal static disposition, every required Child slot, and terminal schema/Snapshot/SourceSlice/evidence validation for that partition;
+6. only after that gate opens, the Main Agent compares every valid Child result with static observations, version-pinned Facts, and historical lineage;
+7. exact agreement becomes corroboration only within calibrated confidence limits;
+8. disagreement becomes a `ConflictLedger` entry, not a majority decision;
+9. evidence-invalid output becomes a quarantined Candidate or Gap;
+10. the committed reconciliation checkpoint updates the working Feature/API tree;
+11. cross-partition, module, and project synthesis repeat the same barrier protocol and consume reconciled outputs plus original evidence references, never child summaries alone.
 
-The product can therefore process a very large repository without one whole-repository prompt. Batch count is dynamic; logical Child count is Workspace-configured.
+The Main Agent may inspect committed pools and progress before the gate opens, but observation never authorizes an optimistic partial reconciliation. Identity conflicts preserve separate Candidates; facet conflicts remain unresolved in the ledger. Neither outcome creates a governed Feature without a human Decision.
+
+Base-partition checkpoints are provisional locality results, not final repository-wide identity decisions. Cross-partition and project-synthesis gates consume the required lower-level checkpoints plus later static relation checkpoints; the global evaluation gate also requires the terminal FactBundle. New cross-file evidence appends a reconciliation delta. Partition granularity follows the stable UnderstandingPlan and cannot collapse to per-line checkpoints. A slow or unavailable required Child closes explicitly as a terminal Gap such as `NO_ELIGIBLE_PRODUCER`, never as agreement or an infinite wait.
+
+The product can therefore process a very large repository without one whole-repository prompt. Batch count is dynamic; logical Child count is Workspace-configured. Partitions may reconcile while unrelated static and Agent work continues.
 
 ### 6.4 Real-time progress
 
@@ -227,7 +249,7 @@ Progress has separate denominators:
 - quality: evidence-valid Candidates, quarantined Candidates, conflicts, gaps;
 - publication: evaluation and graph revision status.
 
-The live tree updates only after batch reconciliation. Raw model text never mutates a visible Feature/API node.
+Authoritative job state exposes `phaseStates`, zero or more `activePhases`, typed `laneProgress`, and partition/global `joinGates`. `completedPhases` may exist only as a derived compatibility view; a single `phase` is not scheduler authority. Unreconciled pool entries appear only in a clearly labelled technical observation view. The live working tree updates only after a committed reconciliation checkpoint. Raw model text never mutates a visible Feature/API node.
 
 ## 7. Capability configuration and isolation
 
