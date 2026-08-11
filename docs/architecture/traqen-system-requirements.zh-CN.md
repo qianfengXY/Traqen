@@ -1,7 +1,7 @@
 > 语言：**简体中文** · [English](traqen-system-requirements.md)
 
 ---
-feature_ids: [F001]
+feature_ids: [F001, F006]
 related_features: []
 topics:
   - product-requirements
@@ -11,8 +11,10 @@ topics:
   - impact-analysis
   - quality
   - dogfood
+  - capability-settings
 doc_kind: system-requirements
 created: 2026-07-29
+updated: 2026-08-11
 status: proposed
 priority: P0
 ---
@@ -247,6 +249,10 @@ Feature
 | SR-021 | 从 Snapshot/ArtifactInventory 派生确定性完整 UnderstandingPlan，Partition 稳定、`unassignedCount=0`，并用有界动态 WorkUnit 依赖 DAG 扩展到超出单 Prompt 或固定子任务数量的工程。 |
 | SR-022 | 每个 WorkUnit 都必须基于已验证模型能力/校准 Profile、签名 Skill 合同与部署数据边界持久化版本固定的 AnalysisRouteDecision；能力缺失必须以 `NO_ELIGIBLE_PRODUCER` 关闭失败。 |
 | SR-023 | 每个有界 AnalysisBatch 都发送给所有已配置且相互独立的子 Agent；Batch 与同批 sibling 可以并发，但主 Agent 必须对完整终态 sibling 集合与静态 Facts 做对账并保留冲突，不能把相关一致或多数票当真相。 |
+| SR-024 | 持久化一份可复用全局模型 Registry，支持带 Revision 的 API Profile 与 Allowlist 本机 CLI Adapter；Workspace Agent Slot 显式选择模型，且任何全局 Active/Default Model 都不能启动 Run。 |
+| SR-025 | 内置只读与 Workspace 项目 Skill/MCP 先按 Typed Key 完整覆盖，再应用 Workspace Disable 与 Agent Grant；已禁用、未授权或未物化能力在 Runtime 不可用。 |
+| SR-026 | 每个 Workspace 持久化可编辑 Draft 与不可变 Active Profile 历史；激活要求恰好一个 Main 和至少两个已启用且完整的 Child；服务重启后恢复设置且不改变 Active/Paused Run。 |
+| SR-027 | 退役被引用的全局模型前，先在 Expected-version 并发控制下预览并原子替换所有当前 Workspace 引用；保留历史 Profile Revision 与 Active Run，并把紧急凭据撤销作为单独的破坏性操作。 |
 
 ## 9. 核心用户旅程
 
@@ -352,6 +358,8 @@ operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Revi
 - 源码访问必须显式授权、最小权限且可审计。
 - 普通客户端返回的路径使用 Workspace 相对路径或不透明标识。
 - 真实秘密值不能持久化为 Fact，也不能发给外部模型。
+- 明文模型/MCP 凭据不能出现在 Form、普通配置、API Response、Diff、Prompt、Execution Profile、Telemetry、Diagnostic 或 Log 中；只有加密 Handle 与 Scoped Grant 可以跨越配置/运行边界。
+- 本机 CLI 模型 Adapter 不经 Shell 构造 argv，并强制有界 Timeout、Cancel、Output 与 Process-tree Cleanup。
 - 外部模型只接收有界、按摘要/策略记录且经过策略过滤的 Facts；原始 SourceSlice 留在本地/私有源码边界内。
 - 执行 Evidence 记录精确 Snapshot、构建、依赖、配置、Runtime、Runner、断言和尝试。
 - 读取 API 强制 Project 边界并保持 Candidate/受治理对象区分。
@@ -368,9 +376,10 @@ operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Revi
 5. 全量与增量一致性；
 6. 持久化与重启测试；
 7. 安全与秘密边界测试；
-8. Traqen 分析 Traqen 的图谱与 TraceChain 验收；
-9. 后端、Web、构建、lint 与 diff 门禁；
-10. 独立 Review。
+8. Workspace 模型/能力覆盖、禁用、Child 下限、Revision 固定与原子替换测试；
+9. Traqen 分析 Traqen 的图谱与 TraceChain 验收；
+10. 后端、Web、构建、lint 与 diff 门禁；
+11. 独立 Review。
 
 阈值在评估策略中版本化。修改阈值属于受治理决策，不能藏在实现 PR 的测试修改里。
 

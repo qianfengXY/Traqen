@@ -1,7 +1,7 @@
 > 语言：**简体中文** · [English](workspace-scan-and-analysis-lifecycle.md)
 
 ---
-feature_ids: [F001]
+feature_ids: [F001, F006]
 related_features: [F002, F003, F004, F005, F006]
 topics:
   - workspace
@@ -12,6 +12,7 @@ topics:
   - browser-refresh
 doc_kind: feature-design
 created: 2026-07-29
+updated: 2026-08-11
 status: proposed
 priority: P0
 ---
@@ -194,7 +195,7 @@ type UnderstandingPlan = {
 
 #### 3.3.2 WorkUnit 如何运行
 
-`UnderstandingPlan` 会变成由有界 `AnalysisBatch` 组成的持久化依赖 DAG。DAG 控制工程规模；Workspace 执行配置控制逻辑 Agent roster，由一个主 Agent 和一个或多个子 Agent 组成，默认两个子 Agent。这是两个独立维度：增加批次改变吞吐量与 Context 大小，增加子 Agent slot 改变独立印证数量。
+`UnderstandingPlan` 会变成由有界 `AnalysisBatch` 组成的持久化依赖 DAG。DAG 控制工程规模；Workspace Execution Profile 控制逻辑 Agent Roster，由一个 Main Agent 和至少两个已启用且完整的 Child Agent 组成。这是两个独立维度：增加批次改变吞吐量与 Context 大小，超过下限后增加 Child Slot 才改变独立印证数量。
 
 ```mermaid
 flowchart TB
@@ -280,7 +281,7 @@ type ModelCapabilityProfile = {
 这会修改当前 Reverse Skill 同时强制要求 `PROJECT_SNAPSHOT` 与 `CODE_FACT_BUNDLE` 的基线。
 Direct-source WorkUnit 必须选择 `RAW_SOURCE_LOCAL` 或 `RAW_SOURCE_PRIVATE_RUNNER` Producer Route。声明为 `FACTS_ONLY_EXTERNAL` 的外部模型只能处理策略过滤后的 Facts，绝不能读取原始 SourceSlice；如果没有边界内合格 Producer，则记录 `NO_ELIGIBLE_PRODUCER`。
 
-全局模型、Skill 和 MCP 只是配置模板，不是运行时能力。创建或修改 Workspace 时，把全局模板与 Workspace 新增、覆盖、移除解析成不可变 `WorkspaceExecutionProfileRevision`。运行时只获得该修订及其 Scope Credential；不存在让 Agent 发现或调用未被 Workspace 解析进来的全局 Skill/MCP 的 Registry Handle。
+F006 把全局模型资产与能力 Catalog 分开。Main/Child Slot 显式选择带 Revision 的 API/Allowlist CLI 模型 Profile；内置 Skill/MCP Catalog 只读，Workspace 项目条目按 `(kind, normalizedName)` Typed Key 覆盖，Disabled Key 在覆盖后生效。校验并激活后物化不可变 `WorkspaceExecutionProfileRevision`。Runtime 只获得该 Revision 与 Scoped Grant；不存在让 Agent 发现或调用已禁用、未授权或未物化能力的可变 Registry Handle。
 
 对每个 AnalysisBatch 的主 Agent slot 和各子 Agent slot，确定性 Capability Router 计算以下交集：
 
@@ -464,6 +465,7 @@ type WorkspaceViewPreference = {
 type AgentSlot = {
   id: string;
   role: "MAIN" | "CHILD";
+  modelProfileRevisionId: string;
   modelCapabilityProfileId: string;
   skillRevisionIds: string[];
   mcpGrantRevisionIds: string[];
@@ -476,18 +478,20 @@ type WorkspaceExecutionProfileRevision = {
   workspaceId: string;
   revision: number;
   mainAgentSlot: AgentSlot;
-  childAgentSlots: AgentSlot[]; // 至少 1 个；默认模板解析为 2 个
+  childAgentSlots: AgentSlot[]; // 至少 2 个
   dependencyPolicyRevisionId: string;
   conventionRevisionId: string;
   resolvedSkillRevisionIds: string[];
   resolvedMcpGrantRevisionIds: string[];
-  sourceTemplateRevisionIds: string[];
+  builtinCatalogRevisionIds: string[];
+  projectCapabilityRevisionIds: string[];
+  disabledCapabilityKeysDigest: string;
   digest: string;
   createdAt: string;
 };
 ```
 
-Resolver 合并全局模板与 Workspace 新增、覆盖、移除；存储结果不可变，并且它是运行时唯一装载的能力集合。
+Resolver 固定已选全局模型 Revision，按 Typed Key 覆盖内置/项目能力，应用 Disabled Key，校验 Agent Grant 与 Policy，并保存精确 Provenance。结果不可变，并且它是 Run 唯一装载的能力集合。后续编辑或激活 Workspace 设置不会改变 Active/Paused Run；Resume 继续使用固定 Revision。
 
 ### 5.3 SourceRegistration
 
@@ -864,7 +868,7 @@ UI 规则：
 - **INV-15**：每个可执行 WorkUnit 都有经验证、版本固定的模型/Skill Route；能力缺失必须显式记录。
 - **INV-16**：多模型一致不能算业务真相；只有基于证据的对账与人工 Decision 能越过治理边界。
 - **INV-17**：每个 AnalysisBatch 以相同源码范围和输出 Schema 发给完整 active 子 Agent roster；主 Agent 必须等待每个 slot 的终态结果。
-- **INV-18**：运行时能力只来自不可变 WorkspaceExecutionProfileRevision；全局模型/Skill/MCP 模板在执行期间不可达。
+- **INV-18**：Runtime 模型与能力只来自不可变 `WorkspaceExecutionProfileRevision`；可变模型 Registry 和内置/项目能力 Catalog 在执行期间不可达。
 - **INV-19**：所有模块读写携带 `workspaceId` 与 Workspace 上下文版本；上一 Workspace 的迟到响应必须丢弃。
 
 ## 16. 验收标准
@@ -885,11 +889,11 @@ UI 规则：
 - API/worker 重启后继续未完成单元，人工暂停任务不自动恢复。
 - 在 Scanner Fact 输出为空时，证明每个可分析源码 Artifact 仍被直接读取或形成显式 Gap。
 - 对同一超大多语言 Snapshot 重规划，证明 Partition ID 稳定、`unassignedCount=0`、Context 有界、动态 DAG 完成，且 Candidate 不能只有 Summary 证据。
-- 证明 roster 默认两个子 Agent slot、支持一个或多个，并把相同批次 Digest、源码范围、任务说明与输出 Schema 发给每个 slot。
+- 证明已激活 Roster 至少需要两个已启用且完整的 Child Slot，支持增加 Slot，并把相同批次 Digest、源码范围、任务说明与输出 Schema 发给每个 Active Slot。
 - 证明每个主/子 Agent Route 记录不可变 Workspace Profile、经验证模型/Skill/MCP 能力、精确版本、Calibration、Independence Group、预算与被拒绝备选；不支持的 slot 形成 `NO_ELIGIBLE_PRODUCER`。
 - 证明完成屏障前 sibling 不能读取彼此输出，主 Agent 不能从不完整同批结果集发布对账。
 - 证明证据分歧保留在 ConflictLedger，不可信证据进入隔离区；相关一致和多数票都不能创建受治理身份。
-- 证明未出现在 Workspace 执行 Profile 修订中的全局 Skill/MCP 在运行时不可用。
+- 证明所有已禁用、未授权或未进入 Workspace Execution Profile 的 Skill/MCP 即使存在于内置或项目 Catalog 中，在 Runtime 仍不可用。
 
 ### 安全与一致性
 

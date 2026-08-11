@@ -16,6 +16,7 @@ topics:
   - user-journey
 doc_kind: spec
 created: 2026-07-29
+updated: 2026-08-11
 ---
 
 # F001：Workspace 与存量系统分析基础
@@ -72,7 +73,7 @@ Traqen 的首要能力是把存量代码和文件理解到足以构建可审核�
 
 ### Phase A：Workspace 根、配置 Profile 与审核真相
 
-定义 Workspace 聚合与生命周期、带版本的 `CurrentWorkspaceContext`，把全局模板与 Workspace 覆盖解析为不可变 `WorkspaceExecutionProfileRevision`，并定义多维正确性、审核 Truth Set Schema、显式 Unknown 状态和回归阈值。
+定义 Workspace 聚合与生命周期、带版本的 `CurrentWorkspaceContext`，由 F006 把全局模型选择与内置/项目能力选择激活为不可变 `WorkspaceExecutionProfileRevision`，并定义多维正确性、审核 Truth Set Schema、显式 Unknown 状态和回归阈值。
 
 `ReviewedUnderstandingMeasurement` 是封闭且带判别字段的 Evidence 合同。生产评估只接受由独立控制方生成且 `independent: true` 的记录。隔离开发启动只能持久化显式的 `LocalReferenceSynthetic` 变体：`independent: false`、`dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`、`productionEligible: false`、`evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`；该变体可用于跑通产品，但绝不能满足生产发布 Gate。
 
@@ -178,7 +179,7 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 ### A. 范围与确定性 Facts
 
 - [ ] **AC-A0**：Workspace 新建、显示/隐藏、切换和经审计删除生命周期由服务端拥有；所有功能界面使用 `workspaceId` 与上下文版本定界，旧 Workspace 的迟到响应不能更新当前 UI。
-- [ ] **AC-A0b**：全局模型/Skill/MCP 仅是模板；Workspace 覆盖与移除解析成不可变 `WorkspaceExecutionProfileRevision`，运行时只接收该修订，不能访问全局 Registry。
+- [ ] **AC-A0b**：全局模型是显式选择的可复用 API/Allowlist CLI 资产；内置/项目 Skill/MCP 通过 Typed Overlay 与 Disable 解析成不可变 `WorkspaceExecutionProfileRevision`；Runtime 只接收该 Revision 与 Scoped Grant，不能访问可变 Registry。
 - [ ] **AC-A1**：固定 Snapshot 内每个 Artifact 都有显式 Inventory 处置并留在覆盖分母中。
 - [ ] **AC-A2**：每个受支持提取器声明精确能力，并通过正向、负向、源码跨度和诊断 Fixture。
 - [ ] **AC-A3**：Facts 不可变、绑定 Snapshot、可定位源码，并可按提取器版本重现。
@@ -192,7 +193,7 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 - [ ] **AC-B5**：每条 ArtifactInventory 记录都必须直接读取不可变 Snapshot 原始源码、交给声明过能力的专用 Skill，或形成显式 Gap；Scanner Facts 只是可选增强，绝不能定义 Agent 任务全集。
 - [ ] **AC-B6**：相同 Snapshot、Planner/Convention 版本、执行策略与源码范围必须产生相同且完整的 `UnderstandingPlan`，其 Partition ID 稳定且 `unassignedCount=0`；动态依赖 DAG 以有界大文件、文件、Module、跨 Module、Critic 与汇总 WorkUnit 处理规模，子任务摘要不能单独作为证据。
 - [ ] **AC-B7**：每个 WorkUnit 都有基于已验证模型能力/校准 Profile 与 Skill 合同、版本固定且已持久化的 `AnalysisRouteDecision`；高风险冗余使用相互独立的 Producer Group 和证据对账，找不到合格 Producer 与未解决分歧必须显式保留，不能 Fallback 或按多数票造真相。
-- [ ] **AC-B8**：每个 Workspace 选择一个主 Agent 和一个或多个子 Agent slot，默认两个；每个 slot 独立固定模型 Profile、Skill、MCP grant、角色策略和 independence group。
+- [ ] **AC-B8**：每个已激活 Workspace Profile 恰好包含一个 Main Agent 和至少两个已启用且完整的 Child Agent Slot；每个 Slot 独立固定模型 Revision、Skill、MCP Grant、Role Policy 和 Independence Group。
 - [ ] **AC-B9**：每个 `AnalysisBatch` 以相同源码范围和输出 Schema 分发给完整 active 子 Agent roster；子 Agent 完成前相互隔离，主 Agent 对完整同批结果集合、静态 Facts 和历史 lineage 做对账，不能多数票裁决。
 - [ ] **AC-B10**：子 Agent 或主 Agent 的原始模型输出不能直接修改 Feature/API working tree；只有通过 Schema 与证据校验的对账结果才能发布批次检查点，不可信证据必须进入隔离区、冲突或 Gap。
 
@@ -243,8 +244,8 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 | R6 | “刷新浏览器，当前运行的任务状态未发生变化。” | AC-E1～E2 | Job 身份、进度、WorkUnit 调用 | [ ] |
 | R7 | “第一次全量形成完整图谱；以后增量更新最新图谱，同时保留功能版本变化和每次变更影响。” | AC-D4～D8、AC-F5、AC-F7 | 两个 Snapshot 的 FULL→INCREMENTAL 验收、CurrentGraphHead 与 Feature 历史查询 | [ ] |
 | R8 | “Workspace 切换，则其他功能全部跟随一起变化。” | AC-A0 | 覆盖全部模块的 Workspace 切换集成测试与迟到响应拒绝 | [ ] |
-| R9 | “主 Agent 与一个或多个子 Agent（默认 2 个）；各子 Agent 完成同一批次任务后由主 Agent 对账。” | AC-B8～B10 | 同批分发、隔离、完整集合对账和 working-tree 检查点测试 | [ ] |
-| R10 | “全局 Skill、MCP 仅做模板；运行时仅受项目配置影响，不得访问全局 Skill。” | AC-A0b、AC-B8 | 配置解析 Fixture 与运行时能力拒绝测试 | [ ] |
+| R9 | “要为每个WorkSpace可配置主Agent的能力，至少2个子Agent的能力。” | AC-B8～B10 | 下限、同批分发、隔离、完整集合对账和 Working-tree 检查点测试 | [ ] |
+| R10 | “区分默认内置skill与项目skill，如果存在相同的skill以项目的skill为准”；MCP 同理，且内置/项目能力都支持禁用。 | AC-A0b、AC-B8 | Typed Overlay/Disable Fixture 与 Runtime Capability Denial 测试 | [ ] |
 
 ### 覆盖检查
 
@@ -310,7 +311,7 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 | KD-8 | Agent 从完整不可变 Snapshot 规划，执行确定性动态分区 DAG，把每个有界 AnalysisBatch 发送给所有已配置且相互独立的子 Agent slot，再由主 Agent 对照静态 Facts 进行证据对账，禁止多数票。 | 超大工程需要可审核的完整处置、有界上下文、显式 Producer 适配度并保留分歧，不能让 Scanner 盲点或相关模型猜测定义真相。 | 2026-07-29 |
 | KD-9 | Workspace 是所有产品对象和视图的聚合根；显示/隐藏是用户偏好，删除是经审计生命周期。 | 单一 Scope 身份使切换具有原子语义，也避免把 UI 可见性误当成破坏性删除。 | 2026-07-31 |
 | KD-10 | 每个 active 子 Agent 分析同一个有界批次；主 Agent 对完整同批结果集、静态证据和历史做对账。 | 可比较的独立观察才能暴露分歧；把不同 Module 分给不同 Agent 只有吞吐量，没有相互印证。 | 2026-07-31 |
-| KD-11 | 全局能力仅是模板；执行固定到不可变 Workspace Profile，运行时没有回到全局 Skill/MCP 的通路。 | 项目隔离必须可强制、可重放，不能只是 Prompt 约定。 | 2026-07-31 |
+| KD-11 | F006 分离可复用全局模型资产、只读内置 Skill/MCP Catalog、Workspace 项目覆盖/禁用、可编辑 Draft 与不可变 Execution Profile；Runtime 没有回到可变 Registry 的通路。 | 项目隔离必须可强制、可重放，不能只是 Prompt 约定，同时设置仍可为后续 Run 持续修改。 | 2026-08-11 |
 | KD-12 | 现有 `Project.id` 迁入 Canonical Workspace 身份，或仅作为兼容别名；Workspace 与 Project 不再保留为两个独立 1:1 聚合。 | 两套生命周期与授权身份会重新制造 Workspace 本应消除的跨模块漂移。 | 2026-07-31 |
 | KD-13 | F001 的实现切片是活动计划中的 Task，不新增 `F001a`～`F001k` 生命周期 ID。 | 一份 Feature 真相源加可测试的计划任务既能分解交付，也不会再产生竞争的 Feature 命名空间。 | 2026-07-31 |
 
@@ -324,6 +325,7 @@ Main Agent 的界面语义是“把完整同批 Child 结果与源码证据、�
 | 2026-07-29 | operator 明确 Agent 完整原始源码覆盖、确定性分区/DAG、显式模型/Skill 路由与多模型对账 |
 | 2026-07-31 | operator 明确 Workspace 全局联动切换、同批次主/子 Agent 相互印证和 Workspace 专属运行时能力 |
 | 2026-07-31 | GPT/Kimi 相互印证确认 F001～F006 边界；operator 选择本次方案作为设计基线并要求删除被替代文档；ADR-0002 裁决 Canonical Workspace 身份、F006 顺序与 Runtime 隔离 |
+| 2026-08-11 | operator 确认新版 F006 合同：全局 API/CLI 模型、Typed 内置/项目能力覆盖与禁用、Main + Child 2..N、持久可编辑 Draft、不可变 Run 固定和全 Workspace 模型替换 |
 
 ## Review gate
 
@@ -351,7 +353,7 @@ Design Gate 必须确认：
 | 详细生命周期设计 | `docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md` | 完整 Inventory、同批次主/子 Agent 执行、对账、服务端所有权与恢复 |
 | Excalidraw 整体架构 | `docs/diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw` | 可编辑的 Workspace 根与产品模块架构 |
 | Archify 分析工作流 | `docs/diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html` | 确定性批次、同批子 Agent 隔离、能力路由、对账与 Gap |
-| Archify 能力解析 | `docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html` | 全局模板、Workspace 覆盖、不可变运行 Profile 与 Secret Grant |
+| Archify 能力解析 | `docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html` | 全局模型、内置/项目 Typed Overlay 与 Disable、可编辑 Draft、不可变运行 Profile 与 Secret Grant |
 | Archify 图谱生命周期 | `docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html` | Candidate、Decision、评估、发布、拒绝与隔离 |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md` | 真相与权威边界 |
 | Workspace 聚合 ADR | `docs/decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md` | Canonical Workspace 身份、切换、迁移与运行能力隔离 |

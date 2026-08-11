@@ -3,59 +3,76 @@
   "diagram_type": "dataflow",
   "meta": {
     "title": "Workspace Capability Resolution and Runtime Isolation",
-    "subtitle": "Global definitions are templates; one immutable Workspace revision is the complete runtime capability set",
+    "subtitle": "Reusable models plus typed built-in/project capability overlay become one immutable Run profile",
     "output": "docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html",
     "animation": "trace",
     "visual_preset": "blueprint",
     "quality_profile": "showcase",
-    "viewBox": [1180, 820],
+    "viewBox": [1280, 900],
     "views": [
       {
-        "id": "override_path",
-        "label": "Template + override",
-        "focus": ["templates", "catalog", "workspace", "resolver", "profile"],
-        "note": "Workspace additions, removals, and same-name overrides resolve deterministically."
+        "id": "model-selection",
+        "label": "Model selection",
+        "focus": ["models", "draft", "resolver", "profile"],
+        "note": "Workspace slots select reusable API or allowlisted CLI profiles; activation pins exact revisions."
       },
       {
-        "id": "secret_path",
-        "label": "Scoped credentials",
-        "focus": ["vault", "grants", "secretresolver", "profile"],
-        "note": "Profiles store credential handles and least-privilege grants, never plaintext secrets."
+        "id": "overlay-disable",
+        "label": "Overlay + disable",
+        "focus": ["builtin", "project", "disabled", "resolver", "profile"],
+        "note": "Project typed keys fully override built-ins, then Workspace disabled keys remove merged entries."
       },
       {
-        "id": "runtime_boundary",
-        "label": "Runtime isolation",
+        "id": "scoped-secrets",
+        "label": "Scoped secrets",
+        "focus": ["vault", "draft", "resolver", "profile"],
+        "note": "Profiles retain handles and least-privilege grants, never plaintext credentials."
+      },
+      {
+        "id": "runtime-pinning",
+        "label": "Runtime pinning",
         "focus": ["profile", "main", "children"],
-        "note": "Agents receive only the pinned revision; no global registry handle is mounted."
+        "note": "One Main and Child slots 2..N receive only the Run-pinned immutable profile."
       }
     ]
   },
   "stages": [
-    {"label": "Global templates"},
-    {"label": "Workspace choices"},
+    {"label": "Sources"},
+    {"label": "Workspace intent"},
     {"label": "Resolve + validate"},
     {"label": "Immutable revision"},
     {"label": "Runtime mount"}
   ],
   "nodes": [
     {
-      "id": "templates",
+      "id": "models",
       "type": "database",
-      "label": "Model templates",
-      "sublabel": "roles + calibration",
+      "label": "Global models",
+      "sublabel": "API / allowlisted CLI",
       "stage": 0,
       "row": 0,
-      "tag": "authoring only"
+      "tag": "reusable revisions",
+      "width": 128
     },
     {
-      "id": "catalog",
+      "id": "builtin",
       "type": "database",
-      "label": "Skill / MCP catalog",
-      "sublabel": "versioned manifests",
+      "label": "Built-in catalog",
+      "sublabel": "Skill / MCP · read-only",
+      "stage": 0,
+      "row": 1,
+      "tag": "may be empty",
+      "width": 128
+    },
+    {
+      "id": "project",
+      "type": "database",
+      "label": "Project catalog",
+      "sublabel": "immutable artifacts",
       "stage": 0,
       "row": 2,
-      "tag": "authoring only",
-      "width": 124
+      "tag": "Workspace owned",
+      "width": 128
     },
     {
       "id": "vault",
@@ -63,48 +80,38 @@
       "label": "Secret vault",
       "sublabel": "credential handles",
       "stage": 0,
-      "row": 4,
+      "row": 3,
       "tag": "no plaintext"
     },
     {
-      "id": "workspace",
+      "id": "draft",
       "type": "frontend",
-      "label": "Workspace config",
-      "sublabel": "add · override · remove",
+      "label": "Workspace draft",
+      "sublabel": "Main + Child 2..N",
       "stage": 1,
-      "row": 1,
-      "tag": "project wins",
-      "width": 118
+      "row": 0,
+      "tag": "durable + editable",
+      "width": 132
     },
     {
-      "id": "grants",
+      "id": "disabled",
       "type": "security",
-      "label": "Workspace grants",
-      "sublabel": "agent-slot scope",
+      "label": "Disabled keys",
+      "sublabel": "kind + normalized name",
       "stage": 1,
       "row": 4,
-      "tag": "least privilege",
-      "width": 118
+      "tag": "after overlay",
+      "width": 132
     },
     {
       "id": "resolver",
       "type": "backend",
       "label": "Profile resolver",
-      "sublabel": "merge + capability check",
+      "sublabel": "overlay · disable · grants",
       "stage": 2,
-      "row": 1,
+      "row": 2,
       "tag": "deterministic",
-      "width": 118
-    },
-    {
-      "id": "secretresolver",
-      "type": "security",
-      "label": "Grant resolver",
-      "sublabel": "bind scoped handles",
-      "stage": 2,
-      "row": 4,
-      "tag": "audited",
-      "width": 112
+      "width": 134
     },
     {
       "id": "profile",
@@ -114,7 +121,7 @@
       "stage": 3,
       "row": 2,
       "tag": "digest pinned",
-      "width": 118
+      "width": 126
     },
     {
       "id": "main",
@@ -129,131 +136,127 @@
       "id": "children",
       "type": "backend",
       "label": "Child roster",
-      "sublabel": "slot-specific routes",
+      "sublabel": "2..N same-batch slots",
       "stage": 4,
-      "row": 3,
+      "row": 4,
       "tag": "profile only",
-      "width": 110
+      "width": 122
     }
   ],
   "flows": [
     {
-      "id": "templates_workspace",
-      "from": "templates",
-      "to": "workspace",
+      "id": "models-draft",
+      "from": "models",
+      "to": "draft",
       "label": "models",
-      "classification": "template reference",
-      "variant": "dashed",
-      "route": "auto",
-      "labelAt": [170, 205]
-    },
-    {
-      "id": "catalog_workspace",
-      "from": "catalog",
-      "to": "workspace",
-      "label": "capability defaults",
-      "classification": "template reference",
-      "variant": "dashed",
-      "route": "auto",
-      "labelAt": [255, 428]
-    },
-    {
-      "id": "workspace_resolver",
-      "from": "workspace",
-      "to": "resolver",
-      "label": "effective choices",
-      "classification": "authoritative config",
+      "classification": "explicit model choice",
       "variant": "emphasis",
-      "route": "auto",
-      "labelDy": 54
+      "route": "straight",
+      "labelDy": 53
     },
     {
-      "id": "vault_grants",
+      "id": "draft-resolver",
+      "from": "draft",
+      "to": "resolver",
+      "label": "roster",
+      "classification": "authoritative intent",
+      "variant": "emphasis",
+      "route": "auto"
+    },
+    {
+      "id": "builtin-resolver",
+      "from": "builtin",
+      "to": "resolver",
+      "label": "built-ins",
+      "classification": "read-only catalog",
+      "variant": "dashed",
+      "route": "auto"
+    },
+    {
+      "id": "project-resolver",
+      "from": "project",
+      "to": "resolver",
+      "label": "overrides",
+      "classification": "full-key override",
+      "variant": "default",
+      "route": "straight",
+      "labelAt": [250, 342]
+    },
+    {
+      "id": "disabled-resolver",
+      "from": "disabled",
+      "to": "resolver",
+      "label": "disabled",
+      "classification": "fail closed",
+      "variant": "security",
+      "route": "auto"
+    },
+    {
+      "id": "vault-resolver",
       "from": "vault",
-      "to": "grants",
-      "label": "handle references",
+      "to": "resolver",
+      "label": "handles",
       "classification": "secret metadata",
       "variant": "security",
       "route": "auto"
     },
     {
-      "id": "grants_secretresolver",
-      "from": "grants",
-      "to": "secretresolver",
-      "label": "allowed handles",
-      "classification": "least privilege",
-      "variant": "security",
-      "route": "auto"
-    },
-    {
-      "id": "resolver_profile",
+      "id": "resolver-profile",
       "from": "resolver",
       "to": "profile",
-      "label": "resolved set",
-      "classification": "resolved capability set",
+      "label": "effective set",
+      "classification": "resolved set",
       "variant": "emphasis",
-      "route": "auto",
-      "labelAt": [540, 428]
+      "route": "straight"
     },
     {
-      "id": "secretresolver_profile",
-      "from": "secretresolver",
-      "to": "profile",
-      "label": "scoped handles",
-      "classification": "credential grants",
-      "variant": "security",
+      "id": "profile-main",
+      "from": "profile",
+      "to": "main",
+      "label": "Main",
+      "classification": "runtime mount",
+      "variant": "emphasis",
       "route": "auto"
     },
     {
-      "id": "profile_main",
-      "from": "profile",
-      "to": "main",
-      "label": "Main slot",
-      "classification": "runtime mount",
-      "variant": "emphasis",
-      "route": "auto",
-      "labelDy": -58
-    },
-    {
-      "id": "profile_children",
+      "id": "profile-children",
       "from": "profile",
       "to": "children",
-      "label": "Child slots 1..N",
+      "label": "Child 2..N",
       "classification": "runtime mount",
       "variant": "emphasis",
-      "route": "auto",
-      "labelDy": 58
+      "route": "auto"
     }
   ],
   "cards": [
     {
-      "dot": "slate",
-      "title": "Global means reusable",
+      "dot": "cyan",
+      "title": "Separate Authorities",
       "items": [
-        "Global entries are configuration templates",
-        "They never become ambient runtime capabilities",
-        "Same-name Workspace overrides win",
-        "Workspace removal excludes the entry"
+        "Global models are reusable connection assets, not templates",
+        "Built-in catalogs are read-only and may be empty",
+        "Project capability revisions and disabled keys belong to one Workspace",
+        "Draft intent remains editable after a Run starts"
       ]
     },
     {
       "dot": "emerald",
-      "title": "One replayable input",
+      "title": "Deterministic Effective Set",
       "items": [
-        "A run pins one immutable profile revision",
-        "Model, Skill, MCP, policy, and convention versions are exact",
-        "Configuration changes affect only later runs",
-        "The revision digest is part of every batch input"
+        "Skill and MCP identity includes kind plus normalized name",
+        "Project same-key entries completely replace built-ins",
+        "Disable applies after overlay and never falls back",
+        "Agent grants further narrow the effective catalog"
       ]
     },
     {
       "dot": "rose",
-      "title": "Isolation boundary",
+      "title": "Pinned Runtime Boundary",
       "items": [
-        "Runtime receives no global registry handle",
-        "Unresolved Skills and MCPs are unavailable",
-        "Credentials are scoped by Workspace and Agent slot",
-        "Denied capability access is audited"
+        "Activation creates one immutable execution-profile revision",
+        "Runtime receives no mutable model or capability registry handle",
+        "Active and paused Runs keep their start revision",
+        "Secrets remain scoped by Workspace, Run, and Agent slot"
       ]
     }
   ]

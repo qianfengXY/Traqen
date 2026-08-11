@@ -1,3 +1,11 @@
+---
+feature_ids: [F001, F002, F003, F004, F005, F006]
+topics: [workspace, product-foundation, implementation-plan, runtime-isolation]
+doc_kind: implementation-plan
+created: 2026-07-31
+updated: 2026-08-11
+---
+
 # Traqen Workspace-Rooted Product Foundation — Implementation Plan
 
 > **For Codex:** implement from the current integration branch, not from this documentation branch's older code snapshot. Read the active truth sources below before editing. Use TDD, one independently reviewable slice at a time.
@@ -13,7 +21,7 @@ Turn the existing collection of project, scanner, Agent, graph, review, and impa
 
 - Workspace is the aggregate root and switching it rebinds every module;
 - a complete immutable source inventory feeds static scanning and direct-source Agent work as independent evidence paths;
-- one Main Agent plans and reconciles; one or more Child Agents, default two, receive the same bounded batch and return independent results;
+- one Main Agent plans and reconciles; at least two enabled, complete Child Agents receive the same bounded batch and return independent results;
 - runtime models, Skills, and MCPs come only from an immutable Workspace-effective profile;
 - evidence-untrusted Candidates are quarantined or surfaced as Gaps;
 - the latest governed Feature/API graph and immutable history drive traceability, review, graph exploration, and change impact.
@@ -54,7 +62,7 @@ Superseded documents and plans are absent from the working-tree baseline. Use Gi
 3. deletion is an audited lifecycle; no hard-delete shortcut is allowed.
 4. every Workspace switch advances `contextVersion`; stale requests and events cannot mutate the new context.
 5. `SourceSnapshot` and `ArtifactInventory` define complete analysis coverage. Scanner output does not define the Child task universe.
-6. every active Child slot receives the same `analysisBatchId`, input digest, source scope, task statement, and output schema.
+6. every activated Workspace profile contains exactly one Main and at least two enabled, complete Child slots; every active Child slot receives the same `analysisBatchId`, input digest, source scope, task statement, and output schema.
 7. sibling outputs are isolated until the completion barrier.
 8. the Main Agent reconciles evidence; vote count never creates governed truth.
 9. runtime receives `WorkspaceExecutionProfileRevision`, scoped secret grants, and bounded source access. It receives no global registry handle.
@@ -103,32 +111,40 @@ Add domain, API, persistence, and Web tests proving:
 
 Run focused domain/API/Web tests. Capture one browser acceptance showing that the user can switch Workspace while a delayed request from the prior Workspace completes without changing the new page.
 
-## 6. Task 2 — F006 capability templates and Workspace-effective execution profile
+## 6. Task 2 — F006 global model library, Workspace capability overlay, and immutable execution profile
 
 ### RED
 
-Add tests for:
+Add domain, persistence, API, adapter, and Web tests proving:
 
-- global model/Skill/MCP entries are templates only;
-- Workspace entries with the same logical name override the template;
-- Workspace removals prevent inherited capabilities from materializing;
+- global API and allowlisted local CLI model profiles are revisioned, persisted, verified, and explicitly selected; no global active/default model exists;
+- CLI execution rejects argument injection, never invokes a shell, and bounds timeout, cancellation, output, and process-tree cleanup;
+- Skill and MCP use typed `(kind, normalizedName)` identity so cross-kind same-name entries coexist;
+- project entries completely override same-key built-ins, and built-in/project entries resolve deterministically when either catalog is empty;
+- built-ins, project additions, and project overrides can all be disabled; a disabled override cannot fall back to the built-in;
+- effective summary counts distinguish project overrides from additions;
+- exactly one Main and at least two enabled, complete Child slots are required to activate a profile;
+- incomplete or invalid drafts persist with field errors and recover after service restart;
+- activating a valid draft creates an immutable `WorkspaceExecutionProfileRevision`; active and paused Runs remain pinned to their start revision;
 - dependency and convention configuration are Workspace-scoped and revisioned;
-- resolver output is deterministic for the same inputs;
-- a worker cannot discover a global capability absent from the pinned revision;
-- credentials are represented by scoped secret grants, never embedded in the profile or logs.
+- a worker cannot discover a disabled, ungranted, or unmaterialized capability absent from the pinned revision;
+- credentials are represented by scoped secret grants and never appear in forms, configuration, API responses, diffs, prompts, profiles, telemetry, diagnostics, or logs;
+- deleting a referenced model previews every Workspace reference, atomically replaces all current references under CAS, rolls all changes back on any conflict, leaves zero current references, and preserves historical revisions and active Runs.
 
 ### GREEN
 
-- introduce versioned template manifests, Workspace overrides/removals, dependencies, and conventions;
-- implement a deterministic `WorkspaceExecutionProfileResolver`;
-- persist immutable `WorkspaceExecutionProfileRevision` and route decisions;
-- issue least-privilege secret grants for the selected run/slot;
-- pass only the revision, grants, and source broker handle into Main/Child runtimes;
-- migrate existing model profiles without granting implicit global runtime visibility.
+- introduce revisioned global model profiles plus encrypted credential handles, readiness, usage, and retirement state;
+- add allowlisted local CLI adapters that construct argv directly and own lifecycle limits;
+- introduce read-only built-in Skill/MCP catalogs plus immutable Workspace project-capability revisions and typed disabled keys;
+- implement `typed overlay -> disable -> Agent grants` in one deterministic `WorkspaceExecutionProfileResolver` and return source-aware effective counts;
+- persist immutable draft revisions, CAS-protected draft/active heads, dependencies, conventions, policies, execution profiles, and route decisions;
+- enforce one Main and Child `2..N` in domain, API, and Web surfaces; replace comma-separated capability inputs with structured effective-catalog selectors;
+- issue least-privilege secret grants for the selected Workspace/Run/slot and pass only the pinned revision, grants, and source broker handle into runtimes;
+- implement server-derived model usage preview, all-Workspace replacement plans, atomic Apply, and `ACTIVE -> RETIRING -> RETIRED` without legacy model-profile migration.
 
 ### Gate
 
-Validate the capability-resolution Archify diagram against contract tests. Include a negative test where a globally installed MCP is unavailable to a Workspace that did not materialize it.
+Run focused domain/persistence/API/adapter/Web tests plus durable restart recovery. Validate the capability-resolution Archify diagram at showcase quality. Include negative tests for fewer than two Child slots, a disabled project override, cross-kind same-name capability identity, partial-replacement input, CLI injection, secret leakage, and a globally installed MCP absent from the pinned Workspace profile.
 
 ## 7. Task 3 — complete SourceSnapshot, ArtifactInventory, and static scan
 
@@ -163,8 +179,8 @@ Close the browser during scanning and prove progress continues. Restart the API/
 
 Add contract and scheduler tests proving:
 
-- default roster is one Main plus two Child slots;
-- one or more Child slots are valid; a hard-coded count of three is invalid;
+- a new Workspace starts with one Main plus two empty Child slots;
+- fewer than two enabled, complete Child slots are invalid; more are allowed, while a hard-coded count of three is invalid;
 - deterministic partitioning produces stable IDs and bounded batches;
 - every active Child receives an identical batch digest, scope, task, schema, and source policy;
 - slots may use different pinned model/Skill/MCP routes;

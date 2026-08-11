@@ -16,6 +16,7 @@ topics:
   - user-journey
 doc_kind: spec
 created: 2026-07-29
+updated: 2026-08-11
 ---
 
 # F001: Workspace and Legacy-System Analysis Foundation
@@ -72,7 +73,7 @@ Governed Features and Claims still require human Decisions. Test execution and E
 
 ### Phase A: Workspace root, configuration profile, and evaluated truth
 
-Define the Workspace aggregate and lifecycle, versioned `CurrentWorkspaceContext`, global-template/Workspace-override resolution into an immutable `WorkspaceExecutionProfileRevision`, multi-dimensional correctness, reviewed truth-set schema, explicit Unknown states, and regression thresholds.
+Define the Workspace aggregate and lifecycle, versioned `CurrentWorkspaceContext`, F006 activation of global model plus built-in/project capability choices into an immutable `WorkspaceExecutionProfileRevision`, multi-dimensional correctness, reviewed truth-set schema, explicit Unknown states, and regression thresholds.
 
 `ReviewedUnderstandingMeasurement` is a closed, discriminated evidence contract. Production evaluation accepts an independently controlled record with `independent: true`. The isolated development bootstrap may persist only the explicit `LocalReferenceSynthetic` variant with `independent: false`, `dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`, `productionEligible: false`, and `evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`; that variant can exercise the product but can never satisfy a production publication gate.
 
@@ -178,7 +179,7 @@ On desktop, Static and Agent lanes can appear side by side beneath the stage tra
 ### A. Scope and deterministic facts
 
 - [ ] **AC-A0**: Workspace create, show/hide, switch, and audited delete lifecycles are server-owned; every feature surface is keyed by `workspaceId` plus a context version, and late responses from a prior Workspace cannot update current UI state.
-- [ ] **AC-A0b**: global model/Skill/MCP definitions are templates only; Workspace overrides and removals resolve into an immutable `WorkspaceExecutionProfileRevision`, and runtime receives that revision without access to the global registry.
+- [ ] **AC-A0b**: global models are explicitly selected reusable API/allowlisted-CLI assets; built-in/project Skill/MCP entries resolve by typed overlay and disable into an immutable `WorkspaceExecutionProfileRevision`; runtime receives only that revision and scoped grants without mutable registry access.
 - [ ] **AC-A1**: every artifact in the pinned Snapshot has an explicit inventory disposition and remains in the coverage denominator.
 - [ ] **AC-A2**: every supported extractor declares its exact capability and passes positive, negative, source-span, and diagnostic fixtures.
 - [ ] **AC-A3**: Facts are immutable, Snapshot-bound, source-locatable, and reproducible by extractor version.
@@ -192,7 +193,7 @@ On desktop, Static and Agent lanes can appear side by side beneath the stage tra
 - [ ] **AC-B5**: every ArtifactInventory row is directly read from the immutable Snapshot, handled by a declared specialist, or represented by an explicit Gap; scanner Facts are optional enrichment and never define the Agent task universe.
 - [ ] **AC-B6**: the same Snapshot, planner/convention versions, execution policy, and source ranges produce the same complete `UnderstandingPlan` with stable partition IDs and `unassignedCount=0`; its dynamic dependency DAG handles bounded large-file, file, module, cross-module, critic, and synthesis WorkUnits without treating a child summary as sole evidence.
 - [ ] **AC-B7**: every WorkUnit has a persisted, version-pinned `AnalysisRouteDecision` selected from verified model capability/calibration profiles and Skill contracts; high-risk redundancy uses independent producer groups and evidence reconciliation, while no eligible producer and unresolved disagreement remain explicit instead of falling back or becoming majority truth.
-- [ ] **AC-B8**: each Workspace chooses one Main Agent and one or more Child Agent slots, defaulting to two; every slot independently pins its model profile, Skills, MCP grants, role policy, and independence group.
+- [ ] **AC-B8**: each activated Workspace profile contains exactly one Main Agent and at least two enabled, complete Child Agent slots; every slot independently pins its model revision, Skills, MCP grants, role policy, and independence group.
 - [ ] **AC-B9**: each `AnalysisBatch` is fanned out to the complete active Child roster with identical source scope and output schema; children are isolated until completion, and the Main Agent reconciles the complete sibling result set against static Facts and historical lineage without majority voting.
 - [ ] **AC-B10**: raw Child or Main model output never mutates the Feature/API working tree; only schema-valid, evidence-valid reconciliation output can publish a batch checkpoint, while untrusted evidence becomes quarantine, conflict, or Gap.
 
@@ -243,8 +244,8 @@ On desktop, Static and Agent lanes can appear side by side beneath the stage tra
 | R6 | “刷新浏览器，当前运行的任务状态未发生变化。” | AC-E1–E2 | job identity, progress, WorkUnit calls | [ ] |
 | R7 | “第一次分析会得到一个完整的图谱关系……增量分析就应该重新更新图谱……功能点是需要记录变化过程及每次变化会影响哪些功能。” | AC-D4–D8, AC-F5, AC-F7 | two-Snapshot FULL→INCREMENTAL acceptance, CurrentGraphHead, and Feature-history query | [ ] |
 | R8 | “Workspace 切换，则其他功能全部跟随一起变化。” | AC-A0 | Workspace switch integration test with stale-response rejection across every module | [ ] |
-| R9 | “主 Agent 与一个或多个子 Agent（默认 2 个）；各子 Agent 完成同一批次任务后由主 Agent 对账。” | AC-B8–B10 | same-batch fan-out, isolation, complete-set reconciliation, and working-tree checkpoint tests | [ ] |
-| R10 | “全局 Skill、MCP 仅做模板；运行时仅受项目配置影响，不得访问全局 Skill。” | AC-A0b, AC-B8 | profile-resolution fixtures plus runtime capability-denial tests | [ ] |
+| R9 | “要为每个WorkSpace可配置主Agent的能力，至少2个子Agent的能力。” | AC-B8–B10 | lower-bound, same-batch fan-out, isolation, complete-set reconciliation, and working-tree checkpoint tests | [ ] |
+| R10 | “区分默认内置skill与项目skill，如果存在相同的skill以项目的skill为准”；MCP 同理，且内置/项目能力都支持禁用。 | AC-A0b, AC-B8 | typed overlay/disable fixtures plus runtime capability-denial tests | [ ] |
 
 ### Coverage check
 
@@ -310,7 +311,7 @@ On desktop, Static and Agent lanes can appear side by side beneath the stage tra
 | KD-8 | The Agent plans from the complete immutable Snapshot, executes a deterministic dynamic partition DAG, sends each bounded AnalysisBatch to every configured independent Child slot, and lets the Main Agent reconcile their evidence against static Facts without majority voting. | Large repositories need auditable total disposition, bounded contexts, explicit producer fitness, and preserved disagreement without allowing scanner blind spots or correlated model guesses to define truth. | 2026-07-29 |
 | KD-9 | Workspace is the aggregate root for every product object and view; show/hide is a user preference, while delete is an audited lifecycle. | A single scope identity makes switching atomic and prevents UI visibility from being confused with destructive deletion. | 2026-07-31 |
 | KD-10 | Every active Child Agent analyzes the same bounded batch; the Main Agent reconciles the complete sibling set against static evidence and history. | Comparable independent observations expose disagreement. Splitting different modules among children provides throughput but not corroboration. | 2026-07-31 |
-| KD-11 | Global capabilities are templates only; execution is pinned to an immutable Workspace profile with no runtime path back to global Skills or MCPs. | Project isolation must be enforceable and replayable, not a prompt convention. | 2026-07-31 |
+| KD-11 | F006 separates reusable global model assets, read-only built-in Skill/MCP catalogs, Workspace project overlay/disable, editable drafts, and immutable execution profiles; runtime has no path back to mutable registries. | Project isolation must be enforceable and replayable, not a prompt convention, while settings remain editable for later Runs. | 2026-08-11 |
 | KD-12 | Existing `Project.id` migrates into the canonical Workspace identity or remains only as a compatibility alias; Workspace and Project do not remain independent 1:1 aggregates. | Two lifecycle and authorization identities would recreate the cross-module drift that Workspace is meant to remove. | 2026-07-31 |
 | KD-13 | F001 implementation slices are tasks in the active plan, not new `F001a`–`F001k` lifecycle IDs. | One Feature truth source plus testable plan tasks provides decomposition without creating another competing Feature namespace. | 2026-07-31 |
 
@@ -324,6 +325,7 @@ On desktop, Static and Agent lanes can appear side by side beneath the stage tra
 | 2026-07-29 | operator established complete raw-source Agent coverage, deterministic partition/DAG execution, explicit model/Skill routing, and multi-model reconciliation |
 | 2026-07-31 | operator established Workspace-wide switching, same-batch Main/Child Agent corroboration, and Workspace-only runtime capabilities |
 | 2026-07-31 | GPT/Kimi cross-validation confirmed F001–F006 boundaries; the operator selected this design as the baseline and directed removal of superseded documents; ADR-0002 resolved canonical Workspace identity, F006 ordering, and runtime isolation |
+| 2026-08-11 | operator approved the revised F006 contract: global API/CLI models, typed built-in/project capability overlay and disable, Main plus Child 2..N, durable editable drafts, immutable Run pinning, and all-Workspace model replacement |
 
 ## Review gate
 
@@ -351,7 +353,7 @@ Implementation then follows TDD, quality gate, independent review, and merge gat
 | Detailed lifecycle design | `docs/features/workspace-scan-and-analysis-lifecycle.md` | complete Inventory, same-batch Main/Child execution, reconciliation, server ownership, and recovery |
 | Overall Excalidraw architecture | `docs/diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw` | editable Workspace-rooted product and module architecture |
 | Archify Analysis workflow | `docs/diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html` | deterministic batches, same-batch Child isolation, capability routing, reconciliation, and gaps |
-| Archify capability resolution | `docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html` | global templates, Workspace overrides, immutable runtime profile, and secret grants |
+| Archify capability resolution | `docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html` | global models, built-in/project typed overlay and disable, editable draft, immutable runtime profile, and secret grants |
 | Archify graph lifecycle | `docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html` | Candidate, Decision, evaluation, publication, rejection, and quarantine |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.md` | truth and authority boundaries |
 | Workspace aggregate ADR | `docs/decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md` | canonical Workspace identity, switching, migration, and runtime capability isolation |

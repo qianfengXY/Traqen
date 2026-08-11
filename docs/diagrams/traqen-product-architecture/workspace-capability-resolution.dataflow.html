@@ -4498,10 +4498,10 @@
         <div class="pulse-dot"></div>
         <h1>Workspace Capability Resolution and Runtime Isolation</h1>
       </div>
-      <p class="subtitle">Global definitions are templates; one immutable Workspace revision is the complete runtime capability set</p>
+      <p class="subtitle">Reusable models plus typed built-in/project capability overlay become one immutable Run profile</p>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"override_path","label":"Template + override","focus":["templates","catalog","workspace","resolver","profile"],"note":"Workspace additions, removals, and same-name overrides resolve deterministically."},{"id":"secret_path","label":"Scoped credentials","focus":["vault","grants","secretresolver","profile"],"note":"Profiles store credential handles and least-privilege grants, never plaintext secrets."},{"id":"runtime_boundary","label":"Runtime isolation","focus":["profile","main","children"],"note":"Agents receive only the pinned revision; no global registry handle is mounted."}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"model-selection","label":"Model selection","focus":["models","draft","resolver","profile"],"note":"Workspace slots select reusable API or allowlisted CLI profiles; activation pins exact revisions."},{"id":"overlay-disable","label":"Overlay + disable","focus":["builtin","project","disabled","resolver","profile"],"note":"Project typed keys fully override built-ins, then Workspace disabled keys remove merged entries."},{"id":"scoped-secrets","label":"Scoped secrets","focus":["vault","draft","resolver","profile"],"note":"Profiles retain handles and least-privilege grants, never plaintext credentials."},{"id":"runtime-pinning","label":"Runtime pinning","focus":["profile","main","children"],"note":"One Main and Child slots 2..N receive only the Run-pinned immutable profile."}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -4544,9 +4544,9 @@
 
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read">
-      <svg viewBox="0 0 1180 820" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="blueprint" data-quality-profile="showcase">
+      <svg viewBox="0 0 1280 900" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-animation="trace" data-preset="blueprint" data-quality-profile="showcase">
         <title id="archify-diagram-title">Workspace Capability Resolution and Runtime Isolation</title>
-        <desc id="archify-diagram-description">Global definitions are templates; one immutable Workspace revision is the complete runtime capability set</desc>
+        <desc id="archify-diagram-description">Reusable models plus typed built-in/project capability overlay become one immutable Run profile</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -4570,130 +4570,130 @@
         <rect width="100%" height="100%" fill="url(#grid)" />
 
         <!-- Data Stages -->
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="0" x="16" y="46" width="168" height="700" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="100" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">01 / Global templates</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="0" x="16" y="46" width="168" height="780" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="100" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">01 / Sources</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="1" x="231" y="46" width="168" height="700" rx="10" class="c-lane" stroke-width="1"/>
-        <text x="315" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">02 / Workspace choices</text>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="1" x="231" y="46" width="168" height="780" rx="10" class="c-lane" stroke-width="1"/>
+        <text x="315" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">02 / Workspace intent</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="2" x="446" y="46" width="168" height="700" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="2" x="446" y="46" width="168" height="780" rx="10" class="c-lane" stroke-width="1"/>
         <text x="530" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">03 / Resolve + validate</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="3" x="661" y="46" width="168" height="700" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="3" x="661" y="46" width="168" height="780" rx="10" class="c-lane" stroke-width="1"/>
         <text x="745" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">04 / Immutable revision</text>
 
-        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="4" x="876" y="46" width="168" height="700" rx="10" class="c-lane" stroke-width="1"/>
+        <rect data-graph-role="structural-frame" data-composition-frame-kind="stage" data-composition-frame-id="4" x="876" y="46" width="168" height="780" rx="10" class="c-lane" stroke-width="1"/>
         <text x="960" y="68" class="t-dim" font-size="9" font-weight="600" text-anchor="middle">05 / Runtime mount</text>
 
         <!-- Flow paths -->
-        <path data-edge-from="templates" data-edge-to="workspace" data-edge-label="models" data-edge-key="0" data-edge-id="templates_workspace" data-composition-points="156,157;206,157;206,271;256,271" d="M 156 157 L 206 157 L 206 271 L 256 271" class="a-dashed" data-animate="edge" style="--step:0" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="catalog" data-edge-to="workspace" data-edge-label="capability defaults" data-edge-key="1" data-edge-id="catalog_workspace" data-composition-points="162,385;209,385;209,271;256,271" d="M 162 385 L 209 385 L 209 271 L 256 271" class="a-dashed" data-animate="edge" style="--step:1" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <path data-edge-from="workspace" data-edge-to="resolver" data-edge-label="effective choices" data-edge-key="2" data-edge-id="workspace_resolver" data-composition-points="374,271;471,271" d="M 374 271 L 471 271" class="a-emphasis" data-animate="edge" style="--step:2" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="vault" data-edge-to="grants" data-edge-label="handle references" data-edge-key="3" data-edge-id="vault_grants" data-composition-points="156,613;256,613" d="M 156 613 L 256 613" class="a-security" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="grants" data-edge-to="secretresolver" data-edge-label="allowed handles" data-edge-key="4" data-edge-id="grants_secretresolver" data-composition-points="374,613;474,613" d="M 374 613 L 474 613" class="a-security" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="resolver" data-edge-to="profile" data-edge-label="resolved set" data-edge-key="5" data-edge-id="resolver_profile" data-composition-points="589,271;637.5,271;637.5,385;686,385" d="M 589 271 L 637.5 271 L 637.5 385 L 686 385" class="a-emphasis" data-animate="edge" style="--step:5" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="secretresolver" data-edge-to="profile" data-edge-label="scoped handles" data-edge-key="6" data-edge-id="secretresolver_profile" data-composition-points="586,613;636,613;636,385;686,385" d="M 586 613 L 636 613 L 636 385 L 686 385" class="a-security" data-animate="edge" style="--step:6" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <path data-edge-from="profile" data-edge-to="main" data-edge-label="Main slot" data-edge-key="7" data-edge-id="profile_main" data-composition-points="804,378;854,378;854,157;904,157" d="M 804 378 L 854 378 L 854 157 L 904 157" class="a-emphasis" data-animate="edge" style="--step:7" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <path data-edge-from="profile" data-edge-to="children" data-edge-label="Child slots 1..N" data-edge-key="8" data-edge-id="profile_children" data-composition-points="804,392;854.5,392;854.5,499;905,499" d="M 804 392 L 854.5 392 L 854.5 499 L 905 499" class="a-emphasis" data-animate="edge" style="--step:8" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="models" data-edge-to="draft" data-edge-label="models" data-edge-key="0" data-edge-id="models-draft" data-composition-points="164,157;249,157" d="M 164 157 L 249 157" class="a-emphasis" data-animate="edge" style="--step:0" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="draft" data-edge-to="resolver" data-edge-label="roster" data-edge-key="1" data-edge-id="draft-resolver" data-composition-points="381,157;422,157;422,372;463,372" d="M 381 157 L 422 157 L 422 372 L 463 372" class="a-emphasis" data-animate="edge" style="--step:1" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="builtin" data-edge-to="resolver" data-edge-label="built-ins" data-edge-key="2" data-edge-id="builtin-resolver" data-composition-points="164,271;313.5,271;313.5,380.6666666666667;463,380.6666666666667" d="M 164 271 L 313.5 271 L 313.5 380.6666666666667 L 463 380.6666666666667" class="a-dashed" data-animate="edge" style="--step:2" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <path data-edge-from="project" data-edge-to="resolver" data-edge-label="overrides" data-edge-key="3" data-edge-id="project-resolver" data-composition-points="164,385;463,385" d="M 164 385 L 463 385" class="a-default" data-animate="edge" style="--step:3" stroke-width="1.4" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="disabled" data-edge-to="resolver" data-edge-label="disabled" data-edge-key="4" data-edge-id="disabled-resolver" data-composition-points="381,613;422,613;422,398;463,398" d="M 381 613 L 422 613 L 422 398 L 463 398" class="a-security" data-animate="edge" style="--step:4" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="vault" data-edge-to="resolver" data-edge-label="handles" data-edge-key="5" data-edge-id="vault-resolver" data-composition-points="156,499;309.5,499;309.5,389.3333333333333;463,389.3333333333333" d="M 156 499 L 309.5 499 L 309.5 389.3333333333333 L 463 389.3333333333333" class="a-security" data-animate="edge" style="--step:5" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <path data-edge-from="resolver" data-edge-to="profile" data-edge-label="effective set" data-edge-key="6" data-edge-id="resolver-profile" data-composition-points="597,385;682,385" d="M 597 385 L 682 385" class="a-emphasis" data-animate="edge" style="--step:6" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="profile" data-edge-to="main" data-edge-label="Main" data-edge-key="7" data-edge-id="profile-main" data-composition-points="808,378;856,378;856,157;904,157" d="M 808 378 L 856 378 L 856 157 L 904 157" class="a-emphasis" data-animate="edge" style="--step:7" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <path data-edge-from="profile" data-edge-to="children" data-edge-label="Child 2..N" data-edge-key="8" data-edge-id="profile-children" data-composition-points="808,392;853.5,392;853.5,613;899,613" d="M 808 392 L 853.5 392 L 853.5 613 L 899 613" class="a-emphasis" data-animate="edge" style="--step:8" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
 
         <!-- Nodes -->
-        <g id="node-templates" data-node-id="templates" data-node-label="Model templates" tabindex="0" role="button" aria-label="Focus Model templates, roles + calibration, 01 / Global templates" aria-pressed="false" data-node-kind="database" data-node-sublabel="roles + calibration" data-node-tag="authoring only" data-node-context="01 / Global templates">
-          <title>Model templates · roles + calibration · 01 / Global templates · authoring only</title>
-          <rect x="44" y="128" width="112" height="58" rx="6" class="c-mask"/>
-          <rect x="44" y="128" width="112" height="58" rx="6" class="c-database" data-animate="node" style="--step:0" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(50 134) scale(0.6875)">
+        <g id="node-models" data-node-id="models" data-node-label="Global models" tabindex="0" role="button" aria-label="Focus Global models, API / allowlisted CLI, 01 / Sources" aria-pressed="false" data-node-kind="database" data-node-sublabel="API / allowlisted CLI" data-node-tag="reusable revisions" data-node-context="01 / Sources">
+          <title>Global models · API / allowlisted CLI · 01 / Sources · reusable revisions</title>
+          <rect x="36" y="128" width="128" height="58" rx="6" class="c-mask"/>
+          <rect x="36" y="128" width="128" height="58" rx="6" class="c-database" data-animate="node" style="--step:0" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(42 134) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="100" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Model templates</text>
-          <text data-detail="context" x="100" y="165" class="t-muted" font-size="7" text-anchor="middle">roles + calibration</text>
-        <text data-detail="fine" x="100" y="175" class="t-database" font-size="7" text-anchor="middle">authoring only</text>
+          <text data-detail-anchor x="100" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Global models</text>
+          <text data-detail="context" x="100" y="165" class="t-muted" font-size="7" text-anchor="middle">API / allowlisted CLI</text>
+        <text data-detail="fine" x="100" y="175" class="t-database" font-size="7" text-anchor="middle">reusable revisions</text>
         </g>
 
-        <g id="node-catalog" data-node-id="catalog" data-node-label="Skill / MCP catalog" tabindex="0" role="button" aria-label="Focus Skill / MCP catalog, versioned manifests, 01 / Global templates" aria-pressed="false" data-node-kind="database" data-node-sublabel="versioned manifests" data-node-tag="authoring only" data-node-context="01 / Global templates">
-          <title>Skill / MCP catalog · versioned manifests · 01 / Global templates · authoring only</title>
-          <rect x="38" y="356" width="124" height="58" rx="6" class="c-mask"/>
-          <rect x="38" y="356" width="124" height="58" rx="6" class="c-database" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(44 362) scale(0.6875)">
+        <g id="node-builtin" data-node-id="builtin" data-node-label="Built-in catalog" tabindex="0" role="button" aria-label="Focus Built-in catalog, Skill / MCP · read-only, 01 / Sources" aria-pressed="false" data-node-kind="database" data-node-sublabel="Skill / MCP · read-only" data-node-tag="may be empty" data-node-context="01 / Sources">
+          <title>Built-in catalog · Skill / MCP · read-only · 01 / Sources · may be empty</title>
+          <rect x="36" y="242" width="128" height="58" rx="6" class="c-mask"/>
+          <rect x="36" y="242" width="128" height="58" rx="6" class="c-database" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(42 248) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="100" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Skill / MCP catalog</text>
-          <text data-detail="context" x="100" y="393" class="t-muted" font-size="7" text-anchor="middle">versioned manifests</text>
-        <text data-detail="fine" x="100" y="403" class="t-database" font-size="7" text-anchor="middle">authoring only</text>
+          <text data-detail-anchor x="100" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Built-in catalog</text>
+          <text data-detail="context" x="100" y="279" class="t-muted" font-size="7" text-anchor="middle">Skill / MCP · read-only</text>
+        <text data-detail="fine" x="100" y="289" class="t-database" font-size="7" text-anchor="middle">may be empty</text>
         </g>
 
-        <g id="node-vault" data-node-id="vault" data-node-label="Secret vault" tabindex="0" role="button" aria-label="Focus Secret vault, credential handles, 01 / Global templates" aria-pressed="false" data-node-kind="security" data-node-sublabel="credential handles" data-node-tag="no plaintext" data-node-context="01 / Global templates">
-          <title>Secret vault · credential handles · 01 / Global templates · no plaintext</title>
-          <rect x="44" y="584" width="112" height="58" rx="6" class="c-mask"/>
-          <rect x="44" y="584" width="112" height="58" rx="6" class="c-security" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(50 590) scale(0.6875)">
+        <g id="node-project" data-node-id="project" data-node-label="Project catalog" tabindex="0" role="button" aria-label="Focus Project catalog, immutable artifacts, 01 / Sources" aria-pressed="false" data-node-kind="database" data-node-sublabel="immutable artifacts" data-node-tag="Workspace owned" data-node-context="01 / Sources">
+          <title>Project catalog · immutable artifacts · 01 / Sources · Workspace owned</title>
+          <rect x="36" y="356" width="128" height="58" rx="6" class="c-mask"/>
+          <rect x="36" y="356" width="128" height="58" rx="6" class="c-database" data-animate="node" style="--step:3" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(42 362) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-detail-anchor x="100" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Project catalog</text>
+          <text data-detail="context" x="100" y="393" class="t-muted" font-size="7" text-anchor="middle">immutable artifacts</text>
+        <text data-detail="fine" x="100" y="403" class="t-database" font-size="7" text-anchor="middle">Workspace owned</text>
+        </g>
+
+        <g id="node-vault" data-node-id="vault" data-node-label="Secret vault" tabindex="0" role="button" aria-label="Focus Secret vault, credential handles, 01 / Sources" aria-pressed="false" data-node-kind="security" data-node-sublabel="credential handles" data-node-tag="no plaintext" data-node-context="01 / Sources">
+          <title>Secret vault · credential handles · 01 / Sources · no plaintext</title>
+          <rect x="44" y="470" width="112" height="58" rx="6" class="c-mask"/>
+          <rect x="44" y="470" width="112" height="58" rx="6" class="c-security" data-animate="node" style="--step:5" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(50 476) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-detail-anchor x="100" y="605" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Secret vault</text>
-          <text data-detail="context" x="100" y="621" class="t-muted" font-size="7" text-anchor="middle">credential handles</text>
-        <text data-detail="fine" x="100" y="631" class="t-security" font-size="7" text-anchor="middle">no plaintext</text>
+          <text data-detail-anchor x="100" y="491" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Secret vault</text>
+          <text data-detail="context" x="100" y="507" class="t-muted" font-size="7" text-anchor="middle">credential handles</text>
+        <text data-detail="fine" x="100" y="517" class="t-security" font-size="7" text-anchor="middle">no plaintext</text>
         </g>
 
-        <g id="node-workspace" data-node-id="workspace" data-node-label="Workspace config" tabindex="0" role="button" aria-label="Focus Workspace config, add · override · remove, 02 / Workspace choices" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="add · override · remove" data-node-tag="project wins" data-node-context="02 / Workspace choices">
-          <title>Workspace config · add · override · remove · 02 / Workspace choices · project wins</title>
-          <rect x="256" y="242" width="118" height="58" rx="6" class="c-mask"/>
-          <rect x="256" y="242" width="118" height="58" rx="6" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(262 248) scale(0.6875)">
+        <g id="node-draft" data-node-id="draft" data-node-label="Workspace draft" tabindex="0" role="button" aria-label="Focus Workspace draft, Main + Child 2..N, 02 / Workspace intent" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Main + Child 2..N" data-node-tag="durable + editable" data-node-context="02 / Workspace intent">
+          <title>Workspace draft · Main + Child 2..N · 02 / Workspace intent · durable + editable</title>
+          <rect x="249" y="128" width="132" height="58" rx="6" class="c-mask"/>
+          <rect x="249" y="128" width="132" height="58" rx="6" class="c-frontend" data-animate="node" style="--step:1" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(255 134) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-detail-anchor x="315" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Workspace config</text>
-          <text data-detail="context" x="315" y="279" class="t-muted" font-size="7" text-anchor="middle">add · override · remove</text>
-        <text data-detail="fine" x="315" y="289" class="t-frontend" font-size="7" text-anchor="middle">project wins</text>
+          <text data-detail-anchor x="315" y="149" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Workspace draft</text>
+          <text data-detail="context" x="315" y="165" class="t-muted" font-size="7" text-anchor="middle">Main + Child 2..N</text>
+        <text data-detail="fine" x="315" y="175" class="t-frontend" font-size="7" text-anchor="middle">durable + editable</text>
         </g>
 
-        <g id="node-grants" data-node-id="grants" data-node-label="Workspace grants" tabindex="0" role="button" aria-label="Focus Workspace grants, agent-slot scope, 02 / Workspace choices" aria-pressed="false" data-node-kind="security" data-node-sublabel="agent-slot scope" data-node-tag="least privilege" data-node-context="02 / Workspace choices">
-          <title>Workspace grants · agent-slot scope · 02 / Workspace choices · least privilege</title>
-          <rect x="256" y="584" width="118" height="58" rx="6" class="c-mask"/>
-          <rect x="256" y="584" width="118" height="58" rx="6" class="c-security" data-animate="node" style="--step:4" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(262 590) scale(0.6875)">
+        <g id="node-disabled" data-node-id="disabled" data-node-label="Disabled keys" tabindex="0" role="button" aria-label="Focus Disabled keys, kind + normalized name, 02 / Workspace intent" aria-pressed="false" data-node-kind="security" data-node-sublabel="kind + normalized name" data-node-tag="after overlay" data-node-context="02 / Workspace intent">
+          <title>Disabled keys · kind + normalized name · 02 / Workspace intent · after overlay</title>
+          <rect x="249" y="584" width="132" height="58" rx="6" class="c-mask"/>
+          <rect x="249" y="584" width="132" height="58" rx="6" class="c-security" data-animate="node" style="--step:4" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(255 590) scale(0.6875)">
             <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
             <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-detail-anchor x="315" y="605" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Workspace grants</text>
-          <text data-detail="context" x="315" y="621" class="t-muted" font-size="7" text-anchor="middle">agent-slot scope</text>
-        <text data-detail="fine" x="315" y="631" class="t-security" font-size="7" text-anchor="middle">least privilege</text>
+          <text data-detail-anchor x="315" y="605" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Disabled keys</text>
+          <text data-detail="context" x="315" y="621" class="t-muted" font-size="7" text-anchor="middle">kind + normalized name</text>
+        <text data-detail="fine" x="315" y="631" class="t-security" font-size="7" text-anchor="middle">after overlay</text>
         </g>
 
-        <g id="node-resolver" data-node-id="resolver" data-node-label="Profile resolver" tabindex="0" role="button" aria-label="Focus Profile resolver, merge + capability check, 03 / Resolve + validate" aria-pressed="false" data-node-kind="backend" data-node-sublabel="merge + capability check" data-node-tag="deterministic" data-node-context="03 / Resolve + validate">
-          <title>Profile resolver · merge + capability check · 03 / Resolve + validate · deterministic</title>
-          <rect x="471" y="242" width="118" height="58" rx="6" class="c-mask"/>
-          <rect x="471" y="242" width="118" height="58" rx="6" class="c-backend" data-animate="node" style="--step:3" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(477 248) scale(0.6875)">
+        <g id="node-resolver" data-node-id="resolver" data-node-label="Profile resolver" tabindex="0" role="button" aria-label="Focus Profile resolver, overlay · disable · grants, 03 / Resolve + validate" aria-pressed="false" data-node-kind="backend" data-node-sublabel="overlay · disable · grants" data-node-tag="deterministic" data-node-context="03 / Resolve + validate">
+          <title>Profile resolver · overlay · disable · grants · 03 / Resolve + validate · deterministic</title>
+          <rect x="463" y="356" width="134" height="58" rx="6" class="c-mask"/>
+          <rect x="463" y="356" width="134" height="58" rx="6" class="c-backend" data-animate="node" style="--step:2" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(469 362) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="530" y="263" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Profile resolver</text>
-          <text data-detail="context" x="530" y="279" class="t-muted" font-size="7" text-anchor="middle">merge + capability check</text>
-        <text data-detail="fine" x="530" y="289" class="t-backend" font-size="7" text-anchor="middle">deterministic</text>
-        </g>
-
-        <g id="node-secretresolver" data-node-id="secretresolver" data-node-label="Grant resolver" tabindex="0" role="button" aria-label="Focus Grant resolver, bind scoped handles, 03 / Resolve + validate" aria-pressed="false" data-node-kind="security" data-node-sublabel="bind scoped handles" data-node-tag="audited" data-node-context="03 / Resolve + validate">
-          <title>Grant resolver · bind scoped handles · 03 / Resolve + validate · audited</title>
-          <rect x="474" y="584" width="112" height="58" rx="6" class="c-mask"/>
-          <rect x="474" y="584" width="112" height="58" rx="6" class="c-security" data-animate="node" style="--step:5" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(480 590) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-detail-anchor x="530" y="605" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Grant resolver</text>
-          <text data-detail="context" x="530" y="621" class="t-muted" font-size="7" text-anchor="middle">bind scoped handles</text>
-        <text data-detail="fine" x="530" y="631" class="t-security" font-size="7" text-anchor="middle">audited</text>
+          <text data-detail-anchor x="530" y="377" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Profile resolver</text>
+          <text data-detail="context" x="530" y="393" class="t-muted" font-size="7" text-anchor="middle">overlay · disable · grants</text>
+        <text data-detail="fine" x="530" y="403" class="t-backend" font-size="7" text-anchor="middle">deterministic</text>
         </g>
 
         <g id="node-profile" data-node-id="profile" data-node-label="Execution profile" tabindex="0" role="button" aria-label="Focus Execution profile, immutable revision, 04 / Immutable revision" aria-pressed="false" data-node-kind="database" data-node-sublabel="immutable revision" data-node-tag="digest pinned" data-node-context="04 / Immutable revision">
           <title>Execution profile · immutable revision · 04 / Immutable revision · digest pinned</title>
-          <rect x="686" y="356" width="118" height="58" rx="6" class="c-mask"/>
-          <rect x="686" y="356" width="118" height="58" rx="6" class="c-database" data-animate="node" style="--step:6" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(692 362) scale(0.6875)">
+          <rect x="682" y="356" width="126" height="58" rx="6" class="c-mask"/>
+          <rect x="682" y="356" width="126" height="58" rx="6" class="c-database" data-animate="node" style="--step:7" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(688 362) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
@@ -4714,75 +4714,75 @@
         <text data-detail="fine" x="960" y="175" class="t-backend" font-size="7" text-anchor="middle">profile only</text>
         </g>
 
-        <g id="node-children" data-node-id="children" data-node-label="Child roster" tabindex="0" role="button" aria-label="Focus Child roster, slot-specific routes, 05 / Runtime mount" aria-pressed="false" data-node-kind="backend" data-node-sublabel="slot-specific routes" data-node-tag="profile only" data-node-context="05 / Runtime mount">
-          <title>Child roster · slot-specific routes · 05 / Runtime mount · profile only</title>
-          <rect x="905" y="470" width="110" height="58" rx="6" class="c-mask"/>
-          <rect x="905" y="470" width="110" height="58" rx="6" class="c-backend" data-animate="node" style="--step:9" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(911 476) scale(0.6875)">
+        <g id="node-children" data-node-id="children" data-node-label="Child roster" tabindex="0" role="button" aria-label="Focus Child roster, 2..N same-batch slots, 05 / Runtime mount" aria-pressed="false" data-node-kind="backend" data-node-sublabel="2..N same-batch slots" data-node-tag="profile only" data-node-context="05 / Runtime mount">
+          <title>Child roster · 2..N same-batch slots · 05 / Runtime mount · profile only</title>
+          <rect x="899" y="584" width="122" height="58" rx="6" class="c-mask"/>
+          <rect x="899" y="584" width="122" height="58" rx="6" class="c-backend" data-animate="node" style="--step:9" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(905 590) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="960" y="491" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Child roster</text>
-          <text data-detail="context" x="960" y="507" class="t-muted" font-size="7" text-anchor="middle">slot-specific routes</text>
-        <text data-detail="fine" x="960" y="517" class="t-backend" font-size="7" text-anchor="middle">profile only</text>
+          <text data-detail-anchor x="960" y="605" class="t-primary" font-size="10" font-weight="600" text-anchor="middle">Child roster</text>
+          <text data-detail="context" x="960" y="621" class="t-muted" font-size="7" text-anchor="middle">2..N same-batch slots</text>
+        <text data-detail="fine" x="960" y="631" class="t-backend" font-size="7" text-anchor="middle">profile only</text>
         </g>
 
         <!-- Flow labels -->
-        <g data-detail="context" data-edge-from="templates" data-edge-to="workspace" data-edge-label="models" data-edge-key="0" data-edge-id="templates_workspace">
-          <rect x="119.9" y="194" width="100.2" height="27" rx="4" class="c-mask"/>
-          <text x="170" y="205" class="t-messagebus" font-size="8" text-anchor="middle">models</text>
-        <text data-detail="fine" x="170" y="216" class="t-dim" font-size="7" text-anchor="middle">template reference</text>
+        <g data-detail="context" data-edge-from="models" data-edge-to="draft" data-edge-label="models" data-edge-key="0" data-edge-id="models-draft">
+          <rect x="149.05" y="189" width="114.9" height="27" rx="4" class="c-mask"/>
+          <text x="206.5" y="200" class="t-backend" font-size="8" text-anchor="middle">models</text>
+        <text data-detail="fine" x="206.5" y="211" class="t-dim" font-size="7" text-anchor="middle">explicit model choice</text>
         </g>
-        <g data-detail="context" data-edge-from="catalog" data-edge-to="workspace" data-edge-label="capability defaults" data-edge-key="1" data-edge-id="catalog_workspace">
-          <rect x="202.45" y="417" width="105.1" height="27" rx="4" class="c-mask"/>
-          <text x="255" y="428" class="t-messagebus" font-size="8" text-anchor="middle">capability defaults</text>
-        <text data-detail="fine" x="255" y="439" class="t-dim" font-size="7" text-anchor="middle">template reference</text>
+        <g data-detail="context" data-edge-from="draft" data-edge-to="resolver" data-edge-label="roster" data-edge-key="1" data-edge-id="draft-resolver">
+          <rect x="367" y="243.5" width="110" height="27" rx="4" class="c-mask"/>
+          <text x="422" y="254.5" class="t-backend" font-size="8" text-anchor="middle">roster</text>
+        <text data-detail="fine" x="422" y="265.5" class="t-dim" font-size="7" text-anchor="middle">authoritative intent</text>
         </g>
-        <g data-detail="context" data-edge-from="workspace" data-edge-to="resolver" data-edge-label="effective choices" data-edge-key="2" data-edge-id="workspace_resolver">
-          <rect x="367.5" y="304" width="110" height="27" rx="4" class="c-mask"/>
-          <text x="422.5" y="315" class="t-backend" font-size="8" text-anchor="middle">effective choices</text>
-        <text data-detail="fine" x="422.5" y="326" class="t-dim" font-size="7" text-anchor="middle">authoritative config</text>
+        <g data-detail="context" data-edge-from="builtin" data-edge-to="resolver" data-edge-label="built-ins" data-edge-key="2" data-edge-id="builtin-resolver">
+          <rect x="265.85" y="304.83333333333337" width="95.3" height="27" rx="4" class="c-mask"/>
+          <text x="313.5" y="315.83333333333337" class="t-messagebus" font-size="8" text-anchor="middle">built-ins</text>
+        <text data-detail="fine" x="313.5" y="326.83333333333337" class="t-dim" font-size="7" text-anchor="middle">read-only catalog</text>
         </g>
-        <g data-detail="context" data-edge-from="vault" data-edge-to="grants" data-edge-label="handle references" data-edge-key="3" data-edge-id="vault_grants">
-          <rect x="158.35" y="592" width="95.3" height="27" rx="4" class="c-mask"/>
-          <text x="206" y="603" class="t-security" font-size="8" text-anchor="middle">handle references</text>
-        <text data-detail="fine" x="206" y="614" class="t-dim" font-size="7" text-anchor="middle">secret metadata</text>
+        <g data-detail="context" data-edge-from="project" data-edge-to="resolver" data-edge-label="overrides" data-edge-key="3" data-edge-id="project-resolver">
+          <rect x="202.35" y="331" width="95.3" height="27" rx="4" class="c-mask"/>
+          <text x="250" y="342" class="t-muted" font-size="8" text-anchor="middle">overrides</text>
+        <text data-detail="fine" x="250" y="353" class="t-dim" font-size="7" text-anchor="middle">full-key override</text>
         </g>
-        <g data-detail="context" data-edge-from="grants" data-edge-to="secretresolver" data-edge-label="allowed handles" data-edge-key="4" data-edge-id="grants_secretresolver">
-          <rect x="381.25" y="592" width="85.5" height="27" rx="4" class="c-mask"/>
-          <text x="424" y="603" class="t-security" font-size="8" text-anchor="middle">allowed handles</text>
-        <text data-detail="fine" x="424" y="614" class="t-dim" font-size="7" text-anchor="middle">least privilege</text>
+        <g data-detail="context" data-edge-from="disabled" data-edge-to="resolver" data-edge-label="disabled" data-edge-key="4" data-edge-id="disabled-resolver">
+          <rect x="389.05" y="484.5" width="65.9" height="27" rx="4" class="c-mask"/>
+          <text x="422" y="495.5" class="t-security" font-size="8" text-anchor="middle">disabled</text>
+        <text data-detail="fine" x="422" y="506.5" class="t-dim" font-size="7" text-anchor="middle">fail closed</text>
         </g>
-        <g data-detail="context" data-edge-from="resolver" data-edge-to="profile" data-edge-label="resolved set" data-edge-key="5" data-edge-id="resolver_profile">
-          <rect x="477.65" y="417" width="124.7" height="27" rx="4" class="c-mask"/>
-          <text x="540" y="428" class="t-backend" font-size="8" text-anchor="middle">resolved set</text>
-        <text data-detail="fine" x="540" y="439" class="t-dim" font-size="7" text-anchor="middle">resolved capability set</text>
+        <g data-detail="context" data-edge-from="vault" data-edge-to="resolver" data-edge-label="handles" data-edge-key="5" data-edge-id="vault-resolver">
+          <rect x="266.75" y="423.16666666666663" width="85.5" height="27" rx="4" class="c-mask"/>
+          <text x="309.5" y="434.16666666666663" class="t-security" font-size="8" text-anchor="middle">handles</text>
+        <text data-detail="fine" x="309.5" y="445.16666666666663" class="t-dim" font-size="7" text-anchor="middle">secret metadata</text>
         </g>
-        <g data-detail="context" data-edge-from="secretresolver" data-edge-to="profile" data-edge-label="scoped handles" data-edge-key="6" data-edge-id="secretresolver_profile">
-          <rect x="588.35" y="478" width="95.3" height="27" rx="4" class="c-mask"/>
-          <text x="636" y="489" class="t-security" font-size="8" text-anchor="middle">scoped handles</text>
-        <text data-detail="fine" x="636" y="500" class="t-dim" font-size="7" text-anchor="middle">credential grants</text>
+        <g data-detail="context" data-edge-from="resolver" data-edge-to="profile" data-edge-label="effective set" data-edge-key="6" data-edge-id="resolver-profile">
+          <rect x="601.65" y="364" width="75.7" height="27" rx="4" class="c-mask"/>
+          <text x="639.5" y="375" class="t-backend" font-size="8" text-anchor="middle">effective set</text>
+        <text data-detail="fine" x="639.5" y="386" class="t-dim" font-size="7" text-anchor="middle">resolved set</text>
         </g>
-        <g data-detail="context" data-edge-from="profile" data-edge-to="main" data-edge-label="Main slot" data-edge-key="7" data-edge-id="profile_main">
-          <rect x="816.15" y="188.5" width="75.7" height="27" rx="4" class="c-mask"/>
-          <text x="854" y="199.5" class="t-backend" font-size="8" text-anchor="middle">Main slot</text>
-        <text data-detail="fine" x="854" y="210.5" class="t-dim" font-size="7" text-anchor="middle">runtime mount</text>
+        <g data-detail="context" data-edge-from="profile" data-edge-to="main" data-edge-label="Main" data-edge-key="7" data-edge-id="profile-main">
+          <rect x="818.15" y="246.5" width="75.7" height="27" rx="4" class="c-mask"/>
+          <text x="856" y="257.5" class="t-backend" font-size="8" text-anchor="middle">Main</text>
+        <text data-detail="fine" x="856" y="268.5" class="t-dim" font-size="7" text-anchor="middle">runtime mount</text>
         </g>
-        <g data-detail="context" data-edge-from="profile" data-edge-to="children" data-edge-label="Child slots 1..N" data-edge-key="8" data-edge-id="profile_children">
-          <rect x="809.3" y="482.5" width="90.4" height="27" rx="4" class="c-mask"/>
-          <text x="854.5" y="493.5" class="t-backend" font-size="8" text-anchor="middle">Child slots 1..N</text>
-        <text data-detail="fine" x="854.5" y="504.5" class="t-dim" font-size="7" text-anchor="middle">runtime mount</text>
+        <g data-detail="context" data-edge-from="profile" data-edge-to="children" data-edge-label="Child 2..N" data-edge-key="8" data-edge-id="profile-children">
+          <rect x="815.65" y="481.5" width="75.7" height="27" rx="4" class="c-mask"/>
+          <text x="853.5" y="492.5" class="t-backend" font-size="8" text-anchor="middle">Child 2..N</text>
+        <text data-detail="fine" x="853.5" y="503.5" class="t-dim" font-size="7" text-anchor="middle">runtime mount</text>
         </g>
 
         <!-- Legend -->
-        <text x="214" y="764" class="t-primary" font-size="10" font-weight="600">Legend</text>
-        <path d="M 214 784 L 248 784" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
-        <text x="257" y="787" class="t-muted" font-size="8">primary data</text>
-        <path d="M 340 784 L 374 784" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
-        <text x="383" y="787" class="t-muted" font-size="8">policy / PII</text>
-        <path d="M 480 784 L 514 784" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
-        <text x="523" y="787" class="t-muted" font-size="8">async batch</text>
-        <rect x="625" y="776" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-        <text x="646" y="784" class="t-muted" font-size="8">data store</text>
+        <text x="214" y="844" class="t-primary" font-size="10" font-weight="600">Legend</text>
+        <path d="M 214 864 L 248 864" class="a-emphasis" stroke-width="1.8" marker-end="url(#arrowhead-emphasis)"/>
+        <text x="257" y="867" class="t-muted" font-size="8">primary data</text>
+        <path d="M 340 864 L 374 864" class="a-security" stroke-width="1.4" marker-end="url(#arrowhead-security)"/>
+        <text x="383" y="867" class="t-muted" font-size="8">policy / PII</text>
+        <path d="M 480 864 L 514 864" class="a-dashed" stroke-width="1.4" marker-end="url(#arrowhead-dashed)"/>
+        <text x="523" y="867" class="t-muted" font-size="8">async batch</text>
+        <rect x="625" y="856" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+        <text x="646" y="864" class="t-muted" font-size="8">data store</text>
       </svg>
       <p class="intent-trace-status no-print" id="intent-trace-status" role="status" aria-live="polite" aria-atomic="true"></p>
       <div class="share-chapter-cue no-print" id="share-chapter-cue" hidden role="status" aria-live="polite">
@@ -4968,40 +4968,40 @@
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <div class="card-dot slate"></div>
-          <h3>Global means reusable</h3>
+          <div class="card-dot cyan"></div>
+          <h3>Separate Authorities</h3>
         </div>
         <ul>
-          <li>&bull; Global entries are configuration templates</li>
-          <li>&bull; They never become ambient runtime capabilities</li>
-          <li>&bull; Same-name Workspace overrides win</li>
-          <li>&bull; Workspace removal excludes the entry</li>
+          <li>&bull; Global models are reusable connection assets, not templates</li>
+          <li>&bull; Built-in catalogs are read-only and may be empty</li>
+          <li>&bull; Project capability revisions and disabled keys belong to one Workspace</li>
+          <li>&bull; Draft intent remains editable after a Run starts</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot emerald"></div>
-          <h3>One replayable input</h3>
+          <h3>Deterministic Effective Set</h3>
         </div>
         <ul>
-          <li>&bull; A run pins one immutable profile revision</li>
-          <li>&bull; Model, Skill, MCP, policy, and convention versions are exact</li>
-          <li>&bull; Configuration changes affect only later runs</li>
-          <li>&bull; The revision digest is part of every batch input</li>
+          <li>&bull; Skill and MCP identity includes kind plus normalized name</li>
+          <li>&bull; Project same-key entries completely replace built-ins</li>
+          <li>&bull; Disable applies after overlay and never falls back</li>
+          <li>&bull; Agent grants further narrow the effective catalog</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot rose"></div>
-          <h3>Isolation boundary</h3>
+          <h3>Pinned Runtime Boundary</h3>
         </div>
         <ul>
-          <li>&bull; Runtime receives no global registry handle</li>
-          <li>&bull; Unresolved Skills and MCPs are unavailable</li>
-          <li>&bull; Credentials are scoped by Workspace and Agent slot</li>
-          <li>&bull; Denied capability access is audited</li>
+          <li>&bull; Activation creates one immutable execution-profile revision</li>
+          <li>&bull; Runtime receives no mutable model or capability registry handle</li>
+          <li>&bull; Active and paused Runs keep their start revision</li>
+          <li>&bull; Secrets remain scoped by Workspace, Run, and Agent slot</li>
         </ul>
       </div>
     </div>

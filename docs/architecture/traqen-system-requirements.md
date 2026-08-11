@@ -1,7 +1,7 @@
 > Language: **English** · [简体中文](traqen-system-requirements.zh-CN.md)
 
 ---
-feature_ids: [F001]
+feature_ids: [F001, F006]
 related_features: []
 topics:
   - product-requirements
@@ -11,8 +11,10 @@ topics:
   - impact-analysis
   - quality
   - dogfood
+  - capability-settings
 doc_kind: system-requirements
 created: 2026-07-29
+updated: 2026-08-11
 status: proposed
 priority: P0
 ---
@@ -247,6 +249,10 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-021 | Derive a deterministic complete UnderstandingPlan from Snapshot/ArtifactInventory with stable partitions, `unassignedCount=0`, and a bounded dynamic WorkUnit dependency DAG that scales beyond one prompt or fixed child count. |
 | SR-022 | Persist a version-pinned AnalysisRouteDecision for every WorkUnit using verified model capability/calibration profiles, signed Skill contracts, and deployment data boundaries; missing capability must fail closed as `NO_ELIGIBLE_PRODUCER`. |
 | SR-023 | Send each bounded AnalysisBatch to every configured independent Child Agent, allow batches and siblings to run concurrently, and require the Main Agent to reconcile the complete terminal sibling set against static Facts while preserving conflict instead of using correlated agreement or majority count as truth. |
+| SR-024 | Persist one reusable global model registry with revisioned API profiles and allowlisted local CLI adapters; Workspace Agent slots explicitly select models and no global active/default model may start a Run. |
+| SR-025 | Resolve read-only built-in and Workspace project Skill/MCP entries by typed-key full override followed by Workspace disable and Agent grants; disabled, ungranted, or unmaterialized capabilities are unavailable at runtime. |
+| SR-026 | Persist an editable draft and immutable active-profile history for every Workspace, require exactly one Main plus at least two enabled complete Child slots for activation, and restore settings after service restart without changing active or paused Runs. |
+| SR-027 | Before retiring a referenced global model, preview and atomically replace every current Workspace reference under expected-version concurrency; preserve historical profile revisions and active Runs, and expose emergency credential revocation as a separate destructive action. |
 
 ## 9. Primary user journeys
 
@@ -352,6 +358,8 @@ The operator approves business capability boundaries, P0 anchors, and threshold 
 - Source access is explicitly authorized, least-privilege, and auditable.
 - Paths returned to ordinary clients are workspace-relative or opaque.
 - Real secret values are never persisted as Facts or sent to external models.
+- Plaintext model/MCP credentials never appear in forms, ordinary configuration, API responses, diffs, prompts, execution profiles, telemetry, diagnostics, or logs; only encrypted handles and scoped grants cross configuration/runtime boundaries.
+- Local CLI model adapters construct argv without a shell and enforce bounded timeout, cancellation, output, and process-tree cleanup.
 - External models receive only bounded, policy-filtered Facts recorded by digest and policy; raw SourceSlices remain inside the local/private source boundary.
 - Execution Evidence records the exact Snapshot, build, dependency, configuration, runtime, Runner, assertions, and attempts.
 - Read APIs enforce project boundaries and preserve Candidate/governed distinctions.
@@ -368,9 +376,10 @@ A system release that changes understanding or traceability behavior must pass:
 5. full-versus-incremental consistency;
 6. persistence and restart tests;
 7. security and secret-boundary tests;
-8. Traqen-on-Traqen graph and TraceChain acceptance;
-9. backend, Web, build, lint, and diff checks;
-10. independent review.
+8. Workspace model/capability overlay, disable, Child lower-bound, revision-pinning, and atomic replacement tests;
+9. Traqen-on-Traqen graph and TraceChain acceptance;
+10. backend, Web, build, lint, and diff checks;
+11. independent review.
 
 Thresholds are versioned in the evaluation policy. A threshold change is a governed decision, not a test edit hidden inside an implementation pull request.
 

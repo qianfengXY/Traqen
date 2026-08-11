@@ -5,7 +5,7 @@ feature_ids: [F001, F002, F003, F004, F005, F006]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-07-31
+updated: 2026-08-11
 ---
 
 # Traqen Feature 路线图
@@ -28,13 +28,13 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 | F003 | P1 | 追溯图谱 | spec | TBD | operator 产品规划 | [F003](features/F003-traceability-graph.zh-CN.md) |
 | F004 | P0 | 声明审核 | spec | TBD | operator 产品规划 | [F004](features/F004-claim-review.zh-CN.md) |
 | F005 | P1 | 变更影响 | spec | TBD | operator 产品规划 | [F005](features/F005-change-impact.zh-CN.md) |
-| F006 | P0 | Workspace 能力设置 | spec | TBD | operator 产品规划 | [F006](features/F006-workspace-capability-settings.zh-CN.md) |
+| F006 | P0 | Workspace 能力设置 | spec | TBD | operator 已确认的[讨论记录](../feature-discussions/2026-08-11-F006-workspace-capability-settings/README.md) | [F006](features/F006-workspace-capability-settings.zh-CN.md) |
 
 ## 交付波次
 
 | 波次 | 目标 | Feature | 退出证据 |
 |---|---|---|---|
-| 0 | 建立一个 Workspace 根与一个生效能力 Profile | F006 + F001 合同 | 切换隔离、配置解析测试、无法访问全局 Skill/MCP |
+| 0 | 建立一个 Workspace 根与一个生效能力 Profile | F006 + F001 合同 | 持久 API/CLI 模型设置、Typed 项目覆盖/禁用、Main + Child 2..N、重启恢复，以及 Runtime 无法访问未授权能力 |
 | 1 | 用一条持久分析运行时替换相互竞争的 Scanner/Agent 路径 | F001 | 完整 Inventory、同批 Child 扇出、对账、Published Graph |
 | 2 | 通过最新/历史 Tree 和审核队列让图谱可审核 | F002 + F004 | 端到端证据旅程与批量审核 |
 | 3 | 探索并演进图谱 | F003 + F005 | 可解释 Graph Path 与 Full-to-Incremental Impact |

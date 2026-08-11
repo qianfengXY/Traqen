@@ -1,7 +1,7 @@
 > Language: **English** · [简体中文](workspace-scan-and-analysis-lifecycle.zh-CN.md)
 
 ---
-feature_ids: [F001]
+feature_ids: [F001, F006]
 related_features: [F002, F003, F004, F005, F006]
 topics:
   - workspace
@@ -12,6 +12,7 @@ topics:
   - browser-refresh
 doc_kind: feature-design
 created: 2026-07-29
+updated: 2026-08-11
 status: proposed
 priority: P0
 ---
@@ -182,7 +183,7 @@ The three assigned counts plus `unassignedCount` must equal `inventoryArtifactCo
 
 #### 3.3.2 How WorkUnits execute
 
-An `UnderstandingPlan` becomes a persisted dependency DAG of bounded `AnalysisBatch` records. The DAG controls repository scale; the Workspace execution profile controls a logical Agent roster consisting of one Main Agent and one or more Child Agents, defaulting to two. These are separate dimensions: adding batches changes throughput and context size, while adding Child slots changes independent corroboration.
+An `UnderstandingPlan` becomes a persisted dependency DAG of bounded `AnalysisBatch` records. The DAG controls repository scale; the Workspace execution profile controls a logical Agent roster consisting of one Main Agent and at least two enabled, complete Child Agents. These are separate dimensions: adding batches changes throughput and context size, while adding Child slots above the lower bound changes independent corroboration.
 
 ```mermaid
 flowchart TB
@@ -268,7 +269,7 @@ Signed Skill registrations already declare capabilities, language/framework comp
 This changes the current baseline, where Reverse Skills require both `PROJECT_SNAPSHOT` and `CODE_FACT_BUNDLE`.
 Direct-source WorkUnits require a `RAW_SOURCE_LOCAL` or `RAW_SOURCE_PRIVATE_RUNNER` producer route. An external model declared `FACTS_ONLY_EXTERNAL` may process policy-filtered Facts but never raw SourceSlices. If no in-boundary producer is eligible, analysis records `NO_ELIGIBLE_PRODUCER`.
 
-Global models, Skills, and MCPs are configuration templates, not runtime capabilities. Creating or changing a Workspace resolves those templates plus Workspace additions, overrides, and removals into an immutable `WorkspaceExecutionProfileRevision`. The runtime is handed only this revision and its scoped credentials; it has no registry handle through which an Agent can discover or invoke a global Skill or MCP that the Workspace did not resolve.
+F006 separates global model assets from capability catalogs. Main and Child slots explicitly select revisioned API/allowlisted-CLI model profiles. Built-in Skill/MCP catalogs are read-only, Workspace project entries override by typed `(kind, normalizedName)`, and disabled keys apply after overlay. Validation and activation materialize an immutable `WorkspaceExecutionProfileRevision`. Runtime receives only that revision and scoped grants; it has no mutable registry handle through which an Agent can discover or invoke a disabled, ungranted, or unmaterialized capability.
 
 For the Main slot and each Child slot on every AnalysisBatch, a deterministic Capability Router intersects:
 
@@ -443,6 +444,7 @@ Show/hide changes only `WorkspaceViewPreference`; it never deletes the Workspace
 type AgentSlot = {
   id: string;
   role: "MAIN" | "CHILD";
+  modelProfileRevisionId: string;
   modelCapabilityProfileId: string;
   skillRevisionIds: string[];
   mcpGrantRevisionIds: string[];
@@ -455,18 +457,20 @@ type WorkspaceExecutionProfileRevision = {
   workspaceId: string;
   revision: number;
   mainAgentSlot: AgentSlot;
-  childAgentSlots: AgentSlot[]; // length >= 1; default template resolves to 2
+  childAgentSlots: AgentSlot[]; // length >= 2
   dependencyPolicyRevisionId: string;
   conventionRevisionId: string;
   resolvedSkillRevisionIds: string[];
   resolvedMcpGrantRevisionIds: string[];
-  sourceTemplateRevisionIds: string[];
+  builtinCatalogRevisionIds: string[];
+  projectCapabilityRevisionIds: string[];
+  disabledCapabilityKeysDigest: string;
   digest: string;
   createdAt: string;
 };
 ```
 
-The resolver merges global templates with Workspace additions, overrides, and removals. The stored result is immutable and is the only capability set mounted into a run.
+The resolver pins selected global model revisions, overlays built-in/project capabilities by typed key, applies disabled keys, validates Agent grants and policies, and stores exact provenance. The result is immutable and is the only capability set mounted into a Run. Editing or activating later Workspace settings does not mutate an active or paused Run; Resume reuses its pinned revision.
 
 ### SourceRegistration
 
@@ -804,7 +808,7 @@ UI rules:
 - **INV-15:** every executable WorkUnit has a verified, version-pinned model/Skill route; missing capability is explicit.
 - **INV-16:** multi-model agreement is never counted as business truth; only evidence-backed reconciliation and human Decisions cross the governance boundary.
 - **INV-17:** every AnalysisBatch is sent to the complete active Child roster with identical source scope and output schema; Main reconciliation waits for every slot's terminal outcome.
-- **INV-18:** runtime capabilities come only from the immutable WorkspaceExecutionProfileRevision; global model/Skill/MCP templates are unreachable during execution.
+- **INV-18:** runtime models and capabilities come only from the immutable `WorkspaceExecutionProfileRevision`; mutable model registries and built-in/project capability catalogs are unreachable during execution.
 - **INV-19:** all module reads and writes carry `workspaceId` plus Workspace context version; stale responses from a prior selection are discarded.
 
 ## 16. Acceptance
@@ -825,11 +829,11 @@ UI rules:
 - Recover running work after worker/API restart while preserving manual pause.
 - With scanner Fact output empty, prove every eligible source Artifact is directly read or ends in an explicit Gap.
 - Replan the same large mixed-language Snapshot and prove stable Partition IDs, `unassignedCount=0`, bounded contexts, dynamic DAG completion, and no summary-only Candidate evidence.
-- Prove the configured roster defaults to two Child slots, supports one or more, and sends every slot the same batch digest, source scope, task statement, and output schema.
+- Prove an activated roster requires at least two enabled, complete Child slots, supports additional slots, and sends every active slot the same batch digest, source scope, task statement, and output schema.
 - Prove each Main/Child route records the immutable Workspace profile, verified model/Skill/MCP capabilities, exact versions, calibration, independence group, budgets, and rejected alternatives; an unsupported slot becomes `NO_ELIGIBLE_PRODUCER`.
 - Prove siblings cannot read one another's output before the completion barrier and Main reconciliation cannot publish from an incomplete sibling set.
 - Prove evidence disagreement remains in ConflictLedger, untrusted evidence is quarantined, and neither correlated agreement nor majority count creates governed identity.
-- Prove a global Skill/MCP absent from the Workspace execution-profile revision is unavailable at runtime.
+- Prove every disabled, ungranted, or otherwise absent Skill/MCP is unavailable at runtime even when present in a built-in or project catalog.
 
 ### Security and consistency
 

@@ -24,9 +24,9 @@
   <text x="790" y="178" text-anchor="middle" class="body">workspaceId · contextVersion · CurrentGraphHead</text>
 
   <rect x="1210" y="95" width="330" height="120" class="box" fill="#f1f5f9" stroke="#64748b" stroke-dasharray="10 7"/>
-  <text x="1375" y="133" text-anchor="middle" class="h2">Global Templates</text>
-  <text x="1375" y="165" text-anchor="middle" class="body">Model · Skill · MCP</text>
-  <text x="1375" y="190" text-anchor="middle" class="small">仅用于配置继承</text>
+  <text x="1375" y="133" text-anchor="middle" class="h2">Config Sources</text>
+  <text x="1375" y="165" text-anchor="middle" class="body">Models · Built-ins</text>
+  <text x="1375" y="190" text-anchor="middle" class="small">模型复用 · 能力只读</text>
 
   <path d="M600 215L265 310M700 215L675 310M830 215L1025 310M960 215L1380 310M890 215L1025 505M1010 215L1380 505" class="flow"/>
   <path d="M1375 215L1380 505" stroke="#64748b" stroke-width="2" stroke-dasharray="10 7" fill="none" marker-end="url(#arrow-purple)"/>
@@ -35,7 +35,7 @@
   <text x="265" y="352" text-anchor="middle" class="h2">F001 · Workspace 分析</text>
   <text x="265" y="395" text-anchor="middle" class="body">静态扫描 + 完整 Inventory</text>
   <text x="265" y="428" text-anchor="middle" class="body">主 Agent 规划/对账</text>
-  <text x="265" y="461" text-anchor="middle" class="body">同批次子 Agent（默认 2）</text>
+  <text x="265" y="461" text-anchor="middle" class="body">同批次子 Agent（2..N）</text>
   <text x="265" y="494" text-anchor="middle" class="body">实时进度 + Working Tree</text>
 
   <rect x="520" y="310" width="310" height="160" class="box" fill="#dbeafe" stroke="#1d4ed8"/>
@@ -60,8 +60,9 @@
 
   <rect x="1220" y="505" width="320" height="145" class="box" fill="#e2e8f0" stroke="#475569"/>
   <text x="1380" y="548" text-anchor="middle" class="h2">F006 · Workspace 设置</text>
-  <text x="1380" y="586" text-anchor="middle" class="body">主/子 Agent 模型</text>
-  <text x="1380" y="618" text-anchor="middle" class="body">Skill · MCP · 依赖 · 规范</text>
+  <text x="1380" y="578" text-anchor="middle" class="small">Main + Child 2..N · 模型</text>
+  <text x="1380" y="608" text-anchor="middle" class="small">Skill/MCP 项目覆盖 + 禁用</text>
+  <text x="1380" y="636" text-anchor="middle" class="small">不可变 Run Profile</text>
 
   <path d="M265 530V710" stroke="#0f766e" stroke-width="3" marker-end="url(#arrow-teal)"/>
   <rect x="50" y="710" width="1490" height="260" class="box" fill="#f8fafc" stroke="#334155" stroke-width="3"/>

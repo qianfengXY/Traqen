@@ -14,6 +14,7 @@ topics:
   - user-journey
 doc_kind: architecture
 created: 2026-07-31
+updated: 2026-08-11
 status: proposed
 ---
 
@@ -28,7 +29,7 @@ Traqen 要把一个存量项目的代码和文件理解到足以构建可审核�
 - Workspace 聚合根与跨模块上下文；
 - 产品 Feature 地图；
 - Main/Child Analysis Agent 拓扑；
-- 全局模板与 Workspace 生效配置；
+- 全局模型资产、内置/项目能力 Catalog 与 Workspace 生效配置；
 - Canonical Graph 权威与历史；
 - 目标架构和实现提交 `1682d7d` 之间经过代码核验的差距。
 
@@ -40,9 +41,9 @@ Traqen 要把一个存量项目的代码和文件理解到足以构建可审核�
 2. **切换 Workspace 就切换整个产品。** 导航可以停留在同一模块，但数据、选择、订阅、设置和 Current Graph Head 必须全部重新绑定到新 Workspace。
 3. **移出不是删除。** 添加/移除只改变 Workspace 是否出现在用户的切换器中；删除则在可审计的保留策略下改变 Workspace 生命周期。
 4. **原始源码是 Agent 任务源。** 完整、不可变的 `SourceSnapshot` 与 `ArtifactInventory` 定义分析覆盖；Scanner Facts 是独立的对账参考，绝不能定义 Child Agent 的任务全集。
-5. **每个已配置 Child Agent 都收到同一批任务。** 一个 Workspace 有一个 Main Agent 和一个或多个 Child Agent 槽位，默认两个。对同一个 `AnalysisBatch`，所有启用 Child 槽位收到相同源码范围和输出合同，使 Main Agent 能比较独立产生的结果。
+5. **每个已配置 Child Agent 都收到同一批任务。** 一个 Workspace 有一个 Main Agent 和至少两个已启用且完整的 Child Agent 槽位。对同一个 `AnalysisBatch`，所有启用 Child 槽位收到相同源码范围和输出合同，使 Main Agent 能比较独立产生的结果。
 6. **模型、Skill、MCP 都是显式运行输入。** Main 和各 Child 槽位可以选择不同模型 Profile；Run 固定引用不可变的 Workspace 生效执行 Profile。
-7. **全局能力配置只作为模板。** Runtime Worker 只能拿到物化后的 Workspace Profile，不能查询或挂载全局 Skill/MCP Registry。
+7. **配置权威彼此分离。** 全局模型是可复用 API/Allowlist CLI 资产；内置 Skill/MCP Catalog 只读；项目条目、Typed Disabled Key 与 Agent Slot 属于具体 Workspace。Runtime Worker 只能拿到物化后的 Workspace Profile，不能查询可变 Registry。
 8. **不可信证据不能静默通过。** 无效、越界、矛盾或不可验证证据必须隔离 Candidate 或记录 Gap；不能无账本丢弃，更不能按票数晋升。
 9. **实时树是投影，不是权威。** Workspace Analysis 可以流式展示已对账 Working Candidate；受治理的 Feature/API 树默认读取最新发布的 `CurrentGraphHead`。
 10. **历史只追加。** 新 Snapshot 或实现映射不能重写业务 Feature 版本；Decision、Mapping、GraphRevision、ChangeSet、Impact、测试与结果始终可查询。
@@ -56,7 +57,7 @@ Traqen 要把一个存量项目的代码和文件理解到足以构建可审核�
 | F003 | 追溯图谱 | 交互式图谱投影和证据路径探索 | F001、F002 |
 | F004 | 声明审核 | 审核队列、证据不足流程、批量 Decision 和编辑自动准入结果 | F001、F002 |
 | F005 | 变更影响 | 增量变化路径、受影响对象和重新验证计划 | F001、F002、F003 |
-| F006 | Workspace 能力设置 | 全局模板、Workspace 覆盖、依赖、规范、模型、Skill 与 MCP | 无 |
+| F006 | Workspace 能力设置 | 全局 API/CLI 模型库、内置/项目 Skill/MCP 覆盖与禁用、Agent Roster、依赖、规范、持久 Draft 与不可变 Execution Profile | 无 |
 
 以上工程 `Fxxx` 是交付标识，不是 Traqen 图谱中的受治理业务 `Feature.id`。
 
@@ -196,7 +197,7 @@ Main Agent 负责规划问题、输出合同、生命周期控制、对账、Fol
 - 独立分析，不能读取其他 Child 的输出或私有推理；
 - 返回有证据约束的 Candidate Observation 或显式不确定性。
 
-Workspace 默认模板创建两个 Child 槽位，用户可以配置一个或多个。Run 用 `independenceGroup` 记录两个结果是否真正独立；使用同一底层模型族仍可运行，但不能算独立佐证。
+新 Workspace 创建两个空 Child 槽位并允许继续增加，不导入模板；少于两个已启用且完整的 Child 时不能激活。Run 用 `independenceGroup` 记录两个结果是否真正独立；使用同一底层模型族仍可运行，但不能算独立佐证。
 
 [打开交互式 Analysis Batch 工作流](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html) · [Archify 源](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
 
@@ -231,36 +232,49 @@ Workspace 默认模板创建两个 Child 槽位，用户可以配置一个或多
 
 ## 7. 能力配置与隔离
 
-### 7.1 两层配置、一个运行快照
+### 7.1 四类权威、一个运行快照
 
-全局设置定义可复用模板；Workspace 设置导入并覆盖模板。同名稳定标识由 Workspace 覆盖优先，Workspace 也可以新增或移除条目。
+全局设置负责可复用模型连接资产。Traqen 提供只读、允许为空的内置 Skill/MCP Catalog。Workspace 设置负责显式项目能力 Revision、Typed Disabled Key、Dependency、Convention、Policy 和 Main/Child Roster。系统不存在可编辑全局模板或 Active/Default Model。
 
 ```text
-GlobalCapabilityTemplate（只提供配置便利）
-                +
-WorkspaceCapabilityConfig（权威选择）
-                ↓ 确定性解析
+GlobalModelProfileRegistry（API / Allowlist Local CLI）
+                  +
+BuiltInSkillMcpCatalog（只读、允许为空）
+                  +
+WorkspaceProjectCapabilityRegistry + Typed Disabled Key
+                  +
+Workspace Agent Roster（一个 Main + Child 2..N）
+                  ↓ Save、Resolve、Validate
+WorkspaceCapabilityDraftRevision
+                  ↓ Activate
 WorkspaceExecutionProfileRevision（不可变 Run 输入）
-                ↓ 只挂载本 Revision
+                  ↓ 只挂载本 Revision
 Main Agent / Child Agents / Worker
 ```
 
 [打开交互式配置数据流](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) · [Archify 源](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.json)
 
-Workspace Revision 包含：
+能力解析顺序是 `Typed Overlay -> Disable -> Agent Grant`。项目条目完整替换相同 `(kind, normalizedName)` 的内置条目；禁用作用于合并后的 Typed Key，禁用覆盖项不能回退内置能力。
 
-- Main Agent 模型以及规划/对账 Skill/MCP Grant；
+Workspace Execution Revision 包含：
+
+- Main Agent 模型 Revision 以及规划/对账 Skill/MCP Grant；
 - 有序 Child Agent 槽位及各自模型/Skill/MCP Grant；
+- 精确的内置/项目能力 Artifact Provenance 与 Disabled-key Digest；
 - 项目依赖项；
 - 项目规范与约束；
 - 数据边界、预算、并发、重试与校准策略；
-- 用于 Provenance 的精确全局模板 Revision。
+- 内容 Digest 及创建/校验 Provenance。
 
 Runtime 代码不能拿到全局 Registry Handle。某个 Skill 或 MCP 即使已全局安装，只要没有进入 Workspace Revision，在本次运行就不可用。
 
+Run 启动后仍可继续编辑设置。Save 推进持久 Draft Head；Activate 为后续 Run 创建新的不可变 Profile。Active/Paused Run 继续固定启动 Revision，不能热切换设置。
+
+被引用的全局模型只有在一份服务端计算的全 Workspace Replacement Plan 清除所有当前配置引用后才能退役。Apply 使用 Expected-version CAS 原子执行，不改写历史 Revision 或 Active Run；普通生命周期为 `ACTIVE -> RETIRING -> RETIRED`。
+
 ### 7.2 Secret
 
-模板只能引用凭据 Handle，不能把明文 Secret 复制进 Run。解析器只向精确的 Workspace 和 Agent 槽位授予最小 Secret Handle。Telemetry 与持久化 Prompt 不包含凭据和未脱敏秘密。
+模型与 MCP Revision 只能引用 Credential Handle，不能把明文 Secret 复制进 Run。解析器只向精确的 Workspace、Run 和 Agent 槽位授予最小 Secret Handle。Telemetry、Diff、Diagnostic、Log、Execution Profile 与持久化 Prompt 不包含凭据和未脱敏秘密。本机 CLI Adapter 不通过 Shell 插值构造 argv，并负责有界 Timeout、Output、Cancel 与 Process-tree Cleanup。
 
 ## 8. Canonical Graph、审核与历史
 
@@ -300,10 +314,10 @@ Candidate 可以进入 Working Tree，但不能创建或修改受治理 Feature�
 | 新建、隐藏/显示、删除 | 部分具备 | 浏览器 UI 可新建和隐藏本地记录；`contracts/openapi.json` 只有 `POST /v1/projects` 与 `GET /v1/projects/{projectId}` | 分离 View Preference 与可审计删除，增加 List/Lifecycle API |
 | 完整工程静态扫描 | 部分具备 | 浏览器扫描只读取指定文本扩展和不超过 768 KiB 的文件；`LegacyUnderstandingRuntime` 另有服务端 Inventory 路径 | 删除竞争的权威扫描路径；图片/二进制也必须有处置 |
 | Agent 读取原始源码 | 部分具备 | `LegacyUnderstandingRuntime` 读取 Snapshot `SourceSlice`；旧 `AnalysisAgent` 只消费 Scanner FactGraph | 收敛为一条 Child 读取 Snapshot Slice、Scanner Facts 只用于对账的运行链 |
-| 可配置 Main + 1..N Child，默认 2 | 缺失/冲突 | 只有一个全局 Active Model；Web 固定渲染三个空闲 Child 槽；模型 Planner 强制恰好三个 Assignment | 引入按角色的 Workspace Agent 槽位，删除硬编码三个 |
+| 可配置 Main + Child 2..N | 缺失/冲突 | 只有一个全局 Active Model；能力领域允许一个 Child；Web 固定渲染三个空闲 Child 槽；模型 Planner 强制恰好三个 Assignment | 引入持久化的按角色 Workspace Agent 槽位，在领域/API/Web 守住下限并删除硬编码三个 |
 | 同一批任务发送给所有 Child | 缺失 | 未接入的 Planner 把不同 Module 分给三个 Assignment；服务端 `AnalysisAgent` 每个 WorkUnit 只调用一个模型 | 引入 `AnalysisBatch`，为每个已配置槽位创建 ChildWorkUnit |
 | Main 规划与多结果对账 | 部分具备 | 有确定性 Reconciliation；客户端 Helper 只把一组 Enrichment 与 Scanner Candidate 对比 | 对同批全部兄弟结果、静态 Facts 和 Lineage 做对账 |
-| Skill/MCP 全局模板 + Workspace 隔离 | 缺失 | Skill 与策略在 `src/api/application-bootstrap.js` 全局装载；没有 Workspace MCP 配置 | 物化不可变 Workspace Execution Profile，Runtime 不得访问全局 Registry |
+| 全局模型 + 项目 Skill/MCP 覆盖与禁用 | 缺失 | 模型 Registry 有一个 Active Profile 且 Adapter 偏 API；Skill/Policy 全局启动；Resolver 只按名称查找；没有项目能力或 Workspace MCP 管理 | 增加 API/Allowlist CLI 模型 Revision、Typed Overlay/Disable、持久 Draft/Active Head、全 Workspace 模型替换和 Profile-only Runtime Access |
 | 实时分析统计/树 | 部分具备 | 浏览器发布 Scanner 派生进度树；服务端 AnalysisRun 只提供 WorkUnit 计数 | 流式发布已对账 Batch 投影和独立覆盖/质量分母 |
 | Feature/API 追溯与历史 | 部分具备 | Tree 与 API 已存在；`getFeatureUnderstandingHistory` 已实现但主产品 UI 未使用 | 两棵树与历史统一绑定 Published Workspace Graph Projection |
 | 追溯图谱 | 部分具备 | 已有交互图和 Current Head API | 删除 Demo Fallback，所有路径必须可解析证据 |

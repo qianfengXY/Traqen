@@ -5,7 +5,7 @@ feature_ids: [F001, F002, F003, F004, F005, F006]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-07-31
+updated: 2026-08-11
 ---
 
 # Traqen Feature Roadmap
@@ -28,13 +28,13 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 | F003 | P1 | Traceability graph | spec | TBD | operator product plan | [F003](features/F003-traceability-graph.md) |
 | F004 | P0 | Claim review | spec | TBD | operator product plan | [F004](features/F004-claim-review.md) |
 | F005 | P1 | Change impact | spec | TBD | operator product plan | [F005](features/F005-change-impact.md) |
-| F006 | P0 | Workspace capability settings | spec | TBD | operator product plan | [F006](features/F006-workspace-capability-settings.md) |
+| F006 | P0 | Workspace capability settings | spec | TBD | operator-approved [discussion](../feature-discussions/2026-08-11-F006-workspace-capability-settings/README.md) | [F006](features/F006-workspace-capability-settings.md) |
 
 ## Delivery waves
 
 | Wave | Goal | Features | Exit evidence |
 |---|---|---|---|
-| 0 | Establish one Workspace root and one effective capability profile | F006 + F001 contracts | switching isolation, configuration-resolution tests, no global Skill/MCP access |
+| 0 | Establish one Workspace root and one effective capability profile | F006 + F001 contracts | durable API/CLI model settings, typed project overlay/disable, Main + Child 2..N, restart recovery, and no ungranted runtime capability access |
 | 1 | Replace competing scan/Agent paths with one durable analysis runtime | F001 | complete inventory, same-batch Child fan-out, reconciliation, published graph |
 | 2 | Make the graph reviewable through current/history trees and a review queue | F002 + F004 | end-to-end evidence journey and batch review |
 | 3 | Explore and evolve the graph | F003 + F005 | explainable graph paths and full-to-incremental impact |
