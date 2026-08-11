@@ -32,11 +32,10 @@ This Feature therefore owns the entire understanding foundation:
 
 ```text
 selected Workspace + immutable execution-profile revision
-  → sealed SourceSnapshot + complete ArtifactInventory
-  → fork Static extraction and same-batch Child Agent analysis
-  → deterministic observations + StaticCandidateProjection
-     alongside one independent CandidatePool per Child Agent
-  → partition barriers and Main Agent evidence reconciliation
+  → complete immutable source scope
+  → deterministic observations
+  → same AnalysisBatch sent to every configured Child Agent
+  → Main Agent evidence validation and reconciliation
   → correctness evaluation
   → canonical Candidate graph
 ```
@@ -81,9 +80,9 @@ Define the Workspace aggregate and lifecycle, versioned `CurrentWorkspaceContext
 
 Create authorized source registration, immutable Snapshot capture, complete ArtifactInventory, explicit dispositions, extractor capability registry, and safe source-slice broker.
 
-### Phase C: Forked same-batch independent understanding lanes
+### Phase C: Same-batch independent understanding lanes
 
-After `SourceSnapshot + ArtifactInventory` seal, run deterministic extraction and Agent source analysis concurrently as independently observable lanes. Static analysis preserves `DeterministicObservationPool → StaticCandidateProjection`; every active Child Agent receives the same deterministic `AnalysisBatch`, source scope, and output contract while using its own Workspace-approved model, Skills, MCPs, and independence group. Children cannot inspect sibling output. The Main Agent may observe committed pools in real time, but a reconciled partition checkpoint requires terminal static disposition, every required Child terminal result, and terminal evidence validation for the same scope.
+Run deterministic extraction and Agent source analysis as independently observable lanes. The deterministic planner derives bounded `AnalysisBatch` records from the full source manifest and conventions. Every active Child Agent receives the same batch, source scope, and output contract, while using its own Workspace-approved model, Skills, MCPs, and independence group. Children cannot inspect sibling output; the Main Agent owns task intent and post-batch reconciliation, never total-inventory disposition.
 
 ### Phase D: Reconciliation and lineage
 
@@ -146,7 +145,7 @@ Creating a Workspace and starting an analysis are separate explicit commands. Be
 
 The F001 surface presents one durable `WorkspaceAnalysisJob` with:
 
-- a seven-node execution DAG: `SOURCE_SCAN` and `ANALYSIS` fork after Snapshot/Inventory sealing, `FACT_COMMIT` remains on the Static lane, partition `RECONCILIATION` joins both lanes, and `EVALUATION → PROJECTION → PUBLISHING` follows global reconciliation;
+- a seven-stage track: `SOURCE_SCAN`, `FACT_COMMIT`, `ANALYSIS`, `RECONCILIATION`, `EVALUATION`, `PROJECTION`, and `PUBLISHING`;
 - an independent Static lane showing the complete inventory denominator and every disposition, including excluded, unsupported, binary, oversized, secret-redacted, and read-failed artifacts;
 - an independent Agent lane showing Batch/WorkUnit progress, the Main Agent, every configured Child slot, identical same-batch scope, individual results, and reconciliation status;
 - a visually separate Working Candidate tree with Candidate, conflict, quarantine, and Gap counts;
@@ -163,17 +162,16 @@ The Main Agent is described as reconciling the complete sibling result set again
 - **Completed but unpublished:** show evaluation and publishing gates plus the non-authoritative Working Candidate; do not redirect it into the governed F002 tree.
 - **Failed / cancelled:** retain history and diagnostics; retry creates or resumes only through an explicit supported command and never overwrites the failed record.
 
-On desktop, Static and Agent lanes can appear side by side beneath the DAG. On mobile they become ordered sections, while DAG dependency state, concurrent active-node markers, command state, denominators, blockers, and Candidate authority labels remain available.
+On desktop, Static and Agent lanes can appear side by side beneath the stage track. On mobile they become ordered sections, while the stage track, command state, denominators, blockers, and Candidate authority label remain available.
 
 ### Frontend acceptance
 
 - [ ] The first-run and returning-Workspace journeys always expose one valid next action without requiring a Job, Snapshot, or Candidate ID.
-- [ ] The seven persisted DAG nodes and the Static/Agent lane denominators are visible independently; concurrent nodes are not flattened into a linear cursor and no composite understanding score replaces them.
+- [ ] The seven persisted phases and the Static/Agent lane denominators are visible independently; no composite understanding score replaces them.
 - [ ] Every active Child slot is shown against the same Batch scope and output contract, and Main reconciliation never appears as majority voting.
 - [ ] Working Candidate content is visually and textually non-authoritative and never appears inside the governed F002 tree.
 - [ ] Refresh, reconnect, navigation, and Workspace switching are GET-only; they neither pause nor cancel a server job.
 - [ ] All non-terminal states, partial failures, configuration blockers, late Workspace responses, and historical Jobs have explicit recoverable UI states.
-- [ ] The complete F001 surface renders coherently in Chinese or English. System labels, states, errors, progress, commands, and accessibility text never mix languages; raw machine enums appear only in technical details.
 
 ## Acceptance criteria
 
@@ -195,9 +193,8 @@ On desktop, Static and Agent lanes can appear side by side beneath the DAG. On m
 - [ ] **AC-B6**: the same Snapshot, planner/convention versions, execution policy, and source ranges produce the same complete `UnderstandingPlan` with stable partition IDs and `unassignedCount=0`; its dynamic dependency DAG handles bounded large-file, file, module, cross-module, critic, and synthesis WorkUnits without treating a child summary as sole evidence.
 - [ ] **AC-B7**: every WorkUnit has a persisted, version-pinned `AnalysisRouteDecision` selected from verified model capability/calibration profiles and Skill contracts; high-risk redundancy uses independent producer groups and evidence reconciliation, while no eligible producer and unresolved disagreement remain explicit instead of falling back or becoming majority truth.
 - [ ] **AC-B8**: each Workspace chooses one Main Agent and one or more Child Agent slots, defaulting to two; every slot independently pins its model profile, Skills, MCP grants, role policy, and independence group.
-- [ ] **AC-B9**: each `AnalysisBatch` is fanned out to the complete active Child roster with identical source scope and output schema; children are isolated until completion, and the Main Agent reconciles only after the matching static partition, complete sibling result set, and deterministic evidence validation are terminal, without majority voting.
+- [ ] **AC-B9**: each `AnalysisBatch` is fanned out to the complete active Child roster with identical source scope and output schema; children are isolated until completion, and the Main Agent reconciles the complete sibling result set against static Facts and historical lineage without majority voting.
 - [ ] **AC-B10**: raw Child or Main model output never mutates the Feature/API working tree; only schema-valid, evidence-valid reconciliation output can publish a batch checkpoint, while untrusted evidence becomes quarantine, conflict, or Gap.
-- [ ] **AC-B11**: base-partition checkpoints remain provisional; cross-partition/module/project synthesis consumes required lower-level checkpoints, later relation evidence, and the terminal FactBundle, while unavailable required Child slots close as explicit terminal Gaps and unreconciled pools remain technical observations.
 
 ### C. Reconciliation and governance
 
@@ -219,7 +216,7 @@ On desktop, Static and Agent lanes can appear side by side beneath the DAG. On m
 
 ### E. Durable lifecycle and security
 
-- [ ] **AC-E1**: scan and Agent lanes run concurrently after Snapshot/Inventory sealing under one persisted DAG job; refreshing, closing, reconnecting, or attaching another browser does not change its state.
+- [ ] **AC-E1**: scan and Agent stages run under one persisted job; refreshing, closing, reconnecting, or attaching another browser does not change its state.
 - [ ] **AC-E2**: manual Pause/Resume preserves the same Snapshot and skips committed WorkUnits; running work recovers after worker restart while manually paused work remains paused.
 - [ ] **AC-E3**: Local Runner allowlists, path/symlink fencing, source-slice policy, secret redaction, and isolated evaluation stores pass security tests.
 - [ ] **AC-E4**: the browser contains no authoritative scanning or model loop after cutover.
@@ -316,8 +313,6 @@ On desktop, Static and Agent lanes can appear side by side beneath the DAG. On m
 | KD-11 | Global capabilities are templates only; execution is pinned to an immutable Workspace profile with no runtime path back to global Skills or MCPs. | Project isolation must be enforceable and replayable, not a prompt convention. | 2026-07-31 |
 | KD-12 | Existing `Project.id` migrates into the canonical Workspace identity or remains only as a compatibility alias; Workspace and Project do not remain independent 1:1 aggregates. | Two lifecycle and authorization identities would recreate the cross-module drift that Workspace is meant to remove. | 2026-07-31 |
 | KD-13 | F001 implementation slices are tasks in the active plan, not new `F001a`–`F001k` lifecycle IDs. | One Feature truth source plus testable plan tasks provides decomposition without creating another competing Feature namespace. | 2026-07-31 |
-| KD-14 | The seven durable activities form a fork-join execution DAG, not a linear phase cursor. | A UI-only parallel layout over serial execution is false observability; independent evidence lanes must actually overlap after immutable source sealing. | 2026-08-11 |
-| KD-15 | Chinese UI uses Chinese wherever a natural product term exists and retains only controlled standard abbreviations, brands, model names, and `Agent`; English UI is fully English. | Mixed-language product chrome reduces usability and makes status, error, and progress semantics inconsistent across modules. | 2026-08-11 |
 
 ## Timeline
 
@@ -329,11 +324,10 @@ On desktop, Static and Agent lanes can appear side by side beneath the DAG. On m
 | 2026-07-29 | operator established complete raw-source Agent coverage, deterministic partition/DAG execution, explicit model/Skill routing, and multi-model reconciliation |
 | 2026-07-31 | operator established Workspace-wide switching, same-batch Main/Child Agent corroboration, and Workspace-only runtime capabilities |
 | 2026-07-31 | GPT/Kimi cross-validation confirmed F001–F006 boundaries; the operator selected this design as the baseline and directed removal of superseded documents; ADR-0002 resolved canonical Workspace identity, F006 ordering, and runtime isolation |
-| 2026-08-11 | operator replaced the linear seven-phase model with a fork-join execution DAG and accepted the product-wide controlled Chinese terminology whitelist |
 
 ## Review gate
 
-Design Gate must approve items 1–9 and verify implementation against the operator-accepted items 10–11:
+Design Gate must approve:
 
 1. the system mission and canonical graph outcome;
 2. the multi-dimensional correctness contract;
@@ -344,8 +338,6 @@ Design Gate must approve items 1–9 and verify implementation against the opera
 7. FULL→INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature-history semantics.
 8. complete Snapshot-derived Agent planning, capability-routed model/Skill execution, and evidence-based multi-model reconciliation.
 9. Workspace aggregate ownership, context-version switching, same-batch Child isolation, and immutable project-only capability resolution.
-10. **accepted 2026-08-11:** the fork-join DAG, static observation/Candidate layering, and partition/synthesis reconciliation barriers.
-11. **accepted 2026-08-11:** the global Chinese/English display contract and controlled Chinese terminology whitelist.
 
 Implementation then follows TDD, quality gate, independent review, and merge gate.
 
@@ -363,5 +355,3 @@ Implementation then follows TDD, quality gate, independent review, and merge gat
 | Archify graph lifecycle | `docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html` | Candidate, Decision, evaluation, publication, rejection, and quarantine |
 | Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.md` | truth and authority boundaries |
 | Workspace aggregate ADR | `docs/decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md` | canonical Workspace identity, switching, migration, and runtime capability isolation |
-| Workspace analysis DAG ADR | `docs/decisions/ADR-0003-workspace-analysis-execution-dag.md` | immutable fork point, concurrent Static/Agent lanes, partition join gates, and rejected serial alternatives |
-| F001 convergence record | `feature-discussions/2026-07-29-F001-legacy-system-understanding/README.md` | operator decisions, cross-model discussion, and 2026-08-11 DAG/localization convergence |

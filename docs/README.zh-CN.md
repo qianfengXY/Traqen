@@ -11,7 +11,6 @@
 - [系统需求：存量系统理解与统一质量追溯](architecture/traqen-system-requirements.zh-CN.md) · [English](architecture/traqen-system-requirements.md)
 - [ADR-0001：统一追溯本体](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md) · [English](decisions/ADR-0001-canonical-traceability-ontology.md)
 - [ADR-0002：Workspace 聚合与执行隔离](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md) · [English](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md)
-- [ADR-0003：工作空间分析执行 DAG](decisions/ADR-0003-workspace-analysis-execution-dag.zh-CN.md) · [English](decisions/ADR-0003-workspace-analysis-execution-dag.md)
 - [代码分支 Review 发布政策](policies/branch-review-publication-policy.zh-CN.md) · [English](policies/branch-review-publication-policy.md)
 - [项目概览与运行指南](../README.zh-CN.md) · [English](../README.md)
 

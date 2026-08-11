@@ -32,7 +32,7 @@ Traqen 要把一个存量项目的代码和文件理解到足以构建可审核�
 - Canonical Graph 权威与历史；
 - 目标架构和实现提交 `1682d7d` 之间经过代码核验的差距。
 
-详细执行合同保留在 [F001 工作空间扫描与 Analysis Agent 生命周期](../features/workspace-scan-and-analysis-lifecycle.zh-CN.md)，规范实体的权威边界保留在 [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)；工作空间身份、切换与能力隔离由 [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)固定；分叉—汇合执行模型由 [ADR-0003](../decisions/ADR-0003-workspace-analysis-execution-dag.zh-CN.md)固定。
+详细执行合同保留在 [F001 Workspace 扫描与 Analysis Agent 生命周期](../features/workspace-scan-and-analysis-lifecycle.zh-CN.md)，Canonical Entity 的权威边界保留在 [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)；Workspace 身份、切换与能力隔离由 [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)固定。
 
 ## 2. 架构不变量
 
@@ -46,8 +46,6 @@ Traqen 要把一个存量项目的代码和文件理解到足以构建可审核�
 8. **不可信证据不能静默通过。** 无效、越界、矛盾或不可验证证据必须隔离 Candidate 或记录 Gap；不能无账本丢弃，更不能按票数晋升。
 9. **实时树是投影，不是权威。** Workspace Analysis 可以流式展示已对账 Working Candidate；受治理的 Feature/API 树默认读取最新发布的 `CurrentGraphHead`。
 10. **历史只追加。** 新 Snapshot 或实现映射不能重写业务 Feature 版本；Decision、Mapping、GraphRevision、ChangeSet、Impact、测试与结果始终可查询。
-11. **七项活动组成 DAG，而不是游标。** 不可变源码快照与完整清单密封后，静态与 Agent 工作分叉；对账按范围分区汇合终态输入，单值 `phase` 不能代表权威执行状态。
-12. **全产品展示语言必须一致。** 后端规范编码保持与语言无关；所有用户可见字段使用当前选择的语言，中文只保留受控的标准缩写、品牌、模型名和 `Agent`。
 
 ## 3. 产品 Feature 地图
 
@@ -130,19 +128,6 @@ Candidate 与 Governed Projection 可以互相跳转，但不能共用一棵树�
 
 F001-F006 Feature 文档分别负责本页面的旅程、状态、权威绑定和前端验收标准。[Enterprise Blue](../design/enterprise-blue-theme.zh-CN.md) 继续作为视觉设计系统真相源；本文不重复其颜色或组件 Token。
 
-### 4.4 全局语言合同
-
-语言选择作用于整个产品，不能由页面或组件各自决定：
-
-- 英文模式下，产品标签、命令、状态、错误、进度文字、空状态、加载状态、通知、对话框与无障碍文字全部使用英文。
-- 中文模式下，已有自然中文表达的产品概念尽量使用中文。受控白名单仅保留标准缩写、品牌、模型名与 `Agent`，例如 `Traqen`、`API`、`HTTP`、`JSON`、`SQL`、`URL`、`Git`、`MCP` 和模型标识。
-- 源码路径、类名、函数名、API 路径、配置键、模型名、证据原文及其他被检查的技术标识保持原样；它们属于内容，不是产品文案。
-- 后端枚举与错误码保持规范且与语言无关。前端通过有类型约束的翻译键完成映射；原始枚举只能出现在明确标注的技术详情中。
-- 语言偏好属于用户全局设置并持久保存。页面导航、刷新、重连或切换工作空间后，文档 `lang`、日期/数字格式、无障碍名称和所有模块必须保持一致。
-- 中英文词条必须键值对齐。缺少翻译、用户可见硬编码文字或混合语言兜底都不能通过前端验收门禁。
-
-产品文案示例：`Workspace analysis` 应显示为“工作空间分析”，`Source snapshot` 为“源码快照”，`Feature tree` 为“功能树”，`Claim review` 为“声明审核”，`Current published revision` 为“当前发布版本”，`Configuration` 为“配置”。白名单技术词不能成为任意保留英文产品文案的理由。
-
 ## 5. Workspace 聚合与生命周期
 
 ### 5.1 Canonical 对象
@@ -193,12 +178,10 @@ type CurrentWorkspaceContext = {
 
 ### 6.1 独立证据通道
 
-源码发现先密封一个不可变 `SourceSnapshot` 与完整 `ArtifactInventory`。密封点就是分叉点，并且与最终事实提交分离；同一份已密封输入随后进入两条独立通道：
+一个不可变 Snapshot 同时进入两条独立通道：
 
-- **静态扫描通道：** 继续执行提取与关系解析，保留“确定性观察池 → 静态候选投影”两层，并提交该源码快照的终态 `FactBundle`。
-- **Agent 通道：** 不等待最终 `FactBundle`，从完整清单确定性产生 `AnalysisBatch`，让每个已配置子 Agent 从同一批次读取受策略约束的原始 `SourceSlice`，并分别写入自己的子 Agent 候选池。
-
-扫描器事实只是 Agent 工作单元的可选、版本固定增强。任何使用方都必须引用不可变 `factCheckpointId`，不能读取变化中的“最新事实”。静态侧与子 Agent 的候选封装都包含业务、设计、代码、测试用例、测试结果和配置六个必填数组；空数组表示如实缺少证据，独立覆盖状态则区分没有证据、尚未分析、不支持与失败。
+- **静态扫描通道：** 清点文件、代码、配置、文档、图片、测试、结果以及不支持/二进制内容；在能力范围内提取确定性 Facts。
+- **Agent 通道：** 从完整 Inventory 确定性产生 `AnalysisBatch`，让每个已配置 Child Agent 从同一批次读取受策略约束的原始 `SourceSlice`。
 
 图片和其他二进制 Artifact 始终留在 Inventory 分母中。只有安装并声明了媒体/OCR 能力的 Specialist 才能分析；否则必须产生显式 Unsupported 或 Unprocessed Gap。
 
@@ -219,25 +202,20 @@ Workspace 默认模板创建两个 Child 槽位，用户可以配置一个或多
 
 ### 6.3 批次扇出与对账
 
-对每个范围分区：
+对每个批次：
 
-1. 确定性规划器密封共享输入和稳定的 `scopePartitionId`；
+1. 确定性 Planner 密封共享输入；
 2. Scheduler 为每个启用 Child 槽位创建一个 `ChildWorkUnit`；
 3. 全部 ChildWorkUnit 独立运行，并允许并发；
 4. 证据校验拒绝 Snapshot、Batch 或 SourceSlice Allowset 以外的引用；
-5. 汇合门禁等待该分区的静态处置终态、所有必需子 Agent 槽位终态，以及模式/源码快照/源码切片/证据校验终态；
-6. 门禁打开后，主 Agent 才能把所有合法子 Agent 结果与静态观察、版本固定事实和历史沿袭一起比较；
-7. 完全一致只能在校准过的置信上限内增加佐证；
-8. 分歧写入 `ConflictLedger`，不能按多数票决定；
-9. 证据无效输出隔离为 Candidate 或 Gap；
-10. 已提交的对账检查点更新工作中的功能/API 树；
-11. 跨分区、模块与项目汇总重复相同的屏障协议，读取已对账输出及原始证据引用，绝不能只读子 Agent 摘要。
+5. Main Agent 把所有合法 Child 结果与静态 Facts、历史 Lineage 一起比较；
+6. 完全一致只能在校准过的置信上限内增加佐证；
+7. 分歧写入 `ConflictLedger`，不能按多数票决定；
+8. 证据无效输出隔离为 Candidate 或 Gap；
+9. 已对账的批次投影更新 Working Feature/API Tree；
+10. Module 与 Project 汇总读取已对账输出及原始证据引用，绝不能只读 Child Summary。
 
-门禁打开前，主 Agent 可以查看已提交候选池与进度，但实时观察不能授权乐观的部分对账。身份冲突保留为不同候选；维度冲突保持为账本中的未解决项。两种情况都不能在没有人工 Decision 时创建受治理功能。
-
-基础分区检查点只是局部性结果，不是仓库级身份的最终结论。跨分区与项目汇总门禁消费所需的下层检查点及后续静态关系检查点；全局评估门禁还必须等待终态 `FactBundle`。新的跨文件证据产生追加式对账增量。分区粒度遵循稳定理解计划，不能退化成逐行检查点。缓慢或不可用的必需子 Agent 必须以 `NO_ELIGIBLE_PRODUCER` 等显式缺口终态关闭，不能算作一致，也不能无限等待。
-
-因此，超大工程无需一个整仓提示。批次数量动态增长，逻辑子 Agent 数量由工作空间配置；不相关分区的静态、Agent 与对账工作允许重叠执行。
+因此，超大工程无需一个整仓 Prompt。Batch 数量动态增长，逻辑 Child 数量由 Workspace 配置。
 
 ### 6.4 实时进度
 
@@ -249,7 +227,7 @@ Workspace 默认模板创建两个 Child 槽位，用户可以配置一个或多
 - 质量：证据合法 Candidate、隔离 Candidate、冲突、Gap；
 - 发布：Evaluation 与 GraphRevision 状态。
 
-权威任务状态公开 `phaseStates`、零个或多个 `activePhases`、类型化 `laneProgress`，以及分区级/全局 `joinGates`。`completedPhases` 只能作为派生兼容视图；单值 `phase` 不能驱动调度器。未对账候选池只能出现在明确标注的“技术观测视图”中；实时工作树只能在已提交对账检查点后更新，原始模型文本永远不能直接修改可见功能/API 节点。
+实时树只能在批次对账后更新。原始模型文本永远不能直接修改可见 Feature/API 节点。
 
 ## 7. 能力配置与隔离
 

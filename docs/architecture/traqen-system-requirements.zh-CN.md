@@ -247,15 +247,13 @@ Feature
 | SR-021 | 从 Snapshot/ArtifactInventory 派生确定性完整 UnderstandingPlan，Partition 稳定、`unassignedCount=0`，并用有界动态 WorkUnit 依赖 DAG 扩展到超出单 Prompt 或固定子任务数量的工程。 |
 | SR-022 | 每个 WorkUnit 都必须基于已验证模型能力/校准 Profile、签名 Skill 合同与部署数据边界持久化版本固定的 AnalysisRouteDecision；能力缺失必须以 `NO_ELIGIBLE_PRODUCER` 关闭失败。 |
 | SR-023 | 每个有界 AnalysisBatch 都发送给所有已配置且相互独立的子 Agent；Batch 与同批 sibling 可以并发，但主 Agent 必须对完整终态 sibling 集合与静态 Facts 做对账并保留冲突，不能把相关一致或多数票当真相。 |
-| SR-024 | 把 `SOURCE_SCAN`、`FACT_COMMIT`、`ANALYSIS`、`RECONCILIATION`、`EVALUATION`、`PROJECTION` 与 `PUBLISHING` 作为持久依赖 DAG 执行：不可变源码快照与清单密封后分叉静态和 Agent 通道，按范围分区汇合终态输入，并展示多个活动节点而不是单一权威阶段游标。 |
-| SR-025 | 当前语言下，所有用户可见标签、命令、状态、错误、进度字段、空状态、加载状态、通知、对话框和无障碍文字必须保持一致。中文只保留受控的标准缩写、品牌、模型名和 `Agent`；后端规范编码不能直接成为主要界面文案。 |
 
 ## 9. 核心用户旅程
 
 ### 9.1 理解一个存量仓库
 
 1. operator 登记源码并启动分析。
-2. Traqen 展示清点覆盖、不支持区域，以及静态与 Agent 通道可独立活动的持久 DAG 进度。
+2. Traqen 展示清点覆盖、不支持区域和持久阶段进度。
 3. 确定性 Facts 与独立 Candidates 可通过源码链接检查。
 4. 冲突、疑似重复、关系缺失和低证据区域持续可见。
 5. operator 审核 Candidate，只有 Decision 能创建受治理 Feature/Claim。
@@ -390,7 +388,6 @@ operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Revi
 
 - `traqen-product-architecture.zh-CN.md`：当前产品架构与实现差距图；
 - ADR-0001：canonical ontology 与权威边界；
-- ADR-0003：F001 分叉—汇合执行 DAG 与对账屏障；
 - 活动 `F001`～`F006` 文档：Feature 验收合同；
 - 当前实施计划与详细生命周期设计。
 
@@ -399,4 +396,4 @@ operator 批准业务能力边界、P0 锚点与阈值变更；独立技术 Revi
 
 ## 15. 验收状态
 
-本文状态为 **proposed**。Design Gate 通过后，确定系统使命、正确性合同、F001 优先级和 Traqen 分析 Traqen 的发布门禁。operator 已于 2026-08-11 接受 SR-024 的执行 DAG 与 SR-025 的双语展示合同；这不代表当前实现已经满足要求。
+本文状态为 **proposed**。Design Gate 通过后，确定系统使命、正确性合同、F001 优先级和 Traqen 分析 Traqen 的发布门禁；这不代表当前实现已经满足要求。

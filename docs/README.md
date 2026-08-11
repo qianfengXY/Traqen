@@ -11,7 +11,6 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 - [System requirements: legacy-system understanding and canonical quality traceability](architecture/traqen-system-requirements.md) · [简体中文](architecture/traqen-system-requirements.zh-CN.md)
 - [ADR-0001: canonical traceability ontology](decisions/ADR-0001-canonical-traceability-ontology.md) · [简体中文](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)
 - [ADR-0002: Workspace aggregate and execution isolation](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md) · [简体中文](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)
-- [ADR-0003: Workspace Analysis execution DAG](decisions/ADR-0003-workspace-analysis-execution-dag.md) · [简体中文](decisions/ADR-0003-workspace-analysis-execution-dag.zh-CN.md)
 - [Branch Review Publication Policy](policies/branch-review-publication-policy.md) · [简体中文](policies/branch-review-publication-policy.zh-CN.md)
 - [Project overview and operating guide](../README.md) · [简体中文](../README.zh-CN.md)
 

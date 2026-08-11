@@ -46,8 +46,6 @@ Snapshot/source
   → tree, graph, TraceChain, Impact, and Metrics projections
 ```
 
-This chain defines authority and provenance order, not a serial execution schedule. Under [ADR-0003](ADR-0003-workspace-analysis-execution-dag.md), deterministic observations and Agent Candidates may be produced concurrently from the same sealed Snapshot and are joined through validated reconciliation checkpoints before governance.
-
 ### Canonical entities and relations
 
 ```text
