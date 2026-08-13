@@ -1,7 +1,47 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 
-import { AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels } from "../src/analysis/index.js";
+import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels } from "../src/analysis/index.js";
+
+function cliSpawn(result, calls) {
+  return (executable, args, options) => {
+    calls.push({ executable, args, options });
+    const child = new EventEmitter();
+    child.pid = 99999999;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => { child.killed = true; };
+    queueMicrotask(() => {
+      if (result === null) return;
+      if (result.stdout) child.stdout.write(result.stdout);
+      if (result.stderr) child.stderr.write(result.stderr);
+      child.stdout.end();
+      child.stderr.end();
+      child.emit("close", result.code ?? 0);
+    });
+    return child;
+  };
+}
+
+test("allowlisted CLI models pass untrusted prompts as one argv value without a shell", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({ id: "CLI-1", cliAdapter: "CODEX", model: "gpt", spawnImpl: cliSpawn({ stdout: '{}\n' }, calls) });
+  const input = { statement: "$(touch /tmp/never) ; `uname` --danger" };
+  assert.deepEqual(await adapter.planWorkspaceAnalysis(input), {});
+  assert.equal(calls[0].executable, "codex");
+  assert.equal(calls[0].options.shell, false);
+  assert.equal(calls[0].args.at(-1), JSON.stringify({ task: "workspace-plan", input }));
+  assert.equal(calls[0].args.filter((value) => value.includes("touch")).length, 1);
+});
+
+test("allowlisted CLI models enforce timeout and output bounds", async () => {
+  const outputBounded = new AllowlistedCliModelAdapter({ id: "CLI-OUT", cliAdapter: "KIMI", maximumOutputBytes: 4, spawnImpl: cliSpawn({ stdout: "12345" }, []) });
+  await assert.rejects(() => outputBounded.planWorkspaceAnalysis({}), /output limit/);
+  const timed = new AllowlistedCliModelAdapter({ id: "CLI-TIME", cliAdapter: "GEMINI", timeoutMs: 5, spawnImpl: cliSpawn(null, []) });
+  await assert.rejects(() => timed.verify(), /timed out/);
+});
 
 function workspaceCandidateEnvelope(overrides = {}) {
   const workUnit = {

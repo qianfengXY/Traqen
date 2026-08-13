@@ -42,5 +42,5 @@ export function addChildSlot(
 }
 
 export function removeChildSlot(slots: ChildCapabilityRole[], slotId: string) {
-  return slots.length <= 1 ? slots : slots.filter(({ id }) => id !== slotId);
+  return slots.length <= 2 ? slots : slots.filter(({ id }) => id !== slotId);
 }

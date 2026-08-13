@@ -86,6 +86,41 @@
       "get": { "operationId": "listCapabilityTemplateRevisions", "responses": { "200": { "description": "Global capability templates; never a runtime registry handle", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplateList" } } } } } },
       "post": { "operationId": "registerCapabilityTemplateRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplateRequest" } } } }, "responses": { "201": { "description": "Immutable template revision", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplate" } } } } } }
     },
+    "/v1/global-models": {
+      "get": { "operationId": "listGlobalModelProfiles", "responses": { "200": { "description": "Reusable global API and allowlisted CLI model profiles without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } },
+      "post": { "operationId": "createGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "201": { "description": "Persisted global model connection profile", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/global-models/{modelId}/verify": {
+      "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "verifyGlobalModelProfile", "responses": { "200": { "description": "Updated transport readiness without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/workspaces/{workspaceId}/project-capabilities": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "listProjectCapabilities", "responses": { "200": { "description": "Current project-owned Skill and MCP revisions", "content": { "application/json": { "schema": { "type": "object" } } } } } },
+      "post": { "operationId": "createProjectCapability", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "201": { "description": "Immutable project capability revision", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/workspaces/{workspaceId}/project-capabilities/{kind}/{name}": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }, { "name": "kind", "in": "path", "required": true, "schema": { "enum": ["SKILL", "MCP"] } }, { "name": "name", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "put": { "operationId": "reviseProjectCapability", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "200": { "description": "New immutable project capability revision", "content": { "application/json": { "schema": { "type": "object" } } } } } },
+      "delete": { "operationId": "deleteProjectCapability", "responses": { "200": { "description": "Project capability tombstone revision", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/workspaces/{workspaceId}/capabilities/effective": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "getEffectiveWorkspaceCapabilities", "responses": { "200": { "description": "Server-resolved typed overlay, disable state, and source-aware counts", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/workspaces/{workspaceId}/capability-draft": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "getWorkspaceCapabilityDraft", "responses": { "200": { "description": "Current persisted editable draft head", "content": { "application/json": { "schema": { "type": "object" } } } } } },
+      "put": { "operationId": "saveWorkspaceCapabilityDraft", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "200": { "description": "New immutable draft revision after expected-version CAS", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/workspaces/{workspaceId}/capability-draft/validate": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "validateWorkspaceCapabilityDraft", "responses": { "200": { "description": "Field-level validation without discarding the saved draft", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
+    "/v1/workspaces/{workspaceId}/capability-draft/activate": {
+      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "activateWorkspaceCapabilityDraft", "responses": { "201": { "description": "Immutable execution profile pinned to exact model and capability revisions", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
     "/v1/workspaces/{workspaceId}/capability-configs": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "get": { "operationId": "listWorkspaceCapabilityConfigs", "responses": { "200": { "description": "Versioned Workspace capability configuration history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },

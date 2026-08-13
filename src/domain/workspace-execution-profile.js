@@ -2,6 +2,9 @@ import { canonicalJson, contentId, deepFreeze } from "./canonical-json.js";
 import { requireNonEmptyString } from "./model.js";
 
 const capabilityKinds = new Set(["MODEL", "SKILL", "MCP"]);
+const catalogKinds = new Set(["SKILL", "MCP"]);
+const modelTransports = new Set(["API", "CLI"]);
+const cliAdapters = new Set(["CODEX", "CLAUDE", "GEMINI", "KIMI"]);
 
 function assertSecretFree(value, fieldName) {
   if (!value || typeof value !== "object") return;
@@ -18,6 +21,222 @@ function uniqueStrings(values, fieldName) {
   const normalized = (values ?? []).map((value, index) => requireNonEmptyString(value, `${fieldName}[${index}]`));
   if (new Set(normalized).size !== normalized.length) throw new TypeError(`${fieldName} must be unique`);
   return normalized;
+}
+
+function normalizedCapabilityName(value, fieldName = "capability name") {
+  return requireNonEmptyString(value, fieldName).trim().toLowerCase();
+}
+
+export function capabilityKey(input, fieldName = "capability") {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError(`${fieldName} must be an object`);
+  const kind = requireNonEmptyString(input.kind, `${fieldName}.kind`).toUpperCase();
+  if (!catalogKinds.has(kind)) throw new TypeError(`${fieldName}.kind must be SKILL or MCP`);
+  return deepFreeze({ kind, normalizedName: normalizedCapabilityName(input.normalizedName ?? input.name ?? input.logicalName, `${fieldName}.normalizedName`) });
+}
+
+function typedKey(input) {
+  const key = capabilityKey(input);
+  return `${key.kind}\u0000${key.normalizedName}`;
+}
+
+function uniqueCapabilityKeys(values, fieldName) {
+  if (!Array.isArray(values ?? [])) throw new TypeError(`${fieldName} must be an array`);
+  const result = (values ?? []).map((value, index) => capabilityKey(value, `${fieldName}[${index}]`));
+  if (new Set(result.map(typedKey)).size !== result.length) throw new TypeError(`${fieldName} must be unique by typed key`);
+  return result;
+}
+
+export function createGlobalModelProfileRevision(input, clock = () => new Date()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model profile must be an object");
+  const profileId = requireNonEmptyString(input.profileId ?? input.id, "profileId");
+  const revision = Number(input.revision ?? 1);
+  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  const transport = requireNonEmptyString(input.transport, "transport").toUpperCase();
+  if (!modelTransports.has(transport)) throw new TypeError("transport must be API or CLI");
+  const connection = transport === "API"
+    ? {
+        providerAdapter: requireNonEmptyString(input.providerAdapter, "providerAdapter"),
+        endpoint: requireNonEmptyString(input.endpoint, "endpoint"),
+        model: requireNonEmptyString(input.model, "model"),
+        credentialHandleId: requireNonEmptyString(input.credentialHandleId, "credentialHandleId"),
+      }
+    : {
+        cliAdapter: requireNonEmptyString(input.cliAdapter, "cliAdapter").toUpperCase(),
+        ...(input.model ? { model: requireNonEmptyString(input.model, "model") } : {}),
+        ...(input.executablePath ? { executablePath: requireNonEmptyString(input.executablePath, "executablePath") } : {}),
+      };
+  if (transport === "CLI" && !cliAdapters.has(connection.cliAdapter)) throw new TypeError("unsupported CLI adapter");
+  assertSecretFree(connection, "global model profile");
+  const identity = { profileId, revision, transport, connection };
+  return deepFreeze({
+    id: contentId("GLOBAL-MODEL-PROFILE-REVISION", identity),
+    ...identity,
+    displayName: requireNonEmptyString(input.displayName ?? profileId, "displayName"),
+    readiness: String(input.readiness ?? "UNVERIFIED").toUpperCase(),
+    lifecycle: String(input.lifecycle ?? "ACTIVE").toUpperCase(),
+    createdAt: clock().toISOString(),
+  });
+}
+
+export function createProjectCapabilityRevision(input, clock = () => new Date()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("project capability must be an object");
+  const workspaceId = requireNonEmptyString(input.workspaceId, "workspaceId");
+  const key = capabilityKey(input);
+  const revision = Number(input.revision ?? 1);
+  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  const manifest = structuredClone(input.manifest ?? {});
+  assertSecretFree(manifest, "project capability manifest");
+  const identity = { workspaceId, ...key, revision, manifest, credentialHandleIds: uniqueStrings(input.credentialHandleIds, "credentialHandleIds") };
+  return deepFreeze({
+    id: contentId("PROJECT-CAPABILITY-REVISION", identity),
+    ...identity,
+    contentDigest: contentId("PROJECT-CAPABILITY-CONTENT", { ...key, manifest }),
+    createdAt: clock().toISOString(),
+  });
+}
+
+export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], projectCatalog = [], disabledKeys = [] }) {
+  const latest = (entries, source) => {
+    const result = new Map();
+    for (const raw of entries) {
+      const key = capabilityKey(raw);
+      const value = { ...structuredClone(raw), ...key, source };
+      const storageKey = typedKey(key);
+      const prior = result.get(storageKey);
+      if (!prior || Number(value.revision ?? 1) > Number(prior.revision ?? 1)) result.set(storageKey, value);
+    }
+    return result;
+  };
+  const builtins = latest(builtinCatalog, "BUILTIN");
+  const projects = latest(projectCatalog, "PROJECT");
+  const disabled = new Set(uniqueCapabilityKeys(disabledKeys, "disabledKeys").map(typedKey));
+  const merged = new Map(builtins);
+  for (const [key, entry] of projects) merged.set(key, { ...entry, projectRelation: builtins.has(key) ? "OVERRIDE" : "ADDITION" });
+  const entries = [...merged.entries()].map(([key, entry]) => deepFreeze({
+    ...entry,
+    disabled: disabled.has(key),
+    effective: !disabled.has(key),
+  })).sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName));
+  return deepFreeze({
+    entries,
+    effective: entries.filter(({ effective }) => effective),
+    summary: {
+      builtinCount: [...builtins.keys()].filter((key) => !projects.has(key)).length,
+      projectOverrideCount: [...projects.keys()].filter((key) => builtins.has(key)).length,
+      projectAdditionCount: [...projects.keys()].filter((key) => !builtins.has(key)).length,
+      disabledCount: entries.filter(({ disabled }) => disabled).length,
+      effectiveCount: entries.filter(({ effective }) => effective).length,
+    },
+  });
+}
+
+function draftAgentSlot(input, role, index = 0) {
+  const value = input && typeof input === "object" ? input : {};
+  return {
+    id: String(value.id ?? (role === "MAIN" ? "MAIN" : `CHILD-${index + 1}`)),
+    role,
+    displayName: String(value.displayName ?? (role === "MAIN" ? "Main Agent" : `Child Agent ${index + 1}`)),
+    modelProfileId: String(value.modelProfileId ?? value.model ?? ""),
+    skillGrants: uniqueCapabilityKeys(value.skillGrants ?? (value.skillNames ?? []).map((normalizedName) => ({ kind: "SKILL", normalizedName })), `${role}.skillGrants`),
+    mcpGrants: uniqueCapabilityKeys(value.mcpGrants ?? (value.mcpNames ?? []).map((normalizedName) => ({ kind: "MCP", normalizedName })), `${role}.mcpGrants`),
+    independenceGroup: String(value.independenceGroup ?? (role === "MAIN" ? "MAIN" : "")),
+    enabled: value.enabled !== false,
+  };
+}
+
+export function createWorkspaceCapabilityDraftRevision(input, clock = () => new Date()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Workspace capability draft must be an object");
+  const workspaceId = requireNonEmptyString(input.workspaceId, "workspaceId");
+  const revision = Number(input.revision ?? 1);
+  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  const mainAgentSlot = draftAgentSlot(input.mainAgentSlot ?? input.mainAgent, "MAIN");
+  const childAgentSlots = (input.childAgentSlots ?? input.childSlots ?? [{}, {}]).map((slot, index) => draftAgentSlot(slot, "CHILD", index));
+  const disabledKeys = uniqueCapabilityKeys(input.disabledKeys, "disabledKeys");
+  const identity = {
+    workspaceId,
+    revision,
+    mainAgentSlot,
+    childAgentSlots,
+    projectCapabilityRevisionIds: uniqueStrings(input.projectCapabilityRevisionIds, "projectCapabilityRevisionIds"),
+    disabledKeys,
+    dependencyPolicyRevisionId: String(input.dependencyPolicyRevisionId ?? ""),
+    conventionRevisionId: String(input.conventionRevisionId ?? ""),
+    securityPolicyRevisionId: String(input.securityPolicyRevisionId ?? ""),
+  };
+  return deepFreeze({ id: contentId("WORKSPACE-CAPABILITY-DRAFT", identity), ...identity, createdAt: clock().toISOString() });
+}
+
+export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], effectiveCatalog = [] }) {
+  const errors = [];
+  const models = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
+  const effectiveKeys = new Set(effectiveCatalog.filter((entry) => entry.effective !== false && entry.disabled !== true).map(typedKey));
+  const enabledChildren = draft.childAgentSlots.filter(({ enabled }) => enabled);
+  if (enabledChildren.length < 2) errors.push({ field: "childAgentSlots", code: "MINIMUM_CHILDREN", message: "At least two enabled Child Agent slots are required" });
+  const slots = [draft.mainAgentSlot, ...draft.childAgentSlots];
+  for (const [index, slot] of slots.entries()) {
+    const path = index === 0 ? "mainAgentSlot" : `childAgentSlots[${index - 1}]`;
+    if (!slot.enabled) continue;
+    if (!slot.id.trim()) errors.push({ field: `${path}.id`, code: "REQUIRED", message: "Slot id is required" });
+    const model = models.get(slot.modelProfileId);
+    if (!slot.modelProfileId || !model) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_UNAVAILABLE", message: "Select a global model profile" });
+    else if ((model.readiness ?? (model.ready ? "READY" : "UNVERIFIED")) !== "READY" || (model.lifecycle ?? "ACTIVE") !== "ACTIVE") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_NOT_READY", message: "Selected model must be READY and ACTIVE" });
+    if (slot.role === "CHILD" && !slot.independenceGroup.trim()) errors.push({ field: `${path}.independenceGroup`, code: "REQUIRED", message: "Independence group is required" });
+    for (const grant of [...slot.skillGrants, ...slot.mcpGrants]) {
+      if (!effectiveKeys.has(typedKey(grant))) errors.push({ field: path, code: "CAPABILITY_UNAVAILABLE", capabilityKey: grant, message: `${grant.kind} ${grant.normalizedName} is disabled or unavailable` });
+    }
+  }
+  if (new Set(slots.map(({ id }) => id).filter(Boolean)).size !== slots.filter(({ id }) => id).length) errors.push({ field: "agentSlots", code: "DUPLICATE_SLOT_ID", message: "Agent slot ids must be unique" });
+  return deepFreeze({ valid: errors.length === 0, errors });
+}
+
+export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], catalog, clock = () => new Date() }) {
+  const validation = validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective ?? catalog.entries ?? catalog });
+  if (!validation.valid) throw new TypeError(`Workspace capability draft is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
+  const modelById = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
+  const effectiveByKey = new Map((catalog.effective ?? catalog.entries ?? catalog).filter((entry) => entry.effective !== false).map((entry) => [typedKey(entry), entry]));
+  const materializeSlot = (slot) => ({
+    ...slot,
+    modelProfileRevisionId: modelById.get(slot.modelProfileId).id,
+    skillRevisionIds: slot.skillGrants.map((grant) => effectiveByKey.get(typedKey(grant)).id),
+    mcpRevisionIds: slot.mcpGrants.map((grant) => effectiveByKey.get(typedKey(grant)).id),
+  });
+  const identity = {
+    workspaceId: draft.workspaceId,
+    draftRevisionId: draft.id,
+    draftRevision: draft.revision,
+    mainAgentSlot: materializeSlot(draft.mainAgentSlot),
+    childAgentSlots: draft.childAgentSlots.filter(({ enabled }) => enabled).map(materializeSlot),
+    catalogProvenance: (catalog.effective ?? []).map(({ id, kind, normalizedName, source }) => ({ id, kind, normalizedName, source })),
+    dependencyPolicyRevisionId: draft.dependencyPolicyRevisionId,
+    conventionRevisionId: draft.conventionRevisionId,
+    securityPolicyRevisionId: draft.securityPolicyRevisionId,
+  };
+  const legacyRole = (slot) => ({
+    ...(slot.role === "CHILD" ? { id: slot.id, independenceGroup: slot.independenceGroup } : {}),
+    model: slot.modelProfileId,
+    skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName),
+    mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName),
+  });
+  return deepFreeze({
+    id: contentId("WORKSPACE-EXECUTION-PROFILE", identity),
+    ...identity,
+    configId: draft.id,
+    configVersion: draft.revision,
+    mainAgent: legacyRole(draft.mainAgentSlot),
+    childSlots: draft.childAgentSlots.filter(({ enabled }) => enabled).map(legacyRole),
+    entries: (catalog.effective ?? []).map((entry) => ({
+      logicalName: entry.normalizedName,
+      kind: entry.kind,
+      manifest: structuredClone(entry.manifest ?? {}),
+      sourceTemplateId: entry.source === "BUILTIN" ? entry.id : null,
+      credentialHandleIds: [...(entry.credentialHandleIds ?? [])],
+    })),
+    dependencies: { revisionId: draft.dependencyPolicyRevisionId },
+    conventions: { revisionId: draft.conventionRevisionId },
+    policies: { securityPolicyRevisionId: draft.securityPolicyRevisionId },
+    profileDigest: contentId("PROFILE-DIGEST", identity),
+    createdAt: clock().toISOString(),
+  });
 }
 
 export function createCapabilityTemplateRevision(input, clock = () => new Date()) {
@@ -67,7 +286,7 @@ export function createWorkspaceCapabilityConfig(input, clock = () => new Date())
     mcpNames: uniqueStrings(slot.mcpNames, `childSlots[${index}].mcpNames`),
     independenceGroup: requireNonEmptyString(slot.independenceGroup, `childSlots[${index}].independenceGroup`),
   }));
-  if (childSlots.length < 1) throw new TypeError("at least one Child Agent slot is required");
+  if (childSlots.length < 2) throw new TypeError("at least two Child Agent slots are required");
   if (new Set(childSlots.map(({ id }) => id)).size !== childSlots.length) throw new TypeError("Child Agent slot ids must be unique");
   return deepFreeze({
     id: contentId("WORKSPACE-CAPABILITY-CONFIG", { workspaceId, version, input }),

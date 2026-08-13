@@ -638,6 +638,68 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.listCapabilityTemplates();
   }
 
+  #globalModelProfiles() {
+    if (!this.#analysisModelRegistry) return [];
+    return this.#analysisModelRegistry.list().map((profile) => ({
+      id: `MODEL-REVISION-${profile.id}-${profile.configuredAt}`,
+      profileId: profile.id,
+      currentRevisionId: `MODEL-REVISION-${profile.id}-${profile.configuredAt}`,
+      displayName: profile.displayName ?? profile.id,
+      transport: profile.transport ?? 'API',
+      providerAdapter: profile.providerAdapter ?? 'OPENAI_COMPATIBLE',
+      endpoint: profile.endpoint,
+      model: profile.model,
+      readiness: profile.ready ? 'READY' : 'UNVERIFIED',
+      lifecycle: profile.lifecycle ?? 'ACTIVE',
+      configuredAt: profile.configuredAt,
+      verifiedAt: profile.verifiedAt,
+    }));
+  }
+
+  listGlobalModelProfiles() {
+    return this.#globalModelProfiles();
+  }
+
+  configureGlobalModelProfile(input) {
+    return this.configureAnalysisModelProfile({ ...input, id: input.profileId ?? input.id });
+  }
+
+  verifyGlobalModelProfile(profileId) {
+    return this.verifyAnalysisModelProfile(profileId);
+  }
+
+  async listWorkspaceProjectCapabilities(workspaceId) {
+    return this.#workspaceFoundation.listProjectCapabilities(workspaceId);
+  }
+
+  async saveWorkspaceProjectCapability(workspaceId, input) {
+    return this.#workspaceFoundation.saveProjectCapability(workspaceId, input);
+  }
+
+  async deleteWorkspaceProjectCapability(workspaceId, kind, normalizedName) {
+    return this.#workspaceFoundation.deleteProjectCapability(workspaceId, kind, normalizedName);
+  }
+
+  async getWorkspaceEffectiveCapabilities(workspaceId) {
+    return this.#workspaceFoundation.effectiveCapabilityCatalog(workspaceId);
+  }
+
+  async getWorkspaceCapabilityDraft(workspaceId) {
+    return this.#workspaceFoundation.getCapabilityDraft(workspaceId);
+  }
+
+  async saveWorkspaceCapabilityDraft(workspaceId, input) {
+    return this.#workspaceFoundation.saveCapabilityDraft(workspaceId, input);
+  }
+
+  async validateWorkspaceCapabilityDraft(workspaceId) {
+    return this.#workspaceFoundation.validateCapabilityDraft(workspaceId, this.#globalModelProfiles());
+  }
+
+  async activateWorkspaceCapabilityDraft(workspaceId) {
+    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, this.#globalModelProfiles());
+  }
+
   async saveWorkspaceCapabilityConfig(workspaceId, input) {
     return this.#workspaceFoundation.saveWorkspaceCapabilityConfig(workspaceId, input);
   }

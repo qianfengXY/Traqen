@@ -2,7 +2,9 @@ import {
   commitChildBatchResult,
   createAnalysisBatch,
   createCapabilityTemplateRevision,
+  createProjectCapabilityRevision,
   createWorkspace,
+  createWorkspaceCapabilityDraftRevision,
   createWorkspaceCapabilityConfig,
   createWorkspaceLifecycleEvent,
   createWorkspaceViewPreference,
@@ -10,7 +12,10 @@ import {
   fanOutAnalysisBatch,
   issueScopedSecretGrants,
   openAnalysisBatchBarrier,
+  activateWorkspaceCapabilityDraft,
+  resolveWorkspaceCapabilityCatalog,
   resolveWorkspaceExecutionProfile,
+  validateWorkspaceCapabilityDraft,
 } from "../domain/index.js";
 
 export class WorkspaceProductFoundation {
@@ -108,6 +113,95 @@ export class WorkspaceProductFoundation {
 
   async listCapabilityTemplates() {
     return this.store.listCapabilityTemplateRevisions();
+  }
+
+  async listBuiltinCapabilities() {
+    const latest = new Map();
+    for (const entry of await this.store.listCapabilityTemplateRevisions()) {
+      if (!['SKILL', 'MCP'].includes(entry.kind)) continue;
+      const normalizedName = entry.logicalName.trim().toLowerCase();
+      const key = `${entry.kind}\u0000${normalizedName}`;
+      if (!latest.has(key)) latest.set(key, Object.freeze({ ...entry, normalizedName, source: 'BUILTIN' }));
+    }
+    return Object.freeze([...latest.values()]);
+  }
+
+  async listProjectCapabilities(workspaceId, { includeDeleted = false } = {}) {
+    if (!await this.getWorkspace(workspaceId)) return null;
+    const latest = new Map();
+    for (const entry of await this.store.listUnderstandingRecords(workspaceId, 'PROJECT_CAPABILITY_REVISION')) {
+      const key = `${entry.kind}\u0000${entry.normalizedName}`;
+      const prior = latest.get(key);
+      if (!prior || entry.revision > prior.revision) latest.set(key, entry);
+    }
+    return Object.freeze([...latest.values()].filter((entry) => includeDeleted || !entry.deleted)
+      .sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName)));
+  }
+
+  async saveProjectCapability(workspaceId, input) {
+    if (!await this.getWorkspace(workspaceId)) return null;
+    const existing = await this.listProjectCapabilities(workspaceId, { includeDeleted: true });
+    const normalizedName = String(input.normalizedName ?? input.name ?? input.logicalName ?? '').trim().toLowerCase();
+    const kind = String(input.kind ?? '').toUpperCase();
+    const prior = existing.find((entry) => entry.kind === kind && entry.normalizedName === normalizedName);
+    const capability = createProjectCapabilityRevision({ ...input, workspaceId, kind, normalizedName, revision: (prior?.revision ?? 0) + 1 }, this.clock);
+    return this.store.appendUnderstandingRecord(workspaceId, 'PROJECT_CAPABILITY_REVISION', capability);
+  }
+
+  async deleteProjectCapability(workspaceId, kind, normalizedName) {
+    const existing = await this.listProjectCapabilities(workspaceId, { includeDeleted: true });
+    if (!existing) return null;
+    const prior = existing.find((entry) => entry.kind === String(kind).toUpperCase() && entry.normalizedName === String(normalizedName).trim().toLowerCase());
+    if (!prior || prior.deleted) return null;
+    const tombstone = Object.freeze({
+      ...prior,
+      id: `${prior.id}-DELETED-${prior.revision + 1}`,
+      revision: prior.revision + 1,
+      deleted: true,
+      createdAt: this.clock().toISOString(),
+    });
+    return this.store.appendUnderstandingRecord(workspaceId, 'PROJECT_CAPABILITY_REVISION', tombstone);
+  }
+
+  async getCapabilityDraft(workspaceId) {
+    if (!await this.getWorkspace(workspaceId)) return null;
+    return [...await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT')]
+      .sort((left, right) => right.revision - left.revision)[0] ?? null;
+  }
+
+  async saveCapabilityDraft(workspaceId, input) {
+    if (!await this.getWorkspace(workspaceId)) return null;
+    const current = await this.getCapabilityDraft(workspaceId);
+    const expectedVersion = Number(input.expectedVersion ?? current?.revision ?? 0);
+    if (expectedVersion !== (current?.revision ?? 0)) throw new TypeError(`Workspace capability draft version conflict: expected ${expectedVersion}, current ${current?.revision ?? 0}`);
+    const draft = createWorkspaceCapabilityDraftRevision({ ...input, workspaceId, revision: expectedVersion + 1 }, this.clock);
+    return this.store.appendUnderstandingRecord(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT', draft);
+  }
+
+  async effectiveCapabilityCatalog(workspaceId, disabledKeys = null) {
+    const projectCatalog = await this.listProjectCapabilities(workspaceId);
+    if (!projectCatalog) return null;
+    const draft = await this.getCapabilityDraft(workspaceId);
+    return resolveWorkspaceCapabilityCatalog({
+      builtinCatalog: await this.listBuiltinCapabilities(),
+      projectCatalog,
+      disabledKeys: disabledKeys ?? draft?.disabledKeys ?? [],
+    });
+  }
+
+  async validateCapabilityDraft(workspaceId, modelProfiles) {
+    const draft = await this.getCapabilityDraft(workspaceId);
+    if (!draft) return null;
+    const catalog = await this.effectiveCapabilityCatalog(workspaceId, draft.disabledKeys);
+    return Object.freeze({ draft, catalog, validation: validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective }) });
+  }
+
+  async activateCapabilityDraft(workspaceId, modelProfiles) {
+    const result = await this.validateCapabilityDraft(workspaceId, modelProfiles);
+    if (!result) return null;
+    const profile = activateWorkspaceCapabilityDraft({ draft: result.draft, modelProfiles, catalog: result.catalog, clock: this.clock });
+    await this.store.appendUnderstandingRecord(workspaceId, 'WORKSPACE_EXECUTION_PROFILE', profile);
+    return profile;
   }
 
   async saveWorkspaceCapabilityConfig(workspaceId, input) {

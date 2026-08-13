@@ -364,6 +364,92 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, { templates: await application.listCapabilityTemplates() }, id);
         return;
       }
+
+      if (request.method === "GET" && url.pathname === "/v1/global-models") {
+        sendJson(response, 200, { models: application.listGlobalModelProfiles() }, id);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/global-models") {
+        requireJson(request);
+        sendJson(response, 201, application.configureGlobalModelProfile(await readJson(request, maxBodyBytes)), id);
+        return;
+      }
+      const globalModelVerifyMatch = /^\/v1\/global-models\/([^/]+)\/verify$/.exec(url.pathname);
+      if (request.method === "POST" && globalModelVerifyMatch) {
+        sendJson(response, 200, await application.verifyGlobalModelProfile(decodePathSegment(globalModelVerifyMatch[1])), id);
+        return;
+      }
+
+      const projectCapabilitiesMatch = /^\/v1\/workspaces\/([^/]+)\/project-capabilities$/.exec(url.pathname);
+      if (request.method === "GET" && projectCapabilitiesMatch) {
+        const capabilities = await application.listWorkspaceProjectCapabilities(decodePathSegment(projectCapabilitiesMatch[1]));
+        if (!capabilities) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, { capabilities }, id);
+        return;
+      }
+      if (request.method === "POST" && projectCapabilitiesMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(projectCapabilitiesMatch[1]);
+        const capability = await application.saveWorkspaceProjectCapability(workspaceId, await readJson(request, maxBodyBytes));
+        if (!capability) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 201, capability, id);
+        return;
+      }
+      const projectCapabilityMatch = /^\/v1\/workspaces\/([^/]+)\/project-capabilities\/(SKILL|MCP)\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "PUT" && projectCapabilityMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(projectCapabilityMatch[1]);
+        const capability = await application.saveWorkspaceProjectCapability(workspaceId, {
+          ...await readJson(request, maxBodyBytes),
+          kind: projectCapabilityMatch[2],
+          normalizedName: decodePathSegment(projectCapabilityMatch[3]),
+        });
+        if (!capability) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, capability, id);
+        return;
+      }
+      if (request.method === "DELETE" && projectCapabilityMatch) {
+        const capability = await application.deleteWorkspaceProjectCapability(
+          decodePathSegment(projectCapabilityMatch[1]), projectCapabilityMatch[2], decodePathSegment(projectCapabilityMatch[3]),
+        );
+        if (!capability) throw new HttpError(404, "PROJECT_CAPABILITY_NOT_FOUND", "Project capability was not found");
+        sendJson(response, 200, capability, id);
+        return;
+      }
+
+      const effectiveCapabilitiesMatch = /^\/v1\/workspaces\/([^/]+)\/capabilities\/effective$/.exec(url.pathname);
+      if (request.method === "GET" && effectiveCapabilitiesMatch) {
+        const catalog = await application.getWorkspaceEffectiveCapabilities(decodePathSegment(effectiveCapabilitiesMatch[1]));
+        if (!catalog) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, catalog, id);
+        return;
+      }
+
+      const capabilityDraftMatch = /^\/v1\/workspaces\/([^/]+)\/capability-draft$/.exec(url.pathname);
+      if (request.method === "GET" && capabilityDraftMatch) {
+        const workspaceId = decodePathSegment(capabilityDraftMatch[1]);
+        const draft = await application.getWorkspaceCapabilityDraft(workspaceId);
+        sendJson(response, 200, { draft }, id);
+        return;
+      }
+      if (request.method === "PUT" && capabilityDraftMatch) {
+        requireJson(request);
+        const workspaceId = decodePathSegment(capabilityDraftMatch[1]);
+        const draft = await application.saveWorkspaceCapabilityDraft(workspaceId, await readJson(request, maxBodyBytes));
+        if (!draft) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
+        sendJson(response, 200, draft, id);
+        return;
+      }
+      const capabilityDraftActionMatch = /^\/v1\/workspaces\/([^/]+)\/capability-draft\/(validate|activate)$/.exec(url.pathname);
+      if (request.method === "POST" && capabilityDraftActionMatch) {
+        const workspaceId = decodePathSegment(capabilityDraftActionMatch[1]);
+        const result = capabilityDraftActionMatch[2] === "validate"
+          ? await application.validateWorkspaceCapabilityDraft(workspaceId)
+          : await application.activateWorkspaceCapabilityDraft(workspaceId);
+        if (!result) throw new HttpError(404, "WORKSPACE_CAPABILITY_DRAFT_NOT_FOUND", "Workspace capability draft was not found");
+        sendJson(response, capabilityDraftActionMatch[2] === "activate" ? 201 : 200, result, id);
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/v1/capability-templates") {
         requireJson(request);
         sendJson(response, 201, await application.registerCapabilityTemplate(

@@ -5,10 +5,15 @@ import {
   commitChildBatchResult,
   createAnalysisBatch,
   createCapabilityTemplateRevision,
+  createGlobalModelProfileRevision,
+  createProjectCapabilityRevision,
   createProjectFoundation,
   createWorkspaceCapabilityConfig,
+  createWorkspaceCapabilityDraftRevision,
   fanOutAnalysisBatch,
   openAnalysisBatchBarrier,
+  activateWorkspaceCapabilityDraft,
+  resolveWorkspaceCapabilityCatalog,
   resolveWorkspaceExecutionProfile,
 } from "../src/domain/index.js";
 import { WorkspaceProductFoundation } from "../src/application/workspace-product-foundation.js";
@@ -82,6 +87,81 @@ test("Workspace execution profiles deterministically override and remove global 
   }), /cannot contain credential material/);
 });
 
+test("F006 resolves typed capability overlays, disables after overlay, and activates only a complete two-Child roster", () => {
+  const builtins = [
+    { id: "BS1", kind: "SKILL", normalizedName: "source", revision: 1, manifest: { origin: "builtin" } },
+    { id: "BM1", kind: "MCP", normalizedName: "source", revision: 1, manifest: { origin: "builtin-mcp" } },
+    { id: "BS2", kind: "SKILL", normalizedName: "review", revision: 1, manifest: {} },
+  ];
+  const project = [createProjectCapabilityRevision({ workspaceId: "W1", kind: "SKILL", normalizedName: "source", manifest: { origin: "project" } }, clock)];
+  const catalog = resolveWorkspaceCapabilityCatalog({
+    builtinCatalog: builtins,
+    projectCatalog: project,
+    disabledKeys: [{ kind: "SKILL", normalizedName: "source" }],
+  });
+  assert.deepEqual(catalog.summary, { builtinCount: 2, projectOverrideCount: 1, projectAdditionCount: 0, disabledCount: 1, effectiveCount: 2 });
+  assert.equal(catalog.entries.find(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source").source, "PROJECT");
+  assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source"), false);
+  assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "MCP" && normalizedName === "source"), true);
+
+  const model = createGlobalModelProfileRevision({ profileId: "MODEL-1", transport: "API", providerAdapter: "OPENAI", endpoint: "https://example.test/v1", model: "m", credentialHandleId: "CRED-1", readiness: "READY" }, clock);
+  const draft = createWorkspaceCapabilityDraftRevision({
+    workspaceId: "W1",
+    mainAgentSlot: { modelProfileId: "MODEL-1", skillGrants: [{ kind: "SKILL", normalizedName: "review" }] },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1", mcpGrants: [{ kind: "MCP", normalizedName: "source" }] },
+      { id: "C2", modelProfileId: "MODEL-1", independenceGroup: "I2" },
+    ],
+    dependencyPolicyRevisionId: "DEP-1",
+    conventionRevisionId: "CON-1",
+    securityPolicyRevisionId: "SEC-1",
+  }, clock);
+  const profile = activateWorkspaceCapabilityDraft({ draft, modelProfiles: [model], catalog, clock });
+  assert.equal(profile.childAgentSlots.length, 2);
+  assert.equal(profile.mainAgentSlot.modelProfileRevisionId, model.id);
+  assert.throws(() => activateWorkspaceCapabilityDraft({
+    draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 2, childAgentSlots: [draft.childAgentSlots[0]] }, clock),
+    modelProfiles: [model], catalog, clock,
+  }), /MINIMUM_CHILDREN/);
+});
+
+test("F006 service persists invalid drafts, enforces CAS, and restores project catalog state", async () => {
+  const { service } = await foundation();
+  await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "source", revision: 1, manifest: { origin: "builtin" } });
+  await service.registerCapabilityTemplate({ kind: "MCP", logicalName: "source", revision: 1, manifest: { origin: "builtin-mcp" } });
+  const project = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", manifest: { origin: "project" } });
+  const draft = await service.saveCapabilityDraft("W1", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-1" },
+    childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [project.id],
+    disabledKeys: [{ kind: "SKILL", normalizedName: "source" }],
+  });
+  assert.equal((await service.getCapabilityDraft("W1")).id, draft.id);
+  await assert.rejects(() => service.saveCapabilityDraft("W1", { expectedVersion: 0 }), /version conflict/);
+  const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE" }];
+  const validation = await service.validateCapabilityDraft("W1", modelProfiles);
+  assert.equal(validation.validation.valid, false);
+  assert.equal(validation.validation.errors.some(({ code }) => code === "MINIMUM_CHILDREN"), true);
+  assert.equal(validation.catalog.entries.find(({ kind }) => kind === "SKILL").source, "PROJECT");
+  assert.equal(validation.catalog.entries.find(({ kind }) => kind === "MCP").effective, true);
+
+  const valid = await service.saveCapabilityDraft("W1", {
+    expectedVersion: 1,
+    mainAgentSlot: { modelProfileId: "MODEL-1" },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" },
+      { id: "C2", modelProfileId: "MODEL-1", independenceGroup: "I2" },
+    ],
+    projectCapabilityRevisionIds: [project.id],
+    disabledKeys: [],
+  });
+  assert.equal(valid.revision, 2);
+  const profile = await service.activateCapabilityDraft("W1", modelProfiles);
+  assert.equal(profile.draftRevisionId, valid.id);
+  assert.equal(profile.childAgentSlots.length, 2);
+});
+
 test("every configured Child receives the same sealed batch and Main waits for the full terminal set", () => {
   const profile = {
     workspaceId: "W1",
@@ -130,7 +210,10 @@ test("Child result retries are idempotent by sealed input digest", async () => {
   });
   const config = await service.saveWorkspaceCapabilityConfig("W1", {
     mainAgent: { model: "model", skillNames: [], mcpNames: [] },
-    childSlots: [{ id: "C1", model: "model", skillNames: [], mcpNames: [], independenceGroup: "I1" }],
+    childSlots: [
+      { id: "C1", model: "model", skillNames: [], mcpNames: [], independenceGroup: "I1" },
+      { id: "C2", model: "model", skillNames: [], mcpNames: [], independenceGroup: "I2" },
+    ],
   });
   const profile = await service.resolveWorkspaceProfile("W1", config.id);
   const { batch, assignments } = await service.createBatch("W1", {

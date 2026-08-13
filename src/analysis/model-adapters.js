@@ -1,7 +1,86 @@
+import { spawn } from "node:child_process";
+
 import {
   normalizeCandidateBundle,
   normalizeWorkUnit,
 } from "../shared/candidate-bundle.js";
+
+const CLI_MODEL_ADAPTERS = Object.freeze({
+  CODEX: { executable: "codex", args: (prompt, model) => ["exec", "--json", ...(model ? ["--model", model] : []), prompt] },
+  CLAUDE: { executable: "claude", args: (prompt, model) => ["--print", "--output-format", "json", ...(model ? ["--model", model] : []), prompt] },
+  GEMINI: { executable: "gemini", args: (prompt, model) => ["--output-format", "json", ...(model ? ["--model", model] : []), "--prompt", prompt] },
+  KIMI: { executable: "kimi", args: (prompt, model) => ["--print", ...(model ? ["--model", model] : []), prompt] },
+});
+
+export class AllowlistedCliModelAdapter {
+  constructor({ id, cliAdapter, model = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn }) {
+    this.id = requiredString(id, "CLI model profile id");
+    this.cliAdapter = requiredString(cliAdapter, "CLI adapter").toUpperCase();
+    if (!CLI_MODEL_ADAPTERS[this.cliAdapter]) throw new TypeError(`unsupported CLI adapter ${this.cliAdapter}`);
+    this.model = model ? requiredString(model, "CLI model name") : null;
+    this.executablePath = executablePath ? requiredString(executablePath, "CLI executable path") : null;
+    this.timeoutMs = Number(timeoutMs);
+    this.maximumOutputBytes = Number(maximumOutputBytes);
+    if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new TypeError("CLI timeoutMs must be a positive integer");
+    if (!Number.isInteger(this.maximumOutputBytes) || this.maximumOutputBytes < 1) throw new TypeError("CLI maximumOutputBytes must be a positive integer");
+    if (typeof spawnImpl !== "function") throw new TypeError("CLI spawnImpl must be a function");
+    this.spawnImpl = spawnImpl;
+  }
+
+  #run(args, { signal = null } = {}) {
+    const definition = CLI_MODEL_ADAPTERS[this.cliAdapter];
+    const executable = this.executablePath ?? definition.executable;
+    return new Promise((resolve, reject) => {
+      const child = this.spawnImpl(executable, args, { shell: false, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = Buffer.alloc(0);
+      let stderr = Buffer.alloc(0);
+      let settled = false;
+      const stop = (reason) => {
+        if (settled) return;
+        try { process.platform === "win32" ? child.kill("SIGKILL") : process.kill(-child.pid, "SIGKILL"); } catch { child.kill?.("SIGKILL"); }
+        settled = true;
+        reject(reason);
+      };
+      const timer = setTimeout(() => stop(new Error(`CLI model ${this.id} timed out after ${this.timeoutMs}ms`)), this.timeoutMs);
+      timer.unref?.();
+      const append = (current, chunk) => {
+        const next = Buffer.concat([current, Buffer.from(chunk)]);
+        if (next.length > this.maximumOutputBytes) stop(new Error(`CLI model ${this.id} exceeded output limit`));
+        return next;
+      };
+      child.stdout?.on("data", (chunk) => { stdout = append(stdout, chunk); });
+      child.stderr?.on("data", (chunk) => { stderr = append(stderr, chunk); });
+      child.once("error", (error) => stop(error));
+      child.once("close", (code) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (code !== 0) reject(new Error(`CLI model ${this.id} exited ${code}: ${stderr.toString("utf8").slice(0, 500)}`));
+        else resolve(stdout.toString("utf8"));
+      });
+      if (signal) {
+        if (signal.aborted) stop(signal.reason ?? new Error("CLI model execution cancelled"));
+        else signal.addEventListener("abort", () => stop(signal.reason ?? new Error("CLI model execution cancelled")), { once: true });
+      }
+    });
+  }
+
+  async verify() {
+    const startedAt = Date.now();
+    await this.#run(["--version"]);
+    return { latencyMs: Date.now() - startedAt };
+  }
+
+  async #jsonTask(task, input, options = {}) {
+    const prompt = JSON.stringify({ task, input });
+    const raw = await this.#run(CLI_MODEL_ADAPTERS[this.cliAdapter].args(prompt, this.model), { signal: options.signal ?? null });
+    const candidate = raw.trim().split(/\r?\n/).reverse().find((line) => line.trim().startsWith("{")) ?? raw;
+    return JSON.parse(candidate);
+  }
+
+  enrichWorkspaceCandidates(input, options = {}) { return this.#jsonTask("workspace-enrichment", input, options); }
+  planWorkspaceAnalysis(input, options = {}) { return this.#jsonTask("workspace-plan", input, options); }
+}
 
 function requiredString(value, fieldName) {
   if (typeof value !== "string" || value.trim() === "") throw new TypeError(`${fieldName} must be a non-empty string`);
@@ -818,25 +897,34 @@ export class AnalysisModelRegistry {
     this.#fetchImpl = fetchImpl;
     this.#profileStore = profileStore;
     for (const [id, adapter] of adapters) {
-      this.#profiles.set(id, { id, endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter });
+      this.#profiles.set(id, { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter });
     }
     const stored = this.#profileStore?.load() ?? { activeProfileId: null, profiles: [] };
     for (const value of stored.profiles) {
       const id = requiredString(value?.id, "stored analysis model profile id");
       if (this.#profiles.has(id)) continue;
-      const endpoint = endpointUrl(value.endpoint);
-      const model = requiredString(value.model, "stored analysis model name");
-      const apiKey = requiredString(value.apiKey, "stored analysis model API key");
       const timeoutMs = value.timeoutMs ?? 120_000;
-      const stream = value.stream ?? false;
-      const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+      const transport = String(value.transport ?? "API").toUpperCase();
+      const stream = transport === "API" ? value.stream ?? false : false;
+      const endpoint = transport === "API" ? endpointUrl(value.endpoint) : null;
+      const model = value.model ? requiredString(value.model, "stored analysis model name") : null;
+      const apiKey = transport === "API" ? requiredString(value.apiKey, "stored analysis model API key") : null;
+      const adapter = transport === "API"
+        ? new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey })
+        : new AllowlistedCliModelAdapter({ id, cliAdapter: value.cliAdapter, model, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
       this.#profiles.set(id, {
         id,
-        endpoint: adapter.endpoint,
+        displayName: value.displayName ?? id,
+        transport,
+        endpoint: adapter.endpoint ?? null,
         model,
         timeoutMs,
         stream,
+        cliAdapter: adapter.cliAdapter ?? null,
+        executablePath: adapter.executablePath ?? null,
+        maximumOutputBytes: adapter.maximumOutputBytes ?? null,
         source: "RUNTIME",
+        lifecycle: value.lifecycle ?? "ACTIVE",
         configuredAt: typeof value.configuredAt === "string" ? value.configuredAt : this.#clock().toISOString(),
         verifiedAt: typeof value.verifiedAt === "string" ? value.verifiedAt : null,
         apiKey,
@@ -851,6 +939,10 @@ export class AnalysisModelRegistry {
       id: profile.id,
       endpoint: profile.endpoint,
       model: profile.model,
+      displayName: profile.displayName,
+      transport: profile.transport,
+      cliAdapter: profile.cliAdapter,
+      executablePath: profile.executablePath,
       timeoutMs: profile.timeoutMs,
       stream: profile.stream,
       source: profile.source,
@@ -858,6 +950,7 @@ export class AnalysisModelRegistry {
       verifiedAt: profile.verifiedAt,
       ready: Boolean(profile.verifiedAt),
       active: profile.id === this.#activeProfileId,
+      lifecycle: profile.lifecycle,
     };
   }
 
@@ -867,6 +960,8 @@ export class AnalysisModelRegistry {
       activeProfileId: this.#activeProfileId,
       profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => ({
         id: profile.id,
+        displayName: profile.displayName,
+        transport: profile.transport,
         endpoint: profile.endpoint,
         model: profile.model,
         timeoutMs: profile.timeoutMs,
@@ -874,6 +969,10 @@ export class AnalysisModelRegistry {
         configuredAt: profile.configuredAt,
         verifiedAt: profile.verifiedAt,
         apiKey: profile.apiKey,
+        cliAdapter: profile.cliAdapter,
+        executablePath: profile.executablePath,
+        maximumOutputBytes: profile.maximumOutputBytes,
+        lifecycle: profile.lifecycle,
       })),
     });
   }
@@ -896,6 +995,18 @@ export class AnalysisModelRegistry {
     if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
     const id = requiredString(input.id, "analysis model profile id");
     const existing = this.#profiles.get(id);
+    const transport = String(input.transport ?? existing?.transport ?? "API").toUpperCase();
+    if (transport === "CLI") {
+      const timeoutMs = input.timeoutMs ?? 120_000;
+      const adapter = new AllowlistedCliModelAdapter({ id, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
+      const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
+      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey: null, adapter };
+      this.#profiles.set(id, profile);
+      if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
+      this.#persist();
+      return this.#public(profile);
+    }
+    if (transport !== "API") throw new TypeError("analysis model transport must be API or CLI");
     const endpoint = endpointUrl(input.endpoint);
     const model = requiredString(input.model, "analysis model name");
     const hasNewApiKey = typeof input.apiKey === "string" && input.apiKey.trim() !== "";
@@ -908,7 +1019,7 @@ export class AnalysisModelRegistry {
     const stream = input.stream ?? false;
     const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
-    const profile = { id, endpoint: adapter.endpoint, model, timeoutMs, stream, source: "RUNTIME", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
+    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
     this.#profiles.set(id, profile);
     if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
     this.#persist();

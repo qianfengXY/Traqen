@@ -9,6 +9,7 @@ import {
   EmptyWorkspace,
   FeatureExplorer,
   GraphExplorer,
+  GlobalModelLibrary,
   ImpactWorkspace,
   ReviewWorkspace,
   WorkspaceOverview,
@@ -17,18 +18,26 @@ import {
   type T,
 } from "./product-surfaces";
 import {
+  createGlobalModel,
   decideWorkspaceReviewBatch,
   getConnectionHealth,
+  getEffectiveCapabilities,
+  getWorkspaceCapabilityDraft,
   getWorkspaceReviewQueue,
+  listGlobalModels,
+  verifyGlobalModel,
   listCapabilityTemplates,
   listWorkspaceCapabilityConfigs,
   listWorkspaceExecutionProfiles,
-  resolveWorkspaceExecutionProfile,
-  saveWorkspaceCapabilityConfig,
-  type CapabilityTemplate,
+  activateWorkspaceCapabilityDraft,
+  saveWorkspaceCapabilityDraft,
+  type CapabilityKey,
   type ChildCapabilityRole,
+  type EffectiveCapabilityCatalog,
   type ExecutionProfile,
   type ReviewQueueItem,
+  type GlobalModelProfile,
+  type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityConfig,
 } from "./product-foundation-client";
 import {
@@ -62,7 +71,7 @@ import {
 } from "./understanding-graph-client";
 import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
-type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "settings";
+type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "models" | "settings";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
 
@@ -77,6 +86,7 @@ const modules: Array<{ key: View; icon: string; section: "overview" | "understan
   { key: "graph", icon: "⌘", section: "understanding", zh: "理解图谱", en: "Understanding graph" },
   { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
   { key: "impact", icon: "↗", section: "governance", zh: "变更影响", en: "Change impact" },
+  { key: "models", icon: "◉", section: "configuration", zh: "全局模型", en: "Global models" },
   { key: "settings", icon: "⚙", section: "configuration", zh: "能力设置", en: "Capability settings" },
 ];
 
@@ -143,10 +153,12 @@ function ServerOwnedProduct() {
   const [reviewOutcome, setReviewOutcome] = useState("CONFIRMED");
   const [reviewRationale, setReviewRationale] = useState("");
   const [impact, setImpact] = useState<Record<string, unknown> | null>(null);
-  const [templates, setTemplates] = useState<CapabilityTemplate[]>([]);
+  const [globalModels, setGlobalModels] = useState<GlobalModelProfile[]>([]);
+  const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
+  const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
+  const [disabledKeys, setDisabledKeys] = useState<CapabilityKey[]>([]);
   const [capabilityConfig, setCapabilityConfig] = useState<WorkspaceCapabilityConfig | null>(null);
   const [executionProfile, setExecutionProfile] = useState<ExecutionProfile | null>(null);
-  const [capabilityHistory, setCapabilityHistory] = useState<WorkspaceCapabilityConfig[]>([]);
   const [profileHistory, setProfileHistory] = useState<ExecutionProfile[]>([]);
   const [mainModel, setMainModel] = useState("");
   const [mainSkillNames, setMainSkillNames] = useState<string[]>([]);
@@ -173,13 +185,15 @@ function ServerOwnedProduct() {
   const refreshWorkspaceReads = useCallback(async (workspace: Workspace, requestContext: CurrentWorkspaceContext) => {
     const revisionRequestVersion = revisionRequestRef.current + 1;
     revisionRequestRef.current = revisionRequestVersion;
-    const [graphResult, revisionResult, jobResult, reviewResult, configResult, profileResult] = await Promise.allSettled([
+    const [graphResult, revisionResult, jobResult, reviewResult, configResult, profileResult, draftResult, catalogResult] = await Promise.allSettled([
       getCurrentUnderstandingGraph(apiBase, apiToken, workspace.id),
       listGraphRevisions(apiBase, apiToken, workspace.id),
       listServerWorkspaceUnderstandingJobs(apiBase, apiToken, workspace.id),
       getWorkspaceReviewQueue(apiBase, apiToken, workspace.id),
       listWorkspaceCapabilityConfigs(apiBase, apiToken, workspace.id),
       listWorkspaceExecutionProfiles(apiBase, apiToken, workspace.id),
+      getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id),
+      getEffectiveCapabilities(apiBase, apiToken, workspace.id),
     ]);
     if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
     if (graphResult.status === "fulfilled" && revisionRequestVersion === revisionRequestRef.current) {
@@ -205,7 +219,6 @@ function ServerOwnedProduct() {
     }
     if (reviewResult.status === "fulfilled") setReviewItems(reviewResult.value);
     if (configResult.status === "fulfilled") {
-      setCapabilityHistory(configResult.value);
       const latestConfig = configResult.value[0] ?? null;
       setCapabilityConfig(latestConfig);
       if (latestConfig) {
@@ -221,7 +234,19 @@ function ServerOwnedProduct() {
       setExecutionProfile(latestProfile);
       if (latestProfile) setProfileRevisionId(latestProfile.id);
     }
-    const failures = [graphResult, revisionResult, jobResult, reviewResult, configResult, profileResult].filter((result) => result.status === "rejected");
+    if (draftResult.status === "fulfilled") {
+      setCapabilityDraft(draftResult.value);
+      setDisabledKeys(draftResult.value?.disabledKeys ?? []);
+      if (draftResult.value) {
+        const main = draftResult.value.mainAgentSlot;
+        setMainModel(main.modelProfileId);
+        setMainSkillNames(main.skillGrants.map(({ normalizedName }) => normalizedName));
+        setMainMcpNames(main.mcpGrants.map(({ normalizedName }) => normalizedName));
+        setChildSlots(draftResult.value.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), independenceGroup: slot.independenceGroup })));
+      }
+    }
+    if (catalogResult.status === "fulfilled") setEffectiveCatalog(catalogResult.value);
+    const failures = [graphResult, revisionResult, jobResult, reviewResult, configResult, profileResult, draftResult, catalogResult].filter((result) => result.status === "rejected");
     if (failures.length > 1) notify(t("部分 Workspace 数据暂时不可用，请检查连接诊断。", "Some Workspace data is unavailable; inspect connection diagnostics."), "error");
   }, [apiBase, apiToken, notify, t]);
 
@@ -253,12 +278,13 @@ function ServerOwnedProduct() {
     setSelectedReviewIds([]);
     setImpact(null);
     setCapabilityConfig(null);
+    setCapabilityDraft(null);
+    setDisabledKeys([]);
     setExecutionProfile(null);
-    setCapabilityHistory([]);
     setProfileHistory([]);
-    const firstModel = roster?.[0]?.model ?? templates.find(({ kind }) => kind === "MODEL")?.logicalName ?? "";
-    const skillNames = roster?.[0]?.skillNames ?? templates.filter(({ kind }) => kind === "SKILL").map(({ logicalName }) => logicalName);
-    const mcpNames = roster?.[0]?.mcpNames ?? templates.filter(({ kind }) => kind === "MCP").map(({ logicalName }) => logicalName);
+    const firstModel = roster?.[0]?.model ?? globalModels.find(({ readiness, lifecycle }) => readiness === "READY" && lifecycle === "ACTIVE")?.profileId ?? "";
+    const skillNames = roster?.[0]?.skillNames ?? effectiveCatalog.effective.filter(({ kind }) => kind === "SKILL").map(({ normalizedName }) => normalizedName);
+    const mcpNames = roster?.[0]?.mcpNames ?? effectiveCatalog.effective.filter(({ kind }) => kind === "MCP").map(({ normalizedName }) => normalizedName);
     setMainModel(firstModel);
     setMainSkillNames([...skillNames]);
     setMainMcpNames([...mcpNames]);
@@ -268,23 +294,24 @@ function ServerOwnedProduct() {
     setProfileRevisionId("");
     setMessage("");
     void refreshWorkspaceReads(workspace, nextContext);
-  }, [refreshWorkspaceReads, templates]);
+  }, [effectiveCatalog.effective, globalModels, refreshWorkspaceReads]);
 
   const reconnect = useCallback(async (preferRemembered = false) => {
     revisionRequestRef.current += 1;
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableTemplates] = await Promise.all([
+      const [available, , availableTemplates, availableModels] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
         listCapabilityTemplates(apiBase, apiToken),
+        listGlobalModels(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
-      setTemplates(availableTemplates);
-      const firstModel = availableTemplates.find(({ kind }) => kind === "MODEL")?.logicalName ?? "";
+      setGlobalModels(availableModels);
+      const firstModel = availableModels.find(({ readiness, lifecycle }) => readiness === "READY" && lifecycle === "ACTIVE")?.profileId ?? "";
       const skills = availableTemplates.filter(({ kind }) => kind === "SKILL").map(({ logicalName }) => logicalName);
       const mcps = availableTemplates.filter(({ kind }) => kind === "MCP").map(({ logicalName }) => logicalName);
       const defaultRoster = createDefaultChildSlots(firstModel, skills, mcps);
@@ -597,28 +624,49 @@ function ServerOwnedProduct() {
     if (!activeWorkspace) return;
     setWorking(true);
     try {
-      const saved = await saveWorkspaceCapabilityConfig(apiBase, apiToken, activeWorkspace.id, {
-        mainAgent: { model: mainModel, skillNames: mainSkillNames, mcpNames: mainMcpNames },
-        childSlots,
-        overrides: [],
-        removals: [],
-        dependencies: {},
-        conventions: {},
-        policies: { dataBoundary: "WORKSPACE", secrets: "HANDLE_ONLY" },
+      const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, activeWorkspace.id, {
+        expectedVersion: capabilityDraft?.revision ?? 0,
+        mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: "MAIN", enabled: true },
+        childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
+        projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
+        disabledKeys,
+        dependencyPolicyRevisionId: "WORKSPACE-DEPENDENCIES-CURRENT",
+        conventionRevisionId: "WORKSPACE-CONVENTIONS-CURRENT",
+        securityPolicyRevisionId: "WORKSPACE-SECURITY-CURRENT",
       });
-      setCapabilityConfig(saved);
-      setCapabilityHistory((existing) => [saved, ...existing.filter(({ id }) => id !== saved.id)]);
+      setCapabilityDraft(saved);
+      setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
       setExecutionProfile(null);
       notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
     } catch (error) { notify(messageOf(error, t("能力配置保存失败", "Unable to save capability configuration")), "error"); }
     finally { setWorking(false); }
   }
 
-  async function resolveCapabilities() {
-    if (!activeWorkspace || !capabilityConfig) return;
+  async function saveGlobalModel(input: Record<string, unknown>) {
     setWorking(true);
     try {
-      const profile = await resolveWorkspaceExecutionProfile(apiBase, apiToken, activeWorkspace.id, capabilityConfig.id);
+      await createGlobalModel(apiBase, apiToken, input);
+      setGlobalModels(await listGlobalModels(apiBase, apiToken));
+      notify(t("模型 Profile 已保存；验证成功后才会进入 Agent selector。", "Model profile saved. It enters Agent selectors only after verification."));
+    } catch (error) { notify(messageOf(error, t("模型保存失败", "Unable to save model profile")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function verifyModel(profileId: string) {
+    setWorking(true);
+    try {
+      await verifyGlobalModel(apiBase, apiToken, profileId);
+      setGlobalModels(await listGlobalModels(apiBase, apiToken));
+      notify(t("模型连接已验证。", "Model connection verified."));
+    } catch (error) { notify(messageOf(error, t("模型验证失败", "Model verification failed")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function resolveCapabilities() {
+    if (!activeWorkspace || !capabilityDraft) return;
+    setWorking(true);
+    try {
+      const profile = await activateWorkspaceCapabilityDraft(apiBase, apiToken, activeWorkspace.id);
       setExecutionProfile(profile);
       setProfileHistory((existing) => [profile, ...existing.filter(({ id }) => id !== profile.id)]);
       setProfileRevisionId(profile.id);
@@ -641,7 +689,8 @@ function ServerOwnedProduct() {
     if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    return <CapabilitySettings t={t} templates={templates} config={capabilityConfig} profile={executionProfile} capabilityHistory={capabilityHistory} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} working={working} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
+    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={(input) => void saveGlobalModel(input)} onVerify={(profileId) => void verifyModel(profileId)} />;
+    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} working={working} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">
