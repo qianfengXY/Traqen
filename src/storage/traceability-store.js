@@ -251,6 +251,10 @@ export class TraceabilityStore {
     throw new Error("appendUnderstandingRecord must be implemented");
   }
 
+  async appendUnderstandingRecordWithCas(_projectId, _recordType, _record, _options) {
+    throw new Error("appendUnderstandingRecordWithCas must be implemented");
+  }
+
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
     return this.appendUnderstandingRecord(projectId, "WORKSPACE_ANALYSIS_JOB", checkpoint);
   }

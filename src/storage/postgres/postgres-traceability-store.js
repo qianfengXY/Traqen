@@ -2933,6 +2933,41 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async appendUnderstandingRecordWithCas(projectId, recordType, record, { headKey = recordType, expectedVersion }) {
+    requireId(projectId, "projectId");
+    requireId(recordType, "recordType");
+    requireId(headKey, "headKey");
+    requireId(record?.id, "record.id");
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new TypeError("expectedVersion must be a non-negative integer");
+    const createdAt = record.createdAt ?? new Date().toISOString();
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO workspace_capability_head (project_id, head_key, version, record_id)
+         VALUES ($1, $2, 0, NULL) ON CONFLICT (project_id, head_key) DO NOTHING`,
+        [projectId, headKey],
+      );
+      const advanced = await this.#database.query(
+        `UPDATE workspace_capability_head SET version = version + 1, record_id = $4
+         WHERE project_id = $1 AND head_key = $2 AND version = $3 RETURNING version`,
+        [projectId, headKey, expectedVersion, record.id],
+      );
+      if (advanced.rows.length !== 1) {
+        const current = await this.#database.query(
+          `SELECT version FROM workspace_capability_head WHERE project_id = $1 AND head_key = $2`,
+          [projectId, headKey],
+        );
+        throw new PersistenceConflictError(`${headKey} version conflict: expected ${expectedVersion}, current ${current.rows[0]?.version ?? 0}`);
+      }
+      await this.#database.query(
+        `INSERT INTO understanding_record (
+           project_id, record_type, id, snapshot_manifest_id, analysis_run_id, status, record_payload, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+        [projectId, recordType, record.id, record.snapshotManifestId ?? null, record.analysisRunId ?? null, record.status ?? null, JSON.stringify(record), createdAt],
+      );
+      return deepFreeze(structuredClone(record));
+    });
+  }
+
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
     requireId(projectId, "projectId");
     requireId(checkpoint?.jobId, "checkpoint.jobId");

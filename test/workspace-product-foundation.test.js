@@ -119,6 +119,9 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
   const profile = activateWorkspaceCapabilityDraft({ draft, modelProfiles: [model], catalog, clock });
   assert.equal(profile.childAgentSlots.length, 2);
   assert.equal(profile.mainAgentSlot.modelProfileRevisionId, model.id);
+  assert.equal(profile.mainAgent.model, model.id, "runtime compatibility fields also pin the immutable model revision");
+  assert.equal(profile.childSlots[0].model, model.id);
+  assert.throws(() => createGlobalModelProfileRevision({ profileId: "CLI-1", transport: "CLI", cliAdapter: "CODEX", executablePath: "/tmp/codex" }, clock), /allowlist/);
   assert.throws(() => activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 2, childAgentSlots: [draft.childAgentSlots[0]] }, clock),
     modelProfiles: [model], catalog, clock,
@@ -129,7 +132,7 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
   const { service } = await foundation();
   await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "source", revision: 1, manifest: { origin: "builtin" } });
   await service.registerCapabilityTemplate({ kind: "MCP", logicalName: "source", revision: 1, manifest: { origin: "builtin-mcp" } });
-  const project = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", manifest: { origin: "project" } });
+  const project = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { origin: "project" } });
   const draft = await service.saveCapabilityDraft("W1", {
     expectedVersion: 0,
     mainAgentSlot: { modelProfileId: "MODEL-1" },
@@ -145,6 +148,7 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
   assert.equal(validation.validation.errors.some(({ code }) => code === "MINIMUM_CHILDREN"), true);
   assert.equal(validation.catalog.entries.find(({ kind }) => kind === "SKILL").source, "PROJECT");
   assert.equal(validation.catalog.entries.find(({ kind }) => kind === "MCP").effective, true);
+  await assert.rejects(() => service.deleteProjectCapability("W1", "SKILL", "source"), /expectedVersion is required/);
 
   const valid = await service.saveCapabilityDraft("W1", {
     expectedVersion: 1,
@@ -160,6 +164,12 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
   const profile = await service.activateCapabilityDraft("W1", modelProfiles);
   assert.equal(profile.draftRevisionId, valid.id);
   assert.equal(profile.childAgentSlots.length, 2);
+
+  const concurrent = await Promise.allSettled([
+    service.saveCapabilityDraft("W1", { expectedVersion: 2, mainAgentSlot: {}, childAgentSlots: [] }),
+    service.saveCapabilityDraft("W1", { expectedVersion: 2, mainAgentSlot: {}, childAgentSlots: [] }),
+  ]);
+  assert.deepEqual(concurrent.map(({ status }) => status).sort(), ["fulfilled", "rejected"]);
 });
 
 test("every configured Child receives the same sealed batch and Main waits for the full terminal set", () => {

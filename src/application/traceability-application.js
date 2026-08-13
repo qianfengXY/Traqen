@@ -30,6 +30,7 @@ import {
   createFeatureGraphProjection,
   createSnapshotManifest,
   createWorkspaceObservationPackage,
+  createGlobalModelProfileRevision,
   createSourceSliceRequest,
   createTestSpec,
   generateEndpointTestSpecDraft,
@@ -641,9 +642,10 @@ export class TraceabilityApplication {
   #globalModelProfiles() {
     if (!this.#analysisModelRegistry) return [];
     return this.#analysisModelRegistry.list().map((profile) => ({
-      id: `MODEL-REVISION-${profile.id}-${profile.configuredAt}`,
+      id: profile.currentRevisionId,
       profileId: profile.id,
-      currentRevisionId: `MODEL-REVISION-${profile.id}-${profile.configuredAt}`,
+      currentRevisionId: profile.currentRevisionId,
+      revision: profile.revision,
       displayName: profile.displayName ?? profile.id,
       transport: profile.transport ?? 'API',
       providerAdapter: profile.providerAdapter ?? 'OPENAI_COMPATIBLE',
@@ -661,11 +663,32 @@ export class TraceabilityApplication {
   }
 
   configureGlobalModelProfile(input) {
-    return this.configureAnalysisModelProfile({ ...input, id: input.profileId ?? input.id });
+    const profileId = input.profileId ?? input.id;
+    const current = this.#analysisModelRegistry?.list().find(({ id }) => id === profileId);
+    const revision = createGlobalModelProfileRevision({
+      ...input,
+      profileId,
+      revision: (current?.revision ?? 0) + 1,
+      providerAdapter: input.providerAdapter ?? "OPENAI_COMPATIBLE",
+      credentialHandleId: input.credentialHandleId ?? `MODEL-CREDENTIAL-${profileId}`,
+    }, this.#clock);
+    return this.configureAnalysisModelProfile({ ...input, id: profileId, revision: revision.revision, revisionId: revision.id });
   }
 
   verifyGlobalModelProfile(profileId) {
     return this.verifyAnalysisModelProfile(profileId);
+  }
+
+  getGlobalModelUsage(profileId) {
+    return this.#workspaceFoundation.modelUsage(profileId);
+  }
+
+  async retireGlobalModelProfile(profileId) {
+    const usage = await this.getGlobalModelUsage(profileId);
+    if (usage.references.some(({ source }) => source !== 'ACTIVE_RUN')) {
+      throw new TypeError(`Model ${profileId} still has current Workspace references; replace them before retirement`);
+    }
+    return this.removeAnalysisModelProfile(profileId);
   }
 
   async listWorkspaceProjectCapabilities(workspaceId) {
@@ -676,8 +699,8 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.saveProjectCapability(workspaceId, input);
   }
 
-  async deleteWorkspaceProjectCapability(workspaceId, kind, normalizedName) {
-    return this.#workspaceFoundation.deleteProjectCapability(workspaceId, kind, normalizedName);
+  async deleteWorkspaceProjectCapability(workspaceId, kind, normalizedName, expectedVersion) {
+    return this.#workspaceFoundation.deleteProjectCapability(workspaceId, kind, normalizedName, expectedVersion);
   }
 
   async getWorkspaceEffectiveCapabilities(workspaceId) {
@@ -1794,11 +1817,7 @@ export class TraceabilityApplication {
 
   #withActiveAnalysisModel(input) {
     if (!input?.profile?.model?.enabled || input.profile.model.profileId) return input;
-    const active = this.#analysisModelRegistry?.active();
-    if (!active?.ready) throw new TypeError("No verified active analysis model profile is selected");
-    const request = structuredClone(input);
-    request.profile.model.profileId = active.id;
-    return request;
+    throw new TypeError("An explicit analysis model profile revision is required");
   }
 
   async executeAnalysisRun(input, options = {}) {

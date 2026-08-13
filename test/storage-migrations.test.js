@@ -49,6 +49,7 @@ async function migratedDatabase() {
     "0017_understanding_equivalence_report",
     "0018_understanding_review_provenance",
     "0019_workspace_capability_settings",
+    "0020_workspace_capability_cas",
   ]);
   return database;
 }
@@ -352,10 +353,29 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "reverse_open_question",
     "analysis_run_checkpoint",
     "analysis_result",
+    "workspace_capability_head",
     "source_slice_worker_credential_use",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }
+});
+
+test("PostgreSQL capability heads reject a stale expected version without appending a duplicate revision", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const store = new PostgresTraceabilityStore(database);
+  const first = { id: "CAPABILITY-CAS-1", revision: 1, createdAt: "2026-08-13T00:00:00.000Z" };
+  const stale = { id: "CAPABILITY-CAS-2", revision: 1, createdAt: "2026-08-13T00:00:01.000Z" };
+  await store.appendUnderstandingRecordWithCas("PROJECT-001", "PROJECT_CAPABILITY_REVISION", first, {
+    headKey: "PROJECT_CAPABILITY_REVISION:SKILL:source",
+    expectedVersion: 0,
+  });
+  await assert.rejects(() => store.appendUnderstandingRecordWithCas("PROJECT-001", "PROJECT_CAPABILITY_REVISION", stale, {
+    headKey: "PROJECT_CAPABILITY_REVISION:SKILL:source",
+    expectedVersion: 0,
+  }), /version conflict/);
+  assert.deepEqual(await store.listUnderstandingRecords("PROJECT-001", "PROJECT_CAPABILITY_REVISION"), [first]);
 });
 
 test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {

@@ -379,6 +379,16 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, await application.verifyGlobalModelProfile(decodePathSegment(globalModelVerifyMatch[1])), id);
         return;
       }
+      const globalModelUsageMatch = /^\/v1\/global-models\/([^/]+)\/usage$/.exec(url.pathname);
+      if (request.method === "GET" && globalModelUsageMatch) {
+        sendJson(response, 200, await application.getGlobalModelUsage(decodePathSegment(globalModelUsageMatch[1])), id);
+        return;
+      }
+      const globalModelRetireMatch = /^\/v1\/global-models\/([^/]+)\/retire$/.exec(url.pathname);
+      if (request.method === "POST" && globalModelRetireMatch) {
+        sendJson(response, 200, await application.retireGlobalModelProfile(decodePathSegment(globalModelRetireMatch[1])), id);
+        return;
+      }
 
       const projectCapabilitiesMatch = /^\/v1\/workspaces\/([^/]+)\/project-capabilities$/.exec(url.pathname);
       if (request.method === "GET" && projectCapabilitiesMatch) {
@@ -411,6 +421,7 @@ export function createTraceabilityHttpHandler({
       if (request.method === "DELETE" && projectCapabilityMatch) {
         const capability = await application.deleteWorkspaceProjectCapability(
           decodePathSegment(projectCapabilityMatch[1]), projectCapabilityMatch[2], decodePathSegment(projectCapabilityMatch[3]),
+          Number(url.searchParams.get("expectedVersion")),
         );
         if (!capability) throw new HttpError(404, "PROJECT_CAPABILITY_NOT_FOUND", "Project capability was not found");
         sendJson(response, 200, capability, id);

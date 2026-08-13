@@ -52,6 +52,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #analysisCheckpoints = new Map();
   #analysisResults = new Map();
   #understandingRecords = new Map();
+  #understandingHeads = new Map();
   #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
 
@@ -1193,6 +1194,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       "GAP", "WORKSPACE_ANALYSIS_JOB", "WORKSPACE_STATE", "WORKSPACE_EVENT",
       "WORKSPACE_VIEW_PREFERENCE", "WORKSPACE_CAPABILITY_CONFIG", "WORKSPACE_EXECUTION_PROFILE",
       "PROJECT_CAPABILITY_REVISION", "WORKSPACE_CAPABILITY_DRAFT",
+      "WORKSPACE_POLICY_REVISION",
       "SECRET_GRANT", "ANALYSIS_BATCH", "CHILD_WORK_UNIT", "CHILD_BATCH_RESULT",
       "BATCH_BARRIER", "CONFLICT_LEDGER", "COVERAGE_LEDGER", "QUARANTINED_CANDIDATE",
       "REVIEW_QUEUE_ITEM", "REVIEW_BATCH_DECISION", "FEATURE_HISTORY",
@@ -1210,6 +1212,23 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       record,
       `${recordType} ${record.id}`,
     );
+  }
+
+  async appendUnderstandingRecordWithCas(projectId, recordType, record, { headKey = recordType, expectedVersion }) {
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new TypeError("expectedVersion must be a non-negative integer");
+    const storageKey = key(projectId, headKey);
+    const currentVersion = this.#understandingHeads.get(storageKey)?.version ?? 0;
+    if (currentVersion !== expectedVersion) {
+      throw new PersistenceConflictError(`${headKey} version conflict: expected ${expectedVersion}, current ${currentVersion}`);
+    }
+    this.#understandingHeads.set(storageKey, { version: expectedVersion + 1, recordId: record.id });
+    try {
+      return await this.appendUnderstandingRecord(projectId, recordType, record);
+    } catch (error) {
+      if (currentVersion === 0) this.#understandingHeads.delete(storageKey);
+      else this.#understandingHeads.set(storageKey, { version: currentVersion, recordId: null });
+      throw error;
+    }
   }
 
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {

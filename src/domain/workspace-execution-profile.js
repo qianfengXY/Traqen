@@ -5,6 +5,7 @@ const capabilityKinds = new Set(["MODEL", "SKILL", "MCP"]);
 const catalogKinds = new Set(["SKILL", "MCP"]);
 const modelTransports = new Set(["API", "CLI"]);
 const cliAdapters = new Set(["CODEX", "CLAUDE", "GEMINI", "KIMI"]);
+const cliExecutables = new Map([["CODEX", "codex"], ["CLAUDE", "claude"], ["GEMINI", "gemini"], ["KIMI", "kimi"]]);
 
 function assertSecretFree(value, fieldName) {
   if (!value || typeof value !== "object") return;
@@ -63,9 +64,11 @@ export function createGlobalModelProfileRevision(input, clock = () => new Date()
     : {
         cliAdapter: requireNonEmptyString(input.cliAdapter, "cliAdapter").toUpperCase(),
         ...(input.model ? { model: requireNonEmptyString(input.model, "model") } : {}),
-        ...(input.executablePath ? { executablePath: requireNonEmptyString(input.executablePath, "executablePath") } : {}),
       };
   if (transport === "CLI" && !cliAdapters.has(connection.cliAdapter)) throw new TypeError("unsupported CLI adapter");
+  if (transport === "CLI" && input.executablePath && requireNonEmptyString(input.executablePath, "executablePath") !== cliExecutables.get(connection.cliAdapter)) {
+    throw new TypeError("CLI executable must match the adapter allowlist");
+  }
   assertSecretFree(connection, "global model profile");
   const identity = { profileId, revision, transport, connection };
   return deepFreeze({
@@ -166,6 +169,19 @@ export function createWorkspaceCapabilityDraftRevision(input, clock = () => new 
   return deepFreeze({ id: contentId("WORKSPACE-CAPABILITY-DRAFT", identity), ...identity, createdAt: clock().toISOString() });
 }
 
+export function createWorkspacePolicyRevision(input, clock = () => new Date()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("Workspace policy revision must be an object");
+  const workspaceId = requireNonEmptyString(input.workspaceId, "workspaceId");
+  const kind = requireNonEmptyString(input.kind, "kind").toUpperCase();
+  if (!new Set(["DEPENDENCY", "CONVENTION", "SECURITY"]).has(kind)) throw new TypeError("unsupported Workspace policy kind");
+  const revision = Number(input.revision);
+  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  const content = structuredClone(input.content ?? {});
+  assertSecretFree(content, `${kind} policy`);
+  const identity = { workspaceId, kind, revision, content };
+  return deepFreeze({ id: contentId("WORKSPACE-POLICY-REVISION", identity), ...identity, contentDigest: contentId("WORKSPACE-POLICY-CONTENT", { kind, content }), createdAt: clock().toISOString() });
+}
+
 export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], effectiveCatalog = [] }) {
   const errors = [];
   const models = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
@@ -213,7 +229,7 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
   };
   const legacyRole = (slot) => ({
     ...(slot.role === "CHILD" ? { id: slot.id, independenceGroup: slot.independenceGroup } : {}),
-    model: slot.modelProfileId,
+    model: slot.modelProfileRevisionId,
     skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName),
     mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName),
   });
@@ -222,8 +238,8 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
     ...identity,
     configId: draft.id,
     configVersion: draft.revision,
-    mainAgent: legacyRole(draft.mainAgentSlot),
-    childSlots: draft.childAgentSlots.filter(({ enabled }) => enabled).map(legacyRole),
+    mainAgent: legacyRole(identity.mainAgentSlot),
+    childSlots: identity.childAgentSlots.map(legacyRole),
     entries: (catalog.effective ?? []).map((entry) => ({
       logicalName: entry.normalizedName,
       kind: entry.kind,

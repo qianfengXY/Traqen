@@ -12,13 +12,21 @@ const CLI_MODEL_ADAPTERS = Object.freeze({
   KIMI: { executable: "kimi", args: (prompt, model) => ["--print", ...(model ? ["--model", model] : []), prompt] },
 });
 
+function allowlistedCliExecutable(cliAdapter, executablePath) {
+  const expected = CLI_MODEL_ADAPTERS[cliAdapter].executable;
+  if (executablePath === null || executablePath === undefined || executablePath === "") return expected;
+  const supplied = requiredString(executablePath, "CLI executable path");
+  if (supplied !== expected) throw new TypeError(`CLI executable path for ${cliAdapter} must be the allowlisted executable ${expected}`);
+  return expected;
+}
+
 export class AllowlistedCliModelAdapter {
   constructor({ id, cliAdapter, model = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn }) {
     this.id = requiredString(id, "CLI model profile id");
     this.cliAdapter = requiredString(cliAdapter, "CLI adapter").toUpperCase();
     if (!CLI_MODEL_ADAPTERS[this.cliAdapter]) throw new TypeError(`unsupported CLI adapter ${this.cliAdapter}`);
     this.model = model ? requiredString(model, "CLI model name") : null;
-    this.executablePath = executablePath ? requiredString(executablePath, "CLI executable path") : null;
+    this.executablePath = allowlistedCliExecutable(this.cliAdapter, executablePath);
     this.timeoutMs = Number(timeoutMs);
     this.maximumOutputBytes = Number(maximumOutputBytes);
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new TypeError("CLI timeoutMs must be a positive integer");
@@ -29,7 +37,7 @@ export class AllowlistedCliModelAdapter {
 
   #run(args, { signal = null } = {}) {
     const definition = CLI_MODEL_ADAPTERS[this.cliAdapter];
-    const executable = this.executablePath ?? definition.executable;
+    const executable = this.executablePath;
     return new Promise((resolve, reject) => {
       const child = this.spawnImpl(executable, args, { shell: false, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
       let stdout = Buffer.alloc(0);
@@ -883,6 +891,8 @@ export class OpenAICompatibleAnalysisModelAdapter {
 
 export class AnalysisModelRegistry {
   #profiles = new Map();
+  #revisions = new Map();
+  #revisionSequence = 0;
   #clock;
   #fetchImpl;
   #profileStore;
@@ -897,7 +907,8 @@ export class AnalysisModelRegistry {
     this.#fetchImpl = fetchImpl;
     this.#profileStore = profileStore;
     for (const [id, adapter] of adapters) {
-      this.#profiles.set(id, { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter });
+      const profile = { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", revision: 1, configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter };
+      this.#publishRevision(profile, `MODEL-REVISION-${id}-ENVIRONMENT`);
     }
     const stored = this.#profileStore?.load() ?? { activeProfileId: null, profiles: [] };
     for (const value of stored.profiles) {
@@ -912,7 +923,7 @@ export class AnalysisModelRegistry {
       const adapter = transport === "API"
         ? new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey })
         : new AllowlistedCliModelAdapter({ id, cliAdapter: value.cliAdapter, model, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
-      this.#profiles.set(id, {
+      const profile = {
         id,
         displayName: value.displayName ?? id,
         transport,
@@ -925,11 +936,17 @@ export class AnalysisModelRegistry {
         maximumOutputBytes: adapter.maximumOutputBytes ?? null,
         source: "RUNTIME",
         lifecycle: value.lifecycle ?? "ACTIVE",
+        revision: value.revision ?? 1,
         configuredAt: typeof value.configuredAt === "string" ? value.configuredAt : this.#clock().toISOString(),
         verifiedAt: typeof value.verifiedAt === "string" ? value.verifiedAt : null,
         apiKey,
         adapter,
-      });
+      };
+      this.#publishRevision(profile, value.currentRevisionId);
+    }
+    for (const value of stored.revisions ?? []) {
+      if (this.#revisions.has(value.currentRevisionId)) continue;
+      this.#hydrateHistoricalRevision(value);
     }
     if (stored.activeProfileId && this.#profiles.get(stored.activeProfileId)?.verifiedAt) this.#activeProfileId = stored.activeProfileId;
   }
@@ -951,6 +968,44 @@ export class AnalysisModelRegistry {
       ready: Boolean(profile.verifiedAt),
       active: profile.id === this.#activeProfileId,
       lifecycle: profile.lifecycle,
+      currentRevisionId: profile.currentRevisionId,
+      revision: profile.revision,
+    };
+  }
+
+  #newRevisionId(profile) {
+    let revisionId;
+    do {
+      this.#revisionSequence += 1;
+      revisionId = `MODEL-REVISION-${profile.id}-${Date.parse(profile.configuredAt) || 0}-${this.#revisionSequence}`;
+    } while (this.#revisions.has(revisionId));
+    return revisionId;
+  }
+
+  #publishRevision(profile, revisionId = null) {
+    profile.currentRevisionId = revisionId ?? this.#newRevisionId(profile);
+    this.#profiles.set(profile.id, profile);
+    this.#revisions.set(profile.currentRevisionId, { ...profile });
+    return profile;
+  }
+
+  #hydrateHistoricalRevision(value) {
+    const transport = String(value.transport ?? "API").toUpperCase();
+    const adapter = transport === "API"
+      ? new OpenAICompatibleAnalysisModelAdapter({ id: value.id, endpoint: value.endpoint, model: value.model, timeoutMs: value.timeoutMs, stream: value.stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => value.apiKey })
+      : new AllowlistedCliModelAdapter({ id: value.id, cliAdapter: value.cliAdapter, model: value.model, executablePath: value.executablePath, timeoutMs: value.timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
+    this.#revisions.set(value.currentRevisionId, { ...value, transport, adapter });
+  }
+
+  #serializable(profile) {
+    return {
+      id: profile.id, displayName: profile.displayName, transport: profile.transport, endpoint: profile.endpoint,
+      model: profile.model, timeoutMs: profile.timeoutMs, stream: profile.stream, configuredAt: profile.configuredAt,
+      verifiedAt: profile.verifiedAt, apiKey: profile.apiKey, cliAdapter: profile.cliAdapter,
+      executablePath: profile.executablePath, maximumOutputBytes: profile.maximumOutputBytes,
+      lifecycle: profile.lifecycle, currentRevisionId: profile.currentRevisionId,
+      revision: profile.revision,
+      source: profile.source,
     };
   }
 
@@ -958,22 +1013,8 @@ export class AnalysisModelRegistry {
     if (!this.#profileStore) return;
     this.#profileStore.save({
       activeProfileId: this.#activeProfileId,
-      profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => ({
-        id: profile.id,
-        displayName: profile.displayName,
-        transport: profile.transport,
-        endpoint: profile.endpoint,
-        model: profile.model,
-        timeoutMs: profile.timeoutMs,
-        stream: profile.stream,
-        configuredAt: profile.configuredAt,
-        verifiedAt: profile.verifiedAt,
-        apiKey: profile.apiKey,
-        cliAdapter: profile.cliAdapter,
-        executablePath: profile.executablePath,
-        maximumOutputBytes: profile.maximumOutputBytes,
-        lifecycle: profile.lifecycle,
-      })),
+      profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
+      revisions: [...this.#revisions.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
     });
   }
 
@@ -987,7 +1028,7 @@ export class AnalysisModelRegistry {
   }
 
   resolve(id) {
-    const profile = this.#profiles.get(id ?? this.#activeProfileId);
+    const profile = this.#revisions.get(id) ?? this.#profiles.get(id ?? this.#activeProfileId);
     return profile?.verifiedAt ? profile.adapter : null;
   }
 
@@ -1000,8 +1041,8 @@ export class AnalysisModelRegistry {
       const timeoutMs = input.timeoutMs ?? 120_000;
       const adapter = new AllowlistedCliModelAdapter({ id, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
-      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey: null, adapter };
-      this.#profiles.set(id, profile);
+      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: input.revision ?? (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey: null, adapter };
+      this.#publishRevision(profile, input.revisionId);
       if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
       this.#persist();
       return this.#public(profile);
@@ -1019,8 +1060,8 @@ export class AnalysisModelRegistry {
     const stream = input.stream ?? false;
     const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
-    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
-    this.#profiles.set(id, profile);
+    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: input.revision ?? (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
+    this.#publishRevision(profile, input.revisionId);
     if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
     this.#persist();
     return this.#public(profile);
@@ -1031,7 +1072,7 @@ export class AnalysisModelRegistry {
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     const verification = await profile.adapter.verify();
     profile.verifiedAt = this.#clock().toISOString();
-    if (!this.#activeProfileId) this.#activeProfileId = profile.id;
+    this.#revisions.set(profile.currentRevisionId, { ...this.#revisions.get(profile.currentRevisionId), verifiedAt: profile.verifiedAt });
     this.#persist();
     return { ...this.#public(profile), latencyMs: verification.latencyMs };
   }
@@ -1040,6 +1081,7 @@ export class AnalysisModelRegistry {
     const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before selection`);
+    if (profile.lifecycle !== "ACTIVE") throw new TypeError(`Analysis model profile ${id} is not active`);
     this.#activeProfileId = profile.id;
     this.#persist();
     return this.#public(profile);
@@ -1050,23 +1092,23 @@ export class AnalysisModelRegistry {
     const profile = this.#profiles.get(profileId);
     if (!profile) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
     if (profile.source === "ENVIRONMENT") throw new TypeError(`Environment model profile ${profileId} cannot be deleted at runtime`);
-    this.#profiles.delete(profileId);
+    profile.lifecycle = "RETIRING";
     if (this.#activeProfileId === profileId) {
-      this.#activeProfileId = this.list().find((candidate) => candidate.ready)?.id ?? null;
+      this.#activeProfileId = this.list().find((candidate) => candidate.ready && candidate.lifecycle === "ACTIVE")?.id ?? null;
     }
     this.#persist();
     return this.#public(profile);
   }
 
   async enrichWorkspaceCandidates(id, input, options = {}) {
-    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    const profile = this.#revisions.get(requiredString(id, "analysis model profile id")) ?? this.#profiles.get(id);
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
     return profile.adapter.enrichWorkspaceCandidates(input, options);
   }
 
   async planWorkspaceAnalysis(id, input, options = {}) {
-    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
+    const profile = this.#revisions.get(requiredString(id, "analysis model profile id")) ?? this.#profiles.get(id);
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
     return profile.adapter.planWorkspaceAnalysis(input, options);

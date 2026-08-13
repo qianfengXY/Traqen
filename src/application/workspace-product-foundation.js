@@ -5,6 +5,7 @@ import {
   createProjectCapabilityRevision,
   createWorkspace,
   createWorkspaceCapabilityDraftRevision,
+  createWorkspacePolicyRevision,
   createWorkspaceCapabilityConfig,
   createWorkspaceLifecycleEvent,
   createWorkspaceViewPreference,
@@ -144,15 +145,22 @@ export class WorkspaceProductFoundation {
     const normalizedName = String(input.normalizedName ?? input.name ?? input.logicalName ?? '').trim().toLowerCase();
     const kind = String(input.kind ?? '').toUpperCase();
     const prior = existing.find((entry) => entry.kind === kind && entry.normalizedName === normalizedName);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw new TypeError('expectedVersion is required');
+    if (input.expectedVersion !== (prior?.revision ?? 0)) throw new TypeError(`Project capability version conflict: expected ${input.expectedVersion}, current ${prior?.revision ?? 0}`);
     const capability = createProjectCapabilityRevision({ ...input, workspaceId, kind, normalizedName, revision: (prior?.revision ?? 0) + 1 }, this.clock);
-    return this.store.appendUnderstandingRecord(workspaceId, 'PROJECT_CAPABILITY_REVISION', capability);
+    return this.store.appendUnderstandingRecordWithCas(workspaceId, 'PROJECT_CAPABILITY_REVISION', capability, {
+      headKey: `PROJECT_CAPABILITY_REVISION:${kind}:${normalizedName}`,
+      expectedVersion: input.expectedVersion,
+    });
   }
 
-  async deleteProjectCapability(workspaceId, kind, normalizedName) {
+  async deleteProjectCapability(workspaceId, kind, normalizedName, expectedVersion) {
     const existing = await this.listProjectCapabilities(workspaceId, { includeDeleted: true });
     if (!existing) return null;
     const prior = existing.find((entry) => entry.kind === String(kind).toUpperCase() && entry.normalizedName === String(normalizedName).trim().toLowerCase());
     if (!prior || prior.deleted) return null;
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError('expectedVersion is required');
+    if (expectedVersion !== prior.revision) throw new TypeError(`Project capability version conflict: expected ${expectedVersion}, current ${prior.revision}`);
     const tombstone = Object.freeze({
       ...prior,
       id: `${prior.id}-DELETED-${prior.revision + 1}`,
@@ -160,7 +168,10 @@ export class WorkspaceProductFoundation {
       deleted: true,
       createdAt: this.clock().toISOString(),
     });
-    return this.store.appendUnderstandingRecord(workspaceId, 'PROJECT_CAPABILITY_REVISION', tombstone);
+    return this.store.appendUnderstandingRecordWithCas(workspaceId, 'PROJECT_CAPABILITY_REVISION', tombstone, {
+      headKey: `PROJECT_CAPABILITY_REVISION:${prior.kind}:${prior.normalizedName}`,
+      expectedVersion,
+    });
   }
 
   async getCapabilityDraft(workspaceId) {
@@ -172,10 +183,34 @@ export class WorkspaceProductFoundation {
   async saveCapabilityDraft(workspaceId, input) {
     if (!await this.getWorkspace(workspaceId)) return null;
     const current = await this.getCapabilityDraft(workspaceId);
-    const expectedVersion = Number(input.expectedVersion ?? current?.revision ?? 0);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw new TypeError('expectedVersion is required');
+    const expectedVersion = input.expectedVersion;
     if (expectedVersion !== (current?.revision ?? 0)) throw new TypeError(`Workspace capability draft version conflict: expected ${expectedVersion}, current ${current?.revision ?? 0}`);
-    const draft = createWorkspaceCapabilityDraftRevision({ ...input, workspaceId, revision: expectedVersion + 1 }, this.clock);
-    return this.store.appendUnderstandingRecord(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT', draft);
+    const policyRevision = async (kind, content, suppliedId) => {
+      if (suppliedId) {
+        const existing = await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_POLICY_REVISION', suppliedId);
+        if (!existing || existing.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
+        return existing;
+      }
+      const records = (await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_POLICY_REVISION')).filter((record) => record.kind === kind);
+      const revision = Math.max(0, ...records.map((record) => record.revision)) + 1;
+      const record = createWorkspacePolicyRevision({ workspaceId, kind, revision, content: content ?? {} }, this.clock);
+      return this.store.appendUnderstandingRecordWithCas(workspaceId, 'WORKSPACE_POLICY_REVISION', record, { headKey: `WORKSPACE_POLICY_REVISION:${kind}`, expectedVersion: revision - 1 });
+    };
+    const [dependency, convention, security] = await Promise.all([
+      policyRevision('DEPENDENCY', input.dependencies, input.dependencyPolicyRevisionId),
+      policyRevision('CONVENTION', input.conventions, input.conventionRevisionId),
+      policyRevision('SECURITY', input.securityPolicy, input.securityPolicyRevisionId),
+    ]);
+    const draft = createWorkspaceCapabilityDraftRevision({
+      ...input, workspaceId, revision: expectedVersion + 1,
+      dependencyPolicyRevisionId: dependency.id,
+      conventionRevisionId: convention.id,
+      securityPolicyRevisionId: security.id,
+    }, this.clock);
+    return this.store.appendUnderstandingRecordWithCas(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT', draft, {
+      headKey: 'WORKSPACE_CAPABILITY_DRAFT', expectedVersion,
+    });
   }
 
   async effectiveCapabilityCatalog(workspaceId, disabledKeys = null) {
@@ -202,6 +237,28 @@ export class WorkspaceProductFoundation {
     const profile = activateWorkspaceCapabilityDraft({ draft: result.draft, modelProfiles, catalog: result.catalog, clock: this.clock });
     await this.store.appendUnderstandingRecord(workspaceId, 'WORKSPACE_EXECUTION_PROFILE', profile);
     return profile;
+  }
+
+  async modelUsage(profileId) {
+    const references = [];
+    for (const workspace of await this.listWorkspaces(null, { includeDeleted: false })) {
+      const draft = await this.getCapabilityDraft(workspace.id);
+      for (const slot of draft ? [draft.mainAgentSlot, ...draft.childAgentSlots] : []) {
+        if (slot.modelProfileId === profileId) references.push({ workspaceId: workspace.id, workspaceName: workspace.name, source: 'DRAFT_HEAD', slotId: slot.id });
+      }
+      const activeProfile = (await this.listWorkspaceProfiles(workspace.id))?.[0];
+      for (const slot of (activeProfile ? [activeProfile.mainAgentSlot, ...(activeProfile.childAgentSlots ?? [])] : []).filter(Boolean)) {
+        if (slot.modelProfileId === profileId) references.push({ workspaceId: workspace.id, workspaceName: workspace.name, source: 'ACTIVE_PROFILE_HEAD', slotId: slot.id, profileRevisionId: activeProfile.id });
+      }
+      for (const run of await this.store.listUnderstandingRecords(workspace.id, 'WORKSPACE_ANALYSIS_JOB')) {
+        if (!['RUNNING', 'PAUSED'].includes(run.status)) continue;
+        const pinned = await this.store.getUnderstandingRecord(workspace.id, 'WORKSPACE_EXECUTION_PROFILE', run.workspaceExecutionProfileRevisionId);
+        for (const slot of (pinned ? [pinned.mainAgentSlot, ...(pinned.childAgentSlots ?? [])] : []).filter(Boolean)) {
+          if (slot.modelProfileId === profileId) references.push({ workspaceId: workspace.id, workspaceName: workspace.name, source: 'ACTIVE_RUN', slotId: slot.id, runId: run.id, profileRevisionId: pinned.id });
+        }
+      }
+    }
+    return Object.freeze({ profileId, references: Object.freeze(references), usageCount: references.length });
   }
 
   async saveWorkspaceCapabilityConfig(workspaceId, input) {

@@ -19,18 +19,22 @@ import {
 } from "./product-surfaces";
 import {
   createGlobalModel,
+  deleteProjectCapability,
   decideWorkspaceReviewBatch,
   getConnectionHealth,
   getEffectiveCapabilities,
+  getGlobalModelUsage,
   getWorkspaceCapabilityDraft,
   getWorkspaceReviewQueue,
   listGlobalModels,
+  retireGlobalModel,
   verifyGlobalModel,
   listCapabilityTemplates,
   listWorkspaceCapabilityConfigs,
   listWorkspaceExecutionProfiles,
   activateWorkspaceCapabilityDraft,
   saveWorkspaceCapabilityDraft,
+  saveProjectCapability,
   type CapabilityKey,
   type ChildCapabilityRole,
   type EffectiveCapabilityCatalog,
@@ -157,6 +161,9 @@ function ServerOwnedProduct() {
   const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
   const [disabledKeys, setDisabledKeys] = useState<CapabilityKey[]>([]);
+  const [dependencyNotes, setDependencyNotes] = useState("");
+  const [conventionNotes, setConventionNotes] = useState("");
+  const [securityNotes, setSecurityNotes] = useState("");
   const [capabilityConfig, setCapabilityConfig] = useState<WorkspaceCapabilityConfig | null>(null);
   const [executionProfile, setExecutionProfile] = useState<ExecutionProfile | null>(null);
   const [profileHistory, setProfileHistory] = useState<ExecutionProfile[]>([]);
@@ -630,15 +637,37 @@ function ServerOwnedProduct() {
         childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
         projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
         disabledKeys,
-        dependencyPolicyRevisionId: "WORKSPACE-DEPENDENCIES-CURRENT",
-        conventionRevisionId: "WORKSPACE-CONVENTIONS-CURRENT",
-        securityPolicyRevisionId: "WORKSPACE-SECURITY-CURRENT",
+        dependencies: { notes: dependencyNotes },
+        conventions: { notes: conventionNotes },
+        securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE", secrets: "HANDLE_ONLY" },
       });
       setCapabilityDraft(saved);
       setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
       setExecutionProfile(null);
       notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
     } catch (error) { notify(messageOf(error, t("能力配置保存失败", "Unable to save capability configuration")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function upsertProjectCapability(input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown> }) {
+    if (!activeWorkspace) return;
+    setWorking(true);
+    try {
+      await saveProjectCapability(apiBase, apiToken, activeWorkspace.id, input);
+      setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
+      notify(t("项目能力 Revision 已保存。", "Project capability revision saved."));
+    } catch (error) { notify(messageOf(error, t("项目能力保存失败", "Unable to save project capability")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function removeProjectCapability(kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) {
+    if (!activeWorkspace) return;
+    setWorking(true);
+    try {
+      await deleteProjectCapability(apiBase, apiToken, activeWorkspace.id, kind, normalizedName, expectedVersion);
+      setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
+      notify(t("项目能力已删除；typed key 的禁用状态保持不变。", "Project capability removed; the typed key's disable state is preserved."));
+    } catch (error) { notify(messageOf(error, t("项目能力删除失败", "Unable to delete project capability")), "error"); }
     finally { setWorking(false); }
   }
 
@@ -659,6 +688,28 @@ function ServerOwnedProduct() {
       setGlobalModels(await listGlobalModels(apiBase, apiToken));
       notify(t("模型连接已验证。", "Model connection verified."));
     } catch (error) { notify(messageOf(error, t("模型验证失败", "Model verification failed")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function inspectModelUsage(profileId: string) {
+    setWorking(true);
+    try {
+      const usage = await getGlobalModelUsage(apiBase, apiToken, profileId);
+      const workspaces = [...new Set(usage.references.map(({ workspaceName }) => workspaceName))];
+      notify(usage.usageCount
+        ? t(`该模型有 ${usage.usageCount} 个引用：${workspaces.join("、")}`, `${usage.usageCount} references across: ${workspaces.join(", ")}`)
+        : t("该模型没有 Workspace 或运行引用。", "This model has no Workspace or run references."));
+    } catch (error) { notify(messageOf(error, t("无法读取模型影响", "Unable to load model impact")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function retireModel(profileId: string) {
+    setWorking(true);
+    try {
+      await retireGlobalModel(apiBase, apiToken, profileId);
+      setGlobalModels(await listGlobalModels(apiBase, apiToken));
+      notify(t("模型进入 RETIRING；已固定的历史运行仍可解析其 Revision。", "Model is RETIRING; pinned historical runs can still resolve its revision."));
+    } catch (error) { notify(messageOf(error, t("模型仍被当前 Workspace 使用，无法退休", "Model is still used by current Workspaces and cannot retire")), "error"); }
     finally { setWorking(false); }
   }
 
@@ -689,8 +740,8 @@ function ServerOwnedProduct() {
     if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={(input) => void saveGlobalModel(input)} onVerify={(profileId) => void verifyModel(profileId)} />;
-    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} working={working} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
+    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={(input) => void saveGlobalModel(input)} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={(profileId) => void inspectModelUsage(profileId)} onRetire={(profileId) => void retireModel(profileId)} />;
+    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} working={working} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">

@@ -36,6 +36,15 @@ test("allowlisted CLI models pass untrusted prompts as one argv value without a 
   assert.equal(calls[0].args.filter((value) => value.includes("touch")).length, 1);
 });
 
+test("allowlisted CLI models reject executable path substitution", () => {
+  assert.throws(() => new AllowlistedCliModelAdapter({
+    id: "CLI-ESCAPE", cliAdapter: "CODEX", executablePath: "/tmp/not-allowlisted", spawnImpl: cliSpawn({ stdout: "{}" }, []),
+  }), /must be the allowlisted executable codex/);
+  assert.doesNotThrow(() => new AllowlistedCliModelAdapter({
+    id: "CLI-EXACT", cliAdapter: "CODEX", executablePath: "codex", spawnImpl: cliSpawn({ stdout: "{}" }, []),
+  }));
+});
+
 test("allowlisted CLI models enforce timeout and output bounds", async () => {
   const outputBounded = new AllowlistedCliModelAdapter({ id: "CLI-OUT", cliAdapter: "KIMI", maximumOutputBytes: 4, spawnImpl: cliSpawn({ stdout: "12345" }, []) });
   await assert.rejects(() => outputBounded.planWorkspaceAnalysis({}), /output limit/);
@@ -296,6 +305,7 @@ test("runtime model profiles keep API keys private, require verification, and en
     apiKey: "runtime-secret",
   });
   assert.equal(configured.ready, false);
+  const firstRevisionId = configured.currentRevisionId;
   assert.equal(registry.resolve("workspace-default"), null);
   assert.equal(JSON.stringify(configured).includes("runtime-secret"), false);
   await assert.rejects(() => registry.enrichWorkspaceCandidates("workspace-default", workspaceCandidateEnvelope()), /must be verified/);
@@ -310,6 +320,18 @@ test("runtime model profiles keep API keys private, require verification, and en
   assert.deepEqual(enriched.candidates[0].evidenceFactIds, ["FACT-WORKSPACE-001"]);
   assert.equal(requests.every((request) => request.headers.authorization === "Bearer runtime-secret"), true);
   assert.equal(JSON.stringify(registry.list()).includes("runtime-secret"), false);
+
+  const revised = registry.configure({
+    id: "workspace-default",
+    endpoint: "https://models-2.example/v1/chat/completions",
+    model: "source-analysis-model-v2",
+  });
+  assert.notEqual(revised.currentRevisionId, firstRevisionId);
+  assert.ok(registry.resolve(firstRevisionId), "the verified pinned revision remains executable after editing the profile");
+  assert.equal(registry.resolve("workspace-default"), null, "the new unverified revision does not inherit readiness");
+  const retiring = registry.remove("workspace-default");
+  assert.equal(retiring.lifecycle, "RETIRING");
+  assert.ok(registry.resolve(firstRevisionId), "retirement preserves an active Run's pinned historical revision");
 });
 
 test("Workspace model telemetry exposes the auditable request lifecycle and enforces evidence confidence caps", async () => {

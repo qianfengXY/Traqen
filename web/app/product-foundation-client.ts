@@ -12,6 +12,7 @@ export type GlobalModelProfile = {
   id: string;
   profileId: string;
   currentRevisionId: string;
+  revision: number;
   displayName: string;
   transport: "API" | "CLI";
   readiness: "UNVERIFIED" | "READY" | "ERROR";
@@ -24,6 +25,7 @@ export type CapabilityKey = { kind: "SKILL" | "MCP"; normalizedName: string };
 
 export type EffectiveCapability = CapabilityKey & {
   id: string;
+  revision?: number;
   source: "BUILTIN" | "PROJECT";
   projectRelation?: "OVERRIDE" | "ADDITION";
   disabled: boolean;
@@ -157,9 +159,35 @@ export async function verifyGlobalModel(apiBase: string, apiToken: string, profi
   return parseJson<Record<string, unknown>>(response);
 }
 
+export type GlobalModelUsage = {
+  profileId: string;
+  usageCount: number;
+  references: Array<{ workspaceId: string; workspaceName: string; source: "DRAFT_HEAD" | "ACTIVE_PROFILE_HEAD" | "ACTIVE_RUN"; slotId: string }>;
+};
+
+export async function getGlobalModelUsage(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/usage`, { method: "GET", headers: headers(apiToken) });
+  return parseJson<GlobalModelUsage>(response);
+}
+
+export async function retireGlobalModel(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/retire`, { method: "POST", headers: headers(apiToken) });
+  return parseJson<GlobalModelProfile>(response);
+}
+
 export async function getEffectiveCapabilities(apiBase: string, apiToken: string, workspaceId: string) {
   const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capabilities/effective`, { method: "GET", headers: headers(apiToken) });
   return parseJson<EffectiveCapabilityCatalog>(response);
+}
+
+export async function saveProjectCapability(apiBase: string, apiToken: string, workspaceId: string, input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown>; credentialHandleIds?: string[] }) {
+  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/project-capabilities`, { method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input) });
+  return parseJson<Record<string, unknown>>(response);
+}
+
+export async function deleteProjectCapability(apiBase: string, apiToken: string, workspaceId: string, kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) {
+  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/project-capabilities/${kind}/${encodeURIComponent(normalizedName)}?expectedVersion=${expectedVersion}`, { method: "DELETE", headers: headers(apiToken) });
+  return parseJson<Record<string, unknown>>(response);
 }
 
 export async function getWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string) {
@@ -167,7 +195,11 @@ export async function getWorkspaceCapabilityDraft(apiBase: string, apiToken: str
   return (await parseJson<{ draft: WorkspaceCapabilityDraft | null }>(response)).draft;
 }
 
-export async function saveWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string, input: Omit<WorkspaceCapabilityDraft, "id" | "workspaceId" | "revision" | "createdAt"> & { expectedVersion: number }) {
+export async function saveWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string, input: {
+  expectedVersion: number; mainAgentSlot: AgentSlotDraft; childAgentSlots: AgentSlotDraft[];
+  projectCapabilityRevisionIds: string[]; disabledKeys: CapabilityKey[];
+  dependencies?: Record<string, unknown>; conventions?: Record<string, unknown>; securityPolicy?: Record<string, unknown>;
+}) {
   const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft`, {
     method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input),
   });
