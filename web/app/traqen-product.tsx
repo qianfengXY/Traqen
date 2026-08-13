@@ -204,7 +204,7 @@ function ServerOwnedProduct() {
       getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id),
       getEffectiveCapabilities(apiBase, apiToken, workspace.id),
     ]);
-    if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+    if (staleWorkspaceRequestResponse(requestContext, contextRef.current, revisionRequestVersion, revisionRequestRef.current)) return;
     if (graphResult.status === "fulfilled" && revisionRequestVersion === revisionRequestRef.current) {
       setCurrent(graphResult.value);
       setArtifact(graphResult.value?.graphArtifact ?? null);
@@ -255,6 +255,14 @@ function ServerOwnedProduct() {
         setDependencyNotes(String(draftResult.value.dependencies?.notes ?? ""));
         setConventionNotes(String(draftResult.value.conventions?.notes ?? ""));
         setSecurityNotes(String(draftResult.value.securityPolicy?.notes ?? ""));
+      } else {
+        setMainModel("");
+        setMainSkillNames([]);
+        setMainMcpNames([]);
+        setChildSlots(createDefaultChildSlots());
+        setDependencyNotes("");
+        setConventionNotes("");
+        setSecurityNotes("");
       }
     }
     if (catalogResult.status === "fulfilled") setEffectiveCatalog(catalogResult.value);
@@ -637,9 +645,11 @@ function ServerOwnedProduct() {
 
   async function saveCapabilities() {
     if (!activeWorkspace) return;
+    const workspace = activeWorkspace;
+    const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
-      const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, activeWorkspace.id, {
+      const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id, {
         expectedVersion: capabilityDraft?.revision ?? 0,
         mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: "MAIN", enabled: true },
         childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
@@ -647,10 +657,12 @@ function ServerOwnedProduct() {
         disabledKeys,
         dependencies: { notes: dependencyNotes },
         conventions: { notes: conventionNotes },
-        securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE", secrets: "HANDLE_ONLY" },
+        securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE" },
       });
+      const catalog = await getEffectiveCapabilities(apiBase, apiToken, workspace.id);
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setCapabilityDraft(saved);
-      setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
+      setEffectiveCatalog(catalog);
       setExecutionProfile(null);
       notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
     } catch (error) { notify(messageOf(error, t("能力配置保存失败", "Unable to save capability configuration")), "error"); }
@@ -659,10 +671,14 @@ function ServerOwnedProduct() {
 
   async function upsertProjectCapability(input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown> }) {
     if (!activeWorkspace) return;
+    const workspace = activeWorkspace;
+    const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
-      await saveProjectCapability(apiBase, apiToken, activeWorkspace.id, input);
-      setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
+      await saveProjectCapability(apiBase, apiToken, workspace.id, input);
+      const catalog = await getEffectiveCapabilities(apiBase, apiToken, workspace.id);
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+      setEffectiveCatalog(catalog);
       notify(t("项目能力 Revision 已保存。", "Project capability revision saved."));
     } catch (error) { notify(messageOf(error, t("项目能力保存失败", "Unable to save project capability")), "error"); }
     finally { setWorking(false); }
@@ -670,10 +686,14 @@ function ServerOwnedProduct() {
 
   async function removeProjectCapability(kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) {
     if (!activeWorkspace) return;
+    const workspace = activeWorkspace;
+    const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
-      await deleteProjectCapability(apiBase, apiToken, activeWorkspace.id, kind, normalizedName, expectedVersion);
-      setEffectiveCatalog(await getEffectiveCapabilities(apiBase, apiToken, activeWorkspace.id));
+      await deleteProjectCapability(apiBase, apiToken, workspace.id, kind, normalizedName, expectedVersion);
+      const catalog = await getEffectiveCapabilities(apiBase, apiToken, workspace.id);
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+      setEffectiveCatalog(catalog);
       notify(t("项目能力已删除；typed key 的禁用状态保持不变。", "Project capability removed; the typed key's disable state is preserved."));
     } catch (error) { notify(messageOf(error, t("项目能力删除失败", "Unable to delete project capability")), "error"); }
     finally { setWorking(false); }
@@ -722,6 +742,8 @@ function ServerOwnedProduct() {
   }
 
   async function replaceModel(profileId: string, replacementProfileId: string) {
+    const workspace = activeWorkspace;
+    const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
       const usage = await getGlobalModelUsage(apiBase, apiToken, profileId);
@@ -734,7 +756,7 @@ function ServerOwnedProduct() {
       const plan = await createGlobalModelReplacementPlan(apiBase, apiToken, profileId, replacementProfileId);
       await applyGlobalModelReplacementPlan(apiBase, apiToken, profileId, plan.id, plan.version);
       setGlobalModels(await listGlobalModels(apiBase, apiToken));
-      if (activeWorkspace) await refreshWorkspaceReads(activeWorkspace, { ...contextRef.current });
+      if (workspace && !staleWorkspaceResponse(requestContext, contextRef.current)) await refreshWorkspaceReads(workspace, requestContext);
       notify(t("跨 Workspace 模型替换已原子应用；旧模型进入 RETIRING。", "The cross-Workspace replacement applied atomically; the old model is RETIRING."));
     } catch (error) {
       notify(messageOf(error, t("模型替换失败；未应用部分 Workspace 变更", "Model replacement failed; no partial Workspace changes were applied")), "error");
@@ -745,9 +767,12 @@ function ServerOwnedProduct() {
 
   async function resolveCapabilities() {
     if (!activeWorkspace || !capabilityDraft) return;
+    const workspace = activeWorkspace;
+    const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
-      const profile = await activateWorkspaceCapabilityDraft(apiBase, apiToken, activeWorkspace.id);
+      const profile = await activateWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id);
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setExecutionProfile(profile);
       setProfileHistory((existing) => [profile, ...existing.filter(({ id }) => id !== profile.id)]);
       setProfileRevisionId(profile.id);

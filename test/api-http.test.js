@@ -445,6 +445,59 @@ test("global CLI model API cannot bypass the adapter executable allowlist", asyn
   assert.equal(accepted.body.executablePath, "codex");
 });
 
+test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
+  const registry = new AnalysisModelRegistry({
+    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+  });
+  const baseUrl = await startServer(t, { analysisModelRegistry: registry });
+  for (const profileId of ["MODEL-OLD", "MODEL-NEW"]) {
+    assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
+      profileId,
+      displayName: profileId,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(),
+      apiKey: "server-only-secret",
+    })).response.status, 201);
+    assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
+  }
+  for (const workspaceId of ["W-REPLACE-1", "W-REPLACE-2"]) {
+    assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: workspaceId, name: workspaceId, actorId: "OWNER" })).response.status, 201);
+    const draft = await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedVersion: 0,
+        mainAgentSlot: { modelProfileId: "MODEL-OLD" },
+        childAgentSlots: [
+          { id: "C1", modelProfileId: "MODEL-OLD", independenceGroup: "I1" },
+          { id: "C2", modelProfileId: "MODEL-OLD", independenceGroup: "I2" },
+        ],
+        projectCapabilityRevisionIds: [],
+        disabledKeys: [],
+      }),
+    });
+    assert.equal(draft.status, 200);
+    assert.equal((await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" })).status, 201);
+  }
+
+  const createdPlan = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans`, { replacementProfileId: "MODEL-NEW" });
+  assert.equal(createdPlan.response.status, 201);
+  assert.deepEqual(createdPlan.body.changes.map(({ workspaceId }) => workspaceId).sort(), ["W-REPLACE-1", "W-REPLACE-2"]);
+  const applied = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans/${createdPlan.body.id}/apply`, { expectedVersion: createdPlan.body.version });
+  assert.equal(applied.response.status, 200);
+  assert.equal(applied.body.workspaces.length, 2);
+
+  for (const workspaceId of ["W-REPLACE-1", "W-REPLACE-2"]) {
+    const draft = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`)).json()).draft;
+    assert.equal(draft.mainAgentSlot.modelProfileId, "MODEL-NEW");
+    const profiles = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/execution-profile-revisions`)).json()).profiles;
+    assert.equal(profiles[0].mainAgentSlot.modelProfileId, "MODEL-NEW");
+  }
+  const models = (await (await fetch(`${baseUrl}/v1/global-models`)).json()).models;
+  assert.equal(models.find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
+});
+
 test("production API authentication protects every non-health route", async (t) => {
   const baseUrl = await startServer(t, { apiBearerToken: "project-api-token" });
   const health = await fetch(`${baseUrl}/health`);
@@ -963,6 +1016,8 @@ test("browser product origins are explicit and preflight never grants an unknown
   assert.equal(preflight.status, 204);
   assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
   assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /DELETE/);
+  assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /PUT/);
+  assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /PATCH/);
 
   const unknown = await fetch(`${baseUrl}/health`, {
     headers: { origin: "https://unknown.example" },

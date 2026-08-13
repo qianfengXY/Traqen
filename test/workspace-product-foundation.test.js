@@ -228,10 +228,14 @@ test("F006 restores policy content, honors pinned project revisions, and permits
     securityPolicy: { notes: "security-v1" },
   });
   await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 1, manifest: { marker: "REV2" } });
+  const added = await service.saveProjectCapability("W1", { kind: "MCP", normalizedName: "new-tool", expectedVersion: 0, manifest: { marker: "NEW" } });
   const restored = await service.getCapabilityDraft("W1");
   assert.equal(restored.dependencies.notes, "dependency-v1");
   assert.equal(restored.conventions.notes, "convention-v1");
   assert.equal(restored.securityPolicy.notes, "security-v1");
+  const settingsCatalog = await service.effectiveCapabilityCatalog("W1");
+  assert.equal(settingsCatalog.entries.find(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source").manifest.marker, "REV2");
+  assert.equal(settingsCatalog.entries.some(({ id }) => id === added.id), true, "the settings catalog must expose newly added project capabilities");
   const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "m" }];
   const activated = await service.activateCapabilityDraft("W1", modelProfiles);
   assert.equal(activated.entries.find(({ kind }) => kind === "SKILL").manifest.marker, "REV1");
@@ -304,6 +308,36 @@ test("F006 model replacement applies every Workspace atomically and rolls back o
     assert.equal((await service.getCapabilityDraft(workspaceId)).mainAgentSlot.modelProfileId, "MODEL-NEW");
     assert.equal((await service.listWorkspaceProfiles(workspaceId))[0].mainAgentSlot.modelProfileRevisionId, "MODEL-REV-NEW");
   }
+
+  assert.deepEqual(await service.applyModelReplacement([]), [], "an active-run-only replacement has no current Workspace mutation to apply");
+});
+
+test("F006 active execution profile reads follow the CAS head even when timestamps tie", async () => {
+  const store = new MemoryTraceabilityStore();
+  const tiedClock = () => new Date("2026-08-13T00:00:00.000Z");
+  await store.appendProjectFoundation(createProjectFoundation({
+    organization: { id: "O", name: "Org" }, tenant: { id: "T", name: "Tenant" },
+    project: { id: "W1", name: "Workspace One" }, principals: [],
+  }));
+  const service = new WorkspaceProductFoundation({ store, clock: tiedClock });
+  await service.recordWorkspaceCreated("W1", "USER-1");
+  const models = [
+    { id: "MODEL-REV-OLD", profileId: "MODEL-OLD", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "old" },
+    { id: "MODEL-REV-NEW", profileId: "MODEL-NEW", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "new" },
+  ];
+  await service.saveCapabilityDraft("W1", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-OLD" },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-OLD", independenceGroup: "I1" },
+      { id: "C2", modelProfileId: "MODEL-OLD", independenceGroup: "I2" },
+    ],
+    projectCapabilityRevisionIds: [], disabledKeys: [],
+  });
+  await service.activateCapabilityDraft("W1", models);
+  const plan = await service.prepareModelReplacement("MODEL-OLD", "MODEL-NEW", models);
+  await service.applyModelReplacement(plan);
+  assert.equal((await service.listWorkspaceProfiles("W1"))[0].mainAgentSlot.modelProfileId, "MODEL-NEW");
 });
 
 test("every configured Child receives the same sealed batch and Main waits for the full terminal set", () => {

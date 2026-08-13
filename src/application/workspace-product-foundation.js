@@ -231,7 +231,7 @@ export class WorkspaceProductFoundation {
 
   async effectiveCapabilityCatalog(workspaceId, disabledKeys = null, projectCapabilityRevisionIds = null) {
     const draft = await this.getCapabilityDraft(workspaceId);
-    const pinnedIds = projectCapabilityRevisionIds ?? draft?.projectCapabilityRevisionIds ?? null;
+    const pinnedIds = projectCapabilityRevisionIds;
     let projectCatalog;
     if (pinnedIds) {
       const records = await this.store.listUnderstandingRecords(workspaceId, 'PROJECT_CAPABILITY_REVISION');
@@ -398,8 +398,13 @@ export class WorkspaceProductFoundation {
 
   async listWorkspaceProfiles(workspaceId) {
     if (!await this.getWorkspace(workspaceId)) return null;
+    const head = await this.store.getUnderstandingHead(workspaceId, "WORKSPACE_EXECUTION_PROFILE");
     return Object.freeze([...(await this.store.listUnderstandingRecords(workspaceId, "WORKSPACE_EXECUTION_PROFILE"))]
-      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))));
+      .sort((left, right) => {
+        if (left.id === head?.recordId) return -1;
+        if (right.id === head?.recordId) return 1;
+        return String(right.createdAt).localeCompare(String(left.createdAt)) || right.id.localeCompare(left.id);
+      }));
   }
 
   async issueSecretGrants(workspaceId, profileId, input) {

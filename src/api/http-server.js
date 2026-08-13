@@ -231,7 +231,7 @@ function applyCors(request, response, allowedOrigins) {
   const origin = request.headers.origin;
   if (typeof origin !== "string" || !allowedOrigins.has(origin)) return false;
   response.setHeader("access-control-allow-origin", origin);
-  response.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
+  response.setHeader("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   response.setHeader(
     "access-control-allow-headers",
     "authorization, content-type, x-request-id, x-traqen-api-token",

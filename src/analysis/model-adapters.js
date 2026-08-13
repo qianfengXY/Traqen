@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
 import {
   normalizeCandidateBundle,
@@ -77,7 +78,14 @@ export class AllowlistedCliModelAdapter {
 
   async verify() {
     const startedAt = Date.now();
-    await this.#jsonTask("connection-verification", { expectedResponse: { ready: true } });
+    const challenge = randomUUID();
+    const result = await this.#jsonTask("connection-verification", {
+      challenge,
+      responseContract: { ready: true, challenge: "copy the supplied challenge exactly" },
+    });
+    if (result?.ready !== true || result.challenge !== challenge) {
+      throw new Error(`CLI model ${this.id} failed the verification challenge`);
+    }
     return { latencyMs: Date.now() - startedAt };
   }
 

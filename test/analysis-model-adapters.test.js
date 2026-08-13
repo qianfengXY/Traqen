@@ -14,12 +14,13 @@ function cliSpawn(result, calls) {
     child.stderr = new PassThrough();
     child.kill = () => { child.killed = true; };
     queueMicrotask(() => {
-      if (result === null) return;
-      if (result.stdout) child.stdout.write(result.stdout);
-      if (result.stderr) child.stderr.write(result.stderr);
+      const resolved = typeof result === "function" ? result({ executable, args, options }) : result;
+      if (resolved === null) return;
+      if (resolved.stdout) child.stdout.write(resolved.stdout);
+      if (resolved.stderr) child.stderr.write(resolved.stderr);
       child.stdout.end();
       child.stderr.end();
-      child.emit("close", result.code ?? 0);
+      child.emit("close", resolved.code ?? 0);
     });
     return child;
   };
@@ -54,11 +55,26 @@ test("allowlisted CLI models enforce timeout and output bounds", async () => {
 
 test("allowlisted CLI verification exercises authenticated model execution instead of only --version", async () => {
   const calls = [];
-  const adapter = new AllowlistedCliModelAdapter({ id: "CLI-VERIFY", cliAdapter: "CODEX", model: "gpt", spawnImpl: cliSpawn({ stdout: '{"ready":true}\n' }, calls) });
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CLI-VERIFY",
+    cliAdapter: "CODEX",
+    model: "gpt",
+    spawnImpl: cliSpawn(({ args }) => {
+      const request = JSON.parse(args.at(-1));
+      return { stdout: `${JSON.stringify({ ready: true, challenge: request.input.challenge })}\n` };
+    }, calls),
+  });
   await adapter.verify();
   assert.notDeepEqual(calls[0].args, ["--version"]);
   assert.equal(calls[0].args.includes("gpt"), true);
   assert.match(calls[0].args.at(-1), /connection-verification/);
+
+  const unauthenticated = new AllowlistedCliModelAdapter({
+    id: "CLI-NOT-AUTHENTICATED",
+    cliAdapter: "CODEX",
+    spawnImpl: cliSpawn({ stdout: '{}\n' }, []),
+  });
+  await assert.rejects(() => unauthenticated.verify(), /verification challenge/);
 });
 
 test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {

@@ -64,6 +64,9 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /getCurrentUnderstandingGraph/);
   assert.match(product, /staleWorkspaceResponse/);
   assert.match(product, /revisionRequestRef/);
+  assert.match(product, /staleWorkspaceRequestResponse\(requestContext, contextRef\.current, revisionRequestVersion, revisionRequestRef\.current\)/);
+  assert.match(product, /if \(draftResult\.value\)[\s\S]*else \{[\s\S]*setMainModel\(""\)/);
+  assert.match(product, /const workspace = activeWorkspace;[\s\S]*const requestContext = \{ \.\.\.contextRef\.current \};[\s\S]*staleWorkspaceResponse\(requestContext, contextRef\.current\)/);
   assert.match(product, /staleWorkspaceRequestResponse\(requestContext, contextRef\.current, requestVersion, revisionRequestRef\.current\)/);
   assert.match(product, /REFERENCE ONLY/);
   assert.match(product, /window\.setInterval/);
@@ -95,5 +98,6 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.doesNotMatch(surfaces, /for \(let pass = 0; pass < depth/);
   assert.doesNotMatch(surfaces, /slice\(0, 36\)/);
   assert.doesNotMatch(product, /local-workspace-analysis|local-workspace-store|analysis-model-client|workspace-analysis-run-client/);
+  assert.doesNotMatch(product, /secrets:\s*"HANDLE_ONLY"/);
   assert.doesNotMatch(product, /scanLocalWorkspaceFile|analyzeLocalWorkspaceRecords|ingestWorkspaceObservations|startWorkspaceAnalysisRun|webkitdirectory|showDirectoryPicker/);
 });

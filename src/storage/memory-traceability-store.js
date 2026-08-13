@@ -1266,7 +1266,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   }
 
   async applyWorkspaceModelReplacement(changes) {
-    if (!Array.isArray(changes) || changes.length === 0) throw new TypeError("model replacement changes are required");
+    if (!Array.isArray(changes)) throw new TypeError("model replacement changes must be an array");
+    if (changes.length === 0) return deepFreeze([]);
     const snapshots = [];
     for (const change of changes) {
       const draftKey = key(change.workspaceId, "WORKSPACE_CAPABILITY_DRAFT");

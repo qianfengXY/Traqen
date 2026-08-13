@@ -3014,7 +3014,8 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
   }
 
   async applyWorkspaceModelReplacement(changes) {
-    if (!Array.isArray(changes) || changes.length === 0) throw new TypeError("model replacement changes are required");
+    if (!Array.isArray(changes)) throw new TypeError("model replacement changes must be an array");
+    if (changes.length === 0) return deepFreeze([]);
     return this.#transaction(async () => {
       for (const workspaceId of [...new Set(changes.map(({ workspaceId }) => workspaceId))].sort()) {
         await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`workspace-model-replacement:${workspaceId}`]);
