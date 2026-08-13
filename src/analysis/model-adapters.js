@@ -4,6 +4,8 @@ import {
   normalizeCandidateBundle,
   normalizeWorkUnit,
 } from "../shared/candidate-bundle.js";
+import { contentId } from "../domain/canonical-json.js";
+import { createGlobalModelProfileRevision } from "../domain/workspace-execution-profile.js";
 
 const CLI_MODEL_ADAPTERS = Object.freeze({
   CODEX: { executable: "codex", args: (prompt, model) => ["exec", "--json", ...(model ? ["--model", model] : []), prompt] },
@@ -75,7 +77,7 @@ export class AllowlistedCliModelAdapter {
 
   async verify() {
     const startedAt = Date.now();
-    await this.#run(["--version"]);
+    await this.#jsonTask("connection-verification", { expectedResponse: { ready: true } });
     return { latencyMs: Date.now() - startedAt };
   }
 
@@ -892,11 +894,11 @@ export class OpenAICompatibleAnalysisModelAdapter {
 export class AnalysisModelRegistry {
   #profiles = new Map();
   #revisions = new Map();
-  #revisionSequence = 0;
   #clock;
   #fetchImpl;
   #profileStore;
   #activeProfileId = null;
+  #replacementPlans = new Map();
 
   constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
     if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
@@ -948,6 +950,9 @@ export class AnalysisModelRegistry {
       if (this.#revisions.has(value.currentRevisionId)) continue;
       this.#hydrateHistoricalRevision(value);
     }
+    for (const value of stored.replacementPlans ?? []) {
+      if (value?.id) this.#replacementPlans.set(value.id, structuredClone(value));
+    }
     if (stored.activeProfileId && this.#profiles.get(stored.activeProfileId)?.verifiedAt) this.#activeProfileId = stored.activeProfileId;
   }
 
@@ -974,16 +979,27 @@ export class AnalysisModelRegistry {
   }
 
   #newRevisionId(profile) {
-    let revisionId;
-    do {
-      this.#revisionSequence += 1;
-      revisionId = `MODEL-REVISION-${profile.id}-${Date.parse(profile.configuredAt) || 0}-${this.#revisionSequence}`;
-    } while (this.#revisions.has(revisionId));
-    return revisionId;
+    return createGlobalModelProfileRevision({
+      profileId: profile.id,
+      revision: profile.revision,
+      displayName: profile.displayName,
+      transport: profile.transport,
+      ...(profile.transport === "API" ? {
+        providerAdapter: "OPENAI_COMPATIBLE",
+        endpoint: profile.endpoint,
+        model: profile.model,
+        credentialHandleId: `MODEL-CREDENTIAL-${profile.id}`,
+      } : {
+        cliAdapter: profile.cliAdapter,
+        model: profile.model,
+        executablePath: profile.executablePath,
+      }),
+    }, this.#clock).id;
   }
 
   #publishRevision(profile, revisionId = null) {
     profile.currentRevisionId = revisionId ?? this.#newRevisionId(profile);
+    if (this.#revisions.has(profile.currentRevisionId)) throw new TypeError(`Model revision ${profile.currentRevisionId} already exists`);
     this.#profiles.set(profile.id, profile);
     this.#revisions.set(profile.currentRevisionId, { ...profile });
     return profile;
@@ -1015,6 +1031,7 @@ export class AnalysisModelRegistry {
       activeProfileId: this.#activeProfileId,
       profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
       revisions: [...this.#revisions.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
+      replacementPlans: [...this.#replacementPlans.values()].map((plan) => structuredClone(plan)),
     });
   }
 
@@ -1035,14 +1052,17 @@ export class AnalysisModelRegistry {
   configure(input) {
     if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
     const id = requiredString(input.id, "analysis model profile id");
+    if ([...this.#replacementPlans.values()].some((plan) => plan.status === "APPLYING" && [plan.sourceProfileId, plan.replacementProfileId].includes(id))) {
+      throw new TypeError(`Analysis model profile ${id} is locked by an applying replacement plan`);
+    }
     const existing = this.#profiles.get(id);
     const transport = String(input.transport ?? existing?.transport ?? "API").toUpperCase();
     if (transport === "CLI") {
       const timeoutMs = input.timeoutMs ?? 120_000;
       const adapter = new AllowlistedCliModelAdapter({ id, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
-      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: input.revision ?? (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey: null, adapter };
-      this.#publishRevision(profile, input.revisionId);
+      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey: null, adapter };
+      this.#publishRevision(profile);
       if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
       this.#persist();
       return this.#public(profile);
@@ -1060,8 +1080,8 @@ export class AnalysisModelRegistry {
     const stream = input.stream ?? false;
     const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
-    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: input.revision ?? (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
-    this.#publishRevision(profile, input.revisionId);
+    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
+    this.#publishRevision(profile);
     if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
     this.#persist();
     return this.#public(profile);
@@ -1087,12 +1107,13 @@ export class AnalysisModelRegistry {
     return this.#public(profile);
   }
 
-  remove(id) {
+  remove(id, { finalize = false } = {}) {
     const profileId = requiredString(id, "analysis model profile id");
     const profile = this.#profiles.get(profileId);
     if (!profile) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
     if (profile.source === "ENVIRONMENT") throw new TypeError(`Environment model profile ${profileId} cannot be deleted at runtime`);
-    profile.lifecycle = "RETIRING";
+    if (profile.lifecycle === "RETIRED") return this.#public(profile);
+    profile.lifecycle = profile.lifecycle === "RETIRING" && finalize ? "RETIRED" : "RETIRING";
     if (this.#activeProfileId === profileId) {
       this.#activeProfileId = this.list().find((candidate) => candidate.ready && candidate.lifecycle === "ACTIVE")?.id ?? null;
     }
@@ -1100,16 +1121,97 @@ export class AnalysisModelRegistry {
     return this.#public(profile);
   }
 
+  createReplacementPlan({ sourceProfileId, replacementProfileId, references = [], changes = [] }) {
+    sourceProfileId = requiredString(sourceProfileId, "sourceProfileId");
+    replacementProfileId = requiredString(replacementProfileId, "replacementProfileId");
+    const source = this.#profiles.get(sourceProfileId);
+    const replacement = this.#profiles.get(replacementProfileId);
+    if (!source || source.lifecycle !== "ACTIVE") throw new TypeError(`Source model ${sourceProfileId} must be ACTIVE`);
+    if (!replacement || replacement.lifecycle !== "ACTIVE" || !replacement.verifiedAt) throw new TypeError(`Replacement model ${replacementProfileId} must be READY and ACTIVE`);
+    if (sourceProfileId === replacementProfileId) throw new TypeError("Replacement model must differ from the source model");
+    const identity = {
+      sourceProfileId,
+      sourceRevisionId: source.currentRevisionId,
+      replacementProfileId,
+      replacementRevisionId: replacement.currentRevisionId,
+      changes: changes.map(({ workspaceId, expectedDraftVersion, expectedProfileVersion, draft, profile }) => ({ workspaceId, expectedDraftVersion, expectedProfileVersion, draftId: draft.id, profileId: profile.id })),
+    };
+    const plan = {
+      id: contentId("MODEL-REPLACEMENT-PLAN", identity),
+      ...identity,
+      version: 1,
+      status: "READY",
+      references: structuredClone(references),
+      changes: structuredClone(changes),
+      createdAt: this.#clock().toISOString(),
+      appliedAt: null,
+    };
+    const existing = this.#replacementPlans.get(plan.id);
+    if (existing) return structuredClone(existing);
+    this.#replacementPlans.set(plan.id, plan);
+    this.#persist();
+    return structuredClone(plan);
+  }
+
+  getReplacementPlan(planId) {
+    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
+    return plan ? structuredClone(plan) : null;
+  }
+
+  beginReplacementPlan(planId, expectedVersion) {
+    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
+    if (!plan) throw new TypeError(`Replacement plan ${planId} does not exist`);
+    if (plan.status !== "READY" || plan.version !== expectedVersion) throw new TypeError(`Replacement plan ${planId} version conflict`);
+    if (this.#profiles.get(plan.sourceProfileId)?.currentRevisionId !== plan.sourceRevisionId
+      || this.#profiles.get(plan.replacementProfileId)?.currentRevisionId !== plan.replacementRevisionId) {
+      throw new TypeError(`Replacement plan ${planId} is stale`);
+    }
+    plan.status = "APPLYING";
+    plan.version += 1;
+    this.#persist();
+    return structuredClone(plan);
+  }
+
+  abortReplacementPlan(planId) {
+    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
+    if (plan?.status === "APPLYING") {
+      plan.status = "READY";
+      plan.version += 1;
+      this.#persist();
+    }
+    return plan ? structuredClone(plan) : null;
+  }
+
+  completeReplacementPlan(planId) {
+    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
+    if (!plan || plan.status !== "APPLYING") throw new TypeError(`Replacement plan ${planId} is not applying`);
+    const source = this.#profiles.get(plan.sourceProfileId);
+    if (!source || source.currentRevisionId !== plan.sourceRevisionId) throw new TypeError(`Replacement plan ${planId} is stale`);
+    source.lifecycle = "RETIRING";
+    if (this.#activeProfileId === source.id) this.#activeProfileId = null;
+    plan.status = "APPLIED";
+    plan.version += 1;
+    plan.appliedAt = this.#clock().toISOString();
+    this.#persist();
+    return structuredClone(plan);
+  }
+
   async enrichWorkspaceCandidates(id, input, options = {}) {
-    const profile = this.#revisions.get(requiredString(id, "analysis model profile id")) ?? this.#profiles.get(id);
+    id = requiredString(id, "analysis model profile id");
+    const revision = this.#revisions.get(id);
+    const profile = revision ?? this.#profiles.get(id);
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!revision && profile.lifecycle !== "ACTIVE") throw new TypeError(`Analysis model profile ${id} is not active`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
     return profile.adapter.enrichWorkspaceCandidates(input, options);
   }
 
   async planWorkspaceAnalysis(id, input, options = {}) {
-    const profile = this.#revisions.get(requiredString(id, "analysis model profile id")) ?? this.#profiles.get(id);
+    id = requiredString(id, "analysis model profile id");
+    const revision = this.#revisions.get(id);
+    const profile = revision ?? this.#profiles.get(id);
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
+    if (!revision && profile.lifecycle !== "ACTIVE") throw new TypeError(`Analysis model profile ${id} is not active`);
     if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before analysis`);
     return profile.adapter.planWorkspaceAnalysis(input, options);
   }

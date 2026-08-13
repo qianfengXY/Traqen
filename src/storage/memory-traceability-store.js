@@ -1231,6 +1231,75 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     }
   }
 
+  async getUnderstandingHead(projectId, headKey) {
+    const head = this.#understandingHeads.get(key(projectId, headKey));
+    return deepFreeze({ version: head?.version ?? 0, recordId: head?.recordId ?? null });
+  }
+
+  async appendWorkspaceCapabilityBundle(projectId, { draft, expectedDraftVersion, policies = [] }) {
+    const items = [
+      { recordType: "WORKSPACE_CAPABILITY_DRAFT", headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: expectedDraftVersion, record: draft },
+      ...policies.map(({ record, expectedVersion }) => ({ recordType: "WORKSPACE_POLICY_REVISION", headKey: `WORKSPACE_POLICY_REVISION:${record.kind}`, expectedVersion, record })),
+    ];
+    const snapshots = items.map((item) => {
+      const headStorageKey = key(projectId, item.headKey);
+      const head = this.#understandingHeads.get(headStorageKey) ?? { version: 0, recordId: null };
+      if (head.version !== item.expectedVersion) throw new PersistenceConflictError(`${item.headKey} version conflict: expected ${item.expectedVersion}, current ${head.version}`);
+      return { ...item, headStorageKey, head };
+    });
+    for (const item of snapshots) this.#understandingHeads.set(item.headStorageKey, { version: item.expectedVersion + 1, recordId: item.record.id });
+    const inserted = [];
+    try {
+      for (const item of snapshots) {
+        await this.appendUnderstandingRecord(projectId, item.recordType, item.record);
+        inserted.push(key(projectId, `${item.recordType}\u0000${item.record.id}`));
+      }
+      return deepFreeze(structuredClone(draft));
+    } catch (error) {
+      for (const recordKey of inserted) this.#understandingRecords.delete(recordKey);
+      for (const item of snapshots) {
+        if (item.head.version === 0) this.#understandingHeads.delete(item.headStorageKey);
+        else this.#understandingHeads.set(item.headStorageKey, item.head);
+      }
+      throw error;
+    }
+  }
+
+  async applyWorkspaceModelReplacement(changes) {
+    if (!Array.isArray(changes) || changes.length === 0) throw new TypeError("model replacement changes are required");
+    const snapshots = [];
+    for (const change of changes) {
+      const draftKey = key(change.workspaceId, "WORKSPACE_CAPABILITY_DRAFT");
+      const profileKey = key(change.workspaceId, "WORKSPACE_EXECUTION_PROFILE");
+      const draftHead = this.#understandingHeads.get(draftKey) ?? { version: 0, recordId: null };
+      const profileHead = this.#understandingHeads.get(profileKey) ?? { version: 0, recordId: null };
+      if (draftHead.version !== change.expectedDraftVersion) throw new PersistenceConflictError(`WORKSPACE_CAPABILITY_DRAFT version conflict: expected ${change.expectedDraftVersion}, current ${draftHead.version}`);
+      if (profileHead.version !== change.expectedProfileVersion) throw new PersistenceConflictError(`WORKSPACE_EXECUTION_PROFILE version conflict: expected ${change.expectedProfileVersion}, current ${profileHead.version}`);
+      snapshots.push({ change, draftKey, profileKey, draftHead, profileHead });
+    }
+    for (const { change, draftKey, profileKey } of snapshots) {
+      this.#understandingHeads.set(draftKey, { version: change.expectedDraftVersion + 1, recordId: change.draft.id });
+      this.#understandingHeads.set(profileKey, { version: change.expectedProfileVersion + 1, recordId: change.profile.id });
+    }
+    const inserted = [];
+    try {
+      for (const { change } of snapshots) {
+        await this.appendUnderstandingRecord(change.workspaceId, "WORKSPACE_CAPABILITY_DRAFT", change.draft);
+        inserted.push(key(change.workspaceId, `WORKSPACE_CAPABILITY_DRAFT\u0000${change.draft.id}`));
+        await this.appendUnderstandingRecord(change.workspaceId, "WORKSPACE_EXECUTION_PROFILE", change.profile);
+        inserted.push(key(change.workspaceId, `WORKSPACE_EXECUTION_PROFILE\u0000${change.profile.id}`));
+      }
+      return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
+    } catch (error) {
+      for (const recordKey of inserted) this.#understandingRecords.delete(recordKey);
+      for (const { draftKey, profileKey, draftHead, profileHead } of snapshots) {
+        if (draftHead.version === 0) this.#understandingHeads.delete(draftKey); else this.#understandingHeads.set(draftKey, draftHead);
+        if (profileHead.version === 0) this.#understandingHeads.delete(profileKey); else this.#understandingHeads.set(profileKey, profileHead);
+      }
+      throw error;
+    }
+  }
+
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
     const records = [...this.#understandingRecords.entries()]
       .filter(([storageKey, record]) => storageKey.startsWith(key(projectId, "WORKSPACE_ANALYSIS_JOB\u0000"))

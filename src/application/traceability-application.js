@@ -651,6 +651,9 @@ export class TraceabilityApplication {
       providerAdapter: profile.providerAdapter ?? 'OPENAI_COMPATIBLE',
       endpoint: profile.endpoint,
       model: profile.model,
+      cliAdapter: profile.cliAdapter,
+      executablePath: profile.executablePath,
+      credentialHandleId: `MODEL-CREDENTIAL-${profile.id}`,
       readiness: profile.ready ? 'READY' : 'UNVERIFIED',
       lifecycle: profile.lifecycle ?? 'ACTIVE',
       configuredAt: profile.configuredAt,
@@ -672,7 +675,9 @@ export class TraceabilityApplication {
       providerAdapter: input.providerAdapter ?? "OPENAI_COMPATIBLE",
       credentialHandleId: input.credentialHandleId ?? `MODEL-CREDENTIAL-${profileId}`,
     }, this.#clock);
-    return this.configureAnalysisModelProfile({ ...input, id: profileId, revision: revision.revision, revisionId: revision.id });
+    const configured = this.configureAnalysisModelProfile({ ...input, id: profileId });
+    if (configured.revision !== revision.revision) throw new TypeError(`Model ${profileId} revision sequence is inconsistent`);
+    return configured;
   }
 
   verifyGlobalModelProfile(profileId) {
@@ -683,12 +688,41 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.modelUsage(profileId);
   }
 
+  async createGlobalModelReplacementPlan(profileId, input) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    const replacementProfileId = requireId(input?.replacementProfileId, "replacementProfileId");
+    const usage = await this.getGlobalModelUsage(profileId);
+    const changes = await this.#workspaceFoundation.prepareModelReplacement(profileId, replacementProfileId, this.#globalModelProfiles());
+    return this.#analysisModelRegistry.createReplacementPlan({
+      sourceProfileId: profileId,
+      replacementProfileId,
+      references: usage.references,
+      changes,
+    });
+  }
+
+  async applyGlobalModelReplacementPlan(profileId, planId, input) {
+    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    const plan = this.#analysisModelRegistry.getReplacementPlan(planId);
+    if (!plan || plan.sourceProfileId !== profileId) return null;
+    const applying = this.#analysisModelRegistry.beginReplacementPlan(planId, input?.expectedVersion);
+    try {
+      const applied = await this.#workspaceFoundation.applyModelReplacement(applying.changes);
+      const completed = this.#analysisModelRegistry.completeReplacementPlan(planId);
+      return Object.freeze({ plan: completed, workspaces: applied });
+    } catch (error) {
+      this.#analysisModelRegistry.abortReplacementPlan(planId);
+      throw error;
+    }
+  }
+
   async retireGlobalModelProfile(profileId) {
     const usage = await this.getGlobalModelUsage(profileId);
     if (usage.references.some(({ source }) => source !== 'ACTIVE_RUN')) {
       throw new TypeError(`Model ${profileId} still has current Workspace references; replace them before retirement`);
     }
-    return this.removeAnalysisModelProfile(profileId);
+    const current = this.#analysisModelRegistry?.list().find(({ id }) => id === profileId);
+    return this.removeAnalysisModelProfile(profileId, { finalize: current?.lifecycle === 'RETIRING' && usage.references.length === 0 });
   }
 
   async listWorkspaceProjectCapabilities(workspaceId) {
@@ -1765,9 +1799,9 @@ export class TraceabilityApplication {
     return this.#analysisModelRegistry.select(requireId(profileId, "analysisModelProfileId"));
   }
 
-  removeAnalysisModelProfile(profileId) {
+  removeAnalysisModelProfile(profileId, options = {}) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
-    return this.#analysisModelRegistry.remove(requireId(profileId, "analysisModelProfileId"));
+    return this.#analysisModelRegistry.remove(requireId(profileId, "analysisModelProfileId"), options);
   }
 
   async enrichWorkspaceCandidates(profileId, input, options = {}) {

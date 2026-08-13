@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
-import { AnalysisModelConnectionError } from "../src/analysis/index.js";
+import { AnalysisModelConnectionError, AnalysisModelRegistry } from "../src/analysis/index.js";
 import {
   createExecutionEvidenceBundle,
   createFactBundle,
@@ -420,6 +420,29 @@ test("analysis model connectivity failures use a distinct gateway error", async 
   const response = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" });
   assert.equal(response.status, 502);
   assert.equal((await response.json()).error.code, "ANALYSIS_MODEL_UNAVAILABLE");
+});
+
+test("global CLI model API cannot bypass the adapter executable allowlist", async (t) => {
+  const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
+  const rejected = await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "CLI-ESCAPE",
+    displayName: "Escaped CLI",
+    transport: "CLI",
+    cliAdapter: "CODEX",
+    executablePath: "/tmp/not-allowlisted",
+  });
+  assert.equal(rejected.response.status, 400);
+  assert.match(rejected.body.error.message, /allowlist/);
+
+  const accepted = await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "CLI-SAFE",
+    displayName: "Safe CLI",
+    transport: "CLI",
+    cliAdapter: "CODEX",
+    executablePath: "codex",
+  });
+  assert.equal(accepted.response.status, 201);
+  assert.equal(accepted.body.executablePath, "codex");
 });
 
 test("production API authentication protects every non-health route", async (t) => {

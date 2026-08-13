@@ -255,6 +255,18 @@ export class TraceabilityStore {
     throw new Error("appendUnderstandingRecordWithCas must be implemented");
   }
 
+  async getUnderstandingHead(_projectId, _headKey) {
+    throw new Error("getUnderstandingHead must be implemented");
+  }
+
+  async appendWorkspaceCapabilityBundle(_projectId, _bundle) {
+    throw new Error("appendWorkspaceCapabilityBundle must be implemented");
+  }
+
+  async applyWorkspaceModelReplacement(_changes) {
+    throw new Error("applyWorkspaceModelReplacement must be implemented");
+  }
+
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
     return this.appendUnderstandingRecord(projectId, "WORKSPACE_ANALYSIS_JOB", checkpoint);
   }

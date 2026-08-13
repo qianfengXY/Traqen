@@ -384,6 +384,28 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, await application.getGlobalModelUsage(decodePathSegment(globalModelUsageMatch[1])), id);
         return;
       }
+      const globalModelReplacementPlansMatch = /^\/v1\/global-models\/([^/]+)\/replacement-plans$/.exec(url.pathname);
+      if (request.method === "POST" && globalModelReplacementPlansMatch) {
+        requireJson(request);
+        const plan = await application.createGlobalModelReplacementPlan(
+          decodePathSegment(globalModelReplacementPlansMatch[1]),
+          await readJson(request, maxBodyBytes),
+        );
+        sendJson(response, 201, plan, id);
+        return;
+      }
+      const globalModelReplacementApplyMatch = /^\/v1\/global-models\/([^/]+)\/replacement-plans\/([^/]+)\/apply$/.exec(url.pathname);
+      if (request.method === "POST" && globalModelReplacementApplyMatch) {
+        requireJson(request);
+        const result = await application.applyGlobalModelReplacementPlan(
+          decodePathSegment(globalModelReplacementApplyMatch[1]),
+          decodePathSegment(globalModelReplacementApplyMatch[2]),
+          await readJson(request, maxBodyBytes),
+        );
+        if (!result) throw new HttpError(404, "MODEL_REPLACEMENT_PLAN_NOT_FOUND", "Model replacement plan was not found");
+        sendJson(response, 200, result, id);
+        return;
+      }
       const globalModelRetireMatch = /^\/v1\/global-models\/([^/]+)\/retire$/.exec(url.pathname);
       if (request.method === "POST" && globalModelRetireMatch) {
         sendJson(response, 200, await application.retireGlobalModelProfile(decodePathSegment(globalModelRetireMatch[1])), id);

@@ -146,11 +146,13 @@ export class WorkspaceProductFoundation {
     const kind = String(input.kind ?? '').toUpperCase();
     const prior = existing.find((entry) => entry.kind === kind && entry.normalizedName === normalizedName);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw new TypeError('expectedVersion is required');
-    if (input.expectedVersion !== (prior?.revision ?? 0)) throw new TypeError(`Project capability version conflict: expected ${input.expectedVersion}, current ${prior?.revision ?? 0}`);
+    const currentVersion = prior?.revision ?? 0;
+    const recreateAfterTombstone = prior?.deleted === true && input.expectedVersion === 0;
+    if (!recreateAfterTombstone && input.expectedVersion !== currentVersion) throw new TypeError(`Project capability version conflict: expected ${input.expectedVersion}, current ${currentVersion}`);
     const capability = createProjectCapabilityRevision({ ...input, workspaceId, kind, normalizedName, revision: (prior?.revision ?? 0) + 1 }, this.clock);
     return this.store.appendUnderstandingRecordWithCas(workspaceId, 'PROJECT_CAPABILITY_REVISION', capability, {
       headKey: `PROJECT_CAPABILITY_REVISION:${kind}:${normalizedName}`,
-      expectedVersion: input.expectedVersion,
+      expectedVersion: currentVersion,
     });
   }
 
@@ -176,8 +178,20 @@ export class WorkspaceProductFoundation {
 
   async getCapabilityDraft(workspaceId) {
     if (!await this.getWorkspace(workspaceId)) return null;
-    return [...await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT')]
+    const draft = [...await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT')]
       .sort((left, right) => right.revision - left.revision)[0] ?? null;
+    if (!draft) return null;
+    const policy = async (id, kind) => {
+      const record = id ? await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_POLICY_REVISION', id) : null;
+      if (!record || record.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
+      return structuredClone(record.content);
+    };
+    return Object.freeze({
+      ...draft,
+      dependencies: await policy(draft.dependencyPolicyRevisionId, 'DEPENDENCY'),
+      conventions: await policy(draft.conventionRevisionId, 'CONVENTION'),
+      securityPolicy: await policy(draft.securityPolicyRevisionId, 'SECURITY'),
+    });
   }
 
   async saveCapabilityDraft(workspaceId, input) {
@@ -190,12 +204,12 @@ export class WorkspaceProductFoundation {
       if (suppliedId) {
         const existing = await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_POLICY_REVISION', suppliedId);
         if (!existing || existing.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
-        return existing;
+        return { record: existing, expectedVersion: existing.revision - 1, isNew: false };
       }
       const records = (await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_POLICY_REVISION')).filter((record) => record.kind === kind);
       const revision = Math.max(0, ...records.map((record) => record.revision)) + 1;
       const record = createWorkspacePolicyRevision({ workspaceId, kind, revision, content: content ?? {} }, this.clock);
-      return this.store.appendUnderstandingRecordWithCas(workspaceId, 'WORKSPACE_POLICY_REVISION', record, { headKey: `WORKSPACE_POLICY_REVISION:${kind}`, expectedVersion: revision - 1 });
+      return { record, expectedVersion: revision - 1, isNew: true };
     };
     const [dependency, convention, security] = await Promise.all([
       policyRevision('DEPENDENCY', input.dependencies, input.dependencyPolicyRevisionId),
@@ -204,19 +218,33 @@ export class WorkspaceProductFoundation {
     ]);
     const draft = createWorkspaceCapabilityDraftRevision({
       ...input, workspaceId, revision: expectedVersion + 1,
-      dependencyPolicyRevisionId: dependency.id,
-      conventionRevisionId: convention.id,
-      securityPolicyRevisionId: security.id,
+      dependencyPolicyRevisionId: dependency.record.id,
+      conventionRevisionId: convention.record.id,
+      securityPolicyRevisionId: security.record.id,
     }, this.clock);
-    return this.store.appendUnderstandingRecordWithCas(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT', draft, {
-      headKey: 'WORKSPACE_CAPABILITY_DRAFT', expectedVersion,
+    return this.store.appendWorkspaceCapabilityBundle(workspaceId, {
+      draft,
+      expectedDraftVersion: expectedVersion,
+      policies: [dependency, convention, security].filter(({ isNew }) => isNew),
     });
   }
 
-  async effectiveCapabilityCatalog(workspaceId, disabledKeys = null) {
-    const projectCatalog = await this.listProjectCapabilities(workspaceId);
-    if (!projectCatalog) return null;
+  async effectiveCapabilityCatalog(workspaceId, disabledKeys = null, projectCapabilityRevisionIds = null) {
     const draft = await this.getCapabilityDraft(workspaceId);
+    const pinnedIds = projectCapabilityRevisionIds ?? draft?.projectCapabilityRevisionIds ?? null;
+    let projectCatalog;
+    if (pinnedIds) {
+      const records = await this.store.listUnderstandingRecords(workspaceId, 'PROJECT_CAPABILITY_REVISION');
+      const byId = new Map(records.map((entry) => [entry.id, entry]));
+      projectCatalog = pinnedIds.map((id) => {
+        const entry = byId.get(id);
+        if (!entry || entry.deleted) throw new TypeError(`Project capability revision ${id} is unavailable in this Workspace`);
+        return entry;
+      });
+    } else {
+      projectCatalog = await this.listProjectCapabilities(workspaceId);
+    }
+    if (!projectCatalog) return null;
     return resolveWorkspaceCapabilityCatalog({
       builtinCatalog: await this.listBuiltinCapabilities(),
       projectCatalog,
@@ -227,16 +255,82 @@ export class WorkspaceProductFoundation {
   async validateCapabilityDraft(workspaceId, modelProfiles) {
     const draft = await this.getCapabilityDraft(workspaceId);
     if (!draft) return null;
-    const catalog = await this.effectiveCapabilityCatalog(workspaceId, draft.disabledKeys);
+    const catalog = await this.effectiveCapabilityCatalog(workspaceId, draft.disabledKeys, draft.projectCapabilityRevisionIds);
     return Object.freeze({ draft, catalog, validation: validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective }) });
   }
 
   async activateCapabilityDraft(workspaceId, modelProfiles) {
     const result = await this.validateCapabilityDraft(workspaceId, modelProfiles);
     if (!result) return null;
-    const profile = activateWorkspaceCapabilityDraft({ draft: result.draft, modelProfiles, catalog: result.catalog, clock: this.clock });
-    await this.store.appendUnderstandingRecord(workspaceId, 'WORKSPACE_EXECUTION_PROFILE', profile);
+    const policyRevisions = await Promise.all([
+      ['DEPENDENCY', result.draft.dependencyPolicyRevisionId],
+      ['CONVENTION', result.draft.conventionRevisionId],
+      ['SECURITY', result.draft.securityPolicyRevisionId],
+    ].map(async ([kind, id]) => {
+      const record = await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_POLICY_REVISION', id);
+      if (!record || record.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
+      return record;
+    }));
+    const profile = activateWorkspaceCapabilityDraft({ draft: result.draft, modelProfiles, catalog: result.catalog, policyRevisions, clock: this.clock });
+    const head = await this.store.getUnderstandingHead(workspaceId, 'WORKSPACE_EXECUTION_PROFILE');
+    await this.store.appendUnderstandingRecordWithCas(workspaceId, 'WORKSPACE_EXECUTION_PROFILE', profile, {
+      headKey: 'WORKSPACE_EXECUTION_PROFILE', expectedVersion: head.version,
+    });
     return profile;
+  }
+
+  async prepareModelReplacement(sourceProfileId, replacementProfileId, modelProfiles) {
+    const replacement = modelProfiles.find((profile) => profile.profileId === replacementProfileId);
+    if (!replacement || replacement.readiness !== 'READY' || replacement.lifecycle !== 'ACTIVE') {
+      throw new TypeError(`Replacement model ${replacementProfileId} must be READY and ACTIVE`);
+    }
+    if (sourceProfileId === replacementProfileId) throw new TypeError('Replacement model must differ from the retiring model');
+    const changes = [];
+    for (const workspace of await this.listWorkspaces(null, { includeDeleted: false })) {
+      const draft = await this.getCapabilityDraft(workspace.id);
+      const activeProfile = (await this.listWorkspaceProfiles(workspace.id))?.[0] ?? null;
+      const draftSlots = draft ? [draft.mainAgentSlot, ...draft.childAgentSlots] : [];
+      const activeSlots = activeProfile ? [activeProfile.mainAgentSlot, ...(activeProfile.childAgentSlots ?? [])] : [];
+      if (![...draftSlots, ...activeSlots].some((slot) => slot?.modelProfileId === sourceProfileId)) continue;
+      if (!draft) throw new TypeError(`Workspace ${workspace.id} has an active model reference without a capability draft`);
+      const replaceSlot = (slot) => slot.modelProfileId === sourceProfileId ? { ...slot, modelProfileId: replacementProfileId } : slot;
+      const replacementDraft = createWorkspaceCapabilityDraftRevision({
+        ...draft,
+        id: undefined,
+        revision: draft.revision + 1,
+        mainAgentSlot: replaceSlot(draft.mainAgentSlot),
+        childAgentSlots: draft.childAgentSlots.map(replaceSlot),
+      }, this.clock);
+      const catalog = await this.effectiveCapabilityCatalog(workspace.id, replacementDraft.disabledKeys, replacementDraft.projectCapabilityRevisionIds);
+      const validation = validateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, effectiveCatalog: catalog.effective });
+      if (!validation.valid) throw new TypeError(`Workspace ${workspace.id} replacement is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(', ')}`);
+      const policyRevisions = await Promise.all([
+        ['DEPENDENCY', replacementDraft.dependencyPolicyRevisionId],
+        ['CONVENTION', replacementDraft.conventionRevisionId],
+        ['SECURITY', replacementDraft.securityPolicyRevisionId],
+      ].map(async ([kind, id]) => {
+        const record = await this.store.getUnderstandingRecord(workspace.id, 'WORKSPACE_POLICY_REVISION', id);
+        if (!record || record.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
+        return record;
+      }));
+      const profile = activateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, catalog, policyRevisions, clock: this.clock });
+      const profileHead = await this.store.getUnderstandingHead(workspace.id, 'WORKSPACE_EXECUTION_PROFILE');
+      changes.push(Object.freeze({
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        expectedDraftVersion: draft.revision,
+        expectedProfileVersion: profileHead.version,
+        priorDraftId: draft.id,
+        priorProfileId: activeProfile?.id ?? null,
+        draft: replacementDraft,
+        profile,
+      }));
+    }
+    return Object.freeze(changes);
+  }
+
+  async applyModelReplacement(changes) {
+    return this.store.applyWorkspaceModelReplacement(changes);
   }
 
   async modelUsage(profileId) {
@@ -250,7 +344,15 @@ export class WorkspaceProductFoundation {
       for (const slot of (activeProfile ? [activeProfile.mainAgentSlot, ...(activeProfile.childAgentSlots ?? [])] : []).filter(Boolean)) {
         if (slot.modelProfileId === profileId) references.push({ workspaceId: workspace.id, workspaceName: workspace.name, source: 'ACTIVE_PROFILE_HEAD', slotId: slot.id, profileRevisionId: activeProfile.id });
       }
-      for (const run of await this.store.listUnderstandingRecords(workspace.id, 'WORKSPACE_ANALYSIS_JOB')) {
+      const latestRuns = new Map();
+      for (const checkpoint of await this.store.listUnderstandingRecords(workspace.id, 'WORKSPACE_ANALYSIS_JOB')) {
+        const run = checkpoint.state ?? checkpoint;
+        const runId = checkpoint.jobId ?? run.id;
+        const sequence = Number(checkpoint.checkpointSequence ?? run.version ?? 0);
+        const prior = latestRuns.get(runId);
+        if (!prior || sequence > prior.sequence) latestRuns.set(runId, { run, sequence });
+      }
+      for (const { run } of latestRuns.values()) {
         if (!['RUNNING', 'PAUSED'].includes(run.status)) continue;
         const pinned = await this.store.getUnderstandingRecord(workspace.id, 'WORKSPACE_EXECUTION_PROFILE', run.workspaceExecutionProfileRevisionId);
         for (const slot of (pinned ? [pinned.mainAgentSlot, ...(pinned.childAgentSlots ?? [])] : []).filter(Boolean)) {

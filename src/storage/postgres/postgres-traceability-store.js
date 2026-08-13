@@ -2968,6 +2968,94 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async getUnderstandingHead(projectId, headKey) {
+    requireId(projectId, "projectId");
+    requireId(headKey, "headKey");
+    const result = await this.#database.query(
+      `SELECT version, record_id FROM workspace_capability_head WHERE project_id = $1 AND head_key = $2`,
+      [projectId, headKey],
+    );
+    return deepFreeze({ version: Number(result.rows[0]?.version ?? 0), recordId: result.rows[0]?.record_id ?? null });
+  }
+
+  async appendWorkspaceCapabilityBundle(projectId, { draft, expectedDraftVersion, policies = [] }) {
+    requireId(projectId, "projectId");
+    const items = [
+      { recordType: "WORKSPACE_CAPABILITY_DRAFT", headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: expectedDraftVersion, record: draft },
+      ...policies.map(({ record, expectedVersion }) => ({ recordType: "WORKSPACE_POLICY_REVISION", headKey: `WORKSPACE_POLICY_REVISION:${record.kind}`, expectedVersion, record })),
+    ];
+    return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`workspace-capability-bundle:${projectId}`]);
+      for (const item of items) {
+        await this.#database.query(
+          `INSERT INTO workspace_capability_head (project_id, head_key, version, record_id)
+           VALUES ($1, $2, 0, NULL) ON CONFLICT (project_id, head_key) DO NOTHING`,
+          [projectId, item.headKey],
+        );
+        const advanced = await this.#database.query(
+          `UPDATE workspace_capability_head SET version = version + 1, record_id = $4
+           WHERE project_id = $1 AND head_key = $2 AND version = $3 RETURNING version`,
+          [projectId, item.headKey, item.expectedVersion, item.record.id],
+        );
+        if (advanced.rows.length !== 1) {
+          const current = await this.#database.query(`SELECT version FROM workspace_capability_head WHERE project_id = $1 AND head_key = $2`, [projectId, item.headKey]);
+          throw new PersistenceConflictError(`${item.headKey} version conflict: expected ${item.expectedVersion}, current ${current.rows[0]?.version ?? 0}`);
+        }
+        const createdAt = item.record.createdAt ?? new Date().toISOString();
+        await this.#database.query(
+          `INSERT INTO understanding_record (
+             project_id, record_type, id, snapshot_manifest_id, analysis_run_id, status, record_payload, created_at
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+          [projectId, item.recordType, item.record.id, item.record.snapshotManifestId ?? null, item.record.analysisRunId ?? null, item.record.status ?? null, JSON.stringify(item.record), createdAt],
+        );
+      }
+      return deepFreeze(structuredClone(draft));
+    });
+  }
+
+  async applyWorkspaceModelReplacement(changes) {
+    if (!Array.isArray(changes) || changes.length === 0) throw new TypeError("model replacement changes are required");
+    return this.#transaction(async () => {
+      for (const workspaceId of [...new Set(changes.map(({ workspaceId }) => workspaceId))].sort()) {
+        await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`workspace-model-replacement:${workspaceId}`]);
+      }
+      for (const change of changes) {
+        for (const [headKey, expectedVersion, record] of [
+          ["WORKSPACE_CAPABILITY_DRAFT", change.expectedDraftVersion, change.draft],
+          ["WORKSPACE_EXECUTION_PROFILE", change.expectedProfileVersion, change.profile],
+        ]) {
+          await this.#database.query(
+            `INSERT INTO workspace_capability_head (project_id, head_key, version, record_id)
+             VALUES ($1, $2, 0, NULL) ON CONFLICT (project_id, head_key) DO NOTHING`,
+            [change.workspaceId, headKey],
+          );
+          const advanced = await this.#database.query(
+            `UPDATE workspace_capability_head SET version = version + 1, record_id = $4
+             WHERE project_id = $1 AND head_key = $2 AND version = $3 RETURNING version`,
+            [change.workspaceId, headKey, expectedVersion, record.id],
+          );
+          if (advanced.rows.length !== 1) {
+            const current = await this.#database.query(
+              `SELECT version FROM workspace_capability_head WHERE project_id = $1 AND head_key = $2`,
+              [change.workspaceId, headKey],
+            );
+            throw new PersistenceConflictError(`${headKey} version conflict: expected ${expectedVersion}, current ${current.rows[0]?.version ?? 0}`);
+          }
+        }
+        for (const [recordType, record] of [["WORKSPACE_CAPABILITY_DRAFT", change.draft], ["WORKSPACE_EXECUTION_PROFILE", change.profile]]) {
+          const createdAt = record.createdAt ?? new Date().toISOString();
+          await this.#database.query(
+            `INSERT INTO understanding_record (
+               project_id, record_type, id, snapshot_manifest_id, analysis_run_id, status, record_payload, created_at
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+            [change.workspaceId, recordType, record.id, record.snapshotManifestId ?? null, record.analysisRunId ?? null, record.status ?? null, JSON.stringify(record), createdAt],
+          );
+        }
+      }
+      return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
+    });
+  }
+
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
     requireId(projectId, "projectId");
     requireId(checkpoint?.jobId, "checkpoint.jobId");

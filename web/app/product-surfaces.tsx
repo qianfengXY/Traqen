@@ -2189,6 +2189,7 @@ export function GlobalModelLibrary({
   onCreate,
   onVerify,
   onInspectUsage,
+  onReplace,
   onRetire,
 }: {
   t: T;
@@ -2197,6 +2198,7 @@ export function GlobalModelLibrary({
   onCreate: (input: Record<string, unknown>) => void;
   onVerify: (profileId: string) => void;
   onInspectUsage: (profileId: string) => void;
+  onReplace: (profileId: string, replacementProfileId: string) => void;
   onRetire: (profileId: string) => void;
 }) {
   const [transport, setTransport] = useState<"API" | "CLI">("API");
@@ -2206,6 +2208,7 @@ export function GlobalModelLibrary({
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [cliAdapter, setCliAdapter] = useState("CODEX");
+  const [replacementBySource, setReplacementBySource] = useState<Record<string, string>>({});
   const submit = () => {
     onCreate(
       transport === "API"
@@ -2278,6 +2281,24 @@ export function GlobalModelLibrary({
                   <button className="button" disabled={working} onClick={() => onInspectUsage(item.profileId)}>
                     {t("使用影响", "Usage impact")}
                   </button>
+                  <select
+                    aria-label={t(`替换 ${item.displayName}`, `Replacement for ${item.displayName}`)}
+                    value={replacementBySource[item.profileId] ?? ""}
+                    disabled={working || item.lifecycle !== "ACTIVE"}
+                    onChange={(event) => setReplacementBySource((current) => ({ ...current, [item.profileId]: event.currentTarget.value }))}
+                  >
+                    <option value="">{t("选择替代模型", "Select replacement")}</option>
+                    {models.filter((candidate) => candidate.profileId !== item.profileId && candidate.readiness === "READY" && candidate.lifecycle === "ACTIVE").map((candidate) => (
+                      <option key={candidate.profileId} value={candidate.profileId}>{candidate.displayName}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="button"
+                    disabled={working || item.lifecycle !== "ACTIVE" || !replacementBySource[item.profileId]}
+                    onClick={() => onReplace(item.profileId, replacementBySource[item.profileId])}
+                  >
+                    {t("全部 Workspace 原子替换", "Replace all Workspaces")}
+                  </button>
                   <button className="button" disabled={working || item.lifecycle !== "ACTIVE"} onClick={() => onRetire(item.profileId)}>
                     {t("退休", "Retire")}
                   </button>
@@ -2292,6 +2313,12 @@ export function GlobalModelLibrary({
                 </p>
               )}
             </div>
+            <p className="settings-note">
+              {t(
+                "模型替换不提供 Workspace 子集选择：服务端固定全部受影响 Workspace 版本，任一冲突都会整体回滚；活动 Run 保持旧 Revision。",
+                "Replacement has no partial-Workspace mode. The server pins every affected Workspace version and rolls back all changes on any conflict; active Runs keep the old revision.",
+              )}
+            </p>
           </article>
         </div>
         <aside>

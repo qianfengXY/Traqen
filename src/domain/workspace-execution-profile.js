@@ -10,7 +10,7 @@ const cliExecutables = new Map([["CODEX", "codex"], ["CLAUDE", "claude"], ["GEMI
 function assertSecretFree(value, fieldName) {
   if (!value || typeof value !== "object") return;
   for (const [key, nested] of Object.entries(value)) {
-    if (/(?:secret|password|api[_-]?key|access[_-]?token|credential[_-]?value)/i.test(key)) {
+    if (/(?:secret|password|api[_-]?key|access[_-]?token|credential[_-]?value|authorization|proxy[_-]?authorization|cookie|private[_-]?key|client[_-]?secret)/i.test(key)) {
       throw new TypeError(`${fieldName} cannot contain credential material`);
     }
     assertSecretFree(nested, `${fieldName}.${key}`);
@@ -187,6 +187,7 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
   const models = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
   const effectiveKeys = new Set(effectiveCatalog.filter((entry) => entry.effective !== false && entry.disabled !== true).map(typedKey));
   const enabledChildren = draft.childAgentSlots.filter(({ enabled }) => enabled);
+  if (!draft.mainAgentSlot.enabled) errors.push({ field: "mainAgentSlot.enabled", code: "MAIN_REQUIRED", message: "The Main Agent slot must be enabled" });
   if (enabledChildren.length < 2) errors.push({ field: "childAgentSlots", code: "MINIMUM_CHILDREN", message: "At least two enabled Child Agent slots are required" });
   const slots = [draft.mainAgentSlot, ...draft.childAgentSlots];
   for (const [index, slot] of slots.entries()) {
@@ -205,7 +206,7 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
   return deepFreeze({ valid: errors.length === 0, errors });
 }
 
-export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], catalog, clock = () => new Date() }) {
+export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], catalog, policyRevisions = [], clock = () => new Date() }) {
   const validation = validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective ?? catalog.entries ?? catalog });
   if (!validation.valid) throw new TypeError(`Workspace capability draft is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
   const modelById = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
@@ -222,10 +223,11 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
     draftRevision: draft.revision,
     mainAgentSlot: materializeSlot(draft.mainAgentSlot),
     childAgentSlots: draft.childAgentSlots.filter(({ enabled }) => enabled).map(materializeSlot),
-    catalogProvenance: (catalog.effective ?? []).map(({ id, kind, normalizedName, source }) => ({ id, kind, normalizedName, source })),
+    catalogProvenance: (catalog.effective ?? []).map(({ id, kind, normalizedName, source, contentDigest }) => ({ id, kind, normalizedName, source, contentDigest: contentDigest ?? null })),
     dependencyPolicyRevisionId: draft.dependencyPolicyRevisionId,
     conventionRevisionId: draft.conventionRevisionId,
     securityPolicyRevisionId: draft.securityPolicyRevisionId,
+    policyProvenance: policyRevisions.map(({ id, kind, revision, contentDigest }) => ({ id, kind, revision, contentDigest })),
   };
   const legacyRole = (slot) => ({
     ...(slot.role === "CHILD" ? { id: slot.id, independenceGroup: slot.independenceGroup } : {}),
@@ -233,6 +235,25 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
     skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName),
     mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName),
   });
+  const usedModels = new Map();
+  for (const slot of [identity.mainAgentSlot, ...identity.childAgentSlots]) {
+    const model = modelById.get(slot.modelProfileId);
+    usedModels.set(model.id, model);
+  }
+  const modelEntries = [...usedModels.values()].map((model) => ({
+    logicalName: model.id,
+    kind: "MODEL",
+    manifest: {
+      profileId: model.profileId ?? model.id,
+      transport: model.transport ?? null,
+      providerAdapter: model.providerAdapter ?? null,
+      endpoint: model.endpoint ?? null,
+      model: model.model ?? null,
+      cliAdapter: model.cliAdapter ?? null,
+    },
+    sourceTemplateId: null,
+    credentialHandleIds: model.credentialHandleId ? [model.credentialHandleId] : [],
+  }));
   return deepFreeze({
     id: contentId("WORKSPACE-EXECUTION-PROFILE", identity),
     ...identity,
@@ -240,13 +261,13 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
     configVersion: draft.revision,
     mainAgent: legacyRole(identity.mainAgentSlot),
     childSlots: identity.childAgentSlots.map(legacyRole),
-    entries: (catalog.effective ?? []).map((entry) => ({
+    entries: [...modelEntries, ...(catalog.effective ?? []).map((entry) => ({
       logicalName: entry.normalizedName,
       kind: entry.kind,
       manifest: structuredClone(entry.manifest ?? {}),
       sourceTemplateId: entry.source === "BUILTIN" ? entry.id : null,
       credentialHandleIds: [...(entry.credentialHandleIds ?? [])],
-    })),
+    }))].sort((left, right) => left.kind.localeCompare(right.kind) || left.logicalName.localeCompare(right.logicalName)),
     dependencies: { revisionId: draft.dependencyPolicyRevisionId },
     conventions: { revisionId: draft.conventionRevisionId },
     policies: { securityPolicyRevisionId: draft.securityPolicyRevisionId },
@@ -390,16 +411,22 @@ export function issueScopedSecretGrants(profile, { analysisRunId, expiresAt }) {
     { slotId: "MAIN", role: profile.mainAgent },
     ...profile.childSlots.map((role) => ({ slotId: role.id, role })),
   ];
-  const byName = new Map(profile.entries.map((entry) => [entry.logicalName, entry]));
+  const byKey = new Map(profile.entries.map((entry) => [`${entry.kind}\u0000${entry.logicalName}`, entry]));
   for (const { slotId, role } of owners) {
-    for (const name of [role.model, ...role.skillNames, ...role.mcpNames]) {
-      for (const credentialHandleId of byName.get(name)?.credentialHandleIds ?? []) {
+    const capabilities = [
+      { kind: "MODEL", name: role.model },
+      ...role.skillNames.map((name) => ({ kind: "SKILL", name })),
+      ...role.mcpNames.map((name) => ({ kind: "MCP", name })),
+    ];
+    for (const { kind, name } of capabilities) {
+      for (const credentialHandleId of byKey.get(`${kind}\u0000${name}`)?.credentialHandleIds ?? []) {
         grants.push({
-          id: contentId("SECRET-GRANT", { profileId: profile.id, analysisRunId, slotId, name, credentialHandleId }),
+          id: contentId("SECRET-GRANT", { profileId: profile.id, analysisRunId, slotId, kind, name, credentialHandleId }),
           workspaceId: profile.workspaceId,
           profileId: profile.id,
           analysisRunId,
           slotId,
+          capabilityKind: kind,
           capabilityName: name,
           credentialHandleId,
           expiresAt,

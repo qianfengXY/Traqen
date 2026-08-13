@@ -11,6 +11,7 @@ import {
   createWorkspaceCapabilityConfig,
   createWorkspaceCapabilityDraftRevision,
   fanOutAnalysisBatch,
+  issueScopedSecretGrants,
   openAnalysisBatchBarrier,
   activateWorkspaceCapabilityDraft,
   resolveWorkspaceCapabilityCatalog,
@@ -121,15 +122,47 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
   assert.equal(profile.mainAgentSlot.modelProfileRevisionId, model.id);
   assert.equal(profile.mainAgent.model, model.id, "runtime compatibility fields also pin the immutable model revision");
   assert.equal(profile.childSlots[0].model, model.id);
+  assert.deepEqual(profile.entries.filter(({ kind }) => kind === "MODEL").map(({ logicalName }) => logicalName), [model.id]);
   assert.throws(() => createGlobalModelProfileRevision({ profileId: "CLI-1", transport: "CLI", cliAdapter: "CODEX", executablePath: "/tmp/codex" }, clock), /allowlist/);
   assert.throws(() => activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 2, childAgentSlots: [draft.childAgentSlots[0]] }, clock),
     modelProfiles: [model], catalog, clock,
   }), /MINIMUM_CHILDREN/);
+  assert.throws(() => activateWorkspaceCapabilityDraft({
+    draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 3, mainAgentSlot: { ...draft.mainAgentSlot, enabled: false } }, clock),
+    modelProfiles: [model], catalog, clock,
+  }), /MAIN_REQUIRED/);
+});
+
+test("F006 rejects plaintext Authorization material and keeps secret grants typed", () => {
+  assert.throws(() => createProjectCapabilityRevision({
+    workspaceId: "W1",
+    kind: "MCP",
+    normalizedName: "shared",
+    manifest: { headers: { Authorization: "Bearer plaintext-secret" } },
+  }, clock), /credential material/);
+
+  const profile = {
+    id: "PROFILE-1",
+    workspaceId: "W1",
+    mainAgent: { model: "MODEL-REV-1", skillNames: ["shared"], mcpNames: ["shared"] },
+    childSlots: [],
+    entries: [
+      { kind: "MODEL", logicalName: "MODEL-REV-1", credentialHandleIds: ["MODEL-HANDLE"] },
+      { kind: "SKILL", logicalName: "shared", credentialHandleIds: ["SKILL-HANDLE"] },
+      { kind: "MCP", logicalName: "shared", credentialHandleIds: ["MCP-HANDLE"] },
+    ],
+  };
+  const grants = issueScopedSecretGrants(profile, { analysisRunId: "RUN-1", expiresAt: "2026-08-14T00:00:00.000Z" });
+  assert.deepEqual(grants.map(({ capabilityKind, capabilityName, credentialHandleId }) => ({ capabilityKind, capabilityName, credentialHandleId })), [
+    { capabilityKind: "MCP", capabilityName: "shared", credentialHandleId: "MCP-HANDLE" },
+    { capabilityKind: "MODEL", capabilityName: "MODEL-REV-1", credentialHandleId: "MODEL-HANDLE" },
+    { capabilityKind: "SKILL", capabilityName: "shared", credentialHandleId: "SKILL-HANDLE" },
+  ]);
 });
 
 test("F006 service persists invalid drafts, enforces CAS, and restores project catalog state", async () => {
-  const { service } = await foundation();
+  const { store, service } = await foundation();
   await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "source", revision: 1, manifest: { origin: "builtin" } });
   await service.registerCapabilityTemplate({ kind: "MCP", logicalName: "source", revision: 1, manifest: { origin: "builtin-mcp" } });
   const project = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { origin: "project" } });
@@ -170,6 +203,107 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
     service.saveCapabilityDraft("W1", { expectedVersion: 2, mainAgentSlot: {}, childAgentSlots: [] }),
   ]);
   assert.deepEqual(concurrent.map(({ status }) => status).sort(), ["fulfilled", "rejected"]);
+  const policies = await store.listUnderstandingRecords("W1", "WORKSPACE_POLICY_REVISION");
+  assert.deepEqual(Object.fromEntries(["DEPENDENCY", "CONVENTION", "SECURITY"].map((kind) => [kind, policies.filter((record) => record.kind === kind).length])), {
+    DEPENDENCY: 3,
+    CONVENTION: 3,
+    SECURITY: 3,
+  }, "a losing draft CAS must not leave orphan policy revisions");
+});
+
+test("F006 restores policy content, honors pinned project revisions, and permits explicit recreate after tombstone", async () => {
+  const { service } = await foundation();
+  const first = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { marker: "REV1" } });
+  await service.saveCapabilityDraft("W1", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-1", skillGrants: [{ kind: "SKILL", normalizedName: "source" }] },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" },
+      { id: "C2", modelProfileId: "MODEL-1", independenceGroup: "I2" },
+    ],
+    projectCapabilityRevisionIds: [first.id],
+    disabledKeys: [],
+    dependencies: { notes: "dependency-v1" },
+    conventions: { notes: "convention-v1" },
+    securityPolicy: { notes: "security-v1" },
+  });
+  await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 1, manifest: { marker: "REV2" } });
+  const restored = await service.getCapabilityDraft("W1");
+  assert.equal(restored.dependencies.notes, "dependency-v1");
+  assert.equal(restored.conventions.notes, "convention-v1");
+  assert.equal(restored.securityPolicy.notes, "security-v1");
+  const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "m" }];
+  const activated = await service.activateCapabilityDraft("W1", modelProfiles);
+  assert.equal(activated.entries.find(({ kind }) => kind === "SKILL").manifest.marker, "REV1");
+  assert.deepEqual(activated.policyProvenance.map(({ kind }) => kind).sort(), ["CONVENTION", "DEPENDENCY", "SECURITY"]);
+  assert.equal(activated.policyProvenance.every(({ id, contentDigest }) => id && contentDigest), true);
+
+  await service.deleteProjectCapability("W1", "SKILL", "source", 2);
+  const recreated = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { marker: "RECREATED" } });
+  assert.equal(recreated.revision, 4);
+  assert.equal(recreated.deleted, undefined);
+});
+
+test("F006 model usage reads the latest durable job checkpoint state", async () => {
+  const { store, service } = await foundation();
+  const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "m" }];
+  await service.saveCapabilityDraft("W1", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-1" },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" },
+      { id: "C2", modelProfileId: "MODEL-1", independenceGroup: "I2" },
+    ],
+    projectCapabilityRevisionIds: [], disabledKeys: [],
+  });
+  const profile = await service.activateCapabilityDraft("W1", modelProfiles);
+  await store.appendUnderstandingRecord("W1", "WORKSPACE_ANALYSIS_JOB", {
+    id: "CHECKPOINT-1", jobId: "RUN-1", checkpointSequence: 1,
+    state: { id: "RUN-1", status: "RUNNING", workspaceExecutionProfileRevisionId: profile.id },
+  });
+  const usage = await service.modelUsage("MODEL-1");
+  assert.equal(usage.references.some(({ source, runId }) => source === "ACTIVE_RUN" && runId === "RUN-1"), true);
+});
+
+test("F006 model replacement applies every Workspace atomically and rolls back on stale CAS", async () => {
+  const { store, service } = await foundation();
+  await store.appendProjectFoundation(createProjectFoundation({
+    organization: { id: "O", name: "Org" }, tenant: { id: "T", name: "Tenant" },
+    project: { id: "W2", name: "Workspace Two" }, principals: [],
+  }));
+  await service.recordWorkspaceCreated("W2", "USER-1");
+  const models = [
+    { id: "MODEL-REV-OLD", profileId: "MODEL-OLD", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "old" },
+    { id: "MODEL-REV-NEW", profileId: "MODEL-NEW", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "new" },
+  ];
+  for (const workspaceId of ["W1", "W2"]) {
+    await service.saveCapabilityDraft(workspaceId, {
+      expectedVersion: 0,
+      mainAgentSlot: { modelProfileId: "MODEL-OLD" },
+      childAgentSlots: [
+        { id: "C1", modelProfileId: "MODEL-OLD", independenceGroup: "I1" },
+        { id: "C2", modelProfileId: "MODEL-OLD", independenceGroup: "I2" },
+      ],
+      projectCapabilityRevisionIds: [], disabledKeys: [],
+    });
+    await service.activateCapabilityDraft(workspaceId, models);
+  }
+
+  const stalePlan = await service.prepareModelReplacement("MODEL-OLD", "MODEL-NEW", models);
+  await service.saveCapabilityDraft("W2", {
+    ...(await service.getCapabilityDraft("W2")),
+    expectedVersion: 1,
+  });
+  await assert.rejects(() => service.applyModelReplacement(stalePlan), /version conflict/);
+  assert.equal((await service.getCapabilityDraft("W1")).revision, 1, "stale apply must not mutate an earlier Workspace");
+
+  const freshPlan = await service.prepareModelReplacement("MODEL-OLD", "MODEL-NEW", models);
+  const applied = await service.applyModelReplacement(freshPlan);
+  assert.equal(applied.length, 2);
+  for (const workspaceId of ["W1", "W2"]) {
+    assert.equal((await service.getCapabilityDraft(workspaceId)).mainAgentSlot.modelProfileId, "MODEL-NEW");
+    assert.equal((await service.listWorkspaceProfiles(workspaceId))[0].mainAgentSlot.modelProfileRevisionId, "MODEL-REV-NEW");
+  }
 });
 
 test("every configured Child receives the same sealed batch and Main waits for the full terminal set", () => {

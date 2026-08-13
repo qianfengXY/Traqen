@@ -61,6 +61,9 @@ export type WorkspaceCapabilityDraft = {
   dependencyPolicyRevisionId: string;
   conventionRevisionId: string;
   securityPolicyRevisionId: string;
+  dependencies: Record<string, unknown>;
+  conventions: Record<string, unknown>;
+  securityPolicy: Record<string, unknown>;
   createdAt: string;
 };
 
@@ -168,6 +171,30 @@ export type GlobalModelUsage = {
 export async function getGlobalModelUsage(apiBase: string, apiToken: string, profileId: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/usage`, { method: "GET", headers: headers(apiToken) });
   return parseJson<GlobalModelUsage>(response);
+}
+
+export type ModelReplacementPlan = {
+  id: string;
+  version: number;
+  status: "READY" | "APPLYING" | "APPLIED";
+  sourceProfileId: string;
+  replacementProfileId: string;
+  references: GlobalModelUsage["references"];
+  changes: Array<{ workspaceId: string; workspaceName: string }>;
+};
+
+export async function createGlobalModelReplacementPlan(apiBase: string, apiToken: string, profileId: string, replacementProfileId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/replacement-plans`, {
+    method: "POST", headers: headers(apiToken, true), body: JSON.stringify({ replacementProfileId }),
+  });
+  return parseJson<ModelReplacementPlan>(response);
+}
+
+export async function applyGlobalModelReplacementPlan(apiBase: string, apiToken: string, profileId: string, planId: string, expectedVersion: number) {
+  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/replacement-plans/${encodeURIComponent(planId)}/apply`, {
+    method: "POST", headers: headers(apiToken, true), body: JSON.stringify({ expectedVersion }),
+  });
+  return parseJson<{ plan: ModelReplacementPlan; workspaces: Array<{ workspaceId: string }> }>(response);
 }
 
 export async function retireGlobalModel(apiBase: string, apiToken: string, profileId: string) {

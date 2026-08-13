@@ -52,6 +52,52 @@ test("allowlisted CLI models enforce timeout and output bounds", async () => {
   await assert.rejects(() => timed.verify(), /timed out/);
 });
 
+test("allowlisted CLI verification exercises authenticated model execution instead of only --version", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({ id: "CLI-VERIFY", cliAdapter: "CODEX", model: "gpt", spawnImpl: cliSpawn({ stdout: '{"ready":true}\n' }, calls) });
+  await adapter.verify();
+  assert.notDeepEqual(calls[0].args, ["--version"]);
+  assert.equal(calls[0].args.includes("gpt"), true);
+  assert.match(calls[0].args.at(-1), /connection-verification/);
+});
+
+test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {
+  const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
+  const first = registry.configure({ id: "M1", revisionId: "REV-SAME", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
+  await registry.verify("M1");
+  const pinned = registry.resolve(first.currentRevisionId);
+  const second = registry.configure({ id: "M1", revisionId: "REV-SAME", revision: 1, endpoint: "https://models.example/v1", model: "two", apiKey: "secret" });
+  assert.notEqual(second.currentRevisionId, first.currentRevisionId);
+  assert.equal(registry.resolve(first.currentRevisionId), pinned);
+  assert.equal(pinned.model, "one");
+});
+
+test("retiring profiles reject new direct analysis while pinned revision execution remains available", async () => {
+  const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
+  const profile = registry.configure({ id: "M1", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
+  await registry.verify("M1");
+  registry.remove("M1");
+  await assert.rejects(() => registry.planWorkspaceAnalysis("M1", {}), /not active/);
+  assert.ok(registry.resolve(profile.currentRevisionId));
+  assert.equal(registry.remove("M1", { finalize: true }).lifecycle, "RETIRED");
+  assert.ok(registry.resolve(profile.currentRevisionId), "retirement preserves the immutable pinned revision");
+});
+
+test("model replacement plans pin both model revisions before retiring the source", async () => {
+  const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
+  registry.configure({ id: "OLD", endpoint: "https://models.example/v1", model: "old", apiKey: "secret" });
+  registry.configure({ id: "NEW", endpoint: "https://models.example/v1", model: "new", apiKey: "secret" });
+  await registry.verify("OLD");
+  await registry.verify("NEW");
+  const plan = registry.createReplacementPlan({ sourceProfileId: "OLD", replacementProfileId: "NEW", references: [], changes: [] });
+  assert.equal(plan.status, "READY");
+  const applying = registry.beginReplacementPlan(plan.id, plan.version);
+  assert.equal(applying.status, "APPLYING");
+  const applied = registry.completeReplacementPlan(plan.id);
+  assert.equal(applied.status, "APPLIED");
+  assert.equal(registry.list().find(({ id }) => id === "OLD").lifecycle, "RETIRING");
+});
+
 function workspaceCandidateEnvelope(overrides = {}) {
   const workUnit = {
     schemaVersion: "1.0.0",

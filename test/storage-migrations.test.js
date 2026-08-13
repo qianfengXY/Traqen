@@ -378,6 +378,47 @@ test("PostgreSQL capability heads reject a stale expected version without append
   assert.deepEqual(await store.listUnderstandingRecords("PROJECT-001", "PROJECT_CAPABILITY_REVISION"), [first]);
 });
 
+test("PostgreSQL capability CAS is atomic under concurrent writers", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  const store = new PostgresTraceabilityStore(database);
+  const results = await Promise.allSettled([
+    store.appendUnderstandingRecordWithCas("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", { id: "DRAFT-CAS-A", revision: 1, createdAt: "2026-08-13T00:00:00.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 }),
+    store.appendUnderstandingRecordWithCas("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", { id: "DRAFT-CAS-B", revision: 1, createdAt: "2026-08-13T00:00:01.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 }),
+  ]);
+  assert.deepEqual(results.map(({ status }) => status).sort(), ["fulfilled", "rejected"]);
+  assert.equal((await store.listUnderstandingRecords("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).length, 1);
+});
+
+test("PostgreSQL model replacement rolls back every Workspace when one pinned head is stale", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await database.query("INSERT INTO project (id, tenant_id, name) VALUES ($1, $2, $3)", ["PROJECT-002", "TENANT-001", "Billing service"]);
+  const store = new PostgresTraceabilityStore(database);
+  for (const projectId of ["PROJECT-001", "PROJECT-002"]) {
+    await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_CAPABILITY_DRAFT", { id: `${projectId}-DRAFT-1`, revision: 1, createdAt: "2026-08-13T00:00:00.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 });
+    await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_EXECUTION_PROFILE", { id: `${projectId}-PROFILE-1`, createdAt: "2026-08-13T00:00:00.000Z" }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 0 });
+  }
+  const changes = ["PROJECT-001", "PROJECT-002"].map((workspaceId) => ({
+    workspaceId,
+    expectedDraftVersion: 1,
+    expectedProfileVersion: 1,
+    draft: { id: `${workspaceId}-DRAFT-REPLACED`, revision: 2, createdAt: "2026-08-13T00:01:00.000Z" },
+    profile: { id: `${workspaceId}-PROFILE-REPLACED`, createdAt: "2026-08-13T00:01:00.000Z" },
+  }));
+  await store.appendUnderstandingRecordWithCas("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT", { id: "PROJECT-002-DRAFT-2", revision: 2, createdAt: "2026-08-13T00:00:30.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 1 });
+  await assert.rejects(() => store.applyWorkspaceModelReplacement(changes), /version conflict/);
+  assert.equal(await store.getUnderstandingRecord("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", "PROJECT-001-DRAFT-REPLACED"), null);
+
+  changes[1].expectedDraftVersion = 2;
+  changes[1].draft.revision = 3;
+  await store.applyWorkspaceModelReplacement(changes);
+  assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2);
+  assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
+});
+
 test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {
   const database = await migratedDatabase();
   t.after(() => database.close());
