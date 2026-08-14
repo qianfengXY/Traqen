@@ -3116,6 +3116,57 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return this.#transaction(() => this.#applyWorkspaceModelReplacementChanges(changes));
   }
 
+  async ensureGlobalModelLifecycle(profileId) {
+    requireId(profileId, "globalModel.profileId");
+    return this.#transaction(async () => {
+      const now = new Date().toISOString();
+      await this.#database.query(
+        `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
+         VALUES ($1, 'ACTIVE', 1, $2)
+         ON CONFLICT (profile_id) DO NOTHING`,
+        [profileId, now],
+      );
+      const result = await this.#database.query(
+        `SELECT profile_id, lifecycle, version, updated_at
+         FROM global_model_lifecycle WHERE profile_id = $1`,
+        [profileId],
+      );
+      const row = result.rows[0];
+      return deepFreeze({ profileId: row.profile_id, lifecycle: row.lifecycle, version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString() });
+    });
+  }
+
+  async getGlobalModelLifecycle(profileId) {
+    requireId(profileId, "globalModel.profileId");
+    const result = await this.#database.query(
+      `SELECT profile_id, lifecycle, version, updated_at
+       FROM global_model_lifecycle WHERE profile_id = $1`,
+      [profileId],
+    );
+    const row = result.rows[0];
+    return row ? deepFreeze({ profileId: row.profile_id, lifecycle: row.lifecycle, version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString() }) : null;
+  }
+
+  async setGlobalModelLifecycle(profileId, lifecycle) {
+    requireId(profileId, "globalModel.profileId");
+    if (!["ACTIVE", "RETIRING", "RETIRED"].includes(lifecycle)) throw new TypeError("global model lifecycle is invalid");
+    return this.#transaction(async () => {
+      const now = new Date().toISOString();
+      const result = await this.#database.query(
+        `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
+         VALUES ($1, $2, 1, $3)
+         ON CONFLICT (profile_id) DO UPDATE
+           SET lifecycle = EXCLUDED.lifecycle,
+               version = global_model_lifecycle.version + 1,
+               updated_at = EXCLUDED.updated_at
+         RETURNING profile_id, lifecycle, version, updated_at`,
+        [profileId, lifecycle, now],
+      );
+      const row = result.rows[0];
+      return deepFreeze({ profileId: row.profile_id, lifecycle: row.lifecycle, version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString() });
+    });
+  }
+
   async createModelReplacementPlan(plan) {
     requireId(plan?.id, "modelReplacementPlan.id");
     await this.#database.query(
@@ -3204,11 +3255,21 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       if ((await this.#currentModelReplacementReferences(plan.sourceProfileId)).length > 0) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${planId} current source reference remained after apply`);
       }
+      const appliedAt = new Date().toISOString();
+      await this.#database.query(
+        `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
+         VALUES ($1, 'RETIRING', 1, $2)
+         ON CONFLICT (profile_id) DO UPDATE
+           SET lifecycle = 'RETIRING',
+               version = global_model_lifecycle.version + 1,
+               updated_at = EXCLUDED.updated_at`,
+        [plan.sourceProfileId, appliedAt],
+      );
       const applied = {
         ...plan,
         status: "APPLIED",
         version: expectedVersion + 2,
-        appliedAt: new Date().toISOString(),
+        appliedAt,
       };
       const updated = await this.#database.query(
         `UPDATE model_replacement_plan

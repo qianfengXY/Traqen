@@ -285,11 +285,25 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
  * draft: an editor may have saved a newer Draft which has not been activated.
  * Replacing the old active profile must leave that Draft untouched.
  */
-export function replaceWorkspaceExecutionProfileModel({ profile, sourceProfileId, replacementProfile, clock = () => new Date() }) {
+export function replaceWorkspaceExecutionProfileModel({
+  profile,
+  sourceProfileId,
+  replacementProfile,
+  replacementPlanId,
+  replacementPlanVersion,
+  clock = () => new Date(),
+}) {
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw new TypeError("Workspace execution profile must be an object");
   sourceProfileId = requireNonEmptyString(sourceProfileId, "sourceProfileId");
   const replacementId = requireNonEmptyString(replacementProfile?.id, "replacementProfile.id");
   const replacementProfileId = requireNonEmptyString(replacementProfile?.profileId ?? replacementProfile?.id, "replacementProfile.profileId");
+  const hasReplacementAuthority = replacementPlanId !== undefined && replacementPlanId !== null;
+  if (hasReplacementAuthority) {
+    replacementPlanId = requireNonEmptyString(replacementPlanId, "replacementPlanId");
+    if (!Number.isInteger(replacementPlanVersion) || replacementPlanVersion < 1) throw new TypeError("replacementPlanVersion must be a positive integer");
+  } else if (replacementPlanVersion !== undefined && replacementPlanVersion !== null) {
+    throw new TypeError("replacementPlanVersion requires replacementPlanId");
+  }
   const slots = [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])].filter(Boolean);
   const sourceSlots = slots.filter(({ modelProfileId }) => modelProfileId === sourceProfileId);
   if (sourceSlots.length === 0) throw new TypeError(`Workspace execution profile does not reference source model ${sourceProfileId}`);
@@ -326,8 +340,12 @@ export function replaceWorkspaceExecutionProfileModel({ profile, sourceProfileId
   ].sort((left, right) => left.kind.localeCompare(right.kind) || left.logicalName.localeCompare(right.logicalName));
   const identity = {
     workspaceId: profile.workspaceId,
-    draftRevisionId: profile.draftRevisionId,
-    draftRevision: profile.draftRevision,
+    draftRevisionId: null,
+    draftRevision: null,
+    replacementPlanId: replacementPlanId ?? null,
+    replacementPlanVersion: replacementPlanVersion ?? null,
+    replacesExecutionProfileRevisionId: hasReplacementAuthority ? profile.id : null,
+    replacedDraftRevisionId: hasReplacementAuthority ? profile.draftRevisionId ?? null : null,
     mainAgentSlot,
     childAgentSlots,
     catalogProvenance: profile.catalogProvenance ?? [],
@@ -346,6 +364,8 @@ export function replaceWorkspaceExecutionProfileModel({ profile, sourceProfileId
     ...structuredClone(profile),
     id: contentId("WORKSPACE-EXECUTION-PROFILE", identity),
     ...identity,
+    configId: replacementPlanId ?? profile.configId,
+    configVersion: replacementPlanVersion ?? profile.configVersion,
     mainAgent: legacyRole(mainAgentSlot),
     childSlots: childAgentSlots.map(legacyRole),
     entries,

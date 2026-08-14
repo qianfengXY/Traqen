@@ -331,6 +331,7 @@ export function createConfiguredApplication({
       runnerId: developmentUnderstanding?.runnerId ?? "TRAQEN-SERVER-RUNNER",
       publicationMetadata: developmentUnderstanding?.publicationMetadata ?? null,
       registerIssuedSecretGrants: (grants) => analysisModelRegistry.registerIssuedSecretGrants(grants),
+      revokeIssuedSecretGrants: ({ analysisRunId }) => analysisModelRegistry.revokeIssuedSecretGrants({ analysisRunId }),
     })
     : null;
   const application = new TraceabilityApplication({

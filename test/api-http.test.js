@@ -512,15 +512,20 @@ test("global model revisions require an expected revision and reject stale write
     method: "PUT", headers: { "content-type": "application/json" },
     body: JSON.stringify({ expectedRevision: created.body.revision, displayName: "Writer B", transport: "API", endpoint: "https://models.example/v1", model: "writer-b", apiKey: "" }),
   });
-  assert.equal(stale.status, 400, "a stale writer must not silently create a later revision");
+  assert.equal(stale.status, 409, "a stale writer must be reported as a concurrency conflict");
+  assert.equal((await stale.json()).error.code, "PERSISTENCE_CONFLICT");
   assert.equal((await (await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`)).json()).model, "writer-a");
 });
 
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
+  let durableStore;
   const registry = new AnalysisModelRegistry({
     fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
   });
-  const baseUrl = await startServer(t, { analysisModelRegistry: registry });
+  const baseUrl = await startServer(t, {
+    analysisModelRegistry: registry,
+    setup: ({ store }) => { durableStore = store; },
+  });
   for (const profileId of ["MODEL-OLD", "MODEL-NEW"]) {
     assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
       profileId,
@@ -576,6 +581,11 @@ test("global model replacement HTTP journey atomically advances every Workspace 
   assert.equal(usageAfter.filter(({ source }) => source !== "ACTIVE_RUN").length, 0, "replacement must leave zero current Workspace references");
   const models = (await (await fetch(`${baseUrl}/v1/global-models`)).json()).models;
   assert.equal(models.find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
+  assert.equal(
+    (await durableStore.getGlobalModelLifecycle("MODEL-OLD")).lifecycle,
+    "RETIRING",
+    "the same durable commit that applies every Workspace head must own the replacement lifecycle",
+  );
 });
 
 test("global model replacement refuses a plan after another Workspace starts using the source model", async (t) => {
@@ -663,6 +673,7 @@ test("global model replacement updates an old active profile without publishing 
   const oldDraft = await saveDraft(0, "MODEL-HEAD-OLD");
   assert.equal(oldDraft.status, 200);
   assert.equal((await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" })).status, 201);
+  const priorProfile = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/execution-profile-revisions`)).json()).profiles[0];
   const newerDraft = await saveDraft(1, "MODEL-HEAD-THIRD");
   assert.equal(newerDraft.status, 200, "the third-model draft deliberately remains inactive");
 
@@ -674,6 +685,10 @@ test("global model replacement updates an old active profile without publishing 
   const profiles = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/execution-profile-revisions`)).json()).profiles;
   assert.equal(draft.mainAgentSlot.modelProfileId, "MODEL-HEAD-THIRD", "the newer unactivated draft remains a draft");
   assert.equal(profiles[0].mainAgentSlot.modelProfileId, "MODEL-HEAD-NEW", "the active old profile alone advances to the replacement model");
+  assert.equal(profiles[0].draftRevisionId, null, "the derived execution profile must not claim the unrelated old draft as its source");
+  assert.equal(profiles[0].replacementPlanId, plan.body.id, "the derived execution profile must name the immutable replacement authority");
+  assert.equal(profiles[0].replacesExecutionProfileRevisionId, priorProfile.id, "the derived execution profile must identify the exact profile it replaced");
+  assert.equal(profiles[0].configId, plan.body.id, "the legacy config reference must resolve to the replacement authority, not the unrelated draft");
 });
 
 test("durable ModelReplacementPlan remains applicable after the model Registry loses its local Plan ledger", async () => {
@@ -694,7 +709,7 @@ test("durable ModelReplacementPlan remains applicable after the model Registry l
     actorId: "OWNER",
   });
   for (const profileId of ["MODEL-OLD", "MODEL-NEW"]) {
-    first.configureGlobalModelProfile({ profileId, displayName: profileId, transport: "API", endpoint: "https://models.example/v1", model: profileId.toLowerCase(), apiKey: `${profileId}-secret` });
+    await first.configureGlobalModelProfile({ profileId, displayName: profileId, transport: "API", endpoint: "https://models.example/v1", model: profileId.toLowerCase(), apiKey: `${profileId}-secret` });
     await first.verifyGlobalModelProfile(profileId);
   }
   await first.saveWorkspaceCapabilityDraft("W-PLAN-RESTART", {
@@ -721,7 +736,7 @@ test("durable ModelReplacementPlan remains applicable after the model Registry l
   const restarted = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: restartedRegistry });
   const applied = await restarted.applyGlobalModelReplacementPlan("MODEL-OLD", plan.id, { expectedVersion: plan.version });
   assert.equal(applied.plan.status, "APPLIED");
-  assert.equal(restarted.listGlobalModelProfiles().find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
+  assert.equal((await restarted.listGlobalModelProfiles()).find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
   assert.equal((await restarted.getWorkspaceCapabilityDraft("W-PLAN-RESTART")).mainAgentSlot.modelProfileId, "MODEL-NEW");
 });
 

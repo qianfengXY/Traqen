@@ -56,6 +56,7 @@ async function migratedDatabase() {
     "0020_workspace_capability_cas",
     "0021_workspace_policy_backfill",
     "0022_model_replacement_plan",
+    "0023_global_model_lifecycle",
   ]);
   return database;
 }
@@ -403,6 +404,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "analysis_run_checkpoint",
     "analysis_result",
     "workspace_capability_head",
+    "global_model_lifecycle",
     "source_slice_worker_credential_use",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
@@ -469,6 +471,7 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
   await assert.rejects(() => store.applyModelReplacementPlan(stalePlan.id, stalePlan.version), /current source reference set changed|version conflict/);
   assert.equal((await store.getModelReplacementPlan(stalePlan.id)).status, "READY", "a failed Workspace CAS must leave the durable Plan unapplied");
   assert.equal(await store.getUnderstandingRecord("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", "PROJECT-001-DRAFT-REPLACED"), null);
+  assert.equal(await store.getGlobalModelLifecycle("MODEL-OLD"), null, "a rolled-back replacement must not advance model lifecycle separately from Workspace heads");
 
   changes[1].expectedDraftVersion = 2;
   changes[1].priorDraftId = "PROJECT-002-DRAFT-2";
@@ -478,6 +481,7 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
   const applied = await store.applyModelReplacementPlan(freshPlan.id, freshPlan.version);
   assert.equal(applied.plan.status, "APPLIED");
   assert.equal(applied.plan.version, 3);
+  assert.equal((await store.getGlobalModelLifecycle("MODEL-OLD")).lifecycle, "RETIRING", "the successful Workspace replacement transaction must also own source lifecycle");
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2);
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
   await store.applyModelReplacementPlan(freshPlan.id, freshPlan.version);

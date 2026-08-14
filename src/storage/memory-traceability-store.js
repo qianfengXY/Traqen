@@ -82,6 +82,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #understandingRecords = new Map();
   #understandingHeads = new Map();
   #modelReplacementPlans = new Map();
+  #globalModelLifecycles = new Map();
   #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
 
@@ -1346,6 +1347,35 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     }
   }
 
+  async ensureGlobalModelLifecycle(profileId) {
+    if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    const existing = this.#globalModelLifecycles.get(profileId);
+    if (existing) return deepFreeze(structuredClone(existing));
+    const lifecycle = deepFreeze({ profileId, lifecycle: "ACTIVE", version: 1, updatedAt: new Date().toISOString() });
+    this.#globalModelLifecycles.set(profileId, lifecycle);
+    return deepFreeze(structuredClone(lifecycle));
+  }
+
+  async getGlobalModelLifecycle(profileId) {
+    if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    const lifecycle = this.#globalModelLifecycles.get(profileId);
+    return lifecycle ? deepFreeze(structuredClone(lifecycle)) : null;
+  }
+
+  async setGlobalModelLifecycle(profileId, lifecycle) {
+    if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    if (!["ACTIVE", "RETIRING", "RETIRED"].includes(lifecycle)) throw new TypeError("global model lifecycle is invalid");
+    const prior = this.#globalModelLifecycles.get(profileId);
+    const next = deepFreeze({
+      profileId,
+      lifecycle,
+      version: (prior?.version ?? 0) + 1,
+      updatedAt: new Date().toISOString(),
+    });
+    this.#globalModelLifecycles.set(profileId, next);
+    return deepFreeze(structuredClone(next));
+  }
+
   async createModelReplacementPlan(plan) {
     const existing = this.#modelReplacementPlans.get(plan.id);
     if (existing && canonicalJson(replacementPlanIdentity(existing)) !== canonicalJson(replacementPlanIdentity(plan))) {
@@ -1405,6 +1435,13 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
       throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);
     }
+    const priorLifecycle = this.#globalModelLifecycles.get(plan.sourceProfileId);
+    this.#globalModelLifecycles.set(plan.sourceProfileId, deepFreeze({
+      profileId: plan.sourceProfileId,
+      lifecycle: "RETIRING",
+      version: (priorLifecycle?.version ?? 0) + 1,
+      updatedAt: new Date().toISOString(),
+    }));
     const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 2, appliedAt: new Date().toISOString() });
     this.#modelReplacementPlans.set(planId, applied);
     return deepFreeze({ plan: structuredClone(applied), workspaces });

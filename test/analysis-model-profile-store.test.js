@@ -24,7 +24,7 @@ function scopedModelContext(registry, profile) {
   return { ...context, grant };
 }
 
-test("runtime model profiles survive restart without a global active/default pointer", async (t) => {
+test("runtime model profile metadata survives restart without a global active/default pointer or lifecycle authority", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "traqen-model-profiles-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const filePath = join(directory, "profiles.enc.json");
@@ -72,12 +72,13 @@ test("runtime model profiles survive restart without a global active/default poi
   assert.equal(Object.hasOwn(edited, "active"), false);
   reloaded.remove("persistent-model");
   const retiredReload = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
-  assert.equal(retiredReload.list()[0].lifecycle, "RETIRING");
+  assert.equal(Object.hasOwn(profileStore.load().profiles[0], "lifecycle"), false, "lifecycle authority belongs to the traceability store, not encrypted model metadata");
+  assert.equal(retiredReload.list()[0].lifecycle, "ACTIVE", "a registry reload must not treat its local cache as lifecycle authority");
   assert.equal(Object.hasOwn(retiredReload.list()[0], "active"), false);
   assert.ok(retiredReload.resolve(edited.currentRevisionId, scopedModelContext(retiredReload, edited)), "historical model revisions survive restart for pinned runs");
 });
 
-test("the model Registry persists retirement but does not own the durable replacement Plan ledger", async (t) => {
+test("the model Registry owns neither replacement lifecycle nor the durable Plan ledger", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "traqen-model-replacement-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const profileStore = new EncryptedAnalysisModelProfileStore({ filePath: join(directory, "profiles.enc.json") });
@@ -92,5 +93,6 @@ test("the model Registry persists retirement but does not own the durable replac
 
   const reloaded = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
   assert.equal(Object.hasOwn(profileStore.load(), "replacementPlans"), false);
-  assert.equal(reloaded.list().find(({ id }) => id === "OLD").lifecycle, "RETIRING");
+  assert.equal(Object.hasOwn(profileStore.load().profiles.find(({ id }) => id === "OLD"), "lifecycle"), false);
+  assert.equal(reloaded.list().find(({ id }) => id === "OLD").lifecycle, "ACTIVE");
 });

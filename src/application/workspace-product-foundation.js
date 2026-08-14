@@ -291,7 +291,7 @@ export class WorkspaceProductFoundation {
     return profile;
   }
 
-  async prepareModelReplacement(sourceProfileId, replacementProfileId, modelProfiles) {
+  async prepareModelReplacement(sourceProfileId, replacementProfileId, modelProfiles, replacementAuthority = null) {
     const replacement = modelProfiles.find((profile) => profile.profileId === replacementProfileId);
     if (!replacement || replacement.readiness !== 'READY' || replacement.lifecycle !== 'ACTIVE') {
       throw new TypeError(`Replacement model ${replacementProfileId} must be READY and ACTIVE`);
@@ -338,6 +338,8 @@ export class WorkspaceProductFoundation {
           profile: activeProfile,
           sourceProfileId,
           replacementProfile: replacement,
+          replacementPlanId: replacementAuthority?.id,
+          replacementPlanVersion: replacementAuthority?.version,
           clock: this.clock,
         });
       }

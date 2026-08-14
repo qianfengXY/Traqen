@@ -62,6 +62,7 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(globalModelPath.put.operationId, "reviseGlobalModelProfile");
   assert.equal(globalModelPath.put.requestBody.content["application/json"].schema.$ref, "#/components/schemas/GlobalModelRevisionRequest");
   assert.equal(globalModelPath.put.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/GlobalModelProfile");
+  assert.equal(globalModelPath.put.responses["409"].$ref, "#/components/responses/Conflict");
   assert.equal(contract.paths["/v1/workspaces"].post.operationId, "createWorkspace");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}"].patch.operationId, "renameWorkspace");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].post, undefined);

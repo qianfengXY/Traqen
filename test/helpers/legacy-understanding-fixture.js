@@ -14,20 +14,28 @@ export async function persistFixtureExecutionProfile(
   store,
   projectId,
   id = "LOCAL-DETERMINISTIC-PROFILE",
-  { credentialHandleIds = [] } = {},
+  {
+    credentialHandleIds = [],
+    mainAgent = null,
+    childSlots = null,
+    entries = null,
+  } = {},
 ) {
+  const defaultMainAgent = { model: id, skillNames: [], mcpNames: [] };
+  const defaultChildSlots = [
+    { id: "CHILD-1", model: id, skillNames: [], mcpNames: [], independenceGroup: "FIXTURE-1" },
+    { id: "CHILD-2", model: id, skillNames: [], mcpNames: [], independenceGroup: "FIXTURE-2" },
+  ];
+  const defaultEntries = [{ logicalName: id, kind: "MODEL", manifest: { provider: "FIXTURE" }, sourceTemplateId: null, credentialHandleIds }];
   const profile = {
     id,
     workspaceId: projectId,
     configId: `${id}-CONFIG`,
     configVersion: 1,
     profileDigest: `${id}-DIGEST`,
-    mainAgent: { model: id, skillNames: [], mcpNames: [] },
-    childSlots: [
-      { id: "CHILD-1", model: id, skillNames: [], mcpNames: [], independenceGroup: "FIXTURE-1" },
-      { id: "CHILD-2", model: id, skillNames: [], mcpNames: [], independenceGroup: "FIXTURE-2" },
-    ],
-    entries: [{ logicalName: id, kind: "MODEL", manifest: { provider: "FIXTURE" }, sourceTemplateId: null, credentialHandleIds }],
+    mainAgent: mainAgent ?? defaultMainAgent,
+    childSlots: childSlots ?? defaultChildSlots,
+    entries: entries ?? defaultEntries,
     dependencies: {},
     conventions: {},
     policies: { dataBoundary: "TEST_ONLY" },

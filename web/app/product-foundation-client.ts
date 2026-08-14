@@ -74,7 +74,11 @@ export type ChildCapabilityRole = CapabilityRole & {
 export type ExecutionProfile = {
   id: string;
   workspaceId: string;
-  draftRevisionId: string;
+  draftRevisionId: string | null;
+  replacementPlanId?: string | null;
+  replacementPlanVersion?: number | null;
+  replacesExecutionProfileRevisionId?: string | null;
+  replacedDraftRevisionId?: string | null;
   mainAgentSlot: AgentSlotDraft & { modelProfileRevisionId: string };
   childAgentSlots: Array<AgentSlotDraft & { modelProfileRevisionId: string }>;
   mainAgent: CapabilityRole;

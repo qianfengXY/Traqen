@@ -420,6 +420,7 @@ export class LegacyUnderstandingRuntime {
     publicationMetadata = null,
     secretGrantTtlMs = 86_400_000,
     registerIssuedSecretGrants = null,
+    revokeIssuedSecretGrants = null,
     clock = () => new Date(),
   }) {
     if (!store || !sourceSliceBroker) throw new TypeError("store and sourceSliceBroker are required");
@@ -440,8 +441,12 @@ export class LegacyUnderstandingRuntime {
     if (registerIssuedSecretGrants !== null && typeof registerIssuedSecretGrants !== "function") {
       throw new TypeError("registerIssuedSecretGrants must be a function when provided");
     }
+    if (revokeIssuedSecretGrants !== null && typeof revokeIssuedSecretGrants !== "function") {
+      throw new TypeError("revokeIssuedSecretGrants must be a function when provided");
+    }
     this.secretGrantTtlMs = secretGrantTtlMs;
     this.registerIssuedSecretGrants = registerIssuedSecretGrants;
+    this.revokeIssuedSecretGrants = revokeIssuedSecretGrants;
     this.publicationMetadata = publicationMetadata ? deepFreeze(structuredClone(publicationMetadata)) : null;
     this.snapshotCapture = new LocalSourceSnapshotCapture({
       allowlistedRoots: this.allowlistedRoots,
@@ -664,6 +669,7 @@ export class LegacyUnderstandingRuntime {
       return this.runner.fail(await this.runner.get(job.projectId, job.id) ?? job, error);
     } finally {
       this.#controllers.delete(job.id);
+      this.revokeIssuedSecretGrants?.({ analysisRunId: job.id });
     }
   }
 
@@ -1029,12 +1035,13 @@ export class LegacyUnderstandingRuntime {
         && grant.analysisRunId === job.id
         && Date.parse(grant.expiresAt) > this.clock().valueOf());
     const grantsForSlot = (slotId) => {
-      const latestByHandle = new Map();
+      const latestByCapability = new Map();
       for (const grant of grantCandidates.filter((candidate) => candidate.slotId === slotId)) {
-        const prior = latestByHandle.get(grant.credentialHandleId);
-        if (!prior || Date.parse(grant.expiresAt) > Date.parse(prior.expiresAt)) latestByHandle.set(grant.credentialHandleId, grant);
+        const key = [grant.capabilityKind, grant.capabilityName, grant.credentialHandleId].join("\u0000");
+        const prior = latestByCapability.get(key);
+        if (!prior || Date.parse(grant.expiresAt) > Date.parse(prior.expiresAt)) latestByCapability.set(key, grant);
       }
-      return deepFreeze([...latestByHandle.values()].map((grant) => structuredClone(grant)));
+      return deepFreeze([...latestByCapability.values()].map((grant) => structuredClone(grant)));
     };
 
     const candidates = [];

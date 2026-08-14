@@ -172,6 +172,48 @@ test("analysis model registry rejects a grant forged solely from its public clai
   );
 });
 
+test("runtime rejects legacy synthetic credential-handle aliases even when a grant is registered", async () => {
+  const registry = new AnalysisModelRegistry({
+    adapters: configuredAnalysisModels(JSON.stringify([{
+      id: "private-model",
+      endpoint: "https://models.example/v1",
+      model: "private",
+      apiKeyEnvironment: "PRIVATE_MODEL_KEY",
+    }]), { PRIVATE_MODEL_KEY: "server-only-secret" }),
+  });
+  const profile = registry.list()[0];
+  const context = {
+    workspaceId: "W1",
+    profileId: "PROFILE-1",
+    analysisRunId: "RUN-1",
+    slotId: "MAIN",
+  };
+  const legacyGrant = {
+    id: "SERVER-ISSUED-LEGACY-ALIAS",
+    ...context,
+    capabilityKind: "MODEL",
+    capabilityName: profile.currentRevisionId,
+    credentialHandleId: "ENV-MODEL-CREDENTIAL-private-model",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
+  registry.registerIssuedSecretGrants([legacyGrant]);
+  assert.equal(
+    registry.resolve(profile.currentRevisionId, { ...context, grant: legacyGrant }),
+    null,
+    "only the opaque CredentialHandle carried by the pinned execution profile may authorize a runtime model adapter",
+  );
+});
+
+test("issued secret grants are revoked when their Run reaches a terminal lifecycle", async () => {
+  const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
+  const profile = registry.configure({ id: "REVOCABLE", endpoint: "https://models.example/v1", model: "revocable", apiKey: "secret" });
+  await registry.verify("REVOCABLE");
+  const context = scopedModelContext(registry, profile, { analysisRunId: "RUN-TERMINAL" });
+  assert.ok(registry.resolve(profile.currentRevisionId, context));
+  registry.revokeIssuedSecretGrants({ analysisRunId: "RUN-TERMINAL" });
+  assert.equal(registry.resolve(profile.currentRevisionId, context), null);
+});
+
 test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {
   const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
   const first = registry.configure({ id: "M1", revisionId: "REV-SAME", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });

@@ -31,7 +31,14 @@ test("Candidate completeness cannot exceed its canonical reviewed TraceChain", (
   assert.equal(reviewedCandidateTraceComplete(null, []), false);
 });
 
-async function runProducerBoundaryScenario(projectId, { childProducer, mainProducer, credentialHandleIds = [], registerIssuedSecretGrants = null }) {
+async function runProducerBoundaryScenario(projectId, {
+  childProducer,
+  mainProducer,
+  credentialHandleIds = [],
+  executionProfile = {},
+  registerIssuedSecretGrants = null,
+  revokeIssuedSecretGrants = null,
+}) {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-producer-boundary-"));
   const source = path.join(temporary, "source");
   const snapshots = path.join(temporary, "snapshots");
@@ -42,7 +49,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
     "export function producerBoundary() { return true; }\nexport function secondEvidence() { return true; }\n",
   );
   const store = new MemoryTraceabilityStore();
-  const profile = await persistFixtureExecutionProfile(store, projectId, "LOCAL-DETERMINISTIC-PROFILE", { credentialHandleIds });
+  const profile = await persistFixtureExecutionProfile(store, projectId, "LOCAL-DETERMINISTIC-PROFILE", { credentialHandleIds, ...executionProfile });
   const runtime = new LegacyUnderstandingRuntime({
     store,
     allowlistedRoots: [source],
@@ -51,6 +58,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
     childProducer,
     mainProducer,
     registerIssuedSecretGrants,
+    revokeIssuedSecretGrants,
     equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });
@@ -65,6 +73,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
 test("runtime issues and mounts only Run- and Slot-scoped model secret grants", async () => {
   const observed = [];
   const registered = [];
+  const revokedRunIds = [];
   const childProducer = async (input) => {
     observed.push({ slotId: input.assignment.slotId, grants: input.secretGrants });
     return deterministicFixtureChildProducer(input);
@@ -78,6 +87,7 @@ test("runtime issues and mounts only Run- and Slot-scoped model secret grants", 
     mainProducer,
     credentialHandleIds: ["MODEL-HANDLE-1"],
     registerIssuedSecretGrants: (grants) => registered.push(...grants),
+    revokeIssuedSecretGrants: ({ analysisRunId }) => revokedRunIds.push(analysisRunId),
   });
   assert.equal(result.status, "COMPLETED", JSON.stringify(result.error));
   assert.ok(observed.length >= 3);
@@ -96,6 +106,47 @@ test("runtime issues and mounts only Run- and Slot-scoped model secret grants", 
     persisted.map(canonicalJson).sort(),
     "the runtime must register exactly the grants it persisted before mounting any credentialed producer",
   );
+  assert.deepEqual(revokedRunIds, ["P-SCOPED-GRANTS-JOB"], "terminal Run cleanup must revoke every in-memory grant issued for that Run");
+});
+
+test("runtime retains grants for distinct capabilities that share one credential handle", async () => {
+  const observed = [];
+  const sharedHandle = "SHARED-CREDENTIAL-HANDLE";
+  const capabilityProfile = {
+    mainAgent: { model: "LOCAL-DETERMINISTIC-PROFILE", skillNames: ["shared-skill"], mcpNames: [] },
+    childSlots: [
+      { id: "CHILD-1", model: "LOCAL-DETERMINISTIC-PROFILE", skillNames: ["shared-skill"], mcpNames: [], independenceGroup: "FIXTURE-1" },
+      { id: "CHILD-2", model: "LOCAL-DETERMINISTIC-PROFILE", skillNames: ["shared-skill"], mcpNames: [], independenceGroup: "FIXTURE-2" },
+    ],
+    entries: [
+      { logicalName: "LOCAL-DETERMINISTIC-PROFILE", kind: "MODEL", manifest: { provider: "FIXTURE" }, sourceTemplateId: null, credentialHandleIds: [sharedHandle] },
+      { logicalName: "shared-skill", kind: "SKILL", manifest: { provider: "FIXTURE" }, sourceTemplateId: null, credentialHandleIds: [sharedHandle] },
+    ],
+  };
+  const childProducer = async (input) => {
+    observed.push(input.secretGrants);
+    return deterministicFixtureChildProducer(input);
+  };
+  const mainProducer = async (input) => {
+    observed.push(input.secretGrants);
+    return deterministicFixtureMainProducer(input);
+  };
+  const { result } = await runProducerBoundaryScenario("P-SHARED-HANDLE", {
+    childProducer,
+    mainProducer,
+    executionProfile: capabilityProfile,
+  });
+  assert.equal(result.status, "COMPLETED", JSON.stringify(result.error));
+  for (const grants of observed) {
+    assert.deepEqual(
+      grants.map(({ capabilityKind, capabilityName, credentialHandleId }) => `${capabilityKind}:${capabilityName}:${credentialHandleId}`).sort(),
+      [
+        "MODEL:LOCAL-DETERMINISTIC-PROFILE:SHARED-CREDENTIAL-HANDLE",
+        "SKILL:shared-skill:SHARED-CREDENTIAL-HANDLE",
+      ],
+      "a handle may be authorized for more than one capability without collapsing those least-privilege grants",
+    );
+  }
 });
 
 async function runCanonicalRelationScenario(projectId, { sourceContent, childEvidence }) {

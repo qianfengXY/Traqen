@@ -653,8 +653,17 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.listCapabilityTemplates();
   }
 
-  #globalModelProfiles() {
+  async #syncGlobalModelLifecycles() {
+    if (!this.#analysisModelRegistry) return;
+    await Promise.all(this.#analysisModelRegistry.list().map(async (profile) => {
+      const durable = await this.#store.getGlobalModelLifecycle(profile.id);
+      if (durable) this.#analysisModelRegistry.applyDurableLifecycle(profile.id, durable.lifecycle);
+    }));
+  }
+
+  async #globalModelProfiles() {
     if (!this.#analysisModelRegistry) return [];
+    await this.#syncGlobalModelLifecycles();
     return this.#analysisModelRegistry.list().map((profile) => ({
       id: profile.currentRevisionId,
       profileId: profile.id,
@@ -675,25 +684,28 @@ export class TraceabilityApplication {
     }));
   }
 
-  listGlobalModelProfiles() {
+  async listGlobalModelProfiles() {
     return this.#globalModelProfiles();
   }
 
-  getGlobalModelProfile(profileId) {
+  async getGlobalModelProfile(profileId) {
     requireId(profileId, "profileId");
-    return this.#globalModelProfiles().find((profile) => profile.profileId === profileId) ?? null;
+    return (await this.#globalModelProfiles()).find((profile) => profile.profileId === profileId) ?? null;
   }
 
-  configureGlobalModelProfile(input) {
+  async configureGlobalModelProfile(input) {
     const profileId = input.profileId ?? input.id;
     requireId(profileId, "profileId");
+    await this.#syncGlobalModelLifecycles();
     this.configureAnalysisModelProfile({ ...input, id: profileId });
+    const lifecycle = await this.#store.ensureGlobalModelLifecycle(profileId);
+    this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
     return this.getGlobalModelProfile(profileId);
   }
 
-  updateGlobalModelProfile(profileId, input) {
+  async updateGlobalModelProfile(profileId, input) {
     requireId(profileId, "profileId");
-    const current = this.getGlobalModelProfile(profileId);
+    const current = await this.getGlobalModelProfile(profileId);
     if (!current) return null;
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
     assertOnlyFields(input, [
@@ -704,13 +716,15 @@ export class TraceabilityApplication {
     if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
     if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
     if (input.expectedRevision !== current.revision) {
-      throw new TypeError(`Global model revision conflict: expected ${input.expectedRevision}, current ${current.revision}`);
+      throw new PersistenceConflictError(`Global model revision conflict: expected ${input.expectedRevision}, current ${current.revision}`);
     }
     return this.configureGlobalModelProfile({ ...input, id: profileId, profileId });
   }
 
-  verifyGlobalModelProfile(profileId) {
-    return this.verifyAnalysisModelProfile(profileId);
+  async verifyGlobalModelProfile(profileId) {
+    await this.#syncGlobalModelLifecycles();
+    await this.verifyAnalysisModelProfile(profileId);
+    return this.getGlobalModelProfile(profileId);
   }
 
   getGlobalModelUsage(profileId) {
@@ -719,40 +733,60 @@ export class TraceabilityApplication {
 
   async createGlobalModelReplacementPlan(profileId, input) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    await this.#syncGlobalModelLifecycles();
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("model replacement plan input must be an object");
     assertOnlyFields(input, ["replacementProfileId"], "modelReplacementPlan");
     const replacementProfileId = requireId(input?.replacementProfileId, "replacementProfileId");
     const usage = await this.getGlobalModelUsage(profileId);
-    const changes = await this.#workspaceFoundation.prepareModelReplacement(profileId, replacementProfileId, this.#globalModelProfiles());
+    const modelProfiles = await this.#globalModelProfiles();
+    const provisionalChanges = await this.#workspaceFoundation.prepareModelReplacement(profileId, replacementProfileId, modelProfiles);
+    const provisionalPlan = this.#analysisModelRegistry.createReplacementPlan({
+      sourceProfileId: profileId,
+      replacementProfileId,
+      references: usage.references,
+      changes: provisionalChanges,
+    });
+    const changes = await this.#workspaceFoundation.prepareModelReplacement(
+      profileId,
+      replacementProfileId,
+      modelProfiles,
+      { id: provisionalPlan.id, version: provisionalPlan.version },
+    );
     const plan = this.#analysisModelRegistry.createReplacementPlan({
       sourceProfileId: profileId,
       replacementProfileId,
       references: usage.references,
       changes,
     });
+    if (plan.id !== provisionalPlan.id) throw new TypeError("Model replacement plan identity must not depend on derived execution-profile ids");
     return this.#workspaceFoundation.createModelReplacementPlan(plan);
   }
 
   async applyGlobalModelReplacementPlan(profileId, planId, input) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    await this.#syncGlobalModelLifecycles();
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("model replacement apply input must be an object");
     assertOnlyFields(input, ["expectedVersion"], "modelReplacementApply");
     const plan = await this.#workspaceFoundation.getModelReplacementPlan(planId);
     if (!plan || plan.sourceProfileId !== profileId) return null;
     const begun = this.#analysisModelRegistry.beginReplacementPlan(plan, input?.expectedVersion);
     if (begun.status === "APPLIED") {
-      return this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
+      const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
+      this.#analysisModelRegistry.applyDurableLifecycle(plan.sourceProfileId, "RETIRING");
+      return applied;
     }
     try {
       const currentChanges = await this.#workspaceFoundation.prepareModelReplacement(
         profileId,
         plan.replacementProfileId,
-        this.#globalModelProfiles(),
+        await this.#globalModelProfiles(),
+        { id: plan.id, version: plan.version },
       );
       if (canonicalJson(replacementChangesIdentity(currentChanges)) !== canonicalJson(replacementChangesIdentity(plan.changes))) {
         throw new TypeError(`Replacement plan ${plan.id} is stale; refresh the Workspace usage preview`);
       }
       const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
+      this.#analysisModelRegistry.applyDurableLifecycle(plan.sourceProfileId, "RETIRING");
       this.#analysisModelRegistry.completeReplacementPlan(applied.plan);
       return Object.freeze(applied);
     } catch (error) {
@@ -766,8 +800,12 @@ export class TraceabilityApplication {
     if (usage.references.some(({ source }) => source !== 'ACTIVE_RUN')) {
       throw new TypeError(`Model ${profileId} still has current Workspace references; replace them before retirement`);
     }
-    const current = this.#analysisModelRegistry?.list().find(({ id }) => id === profileId);
-    return this.removeAnalysisModelProfile(profileId, { finalize: current?.lifecycle === 'RETIRING' && usage.references.length === 0 });
+    const current = await this.getGlobalModelProfile(profileId);
+    if (!current) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
+    const lifecycle = current.lifecycle === "RETIRING" && usage.references.length === 0 ? "RETIRED" : "RETIRING";
+    await this.#store.setGlobalModelLifecycle(profileId, lifecycle);
+    this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle);
+    return this.getGlobalModelProfile(profileId);
   }
 
   async listWorkspaceProjectCapabilities(workspaceId) {
@@ -796,13 +834,13 @@ export class TraceabilityApplication {
   }
 
   async validateWorkspaceCapabilityDraft(workspaceId) {
-    return this.#workspaceFoundation.validateCapabilityDraft(workspaceId, this.#globalModelProfiles());
+    return this.#workspaceFoundation.validateCapabilityDraft(workspaceId, await this.#globalModelProfiles());
   }
 
   async activateWorkspaceCapabilityDraft(workspaceId) {
     const draft = await this.#workspaceFoundation.getCapabilityDraft(workspaceId);
     if (draft) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(draft));
-    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, this.#globalModelProfiles());
+    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, await this.#globalModelProfiles());
   }
 
   async saveWorkspaceCapabilityConfig(workspaceId, input) {

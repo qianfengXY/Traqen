@@ -997,7 +997,7 @@ export class AnalysisModelRegistry {
         executablePath: adapter.executablePath ?? null,
         maximumOutputBytes: adapter.maximumOutputBytes ?? null,
         source: "RUNTIME",
-        lifecycle: value.lifecycle ?? "ACTIVE",
+        lifecycle: "ACTIVE",
         revision: value.revision ?? 1,
         configuredAt: typeof value.configuredAt === "string" ? value.configuredAt : this.#clock().toISOString(),
         verifiedAt: typeof value.verifiedAt === "string" ? value.verifiedAt : null,
@@ -1096,7 +1096,7 @@ export class AnalysisModelRegistry {
       verifiedAt: profile.verifiedAt, credentialHandleId: profile.credentialHandleId,
       legacyCredentialHandleId: profile.legacyCredentialHandleId, cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath, maximumOutputBytes: profile.maximumOutputBytes,
-      lifecycle: profile.lifecycle, currentRevisionId: profile.currentRevisionId,
+      currentRevisionId: profile.currentRevisionId,
       revision: profile.revision,
       source: profile.source,
     };
@@ -1116,12 +1116,47 @@ export class AnalysisModelRegistry {
     return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
   }
 
+  applyDurableLifecycle(profileId, lifecycle) {
+    profileId = requiredString(profileId, "analysis model profile id");
+    if (!["ACTIVE", "RETIRING", "RETIRED"].includes(lifecycle)) throw new TypeError("analysis model lifecycle is invalid");
+    const profile = this.#profiles.get(profileId);
+    if (!profile) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
+    profile.lifecycle = lifecycle;
+    return this.#public(profile);
+  }
+
+  #pruneIssuedSecretGrants(now = this.#clock().valueOf()) {
+    for (const [id, grant] of this.#issuedSecretGrants) {
+      if (Date.parse(grant.expiresAt) <= now) this.#issuedSecretGrants.delete(id);
+    }
+  }
+
   registerIssuedSecretGrants(grants) {
     if (!Array.isArray(grants)) throw new TypeError("issued secret grants must be an array");
+    this.#pruneIssuedSecretGrants();
     for (const grant of grants) {
       const id = requiredString(grant?.id, "issued secret grant id");
-      this.#issuedSecretGrants.set(id, canonicalJson(grant));
+      const expiresAt = requiredString(grant?.expiresAt, "issued secret grant expiry");
+      if (Number.isNaN(Date.parse(expiresAt))) throw new TypeError("issued secret grant expiry must be an ISO timestamp");
+      this.#issuedSecretGrants.set(id, {
+        canonical: canonicalJson(grant),
+        analysisRunId: requiredString(grant?.analysisRunId, "issued secret grant analysisRunId"),
+        expiresAt,
+      });
     }
+  }
+
+  revokeIssuedSecretGrants({ analysisRunId = null } = {}) {
+    if (analysisRunId !== null) analysisRunId = requiredString(analysisRunId, "analysisRunId");
+    this.#pruneIssuedSecretGrants();
+    let revoked = 0;
+    for (const [id, grant] of this.#issuedSecretGrants) {
+      if (analysisRunId === null || grant.analysisRunId === analysisRunId) {
+        this.#issuedSecretGrants.delete(id);
+        revoked += 1;
+      }
+    }
+    return revoked;
   }
 
   assertProfilesUnlocked(profileIds) {
@@ -1133,16 +1168,17 @@ export class AnalysisModelRegistry {
   }
 
   resolve(id, context = null) {
+    this.#pruneIssuedSecretGrants();
     const profile = this.#revisions.get(id) ?? this.#profiles.get(id);
     if (!profile?.verifiedAt) return null;
     const runtimeScoped = [context?.workspaceId, context?.profileId, context?.analysisRunId, context?.slotId]
       .every((value) => typeof value === "string" && value.trim() !== "");
     if (profile.transport !== "API") return runtimeScoped ? profile.adapter : null;
     const grant = context?.grant;
-    const acceptedHandles = new Set([profile.credentialHandleId, profile.legacyCredentialHandleId].filter(Boolean));
+    const acceptedHandles = new Set([profile.credentialHandleId].filter(Boolean));
     const unexpired = typeof grant?.expiresAt === "string" && Date.parse(grant.expiresAt) > this.#clock().valueOf();
     const registered = typeof grant?.id === "string"
-      && this.#issuedSecretGrants.get(grant.id) === canonicalJson(grant);
+      && this.#issuedSecretGrants.get(grant.id)?.canonical === canonicalJson(grant);
     const scoped = runtimeScoped
       && grant?.workspaceId === context?.workspaceId
       && grant?.profileId === context?.profileId
@@ -1163,6 +1199,9 @@ export class AnalysisModelRegistry {
       throw new TypeError(`Analysis model profile ${id} is locked by an applying replacement plan`);
     }
     const existing = this.#profiles.get(id);
+    if (existing && existing.lifecycle !== "ACTIVE") {
+      throw new TypeError(`Analysis model profile ${id} is ${existing.lifecycle} and cannot be revised`);
+    }
     const transport = String(input.transport ?? existing?.transport ?? "API").toUpperCase();
     if (transport === "CLI") {
       const timeoutMs = input.timeoutMs ?? 120_000;
@@ -1229,7 +1268,13 @@ export class AnalysisModelRegistry {
       sourceRevisionId: source.currentRevisionId,
       replacementProfileId,
       replacementRevisionId: replacement.currentRevisionId,
-      changes: changes.map(({ workspaceId, expectedDraftVersion, expectedProfileVersion, draft, profile }) => ({ workspaceId, expectedDraftVersion, expectedProfileVersion, draftId: draft?.id ?? null, profileId: profile?.id ?? null })),
+      changes: changes.map(({ workspaceId, expectedDraftVersion, expectedProfileVersion, priorDraftId, priorProfileId }) => ({
+        workspaceId,
+        expectedDraftVersion,
+        expectedProfileVersion,
+        priorDraftId: priorDraftId ?? null,
+        priorProfileId: priorProfileId ?? null,
+      })),
     };
     const plan = {
       id: contentId("MODEL-REPLACEMENT-PLAN", identity),

@@ -267,6 +267,18 @@ export class TraceabilityStore {
     throw new Error("applyWorkspaceModelReplacement must be implemented");
   }
 
+  async ensureGlobalModelLifecycle(_profileId) {
+    throw new Error("ensureGlobalModelLifecycle must be implemented");
+  }
+
+  async getGlobalModelLifecycle(_profileId) {
+    throw new Error("getGlobalModelLifecycle must be implemented");
+  }
+
+  async setGlobalModelLifecycle(_profileId, _lifecycle) {
+    throw new Error("setGlobalModelLifecycle must be implemented");
+  }
+
   async createModelReplacementPlan(_plan) {
     throw new Error("createModelReplacementPlan must be implemented");
   }
