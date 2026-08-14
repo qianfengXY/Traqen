@@ -77,6 +77,21 @@ function requireId(value, fieldName) {
   return value;
 }
 
+function modelIdsFromDraftInput(input) {
+  const slots = [input?.mainAgentSlot ?? input?.mainAgent, ...(input?.childAgentSlots ?? input?.childSlots ?? [])];
+  return slots.map((slot) => slot?.modelProfileId ?? slot?.model).filter((value) => typeof value === "string" && value.trim() !== "");
+}
+
+function replacementChangesIdentity(changes) {
+  return changes.map(({ workspaceId, expectedDraftVersion, expectedProfileVersion, draft, profile }) => ({
+    workspaceId,
+    expectedDraftVersion,
+    expectedProfileVersion,
+    draftId: draft?.id ?? null,
+    profileId: profile?.id ?? null,
+  })).sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
+}
+
 function graphEvidenceResolver(projectId, revisionId, kind, id, { featureId, rootNodeId, snapshotManifestId }) {
   const query = new URLSearchParams({ featureId, rootNodeId, snapshotManifestId });
   return `/v1/projects/${encodeURIComponent(projectId)}/graph/revisions/${encodeURIComponent(revisionId)}/evidence/${kind}s/${encodeURIComponent(id)}?${query}`;
@@ -678,14 +693,19 @@ export class TraceabilityApplication {
 
   updateGlobalModelProfile(profileId, input) {
     requireId(profileId, "profileId");
-    if (!this.getGlobalModelProfile(profileId)) return null;
+    const current = this.getGlobalModelProfile(profileId);
+    if (!current) return null;
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
     assertOnlyFields(input, [
       "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
-      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes",
+      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
     ], "globalModelRevision");
     if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
     if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
+    if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
+    if (input.expectedRevision !== current.revision) {
+      throw new TypeError(`Global model revision conflict: expected ${input.expectedRevision}, current ${current.revision}`);
+    }
     return this.configureGlobalModelProfile({ ...input, id: profileId, profileId });
   }
 
@@ -719,8 +739,19 @@ export class TraceabilityApplication {
     assertOnlyFields(input, ["expectedVersion"], "modelReplacementApply");
     const plan = await this.#workspaceFoundation.getModelReplacementPlan(planId);
     if (!plan || plan.sourceProfileId !== profileId) return null;
-    this.#analysisModelRegistry.beginReplacementPlan(plan, input?.expectedVersion);
+    const begun = this.#analysisModelRegistry.beginReplacementPlan(plan, input?.expectedVersion);
+    if (begun.status === "APPLIED") {
+      return this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
+    }
     try {
+      const currentChanges = await this.#workspaceFoundation.prepareModelReplacement(
+        profileId,
+        plan.replacementProfileId,
+        this.#globalModelProfiles(),
+      );
+      if (canonicalJson(replacementChangesIdentity(currentChanges)) !== canonicalJson(replacementChangesIdentity(plan.changes))) {
+        throw new TypeError(`Replacement plan ${plan.id} is stale; refresh the Workspace usage preview`);
+      }
       const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
       this.#analysisModelRegistry.completeReplacementPlan(applied.plan);
       return Object.freeze(applied);
@@ -760,6 +791,7 @@ export class TraceabilityApplication {
   }
 
   async saveWorkspaceCapabilityDraft(workspaceId, input) {
+    this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(input));
     return this.#workspaceFoundation.saveCapabilityDraft(workspaceId, input);
   }
 
@@ -768,6 +800,8 @@ export class TraceabilityApplication {
   }
 
   async activateWorkspaceCapabilityDraft(workspaceId) {
+    const draft = await this.#workspaceFoundation.getCapabilityDraft(workspaceId);
+    if (draft) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(draft));
     return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, this.#globalModelProfiles());
   }
 
@@ -788,7 +822,9 @@ export class TraceabilityApplication {
   }
 
   async issueWorkspaceSecretGrants(workspaceId, profileRevisionId, input) {
-    return this.#workspaceFoundation.issueSecretGrants(workspaceId, profileRevisionId, input);
+    const grants = await this.#workspaceFoundation.issueSecretGrants(workspaceId, profileRevisionId, input);
+    if (grants) this.#analysisModelRegistry?.registerIssuedSecretGrants(grants);
+    return grants;
   }
 
   async createWorkspaceAnalysisBatch(workspaceId, input) {

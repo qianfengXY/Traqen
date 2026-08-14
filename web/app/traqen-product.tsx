@@ -26,13 +26,12 @@ import {
   getConnectionHealth,
   getEffectiveCapabilities,
   getGlobalModelUsage,
-  getWorkspaceCapabilityDraft,
+  loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
   listGlobalModels,
   retireGlobalModel,
   updateGlobalModel,
   verifyGlobalModel,
-  listWorkspaceExecutionProfiles,
   activateWorkspaceCapabilityDraft,
   saveWorkspaceCapabilityDraft,
   saveProjectCapability,
@@ -160,6 +159,7 @@ function ServerOwnedProduct() {
   const [globalModels, setGlobalModels] = useState<GlobalModelProfile[]>([]);
   const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
+  const [capabilitySettingsReady, setCapabilitySettingsReady] = useState(false);
   const [disabledKeys, setDisabledKeys] = useState<CapabilityKey[]>([]);
   const [dependencyNotes, setDependencyNotes] = useState("");
   const [conventionNotes, setConventionNotes] = useState("");
@@ -191,14 +191,13 @@ function ServerOwnedProduct() {
   const refreshWorkspaceReads = useCallback(async (workspace: Workspace, requestContext: CurrentWorkspaceContext) => {
     const revisionRequestVersion = revisionRequestRef.current + 1;
     revisionRequestRef.current = revisionRequestVersion;
-    const [graphResult, revisionResult, jobResult, reviewResult, profileResult, draftResult, catalogResult] = await Promise.allSettled([
+    setCapabilitySettingsReady(false);
+    const [graphResult, revisionResult, jobResult, reviewResult, capabilitySettingsResult] = await Promise.allSettled([
       getCurrentUnderstandingGraph(apiBase, apiToken, workspace.id),
       listGraphRevisions(apiBase, apiToken, workspace.id),
       listServerWorkspaceUnderstandingJobs(apiBase, apiToken, workspace.id),
       getWorkspaceReviewQueue(apiBase, apiToken, workspace.id),
-      listWorkspaceExecutionProfiles(apiBase, apiToken, workspace.id),
-      getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id),
-      getEffectiveCapabilities(apiBase, apiToken, workspace.id),
+      loadWorkspaceCapabilitySettings(apiBase, apiToken, workspace.id),
     ]);
     if (staleWorkspaceRequestResponse(requestContext, contextRef.current, revisionRequestVersion, revisionRequestRef.current)) return;
     if (graphResult.status === "fulfilled" && revisionRequestVersion === revisionRequestRef.current) {
@@ -222,24 +221,23 @@ function ServerOwnedProduct() {
       }
     }
     if (reviewResult.status === "fulfilled") setReviewItems(reviewResult.value);
-    if (profileResult.status === "fulfilled") {
-      setProfileHistory(profileResult.value);
-      const latestProfile = profileResult.value[0] ?? null;
+    if (capabilitySettingsResult.status === "fulfilled") {
+      const { profiles, draft, catalog } = capabilitySettingsResult.value;
+      setProfileHistory(profiles);
+      const latestProfile = profiles[0] ?? null;
       setExecutionProfile(latestProfile);
       setProfileRevisionId(latestProfile?.id ?? "");
-    }
-    if (draftResult.status === "fulfilled") {
-      setCapabilityDraft(draftResult.value);
-      setDisabledKeys(draftResult.value?.disabledKeys ?? []);
-      if (draftResult.value) {
-        const main = draftResult.value.mainAgentSlot;
+      setCapabilityDraft(draft);
+      setDisabledKeys(draft?.disabledKeys ?? []);
+      if (draft) {
+        const main = draft.mainAgentSlot;
         setMainModel(main.modelProfileId);
         setMainSkillNames(main.skillGrants.map(({ normalizedName }) => normalizedName));
         setMainMcpNames(main.mcpGrants.map(({ normalizedName }) => normalizedName));
-        setChildSlots(draftResult.value.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), independenceGroup: slot.independenceGroup })));
-        setDependencyNotes(String(draftResult.value.dependencies?.notes ?? ""));
-        setConventionNotes(String(draftResult.value.conventions?.notes ?? ""));
-        setSecurityNotes(String(draftResult.value.securityPolicy?.notes ?? ""));
+        setChildSlots(draft.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), independenceGroup: slot.independenceGroup })));
+        setDependencyNotes(String(draft.dependencies?.notes ?? ""));
+        setConventionNotes(String(draft.conventions?.notes ?? ""));
+        setSecurityNotes(String(draft.securityPolicy?.notes ?? ""));
       } else {
         setMainModel("");
         setMainSkillNames([]);
@@ -249,9 +247,10 @@ function ServerOwnedProduct() {
         setConventionNotes("");
         setSecurityNotes("");
       }
+      setEffectiveCatalog(catalog);
+      setCapabilitySettingsReady(true);
     }
-    if (catalogResult.status === "fulfilled") setEffectiveCatalog(catalogResult.value);
-    const failures = [graphResult, revisionResult, jobResult, reviewResult, profileResult, draftResult, catalogResult].filter((result) => result.status === "rejected");
+    const failures = [graphResult, revisionResult, jobResult, reviewResult, capabilitySettingsResult].filter((result) => result.status === "rejected");
     if (failures.length > 0) notify(t("部分 Workspace 数据暂时不可用，请检查连接诊断。", "Some Workspace data is unavailable; inspect connection diagnostics."), "error");
   }, [apiBase, apiToken, notify, t]);
 
@@ -283,6 +282,7 @@ function ServerOwnedProduct() {
     setSelectedReviewIds([]);
     setImpact(null);
     setCapabilityDraft(null);
+    setCapabilitySettingsReady(false);
     setDisabledKeys([]);
     setDependencyNotes("");
     setConventionNotes("");
@@ -597,7 +597,7 @@ function ServerOwnedProduct() {
   }
 
   async function saveCapabilities() {
-    if (!activeWorkspace) return;
+    if (!activeWorkspace || !capabilitySettingsReady) return;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
     setWorking(true);
@@ -623,7 +623,7 @@ function ServerOwnedProduct() {
   }
 
   async function upsertProjectCapability(input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown> }) {
-    if (!activeWorkspace) return;
+    if (!activeWorkspace || !capabilitySettingsReady) return;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
     setWorking(true);
@@ -638,7 +638,7 @@ function ServerOwnedProduct() {
   }
 
   async function removeProjectCapability(kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) {
-    if (!activeWorkspace) return;
+    if (!activeWorkspace || !capabilitySettingsReady) return;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
     setWorking(true);
@@ -718,7 +718,7 @@ function ServerOwnedProduct() {
   }
 
   async function resolveCapabilities() {
-    if (!activeWorkspace || !capabilityDraft) return;
+    if (!activeWorkspace || !capabilityDraft || !capabilitySettingsReady) return;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
     setWorking(true);
@@ -748,7 +748,7 @@ function ServerOwnedProduct() {
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
-    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} working={working} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
+    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">

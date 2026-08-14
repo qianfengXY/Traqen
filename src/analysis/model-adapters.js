@@ -5,7 +5,7 @@ import {
   normalizeCandidateBundle,
   normalizeWorkUnit,
 } from "../shared/candidate-bundle.js";
-import { contentId } from "../domain/canonical-json.js";
+import { canonicalJson, contentId } from "../domain/canonical-json.js";
 import { createGlobalModelProfileRevision } from "../domain/workspace-execution-profile.js";
 
 const CLI_MODEL_ADAPTERS = Object.freeze({
@@ -939,6 +939,8 @@ export class AnalysisModelRegistry {
   #profileStore;
   #applyingReplacementProfiles = new Set();
   #credentialHandles = new Map();
+  #environmentCredentialHandles = new Map();
+  #issuedSecretGrants = new Map();
 
   constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
     if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
@@ -948,15 +950,28 @@ export class AnalysisModelRegistry {
     this.#clock = clock;
     this.#fetchImpl = fetchImpl;
     this.#profileStore = profileStore;
-    for (const [id, adapter] of adapters) {
-      const profile = { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", revision: 1, configuredAt: this.#clock().toISOString(), verifiedAt: null, credentialHandleId: `ENV-MODEL-CREDENTIAL-${id}`, legacyCredentialHandleId: null, adapter };
-      this.#publishRevision(profile, `MODEL-REVISION-${id}-ENVIRONMENT`);
-    }
-    const stored = this.#profileStore?.load() ?? { profiles: [] };
+    const stored = this.#profileStore?.load() ?? { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };
     for (const value of stored.credentialHandles ?? []) {
       const handleId = requiredString(value?.id, "stored model credential handle id");
       const secret = requiredString(value?.secret, `stored model credential ${handleId}`);
       this.#credentialHandles.set(handleId, secret);
+    }
+    for (const value of stored.environmentCredentialHandles ?? []) {
+      this.#environmentCredentialHandles.set(
+        requiredString(value?.profileId, "stored environment model profile id"),
+        requiredString(value?.credentialHandleId, "stored environment model credentialHandleId"),
+      );
+    }
+    let createdEnvironmentHandle = false;
+    for (const [id, adapter] of adapters) {
+      let credentialHandleId = this.#environmentCredentialHandles.get(id);
+      if (!credentialHandleId) {
+        credentialHandleId = `ENV-MODEL-CREDENTIAL-${randomUUID()}`;
+        this.#environmentCredentialHandles.set(id, credentialHandleId);
+        createdEnvironmentHandle = true;
+      }
+      const profile = { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", revision: 1, configuredAt: this.#clock().toISOString(), verifiedAt: null, credentialHandleId, legacyCredentialHandleId: `ENV-MODEL-CREDENTIAL-${id}`, adapter };
+      this.#publishRevision(profile, `MODEL-REVISION-${id}-ENVIRONMENT`);
     }
     for (const value of stored.profiles) {
       const id = requiredString(value?.id, "stored analysis model profile id");
@@ -996,6 +1011,7 @@ export class AnalysisModelRegistry {
       if (this.#revisions.has(value.currentRevisionId)) continue;
       this.#hydrateHistoricalRevision(value);
     }
+    if (createdEnvironmentHandle) this.#persist();
   }
 
   #storedCredential(value, profileId) {
@@ -1092,11 +1108,28 @@ export class AnalysisModelRegistry {
       profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
       revisions: [...this.#revisions.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
       credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
+      environmentCredentialHandles: [...this.#environmentCredentialHandles].map(([profileId, credentialHandleId]) => ({ profileId, credentialHandleId })),
     });
   }
 
   list() {
     return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  registerIssuedSecretGrants(grants) {
+    if (!Array.isArray(grants)) throw new TypeError("issued secret grants must be an array");
+    for (const grant of grants) {
+      const id = requiredString(grant?.id, "issued secret grant id");
+      this.#issuedSecretGrants.set(id, canonicalJson(grant));
+    }
+  }
+
+  assertProfilesUnlocked(profileIds) {
+    for (const profileId of profileIds) {
+      if (typeof profileId === "string" && this.#applyingReplacementProfiles.has(profileId)) {
+        throw new TypeError(`Analysis model profile ${profileId} is locked by an applying replacement plan`);
+      }
+    }
   }
 
   resolve(id, context = null) {
@@ -1108,15 +1141,8 @@ export class AnalysisModelRegistry {
     const grant = context?.grant;
     const acceptedHandles = new Set([profile.credentialHandleId, profile.legacyCredentialHandleId].filter(Boolean));
     const unexpired = typeof grant?.expiresAt === "string" && Date.parse(grant.expiresAt) > this.#clock().valueOf();
-    const expectedGrantId = grant && unexpired ? contentId("SECRET-GRANT", {
-      profileId: grant.profileId,
-      analysisRunId: grant.analysisRunId,
-      slotId: grant.slotId,
-      kind: grant.capabilityKind,
-      name: grant.capabilityName,
-      credentialHandleId: grant.credentialHandleId,
-      expiresAt: new Date(grant.expiresAt).toISOString(),
-    }) : null;
+    const registered = typeof grant?.id === "string"
+      && this.#issuedSecretGrants.get(grant.id) === canonicalJson(grant);
     const scoped = runtimeScoped
       && grant?.workspaceId === context?.workspaceId
       && grant?.profileId === context?.profileId
@@ -1125,7 +1151,7 @@ export class AnalysisModelRegistry {
       && grant?.capabilityKind === "MODEL"
       && grant?.capabilityName === profile.currentRevisionId
       && acceptedHandles.has(grant?.credentialHandleId)
-      && grant?.id === expectedGrantId
+      && registered
       && unexpired;
     return scoped ? profile.adapter : null;
   }
@@ -1203,7 +1229,7 @@ export class AnalysisModelRegistry {
       sourceRevisionId: source.currentRevisionId,
       replacementProfileId,
       replacementRevisionId: replacement.currentRevisionId,
-      changes: changes.map(({ workspaceId, expectedDraftVersion, expectedProfileVersion, draft, profile }) => ({ workspaceId, expectedDraftVersion, expectedProfileVersion, draftId: draft.id, profileId: profile.id })),
+      changes: changes.map(({ workspaceId, expectedDraftVersion, expectedProfileVersion, draft, profile }) => ({ workspaceId, expectedDraftVersion, expectedProfileVersion, draftId: draft?.id ?? null, profileId: profile?.id ?? null })),
     };
     const plan = {
       id: contentId("MODEL-REPLACEMENT-PLAN", identity),

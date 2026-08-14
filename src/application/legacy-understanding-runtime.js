@@ -419,6 +419,7 @@ export class LegacyUnderstandingRuntime {
     runnerId = "TRAQEN-LOCAL-RUNNER",
     publicationMetadata = null,
     secretGrantTtlMs = 86_400_000,
+    registerIssuedSecretGrants = null,
     clock = () => new Date(),
   }) {
     if (!store || !sourceSliceBroker) throw new TypeError("store and sourceSliceBroker are required");
@@ -436,7 +437,11 @@ export class LegacyUnderstandingRuntime {
     this.implementationAuthorId = implementationAuthorId;
     this.runnerId = runnerId;
     if (!Number.isInteger(secretGrantTtlMs) || secretGrantTtlMs < 1) throw new TypeError("secretGrantTtlMs must be a positive integer");
+    if (registerIssuedSecretGrants !== null && typeof registerIssuedSecretGrants !== "function") {
+      throw new TypeError("registerIssuedSecretGrants must be a function when provided");
+    }
     this.secretGrantTtlMs = secretGrantTtlMs;
+    this.registerIssuedSecretGrants = registerIssuedSecretGrants;
     this.publicationMetadata = publicationMetadata ? deepFreeze(structuredClone(publicationMetadata)) : null;
     this.snapshotCapture = new LocalSourceSnapshotCapture({
       allowlistedRoots: this.allowlistedRoots,
@@ -653,6 +658,7 @@ export class LegacyUnderstandingRuntime {
       for (const grant of grants) {
         await this.store.appendUnderstandingRecord(job.projectId, "SECRET_GRANT", grant);
       }
+      this.registerIssuedSecretGrants?.(grants);
       return await this.runner.run(job, { signal: controller.signal });
     } catch (error) {
       return this.runner.fail(await this.runner.get(job.projectId, job.id) ?? job, error);

@@ -65,7 +65,12 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /staleWorkspaceResponse/);
   assert.match(product, /revisionRequestRef/);
   assert.match(product, /staleWorkspaceRequestResponse\(requestContext, contextRef\.current, revisionRequestVersion, revisionRequestRef\.current\)/);
-  assert.match(product, /if \(draftResult\.value\)[\s\S]*else \{[\s\S]*setMainModel\(""\)/);
+  assert.match(product, /capabilitySettingsResult\.status === "fulfilled"[\s\S]*if \(draft\)[\s\S]*else \{[\s\S]*setMainModel\(""\)/,
+    "Workspace capability state must be committed only after draft, catalog, and profile recovery all succeed");
+  assert.match(product, /setCapabilitySettingsReady\(false\)[\s\S]*capabilitySettingsResult\.status === "fulfilled"[\s\S]*setCapabilitySettingsReady\(true\)/,
+    "a failed Workspace capability recovery must keep every mutation path unavailable instead of exposing stale state");
+  assert.match(surfaces, /recoveryReady: boolean[\s\S]*const editingDisabled = working \|\| !recoveryReady[\s\S]*disabled=\{editingDisabled\}/,
+    "the capability surface must disable edits and saves while recovery is incomplete");
   assert.match(product, /const workspace = activeWorkspace;[\s\S]*const requestContext = \{ \.\.\.contextRef\.current \};[\s\S]*staleWorkspaceResponse\(requestContext, contextRef\.current\)/);
   assert.match(product, /staleWorkspaceRequestResponse\(requestContext, contextRef\.current, requestVersion, revisionRequestRef\.current\)/);
   assert.match(product, /REFERENCE ONLY/);

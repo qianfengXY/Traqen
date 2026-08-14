@@ -146,6 +146,15 @@ export async function updateGlobalModel(apiBase: string, apiToken: string, profi
   return parseJson<GlobalModelProfile>(response);
 }
 
+export async function loadWorkspaceCapabilitySettings(apiBase: string, apiToken: string, workspaceId: string) {
+  const [draft, catalog, profiles] = await Promise.all([
+    getWorkspaceCapabilityDraft(apiBase, apiToken, workspaceId),
+    getEffectiveCapabilities(apiBase, apiToken, workspaceId),
+    listWorkspaceExecutionProfiles(apiBase, apiToken, workspaceId),
+  ]);
+  return { draft, catalog, profiles };
+}
+
 export async function verifyGlobalModel(apiBase: string, apiToken: string, profileId: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
   return parseJson<Record<string, unknown>>(response);

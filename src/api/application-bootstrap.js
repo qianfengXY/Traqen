@@ -330,6 +330,7 @@ export function createConfiguredApplication({
       implementationAuthorId: developmentUnderstanding?.implementationAuthorId ?? "TRAQEN-RUNTIME",
       runnerId: developmentUnderstanding?.runnerId ?? "TRAQEN-SERVER-RUNNER",
       publicationMetadata: developmentUnderstanding?.publicationMetadata ?? null,
+      registerIssuedSecretGrants: (grants) => analysisModelRegistry.registerIssuedSecretGrants(grants),
     })
     : null;
   const application = new TraceabilityApplication({

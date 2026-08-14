@@ -31,7 +31,7 @@ test("Candidate completeness cannot exceed its canonical reviewed TraceChain", (
   assert.equal(reviewedCandidateTraceComplete(null, []), false);
 });
 
-async function runProducerBoundaryScenario(projectId, { childProducer, mainProducer, credentialHandleIds = [] }) {
+async function runProducerBoundaryScenario(projectId, { childProducer, mainProducer, credentialHandleIds = [], registerIssuedSecretGrants = null }) {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-producer-boundary-"));
   const source = path.join(temporary, "source");
   const snapshots = path.join(temporary, "snapshots");
@@ -50,6 +50,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
     sourceSliceBroker: createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots }),
     childProducer,
     mainProducer,
+    registerIssuedSecretGrants,
     equivalenceResolver: fixtureEquivalenceResolver,
     reviewedEvaluationResolver: fixtureReviewedEvaluationResolver("entry.js"),
   });
@@ -63,6 +64,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
 
 test("runtime issues and mounts only Run- and Slot-scoped model secret grants", async () => {
   const observed = [];
+  const registered = [];
   const childProducer = async (input) => {
     observed.push({ slotId: input.assignment.slotId, grants: input.secretGrants });
     return deterministicFixtureChildProducer(input);
@@ -75,6 +77,7 @@ test("runtime issues and mounts only Run- and Slot-scoped model secret grants", 
     childProducer,
     mainProducer,
     credentialHandleIds: ["MODEL-HANDLE-1"],
+    registerIssuedSecretGrants: (grants) => registered.push(...grants),
   });
   assert.equal(result.status, "COMPLETED", JSON.stringify(result.error));
   assert.ok(observed.length >= 3);
@@ -88,6 +91,11 @@ test("runtime issues and mounts only Run- and Slot-scoped model secret grants", 
   }
   const persisted = await store.listUnderstandingRecords("P-SCOPED-GRANTS", "SECRET_GRANT");
   assert.equal(persisted.length, 3);
+  assert.deepEqual(
+    registered.map(canonicalJson).sort(),
+    persisted.map(canonicalJson).sort(),
+    "the runtime must register exactly the grants it persisted before mounting any credentialed producer",
+  );
 });
 
 async function runCanonicalRelationScenario(projectId, { sourceContent, childEvidence }) {

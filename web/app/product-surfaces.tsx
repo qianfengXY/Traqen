@@ -2210,6 +2210,7 @@ export function GlobalModelLibrary({
   const [apiKey, setApiKey] = useState("");
   const [cliAdapter, setCliAdapter] = useState("CODEX");
   const [editingProfileId, setEditingProfileId] = useState("");
+  const [expectedRevision, setExpectedRevision] = useState<number | null>(null);
   const [replacementBySource, setReplacementBySource] = useState<Record<string, string>>({});
   const [impactPreview, setImpactPreview] = useState<GlobalModelUsage | null>(null);
   const [impactLoading, setImpactLoading] = useState("");
@@ -2237,6 +2238,7 @@ export function GlobalModelLibrary({
     setModel(profile.model ?? "");
     setCliAdapter(profile.cliAdapter ?? "CODEX");
     setApiKey("");
+    setExpectedRevision(profile.revision);
   };
   const submit = async () => {
     const saved = await onCreate(
@@ -2249,6 +2251,7 @@ export function GlobalModelLibrary({
             model,
             apiKey,
             providerAdapter: "OPENAI_COMPATIBLE",
+            ...(editingProfileId ? { expectedRevision } : {}),
           }
         : {
             profileId,
@@ -2256,6 +2259,7 @@ export function GlobalModelLibrary({
             transport,
             cliAdapter,
             ...(model ? { model } : {}),
+            ...(editingProfileId ? { expectedRevision } : {}),
           },
     );
     setApiKey("");
@@ -2266,6 +2270,7 @@ export function GlobalModelLibrary({
       setEndpoint("");
       setModel("");
       setCliAdapter("CODEX");
+      setExpectedRevision(null);
     }
   };
   return (
@@ -2497,6 +2502,7 @@ export function CapabilitySettings({
   setConventionNotes,
   securityNotes,
   setSecurityNotes,
+  recoveryReady,
   working,
   onSaveProject,
   onDeleteProject,
@@ -2525,6 +2531,7 @@ export function CapabilitySettings({
   setConventionNotes: (value: string) => void;
   securityNotes: string;
   setSecurityNotes: (value: string) => void;
+  recoveryReady: boolean;
   working: boolean;
   onSaveProject: (input: {
     kind: "SKILL" | "MCP";
@@ -2540,6 +2547,7 @@ export function CapabilitySettings({
   const [projectName, setProjectName] = useState("");
   const [projectManifest, setProjectManifest] = useState("{}");
   const [projectManifestError, setProjectManifestError] = useState("");
+  const editingDisabled = working || !recoveryReady;
   const readyModels = models.filter(
     ({ readiness, lifecycle }) =>
       readiness === "READY" && lifecycle === "ACTIVE",
@@ -2588,6 +2596,7 @@ export function CapabilitySettings({
             <input
               type="checkbox"
               checked={values.includes(entry.normalizedName)}
+              disabled={editingDisabled}
               onChange={() =>
                 toggleGrant(values, setValues, entry.normalizedName)
               }
@@ -2617,6 +2626,11 @@ export function CapabilitySettings({
               "Global model connections, the project capability catalog, and the editable draft are separate authorities. Activation creates an immutable run-pinned revision.",
             )}
           </p>
+          {!recoveryReady && (
+            <p className="explicit-empty">
+              {t("Workspace 设置仍在恢复；恢复完成前不能修改或保存。", "Workspace settings are still recovering; changes and saves are disabled until recovery completes.")}
+            </p>
+          )}
         </div>
         {profile ? (
           <span className="authority-pill published">
@@ -2692,6 +2706,7 @@ export function CapabilitySettings({
                     <input
                       type="checkbox"
                       checked={enabled(entry.kind, entry.normalizedName)}
+                      disabled={editingDisabled}
                       onChange={() =>
                         toggleDisabled(entry.kind, entry.normalizedName)
                       }
@@ -2701,7 +2716,7 @@ export function CapabilitySettings({
                   {entry.source === "PROJECT" && (
                     <button
                       className="button"
-                      disabled={working}
+                      disabled={editingDisabled}
                       onClick={() =>
                         onDeleteProject(entry.kind, entry.normalizedName, entry.revision ?? 0)
                       }
@@ -2725,6 +2740,7 @@ export function CapabilitySettings({
                 Kind
                 <select
                   value={projectKind}
+                  disabled={editingDisabled}
                   onChange={(event) =>
                     setProjectKind(event.currentTarget.value as "SKILL" | "MCP")
                   }
@@ -2737,6 +2753,7 @@ export function CapabilitySettings({
                 {t("规范化名称", "Normalized name")}
                 <input
                   value={projectName}
+                  disabled={editingDisabled}
                   onChange={(event) =>
                     setProjectName(event.currentTarget.value.toLowerCase())
                   }
@@ -2747,6 +2764,7 @@ export function CapabilitySettings({
                 <textarea
                   rows={4}
                   value={projectManifest}
+                  disabled={editingDisabled}
                   onChange={(event) => {
                     setProjectManifest(event.currentTarget.value);
                     setProjectManifestError("");
@@ -2756,7 +2774,7 @@ export function CapabilitySettings({
               {projectManifestError && <p className="explicit-empty">{projectManifestError}</p>}
               <button
                 className="button"
-                disabled={working || !projectName.trim()}
+                disabled={editingDisabled || !projectName.trim()}
                 onClick={() => {
                   const prior = catalog.entries.find(
                     (entry) =>
@@ -2799,6 +2817,7 @@ export function CapabilitySettings({
                 {t("模型", "Model")}
                 <select
                   value={mainModel}
+                  disabled={editingDisabled}
                   onChange={(event) => setMainModel(event.currentTarget.value)}
                 >
                   <option value="">
@@ -2839,6 +2858,7 @@ export function CapabilitySettings({
               </div>
               <button
                 className="button"
+                disabled={editingDisabled}
                 onClick={() =>
                   setChildSlots(
                     addChildSlot(childSlots, {
@@ -2860,6 +2880,7 @@ export function CapabilitySettings({
                     {t("模型", "Model")}
                     <select
                       value={slot.model}
+                      disabled={editingDisabled}
                       onChange={(event) =>
                         updateSlot(index, { model: event.currentTarget.value })
                       }
@@ -2891,6 +2912,7 @@ export function CapabilitySettings({
                     {t("独立组", "Independence group")}
                     <input
                       value={slot.independenceGroup}
+                      disabled={editingDisabled}
                       onChange={(event) =>
                         updateSlot(index, {
                           independenceGroup: event.currentTarget.value,
@@ -2900,7 +2922,7 @@ export function CapabilitySettings({
                   </label>
                   <button
                     aria-label={t("删除槽位", "Remove slot")}
-                    disabled={childSlots.length <= 2}
+                    disabled={editingDisabled || childSlots.length <= 2}
                     onClick={() =>
                       setChildSlots(removeChildSlot(childSlots, slot.id))
                     }
@@ -2934,6 +2956,7 @@ export function CapabilitySettings({
                 <textarea
                   rows={5}
                   value={dependencyNotes}
+                  disabled={editingDisabled}
                   onChange={(event) =>
                     setDependencyNotes(event.currentTarget.value)
                   }
@@ -2944,6 +2967,7 @@ export function CapabilitySettings({
                 <textarea
                   rows={5}
                   value={conventionNotes}
+                  disabled={editingDisabled}
                   onChange={(event) =>
                     setConventionNotes(event.currentTarget.value)
                   }
@@ -2954,6 +2978,7 @@ export function CapabilitySettings({
                 <textarea
                   rows={5}
                   value={securityNotes}
+                  disabled={editingDisabled}
                   onChange={(event) =>
                     setSecurityNotes(event.currentTarget.value)
                   }
@@ -3026,13 +3051,13 @@ export function CapabilitySettings({
               <dt>{t("历史 Revision", "Revision history")}</dt>
               <dd>{profileHistory.length}</dd>
             </dl>
-            <button className="button" disabled={working} onClick={onSave}>
+            <button className="button" disabled={editingDisabled} onClick={onSave}>
               {t("保存草稿", "Save draft")}
             </button>
             <button
               className="button primary"
               disabled={
-                working ||
+                editingDisabled ||
                 !draft ||
                 !mainModel ||
                 childSlots.length < 2 ||

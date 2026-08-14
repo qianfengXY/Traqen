@@ -1277,37 +1277,47 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     const snapshots = [];
     let appliedCount = 0;
     for (const change of changes) {
-      const draftKey = key(change.workspaceId, "WORKSPACE_CAPABILITY_DRAFT");
-      const profileKey = key(change.workspaceId, "WORKSPACE_EXECUTION_PROFILE");
-      const draftHead = this.#understandingHeads.get(draftKey) ?? { version: 0, recordId: null };
-      const profileHead = this.#understandingHeads.get(profileKey) ?? { version: 0, recordId: null };
-      const alreadyApplied = draftHead.version === change.expectedDraftVersion + 1 && draftHead.recordId === change.draft.id
-        && profileHead.version === change.expectedProfileVersion + 1 && profileHead.recordId === change.profile.id;
-      if (alreadyApplied) appliedCount += 1;
-      else if (draftHead.version !== change.expectedDraftVersion) throw new PersistenceConflictError(`WORKSPACE_CAPABILITY_DRAFT version conflict: expected ${change.expectedDraftVersion}, current ${draftHead.version}`);
-      else if (profileHead.version !== change.expectedProfileVersion) throw new PersistenceConflictError(`WORKSPACE_EXECUTION_PROFILE version conflict: expected ${change.expectedProfileVersion}, current ${profileHead.version}`);
-      snapshots.push({ change, draftKey, profileKey, draftHead, profileHead });
+      const targets = [
+        change.draft && { recordType: "WORKSPACE_CAPABILITY_DRAFT", headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: change.expectedDraftVersion, record: change.draft },
+        change.profile && { recordType: "WORKSPACE_EXECUTION_PROFILE", headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: change.expectedProfileVersion, record: change.profile },
+      ].filter(Boolean);
+      if (targets.length === 0) throw new PersistenceConflictError(`Workspace ${change.workspaceId} replacement has no mutable head`);
+      const targetSnapshots = targets.map((target) => {
+        const headStorageKey = key(change.workspaceId, target.headKey);
+        const head = this.#understandingHeads.get(headStorageKey) ?? { version: 0, recordId: null };
+        const alreadyApplied = head.version === target.expectedVersion + 1 && head.recordId === target.record.id;
+        if (!alreadyApplied && head.version !== target.expectedVersion) {
+          throw new PersistenceConflictError(`${target.headKey} version conflict: expected ${target.expectedVersion}, current ${head.version}`);
+        }
+        return { ...target, headStorageKey, head, alreadyApplied };
+      });
+      if (targetSnapshots.every(({ alreadyApplied }) => alreadyApplied)) appliedCount += 1;
+      else if (targetSnapshots.some(({ alreadyApplied }) => alreadyApplied)) throw new PersistenceConflictError("model replacement is only partially applied");
+      snapshots.push({ change, targets: targetSnapshots });
     }
     if (appliedCount === changes.length) return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
     if (appliedCount > 0) throw new PersistenceConflictError("model replacement is only partially applied");
-    for (const { change, draftKey, profileKey } of snapshots) {
-      this.#understandingHeads.set(draftKey, { version: change.expectedDraftVersion + 1, recordId: change.draft.id });
-      this.#understandingHeads.set(profileKey, { version: change.expectedProfileVersion + 1, recordId: change.profile.id });
+    for (const { targets } of snapshots) {
+      for (const target of targets) {
+        this.#understandingHeads.set(target.headStorageKey, { version: target.expectedVersion + 1, recordId: target.record.id });
+      }
     }
     const inserted = [];
     try {
-      for (const { change } of snapshots) {
-        await this.appendUnderstandingRecord(change.workspaceId, "WORKSPACE_CAPABILITY_DRAFT", change.draft);
-        inserted.push(key(change.workspaceId, `WORKSPACE_CAPABILITY_DRAFT\u0000${change.draft.id}`));
-        await this.appendUnderstandingRecord(change.workspaceId, "WORKSPACE_EXECUTION_PROFILE", change.profile);
-        inserted.push(key(change.workspaceId, `WORKSPACE_EXECUTION_PROFILE\u0000${change.profile.id}`));
+      for (const { change, targets } of snapshots) {
+        for (const target of targets) {
+          await this.appendUnderstandingRecord(change.workspaceId, target.recordType, target.record);
+          inserted.push(key(change.workspaceId, `${target.recordType}\u0000${target.record.id}`));
+        }
       }
       return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
     } catch (error) {
       for (const recordKey of inserted) this.#understandingRecords.delete(recordKey);
-      for (const { draftKey, profileKey, draftHead, profileHead } of snapshots) {
-        if (draftHead.version === 0) this.#understandingHeads.delete(draftKey); else this.#understandingHeads.set(draftKey, draftHead);
-        if (profileHead.version === 0) this.#understandingHeads.delete(profileKey); else this.#understandingHeads.set(profileKey, profileHead);
+      for (const { targets } of snapshots) {
+        for (const target of targets) {
+          if (target.head.version === 0) this.#understandingHeads.delete(target.headStorageKey);
+          else this.#understandingHeads.set(target.headStorageKey, target.head);
+        }
       }
       throw error;
     }

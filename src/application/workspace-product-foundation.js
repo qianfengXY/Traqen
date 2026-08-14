@@ -14,6 +14,7 @@ import {
   issueScopedSecretGrants,
   openAnalysisBatchBarrier,
   activateWorkspaceCapabilityDraft,
+  replaceWorkspaceExecutionProfileModel,
   resolveWorkspaceCapabilityCatalog,
   resolveWorkspaceExecutionProfile,
   validateWorkspaceCapabilityDraft,
@@ -299,39 +300,54 @@ export class WorkspaceProductFoundation {
     const changes = [];
     for (const workspace of await this.listWorkspaces(null, { includeDeleted: false })) {
       const draft = await this.getCapabilityDraft(workspace.id);
-      const activeProfile = (await this.listWorkspaceProfiles(workspace.id))?.[0] ?? null;
+      const activeProfile = await this.getActiveWorkspaceProfile(workspace.id);
       const draftSlots = draft ? [draft.mainAgentSlot, ...draft.childAgentSlots] : [];
       const activeSlots = activeProfile ? [activeProfile.mainAgentSlot, ...(activeProfile.childAgentSlots ?? [])] : [];
-      if (![...draftSlots, ...activeSlots].some((slot) => slot?.modelProfileId === sourceProfileId)) continue;
-      if (!draft) throw new TypeError(`Workspace ${workspace.id} has an active model reference without a capability draft`);
+      const draftReferencesSource = draftSlots.some((slot) => slot?.modelProfileId === sourceProfileId);
+      const activeReferencesSource = activeSlots.some((slot) => slot?.modelProfileId === sourceProfileId);
+      if (!draftReferencesSource && !activeReferencesSource) continue;
+      if (!draft && activeReferencesSource) throw new TypeError(`Workspace ${workspace.id} has an active model reference without a capability draft`);
       const replaceSlot = (slot) => slot.modelProfileId === sourceProfileId ? { ...slot, modelProfileId: replacementProfileId } : slot;
-      const replacementDraft = createWorkspaceCapabilityDraftRevision({
+      const replacementDraft = draftReferencesSource ? createWorkspaceCapabilityDraftRevision({
         ...draft,
         id: undefined,
         revision: draft.revision + 1,
         mainAgentSlot: replaceSlot(draft.mainAgentSlot),
         childAgentSlots: draft.childAgentSlots.map(replaceSlot),
-      }, this.clock);
-      const catalog = await this.effectiveCapabilityCatalog(workspace.id, replacementDraft.disabledKeys, replacementDraft.projectCapabilityRevisionIds);
-      const validation = validateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, effectiveCatalog: catalog.effective });
-      if (!validation.valid) throw new TypeError(`Workspace ${workspace.id} replacement is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(', ')}`);
-      const policyRevisions = await Promise.all([
-        ['DEPENDENCY', replacementDraft.dependencyPolicyRevisionId],
-        ['CONVENTION', replacementDraft.conventionRevisionId],
-        ['SECURITY', replacementDraft.securityPolicyRevisionId],
-      ].map(async ([kind, id]) => {
-        const record = await this.store.getUnderstandingRecord(workspace.id, 'WORKSPACE_POLICY_REVISION', id);
-        if (!record || record.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
-        return record;
-      }));
-      const profile = activateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, catalog, policyRevisions, clock: this.clock });
-      const profileHead = await this.store.getUnderstandingHead(workspace.id, 'WORKSPACE_EXECUTION_PROFILE');
+      }, this.clock) : null;
+      let profile = null;
+      if (replacementDraft) {
+        const catalog = await this.effectiveCapabilityCatalog(workspace.id, replacementDraft.disabledKeys, replacementDraft.projectCapabilityRevisionIds);
+        const validation = validateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, effectiveCatalog: catalog.effective });
+        if (!validation.valid) throw new TypeError(`Workspace ${workspace.id} replacement is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(', ')}`);
+        if (activeReferencesSource && activeProfile?.draftRevisionId === draft.id) {
+          const policyRevisions = await Promise.all([
+            ['DEPENDENCY', replacementDraft.dependencyPolicyRevisionId],
+            ['CONVENTION', replacementDraft.conventionRevisionId],
+            ['SECURITY', replacementDraft.securityPolicyRevisionId],
+          ].map(async ([kind, id]) => {
+            const record = await this.store.getUnderstandingRecord(workspace.id, 'WORKSPACE_POLICY_REVISION', id);
+            if (!record || record.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
+            return record;
+          }));
+          profile = activateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, catalog, policyRevisions, clock: this.clock });
+        }
+      }
+      if (activeReferencesSource && !profile) {
+        profile = replaceWorkspaceExecutionProfileModel({
+          profile: activeProfile,
+          sourceProfileId,
+          replacementProfile: replacement,
+          clock: this.clock,
+        });
+      }
+      const profileHead = profile ? await this.store.getUnderstandingHead(workspace.id, 'WORKSPACE_EXECUTION_PROFILE') : null;
       changes.push(Object.freeze({
         workspaceId: workspace.id,
         workspaceName: workspace.name,
-        expectedDraftVersion: draft.revision,
-        expectedProfileVersion: profileHead.version,
-        priorDraftId: draft.id,
+        expectedDraftVersion: replacementDraft ? draft.revision : null,
+        expectedProfileVersion: profile ? profileHead.version : null,
+        priorDraftId: replacementDraft ? draft.id : null,
         priorProfileId: activeProfile?.id ?? null,
         draft: replacementDraft,
         profile,

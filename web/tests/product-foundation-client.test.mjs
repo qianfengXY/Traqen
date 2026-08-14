@@ -10,11 +10,34 @@ import {
   getConnectionHealth,
   getEffectiveCapabilities,
   getWorkspaceCapabilityDraft,
+  loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
   listWorkspaceExecutionProfiles,
   activateWorkspaceCapabilityDraft,
   saveWorkspaceCapabilityDraft,
 } from "../app/product-foundation-client.ts";
+
+test("capability settings recovery is all-or-nothing when the catalog cannot be restored", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/capability-draft")) return Response.json({ draft: { id: "DRAFT-1", workspaceId: "W1", revision: 1 } });
+    if (String(url).endsWith("/capabilities/effective")) return Response.json({ error: { message: "catalog temporarily unavailable" } }, { status: 503 });
+    if (String(url).endsWith("/execution-profile-revisions")) return Response.json({ profiles: [] });
+    throw new Error(`unexpected request ${url}`);
+  };
+  try {
+    await assert.rejects(
+      loadWorkspaceCapabilitySettings("http://api", "secret", "W1"),
+      /catalog temporarily unavailable/,
+      "a partially restored catalog must not be returned as an editable empty catalog",
+    );
+    assert.deepEqual(calls.map(({ options }) => options.method), ["GET", "GET", "GET"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("single global model client uses GET for reads and PUT for immutable revisions", async () => {
   const calls = [];
@@ -25,10 +48,10 @@ test("single global model client uses GET for reads and PUT for immutable revisi
   };
   try {
     await getGlobalModel("http://api/", "secret", "MODEL/1");
-    await updateGlobalModel("http://api/", "secret", "MODEL/1", { displayName: "Revision 2", apiKey: "" });
+    await updateGlobalModel("http://api/", "secret", "MODEL/1", { expectedRevision: 1, displayName: "Revision 2", apiKey: "" });
     assert.deepEqual(calls.map(({ options }) => options.method), ["GET", "PUT"]);
     assert.ok(calls.every(({ url }) => url.endsWith("/v1/global-models/MODEL%2F1")));
-    assert.deepEqual(JSON.parse(calls[1].options.body), { displayName: "Revision 2", apiKey: "" });
+    assert.deepEqual(JSON.parse(calls[1].options.body), { expectedRevision: 1, displayName: "Revision 2", apiKey: "" });
   } finally {
     globalThis.fetch = originalFetch;
   }

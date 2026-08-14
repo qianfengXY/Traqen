@@ -27,7 +27,7 @@ function cliSpawn(result, calls) {
   };
 }
 
-function scopedModelContext(profile, overrides = {}) {
+function scopedModelContext(registry, profile, overrides = {}) {
   const context = {
     workspaceId: "W1",
     profileId: "EXECUTION-PROFILE-1",
@@ -42,6 +42,7 @@ function scopedModelContext(profile, overrides = {}) {
     childSlots: [],
     entries: [{ kind: "MODEL", logicalName: profile.currentRevisionId, credentialHandleIds: [profile.credentialHandleId] }],
   }, { analysisRunId: context.analysisRunId, expiresAt: "2099-01-01T00:00:00.000Z" });
+  registry.registerIssuedSecretGrants([grant]);
   return {
     ...context,
     grant,
@@ -145,18 +146,37 @@ test("credentialed API model revisions require the matching scoped Run and Slot 
   assert.match(profile.credentialHandleId, /^MODEL-CREDENTIAL-/);
   assert.notEqual(profile.credentialHandleId, "MODEL-CREDENTIAL-SCOPED", "a CredentialHandle must identify encrypted secret material, not be synthesized from the public profile id");
   assert.equal(registry.resolve(profile.currentRevisionId), null, "runtime cannot bypass a scoped grant");
-  const context = scopedModelContext(profile);
+  const context = scopedModelContext(registry, profile);
   assert.ok(registry.resolve(profile.currentRevisionId, context));
   assert.equal(registry.resolve(profile.currentRevisionId, { ...context, workspaceId: "W2" }), null);
   assert.equal(registry.resolve(profile.currentRevisionId, { ...context, grant: { ...context.grant, id: "FORGED-GRANT" } }), null,
     "runtime resolution must require the exact immutable grant minted by the scoped grant issuer");
 });
 
+test("analysis model registry rejects a grant forged solely from its public claims", async () => {
+  const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
+  const profile = registry.configure({ id: "FORGE", endpoint: "https://models.example/v1", model: "forge", apiKey: "secret" });
+  await registry.verify("FORGE");
+  const context = { workspaceId: "W1", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" };
+  const [forged] = issueScopedSecretGrants({
+    id: context.profileId,
+    workspaceId: context.workspaceId,
+    mainAgent: { model: profile.currentRevisionId, skillNames: [], mcpNames: [] },
+    childSlots: [],
+    entries: [{ kind: "MODEL", logicalName: profile.currentRevisionId, credentialHandleIds: [profile.credentialHandleId] }],
+  }, { analysisRunId: context.analysisRunId, expiresAt: "2099-01-01T00:00:00.000Z" });
+  assert.equal(
+    registry.resolve(profile.currentRevisionId, { ...context, grant: forged }),
+    null,
+    "a grant that was never registered as server-issued must not resolve a credentialed model",
+  );
+});
+
 test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {
   const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
   const first = registry.configure({ id: "M1", revisionId: "REV-SAME", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
   await registry.verify("M1");
-  const pinnedContext = scopedModelContext(first);
+  const pinnedContext = scopedModelContext(registry, first);
   const pinned = registry.resolve(first.currentRevisionId, pinnedContext);
   const second = registry.configure({ id: "M1", revisionId: "REV-SAME", revision: 1, endpoint: "https://models.example/v1", model: "two", apiKey: "secret" });
   assert.notEqual(second.currentRevisionId, first.currentRevisionId);
@@ -168,7 +188,7 @@ test("retiring profiles reject new direct analysis while pinned revision executi
   const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
   const profile = registry.configure({ id: "M1", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
   await registry.verify("M1");
-  const context = scopedModelContext(profile);
+  const context = scopedModelContext(registry, profile);
   registry.remove("M1");
   await assert.rejects(() => registry.planWorkspaceAnalysis("M1", {}), /not active/);
   assert.ok(registry.resolve(profile.currentRevisionId, context));
@@ -279,6 +299,19 @@ test("configured Analysis Agent models resolve secrets at call time without seri
   assert.equal(request.headers.authorization, "Bearer server-only-secret");
   assert.equal(JSON.stringify(input).includes("server-only-secret"), false);
   assert.equal(request.body.includes("server-only-secret"), false);
+});
+
+test("environment model CredentialHandles are opaque server-minted ids rather than profile-name derivatives", () => {
+  const registry = new AnalysisModelRegistry({
+    adapters: configuredAnalysisModels(JSON.stringify([{
+      id: "private-model",
+      endpoint: "https://models.example/v1/chat/completions",
+      model: "semantic-source-model",
+      apiKeyEnvironment: "PRIVATE_MODEL_KEY",
+    }]), { PRIVATE_MODEL_KEY: "server-only-secret" }),
+  });
+  assert.match(registry.list()[0].credentialHandleId, /^ENV-MODEL-CREDENTIAL-[0-9a-f-]+$/i);
+  assert.notEqual(registry.list()[0].credentialHandleId, "ENV-MODEL-CREDENTIAL-private-model");
 });
 
 test("Main model reconciliation returns its structured decisions instead of an accept-all projection", async () => {
@@ -454,7 +487,7 @@ test("runtime model profiles keep API keys private, require verification, and en
   const verified = await registry.verify("workspace-default");
   assert.equal(verified.ready, true);
   assert.equal(JSON.parse(requests[0].body).max_tokens, 512);
-  const pinnedContext = scopedModelContext(configured);
+  const pinnedContext = scopedModelContext(registry, configured);
   assert.ok(registry.resolve("workspace-default", pinnedContext));
   const enriched = await registry.enrichWorkspaceCandidates("workspace-default", workspaceCandidateEnvelope());
   assert.equal(enriched.candidates[0].proposal.businessFeature, true);

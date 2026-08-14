@@ -1935,8 +1935,9 @@
       },
       "GlobalModelRevisionRequest": {
         "type": "object",
-        "required": ["displayName", "transport"],
+        "required": ["expectedRevision", "displayName", "transport"],
         "properties": {
+          "expectedRevision": { "type": "integer", "minimum": 1 },
           "id": { "type": "string", "minLength": 1 },
           "profileId": { "type": "string", "minLength": 1 },
           "displayName": { "type": "string", "minLength": 1 },

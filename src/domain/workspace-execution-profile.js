@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { canonicalJson, contentId, deepFreeze } from "./canonical-json.js";
 import { requireNonEmptyString } from "./model.js";
 
@@ -276,6 +278,82 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
   });
 }
 
+/**
+ * Advance only the active profile's references to a retiring global model.
+ *
+ * This deliberately does not derive a new active profile from the current
+ * draft: an editor may have saved a newer Draft which has not been activated.
+ * Replacing the old active profile must leave that Draft untouched.
+ */
+export function replaceWorkspaceExecutionProfileModel({ profile, sourceProfileId, replacementProfile, clock = () => new Date() }) {
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) throw new TypeError("Workspace execution profile must be an object");
+  sourceProfileId = requireNonEmptyString(sourceProfileId, "sourceProfileId");
+  const replacementId = requireNonEmptyString(replacementProfile?.id, "replacementProfile.id");
+  const replacementProfileId = requireNonEmptyString(replacementProfile?.profileId ?? replacementProfile?.id, "replacementProfile.profileId");
+  const slots = [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])].filter(Boolean);
+  const sourceSlots = slots.filter(({ modelProfileId }) => modelProfileId === sourceProfileId);
+  if (sourceSlots.length === 0) throw new TypeError(`Workspace execution profile does not reference source model ${sourceProfileId}`);
+  const sourceRevisionIds = new Set(sourceSlots.map(({ modelProfileRevisionId }) => modelProfileRevisionId).filter(Boolean));
+  const replaceSlot = (slot) => slot.modelProfileId === sourceProfileId
+    ? { ...slot, modelProfileId: replacementProfileId, modelProfileRevisionId: replacementId }
+    : structuredClone(slot);
+  const mainAgentSlot = replaceSlot(profile.mainAgentSlot);
+  const childAgentSlots = (profile.childAgentSlots ?? []).map(replaceSlot);
+  const replacementEntry = {
+    logicalName: replacementId,
+    kind: "MODEL",
+    manifest: {
+      profileId: replacementProfileId,
+      transport: replacementProfile.transport ?? null,
+      providerAdapter: replacementProfile.providerAdapter ?? null,
+      endpoint: replacementProfile.endpoint ?? null,
+      model: replacementProfile.model ?? null,
+      cliAdapter: replacementProfile.cliAdapter ?? null,
+    },
+    sourceTemplateId: null,
+    credentialHandleIds: replacementProfile.credentialHandleId ? [replacementProfile.credentialHandleId] : [],
+  };
+  const modelEntries = new Map();
+  for (const entry of profile.entries ?? []) {
+    if (entry.kind !== "MODEL") continue;
+    if (entry.manifest?.profileId === sourceProfileId || sourceRevisionIds.has(entry.logicalName)) continue;
+    modelEntries.set(entry.logicalName, structuredClone(entry));
+  }
+  modelEntries.set(replacementEntry.logicalName, replacementEntry);
+  const entries = [
+    ...modelEntries.values(),
+    ...(profile.entries ?? []).filter(({ kind }) => kind !== "MODEL").map((entry) => structuredClone(entry)),
+  ].sort((left, right) => left.kind.localeCompare(right.kind) || left.logicalName.localeCompare(right.logicalName));
+  const identity = {
+    workspaceId: profile.workspaceId,
+    draftRevisionId: profile.draftRevisionId,
+    draftRevision: profile.draftRevision,
+    mainAgentSlot,
+    childAgentSlots,
+    catalogProvenance: profile.catalogProvenance ?? [],
+    dependencyPolicyRevisionId: profile.dependencyPolicyRevisionId,
+    conventionRevisionId: profile.conventionRevisionId,
+    securityPolicyRevisionId: profile.securityPolicyRevisionId,
+    policyProvenance: profile.policyProvenance ?? [],
+  };
+  const legacyRole = (slot) => ({
+    ...(slot.role === "CHILD" ? { id: slot.id, independenceGroup: slot.independenceGroup } : {}),
+    model: slot.modelProfileRevisionId,
+    skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName),
+    mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName),
+  });
+  return deepFreeze({
+    ...structuredClone(profile),
+    id: contentId("WORKSPACE-EXECUTION-PROFILE", identity),
+    ...identity,
+    mainAgent: legacyRole(mainAgentSlot),
+    childSlots: childAgentSlots.map(legacyRole),
+    entries,
+    profileDigest: contentId("PROFILE-DIGEST", identity),
+    createdAt: clock().toISOString(),
+  });
+}
+
 export function createCapabilityTemplateRevision(input, clock = () => new Date()) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("capability template must be an object");
   const kind = requireNonEmptyString(input.kind, "kind").toUpperCase();
@@ -421,7 +499,9 @@ export function issueScopedSecretGrants(profile, { analysisRunId, expiresAt }) {
     for (const { kind, name } of capabilities) {
       for (const credentialHandleId of byKey.get(`${kind}\u0000${name}`)?.credentialHandleIds ?? []) {
         grants.push({
-          id: contentId("SECRET-GRANT", { profileId: profile.id, analysisRunId, slotId, kind, name, credentialHandleId, expiresAt }),
+          // Grants are server-issued bearer capabilities. Their ids must not be
+          // derivable from otherwise-public scope claims.
+          id: `SECRET-GRANT-${randomUUID()}`,
           workspaceId: profile.workspaceId,
           profileId: profile.id,
           analysisRunId,

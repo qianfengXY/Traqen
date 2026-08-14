@@ -440,7 +440,7 @@ test("global CLI model API cannot bypass the adapter executable allowlist", asyn
   const updated = await fetch(`${baseUrl}/v1/global-models/CLI-SAFE`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ displayName: "Revised CLI", transport: "CLI", cliAdapter: "KIMI", executablePath: "kimi" }),
+    body: JSON.stringify({ expectedRevision: accepted.body.revision, displayName: "Revised CLI", transport: "CLI", cliAdapter: "KIMI", executablePath: "kimi" }),
   });
   assert.equal(updated.status, 200);
   const updatedBody = await updated.json();
@@ -464,7 +464,7 @@ test("global model GET and PUT contracts never return API credential values", as
   const updated = await fetch(`${baseUrl}/v1/global-models/MODEL-EDIT`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ displayName: "Updated", transport: "API", endpoint: "https://models.example/v1", model: "updated", apiKey: "" }),
+    body: JSON.stringify({ expectedRevision: created.body.revision, displayName: "Updated", transport: "API", endpoint: "https://models.example/v1", model: "updated", apiKey: "" }),
   });
   assert.equal(updated.status, 200);
   const updatedBody = await updated.json();
@@ -486,9 +486,34 @@ test("global model GET and PUT contracts never return API credential values", as
   const uncontracted = await fetch(`${baseUrl}/v1/global-models/MODEL-EDIT`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ displayName: "Uncontracted", transport: "API", endpoint: "https://models.example/v1", model: "updated", unexpectedCredentialAlias: "bypass" }),
+    body: JSON.stringify({ expectedRevision: updatedBody.revision, displayName: "Uncontracted", transport: "API", endpoint: "https://models.example/v1", model: "updated", unexpectedCredentialAlias: "bypass" }),
   });
   assert.equal(uncontracted.status, 400, "PUT must reject fields outside the executable revision contract");
+});
+
+test("global model revisions require an expected revision and reject stale writers", async (t) => {
+  const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
+  const created = await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "MODEL-CAS", displayName: "Original", transport: "API",
+    endpoint: "https://models.example/v1", model: "original", apiKey: "server-only-secret",
+  });
+  assert.equal(created.response.status, 201);
+  const missing = await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ displayName: "Missing CAS", transport: "API", endpoint: "https://models.example/v1", model: "missing", apiKey: "" }),
+  });
+  assert.equal(missing.status, 400, "PUT must require the revision observed by the editor");
+  const first = await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedRevision: created.body.revision, displayName: "Writer A", transport: "API", endpoint: "https://models.example/v1", model: "writer-a", apiKey: "" }),
+  });
+  assert.equal(first.status, 200);
+  const stale = await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedRevision: created.body.revision, displayName: "Writer B", transport: "API", endpoint: "https://models.example/v1", model: "writer-b", apiKey: "" }),
+  });
+  assert.equal(stale.status, 400, "a stale writer must not silently create a later revision");
+  assert.equal((await (await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`)).json()).model, "writer-a");
 });
 
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
@@ -551,6 +576,104 @@ test("global model replacement HTTP journey atomically advances every Workspace 
   assert.equal(usageAfter.filter(({ source }) => source !== "ACTIVE_RUN").length, 0, "replacement must leave zero current Workspace references");
   const models = (await (await fetch(`${baseUrl}/v1/global-models`)).json()).models;
   assert.equal(models.find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
+});
+
+test("global model replacement refuses a plan after another Workspace starts using the source model", async (t) => {
+  const registry = new AnalysisModelRegistry({
+    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+  });
+  const baseUrl = await startServer(t, { analysisModelRegistry: registry });
+  for (const profileId of ["MODEL-STALE-OLD", "MODEL-STALE-NEW"]) {
+    assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
+      profileId,
+      displayName: profileId,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(),
+      apiKey: "server-only-secret",
+    })).response.status, 201);
+    assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
+  }
+  const configureWorkspace = async (workspaceId) => {
+    assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: workspaceId, name: workspaceId, actorId: "OWNER" })).response.status, 201);
+    const draft = await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        expectedVersion: 0,
+        mainAgentSlot: { modelProfileId: "MODEL-STALE-OLD" },
+        childAgentSlots: [
+          { id: "C1", modelProfileId: "MODEL-STALE-OLD", independenceGroup: "I1" },
+          { id: "C2", modelProfileId: "MODEL-STALE-OLD", independenceGroup: "I2" },
+        ],
+        projectCapabilityRevisionIds: [],
+        disabledKeys: [],
+      }),
+    });
+    assert.equal(draft.status, 200);
+    assert.equal((await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" })).status, 201);
+  };
+  await configureWorkspace("W-STALE-1");
+  const plan = await postJson(`${baseUrl}/v1/global-models/MODEL-STALE-OLD/replacement-plans`, { replacementProfileId: "MODEL-STALE-NEW" });
+  assert.equal(plan.response.status, 201);
+  await configureWorkspace("W-STALE-2");
+
+  const applied = await postJson(`${baseUrl}/v1/global-models/MODEL-STALE-OLD/replacement-plans/${plan.body.id}/apply`, { expectedVersion: plan.body.version });
+  assert.equal(applied.response.status, 400, "a frozen plan must fail rather than leave the later Workspace on the retiring model");
+  for (const workspaceId of ["W-STALE-1", "W-STALE-2"]) {
+    const draft = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`)).json()).draft;
+    assert.equal(draft.mainAgentSlot.modelProfileId, "MODEL-STALE-OLD");
+  }
+  const source = (await (await fetch(`${baseUrl}/v1/global-models/MODEL-STALE-OLD`)).json());
+  assert.equal(source.lifecycle, "ACTIVE", "the source must not enter RETIRING while current references remain");
+});
+
+test("global model replacement updates an old active profile without publishing an unrelated newer draft", async (t) => {
+  const registry = new AnalysisModelRegistry({
+    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+  });
+  const baseUrl = await startServer(t, { analysisModelRegistry: registry });
+  for (const profileId of ["MODEL-HEAD-OLD", "MODEL-HEAD-NEW", "MODEL-HEAD-THIRD"]) {
+    assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
+      profileId,
+      displayName: profileId,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(),
+      apiKey: "server-only-secret",
+    })).response.status, 201);
+    assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
+  }
+  const workspaceId = "W-HEAD-SPLIT";
+  assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: workspaceId, name: workspaceId, actorId: "OWNER" })).response.status, 201);
+  const saveDraft = async (expectedVersion, modelProfileId) => fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedVersion,
+      mainAgentSlot: { modelProfileId },
+      childAgentSlots: [
+        { id: "C1", modelProfileId, independenceGroup: "I1" },
+        { id: "C2", modelProfileId, independenceGroup: "I2" },
+      ],
+      projectCapabilityRevisionIds: [],
+      disabledKeys: [],
+    }),
+  });
+  const oldDraft = await saveDraft(0, "MODEL-HEAD-OLD");
+  assert.equal(oldDraft.status, 200);
+  assert.equal((await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" })).status, 201);
+  const newerDraft = await saveDraft(1, "MODEL-HEAD-THIRD");
+  assert.equal(newerDraft.status, 200, "the third-model draft deliberately remains inactive");
+
+  const plan = await postJson(`${baseUrl}/v1/global-models/MODEL-HEAD-OLD/replacement-plans`, { replacementProfileId: "MODEL-HEAD-NEW" });
+  assert.equal(plan.response.status, 201);
+  const applied = await postJson(`${baseUrl}/v1/global-models/MODEL-HEAD-OLD/replacement-plans/${plan.body.id}/apply`, { expectedVersion: plan.body.version });
+  assert.equal(applied.response.status, 200);
+  const draft = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`)).json()).draft;
+  const profiles = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/execution-profile-revisions`)).json()).profiles;
+  assert.equal(draft.mainAgentSlot.modelProfileId, "MODEL-HEAD-THIRD", "the newer unactivated draft remains a draft");
+  assert.equal(profiles[0].mainAgentSlot.modelProfileId, "MODEL-HEAD-NEW", "the active old profile alone advances to the replacement model");
 });
 
 test("durable ModelReplacementPlan remains applicable after the model Registry loses its local Plan ledger", async () => {

@@ -11,7 +11,7 @@ function verifiedFetch() {
   return async () => new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), { status: 200 });
 }
 
-function scopedModelContext(profile) {
+function scopedModelContext(registry, profile) {
   const context = { workspaceId: "W1", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" };
   const [grant] = issueScopedSecretGrants({
     id: context.profileId,
@@ -20,6 +20,7 @@ function scopedModelContext(profile) {
     childSlots: [],
     entries: [{ kind: "MODEL", logicalName: profile.currentRevisionId, credentialHandleIds: [profile.credentialHandleId] }],
   }, { analysisRunId: context.analysisRunId, expiresAt: "2099-01-01T00:00:00.000Z" });
+  registry.registerIssuedSecretGrants([grant]);
   return { ...context, grant };
 }
 
@@ -58,7 +59,7 @@ test("runtime model profiles survive restart without a global active/default poi
     stream: true,
   }]);
   assert.equal(reloaded.resolve(), null, "a credentialed model cannot be resolved without a scoped grant after restart");
-  assert.ok(reloaded.resolve(reloaded.list()[0].currentRevisionId, scopedModelContext(reloaded.list()[0])));
+  assert.ok(reloaded.resolve(reloaded.list()[0].currentRevisionId, scopedModelContext(reloaded, reloaded.list()[0])));
 
   const edited = reloaded.configure({
     id: "persistent-model",
@@ -73,7 +74,7 @@ test("runtime model profiles survive restart without a global active/default poi
   const retiredReload = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
   assert.equal(retiredReload.list()[0].lifecycle, "RETIRING");
   assert.equal(Object.hasOwn(retiredReload.list()[0], "active"), false);
-  assert.ok(retiredReload.resolve(edited.currentRevisionId, scopedModelContext(edited)), "historical model revisions survive restart for pinned runs");
+  assert.ok(retiredReload.resolve(edited.currentRevisionId, scopedModelContext(retiredReload, edited)), "historical model revisions survive restart for pinned runs");
 });
 
 test("the model Registry persists retirement but does not own the durable replacement Plan ledger", async (t) => {
