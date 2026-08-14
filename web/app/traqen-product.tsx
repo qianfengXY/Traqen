@@ -50,7 +50,6 @@ import {
   getServerWorkspaceUnderstanding,
   listServerWorkspaceUnderstandingJobs,
   registerServerWorkspaceSource,
-  resolveServerWorkspaceExecutionProfile,
   startHistoricalRevisionReanalysis,
   startServerWorkspaceUnderstanding,
   type ServerUnderstandingJob,
@@ -219,7 +218,6 @@ function ServerOwnedProduct() {
       setJobs(availableJobs);
       setJob(recoverable);
       if (recoverable) {
-        setProfileRevisionId(recoverable.workspaceExecutionProfileRevisionId);
         setSourceRegistrationId(recoverable.sourceRegistrationId);
       }
     }
@@ -228,7 +226,7 @@ function ServerOwnedProduct() {
       setProfileHistory(profileResult.value);
       const latestProfile = profileResult.value[0] ?? null;
       setExecutionProfile(latestProfile);
-      if (latestProfile) setProfileRevisionId(latestProfile.id);
+      setProfileRevisionId(latestProfile?.id ?? "");
     }
     if (draftResult.status === "fulfilled") {
       setCapabilityDraft(draftResult.value);
@@ -483,20 +481,6 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
-  async function resolveRunProfile() {
-    if (!activeWorkspace) return;
-    setWorking(true);
-    try {
-      // Keep the job-start contract on the server-owned client. This is an explicit POST command.
-      const profile = await resolveServerWorkspaceExecutionProfile(apiBase, apiToken, activeWorkspace.id);
-      setProfileRevisionId(profile.id);
-      notify(t("Execution Profile 已验证并固定。", "Execution Profile validated and pinned."));
-    } catch (error) {
-      notify(messageOf(error, t("请先在能力设置中保存有效配置。", "Save a valid capability configuration first.")), "error");
-      setView("settings");
-    } finally { setWorking(false); }
-  }
-
   async function startUnderstanding() {
     if (!activeWorkspace || !sourceRegistrationId || !profileRevisionId) return;
     const requestContext = { ...contextRef.current };
@@ -505,7 +489,6 @@ function ServerOwnedProduct() {
       const started = await startServerWorkspaceUnderstanding(apiBase, apiToken, activeWorkspace.id, {
         sourceRegistrationId,
         requestedMode: "AUTO",
-        workspaceExecutionProfileRevisionId: profileRevisionId,
       });
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);
@@ -759,7 +742,7 @@ function ServerOwnedProduct() {
   const renderView = () => {
     if (!activeWorkspace) return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={activeWorkspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
-    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onResolveProfile={() => void resolveRunProfile()} onPrepareStart={() => setStartConfirmationOpen(true)} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); setProfileRevisionId(selected.workspaceExecutionProfileRevisionId); }} />;
+    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => setView("settings")} onPrepareStart={() => setStartConfirmationOpen(true)} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;

@@ -3107,7 +3107,23 @@ export class TraceabilityApplication {
   async startWorkspaceUnderstandingJob(projectId, input, options = {}) {
     requireId(projectId, "projectId");
     if (!this.#legacyUnderstandingRuntime) throw new TypeError("Legacy understanding runtime is not configured");
-    return this.#legacyUnderstandingRuntime.start({ ...input, projectId }, options);
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new TypeError("workspace Analysis Job input must be an object");
+    }
+    assertOnlyFields(
+      input,
+      ["sourceRegistrationId", "requestedMode", "purpose", "policyDigest"],
+      "workspaceAnalysisJob",
+    );
+    const activeProfile = await this.#workspaceFoundation.getActiveWorkspaceProfile(projectId);
+    if (!activeProfile) {
+      throw new TypeError("an active WorkspaceExecutionProfileRevision is required before starting a new Run");
+    }
+    return this.#legacyUnderstandingRuntime.start({
+      ...input,
+      projectId,
+      workspaceExecutionProfileRevisionId: activeProfile.id,
+    }, options);
   }
 
   async reanalyzeHistoricalGraphRevision(projectId, graphRevisionId, input, options = {}) {

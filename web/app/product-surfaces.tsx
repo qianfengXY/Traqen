@@ -292,7 +292,7 @@ export function AnalysisCommandCenter({
   profileRevisionId,
   working,
   onRegisterSource,
-  onResolveProfile,
+  onOpenCapabilitySettings,
   onPrepareStart,
   onControl,
   onSelectJob,
@@ -307,7 +307,7 @@ export function AnalysisCommandCenter({
   profileRevisionId: string;
   working: boolean;
   onRegisterSource: () => void;
-  onResolveProfile: () => void;
+  onOpenCapabilitySettings: () => void;
   onPrepareStart: () => void;
   onControl: (action: "pause" | "resume" | "cancel") => void;
   onSelectJob: (job: ServerUnderstandingJob) => void;
@@ -377,16 +377,16 @@ export function AnalysisCommandCenter({
             <span>2 · Execution Profile</span>
             <p>
               {t(
-                "从能力设置的当前草稿解析并固定模型、技能、MCP、预算和边界。",
-                "Resolve and pin models, skills, MCPs, budgets, and boundaries from the current capability draft.",
+                "新 Run 将由服务端固定能力设置中当前 Active Profile 的模型、技能、MCP、预算和边界。",
+                "The server pins the current Active Profile from capability settings for every new Run.",
               )}
             </p>
             <button
               className="button"
               disabled={working}
-              onClick={onResolveProfile}
+              onClick={onOpenCapabilitySettings}
             >
-              {t("验证并解析 Profile", "Validate and resolve profile")}
+              {t("打开能力设置", "Open capability settings")}
             </button>
             <small>{shortId(profileRevisionId)}</small>
           </div>

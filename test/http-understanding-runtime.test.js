@@ -51,7 +51,12 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   await mkdir(snapshots);
   await writeFile(path.join(source, "entry.js"), "export function httpStartedCapability() {}\n");
   const store = new MemoryTraceabilityStore();
-  const profile = await persistFixtureExecutionProfile(store, "P");
+  const historicalProfile = await persistFixtureExecutionProfile(store, "P", "PROFILE-HISTORICAL");
+  const profile = await persistFixtureExecutionProfile(store, "P", "PROFILE-ACTIVE");
+  await store.appendUnderstandingRecordWithCas("P", "WORKSPACE_EXECUTION_PROFILE", profile, {
+    headKey: "WORKSPACE_EXECUTION_PROFILE",
+    expectedVersion: 0,
+  });
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const runtime = new LegacyUnderstandingRuntime({
     store, allowlistedRoots: [source], snapshotRoot: snapshots, sourceSliceBroker: broker,
@@ -83,21 +88,25 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   assert.equal(registrationResponse.status, 201);
   const registration = await registrationResponse.json();
   assert.equal(Object.hasOwn(registration, "canonicalRootRef"), false);
-  const missingProfileResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
+  const clientSelectedProfileResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sourceRegistrationId: registration.id,
+      requestedMode: "AUTO",
+      workspaceExecutionProfileRevisionId: historicalProfile.id,
+    }),
+  });
+  assert.equal(clientSelectedProfileResponse.status, 400, "a new Run must not accept a client-selected historical Profile revision");
+  const startResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ sourceRegistrationId: registration.id, requestedMode: "AUTO" }),
   });
-  assert.equal(missingProfileResponse.status, 400);
-  assert.match((await missingProfileResponse.json()).error.message, /workspaceExecutionProfileRevisionId is required/);
-  const startResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ sourceRegistrationId: registration.id, requestedMode: "AUTO", workspaceExecutionProfileRevisionId: profile.id }),
-  });
   assert.equal(startResponse.status, 201);
   const completed = await startResponse.json();
   assert.equal(completed.status, "COMPLETED");
+  assert.equal(completed.workspaceExecutionProfileRevisionId, profile.id, "the server must pin the current Active Profile Head");
   const readResponse = await fetch(`${base}/workspace-analysis-jobs/${completed.id}`);
   assert.equal(readResponse.status, 200);
   assert.equal((await readResponse.json()).outputs.PUBLISHING.currentGraphHead.version, 1);
@@ -142,6 +151,10 @@ test("historical reanalysis requires an intact sealed Snapshot package and fails
   const featureId = "FEATURE-HISTORICAL-REANALYSIS";
   const store = new MemoryTraceabilityStore();
   const profile = await persistFixtureExecutionProfile(store, projectId, "PROFILE-HISTORICAL-REANALYSIS");
+  await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_EXECUTION_PROFILE", profile, {
+    headKey: "WORKSPACE_EXECUTION_PROFILE",
+    expectedVersion: 0,
+  });
   const broker = createLocalSourceSnapshotBroker({ store, snapshotRoot: snapshots });
   const runtime = new LegacyUnderstandingRuntime({
     store, allowlistedRoots: [source, unrelatedSource], snapshotRoot: snapshots, sourceSliceBroker: broker,
@@ -179,7 +192,6 @@ test("historical reanalysis requires an intact sealed Snapshot package and fails
     body: JSON.stringify({
       sourceRegistrationId: registration.id,
       requestedMode: "AUTO",
-      workspaceExecutionProfileRevisionId: profile.id,
     }),
   });
   assert.equal(firstResponse.status, 201);

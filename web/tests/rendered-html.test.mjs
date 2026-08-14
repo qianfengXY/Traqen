@@ -51,7 +51,7 @@ test("ships only the server-owned understanding path after Web cutover", async (
   ]);
   assert.match(page, /<TraqenProduct \/>/);
   assert.match(product, /registerServerWorkspaceSource/);
-  assert.match(product, /resolveServerWorkspaceExecutionProfile/);
+  assert.doesNotMatch(product, /resolveServerWorkspaceExecutionProfile/);
   assert.match(product, /startServerWorkspaceUnderstanding/);
   assert.match(product, /startHistoricalRevisionReanalysis/);
   assert.match(product, /getServerWorkspaceUnderstanding/);
@@ -82,9 +82,14 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /Agent lane/);
   assert.match(serverClient, /source-registrations/);
   assert.match(serverClient, /workspace-analysis-jobs/);
+  const startClient = serverClient.slice(
+    serverClient.indexOf("export async function startServerWorkspaceUnderstanding"),
+    serverClient.indexOf("export async function startHistoricalRevisionReanalysis"),
+  );
+  assert.doesNotMatch(startClient, /workspaceExecutionProfileRevisionId/,
+    "the Web client must not select an immutable Profile revision for a new Run");
   assert.match(serverClient, /graph\/revisions\/\$\{encodeURIComponent\(graphRevisionId\)\}\/reanalysis-jobs/);
   assert.match(serverClient, /"pause" \| "resume" \| "cancel"/);
-  assert.match(serverClient, /execution-profile-revisions/);
   assert.doesNotMatch(serverClient, /workspaceExecutionProfileRevisionId\?:/);
   assert.match(graphClient, /graph\/current/);
   assert.match(graphClient, /features\/\$\{encodeURIComponent\(featureId\)\}\/traceability/);

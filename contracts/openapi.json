@@ -1351,12 +1351,11 @@
       "post": {
         "operationId": "startWorkspaceUnderstandingJob",
         "requestBody": { "required": true, "content": { "application/json": { "schema": {
-          "type": "object", "required": ["sourceRegistrationId", "requestedMode", "workspaceExecutionProfileRevisionId"], "properties": {
+          "type": "object", "required": ["sourceRegistrationId", "requestedMode"], "properties": {
             "sourceRegistrationId": { "type": "string" },
             "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] },
             "purpose": { "enum": ["PUBLICATION", "EQUIVALENCE_VERIFICATION"], "default": "PUBLICATION", "description": "Verification jobs persist independently produced surfaces but never publish CurrentGraphHead." },
-            "policyDigest": { "type": "string" },
-            "workspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1, "description": "Required immutable Workspace-scoped execution profile revision. No global or local fallback is allowed." }
+            "policyDigest": { "type": "string" }
           }, "additionalProperties": false
         } } } },
         "responses": {

@@ -38,13 +38,17 @@ test("isolated development bootstrap completes source registration and the first
     policies: { dataBoundary: "LOCAL_DEVELOPMENT", secrets: "NONE" },
   });
   const profile = await application.resolveWorkspaceExecutionProfile(workspace.id, config.id);
+  await store.appendUnderstandingRecordWithCas(workspace.id, "WORKSPACE_EXECUTION_PROFILE", profile, {
+    headKey: "WORKSPACE_EXECUTION_PROFILE",
+    expectedVersion: 0,
+  });
   const job = await application.startWorkspaceUnderstandingJob(workspace.id, {
     sourceRegistrationId: registration.id,
-    workspaceExecutionProfileRevisionId: profile.id,
     requestedMode: "AUTO",
   }, { background: false });
 
   assert.equal(job.status, "COMPLETED", JSON.stringify(job.error));
+  assert.equal(job.workspaceExecutionProfileRevisionId, profile.id);
   assert.equal(job.resolvedMode, "FULL");
   assert.deepEqual(job.completedPhases, ["SOURCE_SCAN", "FACT_COMMIT", "ANALYSIS", "RECONCILIATION", "EVALUATION", "PROJECTION", "PUBLISHING"]);
   const current = await application.getCurrentUnderstandingGraph(workspace.id);

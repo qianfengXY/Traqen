@@ -382,6 +382,8 @@ test("F006 active execution profile reads follow the CAS head even when timestam
   const plan = await service.prepareModelReplacement("MODEL-OLD", "MODEL-NEW", models);
   await service.applyModelReplacement(plan);
   assert.equal((await service.listWorkspaceProfiles("W1"))[0].mainAgentSlot.modelProfileId, "MODEL-NEW");
+  assert.equal((await service.getActiveWorkspaceProfile("W1")).mainAgentSlot.modelProfileId, "MODEL-NEW",
+    "new Run resolution must read the CAS Active Head instead of inferring recency from history");
 });
 
 test("every configured Child receives the same sealed batch and Main waits for the full terminal set", () => {

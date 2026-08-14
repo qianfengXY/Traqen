@@ -419,6 +419,14 @@ export class WorkspaceProductFoundation {
     return profile;
   }
 
+  async getActiveWorkspaceProfile(workspaceId) {
+    const head = await this.store.getUnderstandingHead(workspaceId, "WORKSPACE_EXECUTION_PROFILE");
+    if (!head.recordId) return null;
+    const profile = await this.store.getUnderstandingRecord(workspaceId, "WORKSPACE_EXECUTION_PROFILE", head.recordId);
+    if (!profile) throw new TypeError(`Workspace execution Profile Head ${head.recordId} is unavailable`);
+    return profile;
+  }
+
   async listWorkspaceProfiles(workspaceId) {
     if (!await this.getWorkspace(workspaceId)) return null;
     const head = await this.store.getUnderstandingHead(workspaceId, "WORKSPACE_EXECUTION_PROFILE");
