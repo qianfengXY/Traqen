@@ -23,7 +23,7 @@ function scopedModelContext(profile) {
   return { ...context, grant };
 }
 
-test("runtime model profiles and an explicit active selection survive restart in an encrypted local store", async (t) => {
+test("runtime model profiles survive restart without a global active/default pointer", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "traqen-model-profiles-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const filePath = join(directory, "profiles.enc.json");
@@ -38,9 +38,8 @@ test("runtime model profiles and an explicit active selection survive restart in
     stream: true,
   });
   const verified = await registry.verify("persistent-model");
-  assert.equal(verified.active, false, "verification must not create a global fallback selection");
+  assert.equal(Object.hasOwn(verified, "active"), false, "F006 has no global active/default model pointer");
   assert.equal(verified.stream, true);
-  registry.select("persistent-model");
 
   const decrypted = profileStore.load();
   assert.equal(Object.hasOwn(decrypted.profiles[0], "apiKey"), false, "profile metadata must reference a handle instead of owning secret material");
@@ -53,10 +52,9 @@ test("runtime model profiles and an explicit active selection survive restart in
   assert.equal(encrypted.includes("source-model"), false);
 
   const reloaded = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
-  assert.deepEqual(reloaded.list().map(({ id, ready, active, stream }) => ({ id, ready, active, stream })), [{
+  assert.deepEqual(reloaded.list().map(({ id, ready, stream }) => ({ id, ready, stream })), [{
     id: "persistent-model",
     ready: true,
-    active: true,
     stream: true,
   }]);
   assert.equal(reloaded.resolve(), null, "a credentialed model cannot be resolved without a scoped grant after restart");
@@ -70,15 +68,15 @@ test("runtime model profiles and an explicit active selection survive restart in
     stream: true,
   });
   assert.equal(edited.ready, true);
-  assert.equal(edited.active, true);
+  assert.equal(Object.hasOwn(edited, "active"), false);
   reloaded.remove("persistent-model");
   const retiredReload = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
   assert.equal(retiredReload.list()[0].lifecycle, "RETIRING");
-  assert.equal(retiredReload.list()[0].active, false);
+  assert.equal(Object.hasOwn(retiredReload.list()[0], "active"), false);
   assert.ok(retiredReload.resolve(edited.currentRevisionId, scopedModelContext(edited)), "historical model revisions survive restart for pinned runs");
 });
 
-test("a completed all-Workspace replacement plan and retiring lifecycle survive registry restart", async (t) => {
+test("the model Registry persists retirement but does not own the durable replacement Plan ledger", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "traqen-model-replacement-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const profileStore = new EncryptedAnalysisModelProfileStore({ filePath: join(directory, "profiles.enc.json") });
@@ -88,11 +86,10 @@ test("a completed all-Workspace replacement plan and retiring lifecycle survive 
   await registry.verify("OLD");
   await registry.verify("NEW");
   const plan = registry.createReplacementPlan({ sourceProfileId: "OLD", replacementProfileId: "NEW", references: [], changes: [] });
-  registry.beginReplacementPlan(plan.id, plan.version);
-  registry.completeReplacementPlan(plan.id);
+  registry.beginReplacementPlan(plan, plan.version);
+  registry.completeReplacementPlan({ ...plan, status: "APPLIED", version: plan.version + 2 });
 
   const reloaded = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
-  assert.equal(reloaded.getReplacementPlan(plan.id).status, "APPLIED");
+  assert.equal(Object.hasOwn(profileStore.load(), "replacementPlans"), false);
   assert.equal(reloaded.list().find(({ id }) => id === "OLD").lifecycle, "RETIRING");
-  assert.equal(reloaded.beginReplacementPlan(plan.id, plan.version).status, "APPLIED", "an interrupted response can observe the committed Plan after restart");
 });

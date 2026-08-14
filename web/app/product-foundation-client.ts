@@ -1,13 +1,3 @@
-export type CapabilityTemplate = {
-  id: string;
-  kind: "MODEL" | "SKILL" | "MCP";
-  logicalName: string;
-  revision: number;
-  manifest: Record<string, unknown>;
-  credentialHandleIds: string[];
-  createdAt: string;
-};
-
 export type GlobalModelProfile = {
   id: string;
   profileId: string;
@@ -81,25 +71,19 @@ export type ChildCapabilityRole = CapabilityRole & {
   independenceGroup: string;
 };
 
-export type WorkspaceCapabilityConfig = {
+export type ExecutionProfile = {
   id: string;
   workspaceId: string;
-  version: number;
+  draftRevisionId: string;
+  mainAgentSlot: AgentSlotDraft & { modelProfileRevisionId: string };
+  childAgentSlots: Array<AgentSlotDraft & { modelProfileRevisionId: string }>;
   mainAgent: CapabilityRole;
   childSlots: ChildCapabilityRole[];
-  overrides: Array<Record<string, unknown>>;
-  removals: string[];
-  dependencies: Record<string, unknown>;
-  conventions: Record<string, unknown>;
-  policies: Record<string, unknown>;
-  createdAt: string;
-};
-
-export type ExecutionProfile = WorkspaceCapabilityConfig & {
   configId: string;
   configVersion: number;
   entries: Array<{ logicalName: string; kind: "MODEL" | "SKILL" | "MCP"; sourceTemplateId: string | null }>;
   profileDigest: string;
+  createdAt: string;
 };
 
 export type ReviewQueueItem = {
@@ -140,14 +124,6 @@ export async function getConnectionHealth(apiBase: string) {
   const response = await fetch(`${base(apiBase)}/health`, { method: "GET" });
   if (!response.ok) throw new Error(`Traqen API returned ${response.status}`);
   return response.json() as Promise<Record<string, unknown>>;
-}
-
-export async function listCapabilityTemplates(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, {
-    method: "GET",
-    headers: headers(apiToken),
-  });
-  return (await parseJson<{ templates: CapabilityTemplate[] }>(response)).templates;
 }
 
 export async function listGlobalModels(apiBase: string, apiToken: string) {
@@ -253,42 +229,6 @@ export async function validateWorkspaceCapabilityDraft(apiBase: string, apiToken
 
 export async function activateWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string) {
   const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft/activate`, { method: "POST", headers: headers(apiToken) });
-  return parseJson<ExecutionProfile>(response);
-}
-
-export async function saveWorkspaceCapabilityConfig(
-  apiBase: string,
-  apiToken: string,
-  workspaceId: string,
-  input: Omit<WorkspaceCapabilityConfig, "id" | "workspaceId" | "version" | "createdAt">,
-) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-configs`, {
-    method: "POST",
-    headers: headers(apiToken, true),
-    body: JSON.stringify(input),
-  });
-  return parseJson<WorkspaceCapabilityConfig>(response);
-}
-
-export async function listWorkspaceCapabilityConfigs(apiBase: string, apiToken: string, workspaceId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-configs`, {
-    method: "GET",
-    headers: headers(apiToken),
-  });
-  return (await parseJson<{ configs: WorkspaceCapabilityConfig[] }>(response)).configs;
-}
-
-export async function resolveWorkspaceExecutionProfile(
-  apiBase: string,
-  apiToken: string,
-  workspaceId: string,
-  configId?: string,
-) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/execution-profile-revisions`, {
-    method: "POST",
-    headers: headers(apiToken, true),
-    body: JSON.stringify(configId ? { configId } : {}),
-  });
   return parseJson<ExecutionProfile>(response);
 }
 

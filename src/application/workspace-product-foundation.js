@@ -232,11 +232,12 @@ export class WorkspaceProductFoundation {
       conventionRevisionId: convention.record.id,
       securityPolicyRevisionId: security.record.id,
     }, this.clock);
-    return this.store.appendWorkspaceCapabilityBundle(workspaceId, {
+    await this.store.appendWorkspaceCapabilityBundle(workspaceId, {
       draft,
       expectedDraftVersion: expectedVersion,
       policies: [dependency, convention, security].filter(({ isNew }) => isNew),
     });
+    return this.getCapabilityDraft(workspaceId);
   }
 
   async effectiveCapabilityCatalog(workspaceId, disabledKeys = null, projectCapabilityRevisionIds = null) {

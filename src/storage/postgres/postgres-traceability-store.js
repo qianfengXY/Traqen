@@ -28,7 +28,7 @@ function recordIdentity(record) {
 }
 
 function replacementPlanIdentity(plan) {
-  const { version: _version, status: _status, appliedAt: _appliedAt, ...identity } = plan;
+  const { version: _version, status: _status, appliedAt: _appliedAt, createdAt: _createdAt, ...identity } = plan;
   return identity;
 }
 

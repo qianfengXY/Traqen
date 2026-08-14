@@ -48,23 +48,12 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
 
   assert.equal(contract.openapi, "3.1.0");
   assert.equal(contract.paths["/health"].get.operationId, "getHealth");
-  assert.equal(contract.paths["/v1/analysis-model-profiles"].get.operationId, "listAnalysisModelProfiles");
-  assert.equal(contract.paths["/v1/analysis-model-profiles"].post.operationId, "configureAnalysisModelProfile");
-  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/verify"].post.operationId, "verifyAnalysisModelProfile");
-  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/select"].post.operationId, "selectAnalysisModelProfile");
-  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}"].delete.operationId, "removeAnalysisModelProfile");
-  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.operationId, "enrichWorkspaceCandidates");
-  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-plan"].post.operationId, "planWorkspaceAnalysis");
-  assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.apiKey.writeOnly, true);
-  assert.equal(contract.paths["/v1/analysis-model-profiles"].post.requestBody.content["application/json"].schema.properties.stream.default, false);
-  assert.ok(contract.components.schemas.AnalysisModelProfile.required.includes("active"));
-  assert.deepEqual(
-    contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.requestBody.content["application/json"].schema.required,
-    ["workUnit", "candidateBundle"],
-  );
+  assert.equal(contract.paths["/v1/analysis-model-profiles"], undefined);
+  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/select"], undefined);
+  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"], undefined);
+  assert.equal(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-plan"], undefined);
   assert.ok(contract.components.schemas.WorkspaceModelCandidate.required.includes("evidence"));
   assert.equal(contract.components.schemas.WorkspaceEvidenceAssessment.properties.confidenceCap.enum.includes("HIGH"), true);
-  assert.ok(contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post.responses["200"].content["application/x-ndjson"]);
   assert.equal(contract.components.schemas.WorkspaceAnalysisPlan.properties.taskAssignments.minItems, 1);
   assert.equal(contract.paths["/v1/workspaces"].get.operationId, "listWorkspaces");
   const globalModelPath = contract.paths["/v1/global-models/{modelId}"];
@@ -75,10 +64,7 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(globalModelPath.put.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/GlobalModelProfile");
   assert.equal(contract.paths["/v1/workspaces"].post.operationId, "createWorkspace");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}"].patch.operationId, "renameWorkspace");
-  assert.equal(
-    contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].post.operationId,
-    "resolveWorkspaceExecutionProfileRevision",
-  );
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].post, undefined);
   assert.equal(
     contract.paths["/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/barrier"].post.operationId,
     "openWorkspaceAnalysisBatchBarrier",
@@ -96,10 +82,6 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     ["/v1/workspaces/{workspaceId}/request-deletion", "post", "200", true],
     ["/v1/workspaces/{workspaceId}/cancel-deletion", "post", "200", true],
     ["/v1/workspaces/{workspaceId}/complete-deletion", "post", "200", true],
-    ["/v1/capability-templates", "get", "200", false],
-    ["/v1/capability-templates", "post", "201", true],
-    ["/v1/workspaces/{workspaceId}/capability-configs", "post", "201", true],
-    ["/v1/workspaces/{workspaceId}/execution-profile-revisions", "post", "201", true],
     ["/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants", "post", "201", true],
     ["/v1/workspaces/{workspaceId}/analysis-batches", "post", "201", true],
     ["/v1/workspaces/{workspaceId}/analysis-batches/{analysisBatchId}/child-results", "post", "201", true],
@@ -286,7 +268,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/changes/{changeSetId}/impact"].get.operationId, "getUnderstandingChangeImpact");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
-  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/capability-configs"].get.operationId, "listWorkspaceCapabilityConfigs");
+  assert.equal(contract.paths["/v1/capability-templates"], undefined);
+  assert.equal(contract.paths["/v1/workspaces/{workspaceId}/capability-configs"], undefined);
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].get.operationId, "listWorkspaceExecutionProfileRevisions");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].get.operationId, "listWorkspaceUnderstandingJobs");
@@ -468,19 +451,18 @@ test("legacy GraphRevision recovery is an executable Snapshot-bound server comma
   assert.deepEqual(job.allOf[0].else.not.required, ["reanalysisOfGraphRevisionId"]);
 });
 
-test("OpenAPI Workspace enrichment uses the canonical WorkUnit and CandidateBundle envelope", async () => {
+test("OpenAPI Workspace Draft recovery exposes policy content through an executable contract", async () => {
   const contract = JSON.parse(
     await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"),
   );
-  const operation = contract.paths["/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment"].post;
-  const request = operation.requestBody.content["application/json"].schema;
-  const response = operation.responses["200"].content["application/json"].schema;
-
-  assert.deepEqual(request.required, ["workUnit", "candidateBundle"]);
-  assert.equal(request.properties.workUnit.$ref, "./candidate-bundle.schema.json#/$defs/WorkUnit");
-  assert.equal(request.properties.candidateBundle.$ref, "./candidate-bundle.schema.json");
-  assert.ok(response.required.includes("candidateBundle"));
-  assert.equal(response.properties.candidateBundle.$ref, "./candidate-bundle.schema.json");
+  const operation = contract.paths["/v1/workspaces/{workspaceId}/capability-draft"];
+  assert.equal(operation.get.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/WorkspaceCapabilityDraftEnvelope");
+  assert.equal(operation.put.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/WorkspaceCapabilityDraft");
+  const draft = contract.components.schemas.WorkspaceCapabilityDraft;
+  for (const field of ["workspaceId", "dependencyPolicyRevisionId", "conventionRevisionId", "securityPolicyRevisionId", "dependencies", "conventions", "securityPolicy"]) {
+    assert.ok(draft.required.includes(field), `${field} must be part of the durable recovery contract`);
+  }
+  assert.equal(draft.additionalProperties, false);
 });
 
 test("Analysis Agent contract makes resumability, bounded evidence, and Candidate-only projection explicit", async () => {

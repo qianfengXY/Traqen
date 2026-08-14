@@ -159,6 +159,9 @@ test("health endpoint returns a request correlation ID", async (t) => {
 test("Workspace API owns lifecycle, capability isolation, and same-batch Child execution", async (t) => {
   let workspaceStore;
   const baseUrl = await startServer(t, {
+    analysisModelRegistry: new AnalysisModelRegistry({
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+    }),
     reviewerResolver: (_projectId, context) => context.authorization === "Bearer workspace-reviewer"
       ? { actorId: "REVIEWER-FROM-AUTH", actorRole: "business-owner" }
       : null,
@@ -166,6 +169,10 @@ test("Workspace API owns lifecycle, capability isolation, and same-batch Child e
   });
   const workspaceContract = JSON.parse(await readFile(
     new URL("../contracts/workspace-product.schema.json", import.meta.url),
+    "utf8",
+  ));
+  const openApiContract = JSON.parse(await readFile(
+    new URL("../contracts/openapi.json", import.meta.url),
     "utf8",
   ));
   const assertPayloadShape = (value, definitionName) => assert.deepEqual(
@@ -193,38 +200,54 @@ test("Workspace API owns lifecycle, capability isolation, and same-batch Child e
   const listed = await fetch(`${baseUrl}/v1/workspaces?userId=OWNER`);
   assert.equal((await listed.json()).workspaces[0].hidden, true);
 
-  for (const template of [
-    { kind: "MODEL", logicalName: "main-model", revision: 1, manifest: { provider: "local" } },
-    { kind: "SKILL", logicalName: "source-analysis", revision: 1, manifest: {} },
-    { kind: "MCP", logicalName: "global-not-enabled", revision: 1, manifest: {} },
-  ]) {
-    assert.equal((await postJson(`${baseUrl}/v1/capability-templates`, template)).response.status, 201);
-  }
-  const config = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/capability-configs`, {
-    mainAgent: { model: "main-model", skillNames: ["source-analysis"], mcpNames: [] },
-    childSlots: [
-      { id: "C1", model: "main-model", skillNames: ["source-analysis"], mcpNames: [], independenceGroup: "I1" },
-      { id: "C2", model: "main-model", skillNames: ["source-analysis"], mcpNames: [], independenceGroup: "I2" },
-    ],
-    removals: ["global-not-enabled"],
+  assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "main-model",
+    displayName: "Main model",
+    transport: "API",
+    endpoint: "https://models.example/v1",
+    model: "main-model",
+    apiKey: "server-only-secret",
+  })).response.status, 201);
+  assert.equal((await fetch(`${baseUrl}/v1/global-models/main-model/verify`, { method: "POST" })).status, 200);
+  const draft = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/capability-draft`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedVersion: 0,
+      mainAgentSlot: { modelProfileId: "main-model" },
+      childAgentSlots: [
+        { id: "C1", modelProfileId: "main-model", independenceGroup: "I1" },
+        { id: "C2", modelProfileId: "main-model", independenceGroup: "I2" },
+      ],
+      projectCapabilityRevisionIds: [],
+      disabledKeys: [],
+    }),
   });
-  assert.equal(config.response.status, 201);
-  const profile = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/execution-profile-revisions`, {
-    configId: config.body.id,
-  });
-  assert.equal(profile.response.status, 201);
-  assert.equal(profile.body.entries.some(({ logicalName }) => logicalName === "global-not-enabled"), false);
-  const listedConfigs = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/capability-configs`);
-  assert.equal(listedConfigs.status, 200);
-  assert.deepEqual((await listedConfigs.json()).configs.map(({ id }) => id), [config.body.id]);
+  assert.equal(draft.status, 200);
+  const savedDraft = await draft.json();
+  assert.deepEqual(
+    schemaErrors(savedDraft, openApiContract.components.schemas.WorkspaceCapabilityDraft, openApiContract),
+    [],
+    "saved Workspace capability policy must satisfy its executable OpenAPI response contract",
+  );
+  const restoredDraft = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/capability-draft`);
+  assert.equal(restoredDraft.status, 200);
+  assert.deepEqual(
+    schemaErrors(await restoredDraft.json(), openApiContract.components.schemas.WorkspaceCapabilityDraftEnvelope, openApiContract),
+    [],
+    "restored Workspace capability policy must satisfy its executable OpenAPI response contract",
+  );
+  const profileResponse = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/capability-draft/activate`, { method: "POST" });
+  assert.equal(profileResponse.status, 201);
+  const profile = await profileResponse.json();
   const listedProfiles = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/execution-profile-revisions`);
   assert.equal(listedProfiles.status, 200);
-  assert.deepEqual((await listedProfiles.json()).profiles.map(({ id }) => id), [profile.body.id]);
+  assert.deepEqual((await listedProfiles.json()).profiles.map(({ id }) => id), [profile.id]);
 
   const batch = await postJson(`${baseUrl}/v1/workspaces/W-HTTP/analysis-batches`, {
     snapshotManifestId: "S-HTTP",
     analysisRunId: "R-HTTP",
-    profileRevisionId: profile.body.id,
+    profileRevisionId: profile.id,
     sequence: 1,
     sourceScope: { artifactIds: ["A-HTTP"] },
     taskStatement: "Recover bounded semantics",
@@ -350,76 +373,43 @@ test("Feature understanding history returns the complete canonical response shap
   assert.ok(schema.$defs.HistoricalUnavailable.required.includes("historicalAvailability"));
 });
 
-test("analysis model profiles can be configured, verified, and used for bounded Workspace enrichment without returning secrets", async (t) => {
-  const calls = [];
-  const enrichmentInput = (candidateId) => {
-    const workUnit = { schemaVersion: "1.0.0", id: `WORK-${candidateId}`, projectId: "PROJECT-HTTP", snapshotManifestId: "SNAPSHOT-HTTP", analysisRunId: "ANALYSIS-HTTP", factIds: [`FACT-${candidateId}`], rootFactIds: [`FACT-${candidateId}`] };
-    return {
-      workUnit,
-      candidateBundle: {
-        schemaVersion: "1.0.0", id: `BUNDLE-${candidateId}`, projectId: workUnit.projectId, snapshotManifestId: workUnit.snapshotManifestId, analysisRunId: workUnit.analysisRunId, workUnitId: workUnit.id, producedAt: "2026-07-25T10:00:00.000Z",
-        candidates: [{ id: candidateId, kind: "CANDIDATE_FEATURE", status: "PENDING_REVIEW", confidence: "LOW", confidenceCap: "LOW", evidenceFactIds: workUnit.factIds, proposal: { businessFeature: true }, provenance: [{ producerType: "DETERMINISTIC", producerId: "TEST", producerVersion: "1" }] }],
-      },
-    };
-  };
-  const application = {
-    listAnalysisModelProfiles() { return [{ id: "workspace-default", ready: false }]; },
-    configureAnalysisModelProfile(input) { calls.push(["configure", input]); return { id: input.id, endpoint: input.endpoint, model: input.model, ready: false }; },
-    async verifyAnalysisModelProfile(profileId) { calls.push(["verify", profileId]); return { id: profileId, ready: true, latencyMs: 12 }; },
-    selectAnalysisModelProfile(profileId) { calls.push(["select", profileId]); return { id: profileId, ready: true, active: true }; },
-    removeAnalysisModelProfile(profileId) { calls.push(["remove", profileId]); return { id: profileId, ready: true, active: false }; },
-    async enrichWorkspaceCandidates(profileId, input, options = {}) { calls.push(["enrich", profileId, input]); options.onTelemetry?.({ type: "REQUEST_PREPARED", requestId: "REQ-1" }); return input.candidateBundle; },
-    async planWorkspaceAnalysis(profileId, input, options = {}) { calls.push(["plan", profileId, input]); options.onTelemetry?.({ type: "RESPONSE_PROGRESS", requestId: "REQ-PLAN", assistantMessage: "Sealed batch planned" }); return { agentMessage: "Sealed batch planned", taskAssignments: [1, 2].map((slot) => ({ agentId: `CHILD-${slot}`, objective: `Independent analysis ${slot}`, moduleScopes: [] })) }; },
-  };
-  const baseUrl = await startStubServer(t, application);
-
-  const listed = await fetch(`${baseUrl}/v1/analysis-model-profiles`);
-  assert.deepEqual((await listed.json()).profiles, [{ id: "workspace-default", ready: false }]);
-  const configured = await postJson(`${baseUrl}/v1/analysis-model-profiles`, {
-    id: "workspace-default",
-    endpoint: "https://models.example/v1/chat/completions",
-    model: "source-model",
-    apiKey: "not-returned",
-  });
-  assert.equal(configured.response.status, 201);
-  assert.equal(JSON.stringify(configured.body).includes("not-returned"), false);
-  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" })).status, 200);
-  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/select`, { method: "POST" })).status, 200);
-  const enriched = await postJson(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, enrichmentInput("CANDIDATE-1"));
-  assert.equal(enriched.response.status, 200);
-  assert.equal(enriched.body.candidateBundle.candidates[0].proposal.businessFeature, true);
-  const observable = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-enrichment`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-    body: JSON.stringify(enrichmentInput("CANDIDATE-2")),
-  });
-  assert.match(observable.headers.get("content-type") ?? "", /^application\/x-ndjson/);
-  const messages = (await observable.text()).trim().split("\n").map((line) => JSON.parse(line));
-  assert.deepEqual(messages.map((message) => message.kind), ["telemetry", "result"]);
-  assert.equal(messages[0].event.requestId, "REQ-1");
-  assert.equal(messages[1].candidateBundle.candidates[0].id, "CANDIDATE-2");
-  const planned = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/workspace-plan`, {
-    method: "POST",
-    headers: { "content-type": "application/json", accept: "application/x-ndjson" },
-    body: JSON.stringify({ workspaceName: "Traqen", mode: "FULL", fileCount: 10, candidateCount: 3, modules: [] }),
-  });
-  const planMessages = (await planned.text()).trim().split("\n").map((line) => JSON.parse(line));
-  assert.deepEqual(planMessages.map((message) => message.kind), ["telemetry", "result"]);
-  assert.equal(planMessages[1].plan.taskAssignments.length, 2);
-  assert.equal((await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default`, { method: "DELETE" })).status, 200);
-  assert.deepEqual(calls.map((call) => call[0]), ["configure", "verify", "select", "enrich", "enrich", "plan", "remove"]);
+test("F006 exposes no legacy global-active or unscoped model invocation surface", async (t) => {
+  const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
+  for (const [path, method] of [
+    ["/v1/analysis-model-profiles", "GET"],
+    ["/v1/analysis-model-profiles/MODEL-1/select", "POST"],
+    ["/v1/analysis-model-profiles/MODEL-1/workspace-enrichment", "POST"],
+    ["/v1/analysis-model-profiles/MODEL-1/workspace-plan", "POST"],
+  ]) {
+    const response = await fetch(`${baseUrl}${path}`, {
+      method,
+      ...(method === "POST" ? { headers: { "content-type": "application/json" }, body: "{}" } : {}),
+    });
+    assert.equal(response.status, 404, `${method} ${path} must not bypass the Workspace execution-profile boundary`);
+  }
 });
 
 test("analysis model connectivity failures use a distinct gateway error", async (t) => {
   const application = {
-    async verifyAnalysisModelProfile() {
+    async verifyGlobalModelProfile() {
       throw new AnalysisModelConnectionError("Unable to reach the configured analysis model");
     },
   };
   const baseUrl = await startStubServer(t, application);
-  const response = await fetch(`${baseUrl}/v1/analysis-model-profiles/workspace-default/verify`, { method: "POST" });
+  const response = await fetch(`${baseUrl}/v1/global-models/workspace-default/verify`, { method: "POST" });
   assert.equal(response.status, 502);
   assert.equal((await response.json()).error.code, "ANALYSIS_MODEL_UNAVAILABLE");
+});
+
+test("F006 exposes no legacy template or capability-config mutation authority", async (t) => {
+  const baseUrl = await startServer(t);
+  assert.equal((await fetch(`${baseUrl}/v1/capability-templates`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/v1/workspaces/W1/capability-configs`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/v1/workspaces/W1/execution-profile-revisions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ configId: "LEGACY-CONFIG" }),
+  })).status, 404);
 });
 
 test("global CLI model API cannot bypass the adapter executable allowlist", async (t) => {
@@ -477,9 +467,18 @@ test("global model GET and PUT contracts never return API credential values", as
     body: JSON.stringify({ displayName: "Updated", transport: "API", endpoint: "https://models.example/v1", model: "updated", apiKey: "" }),
   });
   assert.equal(updated.status, 200);
+  const updatedBody = await updated.json();
   const read = await fetch(`${baseUrl}/v1/global-models/MODEL-EDIT`);
   assert.equal(read.status, 200);
   const body = await read.json();
+  const openApiContract = JSON.parse(await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"));
+  for (const [operation, payload] of [["PUT", updatedBody], ["GET", body]]) {
+    assert.deepEqual(
+      schemaErrors(payload, openApiContract.components.schemas.GlobalModelProfile, openApiContract),
+      [],
+      `${operation} single-model response must satisfy the exact executable GlobalModelProfile contract`,
+    );
+  }
   assert.equal(body.displayName, "Updated");
   assert.equal(body.model, "updated");
   assert.equal(JSON.stringify(body).includes("server-only-original"), false);
@@ -552,6 +551,55 @@ test("global model replacement HTTP journey atomically advances every Workspace 
   assert.equal(usageAfter.filter(({ source }) => source !== "ACTIVE_RUN").length, 0, "replacement must leave zero current Workspace references");
   const models = (await (await fetch(`${baseUrl}/v1/global-models`)).json()).models;
   assert.equal(models.find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
+});
+
+test("durable ModelReplacementPlan remains applicable after the model Registry loses its local Plan ledger", async () => {
+  const store = new MemoryTraceabilityStore();
+  let persistedProfiles = { profiles: [], revisions: [], credentialHandles: [] };
+  const profileStore = {
+    load: () => structuredClone(persistedProfiles),
+    save: (value) => { persistedProfiles = structuredClone(value); },
+  };
+  const fetchImpl = async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] });
+  const firstRegistry = new AnalysisModelRegistry({ clock: fixedClock, fetchImpl, profileStore });
+  const first = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: firstRegistry });
+  await first.createProject({
+    organization: { id: "ORG-PLAN-RESTART", name: "Org" },
+    tenant: { id: "TENANT-PLAN-RESTART", name: "Tenant" },
+    project: { id: "W-PLAN-RESTART", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  for (const profileId of ["MODEL-OLD", "MODEL-NEW"]) {
+    first.configureGlobalModelProfile({ profileId, displayName: profileId, transport: "API", endpoint: "https://models.example/v1", model: profileId.toLowerCase(), apiKey: `${profileId}-secret` });
+    await first.verifyGlobalModelProfile(profileId);
+  }
+  await first.saveWorkspaceCapabilityDraft("W-PLAN-RESTART", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-OLD" },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-OLD", independenceGroup: "I1" },
+      { id: "C2", modelProfileId: "MODEL-OLD", independenceGroup: "I2" },
+    ],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  await first.activateWorkspaceCapabilityDraft("W-PLAN-RESTART");
+  const plan = await first.createGlobalModelReplacementPlan("MODEL-OLD", { replacementProfileId: "MODEL-NEW" });
+
+  const restartedRegistry = new AnalysisModelRegistry({
+    clock: fixedClock,
+    fetchImpl,
+    profileStore: {
+      load: () => structuredClone(persistedProfiles),
+      save: profileStore.save,
+    },
+  });
+  const restarted = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: restartedRegistry });
+  const applied = await restarted.applyGlobalModelReplacementPlan("MODEL-OLD", plan.id, { expectedVersion: plan.version });
+  assert.equal(applied.plan.status, "APPLIED");
+  assert.equal(restarted.listGlobalModelProfiles().find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
+  assert.equal((await restarted.getWorkspaceCapabilityDraft("W-PLAN-RESTART")).mainAgentSlot.modelProfileId, "MODEL-NEW");
 });
 
 test("production API authentication protects every non-health route", async (t) => {

@@ -360,11 +360,6 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
-      if (request.method === "GET" && url.pathname === "/v1/capability-templates") {
-        sendJson(response, 200, { templates: await application.listCapabilityTemplates() }, id);
-        return;
-      }
-
       if (request.method === "GET" && url.pathname === "/v1/global-models") {
         sendJson(response, 200, { models: application.listGlobalModelProfiles() }, id);
         return;
@@ -500,31 +495,6 @@ export function createTraceabilityHttpHandler({
         sendJson(response, capabilityDraftActionMatch[2] === "activate" ? 201 : 200, result, id);
         return;
       }
-      if (request.method === "POST" && url.pathname === "/v1/capability-templates") {
-        requireJson(request);
-        sendJson(response, 201, await application.registerCapabilityTemplate(
-          await readJson(request, maxBodyBytes),
-        ), id);
-        return;
-      }
-
-      const workspaceCapabilityConfigMatch = /^\/v1\/workspaces\/([^/]+)\/capability-configs$/.exec(url.pathname);
-      if (request.method === "GET" && workspaceCapabilityConfigMatch) {
-        const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
-        const configs = await application.listWorkspaceCapabilityConfigs(workspaceId);
-        if (!configs) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
-        sendJson(response, 200, { configs }, id);
-        return;
-      }
-      if (request.method === "POST" && workspaceCapabilityConfigMatch) {
-        requireJson(request);
-        const workspaceId = decodePathSegment(workspaceCapabilityConfigMatch[1]);
-        const config = await application.saveWorkspaceCapabilityConfig(workspaceId, await readJson(request, maxBodyBytes));
-        if (!config) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
-        sendJson(response, 201, config, id);
-        return;
-      }
-
       const workspaceProfileMatch = /^\/v1\/workspaces\/([^/]+)\/execution-profile-revisions$/.exec(url.pathname);
       if (request.method === "GET" && workspaceProfileMatch) {
         const workspaceId = decodePathSegment(workspaceProfileMatch[1]);
@@ -533,16 +503,6 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, { profiles }, id);
         return;
       }
-      if (request.method === "POST" && workspaceProfileMatch) {
-        requireJson(request);
-        const workspaceId = decodePathSegment(workspaceProfileMatch[1]);
-        const input = await readJson(request, maxBodyBytes);
-        const profile = await application.resolveWorkspaceExecutionProfile(workspaceId, input.configId ?? null);
-        if (!profile) throw new HttpError(404, "WORKSPACE_CAPABILITY_CONFIG_NOT_FOUND", "Workspace capability config was not found");
-        sendJson(response, 201, profile, id);
-        return;
-      }
-
       const workspaceSecretGrantMatch = /^\/v1\/workspaces\/([^/]+)\/execution-profile-revisions\/([^/]+)\/secret-grants$/.exec(url.pathname);
       if (request.method === "POST" && workspaceSecretGrantMatch) {
         requireJson(request);
@@ -1153,88 +1113,6 @@ export function createTraceabilityHttpHandler({
 
       if (url.pathname === "/v1/skills" && request.method === "GET") {
         sendJson(response, 200, { skills: await application.listReverseSkills() }, id);
-        return;
-      }
-
-      if (url.pathname === "/v1/analysis-model-profiles" && request.method === "GET") {
-        sendJson(response, 200, { profiles: application.listAnalysisModelProfiles() }, id);
-        return;
-      }
-
-      if (url.pathname === "/v1/analysis-model-profiles" && request.method === "POST") {
-        requireJson(request);
-        const input = await readJson(request, maxBodyBytes);
-        sendJson(response, 201, application.configureAnalysisModelProfile(input), id);
-        return;
-      }
-
-      const analysisModelVerifyMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/verify$/.exec(url.pathname);
-      if (request.method === "POST" && analysisModelVerifyMatch) {
-        const profileId = decodePathSegment(analysisModelVerifyMatch[1]);
-        sendJson(response, 200, await application.verifyAnalysisModelProfile(profileId), id);
-        return;
-      }
-
-      const analysisModelSelectMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/select$/.exec(url.pathname);
-      if (request.method === "POST" && analysisModelSelectMatch) {
-        const profileId = decodePathSegment(analysisModelSelectMatch[1]);
-        sendJson(response, 200, application.selectAnalysisModelProfile(profileId), id);
-        return;
-      }
-
-      const analysisModelDeleteMatch = /^\/v1\/analysis-model-profiles\/([^/]+)$/.exec(url.pathname);
-      if (request.method === "DELETE" && analysisModelDeleteMatch) {
-        const profileId = decodePathSegment(analysisModelDeleteMatch[1]);
-        sendJson(response, 200, application.removeAnalysisModelProfile(profileId), id);
-        return;
-      }
-
-      const workspaceModelAnalysisMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/workspace-enrichment$/.exec(url.pathname);
-      if (request.method === "POST" && workspaceModelAnalysisMatch) {
-        requireJson(request);
-        const profileId = decodePathSegment(workspaceModelAnalysisMatch[1]);
-        const input = await readJson(request, maxBodyBytes);
-        const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
-        if (!observable) {
-          const candidateBundle = await application.enrichWorkspaceCandidates(profileId, input);
-          sendJson(response, 200, { profileId, candidateBundle }, id);
-          return;
-        }
-        startNdjson(response, id);
-        try {
-          const candidateBundle = await application.enrichWorkspaceCandidates(profileId, input, {
-            onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
-          });
-          writeNdjson(response, { kind: "result", profileId, candidateBundle });
-        } catch (error) {
-          const failure = errorResponse(error, id);
-          writeNdjson(response, { kind: "error", error: failure.body.error });
-        }
-        response.end();
-        return;
-      }
-
-      const workspaceModelPlanMatch = /^\/v1\/analysis-model-profiles\/([^/]+)\/workspace-plan$/.exec(url.pathname);
-      if (request.method === "POST" && workspaceModelPlanMatch) {
-        requireJson(request);
-        const profileId = decodePathSegment(workspaceModelPlanMatch[1]);
-        const input = await readJson(request, maxBodyBytes);
-        const observable = String(request.headers.accept ?? "").toLowerCase().includes("application/x-ndjson");
-        if (!observable) {
-          sendJson(response, 200, { profileId, plan: await application.planWorkspaceAnalysis(profileId, input) }, id);
-          return;
-        }
-        startNdjson(response, id);
-        try {
-          const plan = await application.planWorkspaceAnalysis(profileId, input, {
-            onTelemetry: (event) => writeNdjson(response, { kind: "telemetry", event }),
-          });
-          writeNdjson(response, { kind: "result", profileId, plan });
-        } catch (error) {
-          const failure = errorResponse(error, id);
-          writeNdjson(response, { kind: "error", error: failure.body.error });
-        }
-        response.end();
         return;
       }
 

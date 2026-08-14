@@ -184,13 +184,12 @@ test("model replacement plans pin both model revisions before retiring the sourc
   await registry.verify("NEW");
   const plan = registry.createReplacementPlan({ sourceProfileId: "OLD", replacementProfileId: "NEW", references: [], changes: [] });
   assert.equal(plan.status, "READY");
-  const applying = registry.beginReplacementPlan(plan.id, plan.version);
-  assert.equal(applying.status, "APPLYING");
-  assert.equal(registry.beginReplacementPlan(plan.id, plan.version).status, "APPLYING", "a retry resumes an interrupted apply");
-  const applied = registry.completeReplacementPlan(plan.id);
-  assert.equal(applied.status, "APPLIED");
-  assert.equal(registry.beginReplacementPlan(plan.id, plan.version).status, "APPLIED", "a retry observes an already completed apply");
-  assert.equal(registry.completeReplacementPlan(plan.id).status, "APPLIED");
+  assert.equal(registry.beginReplacementPlan(plan, plan.version).status, "READY");
+  assert.equal(registry.beginReplacementPlan(plan, plan.version).status, "READY", "a retry resumes an interrupted apply");
+  const applied = { ...plan, status: "APPLIED", version: plan.version + 2 };
+  assert.equal(registry.completeReplacementPlan(applied).status, "APPLIED");
+  assert.equal(registry.beginReplacementPlan(applied, plan.version).status, "APPLIED", "a retry observes an already completed apply");
+  assert.equal(registry.completeReplacementPlan(applied).status, "APPLIED");
   assert.equal(registry.list().find(({ id }) => id === "OLD").lifecycle, "RETIRING");
 });
 

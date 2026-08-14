@@ -82,10 +82,6 @@
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "post": { "operationId": "completeWorkspaceDeletion", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/WorkspaceActorRequest" } } } }, "responses": { "200": { "description": "Audited deletion lifecycle completed", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/Workspace" } } } } } }
     },
-    "/v1/capability-templates": {
-      "get": { "operationId": "listCapabilityTemplateRevisions", "responses": { "200": { "description": "Global capability templates; never a runtime registry handle", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplateList" } } } } } },
-      "post": { "operationId": "registerCapabilityTemplateRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplateRequest" } } } }, "responses": { "201": { "description": "Immutable template revision", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityTemplate" } } } } } }
-    },
     "/v1/global-models": {
       "get": { "operationId": "listGlobalModelProfiles", "responses": { "200": { "description": "Reusable global API and allowlisted CLI model profiles without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } },
       "post": { "operationId": "createGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "201": { "description": "Persisted global model connection profile", "content": { "application/json": { "schema": { "type": "object" } } } } } }
@@ -131,8 +127,8 @@
     },
     "/v1/workspaces/{workspaceId}/capability-draft": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "get": { "operationId": "getWorkspaceCapabilityDraft", "responses": { "200": { "description": "Current persisted editable draft head", "content": { "application/json": { "schema": { "type": "object" } } } } } },
-      "put": { "operationId": "saveWorkspaceCapabilityDraft", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["expectedVersion", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "disabledKeys"], "properties": { "expectedVersion": { "type": "integer", "minimum": 0 }, "mainAgentSlot": { "type": "object" }, "childAgentSlots": { "type": "array", "items": { "type": "object" } }, "projectCapabilityRevisionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }, "disabledKeys": { "type": "array", "items": { "type": "object" } }, "dependencies": { "type": "object" }, "conventions": { "type": "object" }, "securityPolicy": { "type": "object" }, "dependencyPolicyRevisionId": { "type": "string" }, "conventionRevisionId": { "type": "string" }, "securityPolicyRevisionId": { "type": "string" } } } } } }, "responses": { "200": { "description": "New immutable draft revision after atomic expected-version CAS; policy content is pinned through immutable content-addressed revision IDs", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+      "get": { "operationId": "getWorkspaceCapabilityDraft", "responses": { "200": { "description": "Current persisted editable draft head with the exact pinned Policy content restored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraftEnvelope" } } } } } },
+      "put": { "operationId": "saveWorkspaceCapabilityDraft", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraftRequest" } } } }, "responses": { "200": { "description": "New immutable draft revision after atomic expected-version CAS; policy content is pinned through immutable content-addressed revision IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraft" } } } } } }
     },
     "/v1/workspaces/{workspaceId}/capability-draft/validate": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
@@ -142,15 +138,9 @@
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "post": { "operationId": "activateWorkspaceCapabilityDraft", "responses": { "201": { "description": "Immutable execution profile pinned to exact model and capability revisions", "content": { "application/json": { "schema": { "type": "object" } } } } } }
     },
-    "/v1/workspaces/{workspaceId}/capability-configs": {
-      "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "get": { "operationId": "listWorkspaceCapabilityConfigs", "responses": { "200": { "description": "Versioned Workspace capability configuration history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
-      "post": { "operationId": "createWorkspaceCapabilityConfig", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfigRequest" } } } }, "responses": { "201": { "description": "Versioned Workspace override/removal configuration", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/CapabilityConfig" } } } } } }
-    },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "get": { "operationId": "listWorkspaceExecutionProfileRevisions", "responses": { "200": { "description": "Immutable Workspace execution profile history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
-      "post": { "operationId": "resolveWorkspaceExecutionProfileRevision", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileRequest" } } } }, "responses": { "201": { "description": "Immutable Workspace-effective runtime profile", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfile" } } } } } }
+      "get": { "operationId": "listWorkspaceExecutionProfileRevisions", "responses": { "200": { "description": "Immutable Workspace execution profile history", "content": { "application/json": { "schema": { "$ref": "./workspace-product.schema.json#/$defs/ExecutionProfileList" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/v1/workspaces/{workspaceId}/execution-profile-revisions/{profileRevisionId}/secret-grants": {
       "parameters": [
@@ -1124,89 +1114,6 @@
         }
       }
     },
-    "/v1/analysis-model-profiles": {
-      "get": {
-        "operationId": "listAnalysisModelProfiles",
-        "responses": {
-          "200": {
-            "description": "Configured Analysis Agent model profiles without credentials",
-            "content": { "application/json": { "schema": { "type": "object", "required": ["profiles"], "properties": { "profiles": { "type": "array", "items": { "$ref": "#/components/schemas/AnalysisModelProfile" } } }, "additionalProperties": false } } }
-          }
-        }
-      },
-      "post": {
-        "operationId": "configureAnalysisModelProfile",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["id", "endpoint", "model"], "properties": { "id": { "type": "string", "minLength": 1 }, "endpoint": { "type": "string", "format": "uri" }, "model": { "type": "string", "minLength": 1 }, "apiKey": { "type": "string", "minLength": 1, "writeOnly": true, "description": "Required for a new runtime profile; omit while editing to retain its encrypted credential" }, "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 }, "stream": { "type": "boolean", "default": false, "description": "Request and merge OpenAI-compatible Server-Sent Events" } }, "additionalProperties": false } } }
-        },
-        "responses": {
-          "201": { "description": "Runtime model profile encrypted in the device-local profile store; the API key is not returned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" }
-        }
-      }
-    },
-    "/v1/analysis-model-profiles/{analysisModelProfileId}/verify": {
-      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
-      "post": {
-        "operationId": "verifyAnalysisModelProfile",
-        "responses": {
-          "200": { "description": "Model profile verified with a live structured-output request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
-        }
-      }
-    },
-    "/v1/analysis-model-profiles/{analysisModelProfileId}": {
-      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
-      "delete": {
-        "operationId": "removeAnalysisModelProfile",
-        "responses": {
-          "200": { "description": "Runtime model profile removed; environment profiles cannot be removed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" }
-        }
-      }
-    },
-    "/v1/analysis-model-profiles/{analysisModelProfileId}/select": {
-      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
-      "post": {
-        "operationId": "selectAnalysisModelProfile",
-        "responses": {
-          "200": { "description": "Verified profile selected as the current analysis model", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AnalysisModelProfile" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" }
-        }
-      }
-    },
-    "/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-enrichment": {
-      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
-      "post": {
-        "operationId": "enrichWorkspaceCandidates",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["workUnit", "candidateBundle"], "properties": { "workUnit": { "$ref": "./candidate-bundle.schema.json#/$defs/WorkUnit" }, "candidateBundle": { "$ref": "./candidate-bundle.schema.json" } }, "additionalProperties": false } } }
-        },
-        "responses": {
-          "200": { "description": "Evidence-bounded semantic CandidateBundle. Send Accept: application/x-ndjson to receive live, secret-free model request, transport, response-progress, structured-output, and validation events followed by the result.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "candidateBundle"], "properties": { "profileId": { "type": "string" }, "candidateBundle": { "$ref": "./candidate-bundle.schema.json" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string", "description": "Newline-delimited telemetry envelopes followed by one canonical CandidateBundle result or error envelope." } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "502": { "description": "Configured model endpoint was unavailable or returned invalid structured output" }
-        }
-      }
-    },
-    "/v1/analysis-model-profiles/{analysisModelProfileId}/workspace-plan": {
-      "parameters": [{ "$ref": "#/components/parameters/AnalysisModelProfileId" }],
-      "post": {
-        "operationId": "planWorkspaceAnalysis",
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "type": "object", "required": ["workspaceName", "mode", "fileCount", "modules"], "properties": { "workspaceName": { "type": "string", "minLength": 1 }, "mode": { "enum": ["FULL", "INCREMENTAL"] }, "fileCount": { "type": "integer", "minimum": 0 }, "childSlots": { "type": "array", "minItems": 1, "items": { "type": "object", "required": ["id", "independenceGroup"], "properties": { "id": { "type": "string", "minLength": 1 }, "independenceGroup": { "type": "string", "minLength": 1 } }, "additionalProperties": false } }, "modules": { "type": "array", "maxItems": 120, "description": "Repository source-manifest partitions. They are computed independently of deterministic scanner candidates.", "items": { "type": "object", "required": ["name", "fileCount", "sourceBytes", "languages"], "properties": { "name": { "type": "string", "minLength": 1 }, "fileCount": { "type": "integer", "minimum": 0 }, "sourceBytes": { "type": "integer", "minimum": 0 }, "languages": { "type": "array", "maxItems": 24, "items": { "type": "string", "minLength": 1 } } }, "additionalProperties": false } } }, "additionalProperties": false } } }
-        },
-        "responses": {
-          "200": { "description": "A public Main Agent message and one assignment for every configured Child slot (default two). Every Child receives the same sealed batch. Send Accept: application/x-ndjson for live public model-message telemetry followed by the validated plan.", "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "plan"], "properties": { "profileId": { "type": "string" }, "plan": { "$ref": "#/components/schemas/WorkspaceAnalysisPlan" } }, "additionalProperties": false } }, "application/x-ndjson": { "schema": { "type": "string" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "502": { "description": "Configured model endpoint was unavailable or returned an invalid orchestration plan" }
-        }
-      }
-    },
     "/v1/projects/{projectId}/analysis-runs": {
       "parameters": [{ "$ref": "#/components/parameters/ProjectId" }],
       "post": {
@@ -1709,12 +1616,6 @@
         "required": true,
         "schema": { "type": "string", "minLength": 1 }
       },
-      "AnalysisModelProfileId": {
-        "name": "analysisModelProfileId",
-        "in": "path",
-        "required": true,
-        "schema": { "type": "string", "minLength": 1 }
-      },
       "FeatureId": {
         "name": "featureId",
         "in": "path",
@@ -1924,6 +1825,92 @@
       }
     },
     "schemas": {
+      "CapabilityKey": {
+        "type": "object",
+        "required": ["kind", "normalizedName"],
+        "properties": {
+          "kind": { "enum": ["SKILL", "MCP"] },
+          "normalizedName": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceAgentSlotInput": {
+        "type": "object",
+        "required": ["modelProfileId"],
+        "properties": {
+          "id": { "type": "string" },
+          "role": { "enum": ["MAIN", "CHILD"] },
+          "displayName": { "type": "string" },
+          "modelProfileId": { "type": "string" },
+          "skillGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "mcpGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "independenceGroup": { "type": "string" },
+          "enabled": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceAgentSlot": {
+        "type": "object",
+        "required": ["id", "role", "displayName", "modelProfileId", "skillGrants", "mcpGrants", "independenceGroup", "enabled"],
+        "properties": {
+          "id": { "type": "string" },
+          "role": { "enum": ["MAIN", "CHILD"] },
+          "displayName": { "type": "string" },
+          "modelProfileId": { "type": "string" },
+          "skillGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "mcpGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "independenceGroup": { "type": "string" },
+          "enabled": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceCapabilityDraftRequest": {
+        "type": "object",
+        "required": ["expectedVersion", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "disabledKeys"],
+        "properties": {
+          "expectedVersion": { "type": "integer", "minimum": 0 },
+          "mainAgentSlot": { "$ref": "#/components/schemas/WorkspaceAgentSlotInput" },
+          "childAgentSlots": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceAgentSlotInput" } },
+          "projectCapabilityRevisionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "disabledKeys": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "dependencies": { "type": "object" },
+          "conventions": { "type": "object" },
+          "securityPolicy": { "type": "object" },
+          "dependencyPolicyRevisionId": { "type": "string" },
+          "conventionRevisionId": { "type": "string" },
+          "securityPolicyRevisionId": { "type": "string" }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceCapabilityDraft": {
+        "type": "object",
+        "required": ["id", "workspaceId", "revision", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "disabledKeys", "dependencyPolicyRevisionId", "conventionRevisionId", "securityPolicyRevisionId", "dependencies", "conventions", "securityPolicy", "createdAt"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "workspaceId": { "type": "string", "minLength": 1 },
+          "revision": { "type": "integer", "minimum": 1 },
+          "mainAgentSlot": { "$ref": "#/components/schemas/WorkspaceAgentSlot" },
+          "childAgentSlots": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceAgentSlot" } },
+          "projectCapabilityRevisionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "disabledKeys": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "dependencyPolicyRevisionId": { "type": "string", "minLength": 1 },
+          "conventionRevisionId": { "type": "string", "minLength": 1 },
+          "securityPolicyRevisionId": { "type": "string", "minLength": 1 },
+          "dependencies": { "type": "object" },
+          "conventions": { "type": "object" },
+          "securityPolicy": { "type": "object" },
+          "createdAt": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "WorkspaceCapabilityDraftEnvelope": {
+        "type": "object",
+        "required": ["draft"],
+        "properties": {
+          "draft": { "oneOf": [{ "$ref": "#/components/schemas/WorkspaceCapabilityDraft" }, { "type": "null" }] }
+        },
+        "additionalProperties": false
+      },
       "GlobalModelProfile": {
         "type": "object",
         "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "transport", "providerAdapter", "endpoint", "model", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
@@ -1990,24 +1977,6 @@
           "policyVersion": { "type": "string" }, "status": { "enum": ["ACTIVE", "REVOKED"] },
           "createdAt": { "type": "string", "format": "date-time" },
           "updatedAt": { "type": "string", "format": "date-time" }
-        },
-        "additionalProperties": false
-      },
-      "AnalysisModelProfile": {
-        "type": "object",
-        "required": ["id", "endpoint", "model", "timeoutMs", "stream", "source", "configuredAt", "verifiedAt", "ready", "active"],
-        "properties": {
-          "id": { "type": "string", "minLength": 1 },
-          "endpoint": { "type": "string", "format": "uri" },
-          "model": { "type": "string", "minLength": 1 },
-          "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
-          "stream": { "type": "boolean" },
-          "source": { "enum": ["ENVIRONMENT", "RUNTIME"] },
-          "configuredAt": { "type": "string", "format": "date-time" },
-          "verifiedAt": { "type": ["string", "null"], "format": "date-time" },
-          "ready": { "type": "boolean" },
-          "active": { "type": "boolean" },
-          "latencyMs": { "type": "integer", "minimum": 0 }
         },
         "additionalProperties": false
       },

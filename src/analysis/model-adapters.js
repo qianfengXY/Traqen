@@ -937,8 +937,7 @@ export class AnalysisModelRegistry {
   #clock;
   #fetchImpl;
   #profileStore;
-  #activeProfileId = null;
-  #replacementPlans = new Map();
+  #applyingReplacementProfiles = new Set();
   #credentialHandles = new Map();
 
   constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
@@ -953,7 +952,7 @@ export class AnalysisModelRegistry {
       const profile = { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", revision: 1, configuredAt: this.#clock().toISOString(), verifiedAt: null, credentialHandleId: `ENV-MODEL-CREDENTIAL-${id}`, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile, `MODEL-REVISION-${id}-ENVIRONMENT`);
     }
-    const stored = this.#profileStore?.load() ?? { activeProfileId: null, profiles: [] };
+    const stored = this.#profileStore?.load() ?? { profiles: [] };
     for (const value of stored.credentialHandles ?? []) {
       const handleId = requiredString(value?.id, "stored model credential handle id");
       const secret = requiredString(value?.secret, `stored model credential ${handleId}`);
@@ -997,10 +996,6 @@ export class AnalysisModelRegistry {
       if (this.#revisions.has(value.currentRevisionId)) continue;
       this.#hydrateHistoricalRevision(value);
     }
-    for (const value of stored.replacementPlans ?? []) {
-      if (value?.id) this.#replacementPlans.set(value.id, structuredClone(value));
-    }
-    if (stored.activeProfileId && this.#profiles.get(stored.activeProfileId)?.verifiedAt) this.#activeProfileId = stored.activeProfileId;
   }
 
   #storedCredential(value, profileId) {
@@ -1034,7 +1029,6 @@ export class AnalysisModelRegistry {
       configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt,
       ready: Boolean(profile.verifiedAt),
-      active: profile.id === this.#activeProfileId,
       lifecycle: profile.lifecycle,
       currentRevisionId: profile.currentRevisionId,
       revision: profile.revision,
@@ -1095,10 +1089,8 @@ export class AnalysisModelRegistry {
   #persist() {
     if (!this.#profileStore) return;
     this.#profileStore.save({
-      activeProfileId: this.#activeProfileId,
       profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
       revisions: [...this.#revisions.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
-      replacementPlans: [...this.#replacementPlans.values()].map((plan) => structuredClone(plan)),
       credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
     });
   }
@@ -1107,15 +1099,12 @@ export class AnalysisModelRegistry {
     return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
   }
 
-  active() {
-    const profile = this.#profiles.get(this.#activeProfileId);
-    return profile ? this.#public(profile) : null;
-  }
-
   resolve(id, context = null) {
-    const profile = this.#revisions.get(id) ?? this.#profiles.get(id ?? this.#activeProfileId);
+    const profile = this.#revisions.get(id) ?? this.#profiles.get(id);
     if (!profile?.verifiedAt) return null;
-    if (profile.transport !== "API") return profile.adapter;
+    const runtimeScoped = [context?.workspaceId, context?.profileId, context?.analysisRunId, context?.slotId]
+      .every((value) => typeof value === "string" && value.trim() !== "");
+    if (profile.transport !== "API") return runtimeScoped ? profile.adapter : null;
     const grant = context?.grant;
     const acceptedHandles = new Set([profile.credentialHandleId, profile.legacyCredentialHandleId].filter(Boolean));
     const unexpired = typeof grant?.expiresAt === "string" && Date.parse(grant.expiresAt) > this.#clock().valueOf();
@@ -1128,7 +1117,8 @@ export class AnalysisModelRegistry {
       credentialHandleId: grant.credentialHandleId,
       expiresAt: new Date(grant.expiresAt).toISOString(),
     }) : null;
-    const scoped = grant?.workspaceId === context?.workspaceId
+    const scoped = runtimeScoped
+      && grant?.workspaceId === context?.workspaceId
       && grant?.profileId === context?.profileId
       && grant?.analysisRunId === context?.analysisRunId
       && grant?.slotId === context?.slotId
@@ -1143,7 +1133,7 @@ export class AnalysisModelRegistry {
   configure(input) {
     if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
     const id = requiredString(input.id, "analysis model profile id");
-    if ([...this.#replacementPlans.values()].some((plan) => plan.status === "APPLYING" && [plan.sourceProfileId, plan.replacementProfileId].includes(id))) {
+    if (this.#applyingReplacementProfiles.has(id)) {
       throw new TypeError(`Analysis model profile ${id} is locked by an applying replacement plan`);
     }
     const existing = this.#profiles.get(id);
@@ -1154,7 +1144,6 @@ export class AnalysisModelRegistry {
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
       const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile);
-      if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
       this.#persist();
       return this.#public(profile);
     }
@@ -1176,7 +1165,6 @@ export class AnalysisModelRegistry {
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
     const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
     this.#publishRevision(profile);
-    if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
     this.#persist();
     return this.#public(profile);
   }
@@ -1191,16 +1179,6 @@ export class AnalysisModelRegistry {
     return { ...this.#public(profile), latencyMs: verification.latencyMs };
   }
 
-  select(id) {
-    const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
-    if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
-    if (!profile.verifiedAt) throw new TypeError(`Analysis model profile ${id} must be verified before selection`);
-    if (profile.lifecycle !== "ACTIVE") throw new TypeError(`Analysis model profile ${id} is not active`);
-    this.#activeProfileId = profile.id;
-    this.#persist();
-    return this.#public(profile);
-  }
-
   remove(id, { finalize = false } = {}) {
     const profileId = requiredString(id, "analysis model profile id");
     const profile = this.#profiles.get(profileId);
@@ -1208,9 +1186,6 @@ export class AnalysisModelRegistry {
     if (profile.source === "ENVIRONMENT") throw new TypeError(`Environment model profile ${profileId} cannot be deleted at runtime`);
     if (profile.lifecycle === "RETIRED") return this.#public(profile);
     profile.lifecycle = profile.lifecycle === "RETIRING" && finalize ? "RETIRED" : "RETIRING";
-    if (this.#activeProfileId === profileId) {
-      this.#activeProfileId = this.list().find((candidate) => candidate.ready && candidate.lifecycle === "ACTIVE")?.id ?? null;
-    }
     this.#persist();
     return this.#public(profile);
   }
@@ -1240,58 +1215,43 @@ export class AnalysisModelRegistry {
       createdAt: this.#clock().toISOString(),
       appliedAt: null,
     };
-    const existing = this.#replacementPlans.get(plan.id);
-    if (existing) return structuredClone(existing);
-    this.#replacementPlans.set(plan.id, plan);
-    this.#persist();
     return structuredClone(plan);
   }
 
-  getReplacementPlan(planId) {
-    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
-    return plan ? structuredClone(plan) : null;
-  }
-
-  beginReplacementPlan(planId, expectedVersion) {
-    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
-    if (!plan) throw new TypeError(`Replacement plan ${planId} does not exist`);
+  beginReplacementPlan(plan, expectedVersion) {
+    requiredString(plan?.id, "replacement plan id");
     if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError("replacement plan expectedVersion must be a positive integer");
-    if (plan.status === "APPLYING" && plan.version === expectedVersion + 1) return structuredClone(plan);
     if (plan.status === "APPLIED" && plan.version === expectedVersion + 2) return structuredClone(plan);
-    if (plan.status !== "READY" || plan.version !== expectedVersion) throw new TypeError(`Replacement plan ${planId} version conflict`);
+    if (plan.status !== "READY" || plan.version !== expectedVersion) throw new TypeError(`Replacement plan ${plan.id} version conflict`);
     if (this.#profiles.get(plan.sourceProfileId)?.currentRevisionId !== plan.sourceRevisionId
       || this.#profiles.get(plan.replacementProfileId)?.currentRevisionId !== plan.replacementRevisionId) {
-      throw new TypeError(`Replacement plan ${planId} is stale`);
+      throw new TypeError(`Replacement plan ${plan.id} is stale`);
     }
-    plan.status = "APPLYING";
-    plan.version += 1;
-    this.#persist();
+    this.#applyingReplacementProfiles.add(plan.sourceProfileId);
+    this.#applyingReplacementProfiles.add(plan.replacementProfileId);
     return structuredClone(plan);
   }
 
-  abortReplacementPlan(planId) {
-    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
-    if (plan?.status === "APPLYING") {
-      plan.status = "READY";
-      plan.version += 1;
-      this.#persist();
-    }
-    return plan ? structuredClone(plan) : null;
+  abortReplacementPlan(plan) {
+    if (!plan) return null;
+    this.#applyingReplacementProfiles.delete(plan.sourceProfileId);
+    this.#applyingReplacementProfiles.delete(plan.replacementProfileId);
+    return structuredClone(plan);
   }
 
-  completeReplacementPlan(planId) {
-    const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
-    if (plan?.status === "APPLIED") return structuredClone(plan);
-    if (!plan || plan.status !== "APPLYING") throw new TypeError(`Replacement plan ${planId} is not applying`);
+  completeReplacementPlan(plan) {
+    requiredString(plan?.id, "replacement plan id");
+    if (plan.status !== "APPLIED") throw new TypeError(`Replacement plan ${plan.id} is not applied`);
     const source = this.#profiles.get(plan.sourceProfileId);
-    if (!source || source.currentRevisionId !== plan.sourceRevisionId) throw new TypeError(`Replacement plan ${planId} is stale`);
-    source.lifecycle = "RETIRING";
-    if (this.#activeProfileId === source.id) this.#activeProfileId = null;
-    plan.status = "APPLIED";
-    plan.version += 1;
-    plan.appliedAt = this.#clock().toISOString();
-    this.#persist();
-    return structuredClone(plan);
+    if (!source || source.currentRevisionId !== plan.sourceRevisionId) throw new TypeError(`Replacement plan ${plan.id} is stale`);
+    try {
+      source.lifecycle = "RETIRING";
+      this.#persist();
+      return structuredClone(plan);
+    } finally {
+      this.#applyingReplacementProfiles.delete(plan.sourceProfileId);
+      this.#applyingReplacementProfiles.delete(plan.replacementProfileId);
+    }
   }
 
   async enrichWorkspaceCandidates(id, input, options = {}) {

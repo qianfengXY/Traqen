@@ -32,7 +32,7 @@ export class EncryptedAnalysisModelProfileStore {
   }
 
   load() {
-    if (!existsSync(this.filePath)) return { activeProfileId: null, profiles: [], revisions: [], replacementPlans: [], credentialHandles: [] };
+    if (!existsSync(this.filePath)) return { profiles: [], revisions: [], credentialHandles: [] };
     const envelope = JSON.parse(readFileSync(this.filePath, "utf8"));
     if (envelope?.version !== formatVersion || typeof envelope.iv !== "string" || typeof envelope.tag !== "string" || typeof envelope.ciphertext !== "string") {
       throw new Error("Traqen model profile store has an unsupported encrypted format");
@@ -43,10 +43,8 @@ export class EncryptedAnalysisModelProfileStore {
     const value = JSON.parse(plaintext.toString("utf8"));
     if (!Array.isArray(value?.profiles)) throw new Error("Traqen model profile store does not contain profiles[]");
     return {
-      activeProfileId: typeof value.activeProfileId === "string" ? value.activeProfileId : null,
       profiles: value.profiles,
       revisions: Array.isArray(value.revisions) ? value.revisions : [],
-      replacementPlans: Array.isArray(value.replacementPlans) ? value.replacementPlans : [],
       credentialHandles: Array.isArray(value.credentialHandles) ? value.credentialHandles : [],
     };
   }

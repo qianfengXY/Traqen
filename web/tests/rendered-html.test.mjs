@@ -98,6 +98,8 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.doesNotMatch(surfaces, /for \(let pass = 0; pass < depth/);
   assert.doesNotMatch(surfaces, /slice\(0, 36\)/);
   assert.doesNotMatch(product, /local-workspace-analysis|local-workspace-store|analysis-model-client|workspace-analysis-run-client/);
+  assert.doesNotMatch(product, /listWorkspaceCapabilityConfigs|capabilityConfig/,
+    "the F006 surface must not restore or render the superseded capability-config authority");
   assert.doesNotMatch(product, /secrets:\s*"HANDLE_ONLY"/);
   const selectWorkspaceSource = product.slice(product.indexOf("const selectWorkspace"), product.indexOf("const reconnect"));
   assert.match(selectWorkspaceSource, /setMainModel\(""\)/);

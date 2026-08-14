@@ -719,13 +719,13 @@ export class TraceabilityApplication {
     assertOnlyFields(input, ["expectedVersion"], "modelReplacementApply");
     const plan = await this.#workspaceFoundation.getModelReplacementPlan(planId);
     if (!plan || plan.sourceProfileId !== profileId) return null;
-    this.#analysisModelRegistry.beginReplacementPlan(planId, input?.expectedVersion);
+    this.#analysisModelRegistry.beginReplacementPlan(plan, input?.expectedVersion);
     try {
       const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
-      this.#analysisModelRegistry.completeReplacementPlan(planId);
+      this.#analysisModelRegistry.completeReplacementPlan(applied.plan);
       return Object.freeze(applied);
     } catch (error) {
-      this.#analysisModelRegistry.abortReplacementPlan(planId);
+      this.#analysisModelRegistry.abortReplacementPlan(plan);
       throw error;
     }
   }
@@ -1808,33 +1808,9 @@ export class TraceabilityApplication {
     return this.#analysisModelRegistry.verify(requireId(profileId, "analysisModelProfileId"));
   }
 
-  selectAnalysisModelProfile(profileId) {
-    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
-    return this.#analysisModelRegistry.select(requireId(profileId, "analysisModelProfileId"));
-  }
-
   removeAnalysisModelProfile(profileId, options = {}) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
     return this.#analysisModelRegistry.remove(requireId(profileId, "analysisModelProfileId"), options);
-  }
-
-  async enrichWorkspaceCandidates(profileId, input, options = {}) {
-    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
-    if (!input || typeof input !== "object") throw new TypeError("workspace analysis input must be an object");
-    return this.#analysisModelRegistry.enrichWorkspaceCandidates(
-      requireId(profileId, "analysisModelProfileId"),
-      input,
-      { onTelemetry: options.onTelemetry ?? null },
-    );
-  }
-
-  async planWorkspaceAnalysis(profileId, input, options = {}) {
-    if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
-    return this.#analysisModelRegistry.planWorkspaceAnalysis(
-      requireId(profileId, "analysisModelProfileId"),
-      input,
-      { onTelemetry: options.onTelemetry ?? null },
-    );
   }
 
   async #analysisInputs(input) {

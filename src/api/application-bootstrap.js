@@ -356,7 +356,10 @@ export function createConfiguredApplication({
     }),
     analysisAgent: new AnalysisAgent({
       repository: store,
-      modelResolver: (profileId) => analysisModelRegistry.resolve(profileId),
+      // The generic AnalysisAgent surface may run deterministic work only. Model execution is
+      // owned by LegacyUnderstandingRuntime, which resolves a pinned Workspace profile and scoped
+      // Run/slot grants before mounting an adapter.
+      modelResolver: () => null,
       skillResolver: (skillId, version) => analysisSkills.get(`${skillId}\u0000${version}`) ?? null,
     }),
     analysisModelRegistry,
