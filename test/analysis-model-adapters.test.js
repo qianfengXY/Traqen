@@ -26,6 +26,26 @@ function cliSpawn(result, calls) {
   };
 }
 
+function scopedModelContext(profile, overrides = {}) {
+  const context = {
+    workspaceId: "W1",
+    profileId: "EXECUTION-PROFILE-1",
+    analysisRunId: "RUN-1",
+    slotId: "MAIN",
+    ...overrides,
+  };
+  return {
+    ...context,
+    grant: {
+      ...context,
+      capabilityKind: "MODEL",
+      capabilityName: profile.currentRevisionId,
+      credentialHandleId: profile.credentialHandleId,
+      expiresAt: "2099-01-01T00:00:00.000Z",
+    },
+  };
+}
+
 test("allowlisted CLI models pass untrusted prompts as one argv value without a shell", async () => {
   const calls = [];
   const adapter = new AllowlistedCliModelAdapter({ id: "CLI-1", cliAdapter: "CODEX", model: "gpt", spawnImpl: cliSpawn({ stdout: '{}\n' }, calls) });
@@ -98,14 +118,54 @@ test("allowlisted CLI verification decodes each supported CLI's real JSON output
   }
 });
 
+test("KIMI CLI uses its documented prompt flag instead of the unsupported print flag", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CLI-KIMI",
+    cliAdapter: "KIMI",
+    model: "kimi-for-coding",
+    spawnImpl: cliSpawn(({ args }) => {
+      const promptIndex = args.indexOf("--prompt");
+      const request = JSON.parse(promptIndex >= 0 ? args[promptIndex + 1] : args.at(-1));
+      return { stdout: JSON.stringify({ ready: true, challenge: request.input.challenge }) };
+    }, calls),
+  });
+  await adapter.verify();
+  assert.equal(calls[0].args.includes("--print"), false);
+  assert.equal(calls[0].args.includes("--prompt"), true);
+  assert.deepEqual(calls[0].args.slice(0, 2), ["--model", "kimi-for-coding"]);
+});
+
+test("credentialed API model revisions require the matching scoped Run and Slot grant", async () => {
+  const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
+  const profile = registry.configure({ id: "SCOPED", endpoint: "https://models.example/v1", model: "scoped", apiKey: "secret" });
+  await registry.verify("SCOPED");
+  assert.match(profile.credentialHandleId, /^MODEL-CREDENTIAL-/);
+  assert.notEqual(profile.credentialHandleId, "MODEL-CREDENTIAL-SCOPED", "a CredentialHandle must identify encrypted secret material, not be synthesized from the public profile id");
+  assert.equal(registry.resolve(profile.currentRevisionId), null, "runtime cannot bypass a scoped grant");
+  const grant = {
+    workspaceId: "W1",
+    profileId: "EXECUTION-PROFILE-1",
+    analysisRunId: "RUN-1",
+    slotId: "MAIN",
+    capabilityKind: "MODEL",
+    capabilityName: profile.currentRevisionId,
+    credentialHandleId: profile.credentialHandleId,
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
+  assert.ok(registry.resolve(profile.currentRevisionId, { grant, workspaceId: "W1", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" }));
+  assert.equal(registry.resolve(profile.currentRevisionId, { grant, workspaceId: "W2", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" }), null);
+});
+
 test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {
   const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
   const first = registry.configure({ id: "M1", revisionId: "REV-SAME", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
   await registry.verify("M1");
-  const pinned = registry.resolve(first.currentRevisionId);
+  const pinnedContext = scopedModelContext(first);
+  const pinned = registry.resolve(first.currentRevisionId, pinnedContext);
   const second = registry.configure({ id: "M1", revisionId: "REV-SAME", revision: 1, endpoint: "https://models.example/v1", model: "two", apiKey: "secret" });
   assert.notEqual(second.currentRevisionId, first.currentRevisionId);
-  assert.equal(registry.resolve(first.currentRevisionId), pinned);
+  assert.equal(registry.resolve(first.currentRevisionId, pinnedContext), pinned);
   assert.equal(pinned.model, "one");
 });
 
@@ -113,11 +173,12 @@ test("retiring profiles reject new direct analysis while pinned revision executi
   const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
   const profile = registry.configure({ id: "M1", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
   await registry.verify("M1");
+  const context = scopedModelContext(profile);
   registry.remove("M1");
   await assert.rejects(() => registry.planWorkspaceAnalysis("M1", {}), /not active/);
-  assert.ok(registry.resolve(profile.currentRevisionId));
+  assert.ok(registry.resolve(profile.currentRevisionId, context));
   assert.equal(registry.remove("M1", { finalize: true }).lifecycle, "RETIRED");
-  assert.ok(registry.resolve(profile.currentRevisionId), "retirement preserves the immutable pinned revision");
+  assert.ok(registry.resolve(profile.currentRevisionId, context), "retirement preserves the immutable pinned revision");
 });
 
 test("model replacement plans pin both model revisions before retiring the source", async () => {
@@ -399,7 +460,8 @@ test("runtime model profiles keep API keys private, require verification, and en
   const verified = await registry.verify("workspace-default");
   assert.equal(verified.ready, true);
   assert.equal(JSON.parse(requests[0].body).max_tokens, 512);
-  assert.ok(registry.resolve("workspace-default"));
+  const pinnedContext = scopedModelContext(configured);
+  assert.ok(registry.resolve("workspace-default", pinnedContext));
   const enriched = await registry.enrichWorkspaceCandidates("workspace-default", workspaceCandidateEnvelope());
   assert.equal(enriched.candidates[0].proposal.businessFeature, true);
   assert.equal(enriched.candidates[0].proposal.displayName, "Submit order");
@@ -413,11 +475,11 @@ test("runtime model profiles keep API keys private, require verification, and en
     model: "source-analysis-model-v2",
   });
   assert.notEqual(revised.currentRevisionId, firstRevisionId);
-  assert.ok(registry.resolve(firstRevisionId), "the verified pinned revision remains executable after editing the profile");
+  assert.ok(registry.resolve(firstRevisionId, pinnedContext), "the verified pinned revision remains executable after editing the profile");
   assert.equal(registry.resolve("workspace-default"), null, "the new unverified revision does not inherit readiness");
   const retiring = registry.remove("workspace-default");
   assert.equal(retiring.lifecycle, "RETIRING");
-  assert.ok(registry.resolve(firstRevisionId), "retirement preserves an active Run's pinned historical revision");
+  assert.ok(registry.resolve(firstRevisionId, pinnedContext), "retirement preserves an active Run's pinned historical revision");
 });
 
 test("Workspace model telemetry exposes the auditable request lifecycle and enforces evidence confidence caps", async () => {

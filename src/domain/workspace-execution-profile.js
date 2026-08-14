@@ -421,7 +421,7 @@ export function issueScopedSecretGrants(profile, { analysisRunId, expiresAt }) {
     for (const { kind, name } of capabilities) {
       for (const credentialHandleId of byKey.get(`${kind}\u0000${name}`)?.credentialHandleIds ?? []) {
         grants.push({
-          id: contentId("SECRET-GRANT", { profileId: profile.id, analysisRunId, slotId, kind, name, credentialHandleId }),
+          id: contentId("SECRET-GRANT", { profileId: profile.id, analysisRunId, slotId, kind, name, credentialHandleId, expiresAt }),
           workspaceId: profile.workspaceId,
           profileId: profile.id,
           analysisRunId,

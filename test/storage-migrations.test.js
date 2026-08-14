@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { copyFile, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { PGlite } from "@electric-sql/pglite";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
+import { WorkspaceProductFoundation } from "../src/application/workspace-product-foundation.js";
 import { WorkspaceAnalysisJobRunner, WorkspaceAnalysisPhase } from "../src/application/workspace-analysis-job-runner.js";
 import {
   createExecutionEvidenceBundle,
@@ -50,9 +54,53 @@ async function migratedDatabase() {
     "0018_understanding_review_provenance",
     "0019_workspace_capability_settings",
     "0020_workspace_capability_cas",
+    "0021_workspace_policy_backfill",
   ]);
   return database;
 }
+
+test("F006 migration backfills immutable Policy revisions for a pre-policy Draft", async (t) => {
+  const stagedMigrations = await mkdtemp(join(tmpdir(), "traqen-f006-migrations-"));
+  t.after(() => rm(stagedMigrations, { recursive: true, force: true }));
+  const migrationFiles = (await readdir(migrationsDirectory)).filter((name) => /^\d{4}_.+\.sql$/.test(name)).sort();
+  for (const name of migrationFiles.filter((name) => name < "0021_")) {
+    await copyFile(join(migrationsDirectory, name), join(stagedMigrations, name));
+  }
+  const database = await PGlite.create();
+  t.after(() => database.close());
+  await applyMigrations(database, stagedMigrations);
+  await insertProjectFoundation(database);
+  const store = new PostgresTraceabilityStore(database);
+  const service = new WorkspaceProductFoundation({ store, clock: fixedClock });
+  const legacyDraft = {
+    id: "LEGACY-DRAFT-1",
+    workspaceId: "PROJECT-001",
+    revision: 1,
+    mainAgentSlot: { id: "MAIN", role: "MAIN", modelProfileId: "MODEL-1", skillGrants: [], mcpGrants: [], independenceGroup: "MAIN", enabled: true },
+    childAgentSlots: [],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+    dependencies: { notes: "legacy dependency" },
+    conventions: { notes: "legacy convention" },
+    securityPolicy: { notes: "legacy security" },
+    validation: { valid: false, errors: [] },
+    createdAt: "2026-08-01T00:00:00.000Z",
+  };
+  await store.appendUnderstandingRecordWithCas("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", legacyDraft, {
+    headKey: "WORKSPACE_CAPABILITY_DRAFT",
+    expectedVersion: 0,
+  });
+  await copyFile(join(migrationsDirectory, "0021_workspace_policy_backfill.sql"), join(stagedMigrations, "0021_workspace_policy_backfill.sql"));
+  assert.deepEqual(await applyMigrations(database, stagedMigrations), ["0021_workspace_policy_backfill"]);
+
+  const restored = await service.getCapabilityDraft("PROJECT-001");
+  assert.equal(restored.revision, 2);
+  assert.equal(restored.dependencies.notes, "legacy dependency");
+  assert.equal(restored.conventions.notes, "legacy convention");
+  assert.equal(restored.securityPolicy.notes, "legacy security");
+  assert.equal((await store.listUnderstandingRecords("PROJECT-001", "WORKSPACE_POLICY_REVISION")).length, 3);
+  assert.ok(await store.getUnderstandingRecord("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", "LEGACY-DRAFT-1"), "the immutable legacy Draft remains preserved");
+});
 
 async function insertProjectFoundation(database) {
   await database.query("INSERT INTO organization (id, name) VALUES ($1, $2)", ["ORG-001", "Traqen"]);

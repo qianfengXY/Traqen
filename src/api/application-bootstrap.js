@@ -126,13 +126,21 @@ export function createConfiguredApplication({
       sourceSliceBroker,
       snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
       allowlistedRoots: allowedWorkspaceRoots,
-      childProducer: developmentUnderstanding?.childProducer ?? (async ({ job, assignment, executionProfile, artifact, facts, sourceSlices, candidate }) => {
+      childProducer: developmentUnderstanding?.childProducer ?? (async ({ job, assignment, executionProfile, artifact, facts, sourceSlices, candidate, secretGrants }) => {
         const modelEntry = executionProfile.entries?.find((item) =>
           item.kind === "MODEL" && item.logicalName === assignment.route.model);
         if (!modelEntry) {
           return { gap: { code: "NO_ELIGIBLE_PRODUCER", message: `Pinned model ${assignment.route.model} is absent from the immutable profile` } };
         }
-        const adapter = analysisModelRegistry.resolve(assignment.route.model);
+        const grant = secretGrants.find((candidateGrant) => candidateGrant.capabilityKind === "MODEL"
+          && candidateGrant.capabilityName === assignment.route.model);
+        const adapter = analysisModelRegistry.resolve(assignment.route.model, {
+          grant,
+          workspaceId: job.projectId,
+          profileId: executionProfile.id,
+          analysisRunId: job.id,
+          slotId: assignment.slotId,
+        });
         if (!adapter) {
           return {
             gap: {
@@ -240,10 +248,18 @@ export function createConfiguredApplication({
           ? { candidates, producerOutputs: producerOutputs.map(({ kind, logicalName }) => ({ kind, logicalName })) }
           : { gap: { code: "PRODUCER_RETURNED_NO_CANDIDATE", message: "Configured producers returned no candidates" } };
       }),
-      mainProducer: developmentUnderstanding?.mainProducer ?? (async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions, contextCandidates, scopedArtifacts }) => {
+      mainProducer: developmentUnderstanding?.mainProducer ?? (async ({ job, batch, route, executionProfile, workUnit, artifact, facts, candidateOptions, contextCandidates, scopedArtifacts, secretGrants }) => {
         const modelEntry = executionProfile.entries?.find((item) =>
           item.kind === "MODEL" && item.logicalName === route.model);
-        const adapter = modelEntry ? analysisModelRegistry.resolve(route.model) : null;
+        const grant = secretGrants.find((candidateGrant) => candidateGrant.capabilityKind === "MODEL"
+          && candidateGrant.capabilityName === route.model);
+        const adapter = modelEntry ? analysisModelRegistry.resolve(route.model, {
+          grant,
+          workspaceId: job.projectId,
+          profileId: executionProfile.id,
+          analysisRunId: job.id,
+          slotId: "MAIN",
+        }) : null;
         if (!modelEntry || !adapter) throw new TypeError(`Pinned Main model ${route.model} is unavailable`);
         if (modelEntry.manifest?.model && adapter.model !== modelEntry.manifest.model) {
           throw new TypeError(`Pinned Main model ${route.model} revision drifted`);

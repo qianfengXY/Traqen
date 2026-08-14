@@ -20,6 +20,7 @@ import {
   deepFreeze,
   fanOutAnalysisBatch,
   openAnalysisBatchBarrier,
+  issueScopedSecretGrants,
 } from "../domain/index.js";
 import {
   ExtractorCapabilityRegistry,
@@ -417,6 +418,7 @@ export class LegacyUnderstandingRuntime {
     implementationAuthorId = "TRAQEN-RUNTIME",
     runnerId = "TRAQEN-LOCAL-RUNNER",
     publicationMetadata = null,
+    secretGrantTtlMs = 86_400_000,
     clock = () => new Date(),
   }) {
     if (!store || !sourceSliceBroker) throw new TypeError("store and sourceSliceBroker are required");
@@ -433,6 +435,8 @@ export class LegacyUnderstandingRuntime {
     this.equivalenceResolver = equivalenceResolver;
     this.implementationAuthorId = implementationAuthorId;
     this.runnerId = runnerId;
+    if (!Number.isInteger(secretGrantTtlMs) || secretGrantTtlMs < 1) throw new TypeError("secretGrantTtlMs must be a positive integer");
+    this.secretGrantTtlMs = secretGrantTtlMs;
     this.publicationMetadata = publicationMetadata ? deepFreeze(structuredClone(publicationMetadata)) : null;
     this.snapshotCapture = new LocalSourceSnapshotCapture({
       allowlistedRoots: this.allowlistedRoots,
@@ -640,6 +644,15 @@ export class LegacyUnderstandingRuntime {
     const controller = new AbortController();
     this.#controllers.set(job.id, controller);
     try {
+      const profile = await this.store.getUnderstandingRecord(job.projectId, "WORKSPACE_EXECUTION_PROFILE", job.workspaceExecutionProfileRevisionId);
+      if (!profile) throw new TypeError("the pinned WorkspaceExecutionProfileRevision is unavailable");
+      const expiresAt = new Date(this.clock().valueOf() + this.secretGrantTtlMs).toISOString();
+      const grants = Array.isArray(profile.entries) && profile.mainAgent && Array.isArray(profile.childSlots)
+        ? issueScopedSecretGrants(profile, { analysisRunId: job.id, expiresAt })
+        : [];
+      for (const grant of grants) {
+        await this.store.appendUnderstandingRecord(job.projectId, "SECRET_GRANT", grant);
+      }
       return await this.runner.run(job, { signal: controller.signal });
     } catch (error) {
       return this.runner.fail(await this.runner.get(job.projectId, job.id) ?? job, error);
@@ -1005,6 +1018,18 @@ export class LegacyUnderstandingRuntime {
     }
     const executionProfile = configuredExecutionProfile;
     const producerForSlot = (slot) => producerForExecutionSlot(executionProfile, slot);
+    const grantCandidates = (await this.store.listUnderstandingRecords(job.projectId, "SECRET_GRANT"))
+      .filter((grant) => grant.profileId === executionProfile.id
+        && grant.analysisRunId === job.id
+        && Date.parse(grant.expiresAt) > this.clock().valueOf());
+    const grantsForSlot = (slotId) => {
+      const latestByHandle = new Map();
+      for (const grant of grantCandidates.filter((candidate) => candidate.slotId === slotId)) {
+        const prior = latestByHandle.get(grant.credentialHandleId);
+        if (!prior || Date.parse(grant.expiresAt) > Date.parse(prior.expiresAt)) latestByHandle.set(grant.credentialHandleId, grant);
+      }
+      return deepFreeze([...latestByHandle.values()].map((grant) => structuredClone(grant)));
+    };
 
     const candidates = [];
     const gaps = [];
@@ -1277,6 +1302,7 @@ export class LegacyUnderstandingRuntime {
                 candidate: structuredClone(candidate),
                 contextCandidates: deepFreeze(structuredClone(contextCandidates)),
                 scopedArtifacts: deepFreeze(structuredClone(scopedArtifacts)),
+                secretGrants: grantsForSlot(assignment.slotId),
               })
             : {
                 gap: {
@@ -1355,6 +1381,7 @@ export class LegacyUnderstandingRuntime {
               candidateOptions: deepFreeze(structuredClone(candidateOptions)),
               contextCandidates: deepFreeze(structuredClone(contextCandidates)),
               scopedArtifacts: deepFreeze(structuredClone(scopedArtifacts)),
+              secretGrants: grantsForSlot("MAIN"),
             })
           : null, candidateOptions);
       } catch (error) {

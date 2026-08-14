@@ -19,6 +19,9 @@ export type GlobalModelProfile = {
   lifecycle: "ACTIVE" | "RETIRING" | "RETIRED";
   endpoint?: string;
   model?: string;
+  cliAdapter?: "CODEX" | "CLAUDE" | "GEMINI" | "KIMI";
+  executablePath?: string;
+  credentialHandleId?: string;
 };
 
 export type CapabilityKey = { kind: "SKILL" | "MCP"; normalizedName: string };
@@ -155,6 +158,16 @@ export async function listGlobalModels(apiBase: string, apiToken: string) {
 export async function createGlobalModel(apiBase: string, apiToken: string, input: Record<string, unknown>) {
   const response = await fetch(`${base(apiBase)}/v1/global-models`, { method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input) });
   return parseJson<Record<string, unknown>>(response);
+}
+
+export async function getGlobalModel(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}`, { method: "GET", headers: headers(apiToken) });
+  return parseJson<GlobalModelProfile>(response);
+}
+
+export async function updateGlobalModel(apiBase: string, apiToken: string, profileId: string, input: Record<string, unknown>) {
+  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}`, { method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input) });
+  return parseJson<GlobalModelProfile>(response);
 }
 
 export async function verifyGlobalModel(apiBase: string, apiToken: string, profileId: string) {

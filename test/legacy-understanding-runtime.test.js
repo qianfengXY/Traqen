@@ -31,7 +31,7 @@ test("Candidate completeness cannot exceed its canonical reviewed TraceChain", (
   assert.equal(reviewedCandidateTraceComplete(null, []), false);
 });
 
-async function runProducerBoundaryScenario(projectId, { childProducer, mainProducer }) {
+async function runProducerBoundaryScenario(projectId, { childProducer, mainProducer, credentialHandleIds = [] }) {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-producer-boundary-"));
   const source = path.join(temporary, "source");
   const snapshots = path.join(temporary, "snapshots");
@@ -42,7 +42,7 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
     "export function producerBoundary() { return true; }\nexport function secondEvidence() { return true; }\n",
   );
   const store = new MemoryTraceabilityStore();
-  const profile = await persistFixtureExecutionProfile(store, projectId);
+  const profile = await persistFixtureExecutionProfile(store, projectId, "LOCAL-DETERMINISTIC-PROFILE", { credentialHandleIds });
   const runtime = new LegacyUnderstandingRuntime({
     store,
     allowlistedRoots: [source],
@@ -60,6 +60,35 @@ async function runProducerBoundaryScenario(projectId, { childProducer, mainProdu
   }, { background: false });
   return { result, store, runtime, registration, profile };
 }
+
+test("runtime issues and mounts only Run- and Slot-scoped model secret grants", async () => {
+  const observed = [];
+  const childProducer = async (input) => {
+    observed.push({ slotId: input.assignment.slotId, grants: input.secretGrants });
+    return deterministicFixtureChildProducer(input);
+  };
+  const mainProducer = async (input) => {
+    observed.push({ slotId: "MAIN", grants: input.secretGrants });
+    return deterministicFixtureMainProducer(input);
+  };
+  const { result, store, profile } = await runProducerBoundaryScenario("P-SCOPED-GRANTS", {
+    childProducer,
+    mainProducer,
+    credentialHandleIds: ["MODEL-HANDLE-1"],
+  });
+  assert.equal(result.status, "COMPLETED", JSON.stringify(result.error));
+  assert.ok(observed.length >= 3);
+  for (const { slotId, grants } of observed) {
+    assert.equal(grants.length, 1);
+    assert.equal(grants[0].workspaceId, "P-SCOPED-GRANTS");
+    assert.equal(grants[0].profileId, profile.id);
+    assert.equal(grants[0].analysisRunId, "P-SCOPED-GRANTS-JOB");
+    assert.equal(grants[0].slotId, slotId);
+    assert.equal(grants[0].credentialHandleId, "MODEL-HANDLE-1");
+  }
+  const persisted = await store.listUnderstandingRecords("P-SCOPED-GRANTS", "SECRET_GRANT");
+  assert.equal(persisted.length, 3);
+});
 
 async function runCanonicalRelationScenario(projectId, { sourceContent, childEvidence }) {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-canonical-relation-"));

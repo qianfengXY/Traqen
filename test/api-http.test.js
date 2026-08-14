@@ -443,6 +443,47 @@ test("global CLI model API cannot bypass the adapter executable allowlist", asyn
   });
   assert.equal(accepted.response.status, 201);
   assert.equal(accepted.body.executablePath, "codex");
+
+  const read = await fetch(`${baseUrl}/v1/global-models/CLI-SAFE`);
+  assert.equal(read.status, 200);
+  assert.equal((await read.json()).profileId, "CLI-SAFE");
+  const updated = await fetch(`${baseUrl}/v1/global-models/CLI-SAFE`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ displayName: "Revised CLI", transport: "CLI", cliAdapter: "KIMI", executablePath: "kimi" }),
+  });
+  assert.equal(updated.status, 200);
+  const updatedBody = await updated.json();
+  assert.equal(updatedBody.profileId, "CLI-SAFE");
+  assert.equal(updatedBody.revision, accepted.body.revision + 1);
+  assert.equal(updatedBody.displayName, "Revised CLI");
+  assert.equal((await fetch(`${baseUrl}/v1/global-models/DOES-NOT-EXIST`)).status, 404);
+});
+
+test("global model GET and PUT contracts never return API credential values", async (t) => {
+  const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
+  const created = await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "MODEL-EDIT",
+    displayName: "Original",
+    transport: "API",
+    endpoint: "https://models.example/v1",
+    model: "original",
+    apiKey: "server-only-original",
+  });
+  assert.equal(created.response.status, 201);
+  const updated = await fetch(`${baseUrl}/v1/global-models/MODEL-EDIT`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ displayName: "Updated", transport: "API", endpoint: "https://models.example/v1", model: "updated", apiKey: "" }),
+  });
+  assert.equal(updated.status, 200);
+  const read = await fetch(`${baseUrl}/v1/global-models/MODEL-EDIT`);
+  assert.equal(read.status, 200);
+  const body = await read.json();
+  assert.equal(body.displayName, "Updated");
+  assert.equal(body.model, "updated");
+  assert.equal(JSON.stringify(body).includes("server-only-original"), false);
+  assert.equal(Object.hasOwn(body, "apiKey"), false);
 });
 
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {

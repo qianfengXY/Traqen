@@ -2196,7 +2196,7 @@ export function GlobalModelLibrary({
   t: T;
   models: GlobalModelProfile[];
   working: boolean;
-  onCreate: (input: Record<string, unknown>) => void;
+  onCreate: (input: Record<string, unknown>) => Promise<boolean>;
   onVerify: (profileId: string) => void;
   onInspectUsage: (profileId: string) => Promise<GlobalModelUsage | null>;
   onReplace: (profileId: string, replacementProfileId: string) => Promise<boolean>;
@@ -2209,6 +2209,7 @@ export function GlobalModelLibrary({
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [cliAdapter, setCliAdapter] = useState("CODEX");
+  const [editingProfileId, setEditingProfileId] = useState("");
   const [replacementBySource, setReplacementBySource] = useState<Record<string, string>>({});
   const [impactPreview, setImpactPreview] = useState<GlobalModelUsage | null>(null);
   const [impactLoading, setImpactLoading] = useState("");
@@ -2227,8 +2228,18 @@ export function GlobalModelLibrary({
     if (!replacementProfileId) return;
     if (await onReplace(impactPreview.profileId, replacementProfileId)) setImpactPreview(null);
   };
-  const submit = () => {
-    onCreate(
+  const editProfile = (profile: GlobalModelProfile) => {
+    setEditingProfileId(profile.profileId);
+    setProfileId(profile.profileId);
+    setDisplayName(profile.displayName);
+    setTransport(profile.transport);
+    setEndpoint(profile.endpoint ?? "");
+    setModel(profile.model ?? "");
+    setCliAdapter(profile.cliAdapter ?? "CODEX");
+    setApiKey("");
+  };
+  const submit = async () => {
+    const saved = await onCreate(
       transport === "API"
         ? {
             profileId,
@@ -2248,6 +2259,14 @@ export function GlobalModelLibrary({
           },
     );
     setApiKey("");
+    if (saved) {
+      setEditingProfileId("");
+      setProfileId("");
+      setDisplayName("");
+      setEndpoint("");
+      setModel("");
+      setCliAdapter("CODEX");
+    }
   };
   return (
     <>
@@ -2296,6 +2315,9 @@ export function GlobalModelLibrary({
                   >
                     {t("验证", "Verify")}
                   </button>
+                  <button className="button" disabled={working || item.lifecycle !== "ACTIVE"} onClick={() => editProfile(item)}>
+                    {t("编辑", "Edit")}
+                  </button>
                   <button className="button" disabled={working || impactLoading === item.profileId} onClick={() => void openImpact(item.profileId)}>
                     {t("使用影响", "Usage impact")}
                   </button>
@@ -2342,6 +2364,7 @@ export function GlobalModelLibrary({
               ID
               <input
                 value={profileId}
+                disabled={Boolean(editingProfileId)}
                 onChange={(event) => setProfileId(event.currentTarget.value)}
               />
             </label>
@@ -2410,11 +2433,11 @@ export function GlobalModelLibrary({
                 !profileId.trim() ||
                 !displayName.trim() ||
                 (transport === "API" &&
-                  (!endpoint.trim() || !model.trim() || !apiKey.trim()))
+                  (!endpoint.trim() || !model.trim() || (!editingProfileId && !apiKey.trim())))
               }
-              onClick={submit}
+              onClick={() => void submit()}
             >
-              {t("保存模型", "Save model")}
+              {editingProfileId ? t("保存新 Revision", "Save new revision") : t("保存模型", "Save model")}
             </button>
             <small>
               {t(

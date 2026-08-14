@@ -30,6 +30,7 @@ import {
   getWorkspaceReviewQueue,
   listGlobalModels,
   retireGlobalModel,
+  updateGlobalModel,
   verifyGlobalModel,
   listWorkspaceCapabilityConfigs,
   listWorkspaceExecutionProfiles,
@@ -680,10 +681,13 @@ function ServerOwnedProduct() {
   async function saveGlobalModel(input: Record<string, unknown>) {
     setWorking(true);
     try {
-      await createGlobalModel(apiBase, apiToken, input);
+      const profileId = String(input.profileId ?? "");
+      if (globalModels.some((profile) => profile.profileId === profileId)) await updateGlobalModel(apiBase, apiToken, profileId, input);
+      else await createGlobalModel(apiBase, apiToken, input);
       setGlobalModels(await listGlobalModels(apiBase, apiToken));
       notify(t("模型 Profile 已保存；验证成功后才会进入 Agent selector。", "Model profile saved. It enters Agent selectors only after verification."));
-    } catch (error) { notify(messageOf(error, t("模型保存失败", "Unable to save model profile")), "error"); }
+      return true;
+    } catch (error) { notify(messageOf(error, t("模型保存失败", "Unable to save model profile")), "error"); return false; }
     finally { setWorking(false); }
   }
 
@@ -769,7 +773,7 @@ function ServerOwnedProduct() {
     if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={(input) => void saveGlobalModel(input)} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
+    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
     return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} working={working} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
   };
 

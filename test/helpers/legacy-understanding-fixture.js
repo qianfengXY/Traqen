@@ -14,6 +14,7 @@ export async function persistFixtureExecutionProfile(
   store,
   projectId,
   id = "LOCAL-DETERMINISTIC-PROFILE",
+  { credentialHandleIds = [] } = {},
 ) {
   const profile = {
     id,
@@ -26,7 +27,7 @@ export async function persistFixtureExecutionProfile(
       { id: "CHILD-1", model: id, skillNames: [], mcpNames: [], independenceGroup: "FIXTURE-1" },
       { id: "CHILD-2", model: id, skillNames: [], mcpNames: [], independenceGroup: "FIXTURE-2" },
     ],
-    entries: [{ logicalName: id, kind: "MODEL", manifest: { provider: "FIXTURE" }, sourceTemplateId: null, credentialHandleIds: [] }],
+    entries: [{ logicalName: id, kind: "MODEL", manifest: { provider: "FIXTURE" }, sourceTemplateId: null, credentialHandleIds }],
     dependencies: {},
     conventions: {},
     policies: { dataBoundary: "TEST_ONLY" },

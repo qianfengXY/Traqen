@@ -90,6 +90,11 @@
       "get": { "operationId": "listGlobalModelProfiles", "responses": { "200": { "description": "Reusable global API and allowlisted CLI model profiles without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } },
       "post": { "operationId": "createGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "201": { "description": "Persisted global model connection profile", "content": { "application/json": { "schema": { "type": "object" } } } } } }
     },
+    "/v1/global-models/{modelId}": {
+      "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "getGlobalModelProfile", "responses": { "200": { "description": "One immutable-revision global model profile without credential values", "content": { "application/json": { "schema": { "type": "object" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "put": { "operationId": "reviseGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "200": { "description": "A new immutable model profile revision; an omitted API token preserves the encrypted CredentialHandle", "content": { "application/json": { "schema": { "type": "object" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
     "/v1/global-models/{modelId}/verify": {
       "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "post": { "operationId": "verifyGlobalModelProfile", "responses": { "200": { "description": "Updated transport readiness without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } }

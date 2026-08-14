@@ -5,6 +5,8 @@ import {
   decideWorkspaceReviewBatch,
   createGlobalModelReplacementPlan,
   applyGlobalModelReplacementPlan,
+  getGlobalModel,
+  updateGlobalModel,
   getConnectionHealth,
   getWorkspaceReviewQueue,
   listCapabilityTemplates,
@@ -13,6 +15,24 @@ import {
   resolveWorkspaceExecutionProfile,
   saveWorkspaceCapabilityConfig,
 } from "../app/product-foundation-client.ts";
+
+test("single global model client uses GET for reads and PUT for immutable revisions", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    return Response.json({ profileId: "MODEL/1", revision: calls.length });
+  };
+  try {
+    await getGlobalModel("http://api/", "secret", "MODEL/1");
+    await updateGlobalModel("http://api/", "secret", "MODEL/1", { displayName: "Revision 2", apiKey: "" });
+    assert.deepEqual(calls.map(({ options }) => options.method), ["GET", "PUT"]);
+    assert.ok(calls.every(({ url }) => url.endsWith("/v1/global-models/MODEL%2F1")));
+    assert.deepEqual(JSON.parse(calls[1].options.body), { displayName: "Revision 2", apiKey: "" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("product foundation client keeps reads GET-only and mutations explicit", async () => {
   const calls = [];

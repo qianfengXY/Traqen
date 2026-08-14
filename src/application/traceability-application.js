@@ -30,7 +30,6 @@ import {
   createFeatureGraphProjection,
   createSnapshotManifest,
   createWorkspaceObservationPackage,
-  createGlobalModelProfileRevision,
   createSourceSliceRequest,
   createTestSpec,
   generateEndpointTestSpecDraft,
@@ -653,7 +652,7 @@ export class TraceabilityApplication {
       model: profile.model,
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
-      credentialHandleId: `MODEL-CREDENTIAL-${profile.id}`,
+      credentialHandleId: profile.credentialHandleId,
       readiness: profile.ready ? 'READY' : 'UNVERIFIED',
       lifecycle: profile.lifecycle ?? 'ACTIVE',
       configuredAt: profile.configuredAt,
@@ -665,19 +664,24 @@ export class TraceabilityApplication {
     return this.#globalModelProfiles();
   }
 
+  getGlobalModelProfile(profileId) {
+    requireId(profileId, "profileId");
+    return this.#globalModelProfiles().find((profile) => profile.profileId === profileId) ?? null;
+  }
+
   configureGlobalModelProfile(input) {
     const profileId = input.profileId ?? input.id;
-    const current = this.#analysisModelRegistry?.list().find(({ id }) => id === profileId);
-    const revision = createGlobalModelProfileRevision({
-      ...input,
-      profileId,
-      revision: (current?.revision ?? 0) + 1,
-      providerAdapter: input.providerAdapter ?? "OPENAI_COMPATIBLE",
-      credentialHandleId: input.credentialHandleId ?? `MODEL-CREDENTIAL-${profileId}`,
-    }, this.#clock);
-    const configured = this.configureAnalysisModelProfile({ ...input, id: profileId });
-    if (configured.revision !== revision.revision) throw new TypeError(`Model ${profileId} revision sequence is inconsistent`);
-    return configured;
+    requireId(profileId, "profileId");
+    this.configureAnalysisModelProfile({ ...input, id: profileId });
+    return this.getGlobalModelProfile(profileId);
+  }
+
+  updateGlobalModelProfile(profileId, input) {
+    requireId(profileId, "profileId");
+    if (!this.getGlobalModelProfile(profileId)) return null;
+    if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
+    if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
+    return this.configureGlobalModelProfile({ ...input, id: profileId, profileId });
   }
 
   verifyGlobalModelProfile(profileId) {

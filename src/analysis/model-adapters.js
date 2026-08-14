@@ -12,7 +12,7 @@ const CLI_MODEL_ADAPTERS = Object.freeze({
   CODEX: { executable: "codex", args: (prompt, model) => ["exec", "--json", ...(model ? ["--model", model] : []), prompt] },
   CLAUDE: { executable: "claude", args: (prompt, model) => ["--print", "--output-format", "json", ...(model ? ["--model", model] : []), prompt] },
   GEMINI: { executable: "gemini", args: (prompt, model) => ["--output-format", "json", ...(model ? ["--model", model] : []), "--prompt", prompt] },
-  KIMI: { executable: "kimi", args: (prompt, model) => ["--print", ...(model ? ["--model", model] : []), prompt] },
+  KIMI: { executable: "kimi", args: (prompt, model) => [...(model ? ["--model", model] : []), "--prompt", prompt] },
 });
 
 function allowlistedCliExecutable(cliAdapter, executablePath) {
@@ -939,6 +939,7 @@ export class AnalysisModelRegistry {
   #profileStore;
   #activeProfileId = null;
   #replacementPlans = new Map();
+  #credentialHandles = new Map();
 
   constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
     if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
@@ -949,10 +950,15 @@ export class AnalysisModelRegistry {
     this.#fetchImpl = fetchImpl;
     this.#profileStore = profileStore;
     for (const [id, adapter] of adapters) {
-      const profile = { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", revision: 1, configuredAt: this.#clock().toISOString(), verifiedAt: null, apiKey: null, adapter };
+      const profile = { id, displayName: id, transport: "API", endpoint: adapter.endpoint, model: adapter.model, timeoutMs: adapter.timeoutMs, stream: adapter.stream, source: "ENVIRONMENT", lifecycle: "ACTIVE", revision: 1, configuredAt: this.#clock().toISOString(), verifiedAt: null, credentialHandleId: `ENV-MODEL-CREDENTIAL-${id}`, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile, `MODEL-REVISION-${id}-ENVIRONMENT`);
     }
     const stored = this.#profileStore?.load() ?? { activeProfileId: null, profiles: [] };
+    for (const value of stored.credentialHandles ?? []) {
+      const handleId = requiredString(value?.id, "stored model credential handle id");
+      const secret = requiredString(value?.secret, `stored model credential ${handleId}`);
+      this.#credentialHandles.set(handleId, secret);
+    }
     for (const value of stored.profiles) {
       const id = requiredString(value?.id, "stored analysis model profile id");
       if (this.#profiles.has(id)) continue;
@@ -961,9 +967,9 @@ export class AnalysisModelRegistry {
       const stream = transport === "API" ? value.stream ?? false : false;
       const endpoint = transport === "API" ? endpointUrl(value.endpoint) : null;
       const model = value.model ? requiredString(value.model, "stored analysis model name") : null;
-      const apiKey = transport === "API" ? requiredString(value.apiKey, "stored analysis model API key") : null;
+      const credential = transport === "API" ? this.#storedCredential(value, id) : null;
       const adapter = transport === "API"
-        ? new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey })
+        ? new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credential.credentialHandleId) ?? null })
         : new AllowlistedCliModelAdapter({ id, cliAdapter: value.cliAdapter, model, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
       const profile = {
         id,
@@ -981,7 +987,8 @@ export class AnalysisModelRegistry {
         revision: value.revision ?? 1,
         configuredAt: typeof value.configuredAt === "string" ? value.configuredAt : this.#clock().toISOString(),
         verifiedAt: typeof value.verifiedAt === "string" ? value.verifiedAt : null,
-        apiKey,
+        credentialHandleId: credential?.credentialHandleId ?? null,
+        legacyCredentialHandleId: credential?.legacyCredentialHandleId ?? null,
         adapter,
       };
       this.#publishRevision(profile, value.currentRevisionId);
@@ -994,6 +1001,22 @@ export class AnalysisModelRegistry {
       if (value?.id) this.#replacementPlans.set(value.id, structuredClone(value));
     }
     if (stored.activeProfileId && this.#profiles.get(stored.activeProfileId)?.verifiedAt) this.#activeProfileId = stored.activeProfileId;
+  }
+
+  #storedCredential(value, profileId) {
+    const legacySecret = typeof value.apiKey === "string" && value.apiKey.trim() !== "" ? value.apiKey.trim() : null;
+    const credentialHandleId = value.credentialHandleId
+      ? requiredString(value.credentialHandleId, "stored model credentialHandleId")
+      : `MODEL-CREDENTIAL-${randomUUID()}`;
+    const secret = this.#credentialHandles.get(credentialHandleId) ?? legacySecret;
+    if (!secret) throw new TypeError(`stored analysis model credential ${credentialHandleId} is unavailable`);
+    this.#credentialHandles.set(credentialHandleId, secret);
+    return {
+      credentialHandleId,
+      legacyCredentialHandleId: value.legacyCredentialHandleId
+        ? requiredString(value.legacyCredentialHandleId, "stored model legacyCredentialHandleId")
+        : legacySecret ? `MODEL-CREDENTIAL-${profileId}` : null,
+    };
   }
 
   #public(profile) {
@@ -1015,6 +1038,7 @@ export class AnalysisModelRegistry {
       lifecycle: profile.lifecycle,
       currentRevisionId: profile.currentRevisionId,
       revision: profile.revision,
+      credentialHandleId: profile.credentialHandleId,
     };
   }
 
@@ -1028,7 +1052,7 @@ export class AnalysisModelRegistry {
         providerAdapter: "OPENAI_COMPATIBLE",
         endpoint: profile.endpoint,
         model: profile.model,
-        credentialHandleId: `MODEL-CREDENTIAL-${profile.id}`,
+        credentialHandleId: profile.credentialHandleId,
       } : {
         cliAdapter: profile.cliAdapter,
         model: profile.model,
@@ -1047,17 +1071,20 @@ export class AnalysisModelRegistry {
 
   #hydrateHistoricalRevision(value) {
     const transport = String(value.transport ?? "API").toUpperCase();
+    const credential = transport === "API" ? this.#storedCredential(value, value.id) : null;
     const adapter = transport === "API"
-      ? new OpenAICompatibleAnalysisModelAdapter({ id: value.id, endpoint: value.endpoint, model: value.model, timeoutMs: value.timeoutMs, stream: value.stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => value.apiKey })
+      ? new OpenAICompatibleAnalysisModelAdapter({ id: value.id, endpoint: value.endpoint, model: value.model, timeoutMs: value.timeoutMs, stream: value.stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credential.credentialHandleId) ?? null })
       : new AllowlistedCliModelAdapter({ id: value.id, cliAdapter: value.cliAdapter, model: value.model, executablePath: value.executablePath, timeoutMs: value.timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
-    this.#revisions.set(value.currentRevisionId, { ...value, transport, adapter });
+    const { apiKey: _apiKey, ...safeValue } = value;
+    this.#revisions.set(value.currentRevisionId, { ...safeValue, transport, credentialHandleId: credential?.credentialHandleId ?? null, legacyCredentialHandleId: credential?.legacyCredentialHandleId ?? null, adapter });
   }
 
   #serializable(profile) {
     return {
       id: profile.id, displayName: profile.displayName, transport: profile.transport, endpoint: profile.endpoint,
       model: profile.model, timeoutMs: profile.timeoutMs, stream: profile.stream, configuredAt: profile.configuredAt,
-      verifiedAt: profile.verifiedAt, apiKey: profile.apiKey, cliAdapter: profile.cliAdapter,
+      verifiedAt: profile.verifiedAt, credentialHandleId: profile.credentialHandleId,
+      legacyCredentialHandleId: profile.legacyCredentialHandleId, cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath, maximumOutputBytes: profile.maximumOutputBytes,
       lifecycle: profile.lifecycle, currentRevisionId: profile.currentRevisionId,
       revision: profile.revision,
@@ -1072,6 +1099,7 @@ export class AnalysisModelRegistry {
       profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
       revisions: [...this.#revisions.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
       replacementPlans: [...this.#replacementPlans.values()].map((plan) => structuredClone(plan)),
+      credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
     });
   }
 
@@ -1084,9 +1112,22 @@ export class AnalysisModelRegistry {
     return profile ? this.#public(profile) : null;
   }
 
-  resolve(id) {
+  resolve(id, context = null) {
     const profile = this.#revisions.get(id) ?? this.#profiles.get(id ?? this.#activeProfileId);
-    return profile?.verifiedAt ? profile.adapter : null;
+    if (!profile?.verifiedAt) return null;
+    if (profile.transport !== "API") return profile.adapter;
+    const grant = context?.grant;
+    const acceptedHandles = new Set([profile.credentialHandleId, profile.legacyCredentialHandleId].filter(Boolean));
+    const unexpired = typeof grant?.expiresAt === "string" && Date.parse(grant.expiresAt) > this.#clock().valueOf();
+    const scoped = grant?.workspaceId === context?.workspaceId
+      && grant?.profileId === context?.profileId
+      && grant?.analysisRunId === context?.analysisRunId
+      && grant?.slotId === context?.slotId
+      && grant?.capabilityKind === "MODEL"
+      && grant?.capabilityName === profile.currentRevisionId
+      && acceptedHandles.has(grant?.credentialHandleId)
+      && unexpired;
+    return scoped ? profile.adapter : null;
   }
 
   configure(input) {
@@ -1101,7 +1142,7 @@ export class AnalysisModelRegistry {
       const timeoutMs = input.timeoutMs ?? 120_000;
       const adapter = new AllowlistedCliModelAdapter({ id, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
-      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey: null, adapter };
+      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile);
       if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
       this.#persist();
@@ -1111,16 +1152,19 @@ export class AnalysisModelRegistry {
     const endpoint = endpointUrl(input.endpoint);
     const model = requiredString(input.model, "analysis model name");
     const hasNewApiKey = typeof input.apiKey === "string" && input.apiKey.trim() !== "";
-    const apiKey = hasNewApiKey
-      ? requiredString(input.apiKey, "analysis model API key")
-      : existing?.source === "RUNTIME"
-        ? existing.apiKey
-        : requiredString(input.apiKey, "analysis model API key");
+    const apiKey = hasNewApiKey ? requiredString(input.apiKey, "analysis model API key") : null;
+    const credentialHandleId = hasNewApiKey
+      ? `MODEL-CREDENTIAL-${randomUUID()}`
+      : existing?.source === "RUNTIME" && existing.transport === "API"
+        ? existing.credentialHandleId
+        : null;
+    if (!credentialHandleId) throw new TypeError("analysis model API key is required");
+    if (apiKey) this.#credentialHandles.set(credentialHandleId, apiKey);
     const timeoutMs = input.timeoutMs ?? 120_000;
     const stream = input.stream ?? false;
-    const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => apiKey });
+    const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credentialHandleId) ?? null });
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
-    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, apiKey, adapter };
+    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
     this.#publishRevision(profile);
     if (this.#activeProfileId === id && !profile.verifiedAt) this.#activeProfileId = null;
     this.#persist();

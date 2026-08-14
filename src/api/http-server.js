@@ -374,6 +374,23 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 201, application.configureGlobalModelProfile(await readJson(request, maxBodyBytes)), id);
         return;
       }
+      const globalModelMatch = /^\/v1\/global-models\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && globalModelMatch) {
+        const profile = application.getGlobalModelProfile(decodePathSegment(globalModelMatch[1]));
+        if (!profile) throw new HttpError(404, "GLOBAL_MODEL_NOT_FOUND", "Global model profile was not found");
+        sendJson(response, 200, profile, id);
+        return;
+      }
+      if (request.method === "PUT" && globalModelMatch) {
+        requireJson(request);
+        const profile = application.updateGlobalModelProfile(
+          decodePathSegment(globalModelMatch[1]),
+          await readJson(request, maxBodyBytes),
+        );
+        if (!profile) throw new HttpError(404, "GLOBAL_MODEL_NOT_FOUND", "Global model profile was not found");
+        sendJson(response, 200, profile, id);
+        return;
+      }
       const globalModelVerifyMatch = /^\/v1\/global-models\/([^/]+)\/verify$/.exec(url.pathname);
       if (request.method === "POST" && globalModelVerifyMatch) {
         sendJson(response, 200, await application.verifyGlobalModelProfile(decodePathSegment(globalModelVerifyMatch[1])), id);
