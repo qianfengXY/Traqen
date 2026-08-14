@@ -679,6 +679,11 @@ export class TraceabilityApplication {
   updateGlobalModelProfile(profileId, input) {
     requireId(profileId, "profileId");
     if (!this.getGlobalModelProfile(profileId)) return null;
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
+    assertOnlyFields(input, [
+      "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
+      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes",
+    ], "globalModelRevision");
     if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
     if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
     return this.configureGlobalModelProfile({ ...input, id: profileId, profileId });
@@ -699,25 +704,26 @@ export class TraceabilityApplication {
     const replacementProfileId = requireId(input?.replacementProfileId, "replacementProfileId");
     const usage = await this.getGlobalModelUsage(profileId);
     const changes = await this.#workspaceFoundation.prepareModelReplacement(profileId, replacementProfileId, this.#globalModelProfiles());
-    return this.#analysisModelRegistry.createReplacementPlan({
+    const plan = this.#analysisModelRegistry.createReplacementPlan({
       sourceProfileId: profileId,
       replacementProfileId,
       references: usage.references,
       changes,
     });
+    return this.#workspaceFoundation.createModelReplacementPlan(plan);
   }
 
   async applyGlobalModelReplacementPlan(profileId, planId, input) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("model replacement apply input must be an object");
     assertOnlyFields(input, ["expectedVersion"], "modelReplacementApply");
-    const plan = this.#analysisModelRegistry.getReplacementPlan(planId);
+    const plan = await this.#workspaceFoundation.getModelReplacementPlan(planId);
     if (!plan || plan.sourceProfileId !== profileId) return null;
-    const applying = this.#analysisModelRegistry.beginReplacementPlan(planId, input?.expectedVersion);
+    this.#analysisModelRegistry.beginReplacementPlan(planId, input?.expectedVersion);
     try {
-      const applied = await this.#workspaceFoundation.applyModelReplacement(applying.changes);
-      const completed = this.#analysisModelRegistry.completeReplacementPlan(planId);
-      return Object.freeze({ plan: completed, workspaces: applied });
+      const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
+      this.#analysisModelRegistry.completeReplacementPlan(planId);
+      return Object.freeze(applied);
     } catch (error) {
       this.#analysisModelRegistry.abortReplacementPlan(planId);
       throw error;

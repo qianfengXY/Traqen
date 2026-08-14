@@ -10,6 +10,7 @@ import {
   createProjectFoundation,
   createWorkspaceCapabilityConfig,
   createWorkspaceCapabilityDraftRevision,
+  createWorkspacePolicyRevision,
   fanOutAnalysisBatch,
   issueScopedSecretGrants,
   openAnalysisBatchBarrier,
@@ -212,7 +213,7 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
 });
 
 test("F006 restores policy content, honors pinned project revisions, and permits explicit recreate after tombstone", async () => {
-  const { service } = await foundation();
+  const { store, service } = await foundation();
   const first = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { marker: "REV1" } });
   await service.saveCapabilityDraft("W1", {
     expectedVersion: 0,
@@ -233,9 +234,48 @@ test("F006 restores policy content, honors pinned project revisions, and permits
   assert.equal(restored.dependencies.notes, "dependency-v1");
   assert.equal(restored.conventions.notes, "convention-v1");
   assert.equal(restored.securityPolicy.notes, "security-v1");
+  const nonHeadDraft = createWorkspaceCapabilityDraftRevision({
+    ...restored,
+    id: undefined,
+    revision: 99,
+    dependencies: undefined,
+    conventions: undefined,
+    securityPolicy: undefined,
+  }, clock);
+  await store.appendUnderstandingRecord("W1", "WORKSPACE_CAPABILITY_DRAFT", nonHeadDraft);
+  assert.equal((await service.getCapabilityDraft("W1")).id, restored.id,
+    "read recovery must follow the authoritative Draft Head, not the highest orphan revision");
+  const nonHeadCapability = createProjectCapabilityRevision({
+    workspaceId: "W1",
+    kind: "SKILL",
+    normalizedName: "source",
+    revision: 99,
+    manifest: { marker: "ORPHAN" },
+  }, clock);
+  await store.appendUnderstandingRecord("W1", "PROJECT_CAPABILITY_REVISION", nonHeadCapability);
+  const nonHeadPolicy = createWorkspacePolicyRevision({
+    workspaceId: "W1",
+    kind: "DEPENDENCY",
+    revision: 99,
+    content: { notes: "orphan-dependency" },
+  }, clock);
+  await store.appendUnderstandingRecord("W1", "WORKSPACE_POLICY_REVISION", nonHeadPolicy);
   const settingsCatalog = await service.effectiveCapabilityCatalog("W1");
   assert.equal(settingsCatalog.entries.find(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source").manifest.marker, "REV2");
   assert.equal(settingsCatalog.entries.some(({ id }) => id === added.id), true, "the settings catalog must expose newly added project capabilities");
+  const revised = await service.saveCapabilityDraft("W1", {
+    expectedVersion: 1,
+    mainAgentSlot: restored.mainAgentSlot,
+    childAgentSlots: restored.childAgentSlots,
+    projectCapabilityRevisionIds: restored.projectCapabilityRevisionIds,
+    disabledKeys: restored.disabledKeys,
+    dependencies: { notes: "dependency-v2" },
+    conventions: { notes: "convention-v2" },
+    securityPolicy: { notes: "security-v2" },
+  });
+  const revisedDependency = await store.getUnderstandingRecord("W1", "WORKSPACE_POLICY_REVISION", revised.dependencyPolicyRevisionId);
+  assert.equal(revisedDependency.revision, 2,
+    "new Policy revisions must advance from the authoritative Head instead of orphan records");
   const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE", transport: "API", model: "m" }];
   const activated = await service.activateCapabilityDraft("W1", modelProfiles);
   assert.equal(activated.entries.find(({ kind }) => kind === "SKILL").manifest.marker, "REV1");

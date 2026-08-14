@@ -16,6 +16,11 @@ function recordIdentity(record) {
   return identity;
 }
 
+function replacementPlanIdentity(plan) {
+  const { version: _version, status: _status, appliedAt: _appliedAt, ...identity } = plan;
+  return identity;
+}
+
 export class MemoryTraceabilityStore extends TraceabilityStore {
   #projects = new Map();
   #capabilityTemplates = new Map();
@@ -53,6 +58,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #analysisResults = new Map();
   #understandingRecords = new Map();
   #understandingHeads = new Map();
+  #modelReplacementPlans = new Map();
   #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
 
@@ -1305,6 +1311,35 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       }
       throw error;
     }
+  }
+
+  async createModelReplacementPlan(plan) {
+    const existing = this.#modelReplacementPlans.get(plan.id);
+    if (existing && canonicalJson(replacementPlanIdentity(existing)) !== canonicalJson(replacementPlanIdentity(plan))) {
+      throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} conflicts with an existing immutable plan`);
+    }
+    if (!existing) this.#modelReplacementPlans.set(plan.id, deepFreeze(structuredClone(plan)));
+    return deepFreeze(structuredClone(this.#modelReplacementPlans.get(plan.id)));
+  }
+
+  async getModelReplacementPlan(planId) {
+    const plan = this.#modelReplacementPlans.get(planId);
+    return plan ? deepFreeze(structuredClone(plan)) : null;
+  }
+
+  async applyModelReplacementPlan(planId, expectedVersion) {
+    const plan = this.#modelReplacementPlans.get(planId);
+    if (!plan) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} does not exist`);
+    if (plan.status === "APPLIED" && plan.version === expectedVersion + 2) {
+      return deepFreeze({ plan: structuredClone(plan), workspaces: plan.changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })) });
+    }
+    if (plan.status !== "READY" || plan.version !== expectedVersion) {
+      throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
+    }
+    const workspaces = await this.applyWorkspaceModelReplacement(plan.changes);
+    const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 2, appliedAt: new Date().toISOString() });
+    this.#modelReplacementPlans.set(planId, applied);
+    return deepFreeze({ plan: structuredClone(applied), workspaces });
   }
 
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {

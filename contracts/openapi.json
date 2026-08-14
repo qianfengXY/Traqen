@@ -92,8 +92,8 @@
     },
     "/v1/global-models/{modelId}": {
       "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
-      "get": { "operationId": "getGlobalModelProfile", "responses": { "200": { "description": "One immutable-revision global model profile without credential values", "content": { "application/json": { "schema": { "type": "object" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
-      "put": { "operationId": "reviseGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "200": { "description": "A new immutable model profile revision; an omitted API token preserves the encrypted CredentialHandle", "content": { "application/json": { "schema": { "type": "object" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "get": { "operationId": "getGlobalModelProfile", "responses": { "200": { "description": "One immutable-revision global model profile without credential values", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelProfile" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "put": { "operationId": "reviseGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelRevisionRequest" } } } }, "responses": { "200": { "description": "A new immutable model profile revision; an omitted API token preserves the encrypted CredentialHandle", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelProfile" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/v1/global-models/{modelId}/verify": {
       "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
@@ -1924,6 +1924,49 @@
       }
     },
     "schemas": {
+      "GlobalModelProfile": {
+        "type": "object",
+        "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "transport", "providerAdapter", "endpoint", "model", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "profileId": { "type": "string", "minLength": 1 },
+          "currentRevisionId": { "type": "string", "minLength": 1 },
+          "revision": { "type": "integer", "minimum": 1 },
+          "displayName": { "type": "string", "minLength": 1 },
+          "transport": { "enum": ["API", "CLI"] },
+          "providerAdapter": { "type": "string", "minLength": 1 },
+          "endpoint": { "type": ["string", "null"] },
+          "model": { "type": ["string", "null"] },
+          "cliAdapter": { "type": ["string", "null"] },
+          "executablePath": { "type": ["string", "null"] },
+          "credentialHandleId": { "type": ["string", "null"] },
+          "readiness": { "enum": ["READY", "UNVERIFIED"] },
+          "lifecycle": { "enum": ["ACTIVE", "RETIRING", "RETIRED"] },
+          "configuredAt": { "type": "string", "format": "date-time" },
+          "verifiedAt": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      },
+      "GlobalModelRevisionRequest": {
+        "type": "object",
+        "required": ["displayName", "transport"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "profileId": { "type": "string", "minLength": 1 },
+          "displayName": { "type": "string", "minLength": 1 },
+          "transport": { "enum": ["API", "CLI"] },
+          "providerAdapter": { "const": "OPENAI_COMPATIBLE" },
+          "endpoint": { "type": "string", "format": "uri" },
+          "model": { "type": "string" },
+          "apiKey": { "type": "string" },
+          "cliAdapter": { "enum": ["CODEX", "CLAUDE", "GEMINI", "KIMI"] },
+          "executablePath": { "type": "string" },
+          "timeoutMs": { "type": "integer", "minimum": 1, "maximum": 600000 },
+          "stream": { "type": "boolean" },
+          "maximumOutputBytes": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
       "CurrentGraphHead": {
         "type": "object",
         "required": ["projectId", "graphRevisionId", "version", "updatedAt"],

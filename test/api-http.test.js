@@ -484,6 +484,12 @@ test("global model GET and PUT contracts never return API credential values", as
   assert.equal(body.model, "updated");
   assert.equal(JSON.stringify(body).includes("server-only-original"), false);
   assert.equal(Object.hasOwn(body, "apiKey"), false);
+  const uncontracted = await fetch(`${baseUrl}/v1/global-models/MODEL-EDIT`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ displayName: "Uncontracted", transport: "API", endpoint: "https://models.example/v1", model: "updated", unexpectedCredentialAlias: "bypass" }),
+  });
+  assert.equal(uncontracted.status, 400, "PUT must reject fields outside the executable revision contract");
 });
 
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {

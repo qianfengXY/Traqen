@@ -27,6 +27,11 @@ function recordIdentity(record) {
   return identity;
 }
 
+function replacementPlanIdentity(plan) {
+  const { version: _version, status: _status, appliedAt: _appliedAt, ...identity } = plan;
+  return identity;
+}
+
 function manifestContentHash(manifest) {
   return createHash("sha256")
     .update(
@@ -3013,10 +3018,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
-  async applyWorkspaceModelReplacement(changes) {
-    if (!Array.isArray(changes)) throw new TypeError("model replacement changes must be an array");
-    if (changes.length === 0) return deepFreeze([]);
-    return this.#transaction(async () => {
+  async #applyWorkspaceModelReplacementChanges(changes) {
       for (const workspaceId of [...new Set(changes.map(({ workspaceId }) => workspaceId))].sort()) {
         await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`workspace-model-replacement:${workspaceId}`]);
       }
@@ -3073,7 +3075,78 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
           );
         }
       }
-      return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
+    return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
+  }
+
+  async applyWorkspaceModelReplacement(changes) {
+    if (!Array.isArray(changes)) throw new TypeError("model replacement changes must be an array");
+    if (changes.length === 0) return deepFreeze([]);
+    return this.#transaction(() => this.#applyWorkspaceModelReplacementChanges(changes));
+  }
+
+  async createModelReplacementPlan(plan) {
+    requireId(plan?.id, "modelReplacementPlan.id");
+    await this.#database.query(
+      `INSERT INTO model_replacement_plan (
+         plan_id, source_profile_id, replacement_profile_id, version, status, plan_payload, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $7)
+       ON CONFLICT (plan_id) DO NOTHING`,
+      [plan.id, plan.sourceProfileId, plan.replacementProfileId, plan.version, plan.status, JSON.stringify(plan), plan.createdAt],
+    );
+    const stored = await this.getModelReplacementPlan(plan.id);
+    if (canonicalJson(replacementPlanIdentity(stored)) !== canonicalJson(replacementPlanIdentity(plan))) {
+      throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} conflicts with an existing immutable plan`);
+    }
+    return stored;
+  }
+
+  async getModelReplacementPlan(planId) {
+    requireId(planId, "modelReplacementPlan.id");
+    const result = await this.#database.query(
+      `SELECT plan_payload FROM model_replacement_plan WHERE plan_id = $1`,
+      [planId],
+    );
+    return result.rows[0] ? deepFreeze(structuredClone(result.rows[0].plan_payload)) : null;
+  }
+
+  async applyModelReplacementPlan(planId, expectedVersion) {
+    requireId(planId, "modelReplacementPlan.id");
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError("model replacement expectedVersion must be a positive integer");
+    return this.#transaction(async () => {
+      const selected = await this.#database.query(
+        `SELECT version, status, plan_payload FROM model_replacement_plan WHERE plan_id = $1 FOR UPDATE`,
+        [planId],
+      );
+      if (selected.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} does not exist`);
+      const row = selected.rows[0];
+      const plan = row.plan_payload;
+      if (row.status === "APPLIED" && Number(row.version) === expectedVersion + 2) {
+        return deepFreeze({
+          plan: structuredClone(plan),
+          workspaces: plan.changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })),
+        });
+      }
+      if (row.status !== "READY" || Number(row.version) !== expectedVersion) {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
+      }
+      const workspaces = plan.changes.length > 0
+        ? await this.#applyWorkspaceModelReplacementChanges(plan.changes)
+        : deepFreeze([]);
+      const applied = {
+        ...plan,
+        status: "APPLIED",
+        version: expectedVersion + 2,
+        appliedAt: new Date().toISOString(),
+      };
+      const updated = await this.#database.query(
+        `UPDATE model_replacement_plan
+         SET version = $2, status = 'APPLIED', plan_payload = $3::jsonb, updated_at = $4
+         WHERE plan_id = $1 AND version = $5 AND status = 'READY'
+         RETURNING plan_id`,
+        [planId, applied.version, JSON.stringify(applied), applied.appliedAt, expectedVersion],
+      );
+      if (updated.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
+      return deepFreeze({ plan: structuredClone(applied), workspaces });
     });
   }
 

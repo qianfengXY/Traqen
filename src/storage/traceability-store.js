@@ -267,6 +267,18 @@ export class TraceabilityStore {
     throw new Error("applyWorkspaceModelReplacement must be implemented");
   }
 
+  async createModelReplacementPlan(_plan) {
+    throw new Error("createModelReplacementPlan must be implemented");
+  }
+
+  async getModelReplacementPlan(_planId) {
+    throw new Error("getModelReplacementPlan must be implemented");
+  }
+
+  async applyModelReplacementPlan(_planId, _expectedVersion) {
+    throw new Error("applyModelReplacementPlan must be implemented");
+  }
+
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {
     return this.appendUnderstandingRecord(projectId, "WORKSPACE_ANALYSIS_JOB", checkpoint);
   }

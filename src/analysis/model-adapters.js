@@ -1119,6 +1119,15 @@ export class AnalysisModelRegistry {
     const grant = context?.grant;
     const acceptedHandles = new Set([profile.credentialHandleId, profile.legacyCredentialHandleId].filter(Boolean));
     const unexpired = typeof grant?.expiresAt === "string" && Date.parse(grant.expiresAt) > this.#clock().valueOf();
+    const expectedGrantId = grant && unexpired ? contentId("SECRET-GRANT", {
+      profileId: grant.profileId,
+      analysisRunId: grant.analysisRunId,
+      slotId: grant.slotId,
+      kind: grant.capabilityKind,
+      name: grant.capabilityName,
+      credentialHandleId: grant.credentialHandleId,
+      expiresAt: new Date(grant.expiresAt).toISOString(),
+    }) : null;
     const scoped = grant?.workspaceId === context?.workspaceId
       && grant?.profileId === context?.profileId
       && grant?.analysisRunId === context?.analysisRunId
@@ -1126,6 +1135,7 @@ export class AnalysisModelRegistry {
       && grant?.capabilityKind === "MODEL"
       && grant?.capabilityName === profile.currentRevisionId
       && acceptedHandles.has(grant?.credentialHandleId)
+      && grant?.id === expectedGrantId
       && unexpired;
     return scoped ? profile.adapter : null;
   }

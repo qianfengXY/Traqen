@@ -129,13 +129,20 @@ export class WorkspaceProductFoundation {
 
   async listProjectCapabilities(workspaceId, { includeDeleted = false } = {}) {
     if (!await this.getWorkspace(workspaceId)) return null;
-    const latest = new Map();
+    const typedKeys = new Map();
     for (const entry of await this.store.listUnderstandingRecords(workspaceId, 'PROJECT_CAPABILITY_REVISION')) {
       const key = `${entry.kind}\u0000${entry.normalizedName}`;
-      const prior = latest.get(key);
-      if (!prior || entry.revision > prior.revision) latest.set(key, entry);
+      typedKeys.set(key, { kind: entry.kind, normalizedName: entry.normalizedName });
     }
-    return Object.freeze([...latest.values()].filter((entry) => includeDeleted || !entry.deleted)
+    const latest = [];
+    for (const { kind, normalizedName } of typedKeys.values()) {
+      const head = await this.store.getUnderstandingHead(workspaceId, `PROJECT_CAPABILITY_REVISION:${kind}:${normalizedName}`);
+      if (!head.recordId) continue;
+      const entry = await this.store.getUnderstandingRecord(workspaceId, 'PROJECT_CAPABILITY_REVISION', head.recordId);
+      if (!entry) throw new TypeError(`Project capability Head ${head.recordId} is unavailable in this Workspace`);
+      latest.push(entry);
+    }
+    return Object.freeze(latest.filter((entry) => includeDeleted || !entry.deleted)
       .sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName)));
   }
 
@@ -178,8 +185,11 @@ export class WorkspaceProductFoundation {
 
   async getCapabilityDraft(workspaceId) {
     if (!await this.getWorkspace(workspaceId)) return null;
-    const draft = [...await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT')]
-      .sort((left, right) => right.revision - left.revision)[0] ?? null;
+    const head = await this.store.getUnderstandingHead(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT');
+    const draft = head.recordId
+      ? await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_CAPABILITY_DRAFT', head.recordId)
+      : null;
+    if (head.recordId && !draft) throw new TypeError(`Workspace capability Draft Head ${head.recordId} is unavailable`);
     if (!draft) return null;
     const policy = async (id, kind) => {
       const record = id ? await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_POLICY_REVISION', id) : null;
@@ -206,8 +216,8 @@ export class WorkspaceProductFoundation {
         if (!existing || existing.kind !== kind) throw new TypeError(`${kind} policy revision is unavailable in this Workspace`);
         return { record: existing, expectedVersion: existing.revision - 1, isNew: false };
       }
-      const records = (await this.store.listUnderstandingRecords(workspaceId, 'WORKSPACE_POLICY_REVISION')).filter((record) => record.kind === kind);
-      const revision = Math.max(0, ...records.map((record) => record.revision)) + 1;
+      const head = await this.store.getUnderstandingHead(workspaceId, `WORKSPACE_POLICY_REVISION:${kind}`);
+      const revision = head.version + 1;
       const record = createWorkspacePolicyRevision({ workspaceId, kind, revision, content: content ?? {} }, this.clock);
       return { record, expectedVersion: revision - 1, isNew: true };
     };
@@ -331,6 +341,18 @@ export class WorkspaceProductFoundation {
 
   async applyModelReplacement(changes) {
     return this.store.applyWorkspaceModelReplacement(changes);
+  }
+
+  async createModelReplacementPlan(plan) {
+    return this.store.createModelReplacementPlan(plan);
+  }
+
+  async getModelReplacementPlan(planId) {
+    return this.store.getModelReplacementPlan(planId);
+  }
+
+  async applyModelReplacementPlan(planId, expectedVersion) {
+    return this.store.applyModelReplacementPlan(planId, expectedVersion);
   }
 
   async modelUsage(profileId) {

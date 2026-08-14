@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 
 import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels } from "../src/analysis/index.js";
+import { issueScopedSecretGrants } from "../src/domain/index.js";
 
 function cliSpawn(result, calls) {
   return (executable, args, options) => {
@@ -34,15 +35,16 @@ function scopedModelContext(profile, overrides = {}) {
     slotId: "MAIN",
     ...overrides,
   };
+  const [grant] = issueScopedSecretGrants({
+    id: context.profileId,
+    workspaceId: context.workspaceId,
+    mainAgent: { model: profile.currentRevisionId, skillNames: [], mcpNames: [] },
+    childSlots: [],
+    entries: [{ kind: "MODEL", logicalName: profile.currentRevisionId, credentialHandleIds: [profile.credentialHandleId] }],
+  }, { analysisRunId: context.analysisRunId, expiresAt: "2099-01-01T00:00:00.000Z" });
   return {
     ...context,
-    grant: {
-      ...context,
-      capabilityKind: "MODEL",
-      capabilityName: profile.currentRevisionId,
-      credentialHandleId: profile.credentialHandleId,
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    },
+    grant,
   };
 }
 
@@ -143,18 +145,11 @@ test("credentialed API model revisions require the matching scoped Run and Slot 
   assert.match(profile.credentialHandleId, /^MODEL-CREDENTIAL-/);
   assert.notEqual(profile.credentialHandleId, "MODEL-CREDENTIAL-SCOPED", "a CredentialHandle must identify encrypted secret material, not be synthesized from the public profile id");
   assert.equal(registry.resolve(profile.currentRevisionId), null, "runtime cannot bypass a scoped grant");
-  const grant = {
-    workspaceId: "W1",
-    profileId: "EXECUTION-PROFILE-1",
-    analysisRunId: "RUN-1",
-    slotId: "MAIN",
-    capabilityKind: "MODEL",
-    capabilityName: profile.currentRevisionId,
-    credentialHandleId: profile.credentialHandleId,
-    expiresAt: "2099-01-01T00:00:00.000Z",
-  };
-  assert.ok(registry.resolve(profile.currentRevisionId, { grant, workspaceId: "W1", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" }));
-  assert.equal(registry.resolve(profile.currentRevisionId, { grant, workspaceId: "W2", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" }), null);
+  const context = scopedModelContext(profile);
+  assert.ok(registry.resolve(profile.currentRevisionId, context));
+  assert.equal(registry.resolve(profile.currentRevisionId, { ...context, workspaceId: "W2" }), null);
+  assert.equal(registry.resolve(profile.currentRevisionId, { ...context, grant: { ...context.grant, id: "FORGED-GRANT" } }), null,
+    "runtime resolution must require the exact immutable grant minted by the scoped grant issuer");
 });
 
 test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {

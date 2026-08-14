@@ -55,6 +55,7 @@ async function migratedDatabase() {
     "0019_workspace_capability_settings",
     "0020_workspace_capability_cas",
     "0021_workspace_policy_backfill",
+    "0022_model_replacement_plan",
   ]);
   return database;
 }
@@ -457,15 +458,22 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
     profile: { id: `${workspaceId}-PROFILE-REPLACED`, createdAt: "2026-08-13T00:01:00.000Z" },
   }));
   await store.appendUnderstandingRecordWithCas("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT", { id: "PROJECT-002-DRAFT-2", revision: 2, createdAt: "2026-08-13T00:00:30.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 1 });
-  await assert.rejects(() => store.applyWorkspaceModelReplacement(changes), /version conflict/);
+  const stalePlan = { id: "PLAN-STALE", version: 1, status: "READY", sourceProfileId: "MODEL-OLD", replacementProfileId: "MODEL-NEW", changes, createdAt: "2026-08-13T00:00:45.000Z", appliedAt: null };
+  await store.createModelReplacementPlan(stalePlan);
+  await assert.rejects(() => store.applyModelReplacementPlan(stalePlan.id, stalePlan.version), /version conflict/);
+  assert.equal((await store.getModelReplacementPlan(stalePlan.id)).status, "READY", "a failed Workspace CAS must leave the durable Plan unapplied");
   assert.equal(await store.getUnderstandingRecord("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", "PROJECT-001-DRAFT-REPLACED"), null);
 
   changes[1].expectedDraftVersion = 2;
   changes[1].draft.revision = 3;
-  await store.applyWorkspaceModelReplacement(changes);
+  const freshPlan = { ...stalePlan, id: "PLAN-FRESH", changes, createdAt: "2026-08-13T00:00:50.000Z" };
+  await store.createModelReplacementPlan(freshPlan);
+  const applied = await store.applyModelReplacementPlan(freshPlan.id, freshPlan.version);
+  assert.equal(applied.plan.status, "APPLIED");
+  assert.equal(applied.plan.version, 3);
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2);
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
-  await store.applyWorkspaceModelReplacement(changes);
+  await store.applyModelReplacementPlan(freshPlan.id, freshPlan.version);
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2, "a transaction retry must not append another revision");
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
 });

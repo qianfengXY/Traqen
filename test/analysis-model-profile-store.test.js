@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { AnalysisModelRegistry, EncryptedAnalysisModelProfileStore } from "../src/analysis/index.js";
+import { issueScopedSecretGrants } from "../src/domain/index.js";
 
 function verifiedFetch() {
   return async () => new Response(JSON.stringify({ choices: [{ message: { content: "{\"ok\":true}" } }] }), { status: 200 });
@@ -12,7 +13,14 @@ function verifiedFetch() {
 
 function scopedModelContext(profile) {
   const context = { workspaceId: "W1", profileId: "EXECUTION-PROFILE-1", analysisRunId: "RUN-1", slotId: "MAIN" };
-  return { ...context, grant: { ...context, capabilityKind: "MODEL", capabilityName: profile.currentRevisionId, credentialHandleId: profile.credentialHandleId, expiresAt: "2099-01-01T00:00:00.000Z" } };
+  const [grant] = issueScopedSecretGrants({
+    id: context.profileId,
+    workspaceId: context.workspaceId,
+    mainAgent: { model: profile.currentRevisionId, skillNames: [], mcpNames: [] },
+    childSlots: [],
+    entries: [{ kind: "MODEL", logicalName: profile.currentRevisionId, credentialHandleIds: [profile.credentialHandleId] }],
+  }, { analysisRunId: context.analysisRunId, expiresAt: "2099-01-01T00:00:00.000Z" });
+  return { ...context, grant };
 }
 
 test("runtime model profiles and an explicit active selection survive restart in an encrypted local store", async (t) => {
