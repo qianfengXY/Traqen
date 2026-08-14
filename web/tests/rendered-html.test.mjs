@@ -99,5 +99,18 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.doesNotMatch(surfaces, /slice\(0, 36\)/);
   assert.doesNotMatch(product, /local-workspace-analysis|local-workspace-store|analysis-model-client|workspace-analysis-run-client/);
   assert.doesNotMatch(product, /secrets:\s*"HANDLE_ONLY"/);
+  const selectWorkspaceSource = product.slice(product.indexOf("const selectWorkspace"), product.indexOf("const reconnect"));
+  assert.match(selectWorkspaceSource, /setMainModel\(""\)/);
+  assert.match(selectWorkspaceSource, /setChildSlots\(createDefaultChildSlots\(\)\)/);
+  assert.doesNotMatch(selectWorkspaceSource, /globalModels|effectiveCatalog|roster/);
+  const refreshSource = product.slice(product.indexOf("const refreshWorkspaceReads"), product.indexOf("const selectWorkspace"));
+  const legacyConfigSource = refreshSource.slice(refreshSource.indexOf('if (configResult.status'), refreshSource.indexOf('if (profileResult.status'));
+  assert.doesNotMatch(legacyConfigSource, /setMainModel|setMainSkillNames|setMainMcpNames|setChildSlots/);
+  assert.doesNotMatch(product, /window\.confirm/);
+  assert.match(surfaces, /reference\.source/);
+  assert.match(surfaces, /ACTIVE_RUN/);
+  assert.match(surfaces, /atomic transaction|原子事务/);
+  assert.match(surfaces, /item\.readiness\} · \{item\.lifecycle/);
+  assert.doesNotMatch(surfaces, /setReplacementBySource\(\(current\)[^\n]*event\.currentTarget/);
   assert.doesNotMatch(product, /scanLocalWorkspaceFile|analyzeLocalWorkspaceRecords|ingestWorkspaceObservations|startWorkspaceAnalysisRun|webkitdirectory|showDirectoryPicker/);
 });

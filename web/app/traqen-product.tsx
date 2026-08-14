@@ -31,7 +31,6 @@ import {
   listGlobalModels,
   retireGlobalModel,
   verifyGlobalModel,
-  listCapabilityTemplates,
   listWorkspaceCapabilityConfigs,
   listWorkspaceExecutionProfiles,
   activateWorkspaceCapabilityDraft,
@@ -43,6 +42,7 @@ import {
   type ExecutionProfile,
   type ReviewQueueItem,
   type GlobalModelProfile,
+  type GlobalModelUsage,
   type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityConfig,
 } from "./product-foundation-client";
@@ -230,12 +230,6 @@ function ServerOwnedProduct() {
     if (configResult.status === "fulfilled") {
       const latestConfig = configResult.value[0] ?? null;
       setCapabilityConfig(latestConfig);
-      if (latestConfig) {
-        setMainModel(latestConfig.mainAgent.model);
-        setMainSkillNames(latestConfig.mainAgent.skillNames);
-        setMainMcpNames(latestConfig.mainAgent.mcpNames);
-        setChildSlots(latestConfig.childSlots);
-      }
     }
     if (profileResult.status === "fulfilled") {
       setProfileHistory(profileResult.value);
@@ -267,10 +261,10 @@ function ServerOwnedProduct() {
     }
     if (catalogResult.status === "fulfilled") setEffectiveCatalog(catalogResult.value);
     const failures = [graphResult, revisionResult, jobResult, reviewResult, configResult, profileResult, draftResult, catalogResult].filter((result) => result.status === "rejected");
-    if (failures.length > 1) notify(t("部分 Workspace 数据暂时不可用，请检查连接诊断。", "Some Workspace data is unavailable; inspect connection diagnostics."), "error");
+    if (failures.length > 0) notify(t("部分 Workspace 数据暂时不可用，请检查连接诊断。", "Some Workspace data is unavailable; inspect connection diagnostics."), "error");
   }, [apiBase, apiToken, notify, t]);
 
-  const selectWorkspace = useCallback((workspace: Workspace, roster?: ChildCapabilityRole[]) => {
+  const selectWorkspace = useCallback((workspace: Workspace) => {
     const nextContext = { workspaceId: workspace.id, contextVersion: contextRef.current.contextVersion + 1 };
     contextRef.current = nextContext;
     window.localStorage.setItem("traqen.activeWorkspaceId", workspace.id);
@@ -305,51 +299,35 @@ function ServerOwnedProduct() {
     setSecurityNotes("");
     setExecutionProfile(null);
     setProfileHistory([]);
-    const firstModel = roster?.[0]?.model ?? globalModels.find(({ readiness, lifecycle }) => readiness === "READY" && lifecycle === "ACTIVE")?.profileId ?? "";
-    const skillNames = roster?.[0]?.skillNames ?? effectiveCatalog.effective.filter(({ kind }) => kind === "SKILL").map(({ normalizedName }) => normalizedName);
-    const mcpNames = roster?.[0]?.mcpNames ?? effectiveCatalog.effective.filter(({ kind }) => kind === "MCP").map(({ normalizedName }) => normalizedName);
-    setMainModel(firstModel);
-    setMainSkillNames([...skillNames]);
-    setMainMcpNames([...mcpNames]);
-    setChildSlots(roster ?? createDefaultChildSlots(firstModel, skillNames, mcpNames));
+    setEffectiveCatalog({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
+    setMainModel("");
+    setMainSkillNames([]);
+    setMainMcpNames([]);
+    setChildSlots(createDefaultChildSlots());
     setSourceRoot(DEFAULT_SOURCE_ROOT);
     setSourceRegistrationId("");
     setProfileRevisionId("");
     setMessage("");
     void refreshWorkspaceReads(workspace, nextContext);
-  }, [effectiveCatalog.effective, globalModels, refreshWorkspaceReads]);
+  }, [refreshWorkspaceReads]);
 
   const reconnect = useCallback(async (preferRemembered = false) => {
     revisionRequestRef.current += 1;
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableTemplates, availableModels] = await Promise.all([
+      const [available, , availableModels] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
-        listCapabilityTemplates(apiBase, apiToken),
         listGlobalModels(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
       setGlobalModels(availableModels);
-      const firstModel = availableModels.find(({ readiness, lifecycle }) => readiness === "READY" && lifecycle === "ACTIVE")?.profileId ?? "";
-      const skills = availableTemplates.filter(({ kind }) => kind === "SKILL").map(({ logicalName }) => logicalName);
-      const mcps = availableTemplates.filter(({ kind }) => kind === "MCP").map(({ logicalName }) => logicalName);
-      const defaultRoster = createDefaultChildSlots(firstModel, skills, mcps);
-      setMainModel((value) => value || firstModel);
-      setMainSkillNames((value) => value.length ? value : skills);
-      setMainMcpNames((value) => value.length ? value : mcps);
-      setChildSlots((slots) => slots.map((slot) => ({
-        ...slot,
-        model: slot.model || firstModel,
-        skillNames: slot.skillNames.length ? slot.skillNames : skills,
-        mcpNames: slot.mcpNames.length ? slot.mcpNames : mcps,
-      })));
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
-      if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection, defaultRoster);
+      if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
       if (activeWorkspace && visible.some(({ id }) => id === activeWorkspace.id)) {
         const next = { ...contextRef.current };
         void refreshWorkspaceReads(activeWorkspace, next);
@@ -719,7 +697,7 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
-  async function inspectModelUsage(profileId: string) {
+  async function inspectModelUsage(profileId: string): Promise<GlobalModelUsage | null> {
     setWorking(true);
     try {
       const usage = await getGlobalModelUsage(apiBase, apiToken, profileId);
@@ -727,7 +705,8 @@ function ServerOwnedProduct() {
       notify(usage.usageCount
         ? t(`该模型有 ${usage.usageCount} 个引用：${workspaces.join("、")}`, `${usage.usageCount} references across: ${workspaces.join(", ")}`)
         : t("该模型没有 Workspace 或运行引用。", "This model has no Workspace or run references."));
-    } catch (error) { notify(messageOf(error, t("无法读取模型影响", "Unable to load model impact")), "error"); }
+      return usage;
+    } catch (error) { notify(messageOf(error, t("无法读取模型影响", "Unable to load model impact")), "error"); return null; }
     finally { setWorking(false); }
   }
 
@@ -746,20 +725,15 @@ function ServerOwnedProduct() {
     const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
-      const usage = await getGlobalModelUsage(apiBase, apiToken, profileId);
-      const workspaceCount = new Set(usage.references.filter(({ source }) => source !== "ACTIVE_RUN").map(({ workspaceId }) => workspaceId)).size;
-      const confirmed = window.confirm(t(
-        `将以一个原子事务替换 ${workspaceCount} 个 Workspace 的全部当前引用；活动 Run 继续固定旧 Revision。是否继续？`,
-        `Replace every current reference across ${workspaceCount} Workspaces in one atomic transaction? Active Runs remain pinned to the old revision.`,
-      ));
-      if (!confirmed) return;
       const plan = await createGlobalModelReplacementPlan(apiBase, apiToken, profileId, replacementProfileId);
       await applyGlobalModelReplacementPlan(apiBase, apiToken, profileId, plan.id, plan.version);
       setGlobalModels(await listGlobalModels(apiBase, apiToken));
       if (workspace && !staleWorkspaceResponse(requestContext, contextRef.current)) await refreshWorkspaceReads(workspace, requestContext);
       notify(t("跨 Workspace 模型替换已原子应用；旧模型进入 RETIRING。", "The cross-Workspace replacement applied atomically; the old model is RETIRING."));
+      return true;
     } catch (error) {
       notify(messageOf(error, t("模型替换失败；未应用部分 Workspace 变更", "Model replacement failed; no partial Workspace changes were applied")), "error");
+      return false;
     } finally {
       setWorking(false);
     }
@@ -795,7 +769,7 @@ function ServerOwnedProduct() {
     if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={(input) => void saveGlobalModel(input)} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={(profileId) => void inspectModelUsage(profileId)} onReplace={(profileId, replacementProfileId) => void replaceModel(profileId, replacementProfileId)} onRetire={(profileId) => void retireModel(profileId)} />;
+    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={(input) => void saveGlobalModel(input)} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
     return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} working={working} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
   };
 

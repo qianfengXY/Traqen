@@ -165,7 +165,7 @@ export async function verifyGlobalModel(apiBase: string, apiToken: string, profi
 export type GlobalModelUsage = {
   profileId: string;
   usageCount: number;
-  references: Array<{ workspaceId: string; workspaceName: string; source: "DRAFT_HEAD" | "ACTIVE_PROFILE_HEAD" | "ACTIVE_RUN"; slotId: string }>;
+  references: Array<{ workspaceId: string; workspaceName: string; source: "DRAFT_HEAD" | "ACTIVE_PROFILE_HEAD" | "ACTIVE_RUN"; slotId: string; profileRevisionId?: string; runId?: string }>;
 };
 
 export async function getGlobalModelUsage(apiBase: string, apiToken: string, profileId: string) {

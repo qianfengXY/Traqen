@@ -77,6 +77,27 @@ test("allowlisted CLI verification exercises authenticated model execution inste
   await assert.rejects(() => unauthenticated.verify(), /verification challenge/);
 });
 
+test("allowlisted CLI verification decodes each supported CLI's real JSON output envelope", async () => {
+  const envelopes = {
+    CODEX: (payload) => `${JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: payload } })}\n`,
+    CLAUDE: (payload) => JSON.stringify({ type: "result", subtype: "success", result: payload }),
+    GEMINI: (payload) => JSON.stringify({ response: payload, stats: {} }),
+    KIMI: (payload) => payload,
+  };
+  for (const [cliAdapter, envelope] of Object.entries(envelopes)) {
+    const adapter = new AllowlistedCliModelAdapter({
+      id: `CLI-${cliAdapter}`,
+      cliAdapter,
+      spawnImpl: cliSpawn(({ args }) => {
+        const request = JSON.parse(args.at(-1));
+        const payload = JSON.stringify({ ready: true, challenge: request.input.challenge });
+        return { stdout: envelope(payload) };
+      }, []),
+    });
+    await adapter.verify();
+  }
+});
+
 test("model registry never lets caller-controlled revision ids overwrite pinned revisions", async () => {
   const registry = new AnalysisModelRegistry({ fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }) });
   const first = registry.configure({ id: "M1", revisionId: "REV-SAME", endpoint: "https://models.example/v1", model: "one", apiKey: "secret" });
@@ -109,8 +130,11 @@ test("model replacement plans pin both model revisions before retiring the sourc
   assert.equal(plan.status, "READY");
   const applying = registry.beginReplacementPlan(plan.id, plan.version);
   assert.equal(applying.status, "APPLYING");
+  assert.equal(registry.beginReplacementPlan(plan.id, plan.version).status, "APPLYING", "a retry resumes an interrupted apply");
   const applied = registry.completeReplacementPlan(plan.id);
   assert.equal(applied.status, "APPLIED");
+  assert.equal(registry.beginReplacementPlan(plan.id, plan.version).status, "APPLIED", "a retry observes an already completed apply");
+  assert.equal(registry.completeReplacementPlan(plan.id).status, "APPLIED");
   assert.equal(registry.list().find(({ id }) => id === "OLD").lifecycle, "RETIRING");
 });
 

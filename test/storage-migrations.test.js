@@ -417,6 +417,9 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
   await store.applyWorkspaceModelReplacement(changes);
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2);
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
+  await store.applyWorkspaceModelReplacement(changes);
+  assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2, "a transaction retry must not append another revision");
+  assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
 });
 
 test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {

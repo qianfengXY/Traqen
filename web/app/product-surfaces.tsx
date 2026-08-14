@@ -9,6 +9,7 @@ import type {
   EffectiveCapabilityCatalog,
   ExecutionProfile,
   GlobalModelProfile,
+  GlobalModelUsage,
   ReviewQueueItem,
   WorkspaceCapabilityDraft,
 } from "./product-foundation-client";
@@ -2197,8 +2198,8 @@ export function GlobalModelLibrary({
   working: boolean;
   onCreate: (input: Record<string, unknown>) => void;
   onVerify: (profileId: string) => void;
-  onInspectUsage: (profileId: string) => void;
-  onReplace: (profileId: string, replacementProfileId: string) => void;
+  onInspectUsage: (profileId: string) => Promise<GlobalModelUsage | null>;
+  onReplace: (profileId: string, replacementProfileId: string) => Promise<boolean>;
   onRetire: (profileId: string) => void;
 }) {
   const [transport, setTransport] = useState<"API" | "CLI">("API");
@@ -2209,6 +2210,23 @@ export function GlobalModelLibrary({
   const [apiKey, setApiKey] = useState("");
   const [cliAdapter, setCliAdapter] = useState("CODEX");
   const [replacementBySource, setReplacementBySource] = useState<Record<string, string>>({});
+  const [impactPreview, setImpactPreview] = useState<GlobalModelUsage | null>(null);
+  const [impactLoading, setImpactLoading] = useState("");
+  const openImpact = async (sourceProfileId: string) => {
+    setImpactLoading(sourceProfileId);
+    try {
+      const usage = await onInspectUsage(sourceProfileId);
+      if (usage) setImpactPreview(usage);
+    } finally {
+      setImpactLoading("");
+    }
+  };
+  const applyReplacement = async () => {
+    if (!impactPreview) return;
+    const replacementProfileId = replacementBySource[impactPreview.profileId] ?? "";
+    if (!replacementProfileId) return;
+    if (await onReplace(impactPreview.profileId, replacementProfileId)) setImpactPreview(null);
+  };
   const submit = () => {
     onCreate(
       transport === "API"
@@ -2269,7 +2287,7 @@ export function GlobalModelLibrary({
                   <span
                     className={`status-chip ${item.readiness.toLowerCase()}`}
                   >
-                    {item.readiness}
+                    {item.readiness} · {item.lifecycle}
                   </span>
                   <button
                     className="button"
@@ -2278,26 +2296,8 @@ export function GlobalModelLibrary({
                   >
                     {t("验证", "Verify")}
                   </button>
-                  <button className="button" disabled={working} onClick={() => onInspectUsage(item.profileId)}>
+                  <button className="button" disabled={working || impactLoading === item.profileId} onClick={() => void openImpact(item.profileId)}>
                     {t("使用影响", "Usage impact")}
-                  </button>
-                  <select
-                    aria-label={t(`替换 ${item.displayName}`, `Replacement for ${item.displayName}`)}
-                    value={replacementBySource[item.profileId] ?? ""}
-                    disabled={working || item.lifecycle !== "ACTIVE"}
-                    onChange={(event) => setReplacementBySource((current) => ({ ...current, [item.profileId]: event.currentTarget.value }))}
-                  >
-                    <option value="">{t("选择替代模型", "Select replacement")}</option>
-                    {models.filter((candidate) => candidate.profileId !== item.profileId && candidate.readiness === "READY" && candidate.lifecycle === "ACTIVE").map((candidate) => (
-                      <option key={candidate.profileId} value={candidate.profileId}>{candidate.displayName}</option>
-                    ))}
-                  </select>
-                  <button
-                    className="button"
-                    disabled={working || item.lifecycle !== "ACTIVE" || !replacementBySource[item.profileId]}
-                    onClick={() => onReplace(item.profileId, replacementBySource[item.profileId])}
-                  >
-                    {t("全部 Workspace 原子替换", "Replace all Workspaces")}
                   </button>
                   <button className="button" disabled={working || item.lifecycle !== "ACTIVE"} onClick={() => onRetire(item.profileId)}>
                     {t("退休", "Retire")}
@@ -2425,6 +2425,28 @@ export function GlobalModelLibrary({
           </article>
         </aside>
       </section>
+      {impactPreview && <div className="drawer-backdrop" onMouseDown={() => setImpactPreview(null)}>
+        <aside className="model-impact-drawer" role="dialog" aria-modal="true" aria-labelledby="model-impact-title" onMouseDown={(event) => event.stopPropagation()}>
+          <header><div><p className="eyebrow">Model replacement impact</p><h2 id="model-impact-title">{t("模型替换影响", "Model replacement impact")}</h2></div><button aria-label={t("关闭", "Close")} onClick={() => setImpactPreview(null)}>×</button></header>
+          <p>{t("以下是服务端计算并固定的全部引用。不能选择 Workspace 子集。", "These are all references calculated and pinned by the server. Workspace subsets cannot be selected.")}</p>
+          <dl><dt>{t("来源模型", "Source model")}</dt><dd>{impactPreview.profileId}</dd><dt>{t("引用总数", "References")}</dt><dd>{impactPreview.usageCount}</dd><dt>Workspace</dt><dd>{new Set(impactPreview.references.map(({ workspaceId }) => workspaceId)).size}</dd></dl>
+          <div className="model-impact-references">
+            {impactPreview.references.map((reference, index) => <article key={`${reference.workspaceId}-${reference.source}-${reference.slotId}-${reference.runId ?? index}`}>
+              <span className={`status-chip ${reference.source === "ACTIVE_RUN" ? "unverified" : "ready"}`}>{reference.source}</span>
+              <b>{reference.workspaceName}</b>
+              <small>{reference.slotId}{reference.profileRevisionId ? ` · ${reference.profileRevisionId}` : ""}{reference.runId ? ` · Run ${reference.runId}` : ""}</small>
+            </article>)}
+            {impactPreview.references.length === 0 && <p className="explicit-empty">{t("没有当前 Workspace 或 Active Run 引用。", "No current Workspace or Active Run references.")}</p>}
+          </div>
+          <label>{t("READY 替代模型", "READY replacement model")}<select aria-label={t("READY 替代模型", "READY replacement model")} value={replacementBySource[impactPreview.profileId] ?? ""} onChange={(event) => {
+            const sourceProfileId = impactPreview.profileId;
+            const replacementProfileId = event.currentTarget.value;
+            setReplacementBySource((current) => ({ ...current, [sourceProfileId]: replacementProfileId }));
+          }}><option value="">{t("选择替代模型", "Select replacement")}</option>{models.filter((candidate) => candidate.profileId !== impactPreview.profileId && candidate.readiness === "READY" && candidate.lifecycle === "ACTIVE").map((candidate) => <option key={candidate.profileId} value={candidate.profileId}>{candidate.displayName}</option>)}</select></label>
+          <p className="replacement-warning">{t("确认后，服务端将在一个原子事务中替换并激活所有当前 Workspace；任一版本冲突都会整体回滚。Active Run 继续固定旧 Revision。", "On confirmation, the server replaces and activates every current Workspace in one atomic transaction. Any version conflict rolls back the complete operation. Active Runs remain pinned to the old revision.")}</p>
+          <div className="modal-actions"><button className="button" onClick={() => setImpactPreview(null)}>{t("取消", "Cancel")}</button><button className="button primary" disabled={working || !(replacementBySource[impactPreview.profileId] ?? "")} onClick={() => void applyReplacement()}>{t("全部 Workspace 原子替换", "Replace all Workspaces")}</button></div>
+        </aside>
+      </div>}
     </>
   );
 }

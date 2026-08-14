@@ -308,6 +308,10 @@ test("F006 model replacement applies every Workspace atomically and rolls back o
     assert.equal((await service.getCapabilityDraft(workspaceId)).mainAgentSlot.modelProfileId, "MODEL-NEW");
     assert.equal((await service.listWorkspaceProfiles(workspaceId))[0].mainAgentSlot.modelProfileRevisionId, "MODEL-REV-NEW");
   }
+  assert.equal((await service.applyModelReplacement(freshPlan)).length, 2, "retrying a committed all-Workspace transaction is idempotent");
+  for (const workspaceId of ["W1", "W2"]) {
+    assert.equal((await service.getCapabilityDraft(workspaceId)).revision, freshPlan.find((change) => change.workspaceId === workspaceId).draft.revision);
+  }
 
   assert.deepEqual(await service.applyModelReplacement([]), [], "an active-run-only replacement has no current Workspace mutation to apply");
 });

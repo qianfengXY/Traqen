@@ -481,12 +481,19 @@ test("global model replacement HTTP journey atomically advances every Workspace 
     assert.equal((await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" })).status, 201);
   }
 
+  const partialCreate = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans`, { replacementProfileId: "MODEL-NEW", workspaceIds: ["W-REPLACE-1"] });
+  assert.equal(partialCreate.response.status, 400, "the API must reject client-selected Workspace subsets");
   const createdPlan = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans`, { replacementProfileId: "MODEL-NEW" });
   assert.equal(createdPlan.response.status, 201);
   assert.deepEqual(createdPlan.body.changes.map(({ workspaceId }) => workspaceId).sort(), ["W-REPLACE-1", "W-REPLACE-2"]);
+  const partialApply = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans/${createdPlan.body.id}/apply`, { expectedVersion: createdPlan.body.version, workspaceIds: ["W-REPLACE-1"] });
+  assert.equal(partialApply.response.status, 400, "Apply accepts only the frozen Plan identity and version");
   const applied = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans/${createdPlan.body.id}/apply`, { expectedVersion: createdPlan.body.version });
   assert.equal(applied.response.status, 200);
   assert.equal(applied.body.workspaces.length, 2);
+  const retried = await postJson(`${baseUrl}/v1/global-models/MODEL-OLD/replacement-plans/${createdPlan.body.id}/apply`, { expectedVersion: createdPlan.body.version });
+  assert.equal(retried.response.status, 200, "an interrupted client can retry the original frozen Plan version");
+  assert.equal(retried.body.plan.status, "APPLIED");
 
   for (const workspaceId of ["W-REPLACE-1", "W-REPLACE-2"]) {
     const draft = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft`)).json()).draft;
@@ -494,6 +501,8 @@ test("global model replacement HTTP journey atomically advances every Workspace 
     const profiles = (await (await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/execution-profile-revisions`)).json()).profiles;
     assert.equal(profiles[0].mainAgentSlot.modelProfileId, "MODEL-NEW");
   }
+  const usageAfter = (await (await fetch(`${baseUrl}/v1/global-models/MODEL-OLD/usage`)).json()).references;
+  assert.equal(usageAfter.filter(({ source }) => source !== "ACTIVE_RUN").length, 0, "replacement must leave zero current Workspace references");
   const models = (await (await fetch(`${baseUrl}/v1/global-models`)).json()).models;
   assert.equal(models.find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");
 });

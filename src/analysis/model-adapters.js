@@ -23,6 +23,39 @@ function allowlistedCliExecutable(cliAdapter, executablePath) {
   return expected;
 }
 
+function parseCliJsonDocument(value) {
+  if (value && typeof value === "object") return value;
+  if (typeof value !== "string") return null;
+  const candidates = [value.trim()];
+  for (const match of value.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)) candidates.push(match[1].trim());
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try { return JSON.parse(candidate); } catch { /* Try the next bounded representation. */ }
+  }
+  return null;
+}
+
+function decodeCliJsonOutput(cliAdapter, raw) {
+  const records = raw.split(/\r?\n/).map((line) => parseCliJsonDocument(line)).filter(Boolean);
+  const payloads = [];
+  if (cliAdapter === "CODEX") {
+    for (const record of records) {
+      if (record?.type === "item.completed" && record.item?.type === "agent_message") payloads.push(record.item.text);
+    }
+  } else if (cliAdapter === "CLAUDE") {
+    for (const record of records) if (record?.type === "result" && record.subtype !== "error") payloads.push(record.result);
+  } else if (cliAdapter === "GEMINI") {
+    for (const record of records) if (Object.hasOwn(record, "response")) payloads.push(record.response);
+  }
+  const candidates = [...payloads].reverse();
+  candidates.push(raw);
+  for (const payload of candidates) {
+    const decoded = parseCliJsonDocument(payload);
+    if (decoded) return decoded;
+  }
+  throw new SyntaxError(`CLI model ${cliAdapter} did not return a JSON result`);
+}
+
 export class AllowlistedCliModelAdapter {
   constructor({ id, cliAdapter, model = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn }) {
     this.id = requiredString(id, "CLI model profile id");
@@ -92,8 +125,7 @@ export class AllowlistedCliModelAdapter {
   async #jsonTask(task, input, options = {}) {
     const prompt = JSON.stringify({ task, input });
     const raw = await this.#run(CLI_MODEL_ADAPTERS[this.cliAdapter].args(prompt, this.model), { signal: options.signal ?? null });
-    const candidate = raw.trim().split(/\r?\n/).reverse().find((line) => line.trim().startsWith("{")) ?? raw;
-    return JSON.parse(candidate);
+    return decodeCliJsonOutput(this.cliAdapter, raw);
   }
 
   enrichWorkspaceCandidates(input, options = {}) { return this.#jsonTask("workspace-enrichment", input, options); }
@@ -1169,6 +1201,9 @@ export class AnalysisModelRegistry {
   beginReplacementPlan(planId, expectedVersion) {
     const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
     if (!plan) throw new TypeError(`Replacement plan ${planId} does not exist`);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError("replacement plan expectedVersion must be a positive integer");
+    if (plan.status === "APPLYING" && plan.version === expectedVersion + 1) return structuredClone(plan);
+    if (plan.status === "APPLIED" && plan.version === expectedVersion + 2) return structuredClone(plan);
     if (plan.status !== "READY" || plan.version !== expectedVersion) throw new TypeError(`Replacement plan ${planId} version conflict`);
     if (this.#profiles.get(plan.sourceProfileId)?.currentRevisionId !== plan.sourceRevisionId
       || this.#profiles.get(plan.replacementProfileId)?.currentRevisionId !== plan.replacementRevisionId) {
@@ -1192,6 +1227,7 @@ export class AnalysisModelRegistry {
 
   completeReplacementPlan(planId) {
     const plan = this.#replacementPlans.get(requiredString(planId, "replacement plan id"));
+    if (plan?.status === "APPLIED") return structuredClone(plan);
     if (!plan || plan.status !== "APPLYING") throw new TypeError(`Replacement plan ${planId} is not applying`);
     const source = this.#profiles.get(plan.sourceProfileId);
     if (!source || source.currentRevisionId !== plan.sourceRevisionId) throw new TypeError(`Replacement plan ${planId} is stale`);

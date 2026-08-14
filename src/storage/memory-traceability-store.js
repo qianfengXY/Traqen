@@ -1269,15 +1269,21 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     if (!Array.isArray(changes)) throw new TypeError("model replacement changes must be an array");
     if (changes.length === 0) return deepFreeze([]);
     const snapshots = [];
+    let appliedCount = 0;
     for (const change of changes) {
       const draftKey = key(change.workspaceId, "WORKSPACE_CAPABILITY_DRAFT");
       const profileKey = key(change.workspaceId, "WORKSPACE_EXECUTION_PROFILE");
       const draftHead = this.#understandingHeads.get(draftKey) ?? { version: 0, recordId: null };
       const profileHead = this.#understandingHeads.get(profileKey) ?? { version: 0, recordId: null };
-      if (draftHead.version !== change.expectedDraftVersion) throw new PersistenceConflictError(`WORKSPACE_CAPABILITY_DRAFT version conflict: expected ${change.expectedDraftVersion}, current ${draftHead.version}`);
-      if (profileHead.version !== change.expectedProfileVersion) throw new PersistenceConflictError(`WORKSPACE_EXECUTION_PROFILE version conflict: expected ${change.expectedProfileVersion}, current ${profileHead.version}`);
+      const alreadyApplied = draftHead.version === change.expectedDraftVersion + 1 && draftHead.recordId === change.draft.id
+        && profileHead.version === change.expectedProfileVersion + 1 && profileHead.recordId === change.profile.id;
+      if (alreadyApplied) appliedCount += 1;
+      else if (draftHead.version !== change.expectedDraftVersion) throw new PersistenceConflictError(`WORKSPACE_CAPABILITY_DRAFT version conflict: expected ${change.expectedDraftVersion}, current ${draftHead.version}`);
+      else if (profileHead.version !== change.expectedProfileVersion) throw new PersistenceConflictError(`WORKSPACE_EXECUTION_PROFILE version conflict: expected ${change.expectedProfileVersion}, current ${profileHead.version}`);
       snapshots.push({ change, draftKey, profileKey, draftHead, profileHead });
     }
+    if (appliedCount === changes.length) return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
+    if (appliedCount > 0) throw new PersistenceConflictError("model replacement is only partially applied");
     for (const { change, draftKey, profileKey } of snapshots) {
       this.#understandingHeads.set(draftKey, { version: change.expectedDraftVersion + 1, recordId: change.draft.id });
       this.#understandingHeads.set(profileKey, { version: change.expectedProfileVersion + 1, recordId: change.profile.id });

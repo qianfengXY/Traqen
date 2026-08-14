@@ -3020,16 +3020,36 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       for (const workspaceId of [...new Set(changes.map(({ workspaceId }) => workspaceId))].sort()) {
         await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`workspace-model-replacement:${workspaceId}`]);
       }
+      let appliedCount = 0;
       for (const change of changes) {
-        for (const [headKey, expectedVersion, record] of [
-          ["WORKSPACE_CAPABILITY_DRAFT", change.expectedDraftVersion, change.draft],
-          ["WORKSPACE_EXECUTION_PROFILE", change.expectedProfileVersion, change.profile],
-        ]) {
+        for (const headKey of ["WORKSPACE_CAPABILITY_DRAFT", "WORKSPACE_EXECUTION_PROFILE"]) {
           await this.#database.query(
             `INSERT INTO workspace_capability_head (project_id, head_key, version, record_id)
              VALUES ($1, $2, 0, NULL) ON CONFLICT (project_id, head_key) DO NOTHING`,
             [change.workspaceId, headKey],
           );
+        }
+        const current = await this.#database.query(
+          `SELECT head_key, version, record_id FROM workspace_capability_head
+           WHERE project_id = $1 AND head_key IN ('WORKSPACE_CAPABILITY_DRAFT', 'WORKSPACE_EXECUTION_PROFILE')`,
+          [change.workspaceId],
+        );
+        const heads = new Map(current.rows.map((row) => [row.head_key, row]));
+        const draftHead = heads.get("WORKSPACE_CAPABILITY_DRAFT");
+        const profileHead = heads.get("WORKSPACE_EXECUTION_PROFILE");
+        const alreadyApplied = Number(draftHead?.version) === change.expectedDraftVersion + 1 && draftHead?.record_id === change.draft.id
+          && Number(profileHead?.version) === change.expectedProfileVersion + 1 && profileHead?.record_id === change.profile.id;
+        if (alreadyApplied) appliedCount += 1;
+        else if (Number(draftHead?.version) !== change.expectedDraftVersion) throw new PersistenceConflictError(`WORKSPACE_CAPABILITY_DRAFT version conflict: expected ${change.expectedDraftVersion}, current ${draftHead?.version ?? 0}`);
+        else if (Number(profileHead?.version) !== change.expectedProfileVersion) throw new PersistenceConflictError(`WORKSPACE_EXECUTION_PROFILE version conflict: expected ${change.expectedProfileVersion}, current ${profileHead?.version ?? 0}`);
+      }
+      if (appliedCount === changes.length) return deepFreeze(changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })));
+      if (appliedCount > 0) throw new PersistenceConflictError("model replacement is only partially applied");
+      for (const change of changes) {
+        for (const [headKey, expectedVersion, record] of [
+          ["WORKSPACE_CAPABILITY_DRAFT", change.expectedDraftVersion, change.draft],
+          ["WORKSPACE_EXECUTION_PROFILE", change.expectedProfileVersion, change.profile],
+        ]) {
           const advanced = await this.#database.query(
             `UPDATE workspace_capability_head SET version = version + 1, record_id = $4
              WHERE project_id = $1 AND head_key = $2 AND version = $3 RETURNING version`,

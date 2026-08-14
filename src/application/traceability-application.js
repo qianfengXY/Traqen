@@ -690,6 +690,8 @@ export class TraceabilityApplication {
 
   async createGlobalModelReplacementPlan(profileId, input) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("model replacement plan input must be an object");
+    assertOnlyFields(input, ["replacementProfileId"], "modelReplacementPlan");
     const replacementProfileId = requireId(input?.replacementProfileId, "replacementProfileId");
     const usage = await this.getGlobalModelUsage(profileId);
     const changes = await this.#workspaceFoundation.prepareModelReplacement(profileId, replacementProfileId, this.#globalModelProfiles());
@@ -703,6 +705,8 @@ export class TraceabilityApplication {
 
   async applyGlobalModelReplacementPlan(profileId, planId, input) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("model replacement apply input must be an object");
+    assertOnlyFields(input, ["expectedVersion"], "modelReplacementApply");
     const plan = this.#analysisModelRegistry.getReplacementPlan(planId);
     if (!plan || plan.sourceProfileId !== profileId) return null;
     const applying = this.#analysisModelRegistry.beginReplacementPlan(planId, input?.expectedVersion);
