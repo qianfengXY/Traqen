@@ -27,6 +27,18 @@ export type ServerUnderstandingJob = {
   evaluationEvidenceType?: string;
 };
 
+export class ServerUnderstandingApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+
+  constructor(status: number, code: string | undefined, message: string) {
+    super(message);
+    this.name = "ServerUnderstandingApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 function headers(apiToken: string, json = false) {
   return {
     ...(json ? { "content-type": "application/json" } : {}),
@@ -35,8 +47,14 @@ function headers(apiToken: string, json = false) {
 }
 
 async function json<T>(response: Response): Promise<T> {
-  const body = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
-  if (!response.ok) throw new Error(body.error?.message ?? `Traqen API returned ${response.status}`);
+  const body = await response.json().catch(() => ({})) as T & { error?: { code?: string; message?: string } };
+  if (!response.ok) {
+    throw new ServerUnderstandingApiError(
+      response.status,
+      body.error?.code,
+      body.error?.message ?? `Traqen API returned ${response.status}`,
+    );
+  }
   return body;
 }
 

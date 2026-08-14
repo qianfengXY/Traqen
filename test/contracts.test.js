@@ -281,6 +281,11 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   );
   assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["201"]);
   assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["202"]);
+  assert.equal(
+    contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["409"].$ref,
+    "#/components/responses/Conflict",
+    "a stale confirmation must be a documented, structured conflict",
+  );
   const workspaceJobStartSchema = contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.requestBody.content["application/json"].schema;
   assert.equal(workspaceJobStartSchema.required.includes("workspaceExecutionProfileRevisionId"), false);
   assert.equal(workspaceJobStartSchema.properties.workspaceExecutionProfileRevisionId, undefined,

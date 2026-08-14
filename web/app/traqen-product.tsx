@@ -49,6 +49,7 @@ import {
   getServerWorkspaceUnderstanding,
   listServerWorkspaceUnderstandingJobs,
   registerServerWorkspaceSource,
+  ServerUnderstandingApiError,
   startHistoricalRevisionReanalysis,
   startServerWorkspaceUnderstanding,
   type ServerUnderstandingJob,
@@ -496,7 +497,24 @@ function ServerOwnedProduct() {
       setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
       setStartConfirmationOpen(false);
       notify(t("服务端任务已启动；关闭浏览器不会停止分析。", "Server job started; closing the browser will not stop analysis."));
-    } catch (error) { notify(messageOf(error, t("启动失败", "Start failed")), "error"); }
+    } catch (error) {
+      if (
+        error instanceof ServerUnderstandingApiError
+        && error.status === 409
+        && error.code === "PERSISTENCE_CONFLICT"
+        && !staleWorkspaceResponse(requestContext, contextRef.current)
+      ) {
+        await refreshWorkspaceReads(activeWorkspace, requestContext);
+        if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
+          notify(
+            t("Active Profile 已变更；确认信息已刷新，请检查后重试。", "The Active Profile changed. The confirmation was refreshed; review it and try again."),
+            "error",
+          );
+        }
+      } else if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
+        notify(messageOf(error, t("启动失败", "Start failed")), "error");
+      }
+    }
     finally { setWorking(false); }
   }
 

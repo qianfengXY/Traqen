@@ -53,6 +53,7 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /registerServerWorkspaceSource/);
   assert.doesNotMatch(product, /resolveServerWorkspaceExecutionProfile/);
   assert.match(product, /startServerWorkspaceUnderstanding/);
+  assert.match(product, /ServerUnderstandingApiError/);
   assert.match(product, /startHistoricalRevisionReanalysis/);
   assert.match(product, /getServerWorkspaceUnderstanding/);
   assert.match(product, /listServerWorkspaceUnderstandingJobs/);
@@ -130,4 +131,10 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "start confirmation must display the immutable Active Profile roster that the server will pin");
   assert.doesNotMatch(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{childSlots\.length\} Child slots<\/dd>/,
     "start confirmation must not display a mutable Draft roster beside an Active Profile revision");
+  const startUnderstandingSource = product.slice(product.indexOf("async function startUnderstanding"), product.indexOf("async function controlUnderstanding"));
+  assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"/,
+    "a stale start confirmation must identify the structured conflict rather than treating it as a generic error");
+  assert.match(startUnderstandingSource, /await refreshWorkspaceReads\(activeWorkspace, requestContext\)/,
+    "a stale start confirmation must refresh the Active Profile before allowing a retry");
+  assert.match(startUnderstandingSource, /The Active Profile changed\. The confirmation was refreshed; review it and try again\./);
 });

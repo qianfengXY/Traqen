@@ -517,6 +517,34 @@ test("global model revisions require an expected revision and reject stale write
   assert.equal((await (await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`)).json()).model, "writer-a");
 });
 
+test("global model revision CAS permits exactly one concurrent writer", async (t) => {
+  let application;
+  await startServer(t, {
+    analysisModelRegistry: new AnalysisModelRegistry(),
+    setup: ({ application: configuredApplication }) => { application = configuredApplication; },
+  });
+  const created = await application.configureGlobalModelProfile({
+    profileId: "MODEL-CONCURRENT-CAS", displayName: "Original", transport: "API",
+    endpoint: "https://models.example/v1", model: "original", apiKey: "server-only-secret",
+  });
+  const revise = (displayName, model) => application.updateGlobalModelProfile("MODEL-CONCURRENT-CAS", {
+      expectedRevision: created.revision,
+      displayName,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model,
+      apiKey: "",
+    });
+  const results = await Promise.allSettled([revise("Writer A", "writer-a"), revise("Writer B", "writer-b")]);
+  assert.deepEqual(results.map(({ status }) => status).sort(), ["fulfilled", "rejected"],
+    "only one simultaneous writer may advance a Global Model revision");
+  const rejected = results.find(({ status }) => status === "rejected");
+  assert.match(rejected.reason.message, /Global model revision conflict/);
+  const current = await application.getGlobalModelProfile("MODEL-CONCURRENT-CAS");
+  assert.equal(current.revision, created.revision + 1);
+  assert.ok(["writer-a", "writer-b"].includes(current.model));
+});
+
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
   let durableStore;
   const registry = new AnalysisModelRegistry({

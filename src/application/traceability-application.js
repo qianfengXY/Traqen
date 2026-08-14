@@ -537,6 +537,7 @@ export class TraceabilityApplication {
   #legacyUnderstandingRuntime;
   #sourceSliceWorkerCredentialService;
   #workspaceFoundation;
+  #globalModelProfileMutationTails = new Map();
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -693,9 +694,32 @@ export class TraceabilityApplication {
     return (await this.#globalModelProfiles()).find((profile) => profile.profileId === profileId) ?? null;
   }
 
+  async #serializeGlobalModelProfileMutation(profileId, operation) {
+    const prior = this.#globalModelProfileMutationTails.get(profileId) ?? Promise.resolve();
+    let release;
+    const current = new Promise((resolve) => { release = resolve; });
+    this.#globalModelProfileMutationTails.set(profileId, current);
+    await prior;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (this.#globalModelProfileMutationTails.get(profileId) === current) {
+        this.#globalModelProfileMutationTails.delete(profileId);
+      }
+    }
+  }
+
   async configureGlobalModelProfile(input) {
     const profileId = input.profileId ?? input.id;
     requireId(profileId, "profileId");
+    return this.#serializeGlobalModelProfileMutation(
+      profileId,
+      () => this.#configureGlobalModelProfile(profileId, input),
+    );
+  }
+
+  async #configureGlobalModelProfile(profileId, input) {
     await this.#syncGlobalModelLifecycles();
     this.configureAnalysisModelProfile({ ...input, id: profileId });
     const lifecycle = await this.#store.ensureGlobalModelLifecycle(profileId);
@@ -705,20 +729,22 @@ export class TraceabilityApplication {
 
   async updateGlobalModelProfile(profileId, input) {
     requireId(profileId, "profileId");
-    const current = await this.getGlobalModelProfile(profileId);
-    if (!current) return null;
-    if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
-    assertOnlyFields(input, [
-      "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
-      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
-    ], "globalModelRevision");
-    if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
-    if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
-    if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
-    if (input.expectedRevision !== current.revision) {
-      throw new PersistenceConflictError(`Global model revision conflict: expected ${input.expectedRevision}, current ${current.revision}`);
-    }
-    return this.configureGlobalModelProfile({ ...input, id: profileId, profileId });
+    return this.#serializeGlobalModelProfileMutation(profileId, async () => {
+      const current = await this.getGlobalModelProfile(profileId);
+      if (!current) return null;
+      if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
+      assertOnlyFields(input, [
+        "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
+        "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
+      ], "globalModelRevision");
+      if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
+      if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
+      if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
+      if (input.expectedRevision !== current.revision) {
+        throw new PersistenceConflictError(`Global model revision conflict: expected ${input.expectedRevision}, current ${current.revision}`);
+      }
+      return this.#configureGlobalModelProfile(profileId, { ...input, id: profileId, profileId });
+    });
   }
 
   async verifyGlobalModelProfile(profileId) {

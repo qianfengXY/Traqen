@@ -16,6 +16,7 @@ import {
 import {
   getServerWorkspaceUnderstanding,
   registerServerWorkspaceSource,
+  ServerUnderstandingApiError,
   startHistoricalRevisionReanalysis,
   startServerWorkspaceUnderstanding,
 } from "../app/server-understanding-client.ts";
@@ -271,6 +272,30 @@ test("registers and follows a server-owned source job without browser scan paylo
     assert.equal(calls[2].options.body, undefined);
     assert.match(calls[3].url, /graph\/revisions\/GRAPH-LEGACY-1\/reanalysis-jobs$/);
     assert.deepEqual(JSON.parse(calls[3].options.body), {});
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("keeps a stale Active Profile confirmation as a structured 409 for Web recovery", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    error: {
+      code: "PERSISTENCE_CONFLICT",
+      message: "WorkspaceExecutionProfileRevision conflict: expected PROFILE-OLD, current PROFILE-NEW",
+    },
+  }), { status: 409 });
+  try {
+    await assert.rejects(
+      () => startServerWorkspaceUnderstanding(apiBase, "", projectId, {
+        sourceRegistrationId: "SOURCE-1",
+        requestedMode: "AUTO",
+        expectedWorkspaceExecutionProfileRevisionId: "PROFILE-OLD",
+      }),
+      (error) => error instanceof ServerUnderstandingApiError
+        && error.status === 409
+        && error.code === "PERSISTENCE_CONFLICT",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
