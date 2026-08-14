@@ -83,8 +83,21 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #understandingHeads = new Map();
   #modelReplacementPlans = new Map();
   #globalModelLifecycles = new Map();
+  #headMutationTail = Promise.resolve();
   #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
+
+  async #serializeHeadMutation(operation) {
+    const prior = this.#headMutationTail;
+    let release;
+    this.#headMutationTail = new Promise((resolve) => { release = resolve; });
+    await prior;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
 
   async appendProjectFoundation(foundation) {
     const existing = this.#projects.get(foundation.project.id);
@@ -1245,6 +1258,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   }
 
   async appendUnderstandingRecordWithCas(projectId, recordType, record, { headKey = recordType, expectedVersion }) {
+    return this.#serializeHeadMutation(() => this.#appendUnderstandingRecordWithCas(projectId, recordType, record, { headKey, expectedVersion }));
+  }
+
+  async #appendUnderstandingRecordWithCas(projectId, recordType, record, { headKey, expectedVersion }) {
     if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new TypeError("expectedVersion must be a non-negative integer");
     const storageKey = key(projectId, headKey);
     const currentVersion = this.#understandingHeads.get(storageKey)?.version ?? 0;
@@ -1267,6 +1284,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   }
 
   async appendWorkspaceCapabilityBundle(projectId, { draft, expectedDraftVersion, policies = [] }) {
+    return this.#serializeHeadMutation(() => this.#appendWorkspaceCapabilityBundle(projectId, { draft, expectedDraftVersion, policies }));
+  }
+
+  async #appendWorkspaceCapabilityBundle(projectId, { draft, expectedDraftVersion, policies = [] }) {
     const items = [
       { recordType: "WORKSPACE_CAPABILITY_DRAFT", headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: expectedDraftVersion, record: draft },
       ...policies.map(({ record, expectedVersion }) => ({ recordType: "WORKSPACE_POLICY_REVISION", headKey: `WORKSPACE_POLICY_REVISION:${record.kind}`, expectedVersion, record })),
@@ -1296,6 +1317,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   }
 
   async applyWorkspaceModelReplacement(changes) {
+    return this.#serializeHeadMutation(() => this.#applyWorkspaceModelReplacement(changes));
+  }
+
+  async #applyWorkspaceModelReplacement(changes) {
     if (!Array.isArray(changes)) throw new TypeError("model replacement changes must be an array");
     if (changes.length === 0) return deepFreeze([]);
     const snapshots = [];
@@ -1422,6 +1447,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   }
 
   async applyModelReplacementPlan(planId, expectedVersion) {
+    return this.#serializeHeadMutation(() => this.#applyModelReplacementPlan(planId, expectedVersion));
+  }
+
+  async #applyModelReplacementPlan(planId, expectedVersion) {
     const plan = this.#modelReplacementPlans.get(planId);
     if (!plan) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} does not exist`);
     if (plan.status === "APPLIED" && plan.version === expectedVersion + 2) {
@@ -1431,7 +1460,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
     }
     this.#assertCurrentModelReplacementReferenceSet(plan);
-    const workspaces = await this.applyWorkspaceModelReplacement(plan.changes);
+    const workspaces = await this.#applyWorkspaceModelReplacement(plan.changes);
     if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
       throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);
     }

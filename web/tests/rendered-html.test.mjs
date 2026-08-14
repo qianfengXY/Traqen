@@ -125,4 +125,9 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /item\.readiness\} · \{item\.lifecycle/);
   assert.doesNotMatch(surfaces, /setReplacementBySource\(\(current\)[^\n]*event\.currentTarget/);
   assert.doesNotMatch(product, /scanLocalWorkspaceFile|analyzeLocalWorkspaceRecords|ingestWorkspaceObservations|startWorkspaceAnalysisRun|webkitdirectory|showDirectoryPicker/);
+  const startConfirmationSource = product.slice(product.indexOf("{startConfirmationOpen"), product.indexOf("</main>"));
+  assert.match(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{executionProfile\?\.childSlots\.length \?\? 0\} Child slots<\/dd>/,
+    "start confirmation must display the immutable Active Profile roster that the server will pin");
+  assert.doesNotMatch(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{childSlots\.length\} Child slots<\/dd>/,
+    "start confirmation must not display a mutable Draft roster beside an Active Profile revision");
 });

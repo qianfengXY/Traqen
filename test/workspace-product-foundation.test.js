@@ -356,6 +356,43 @@ test("F006 model replacement applies every Workspace atomically and rolls back o
   assert.deepEqual(await service.applyModelReplacement([]), [], "an active-run-only replacement has no current Workspace mutation to apply");
 });
 
+test("Memory model replacement serializes a concurrent Workspace CAS instead of leaving a failed Plan partially applied", async () => {
+  const store = new MemoryTraceabilityStore();
+  const slots = (modelProfileId) => ({
+    mainAgentSlot: { id: "MAIN", modelProfileId },
+    childAgentSlots: [{ id: "C1", modelProfileId }, { id: "C2", modelProfileId }],
+  });
+  await store.appendUnderstandingRecordWithCas("W-MEMORY-ATOMIC", "WORKSPACE_CAPABILITY_DRAFT", {
+    id: "DRAFT-OLD", revision: 1, createdAt: "2026-08-14T00:00:00.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 });
+  await store.appendUnderstandingRecordWithCas("W-MEMORY-ATOMIC", "WORKSPACE_EXECUTION_PROFILE", {
+    id: "PROFILE-OLD", createdAt: "2026-08-14T00:00:00.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 0 });
+  const plan = {
+    id: "PLAN-MEMORY-ATOMIC", version: 1, status: "READY", sourceProfileId: "MODEL-OLD", replacementProfileId: "MODEL-NEW",
+    createdAt: "2026-08-14T00:00:01.000Z", appliedAt: null,
+    changes: [{
+      workspaceId: "W-MEMORY-ATOMIC", expectedDraftVersion: 1, expectedProfileVersion: 1,
+      priorDraftId: "DRAFT-OLD", priorProfileId: "PROFILE-OLD",
+      draft: { id: "DRAFT-NEW", revision: 2, createdAt: "2026-08-14T00:00:02.000Z", ...slots("MODEL-NEW") },
+      profile: { id: "PROFILE-NEW", createdAt: "2026-08-14T00:00:02.000Z", ...slots("MODEL-NEW") },
+    }],
+  };
+  await store.createModelReplacementPlan(plan);
+
+  const applying = store.applyModelReplacementPlan(plan.id, plan.version);
+  const competingCas = store.appendUnderstandingRecordWithCas("W-MEMORY-ATOMIC", "WORKSPACE_CAPABILITY_DRAFT", {
+    id: "DRAFT-CONCURRENT", revision: 3, createdAt: "2026-08-14T00:00:03.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 2 });
+  const [applied, competing] = await Promise.allSettled([applying, competingCas]);
+
+  assert.equal(applied.status, "fulfilled", "the concurrent CAS must serialize after a complete replacement instead of making its Plan fail after partial persistence");
+  assert.equal(competing.status, "fulfilled");
+  assert.equal((await store.getModelReplacementPlan(plan.id)).status, "APPLIED");
+  assert.equal((await store.getGlobalModelLifecycle("MODEL-OLD")).lifecycle, "RETIRING");
+  assert.equal((await store.getUnderstandingHead("W-MEMORY-ATOMIC", "WORKSPACE_EXECUTION_PROFILE")).recordId, "PROFILE-NEW");
+});
+
 test("F006 active execution profile reads follow the CAS head even when timestamps tie", async () => {
   const store = new MemoryTraceabilityStore();
   const tiedClock = () => new Date("2026-08-13T00:00:00.000Z");
