@@ -101,12 +101,26 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
   const startResponse = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ sourceRegistrationId: registration.id, requestedMode: "AUTO" }),
+    body: JSON.stringify({
+      sourceRegistrationId: registration.id,
+      requestedMode: "AUTO",
+      expectedWorkspaceExecutionProfileRevisionId: profile.id,
+    }),
   });
   assert.equal(startResponse.status, 201);
   const completed = await startResponse.json();
   assert.equal(completed.status, "COMPLETED");
   assert.equal(completed.workspaceExecutionProfileRevisionId, profile.id, "the server must pin the current Active Profile Head");
+  const staleConfirmation = await fetch(`${base}/workspace-analysis-jobs?async=false`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      sourceRegistrationId: registration.id,
+      requestedMode: "AUTO",
+      expectedWorkspaceExecutionProfileRevisionId: historicalProfile.id,
+    }),
+  });
+  assert.equal(staleConfirmation.status, 409, "a confirmation for an older Active Profile Head must not start a different pinned Run");
   const readResponse = await fetch(`${base}/workspace-analysis-jobs/${completed.id}`);
   assert.equal(readResponse.status, 200);
   assert.equal((await readResponse.json()).outputs.PUBLISHING.currentGraphHead.version, 1);
@@ -192,6 +206,7 @@ test("historical reanalysis requires an intact sealed Snapshot package and fails
     body: JSON.stringify({
       sourceRegistrationId: registration.id,
       requestedMode: "AUTO",
+      expectedWorkspaceExecutionProfileRevisionId: profile.id,
     }),
   });
   assert.equal(firstResponse.status, 201);

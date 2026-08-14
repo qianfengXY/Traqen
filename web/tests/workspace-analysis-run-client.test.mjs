@@ -258,6 +258,7 @@ test("registers and follows a server-owned source job without browser scan paylo
     const started = await startServerWorkspaceUnderstanding(apiBase, "", projectId, {
       sourceRegistrationId: registration.id,
       requestedMode: "AUTO",
+      expectedWorkspaceExecutionProfileRevisionId: "PROFILE-1",
     });
     const current = await getServerWorkspaceUnderstanding(apiBase, "", projectId, started.id);
     await startHistoricalRevisionReanalysis(apiBase, "", projectId, "GRAPH-LEGACY-1");
@@ -265,6 +266,7 @@ test("registers and follows a server-owned source job without browser scan paylo
     assert.equal(calls.length, 4);
     assert.equal(JSON.parse(calls[0].options.body).rootPath, "/srv/repos/orders");
     assert.equal(JSON.parse(calls[1].options.body).sourceRegistrationId, "SOURCE-1");
+    assert.equal(JSON.parse(calls[1].options.body).expectedWorkspaceExecutionProfileRevisionId, "PROFILE-1");
     assert.equal(Object.hasOwn(JSON.parse(calls[1].options.body), "workspaceExecutionProfileRevisionId"), false);
     assert.equal(calls[2].options.body, undefined);
     assert.match(calls[3].url, /graph\/revisions\/GRAPH-LEGACY-1\/reanalysis-jobs$/);

@@ -284,6 +284,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(workspaceJobStartSchema.required.includes("workspaceExecutionProfileRevisionId"), false);
   assert.equal(workspaceJobStartSchema.properties.workspaceExecutionProfileRevisionId, undefined,
     "new Run Profile selection must remain a server-owned Active Head decision");
+  assert.ok(workspaceJobStartSchema.required.includes("expectedWorkspaceExecutionProfileRevisionId"));
+  assert.equal(workspaceJobStartSchema.properties.expectedWorkspaceExecutionProfileRevisionId.type, "string");
   const sourceSliceOperation = contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post;
   assert.equal(
     contract.components.securitySchemes.SourceSliceWorkerCredential.name,

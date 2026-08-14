@@ -446,25 +446,32 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
   await insertProjectFoundation(database);
   await database.query("INSERT INTO project (id, tenant_id, name) VALUES ($1, $2, $3)", ["PROJECT-002", "TENANT-001", "Billing service"]);
   const store = new PostgresTraceabilityStore(database);
+  const slots = (modelProfileId) => ({
+    mainAgentSlot: { id: "MAIN", modelProfileId },
+    childAgentSlots: [{ id: "C1", modelProfileId }, { id: "C2", modelProfileId }],
+  });
   for (const projectId of ["PROJECT-001", "PROJECT-002"]) {
-    await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_CAPABILITY_DRAFT", { id: `${projectId}-DRAFT-1`, revision: 1, createdAt: "2026-08-13T00:00:00.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 });
-    await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_EXECUTION_PROFILE", { id: `${projectId}-PROFILE-1`, createdAt: "2026-08-13T00:00:00.000Z" }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 0 });
+    await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_CAPABILITY_DRAFT", { id: `${projectId}-DRAFT-1`, revision: 1, createdAt: "2026-08-13T00:00:00.000Z", ...slots("MODEL-OLD") }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 });
+    await store.appendUnderstandingRecordWithCas(projectId, "WORKSPACE_EXECUTION_PROFILE", { id: `${projectId}-PROFILE-1`, createdAt: "2026-08-13T00:00:00.000Z", ...slots("MODEL-OLD") }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 0 });
   }
   const changes = ["PROJECT-001", "PROJECT-002"].map((workspaceId) => ({
     workspaceId,
     expectedDraftVersion: 1,
     expectedProfileVersion: 1,
-    draft: { id: `${workspaceId}-DRAFT-REPLACED`, revision: 2, createdAt: "2026-08-13T00:01:00.000Z" },
-    profile: { id: `${workspaceId}-PROFILE-REPLACED`, createdAt: "2026-08-13T00:01:00.000Z" },
+    priorDraftId: `${workspaceId}-DRAFT-1`,
+    priorProfileId: `${workspaceId}-PROFILE-1`,
+    draft: { id: `${workspaceId}-DRAFT-REPLACED`, revision: 2, createdAt: "2026-08-13T00:01:00.000Z", ...slots("MODEL-NEW") },
+    profile: { id: `${workspaceId}-PROFILE-REPLACED`, createdAt: "2026-08-13T00:01:00.000Z", ...slots("MODEL-NEW") },
   }));
-  await store.appendUnderstandingRecordWithCas("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT", { id: "PROJECT-002-DRAFT-2", revision: 2, createdAt: "2026-08-13T00:00:30.000Z" }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 1 });
+  await store.appendUnderstandingRecordWithCas("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT", { id: "PROJECT-002-DRAFT-2", revision: 2, createdAt: "2026-08-13T00:00:30.000Z", ...slots("MODEL-OLD") }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 1 });
   const stalePlan = { id: "PLAN-STALE", version: 1, status: "READY", sourceProfileId: "MODEL-OLD", replacementProfileId: "MODEL-NEW", changes, createdAt: "2026-08-13T00:00:45.000Z", appliedAt: null };
   await store.createModelReplacementPlan(stalePlan);
-  await assert.rejects(() => store.applyModelReplacementPlan(stalePlan.id, stalePlan.version), /version conflict/);
+  await assert.rejects(() => store.applyModelReplacementPlan(stalePlan.id, stalePlan.version), /current source reference set changed|version conflict/);
   assert.equal((await store.getModelReplacementPlan(stalePlan.id)).status, "READY", "a failed Workspace CAS must leave the durable Plan unapplied");
   assert.equal(await store.getUnderstandingRecord("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT", "PROJECT-001-DRAFT-REPLACED"), null);
 
   changes[1].expectedDraftVersion = 2;
+  changes[1].priorDraftId = "PROJECT-002-DRAFT-2";
   changes[1].draft.revision = 3;
   const freshPlan = { ...stalePlan, id: "PLAN-FRESH", changes, createdAt: "2026-08-13T00:00:50.000Z" };
   await store.createModelReplacementPlan(freshPlan);
@@ -476,6 +483,59 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
   await store.applyModelReplacementPlan(freshPlan.id, freshPlan.version);
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2, "a transaction retry must not append another revision");
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
+});
+
+test("PostgreSQL replacement rejects a source reference that appears outside the frozen plan inside the transaction", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  await insertProjectFoundation(database);
+  await database.query("INSERT INTO project (id, tenant_id, name) VALUES ($1, $2, $3)", ["PROJECT-002", "TENANT-001", "Billing service"]);
+  const store = new PostgresTraceabilityStore(database);
+  const slots = (modelProfileId) => ({
+    mainAgentSlot: { id: "MAIN", modelProfileId },
+    childAgentSlots: [
+      { id: "C1", modelProfileId },
+      { id: "C2", modelProfileId },
+    ],
+  });
+  for (const [workspaceId, modelProfileId] of [["PROJECT-001", "MODEL-OLD"], ["PROJECT-002", "MODEL-THIRD"]]) {
+    await store.appendUnderstandingRecordWithCas(workspaceId, "WORKSPACE_CAPABILITY_DRAFT", {
+      id: `${workspaceId}-DRAFT-1`, revision: 1, createdAt: "2026-08-14T00:00:00.000Z", ...slots(modelProfileId),
+    }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 });
+    await store.appendUnderstandingRecordWithCas(workspaceId, "WORKSPACE_EXECUTION_PROFILE", {
+      id: `${workspaceId}-PROFILE-1`, createdAt: "2026-08-14T00:00:00.000Z", ...slots(modelProfileId),
+    }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 0 });
+  }
+  const plan = {
+    id: "PLAN-FULL-REFERENCE-GUARD",
+    version: 1,
+    status: "READY",
+    sourceProfileId: "MODEL-OLD",
+    replacementProfileId: "MODEL-NEW",
+    createdAt: "2026-08-14T00:00:01.000Z",
+    appliedAt: null,
+    changes: [{
+      workspaceId: "PROJECT-001",
+      expectedDraftVersion: 1,
+      expectedProfileVersion: 1,
+      priorDraftId: "PROJECT-001-DRAFT-1",
+      priorProfileId: "PROJECT-001-PROFILE-1",
+      draft: { id: "PROJECT-001-DRAFT-2", revision: 2, createdAt: "2026-08-14T00:00:02.000Z", ...slots("MODEL-NEW") },
+      profile: { id: "PROJECT-001-PROFILE-2", createdAt: "2026-08-14T00:00:02.000Z", ...slots("MODEL-NEW") },
+    }],
+  };
+  await store.createModelReplacementPlan(plan);
+  await store.appendUnderstandingRecordWithCas("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT", {
+    id: "PROJECT-002-DRAFT-2", revision: 2, createdAt: "2026-08-14T00:00:03.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 1 });
+  await store.appendUnderstandingRecordWithCas("PROJECT-002", "WORKSPACE_EXECUTION_PROFILE", {
+    id: "PROJECT-002-PROFILE-2", createdAt: "2026-08-14T00:00:03.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 1 });
+
+  await assert.rejects(() => store.applyModelReplacementPlan(plan.id, plan.version), /current source reference/);
+  assert.equal((await store.getModelReplacementPlan(plan.id)).status, "READY");
+  assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).recordId, "PROJECT-001-DRAFT-1");
+  assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_EXECUTION_PROFILE")).recordId, "PROJECT-002-PROFILE-2");
 });
 
 test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {

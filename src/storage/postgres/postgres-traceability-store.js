@@ -32,6 +32,29 @@ function replacementPlanIdentity(plan) {
   return identity;
 }
 
+function recordReferencesModel(record, profileId) {
+  const slots = [record?.mainAgentSlot, ...(record?.childAgentSlots ?? [])].filter(Boolean);
+  return slots.some((slot) => slot.modelProfileId === profileId);
+}
+
+function plannedModelReplacementReferences(plan) {
+  return (plan.changes ?? []).flatMap((change) => [
+    change.draft && {
+      workspaceId: change.workspaceId,
+      headKey: "WORKSPACE_CAPABILITY_DRAFT",
+      version: change.expectedDraftVersion,
+      recordId: change.priorDraftId ?? null,
+    },
+    change.profile && {
+      workspaceId: change.workspaceId,
+      headKey: "WORKSPACE_EXECUTION_PROFILE",
+      version: change.expectedProfileVersion,
+      recordId: change.priorProfileId ?? null,
+    },
+  ].filter(Boolean)).sort((left, right) => left.workspaceId.localeCompare(right.workspaceId)
+    || left.headKey.localeCompare(right.headKey));
+}
+
 function manifestContentHash(manifest) {
   return createHash("sha256")
     .update(
@@ -3118,6 +3141,41 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return result.rows[0] ? deepFreeze(structuredClone(result.rows[0].plan_payload)) : null;
   }
 
+  async #currentModelReplacementReferences(sourceProfileId) {
+    const current = await this.#database.query(
+      `SELECT h.project_id, h.head_key, h.version, h.record_id, r.record_payload
+       FROM workspace_capability_head h
+       LEFT JOIN understanding_record r
+         ON r.project_id = h.project_id
+        AND r.id = h.record_id
+        AND r.record_type = CASE h.head_key
+          WHEN 'WORKSPACE_CAPABILITY_DRAFT' THEN 'WORKSPACE_CAPABILITY_DRAFT'
+          WHEN 'WORKSPACE_EXECUTION_PROFILE' THEN 'WORKSPACE_EXECUTION_PROFILE'
+        END
+       WHERE h.head_key = ANY($1::text[])
+       ORDER BY h.project_id, h.head_key`,
+      [["WORKSPACE_CAPABILITY_DRAFT", "WORKSPACE_EXECUTION_PROFILE"]],
+    );
+    return current.rows
+      .filter(({ record_payload: record }) => recordReferencesModel(record, sourceProfileId))
+      .map(({ project_id: workspaceId, head_key: headKey, version, record_id: recordId }) => ({
+        workspaceId,
+        headKey,
+        version: Number(version),
+        recordId,
+      }));
+  }
+
+  async #assertCurrentModelReplacementReferenceSet(plan) {
+    const expected = plannedModelReplacementReferences(plan);
+    const current = await this.#currentModelReplacementReferences(plan.sourceProfileId);
+    if (canonicalJson(current) !== canonicalJson(expected)) {
+      throw new PersistenceConflictError(
+        `ModelReplacementPlan ${plan.id} current source reference set changed; refresh the Workspace usage preview`,
+      );
+    }
+  }
+
   async applyModelReplacementPlan(planId, expectedVersion) {
     requireId(planId, "modelReplacementPlan.id");
     if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError("model replacement expectedVersion must be a positive integer");
@@ -3138,9 +3196,14 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       if (row.status !== "READY" || Number(row.version) !== expectedVersion) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
       }
+      await this.#database.exec("LOCK TABLE workspace_capability_head IN SHARE ROW EXCLUSIVE MODE");
+      await this.#assertCurrentModelReplacementReferenceSet(plan);
       const workspaces = plan.changes.length > 0
         ? await this.#applyWorkspaceModelReplacementChanges(plan.changes)
         : deepFreeze([]);
+      if ((await this.#currentModelReplacementReferences(plan.sourceProfileId)).length > 0) {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${planId} current source reference remained after apply`);
+      }
       const applied = {
         ...plan,
         status: "APPLIED",

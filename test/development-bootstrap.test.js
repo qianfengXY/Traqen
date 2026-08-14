@@ -45,6 +45,7 @@ test("isolated development bootstrap completes source registration and the first
   const job = await application.startWorkspaceUnderstandingJob(workspace.id, {
     sourceRegistrationId: registration.id,
     requestedMode: "AUTO",
+    expectedWorkspaceExecutionProfileRevisionId: profile.id,
   }, { background: false });
 
   assert.equal(job.status, "COMPLETED", JSON.stringify(job.error));

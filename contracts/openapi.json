@@ -1351,9 +1351,10 @@
       "post": {
         "operationId": "startWorkspaceUnderstandingJob",
         "requestBody": { "required": true, "content": { "application/json": { "schema": {
-          "type": "object", "required": ["sourceRegistrationId", "requestedMode"], "properties": {
+          "type": "object", "required": ["sourceRegistrationId", "requestedMode", "expectedWorkspaceExecutionProfileRevisionId"], "properties": {
             "sourceRegistrationId": { "type": "string" },
             "requestedMode": { "enum": ["AUTO", "FULL", "INCREMENTAL"] },
+            "expectedWorkspaceExecutionProfileRevisionId": { "type": "string", "minLength": 1, "description": "Optimistic-concurrency precondition for the Active Profile revision displayed in the start confirmation. It does not select a profile." },
             "purpose": { "enum": ["PUBLICATION", "EQUIVALENCE_VERIFICATION"], "default": "PUBLICATION", "description": "Verification jobs persist independently produced surfaces but never publish CurrentGraphHead." },
             "policyDigest": { "type": "string" }
           }, "additionalProperties": false

@@ -21,6 +21,29 @@ function replacementPlanIdentity(plan) {
   return identity;
 }
 
+function recordReferencesModel(record, profileId) {
+  const slots = [record?.mainAgentSlot, ...(record?.childAgentSlots ?? [])].filter(Boolean);
+  return slots.some((slot) => slot.modelProfileId === profileId);
+}
+
+function plannedModelReplacementReferences(plan) {
+  return (plan.changes ?? []).flatMap((change) => [
+    change.draft && {
+      workspaceId: change.workspaceId,
+      headKey: "WORKSPACE_CAPABILITY_DRAFT",
+      version: change.expectedDraftVersion,
+      recordId: change.priorDraftId ?? null,
+    },
+    change.profile && {
+      workspaceId: change.workspaceId,
+      headKey: "WORKSPACE_EXECUTION_PROFILE",
+      version: change.expectedProfileVersion,
+      recordId: change.priorProfileId ?? null,
+    },
+  ].filter(Boolean)).sort((left, right) => left.workspaceId.localeCompare(right.workspaceId)
+    || left.headKey.localeCompare(right.headKey));
+}
+
 export class MemoryTraceabilityStore extends TraceabilityStore {
   #projects = new Map();
   #capabilityTemplates = new Map();
@@ -1337,6 +1360,37 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     return plan ? deepFreeze(structuredClone(plan)) : null;
   }
 
+  #currentModelReplacementReferences(sourceProfileId) {
+    const references = [];
+    for (const [storageKey, head] of this.#understandingHeads) {
+      const separator = storageKey.indexOf("\u0000");
+      const workspaceId = storageKey.slice(0, separator);
+      const headKey = storageKey.slice(separator + 1);
+      const recordType = headKey === "WORKSPACE_CAPABILITY_DRAFT"
+        ? "WORKSPACE_CAPABILITY_DRAFT"
+        : headKey === "WORKSPACE_EXECUTION_PROFILE"
+          ? "WORKSPACE_EXECUTION_PROFILE"
+          : null;
+      if (!recordType || !head.recordId) continue;
+      const record = this.#understandingRecords.get(key(workspaceId, `${recordType}\u0000${head.recordId}`));
+      if (recordReferencesModel(record, sourceProfileId)) {
+        references.push({ workspaceId, headKey, version: head.version, recordId: head.recordId });
+      }
+    }
+    return references.sort((left, right) => left.workspaceId.localeCompare(right.workspaceId)
+      || left.headKey.localeCompare(right.headKey));
+  }
+
+  #assertCurrentModelReplacementReferenceSet(plan) {
+    const expected = plannedModelReplacementReferences(plan);
+    const current = this.#currentModelReplacementReferences(plan.sourceProfileId);
+    if (canonicalJson(current) !== canonicalJson(expected)) {
+      throw new PersistenceConflictError(
+        `ModelReplacementPlan ${plan.id} current source reference set changed; refresh the Workspace usage preview`,
+      );
+    }
+  }
+
   async applyModelReplacementPlan(planId, expectedVersion) {
     const plan = this.#modelReplacementPlans.get(planId);
     if (!plan) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} does not exist`);
@@ -1346,7 +1400,11 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     if (plan.status !== "READY" || plan.version !== expectedVersion) {
       throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
     }
+    this.#assertCurrentModelReplacementReferenceSet(plan);
     const workspaces = await this.applyWorkspaceModelReplacement(plan.changes);
+    if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
+      throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);
+    }
     const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 2, appliedAt: new Date().toISOString() });
     this.#modelReplacementPlans.set(planId, applied);
     return deepFreeze({ plan: structuredClone(applied), workspaces });

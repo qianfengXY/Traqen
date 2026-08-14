@@ -489,6 +489,7 @@ function ServerOwnedProduct() {
       const started = await startServerWorkspaceUnderstanding(apiBase, apiToken, activeWorkspace.id, {
         sourceRegistrationId,
         requestedMode: "AUTO",
+        expectedWorkspaceExecutionProfileRevisionId: profileRevisionId,
       });
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);

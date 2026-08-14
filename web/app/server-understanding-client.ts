@@ -64,6 +64,7 @@ export async function startServerWorkspaceUnderstanding(
   input: {
     sourceRegistrationId: string;
     requestedMode: "AUTO" | "FULL" | "INCREMENTAL";
+    expectedWorkspaceExecutionProfileRevisionId: string;
   },
 ) {
   const response = await fetch(

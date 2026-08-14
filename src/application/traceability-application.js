@@ -3148,12 +3148,21 @@ export class TraceabilityApplication {
     }
     assertOnlyFields(
       input,
-      ["sourceRegistrationId", "requestedMode", "purpose", "policyDigest"],
+      ["sourceRegistrationId", "requestedMode", "purpose", "policyDigest", "expectedWorkspaceExecutionProfileRevisionId"],
       "workspaceAnalysisJob",
     );
     const activeProfile = await this.#workspaceFoundation.getActiveWorkspaceProfile(projectId);
     if (!activeProfile) {
       throw new TypeError("an active WorkspaceExecutionProfileRevision is required before starting a new Run");
+    }
+    const expectedProfileId = requireId(
+      input.expectedWorkspaceExecutionProfileRevisionId,
+      "expectedWorkspaceExecutionProfileRevisionId",
+    );
+    if (activeProfile.id !== expectedProfileId) {
+      throw new PersistenceConflictError(
+        `WorkspaceExecutionProfileRevision conflict: expected ${expectedProfileId}, current ${activeProfile.id}`,
+      );
     }
     return this.#legacyUnderstandingRuntime.start({
       ...input,
