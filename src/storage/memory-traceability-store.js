@@ -1460,20 +1460,34 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
     }
     this.#assertCurrentModelReplacementReferenceSet(plan);
-    const workspaces = await this.#applyWorkspaceModelReplacement(plan.changes);
-    if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
-      throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);
+    const before = {
+      understandingHeads: new Map(this.#understandingHeads),
+      understandingRecords: new Map(this.#understandingRecords),
+      globalModelLifecycles: new Map(this.#globalModelLifecycles),
+      modelReplacementPlans: new Map(this.#modelReplacementPlans),
+    };
+    try {
+      const workspaces = await this.#applyWorkspaceModelReplacement(plan.changes);
+      if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);
+      }
+      const priorLifecycle = this.#globalModelLifecycles.get(plan.sourceProfileId);
+      this.#globalModelLifecycles.set(plan.sourceProfileId, deepFreeze({
+        profileId: plan.sourceProfileId,
+        lifecycle: "RETIRING",
+        version: (priorLifecycle?.version ?? 0) + 1,
+        updatedAt: new Date().toISOString(),
+      }));
+      const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 2, appliedAt: new Date().toISOString() });
+      this.#modelReplacementPlans.set(planId, applied);
+      return deepFreeze({ plan: structuredClone(applied), workspaces });
+    } catch (error) {
+      this.#understandingHeads = before.understandingHeads;
+      this.#understandingRecords = before.understandingRecords;
+      this.#globalModelLifecycles = before.globalModelLifecycles;
+      this.#modelReplacementPlans = before.modelReplacementPlans;
+      throw error;
     }
-    const priorLifecycle = this.#globalModelLifecycles.get(plan.sourceProfileId);
-    this.#globalModelLifecycles.set(plan.sourceProfileId, deepFreeze({
-      profileId: plan.sourceProfileId,
-      lifecycle: "RETIRING",
-      version: (priorLifecycle?.version ?? 0) + 1,
-      updatedAt: new Date().toISOString(),
-    }));
-    const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 2, appliedAt: new Date().toISOString() });
-    this.#modelReplacementPlans.set(planId, applied);
-    return deepFreeze({ plan: structuredClone(applied), workspaces });
   }
 
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {

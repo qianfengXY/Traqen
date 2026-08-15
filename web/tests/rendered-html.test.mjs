@@ -126,11 +126,13 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /item\.readiness\} · \{item\.lifecycle/);
   assert.doesNotMatch(surfaces, /setReplacementBySource\(\(current\)[^\n]*event\.currentTarget/);
   assert.doesNotMatch(product, /scanLocalWorkspaceFile|analyzeLocalWorkspaceRecords|ingestWorkspaceObservations|startWorkspaceAnalysisRun|webkitdirectory|showDirectoryPicker/);
-  const startConfirmationSource = product.slice(product.indexOf("{startConfirmationOpen"), product.indexOf("</main>"));
-  assert.match(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{executionProfile\?\.childSlots\.length \?\? 0\} Child slots<\/dd>/,
-    "start confirmation must display the immutable Active Profile roster that the server will pin");
-  assert.doesNotMatch(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{childSlots\.length\} Child slots<\/dd>/,
-    "start confirmation must not display a mutable Draft roster beside an Active Profile revision");
+  const startConfirmationSource = product.slice(product.indexOf("{startConfirmation && activeWorkspace"), product.indexOf("</main>"));
+  assert.match(startConfirmationSource, /Profile Revision<\/dt><dd>\{startConfirmation\.profile\.id\}<\/dd>/,
+    "start confirmation must pin one immutable Active Profile revision rather than read a live selection");
+  assert.match(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{startConfirmation\.profile\.childSlots\.length\} Child slots<\/dd>/,
+    "start confirmation must display the roster belonging to that same pinned Active Profile");
+  assert.doesNotMatch(startConfirmationSource, /\{childSlots\.length\}|executionProfile\?\.childSlots/,
+    "start confirmation must not mix mutable Draft or independently refreshed profile state into its snapshot");
   const startUnderstandingSource = product.slice(product.indexOf("async function startUnderstanding"), product.indexOf("async function controlUnderstanding"));
   assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"/,
     "a stale start confirmation must identify the structured conflict rather than treating it as a generic error");
