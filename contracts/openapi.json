@@ -128,7 +128,7 @@
     "/v1/workspaces/{workspaceId}/capability-draft": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "get": { "operationId": "getWorkspaceCapabilityDraft", "responses": { "200": { "description": "Current persisted editable draft head with the exact pinned Policy content restored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraftEnvelope" } } } } } },
-      "put": { "operationId": "saveWorkspaceCapabilityDraft", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraftRequest" } } } }, "responses": { "200": { "description": "New immutable draft revision after atomic expected-version CAS; policy content is pinned through immutable content-addressed revision IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraft" } } } } } }
+      "put": { "operationId": "saveWorkspaceCapabilityDraft", "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraftRequest" } } } }, "responses": { "200": { "description": "New immutable draft revision after atomic expected-version CAS; policy content is pinned through immutable content-addressed revision IDs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraft" } } } }, "409": { "$ref": "#/components/responses/WorkspaceCapabilityDraftConflict" } } }
     },
     "/v1/workspaces/{workspaceId}/capability-draft/validate": {
       "parameters": [{ "name": "workspaceId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
@@ -1912,6 +1912,33 @@
         },
         "additionalProperties": false
       },
+      "WorkspaceCapabilityDraftConflict": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": ["code", "message", "requestId", "details"],
+            "properties": {
+              "code": { "const": "PERSISTENCE_CONFLICT" },
+              "message": { "type": "string" },
+              "requestId": { "type": "string" },
+              "details": {
+                "type": "object",
+                "required": ["head", "expectedVersion", "currentVersion"],
+                "properties": {
+                  "head": { "const": "WORKSPACE_CAPABILITY_DRAFT" },
+                  "expectedVersion": { "type": "integer", "minimum": 0 },
+                  "currentVersion": { "type": "integer", "minimum": 0 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "GlobalModelProfile": {
         "type": "object",
         "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "transport", "providerAdapter", "endpoint", "model", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
@@ -2199,6 +2226,10 @@
       "Conflict": {
         "description": "The append conflicts with immutable history or a required reference",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "WorkspaceCapabilityDraftConflict": {
+        "description": "The editable Workspace Draft changed after the editor observed its revision; the response identifies the durable Draft head and both versions for an explicit comparison and retry.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkspaceCapabilityDraftConflict" } } }
       },
       "RunnerUnauthorized": {
         "description": "Runner attestation is missing, unknown, or invalid",

@@ -469,6 +469,10 @@ test("OpenAPI Workspace Draft recovery exposes policy content through an executa
   const operation = contract.paths["/v1/workspaces/{workspaceId}/capability-draft"];
   assert.equal(operation.get.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/WorkspaceCapabilityDraftEnvelope");
   assert.equal(operation.put.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/WorkspaceCapabilityDraft");
+  assert.equal(operation.put.responses["409"].$ref, "#/components/responses/WorkspaceCapabilityDraftConflict");
+  const conflict = contract.components.schemas.WorkspaceCapabilityDraftConflict;
+  assert.deepEqual(conflict.properties.error.properties.details.required, ["head", "expectedVersion", "currentVersion"]);
+  assert.equal(conflict.properties.error.properties.details.properties.head.const, "WORKSPACE_CAPABILITY_DRAFT");
   const draft = contract.components.schemas.WorkspaceCapabilityDraft;
   for (const field of ["workspaceId", "dependencyPolicyRevisionId", "conventionRevisionId", "securityPolicyRevisionId", "dependencies", "conventions", "securityPolicy"]) {
     assert.ok(draft.required.includes(field), `${field} must be part of the durable recovery contract`);

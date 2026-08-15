@@ -162,7 +162,14 @@ function errorResponse(error, id) {
   if (error instanceof PersistenceConflictError) {
     return {
       status: 409,
-      body: { error: { code: "PERSISTENCE_CONFLICT", message: error.message, requestId: id } },
+      body: {
+        error: {
+          code: "PERSISTENCE_CONFLICT",
+          message: error.message,
+          requestId: id,
+          ...(error.details === undefined ? {} : { details: error.details }),
+        },
+      },
     };
   }
   if (error instanceof RunnerAttestationError) {

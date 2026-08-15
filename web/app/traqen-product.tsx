@@ -26,6 +26,7 @@ import {
   getConnectionHealth,
   getEffectiveCapabilities,
   getGlobalModelUsage,
+  getWorkspaceCapabilityDraft,
   loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
   listGlobalModels,
@@ -33,6 +34,7 @@ import {
   updateGlobalModel,
   verifyGlobalModel,
   activateWorkspaceCapabilityDraft,
+  ProductFoundationApiError,
   saveWorkspaceCapabilityDraft,
   saveProjectCapability,
   type CapabilityKey,
@@ -43,6 +45,7 @@ import {
   type GlobalModelProfile,
   type GlobalModelUsage,
   type WorkspaceCapabilityDraft,
+  type WorkspaceCapabilityDraftSaveInput,
 } from "./product-foundation-client";
 import {
   controlServerWorkspaceUnderstanding,
@@ -78,6 +81,11 @@ import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWo
 type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "models" | "settings";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
+type CapabilityDraftConflict = {
+  head: "WORKSPACE_CAPABILITY_DRAFT";
+  local: WorkspaceCapabilityDraftSaveInput;
+  current: WorkspaceCapabilityDraft | null;
+};
 
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_TRAQEN_API_BASE ?? "http://127.0.0.1:3100";
 const DEFAULT_SOURCE_ROOT = process.env.NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT ?? "";
@@ -160,6 +168,7 @@ function ServerOwnedProduct() {
   const [globalModels, setGlobalModels] = useState<GlobalModelProfile[]>([]);
   const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
+  const [capabilityDraftConflict, setCapabilityDraftConflict] = useState<CapabilityDraftConflict | null>(null);
   const [capabilitySettingsReady, setCapabilitySettingsReady] = useState(false);
   const [disabledKeys, setDisabledKeys] = useState<CapabilityKey[]>([]);
   const [dependencyNotes, setDependencyNotes] = useState("");
@@ -283,6 +292,7 @@ function ServerOwnedProduct() {
     setSelectedReviewIds([]);
     setImpact(null);
     setCapabilityDraft(null);
+    setCapabilityDraftConflict(null);
     setCapabilitySettingsReady(false);
     setDisabledKeys([]);
     setDependencyNotes("");
@@ -615,30 +625,71 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
-  async function saveCapabilities() {
+  async function saveCapabilities(expectedVersion = capabilityDraft?.revision ?? 0) {
     if (!activeWorkspace || !capabilitySettingsReady) return;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
+    const input: WorkspaceCapabilityDraftSaveInput = {
+      expectedVersion,
+      mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: "MAIN", enabled: true },
+      childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
+      projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
+      disabledKeys,
+      dependencies: { notes: dependencyNotes },
+      conventions: { notes: conventionNotes },
+      securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE" },
+    };
     setWorking(true);
     try {
-      const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id, {
-        expectedVersion: capabilityDraft?.revision ?? 0,
-        mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: "MAIN", enabled: true },
-        childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
-        projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
-        disabledKeys,
-        dependencies: { notes: dependencyNotes },
-        conventions: { notes: conventionNotes },
-        securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE" },
-      });
+      const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id, input);
       const catalog = await getEffectiveCapabilities(apiBase, apiToken, workspace.id);
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setCapabilityDraft(saved);
+      setCapabilityDraftConflict(null);
       setEffectiveCatalog(catalog);
       setExecutionProfile(null);
       notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
-    } catch (error) { notify(messageOf(error, t("能力配置保存失败", "Unable to save capability configuration")), "error"); }
+    } catch (error) {
+      if (
+        error instanceof ProductFoundationApiError
+        && error.status === 409
+        && error.code === "PERSISTENCE_CONFLICT"
+        && error.details?.head === "WORKSPACE_CAPABILITY_DRAFT"
+      ) {
+        try {
+          const current = await getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id);
+          if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+          setCapabilityDraftConflict({ head: "WORKSPACE_CAPABILITY_DRAFT", local: input, current });
+          notify(t("Workspace Draft 已更新；本地编辑已保留，请比较后显式选择。", "The Workspace Draft changed. Your local edits are retained; compare the two versions and choose explicitly."), "error");
+          return;
+        } catch (recoveryError) {
+          notify(messageOf(recoveryError, t("无法读取新的 Workspace Draft", "Unable to read the newer Workspace Draft")), "error");
+          return;
+        }
+      }
+      notify(messageOf(error, t("能力配置保存失败", "Unable to save capability configuration")), "error");
+    }
     finally { setWorking(false); }
+  }
+
+  function useCurrentCapabilityDraft() {
+    const current = capabilityDraftConflict?.current;
+    if (!current) {
+      notify(t("新的 Workspace Draft 已不可用；请刷新后重试。", "The newer Workspace Draft is unavailable; refresh and try again."), "error");
+      return;
+    }
+    const main = current.mainAgentSlot;
+    setCapabilityDraft(current);
+    setDisabledKeys(current.disabledKeys);
+    setMainModel(main.modelProfileId);
+    setMainSkillNames(main.skillGrants.map(({ normalizedName }) => normalizedName));
+    setMainMcpNames(main.mcpGrants.map(({ normalizedName }) => normalizedName));
+    setChildSlots(current.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), independenceGroup: slot.independenceGroup })));
+    setDependencyNotes(String(current.dependencies?.notes ?? ""));
+    setConventionNotes(String(current.conventions?.notes ?? ""));
+    setSecurityNotes(String(current.securityPolicy?.notes ?? ""));
+    setCapabilityDraftConflict(null);
+    notify(t("已采用新的 Workspace Draft。", "The newer Workspace Draft is now in the editor."));
   }
 
   async function upsertProjectCapability(input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown> }) {
@@ -767,7 +818,7 @@ function ServerOwnedProduct() {
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
-    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onResolve={() => void resolveCapabilities()} />;
+    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void saveCapabilities(capabilityDraftConflict?.current?.revision ?? 0)} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">

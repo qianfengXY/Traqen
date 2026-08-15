@@ -14,6 +14,7 @@ import {
   getWorkspaceReviewQueue,
   listWorkspaceExecutionProfiles,
   activateWorkspaceCapabilityDraft,
+  ProductFoundationApiError,
   saveWorkspaceCapabilityDraft,
 } from "../app/product-foundation-client.ts";
 
@@ -92,6 +93,36 @@ test("product foundation client keeps reads GET-only and mutations explicit", as
     assert.match(calls[3].url, /W%201\/review-queue\?status=OPEN$/);
     assert.equal(calls[7].options.headers.authorization, "Bearer secret");
     assert.equal(calls[7].options.headers["x-traqen-api-token"], "secret");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("workspace Draft client preserves the typed conflict comparison state", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({
+    error: {
+      code: "PERSISTENCE_CONFLICT",
+      message: "Workspace capability draft version conflict: expected 1, current 2",
+      requestId: "REQ-1",
+      details: { head: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 1, currentVersion: 2 },
+    },
+  }, { status: 409 });
+  try {
+    await assert.rejects(
+      saveWorkspaceCapabilityDraft("http://api", "secret", "W1", {
+        expectedVersion: 1,
+        mainAgentSlot: { modelProfileId: "model" },
+        childAgentSlots: [],
+        projectCapabilityRevisionIds: [],
+        disabledKeys: [],
+      }),
+      (error) => error instanceof ProductFoundationApiError
+        && error.status === 409
+        && error.code === "PERSISTENCE_CONFLICT"
+        && error.details?.head === "WORKSPACE_CAPABILITY_DRAFT"
+        && error.details.currentVersion === 2,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

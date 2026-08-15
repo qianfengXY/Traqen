@@ -60,6 +60,31 @@ export type WorkspaceCapabilityDraft = {
   createdAt: string;
 };
 
+export type WorkspaceCapabilityDraftSaveInput = {
+  expectedVersion: number;
+  mainAgentSlot: AgentSlotDraft;
+  childAgentSlots: AgentSlotDraft[];
+  projectCapabilityRevisionIds: string[];
+  disabledKeys: CapabilityKey[];
+  dependencies?: Record<string, unknown>;
+  conventions?: Record<string, unknown>;
+  securityPolicy?: Record<string, unknown>;
+};
+
+export class ProductFoundationApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+  readonly details: Record<string, unknown> | undefined;
+
+  constructor(status: number, error: { code?: string; message?: string; details?: Record<string, unknown> } | undefined) {
+    super(error?.message ?? `Traqen API returned ${status}`);
+    this.name = "ProductFoundationApiError";
+    this.status = status;
+    this.code = error?.code;
+    this.details = error?.details;
+  }
+}
+
 export type CapabilityRole = {
   model: string;
   skillNames: string[];
@@ -115,8 +140,10 @@ function headers(apiToken: string, json = false, reviewerToken = false) {
 }
 
 async function parseJson<T>(response: Response): Promise<T> {
-  const body = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
-  if (!response.ok) throw new Error(body.error?.message ?? `Traqen API returned ${response.status}`);
+  const body = await response.json().catch(() => ({})) as T & {
+    error?: { code?: string; message?: string; details?: Record<string, unknown> };
+  };
+  if (!response.ok) throw new ProductFoundationApiError(response.status, body.error);
   return body;
 }
 
@@ -224,11 +251,7 @@ export async function getWorkspaceCapabilityDraft(apiBase: string, apiToken: str
   return (await parseJson<{ draft: WorkspaceCapabilityDraft | null }>(response)).draft;
 }
 
-export async function saveWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string, input: {
-  expectedVersion: number; mainAgentSlot: AgentSlotDraft; childAgentSlots: AgentSlotDraft[];
-  projectCapabilityRevisionIds: string[]; disabledKeys: CapabilityKey[];
-  dependencies?: Record<string, unknown>; conventions?: Record<string, unknown>; securityPolicy?: Record<string, unknown>;
-}) {
+export async function saveWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string, input: WorkspaceCapabilityDraftSaveInput) {
   const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft`, {
     method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input),
   });

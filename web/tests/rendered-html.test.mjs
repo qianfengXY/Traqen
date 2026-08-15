@@ -137,4 +137,16 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(startUnderstandingSource, /await refreshWorkspaceReads\(activeWorkspace, requestContext\)/,
     "a stale start confirmation must refresh the Active Profile before allowing a retry");
   assert.match(startUnderstandingSource, /The Active Profile changed\. The confirmation was refreshed; review it and try again\./);
+  assert.match(product, /capabilityDraftConflict/,
+    "a stale Workspace Draft save must retain a dedicated conflict state rather than discard the editor");
+  assert.match(product, /getWorkspaceCapabilityDraft/,
+    "a stale Workspace Draft save must fetch the newer server head for comparison");
+  assert.match(surfaces, /Local expected revision/);
+  assert.match(surfaces, /Current revision/);
+  assert.match(surfaces, /Local project capability revisions/);
+  assert.match(surfaces, /Current project capability revisions/);
+  assert.match(surfaces, /Local policy content/);
+  assert.match(surfaces, /Current policy content/);
+  assert.match(surfaces, /Retry my retained Draft/);
+  assert.match(surfaces, /Use newer server Draft/);
 });

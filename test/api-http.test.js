@@ -517,6 +517,37 @@ test("global model revisions require an expected revision and reject stale write
   assert.equal((await (await fetch(`${baseUrl}/v1/global-models/MODEL-CAS`)).json()).model, "writer-a");
 });
 
+test("Workspace capability Draft CAS reports its typed comparison head", async (t) => {
+  const baseUrl = await startServer(t);
+  assert.equal((await postJson(`${baseUrl}/v1/workspaces`, {
+    id: "W-DRAFT-CONFLICT", name: "Draft conflict", actorId: "OWNER",
+  })).response.status, 201);
+  const save = (expectedVersion, modelProfileId) => fetch(`${baseUrl}/v1/workspaces/W-DRAFT-CONFLICT/capability-draft`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedVersion,
+      mainAgentSlot: { modelProfileId },
+      childAgentSlots: [],
+      projectCapabilityRevisionIds: [],
+      disabledKeys: [],
+    }),
+  });
+
+  assert.equal((await save(0, "writer-a")).status, 200);
+  const stale = await save(0, "writer-b");
+  assert.equal(stale.status, 409, "a stale Draft save must be an explicit conflict rather than an invalid request");
+  const staleBody = await stale.json();
+  assert.equal(staleBody.error.code, "PERSISTENCE_CONFLICT");
+  assert.equal(staleBody.error.message, "Workspace capability draft version conflict: expected 0, current 1");
+  assert.equal(typeof staleBody.error.requestId, "string");
+  assert.deepEqual(staleBody.error.details, {
+    head: "WORKSPACE_CAPABILITY_DRAFT",
+    expectedVersion: 0,
+    currentVersion: 1,
+  });
+});
+
 test("global model revision CAS permits exactly one concurrent writer", async (t) => {
   let application;
   await startServer(t, {

@@ -19,6 +19,20 @@ import {
   resolveWorkspaceExecutionProfile,
   validateWorkspaceCapabilityDraft,
 } from "../domain/index.js";
+import { PersistenceConflictError } from "../storage/index.js";
+
+function workspaceCapabilityDraftConflict(expectedVersion, currentVersion, cause) {
+  const error = new PersistenceConflictError(
+    `Workspace capability draft version conflict: expected ${expectedVersion}, current ${currentVersion}`,
+    cause ? { cause } : undefined,
+  );
+  error.details = Object.freeze({
+    head: "WORKSPACE_CAPABILITY_DRAFT",
+    expectedVersion,
+    currentVersion,
+  });
+  return error;
+}
 
 export class WorkspaceProductFoundation {
   constructor({ store, clock = () => new Date() }) {
@@ -210,7 +224,9 @@ export class WorkspaceProductFoundation {
     const current = await this.getCapabilityDraft(workspaceId);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw new TypeError('expectedVersion is required');
     const expectedVersion = input.expectedVersion;
-    if (expectedVersion !== (current?.revision ?? 0)) throw new TypeError(`Workspace capability draft version conflict: expected ${expectedVersion}, current ${current?.revision ?? 0}`);
+    if (expectedVersion !== (current?.revision ?? 0)) {
+      throw workspaceCapabilityDraftConflict(expectedVersion, current?.revision ?? 0);
+    }
     const policyRevision = async (kind, content, suppliedId) => {
       if (suppliedId) {
         const existing = await this.store.getUnderstandingRecord(workspaceId, 'WORKSPACE_POLICY_REVISION', suppliedId);
@@ -233,11 +249,17 @@ export class WorkspaceProductFoundation {
       conventionRevisionId: convention.record.id,
       securityPolicyRevisionId: security.record.id,
     }, this.clock);
-    await this.store.appendWorkspaceCapabilityBundle(workspaceId, {
-      draft,
-      expectedDraftVersion: expectedVersion,
-      policies: [dependency, convention, security].filter(({ isNew }) => isNew),
-    });
+    try {
+      await this.store.appendWorkspaceCapabilityBundle(workspaceId, {
+        draft,
+        expectedDraftVersion: expectedVersion,
+        policies: [dependency, convention, security].filter(({ isNew }) => isNew),
+      });
+    } catch (error) {
+      if (!(error instanceof PersistenceConflictError)) throw error;
+      const newer = await this.getCapabilityDraft(workspaceId);
+      throw workspaceCapabilityDraftConflict(expectedVersion, newer?.revision ?? 0, error);
+    }
     return this.getCapabilityDraft(workspaceId);
   }
 

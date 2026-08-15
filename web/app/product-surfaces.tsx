@@ -12,6 +12,7 @@ import type {
   GlobalModelUsage,
   ReviewQueueItem,
   WorkspaceCapabilityDraft,
+  WorkspaceCapabilityDraftSaveInput,
 } from "./product-foundation-client";
 import type { ServerUnderstandingJob } from "./server-understanding-client";
 import {
@@ -2504,9 +2505,12 @@ export function CapabilitySettings({
   setSecurityNotes,
   recoveryReady,
   working,
+  draftConflict,
   onSaveProject,
   onDeleteProject,
   onSave,
+  onRetryDraftConflict,
+  onUseCurrentDraft,
   onResolve,
 }: {
   t: T;
@@ -2533,6 +2537,11 @@ export function CapabilitySettings({
   setSecurityNotes: (value: string) => void;
   recoveryReady: boolean;
   working: boolean;
+  draftConflict: {
+    head: "WORKSPACE_CAPABILITY_DRAFT";
+    local: WorkspaceCapabilityDraftSaveInput;
+    current: WorkspaceCapabilityDraft | null;
+  } | null;
   onSaveProject: (input: {
     kind: "SKILL" | "MCP";
     normalizedName: string;
@@ -2541,6 +2550,8 @@ export function CapabilitySettings({
   }) => void;
   onDeleteProject: (kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) => void;
   onSave: () => void;
+  onRetryDraftConflict: () => void;
+  onUseCurrentDraft: () => void;
   onResolve: () => void;
 }) {
   const [projectKind, setProjectKind] = useState<"SKILL" | "MCP">("SKILL");
@@ -2554,6 +2565,19 @@ export function CapabilitySettings({
   );
   const skills = catalog.entries.filter(({ kind }) => kind === "SKILL");
   const mcps = catalog.entries.filter(({ kind }) => kind === "MCP");
+  const draftRoster = (main: WorkspaceCapabilityDraftSaveInput["mainAgentSlot"], children: WorkspaceCapabilityDraftSaveInput["childAgentSlots"]) =>
+    `${main.modelProfileId || "—"} · ${children.map(({ modelProfileId }) => modelProfileId || "—").join(", ") || t("无 Child slot", "no Child slots")}`;
+  const draftCapabilities = (keys: CapabilityKey[]) => keys.map(({ kind, normalizedName }) => `${kind}:${normalizedName}`).join(", ") || "—";
+  const draftProjectRevisions = (ids: string[]) => ids.map(shortId).join(", ") || "—";
+  const draftPolicies = (value: {
+    dependencies?: Record<string, unknown>;
+    conventions?: Record<string, unknown>;
+    securityPolicy?: Record<string, unknown>;
+  }) => JSON.stringify({
+    dependencies: value.dependencies ?? {},
+    conventions: value.conventions ?? {},
+    securityPolicy: value.securityPolicy ?? {},
+  });
   const enabled = (kind: "SKILL" | "MCP", name: string) =>
     !disabledKeys.some(
       (key) => key.kind === kind && key.normalizedName === name,
@@ -2640,6 +2664,33 @@ export function CapabilitySettings({
           <span className="authority-pill candidate">DRAFT</span>
         )}
       </section>
+      {draftConflict && (
+        <section className="panel" role="alert" aria-label={t("Workspace Draft 冲突", "Workspace Draft conflict")}>
+          <header className="panel-head">
+            <div>
+              <h2>{t("Workspace Draft 已在其他位置更新", "Workspace Draft changed elsewhere")}</h2>
+              <p>{t("本地编辑已保留。请比较本地 Draft 与服务端新 head，再显式选择采用或重试。", "Your local edits are retained. Compare them with the newer server head, then explicitly choose which action to take.")}</p>
+            </div>
+            <span className="authority-pill candidate">{draftConflict.head}</span>
+          </header>
+          <dl className="definition-list">
+            <dt>{t("本地预期版本", "Local expected revision")}</dt><dd>v{draftConflict.local.expectedVersion}</dd>
+            <dt>{t("当前版本", "Current revision")}</dt><dd>{draftConflict.current ? `v${draftConflict.current.revision}` : "—"}</dd>
+            <dt>{t("本地 Agent roster", "Local Agent roster")}</dt><dd>{draftRoster(draftConflict.local.mainAgentSlot, draftConflict.local.childAgentSlots)}</dd>
+            <dt>{t("当前 Agent roster", "Current Agent roster")}</dt><dd>{draftConflict.current ? draftRoster(draftConflict.current.mainAgentSlot, draftConflict.current.childAgentSlots) : "—"}</dd>
+            <dt>{t("本地禁用能力", "Local disabled capabilities")}</dt><dd>{draftCapabilities(draftConflict.local.disabledKeys)}</dd>
+            <dt>{t("当前禁用能力", "Current disabled capabilities")}</dt><dd>{draftCapabilities(draftConflict.current?.disabledKeys ?? [])}</dd>
+            <dt>{t("本地项目能力 Revision", "Local project capability revisions")}</dt><dd>{draftProjectRevisions(draftConflict.local.projectCapabilityRevisionIds)}</dd>
+            <dt>{t("当前项目能力 Revision", "Current project capability revisions")}</dt><dd>{draftProjectRevisions(draftConflict.current?.projectCapabilityRevisionIds ?? [])}</dd>
+            <dt>{t("本地策略内容", "Local policy content")}</dt><dd><code>{draftPolicies(draftConflict.local)}</code></dd>
+            <dt>{t("当前策略内容", "Current policy content")}</dt><dd><code>{draftPolicies(draftConflict.current ?? {})}</code></dd>
+          </dl>
+          <div className="action-row">
+            <button className="button" disabled={working || !draftConflict.current} onClick={onUseCurrentDraft}>{t("采用新的服务端 Draft", "Use newer server Draft")}</button>
+            <button className="button primary" disabled={working} onClick={onRetryDraftConflict}>{t("重试保留的本地 Draft", "Retry my retained Draft")}</button>
+          </div>
+        </section>
+      )}
       <section className="capability-layers">
         <article className="active">
           <b>1</b>

@@ -19,7 +19,7 @@ import {
   resolveWorkspaceExecutionProfile,
 } from "../src/domain/index.js";
 import { WorkspaceProductFoundation } from "../src/application/workspace-product-foundation.js";
-import { MemoryTraceabilityStore } from "../src/storage/index.js";
+import { MemoryTraceabilityStore, PersistenceConflictError } from "../src/storage/index.js";
 
 const clock = (() => {
   let tick = 0;
@@ -175,7 +175,14 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
     disabledKeys: [{ kind: "SKILL", normalizedName: "source" }],
   });
   assert.equal((await service.getCapabilityDraft("W1")).id, draft.id);
-  await assert.rejects(() => service.saveCapabilityDraft("W1", { expectedVersion: 0 }), /version conflict/);
+  await assert.rejects(
+    () => service.saveCapabilityDraft("W1", { expectedVersion: 0 }),
+    (error) => error instanceof PersistenceConflictError
+      && error.details?.head === "WORKSPACE_CAPABILITY_DRAFT"
+      && error.details.expectedVersion === 0
+      && error.details.currentVersion === 1,
+    "a stale Draft editor needs a typed Workspace Draft head and both revisions",
+  );
   const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE" }];
   const validation = await service.validateCapabilityDraft("W1", modelProfiles);
   assert.equal(validation.validation.valid, false);
