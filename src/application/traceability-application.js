@@ -77,6 +77,18 @@ function requireId(value, fieldName) {
   return value;
 }
 
+function workspaceExecutionProfileConflict(expectedRevisionId, currentRevisionId) {
+  const error = new PersistenceConflictError(
+    `WorkspaceExecutionProfileRevision conflict: expected ${expectedRevisionId}, current ${currentRevisionId}`,
+  );
+  error.details = Object.freeze({
+    head: "WORKSPACE_EXECUTION_PROFILE",
+    expectedRevisionId,
+    currentRevisionId,
+  });
+  return error;
+}
+
 function modelIdsFromDraftInput(input) {
   const slots = [input?.mainAgentSlot ?? input?.mainAgent, ...(input?.childAgentSlots ?? input?.childSlots ?? [])];
   return slots.map((slot) => slot?.modelProfileId ?? slot?.model).filter((value) => typeof value === "string" && value.trim() !== "");
@@ -3224,9 +3236,7 @@ export class TraceabilityApplication {
       "expectedWorkspaceExecutionProfileRevisionId",
     );
     if (activeProfile.id !== expectedProfileId) {
-      throw new PersistenceConflictError(
-        `WorkspaceExecutionProfileRevision conflict: expected ${expectedProfileId}, current ${activeProfile.id}`,
-      );
+      throw workspaceExecutionProfileConflict(expectedProfileId, activeProfile.id);
     }
     return this.#legacyUnderstandingRuntime.start({
       ...input,

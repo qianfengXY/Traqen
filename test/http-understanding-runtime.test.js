@@ -121,8 +121,14 @@ test("allowlisted HTTP SourceRegistration starts and reads the real server-owned
     }),
   });
   assert.equal(staleConfirmation.status, 409, "a confirmation for an older Active Profile Head must not start a different pinned Run");
-  assert.equal((await staleConfirmation.json()).error.code, "PERSISTENCE_CONFLICT",
+  const staleConfirmationBody = await staleConfirmation.json();
+  assert.equal(staleConfirmationBody.error.code, "PERSISTENCE_CONFLICT",
     "the stale confirmation must retain the structured conflict code needed by the Web recovery flow");
+  assert.deepEqual(staleConfirmationBody.error.details, {
+    head: "WORKSPACE_EXECUTION_PROFILE",
+    expectedRevisionId: historicalProfile.id,
+    currentRevisionId: profile.id,
+  }, "the recovery payload must name the newer Active Profile revision without accepting it from the client");
   const readResponse = await fetch(`${base}/workspace-analysis-jobs/${completed.id}`);
   assert.equal(readResponse.status, 200);
   assert.equal((await readResponse.json()).outputs.PUBLISHING.currentGraphHead.version, 1);

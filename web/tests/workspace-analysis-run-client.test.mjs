@@ -283,6 +283,11 @@ test("keeps a stale Active Profile confirmation as a structured 409 for Web reco
     error: {
       code: "PERSISTENCE_CONFLICT",
       message: "WorkspaceExecutionProfileRevision conflict: expected PROFILE-OLD, current PROFILE-NEW",
+      details: {
+        head: "WORKSPACE_EXECUTION_PROFILE",
+        expectedRevisionId: "PROFILE-OLD",
+        currentRevisionId: "PROFILE-NEW",
+      },
     },
   }), { status: 409 });
   try {
@@ -294,7 +299,9 @@ test("keeps a stale Active Profile confirmation as a structured 409 for Web reco
       }),
       (error) => error instanceof ServerUnderstandingApiError
         && error.status === 409
-        && error.code === "PERSISTENCE_CONFLICT",
+        && error.code === "PERSISTENCE_CONFLICT"
+        && error.details?.head === "WORKSPACE_EXECUTION_PROFILE"
+        && error.details.currentRevisionId === "PROFILE-NEW",
     );
   } finally {
     globalThis.fetch = originalFetch;

@@ -133,8 +133,11 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "start confirmation must display the roster belonging to that same pinned Active Profile");
   assert.doesNotMatch(startConfirmationSource, /\{childSlots\.length\}|executionProfile\?\.childSlots/,
     "start confirmation must not mix mutable Draft or independently refreshed profile state into its snapshot");
+  const openStartConfirmationSource = product.slice(product.indexOf("function openStartConfirmation"), product.indexOf("async function startUnderstanding"));
+  assert.match(openStartConfirmationSource, /profile: structuredClone\(executionProfile\)/,
+    "opening the modal must capture a detached Active Profile snapshot");
   const startUnderstandingSource = product.slice(product.indexOf("async function startUnderstanding"), product.indexOf("async function controlUnderstanding"));
-  assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"/,
+  assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"[\s\S]*error\.details\?\.head === "WORKSPACE_EXECUTION_PROFILE"/,
     "a stale start confirmation must identify the structured conflict rather than treating it as a generic error");
   assert.match(startUnderstandingSource, /await refreshWorkspaceReads\(activeWorkspace, requestContext\)/,
     "a stale start confirmation must refresh the Active Profile before allowing a retry");

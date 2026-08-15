@@ -505,7 +505,7 @@ function ServerOwnedProduct() {
       workspaceId: activeWorkspace.id,
       sourceRegistrationId,
       requestedMode: jobs.length === 0 ? "FULL" : "AUTO",
-      profile: executionProfile,
+      profile: structuredClone(executionProfile),
     });
   }
 
@@ -529,16 +529,23 @@ function ServerOwnedProduct() {
         error instanceof ServerUnderstandingApiError
         && error.status === 409
         && error.code === "PERSISTENCE_CONFLICT"
+        && error.details?.head === "WORKSPACE_EXECUTION_PROFILE"
         && !staleWorkspaceResponse(requestContext, contextRef.current)
       ) {
         await refreshWorkspaceReads(activeWorkspace, requestContext);
         if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
           const currentProfile = (await listWorkspaceExecutionProfiles(apiBase, apiToken, activeWorkspace.id).catch(() => []))[0] ?? null;
-          if (currentProfile) {
-            setStartConfirmation((existing) => existing && existing.workspaceId === activeWorkspace.id
-              ? { ...existing, profile: currentProfile }
-              : existing);
+          if (!currentProfile) {
+            setStartConfirmation((existing) => existing?.workspaceId === activeWorkspace.id ? null : existing);
+            notify(
+              t("Active Profile 已不可用；确认已关闭，请刷新后重新启动。", "The Active Profile is no longer available. The confirmation was closed; refresh and start again."),
+              "error",
+            );
+            return;
           }
+          setStartConfirmation((existing) => existing && existing.workspaceId === activeWorkspace.id
+            ? { ...existing, profile: structuredClone(currentProfile) }
+            : existing);
           notify(
             t("Active Profile 已变更；确认信息已刷新，请检查后重试。", "The Active Profile changed. The confirmation was refreshed; review it and try again."),
             "error",

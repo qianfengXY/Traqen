@@ -64,6 +64,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(globalModelPath.put.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/GlobalModelProfile");
   assert.equal(globalModelPath.put.responses["409"].$ref, "#/components/responses/Conflict");
   assert.equal(contract.paths["/v1/workspaces"].post.operationId, "createWorkspace");
+  assert.equal(contract.paths["/v1/workspaces"].post.responses["409"].$ref, "#/components/responses/Conflict",
+    "Workspace creation conflicts are unrelated to the Active Execution Profile head");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}"].patch.operationId, "renameWorkspace");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].post, undefined);
   assert.equal(
@@ -283,9 +285,12 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.ok(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["202"]);
   assert.equal(
     contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.responses["409"].$ref,
-    "#/components/responses/Conflict",
-    "a stale confirmation must be a documented, structured conflict",
+    "#/components/responses/WorkspaceExecutionProfileConflict",
+    "a stale confirmation must identify the Active Profile head that displaced the confirmation",
   );
+  const activeProfileConflict = contract.components.schemas.WorkspaceExecutionProfileConflict;
+  assert.deepEqual(activeProfileConflict.properties.error.properties.details.required, ["head", "expectedRevisionId", "currentRevisionId"]);
+  assert.equal(activeProfileConflict.properties.error.properties.details.properties.head.const, "WORKSPACE_EXECUTION_PROFILE");
   const workspaceJobStartSchema = contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.requestBody.content["application/json"].schema;
   assert.equal(workspaceJobStartSchema.required.includes("workspaceExecutionProfileRevisionId"), false);
   assert.equal(workspaceJobStartSchema.properties.workspaceExecutionProfileRevisionId, undefined,

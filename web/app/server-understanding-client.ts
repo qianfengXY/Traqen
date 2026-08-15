@@ -30,12 +30,14 @@ export type ServerUnderstandingJob = {
 export class ServerUnderstandingApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
+  readonly details: Record<string, unknown> | undefined;
 
-  constructor(status: number, code: string | undefined, message: string) {
-    super(message);
+  constructor(status: number, error: { code?: string; message?: string; details?: Record<string, unknown> } | undefined) {
+    super(error?.message ?? `Traqen API returned ${status}`);
     this.name = "ServerUnderstandingApiError";
     this.status = status;
-    this.code = code;
+    this.code = error?.code;
+    this.details = error?.details;
   }
 }
 
@@ -47,13 +49,9 @@ function headers(apiToken: string, json = false) {
 }
 
 async function json<T>(response: Response): Promise<T> {
-  const body = await response.json().catch(() => ({})) as T & { error?: { code?: string; message?: string } };
+  const body = await response.json().catch(() => ({})) as T & { error?: { code?: string; message?: string; details?: Record<string, unknown> } };
   if (!response.ok) {
-    throw new ServerUnderstandingApiError(
-      response.status,
-      body.error?.code,
-      body.error?.message ?? `Traqen API returned ${response.status}`,
-    );
+    throw new ServerUnderstandingApiError(response.status, body.error);
   }
   return body;
 }
