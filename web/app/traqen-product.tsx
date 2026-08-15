@@ -677,7 +677,6 @@ function ServerOwnedProduct() {
       setCapabilityDraft(saved);
       setCapabilityDraftConflict(null);
       setEffectiveCatalog(catalog);
-      setExecutionProfile(null);
       notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
     } catch (error) {
       if (

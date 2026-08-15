@@ -146,6 +146,9 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "a stale Workspace Draft save must retain a dedicated conflict state rather than discard the editor");
   assert.match(product, /getWorkspaceCapabilityDraft/,
     "a stale Workspace Draft save must fetch the newer server head for comparison");
+  const saveCapabilitiesSource = product.slice(product.indexOf("async function saveCapabilities"), product.indexOf("function useCurrentCapabilityDraft"));
+  assert.doesNotMatch(saveCapabilitiesSource, /setExecutionProfile\(null\)/,
+    "saving an editable Draft must retain the distinct Active Profile used by a later Run");
   assert.match(surfaces, /Local expected revision/);
   assert.match(surfaces, /Current revision/);
   assert.match(surfaces, /Local project capability revisions/);
