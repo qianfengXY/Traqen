@@ -576,6 +576,37 @@ test("global model revision CAS permits exactly one concurrent writer", async (t
   assert.ok(["writer-a", "writer-b"].includes(current.model));
 });
 
+test("global model revision CAS shares its mutation boundary across Application instances", async () => {
+  const store = new MemoryTraceabilityStore();
+  const registry = new AnalysisModelRegistry();
+  const first = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: registry });
+  const second = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: registry });
+  const created = await first.configureGlobalModelProfile({
+    profileId: "MODEL-CROSS-APPLICATION-CAS", displayName: "Original", transport: "API",
+    endpoint: "https://models.example/v1", model: "original", apiKey: "server-only-secret",
+  });
+  const revise = (application, displayName, model) => application.updateGlobalModelProfile("MODEL-CROSS-APPLICATION-CAS", {
+    expectedRevision: created.revision,
+    displayName,
+    transport: "API",
+    endpoint: "https://models.example/v1",
+    model,
+    apiKey: "",
+  });
+
+  const results = await Promise.allSettled([
+    revise(first, "Writer A", "writer-a"),
+    revise(second, "Writer B", "writer-b"),
+  ]);
+
+  assert.deepEqual(results.map(({ status }) => status).sort(), ["fulfilled", "rejected"]);
+  const rejected = results.find(({ status }) => status === "rejected");
+  assert.match(rejected.reason.message, /Global model revision conflict/);
+  const current = await first.getGlobalModelProfile("MODEL-CROSS-APPLICATION-CAS");
+  assert.equal(current.revision, created.revision + 1);
+  assert.ok(["writer-a", "writer-b"].includes(current.model));
+});
+
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
   let durableStore;
   const registry = new AnalysisModelRegistry({

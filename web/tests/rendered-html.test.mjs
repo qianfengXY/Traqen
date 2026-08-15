@@ -146,8 +146,8 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "a stale Workspace Draft save must retain a dedicated conflict state rather than discard the editor");
   assert.match(product, /getWorkspaceCapabilityDraft/,
     "a stale Workspace Draft save must fetch the newer server head for comparison");
-  const saveCapabilitiesSource = product.slice(product.indexOf("async function saveCapabilities"), product.indexOf("function useCurrentCapabilityDraft"));
-  assert.doesNotMatch(saveCapabilitiesSource, /setExecutionProfile\(null\)/,
+  const saveCapabilityDraftSource = product.slice(product.indexOf("async function saveCapabilityDraft"), product.indexOf("async function saveCapabilities"));
+  assert.doesNotMatch(saveCapabilityDraftSource, /setExecutionProfile\(null\)/,
     "saving an editable Draft must retain the distinct Active Profile used by a later Run");
   assert.match(surfaces, /Local expected revision/);
   assert.match(surfaces, /Current revision/);
@@ -157,4 +157,14 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /Current policy content/);
   assert.match(surfaces, /Retry my retained Draft/);
   assert.match(surfaces, /Use newer server Draft/);
+  assert.match(product, /getWorkspaceCapabilityDraft,\s*listWorkspaceExecutionProfiles,\s*loadWorkspaceCapabilitySettings/,
+    "the Active Profile conflict recovery must import the profile-history reader it invokes");
+  assert.match(saveCapabilityDraftSource, /Promise\.all\(\[\s*getWorkspaceCapabilityDraft[\s\S]*getEffectiveCapabilities/,
+    "a Draft conflict must capture the newer head with its refreshed effective catalog");
+  assert.match(product, /async function retryCapabilityDraft\(\)[\s\S]*structuredClone\(conflict\.local\)[\s\S]*expectedVersion: conflict\.current\.revision/,
+    "retry must use the retained Draft snapshot rebased only to the newer server revision");
+  assert.match(product, /setEffectiveCatalog\(conflict\.currentCatalog\)/,
+    "adopting the newer Draft must also adopt the catalog shown during comparison");
+  assert.match(surfaces, /const editingDisabled = working \|\| !recoveryReady \|\| Boolean\(draftConflict\)/,
+    "the editor must be frozen while the retained Draft snapshot is awaiting an explicit conflict choice");
 });

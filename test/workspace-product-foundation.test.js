@@ -436,6 +436,46 @@ test("Memory model replacement rolls back every head when a post-write Plan inva
   assert.equal(await store.getUnderstandingRecord("W-MEMORY-ROLLBACK", "WORKSPACE_EXECUTION_PROFILE", "PROFILE-INVALID"), null);
 });
 
+test("Memory model replacement rollback preserves an unrelated concurrent event", async () => {
+  const store = new MemoryTraceabilityStore();
+  const slots = (modelProfileId) => ({
+    mainAgentSlot: { id: "MAIN", modelProfileId },
+    childAgentSlots: [{ id: "C1", modelProfileId }, { id: "C2", modelProfileId }],
+  });
+  await store.appendUnderstandingRecordWithCas("W-MEMORY-ROLLBACK-EVENT", "WORKSPACE_CAPABILITY_DRAFT", {
+    id: "DRAFT-OLD", revision: 1, createdAt: "2026-08-15T00:00:00.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_CAPABILITY_DRAFT", expectedVersion: 0 });
+  await store.appendUnderstandingRecordWithCas("W-MEMORY-ROLLBACK-EVENT", "WORKSPACE_EXECUTION_PROFILE", {
+    id: "PROFILE-OLD", createdAt: "2026-08-15T00:00:00.000Z", ...slots("MODEL-OLD"),
+  }, { headKey: "WORKSPACE_EXECUTION_PROFILE", expectedVersion: 0 });
+  const plan = {
+    id: "PLAN-MEMORY-ROLLBACK-EVENT", version: 1, status: "READY", sourceProfileId: "MODEL-OLD", replacementProfileId: "MODEL-NEW",
+    createdAt: "2026-08-15T00:00:01.000Z", appliedAt: null,
+    changes: [{
+      workspaceId: "W-MEMORY-ROLLBACK-EVENT", expectedDraftVersion: 1, expectedProfileVersion: 1,
+      priorDraftId: "DRAFT-OLD", priorProfileId: "PROFILE-OLD",
+      draft: { id: "DRAFT-NEW", revision: 2, createdAt: "2026-08-15T00:00:02.000Z", ...slots("MODEL-NEW") },
+      profile: { id: "PROFILE-INVALID", createdAt: "2026-08-15T00:00:02.000Z", ...slots("MODEL-OLD") },
+    }],
+  };
+  await store.createModelReplacementPlan(plan);
+
+  const applying = store.applyModelReplacementPlan(plan.id, plan.version);
+  await Promise.resolve();
+  const event = { id: "EVENT-CONCURRENT", createdAt: "2026-08-15T00:00:03.000Z", kind: "SAVED" };
+  const appended = store.appendUnderstandingRecord("W-MEMORY-ROLLBACK-EVENT", "WORKSPACE_EVENT", event);
+  const [applied, appendedEvent] = await Promise.allSettled([applying, appended]);
+
+  assert.equal(applied.status, "rejected");
+  assert.equal(appendedEvent.status, "fulfilled");
+  assert.deepEqual(
+    await store.getUnderstandingRecord("W-MEMORY-ROLLBACK-EVENT", "WORKSPACE_EVENT", event.id),
+    event,
+  );
+  assert.equal((await store.getUnderstandingHead("W-MEMORY-ROLLBACK-EVENT", "WORKSPACE_CAPABILITY_DRAFT")).recordId, "DRAFT-OLD");
+  assert.equal((await store.getUnderstandingHead("W-MEMORY-ROLLBACK-EVENT", "WORKSPACE_EXECUTION_PROFILE")).recordId, "PROFILE-OLD");
+});
+
 test("F006 active execution profile reads follow the CAS head even when timestamps tie", async () => {
   const store = new MemoryTraceabilityStore();
   const tiedClock = () => new Date("2026-08-13T00:00:00.000Z");

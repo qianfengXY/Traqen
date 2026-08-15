@@ -89,6 +89,21 @@ function workspaceExecutionProfileConflict(expectedRevisionId, currentRevisionId
   return error;
 }
 
+const globalModelProfileMutationTailsByRegistry = new WeakMap();
+const unconfiguredGlobalModelProfileMutationTails = new Map();
+
+function globalModelProfileMutationTails(registry) {
+  if (!registry || (typeof registry !== "object" && typeof registry !== "function")) {
+    return unconfiguredGlobalModelProfileMutationTails;
+  }
+  let tails = globalModelProfileMutationTailsByRegistry.get(registry);
+  if (!tails) {
+    tails = new Map();
+    globalModelProfileMutationTailsByRegistry.set(registry, tails);
+  }
+  return tails;
+}
+
 function modelIdsFromDraftInput(input) {
   const slots = [input?.mainAgentSlot ?? input?.mainAgent, ...(input?.childAgentSlots ?? input?.childSlots ?? [])];
   return slots.map((slot) => slot?.modelProfileId ?? slot?.model).filter((value) => typeof value === "string" && value.trim() !== "");
@@ -549,7 +564,6 @@ export class TraceabilityApplication {
   #legacyUnderstandingRuntime;
   #sourceSliceWorkerCredentialService;
   #workspaceFoundation;
-  #globalModelProfileMutationTails = new Map();
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -707,17 +721,18 @@ export class TraceabilityApplication {
   }
 
   async #serializeGlobalModelProfileMutation(profileId, operation) {
-    const prior = this.#globalModelProfileMutationTails.get(profileId) ?? Promise.resolve();
+    const tails = globalModelProfileMutationTails(this.#analysisModelRegistry);
+    const prior = tails.get(profileId) ?? Promise.resolve();
     let release;
     const current = new Promise((resolve) => { release = resolve; });
-    this.#globalModelProfileMutationTails.set(profileId, current);
+    tails.set(profileId, current);
     await prior;
     try {
       return await operation();
     } finally {
       release();
-      if (this.#globalModelProfileMutationTails.get(profileId) === current) {
-        this.#globalModelProfileMutationTails.delete(profileId);
+      if (tails.get(profileId) === current) {
+        tails.delete(profileId);
       }
     }
   }

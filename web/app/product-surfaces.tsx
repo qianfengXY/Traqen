@@ -2541,6 +2541,7 @@ export function CapabilitySettings({
     head: "WORKSPACE_CAPABILITY_DRAFT";
     local: WorkspaceCapabilityDraftSaveInput;
     current: WorkspaceCapabilityDraft | null;
+    currentCatalog: EffectiveCapabilityCatalog;
   } | null;
   onSaveProject: (input: {
     kind: "SKILL" | "MCP";
@@ -2558,7 +2559,7 @@ export function CapabilitySettings({
   const [projectName, setProjectName] = useState("");
   const [projectManifest, setProjectManifest] = useState("{}");
   const [projectManifestError, setProjectManifestError] = useState("");
-  const editingDisabled = working || !recoveryReady;
+  const editingDisabled = working || !recoveryReady || Boolean(draftConflict);
   const readyModels = models.filter(
     ({ readiness, lifecycle }) =>
       readiness === "READY" && lifecycle === "ACTIVE",

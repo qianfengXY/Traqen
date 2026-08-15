@@ -1461,10 +1461,22 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     }
     this.#assertCurrentModelReplacementReferenceSet(plan);
     const before = {
-      understandingHeads: new Map(this.#understandingHeads),
-      understandingRecords: new Map(this.#understandingRecords),
-      globalModelLifecycles: new Map(this.#globalModelLifecycles),
-      modelReplacementPlans: new Map(this.#modelReplacementPlans),
+      workspaceTargets: plan.changes.flatMap(({ workspaceId, draft, profile }) => [
+        draft && {
+          headStorageKey: key(workspaceId, "WORKSPACE_CAPABILITY_DRAFT"),
+          recordStorageKey: key(workspaceId, `WORKSPACE_CAPABILITY_DRAFT\u0000${draft.id}`),
+        },
+        profile && {
+          headStorageKey: key(workspaceId, "WORKSPACE_EXECUTION_PROFILE"),
+          recordStorageKey: key(workspaceId, `WORKSPACE_EXECUTION_PROFILE\u0000${profile.id}`),
+        },
+      ].filter(Boolean).map((target) => ({
+        ...target,
+        head: this.#understandingHeads.get(target.headStorageKey) ?? null,
+        record: this.#understandingRecords.get(target.recordStorageKey) ?? null,
+      }))),
+      lifecycle: this.#globalModelLifecycles.get(plan.sourceProfileId) ?? null,
+      plan: this.#modelReplacementPlans.get(planId) ?? null,
     };
     try {
       const workspaces = await this.#applyWorkspaceModelReplacement(plan.changes);
@@ -1482,10 +1494,16 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       this.#modelReplacementPlans.set(planId, applied);
       return deepFreeze({ plan: structuredClone(applied), workspaces });
     } catch (error) {
-      this.#understandingHeads = before.understandingHeads;
-      this.#understandingRecords = before.understandingRecords;
-      this.#globalModelLifecycles = before.globalModelLifecycles;
-      this.#modelReplacementPlans = before.modelReplacementPlans;
+      for (const target of before.workspaceTargets) {
+        if (target.head) this.#understandingHeads.set(target.headStorageKey, target.head);
+        else this.#understandingHeads.delete(target.headStorageKey);
+        if (target.record) this.#understandingRecords.set(target.recordStorageKey, target.record);
+        else this.#understandingRecords.delete(target.recordStorageKey);
+      }
+      if (before.lifecycle) this.#globalModelLifecycles.set(plan.sourceProfileId, before.lifecycle);
+      else this.#globalModelLifecycles.delete(plan.sourceProfileId);
+      if (before.plan) this.#modelReplacementPlans.set(planId, before.plan);
+      else this.#modelReplacementPlans.delete(planId);
       throw error;
     }
   }

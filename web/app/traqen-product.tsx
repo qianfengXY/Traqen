@@ -27,6 +27,7 @@ import {
   getEffectiveCapabilities,
   getGlobalModelUsage,
   getWorkspaceCapabilityDraft,
+  listWorkspaceExecutionProfiles,
   loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
   listGlobalModels,
@@ -85,6 +86,7 @@ type CapabilityDraftConflict = {
   head: "WORKSPACE_CAPABILITY_DRAFT";
   local: WorkspaceCapabilityDraftSaveInput;
   current: WorkspaceCapabilityDraft | null;
+  currentCatalog: EffectiveCapabilityCatalog;
 };
 type StartConfirmation = {
   workspaceId: string;
@@ -655,11 +657,8 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
-  async function saveCapabilities(expectedVersion = capabilityDraft?.revision ?? 0) {
-    if (!activeWorkspace || !capabilitySettingsReady) return;
-    const workspace = activeWorkspace;
-    const requestContext = { ...contextRef.current };
-    const input: WorkspaceCapabilityDraftSaveInput = {
+  function currentCapabilityDraftInput(expectedVersion: number): WorkspaceCapabilityDraftSaveInput {
+    return {
       expectedVersion,
       mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: "MAIN", enabled: true },
       childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
@@ -669,6 +668,12 @@ function ServerOwnedProduct() {
       conventions: { notes: conventionNotes },
       securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE" },
     };
+  }
+
+  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput) {
+    if (!activeWorkspace || !capabilitySettingsReady) return;
+    const workspace = activeWorkspace;
+    const requestContext = { ...contextRef.current };
     setWorking(true);
     try {
       const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id, input);
@@ -686,9 +691,17 @@ function ServerOwnedProduct() {
         && error.details?.head === "WORKSPACE_CAPABILITY_DRAFT"
       ) {
         try {
-          const current = await getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id);
+          const [current, currentCatalog] = await Promise.all([
+            getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id),
+            getEffectiveCapabilities(apiBase, apiToken, workspace.id),
+          ]);
           if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
-          setCapabilityDraftConflict({ head: "WORKSPACE_CAPABILITY_DRAFT", local: input, current });
+          setCapabilityDraftConflict({
+            head: "WORKSPACE_CAPABILITY_DRAFT",
+            local: structuredClone(input),
+            current: current ? structuredClone(current) : null,
+            currentCatalog: structuredClone(currentCatalog),
+          });
           notify(t("Workspace Draft 已更新；本地编辑已保留，请比较后显式选择。", "The Workspace Draft changed. Your local edits are retained; compare the two versions and choose explicitly."), "error");
           return;
         } catch (recoveryError) {
@@ -701,8 +714,25 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
+  async function saveCapabilities() {
+    await saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0));
+  }
+
+  async function retryCapabilityDraft() {
+    const conflict = capabilityDraftConflict;
+    if (!conflict?.current) {
+      notify(t("新的 Workspace Draft 已不可用；请刷新后重试。", "The newer Workspace Draft is unavailable; refresh and try again."), "error");
+      return;
+    }
+    await saveCapabilityDraft({
+      ...structuredClone(conflict.local),
+      expectedVersion: conflict.current.revision,
+    });
+  }
+
   function useCurrentCapabilityDraft() {
-    const current = capabilityDraftConflict?.current;
+    const conflict = capabilityDraftConflict;
+    const current = conflict?.current;
     if (!current) {
       notify(t("新的 Workspace Draft 已不可用；请刷新后重试。", "The newer Workspace Draft is unavailable; refresh and try again."), "error");
       return;
@@ -717,6 +747,7 @@ function ServerOwnedProduct() {
     setDependencyNotes(String(current.dependencies?.notes ?? ""));
     setConventionNotes(String(current.conventions?.notes ?? ""));
     setSecurityNotes(String(current.securityPolicy?.notes ?? ""));
+    setEffectiveCatalog(conflict.currentCatalog);
     setCapabilityDraftConflict(null);
     notify(t("已采用新的 Workspace Draft。", "The newer Workspace Draft is now in the editor."));
   }
@@ -847,7 +878,7 @@ function ServerOwnedProduct() {
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
-    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void saveCapabilities(capabilityDraftConflict?.current?.revision ?? 0)} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
+    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">
