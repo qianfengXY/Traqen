@@ -343,10 +343,6 @@ POST   /v1/workspaces/{workspaceId}/capability-draft/activate
 - [ ] 两个 Workspace 可以使用不同项目能力与 Agent Roster，且不存在数据、能力或凭据泄漏。
 - [ ] Dependency 与 Convention Revision 进入 Planning/Input Digest。
 
-## 当前差距
-
-实现提交 `1682d7d` 提供加密的 API 模型 Registry 和一个全局 Active Profile、全局启动的 Reference Skill、Draft/Profile 领域骨架以及模板导向的 Web 页面。当前解析只按名称查找，UI 使用逗号文本保存 Skill/MCP 名称，Child 校验允许一个槽位，缺少项目能力管理与 Workspace MCP Mount，当前持久化也没有证明完整合同的重启恢复。系统尚无受支持的本机 CLI Runtime Adapter，也没有覆盖全部 Workspace 的模型替换与退役流程。
-
 ## 依赖
 
 F006 是 F001 的基础依赖。F001 只消费已激活 `WorkspaceExecutionProfileRevision` 及其 Provenance，不独立解析或修改 F006 设置。

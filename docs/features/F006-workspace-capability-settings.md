@@ -343,10 +343,6 @@ All Workspace writes require Workspace scope, authorization, and expected-versio
 - [ ] Two Workspaces can use different project capabilities and Agent rosters without data, capability, or credential leakage.
 - [ ] Dependency and convention revisions enter planning/input digests.
 
-## Current gap
-
-Implementation commit `1682d7d` provides an encrypted API-oriented model registry with one global active profile, a globally bootstrapped reference Skill, a draft/profile domain skeleton, and a template-centric Web surface. Current resolution uses name-only lookup, the UI stores Skill/MCP names as comma-separated text, Child validation permits one slot, project capability management and Workspace MCP mounts are absent, and current persistence does not prove restart recovery for this complete contract. There is no supported local CLI runtime adapter or all-Workspace model replacement/retirement workflow.
-
 ## Dependencies
 
 F006 is a foundation dependency of F001. F001 consumes an activated `WorkspaceExecutionProfileRevision` and its provenance; it does not independently resolve or mutate F006 settings.
