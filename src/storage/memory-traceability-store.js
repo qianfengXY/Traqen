@@ -17,7 +17,7 @@ function recordIdentity(record) {
 }
 
 function replacementPlanIdentity(plan) {
-  const { version: _version, status: _status, appliedAt: _appliedAt, createdAt: _createdAt, ...identity } = plan;
+  const { version: _version, status: _status, appliedAt: _appliedAt, applyingAt: _applyingAt, createdAt: _createdAt, ...identity } = plan;
   return identity;
 }
 
@@ -83,6 +83,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #understandingHeads = new Map();
   #modelReplacementPlans = new Map();
   #globalModelLifecycles = new Map();
+  #globalModelProfileRevisions = new Map();
   #headMutationTail = Promise.resolve();
   #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
@@ -1374,6 +1375,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
 
   async ensureGlobalModelLifecycle(profileId) {
     if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    return this.#serializeHeadMutation(() => this.#ensureGlobalModelLifecycle(profileId));
+  }
+
+  async #ensureGlobalModelLifecycle(profileId) {
     const existing = this.#globalModelLifecycles.get(profileId);
     if (existing) return deepFreeze(structuredClone(existing));
     const lifecycle = deepFreeze({ profileId, lifecycle: "ACTIVE", version: 1, updatedAt: new Date().toISOString() });
@@ -1390,6 +1395,10 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   async setGlobalModelLifecycle(profileId, lifecycle) {
     if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
     if (!["ACTIVE", "RETIRING", "RETIRED"].includes(lifecycle)) throw new TypeError("global model lifecycle is invalid");
+    return this.#serializeHeadMutation(() => this.#setGlobalModelLifecycle(profileId, lifecycle));
+  }
+
+  async #setGlobalModelLifecycle(profileId, lifecycle) {
     const prior = this.#globalModelLifecycles.get(profileId);
     const next = deepFreeze({
       profileId,
@@ -1399,6 +1408,68 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     });
     this.#globalModelLifecycles.set(profileId, next);
     return deepFreeze(structuredClone(next));
+  }
+
+  async getGlobalModelProfileRevision(profileId) {
+    if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    const profile = this.#globalModelProfileRevisions.get(profileId);
+    return profile ? deepFreeze(structuredClone(profile)) : null;
+  }
+
+  async ensureGlobalModelProfileRevision(profile) {
+    if (!profile || typeof profile.id !== "string" || profile.id.trim() === ""
+      || !Number.isInteger(profile.revision) || profile.revision < 1
+      || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
+      throw new TypeError("global model profile revision is invalid");
+    }
+    return this.#serializeHeadMutation(async () => {
+      const existing = this.#globalModelProfileRevisions.get(profile.id) ?? null;
+      if (existing && (existing.revision !== profile.revision || existing.currentRevisionId !== profile.currentRevisionId)) {
+        throw new PersistenceConflictError(`Global model ${profile.id} durable revision differs from its configured Registry`);
+      }
+      if (!existing) {
+        this.#globalModelProfileRevisions.set(profile.id, deepFreeze({
+          profileId: profile.id,
+          revision: profile.revision,
+          currentRevisionId: profile.currentRevisionId,
+          updatedAt: new Date().toISOString(),
+        }));
+      }
+      return deepFreeze(structuredClone(this.#globalModelProfileRevisions.get(profile.id)));
+    });
+  }
+
+  async mutateGlobalModelProfile(profileId, expectedRevision, operation) {
+    if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    if (expectedRevision !== null && (!Number.isInteger(expectedRevision) || expectedRevision < 1)) {
+      throw new TypeError("global model expectedRevision must be null or a positive integer");
+    }
+    if (typeof operation !== "function") throw new TypeError("global model mutation operation must be a function");
+    return this.#serializeHeadMutation(async () => {
+      const current = this.#globalModelProfileRevisions.get(profileId) ?? null;
+      const currentRevision = current?.revision ?? null;
+      if (currentRevision !== expectedRevision) {
+        throw new PersistenceConflictError(`Global model revision conflict: expected ${expectedRevision ?? "none"}, current ${currentRevision ?? "none"}`);
+      }
+      const lifecycle = this.#globalModelLifecycles.get(profileId);
+      if (lifecycle && lifecycle.lifecycle !== "ACTIVE") {
+        throw new PersistenceConflictError(`Global model ${profileId} is ${lifecycle.lifecycle} and cannot be revised`);
+      }
+      const profile = await operation(current ? deepFreeze(structuredClone(current)) : null);
+      const nextRevision = (current?.revision ?? 0) + 1;
+      if (!profile || profile.id !== profileId || profile.revision !== nextRevision || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
+        throw new PersistenceConflictError(`Global model mutation for ${profileId} did not produce revision ${nextRevision}`);
+      }
+      const next = deepFreeze({
+        profileId,
+        revision: profile.revision,
+        currentRevisionId: profile.currentRevisionId,
+        updatedAt: new Date().toISOString(),
+      });
+      this.#globalModelProfileRevisions.set(profileId, next);
+      if (!lifecycle) await this.#ensureGlobalModelLifecycle(profileId);
+      return deepFreeze(structuredClone(profile));
+    });
   }
 
   async createModelReplacementPlan(plan) {
@@ -1446,6 +1517,19 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     }
   }
 
+  #assertCurrentModelReplacementRevisions(plan) {
+    for (const [profileId, expectedRevisionId] of [
+      [plan.sourceProfileId, plan.sourceRevisionId],
+      [plan.replacementProfileId, plan.replacementRevisionId],
+    ]) {
+      if (!expectedRevisionId) continue;
+      const current = this.#globalModelProfileRevisions.get(profileId);
+      if (!current || current.currentRevisionId !== expectedRevisionId) {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} ${profileId} revision changed; refresh the Workspace usage preview`);
+      }
+    }
+  }
+
   async applyModelReplacementPlan(planId, expectedVersion) {
     return this.#serializeHeadMutation(() => this.#applyModelReplacementPlan(planId, expectedVersion));
   }
@@ -1460,6 +1544,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
     }
     this.#assertCurrentModelReplacementReferenceSet(plan);
+    this.#assertCurrentModelReplacementRevisions(plan);
     const before = {
       workspaceTargets: plan.changes.flatMap(({ workspaceId, draft, profile }) => [
         draft && {
@@ -1479,6 +1564,12 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       plan: this.#modelReplacementPlans.get(planId) ?? null,
     };
     try {
+      this.#modelReplacementPlans.set(planId, deepFreeze({
+        ...structuredClone(plan),
+        status: "APPLYING",
+        version: expectedVersion + 1,
+        applyingAt: new Date().toISOString(),
+      }));
       const workspaces = await this.#applyWorkspaceModelReplacement(plan.changes);
       if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);

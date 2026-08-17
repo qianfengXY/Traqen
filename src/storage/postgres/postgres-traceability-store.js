@@ -28,7 +28,7 @@ function recordIdentity(record) {
 }
 
 function replacementPlanIdentity(plan) {
-  const { version: _version, status: _status, appliedAt: _appliedAt, createdAt: _createdAt, ...identity } = plan;
+  const { version: _version, status: _status, appliedAt: _appliedAt, applyingAt: _applyingAt, createdAt: _createdAt, ...identity } = plan;
   return identity;
 }
 
@@ -3119,6 +3119,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
   async ensureGlobalModelLifecycle(profileId) {
     requireId(profileId, "globalModel.profileId");
     return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profileId}`]);
       const now = new Date().toISOString();
       await this.#database.query(
         `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
@@ -3151,6 +3152,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     requireId(profileId, "globalModel.profileId");
     if (!["ACTIVE", "RETIRING", "RETIRED"].includes(lifecycle)) throw new TypeError("global model lifecycle is invalid");
     return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profileId}`]);
       const now = new Date().toISOString();
       const result = await this.#database.query(
         `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
@@ -3164,6 +3166,116 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       );
       const row = result.rows[0];
       return deepFreeze({ profileId: row.profile_id, lifecycle: row.lifecycle, version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString() });
+    });
+  }
+
+  async getGlobalModelProfileRevision(profileId) {
+    requireId(profileId, "globalModel.profileId");
+    const result = await this.#database.query(
+      `SELECT profile_id, revision, current_revision_id, updated_at
+       FROM global_model_profile_revision_head WHERE profile_id = $1`,
+      [profileId],
+    );
+    const row = result.rows[0];
+    return row ? deepFreeze({
+      profileId: row.profile_id,
+      revision: Number(row.revision),
+      currentRevisionId: row.current_revision_id,
+      updatedAt: new Date(row.updated_at).toISOString(),
+    }) : null;
+  }
+
+  async ensureGlobalModelProfileRevision(profile) {
+    requireId(profile?.id, "globalModel.profileId");
+    if (!Number.isInteger(profile?.revision) || profile.revision < 1
+      || typeof profile?.currentRevisionId !== "string" || profile.currentRevisionId === "") {
+      throw new TypeError("global model profile revision is invalid");
+    }
+    return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profile.id}`]);
+      await this.#database.query(
+        `INSERT INTO global_model_profile_revision_head (profile_id, revision, current_revision_id, updated_at)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (profile_id) DO NOTHING`,
+        [profile.id, profile.revision, profile.currentRevisionId, new Date().toISOString()],
+      );
+      const selected = await this.#database.query(
+        `SELECT profile_id, revision, current_revision_id, updated_at
+         FROM global_model_profile_revision_head WHERE profile_id = $1 FOR UPDATE`,
+        [profile.id],
+      );
+      const row = selected.rows[0];
+      if (Number(row.revision) !== profile.revision || row.current_revision_id !== profile.currentRevisionId) {
+        throw new PersistenceConflictError(`Global model ${profile.id} durable revision differs from its configured Registry`);
+      }
+      return deepFreeze({
+        profileId: row.profile_id,
+        revision: Number(row.revision),
+        currentRevisionId: row.current_revision_id,
+        updatedAt: new Date(row.updated_at).toISOString(),
+      });
+    });
+  }
+
+  async mutateGlobalModelProfile(profileId, expectedRevision, operation) {
+    requireId(profileId, "globalModel.profileId");
+    if (expectedRevision !== null && (!Number.isInteger(expectedRevision) || expectedRevision < 1)) {
+      throw new TypeError("global model expectedRevision must be null or a positive integer");
+    }
+    if (typeof operation !== "function") throw new TypeError("global model mutation operation must be a function");
+    return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profileId}`]);
+      const selected = await this.#database.query(
+        `SELECT profile_id, revision, current_revision_id, updated_at
+         FROM global_model_profile_revision_head WHERE profile_id = $1 FOR UPDATE`,
+        [profileId],
+      );
+      const row = selected.rows[0] ?? null;
+      const current = row ? deepFreeze({
+        profileId: row.profile_id,
+        revision: Number(row.revision),
+        currentRevisionId: row.current_revision_id,
+        updatedAt: new Date(row.updated_at).toISOString(),
+      }) : null;
+      if ((current?.revision ?? null) !== expectedRevision) {
+        throw new PersistenceConflictError(`Global model revision conflict: expected ${expectedRevision ?? "none"}, current ${current?.revision ?? "none"}`);
+      }
+      const lifecycleResult = await this.#database.query(
+        `SELECT lifecycle FROM global_model_lifecycle WHERE profile_id = $1 FOR UPDATE`,
+        [profileId],
+      );
+      if (lifecycleResult.rows[0] && lifecycleResult.rows[0].lifecycle !== "ACTIVE") {
+        throw new PersistenceConflictError(`Global model ${profileId} is ${lifecycleResult.rows[0].lifecycle} and cannot be revised`);
+      }
+      const profile = await operation(current ? deepFreeze(structuredClone(current)) : null);
+      const nextRevision = (current?.revision ?? 0) + 1;
+      if (!profile || profile.id !== profileId || profile.revision !== nextRevision || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
+        throw new PersistenceConflictError(`Global model mutation for ${profileId} did not produce revision ${nextRevision}`);
+      }
+      const now = new Date().toISOString();
+      if (current) {
+        const updated = await this.#database.query(
+          `UPDATE global_model_profile_revision_head
+           SET revision = $2, current_revision_id = $3, updated_at = $4
+           WHERE profile_id = $1 AND revision = $5
+           RETURNING profile_id`,
+          [profileId, profile.revision, profile.currentRevisionId, now, expectedRevision],
+        );
+        if (updated.rows.length !== 1) throw new PersistenceConflictError(`Global model revision conflict: expected ${expectedRevision}`);
+      } else {
+        await this.#database.query(
+          `INSERT INTO global_model_profile_revision_head (profile_id, revision, current_revision_id, updated_at)
+           VALUES ($1, $2, $3, $4)`,
+          [profileId, profile.revision, profile.currentRevisionId, now],
+        );
+      }
+      await this.#database.query(
+        `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
+         VALUES ($1, 'ACTIVE', 1, $2)
+         ON CONFLICT (profile_id) DO NOTHING`,
+        [profileId, now],
+      );
+      return deepFreeze(structuredClone(profile));
     });
   }
 
@@ -3227,6 +3339,30 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     }
   }
 
+  async #assertCurrentModelReplacementRevisions(plan) {
+    const expected = [
+      [plan.sourceProfileId, plan.sourceRevisionId],
+      [plan.replacementProfileId, plan.replacementRevisionId],
+    ].filter(([, revisionId]) => typeof revisionId === "string" && revisionId !== "")
+      .sort(([left], [right]) => left.localeCompare(right));
+    for (const [profileId] of expected) {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profileId}`]);
+    }
+    if (expected.length === 0) return;
+    const current = await this.#database.query(
+      `SELECT profile_id, current_revision_id
+       FROM global_model_profile_revision_head
+       WHERE profile_id = ANY($1::text[]) FOR UPDATE`,
+      [expected.map(([profileId]) => profileId)],
+    );
+    const revisions = new Map(current.rows.map((row) => [row.profile_id, row.current_revision_id]));
+    for (const [profileId, expectedRevisionId] of expected) {
+      if (revisions.get(profileId) !== expectedRevisionId) {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} ${profileId} revision changed; refresh the Workspace usage preview`);
+      }
+    }
+  }
+
   async applyModelReplacementPlan(planId, expectedVersion) {
     requireId(planId, "modelReplacementPlan.id");
     if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError("model replacement expectedVersion must be a positive integer");
@@ -3247,6 +3383,22 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       if (row.status !== "READY" || Number(row.version) !== expectedVersion) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
       }
+      const applyingAt = new Date().toISOString();
+      const applying = {
+        ...plan,
+        status: "APPLYING",
+        version: expectedVersion + 1,
+        applyingAt,
+      };
+      const begun = await this.#database.query(
+        `UPDATE model_replacement_plan
+         SET version = $2, status = 'APPLYING', plan_payload = $3::jsonb, updated_at = $4
+         WHERE plan_id = $1 AND version = $5 AND status = 'READY'
+         RETURNING plan_id`,
+        [planId, applying.version, JSON.stringify(applying), applyingAt, expectedVersion],
+      );
+      if (begun.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
+      await this.#assertCurrentModelReplacementRevisions(plan);
       await this.#database.exec("LOCK TABLE workspace_capability_head IN SHARE ROW EXCLUSIVE MODE");
       await this.#assertCurrentModelReplacementReferenceSet(plan);
       const workspaces = plan.changes.length > 0
@@ -3274,9 +3426,9 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       const updated = await this.#database.query(
         `UPDATE model_replacement_plan
          SET version = $2, status = 'APPLIED', plan_payload = $3::jsonb, updated_at = $4
-         WHERE plan_id = $1 AND version = $5 AND status = 'READY'
+         WHERE plan_id = $1 AND version = $5 AND status = 'APPLYING'
          RETURNING plan_id`,
-        [planId, applied.version, JSON.stringify(applied), applied.appliedAt, expectedVersion],
+        [planId, applied.version, JSON.stringify(applied), applied.appliedAt, expectedVersion + 1],
       );
       if (updated.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
       return deepFreeze({ plan: structuredClone(applied), workspaces });

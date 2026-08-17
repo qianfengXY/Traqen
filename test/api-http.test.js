@@ -607,6 +607,91 @@ test("global model revision CAS shares its mutation boundary across Application 
   assert.ok(["writer-a", "writer-b"].includes(current.model));
 });
 
+test("global model revision CAS rejects a stale writer from an independently reloaded Registry", async () => {
+  const store = new MemoryTraceabilityStore();
+  let persistedProfiles = { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };
+  const profileStore = {
+    load: () => structuredClone(persistedProfiles),
+    save: (value) => { persistedProfiles = structuredClone(value); },
+  };
+  const first = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({ clock: fixedClock, profileStore }),
+  });
+  const created = await first.configureGlobalModelProfile({
+    profileId: "MODEL-RELOADED-CAS", displayName: "Original", transport: "API",
+    endpoint: "https://models.example/v1", model: "original", apiKey: "server-only-secret",
+  });
+  const second = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({ clock: fixedClock, profileStore }),
+  });
+  const revise = (application, displayName, model) => application.updateGlobalModelProfile("MODEL-RELOADED-CAS", {
+    expectedRevision: created.revision,
+    displayName,
+    transport: "API",
+    endpoint: "https://models.example/v1",
+    model,
+    apiKey: "",
+  });
+
+  const results = await Promise.allSettled([
+    revise(first, "Writer A", "writer-a"),
+    revise(second, "Writer B", "writer-b"),
+  ]);
+
+  assert.deepEqual(results.map(({ status }) => status).sort(), ["fulfilled", "rejected"],
+    "the persistent Store must arbitrate stale revisions even after each process rebuilt its Registry");
+  const reloaded = new AnalysisModelRegistry({ clock: fixedClock, profileStore });
+  assert.equal(reloaded.list().find(({ id }) => id === "MODEL-RELOADED-CAS").revision, created.revision + 1);
+});
+
+test("a replacement Plan cannot apply after an independently reloaded Registry revises its frozen model", async () => {
+  const store = new MemoryTraceabilityStore();
+  let persistedProfiles = { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };
+  const profileStore = {
+    load: () => structuredClone(persistedProfiles),
+    save: (value) => { persistedProfiles = structuredClone(value); },
+  };
+  const fetchImpl = async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] });
+  const first = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({ clock: fixedClock, fetchImpl, profileStore }),
+  });
+  for (const profileId of ["MODEL-PLAN-OLD", "MODEL-PLAN-NEW"]) {
+    await first.configureGlobalModelProfile({
+      profileId, displayName: profileId, transport: "API", endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(), apiKey: `${profileId}-secret`,
+    });
+    await first.verifyGlobalModelProfile(profileId);
+  }
+  const plan = await first.createGlobalModelReplacementPlan("MODEL-PLAN-OLD", { replacementProfileId: "MODEL-PLAN-NEW" });
+  const second = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({ clock: fixedClock, fetchImpl, profileStore }),
+  });
+  const source = await second.getGlobalModelProfile("MODEL-PLAN-OLD");
+  await second.updateGlobalModelProfile("MODEL-PLAN-OLD", {
+    expectedRevision: source.revision,
+    displayName: "Changed independently",
+    transport: "API",
+    endpoint: "https://models.example/v1",
+    model: "changed-independently",
+    apiKey: "",
+  });
+
+  await assert.rejects(
+    () => first.applyGlobalModelReplacementPlan("MODEL-PLAN-OLD", plan.id, { expectedVersion: plan.version }),
+    /revision changed|stale/,
+  );
+  assert.equal((await store.getModelReplacementPlan(plan.id)).status, "READY");
+  assert.equal((await store.getGlobalModelLifecycle("MODEL-PLAN-OLD")).lifecycle, "ACTIVE");
+});
+
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
   let durableStore;
   const registry = new AnalysisModelRegistry({

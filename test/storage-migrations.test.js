@@ -57,6 +57,7 @@ async function migratedDatabase() {
     "0021_workspace_policy_backfill",
     "0022_model_replacement_plan",
     "0023_global_model_lifecycle",
+    "0024_global_model_profile_revision_head",
   ]);
   return database;
 }
@@ -405,6 +406,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "analysis_result",
     "workspace_capability_head",
     "global_model_lifecycle",
+    "global_model_profile_revision_head",
     "source_slice_worker_credential_use",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
@@ -540,6 +542,40 @@ test("PostgreSQL replacement rejects a source reference that appears outside the
   assert.equal((await store.getModelReplacementPlan(plan.id)).status, "READY");
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).recordId, "PROJECT-001-DRAFT-1");
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_EXECUTION_PROFILE")).recordId, "PROJECT-002-PROFILE-2");
+});
+
+test("PostgreSQL replacement Plan checks its frozen model revisions inside the same transaction", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  const store = new PostgresTraceabilityStore(database);
+  const revise = (profileId, revision, currentRevisionId) => store.mutateGlobalModelProfile(
+    profileId,
+    revision === 1 ? null : revision - 1,
+    async () => ({ id: profileId, revision, currentRevisionId }),
+  );
+  await revise("MODEL-PLAN-OLD", 1, "MODEL-PLAN-OLD-REVISION-1");
+  await revise("MODEL-PLAN-NEW", 1, "MODEL-PLAN-NEW-REVISION-1");
+  const plan = {
+    id: "PLAN-FROZEN-MODEL-REVISIONS",
+    version: 1,
+    status: "READY",
+    sourceProfileId: "MODEL-PLAN-OLD",
+    sourceRevisionId: "MODEL-PLAN-OLD-REVISION-1",
+    replacementProfileId: "MODEL-PLAN-NEW",
+    replacementRevisionId: "MODEL-PLAN-NEW-REVISION-1",
+    changes: [],
+    createdAt: "2026-08-16T00:00:00.000Z",
+    appliedAt: null,
+  };
+  await store.createModelReplacementPlan(plan);
+  await revise("MODEL-PLAN-OLD", 2, "MODEL-PLAN-OLD-REVISION-2");
+
+  await assert.rejects(
+    () => store.applyModelReplacementPlan(plan.id, plan.version),
+    /revision changed/,
+  );
+  assert.equal((await store.getModelReplacementPlan(plan.id)).status, "READY");
+  assert.equal((await store.getGlobalModelLifecycle("MODEL-PLAN-OLD")).lifecycle, "ACTIVE");
 });
 
 test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {

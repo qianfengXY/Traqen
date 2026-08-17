@@ -937,6 +937,7 @@ export class AnalysisModelRegistry {
   #clock;
   #fetchImpl;
   #profileStore;
+  #adapters;
   #applyingReplacementProfiles = new Set();
   #credentialHandles = new Map();
   #environmentCredentialHandles = new Map();
@@ -950,6 +951,7 @@ export class AnalysisModelRegistry {
     this.#clock = clock;
     this.#fetchImpl = fetchImpl;
     this.#profileStore = profileStore;
+    this.#adapters = new Map(adapters);
     const stored = this.#profileStore?.load() ?? { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };
     for (const value of stored.credentialHandles ?? []) {
       const handleId = requiredString(value?.id, "stored model credential handle id");
@@ -963,7 +965,7 @@ export class AnalysisModelRegistry {
       );
     }
     let createdEnvironmentHandle = false;
-    for (const [id, adapter] of adapters) {
+    for (const [id, adapter] of this.#adapters) {
       let credentialHandleId = this.#environmentCredentialHandles.get(id);
       if (!credentialHandleId) {
         credentialHandleId = `ENV-MODEL-CREDENTIAL-${randomUUID()}`;
@@ -1110,6 +1112,22 @@ export class AnalysisModelRegistry {
       credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
       environmentCredentialHandles: [...this.#environmentCredentialHandles].map(([profileId, credentialHandleId]) => ({ profileId, credentialHandleId })),
     });
+  }
+
+  refresh() {
+    if (!this.#profileStore) return this.list();
+    const reloaded = new AnalysisModelRegistry({
+      adapters: this.#adapters,
+      clock: this.#clock,
+      fetchImpl: this.#fetchImpl,
+      profileStore: this.#profileStore,
+    });
+    this.#profiles = reloaded.#profiles;
+    this.#revisions = reloaded.#revisions;
+    this.#credentialHandles = reloaded.#credentialHandles;
+    this.#environmentCredentialHandles = reloaded.#environmentCredentialHandles;
+    this.#applyingReplacementProfiles.clear();
+    return this.list();
   }
 
   list() {

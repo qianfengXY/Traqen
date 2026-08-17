@@ -89,21 +89,6 @@ function workspaceExecutionProfileConflict(expectedRevisionId, currentRevisionId
   return error;
 }
 
-const globalModelProfileMutationTailsByRegistry = new WeakMap();
-const unconfiguredGlobalModelProfileMutationTails = new Map();
-
-function globalModelProfileMutationTails(registry) {
-  if (!registry || (typeof registry !== "object" && typeof registry !== "function")) {
-    return unconfiguredGlobalModelProfileMutationTails;
-  }
-  let tails = globalModelProfileMutationTailsByRegistry.get(registry);
-  if (!tails) {
-    tails = new Map();
-    globalModelProfileMutationTailsByRegistry.set(registry, tails);
-  }
-  return tails;
-}
-
 function modelIdsFromDraftInput(input) {
   const slots = [input?.mainAgentSlot ?? input?.mainAgent, ...(input?.childAgentSlots ?? input?.childSlots ?? [])];
   return slots.map((slot) => slot?.modelProfileId ?? slot?.model).filter((value) => typeof value === "string" && value.trim() !== "");
@@ -682,7 +667,9 @@ export class TraceabilityApplication {
 
   async #syncGlobalModelLifecycles() {
     if (!this.#analysisModelRegistry) return;
+    this.#analysisModelRegistry.refresh?.();
     await Promise.all(this.#analysisModelRegistry.list().map(async (profile) => {
+      await this.#store.ensureGlobalModelProfileRevision(profile);
       const durable = await this.#store.getGlobalModelLifecycle(profile.id);
       if (durable) this.#analysisModelRegistry.applyDurableLifecycle(profile.id, durable.lifecycle);
     }));
@@ -691,7 +678,11 @@ export class TraceabilityApplication {
   async #globalModelProfiles() {
     if (!this.#analysisModelRegistry) return [];
     await this.#syncGlobalModelLifecycles();
-    return this.#analysisModelRegistry.list().map((profile) => ({
+    return this.#analysisModelRegistry.list().map((profile) => this.#globalModelProfile(profile));
+  }
+
+  #globalModelProfile(profile) {
+    return {
       id: profile.currentRevisionId,
       profileId: profile.id,
       currentRevisionId: profile.currentRevisionId,
@@ -708,7 +699,7 @@ export class TraceabilityApplication {
       lifecycle: profile.lifecycle ?? 'ACTIVE',
       configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt,
-    }));
+    };
   }
 
   async listGlobalModelProfiles() {
@@ -720,58 +711,34 @@ export class TraceabilityApplication {
     return (await this.#globalModelProfiles()).find((profile) => profile.profileId === profileId) ?? null;
   }
 
-  async #serializeGlobalModelProfileMutation(profileId, operation) {
-    const tails = globalModelProfileMutationTails(this.#analysisModelRegistry);
-    const prior = tails.get(profileId) ?? Promise.resolve();
-    let release;
-    const current = new Promise((resolve) => { release = resolve; });
-    tails.set(profileId, current);
-    await prior;
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (tails.get(profileId) === current) {
-        tails.delete(profileId);
-      }
-    }
-  }
-
   async configureGlobalModelProfile(input) {
     const profileId = input.profileId ?? input.id;
     requireId(profileId, "profileId");
-    return this.#serializeGlobalModelProfileMutation(
-      profileId,
-      () => this.#configureGlobalModelProfile(profileId, input),
-    );
-  }
-
-  async #configureGlobalModelProfile(profileId, input) {
-    await this.#syncGlobalModelLifecycles();
-    this.configureAnalysisModelProfile({ ...input, id: profileId });
-    const lifecycle = await this.#store.ensureGlobalModelLifecycle(profileId);
+    const configured = await this.#store.mutateGlobalModelProfile(profileId, null, async () => (
+      this.configureAnalysisModelProfile({ ...input, id: profileId })
+    ));
+    const lifecycle = await this.#store.getGlobalModelLifecycle(profileId);
     this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
-    return this.getGlobalModelProfile(profileId);
+    return this.#globalModelProfile(configured);
   }
 
   async updateGlobalModelProfile(profileId, input) {
     requireId(profileId, "profileId");
-    return this.#serializeGlobalModelProfileMutation(profileId, async () => {
-      const current = await this.getGlobalModelProfile(profileId);
-      if (!current) return null;
-      if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
-      assertOnlyFields(input, [
-        "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
-        "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
-      ], "globalModelRevision");
-      if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
-      if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
-      if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
-      if (input.expectedRevision !== current.revision) {
-        throw new PersistenceConflictError(`Global model revision conflict: expected ${input.expectedRevision}, current ${current.revision}`);
-      }
-      return this.#configureGlobalModelProfile(profileId, { ...input, id: profileId, profileId });
-    });
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
+    assertOnlyFields(input, [
+      "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
+      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
+    ], "globalModelRevision");
+    if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
+    if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
+    if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
+    if (!await this.getGlobalModelProfile(profileId)) return null;
+    const configured = await this.#store.mutateGlobalModelProfile(profileId, input.expectedRevision, async () => (
+      this.configureAnalysisModelProfile({ ...input, id: profileId, profileId })
+    ));
+    const lifecycle = await this.#store.getGlobalModelLifecycle(profileId);
+    this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
+    return this.#globalModelProfile(configured);
   }
 
   async verifyGlobalModelProfile(profileId) {
