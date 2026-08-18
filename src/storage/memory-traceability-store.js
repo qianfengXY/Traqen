@@ -1405,6 +1405,20 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     return this.#serializeHeadMutation(() => this.#setGlobalModelLifecycle(profileId, lifecycle));
   }
 
+  async retireGlobalModelProfileIfUnused(profileId) {
+    if (typeof profileId !== "string" || profileId.trim() === "") throw new TypeError("global model profileId must be a non-empty string");
+    return this.#serializeHeadMutation(async () => {
+      if (this.#currentModelReplacementReferences(profileId).length > 0) {
+        throw new PersistenceConflictError(`Model ${profileId} still has current Workspace references; replace them before retirement`);
+      }
+      const lifecycle = this.#globalModelLifecycles.get(profileId);
+      const next = lifecycle?.lifecycle === "RETIRING" && !this.#hasActiveModelRun(profileId)
+        ? "RETIRED"
+        : "RETIRING";
+      return this.#setGlobalModelLifecycle(profileId, next);
+    });
+  }
+
   async #setGlobalModelLifecycle(profileId, lifecycle) {
     const prior = this.#globalModelLifecycles.get(profileId);
     const next = deepFreeze({
@@ -1544,6 +1558,26 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
     }
     return references.sort((left, right) => left.workspaceId.localeCompare(right.workspaceId)
       || left.headKey.localeCompare(right.headKey));
+  }
+
+  #hasActiveModelRun(profileId) {
+    const latestRuns = new Map();
+    for (const [storageKey, checkpoint] of this.#understandingRecords) {
+      const separator = storageKey.indexOf("\u0000");
+      const workspaceId = storageKey.slice(0, separator);
+      if (!storageKey.slice(separator + 1).startsWith("WORKSPACE_ANALYSIS_JOB\u0000")) continue;
+      const run = checkpoint.state ?? checkpoint;
+      const runId = checkpoint.jobId ?? run.id;
+      const sequence = Number(checkpoint.checkpointSequence ?? run.version ?? 0);
+      const prior = latestRuns.get(`${workspaceId}\u0000${runId}`);
+      if (!prior || sequence > prior.sequence) latestRuns.set(`${workspaceId}\u0000${runId}`, { workspaceId, run, sequence });
+    }
+    for (const { workspaceId, run } of latestRuns.values()) {
+      if (!["RUNNING", "PAUSED"].includes(run.status) || typeof run.workspaceExecutionProfileRevisionId !== "string") continue;
+      const profile = this.#understandingRecords.get(key(workspaceId, `WORKSPACE_EXECUTION_PROFILE\u0000${run.workspaceExecutionProfileRevisionId}`));
+      if (recordReferencesModel(profile, profileId)) return true;
+    }
+    return false;
   }
 
   #assertCurrentModelReplacementReferenceSet(plan) {

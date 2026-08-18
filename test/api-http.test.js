@@ -693,6 +693,130 @@ test("ReplacementPlan rechecks durable readiness and lifecycle, records a redact
   assert.equal(durable.revisions.length >= 2, true, "each configured Global Model revision is a durable Store record");
 });
 
+test("retirement checks current Workspace references inside the Store mutation boundary", async () => {
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({
+      clock: fixedClock,
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+    }),
+  });
+  await application.createProject({
+    organization: { id: "ORG-RETIRE-RACE", name: "Org" },
+    tenant: { id: "TENANT-RETIRE-RACE", name: "Tenant" },
+    project: { id: "WORKSPACE-RETIRE-RACE", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  for (const profileId of ["MODEL-RETIRE-OLD", "MODEL-RETIRE-NEW"]) {
+    await application.configureGlobalModelProfile({
+      profileId,
+      displayName: profileId,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(),
+      apiKey: `${profileId}-secret`,
+    });
+    await application.verifyGlobalModelProfile(profileId);
+  }
+  await application.saveWorkspaceCapabilityDraft("WORKSPACE-RETIRE-RACE", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-RETIRE-OLD" },
+    childAgentSlots: [
+      { id: "C1", modelProfileId: "MODEL-RETIRE-OLD", independenceGroup: "I1" },
+      { id: "C2", modelProfileId: "MODEL-RETIRE-OLD", independenceGroup: "I2" },
+    ],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  await application.activateWorkspaceCapabilityDraft("WORKSPACE-RETIRE-RACE");
+  const plan = await application.createGlobalModelReplacementPlan("MODEL-RETIRE-OLD", {
+    replacementProfileId: "MODEL-RETIRE-NEW",
+  });
+  await application.applyGlobalModelReplacementPlan("MODEL-RETIRE-OLD", plan.id, { expectedVersion: plan.version });
+  application.getGlobalModelUsage = async () => {
+    throw new Error("retirement must not make a non-atomic application usage read");
+  };
+
+  await assert.rejects(
+    () => application.retireGlobalModelProfile("MODEL-RETIRE-NEW"),
+    /current Workspace references/,
+  );
+  assert.equal((await application.getGlobalModelProfile("MODEL-RETIRE-NEW")).lifecycle, "ACTIVE");
+});
+
+test("ReplacementPlan diagnostics are best-effort and never mask the triggering failure", async () => {
+  class DiagnosticUnavailableStore extends MemoryTraceabilityStore {
+    async recordModelReplacementFailureDiagnostic() {
+      throw new Error("diagnostic store unavailable");
+    }
+  }
+  const store = new DiagnosticUnavailableStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({
+      clock: fixedClock,
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+    }),
+  });
+  for (const profileId of ["MODEL-DIAGNOSTIC-OLD", "MODEL-DIAGNOSTIC-NEW"]) {
+    await application.configureGlobalModelProfile({
+      profileId,
+      displayName: profileId,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(),
+      apiKey: `${profileId}-secret`,
+    });
+    await application.verifyGlobalModelProfile(profileId);
+  }
+  const plan = await application.createGlobalModelReplacementPlan("MODEL-DIAGNOSTIC-OLD", {
+    replacementProfileId: "MODEL-DIAGNOSTIC-NEW",
+  });
+  await store.setGlobalModelLifecycle("MODEL-DIAGNOSTIC-NEW", "RETIRING");
+
+  await assert.rejects(
+    () => application.applyGlobalModelReplacementPlan("MODEL-DIAGNOSTIC-OLD", plan.id, { expectedVersion: plan.version }),
+    /must be ACTIVE|READY and ACTIVE/,
+  );
+  assert.deepEqual(await store.getModelReplacementPlan(plan.id), plan);
+});
+
+test("a credential persistence failure cannot commit a Global Model revision without its credential", async () => {
+  const profileStore = {
+    load: () => ({ profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] }),
+    save: () => {},
+    saveCredentialHandles: () => { throw new Error("credential disk unavailable"); },
+  };
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({
+      clock: fixedClock,
+      profileStore,
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+    }),
+  });
+
+  await assert.rejects(
+    () => application.configureGlobalModelProfile({
+      profileId: "MODEL-CREDENTIAL-FAILURE",
+      displayName: "Credential persistence failure",
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: "credential-failure",
+      apiKey: "secret-that-must-not-outlive-its-profile",
+    }),
+    /credential disk unavailable/,
+  );
+  assert.deepEqual((await store.listGlobalModelProfileRevisions()).profiles, []);
+  assert.equal(await application.getGlobalModelProfile("MODEL-CREDENTIAL-FAILURE"), null);
+});
+
 test("a replacement Plan cannot apply after an independently reloaded Registry revises its frozen model", async () => {
   const store = new MemoryTraceabilityStore();
   let persistedProfiles = { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };

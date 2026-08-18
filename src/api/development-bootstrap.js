@@ -198,6 +198,7 @@ export async function createIsolatedDevelopmentApplication({
     },
     developmentUnderstanding,
   });
+  await configured.ready;
   await configured.application.registerCapabilityTemplate({
     kind: "MODEL",
     logicalName: DEVELOPMENT_MODEL,

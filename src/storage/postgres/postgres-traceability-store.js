@@ -3174,6 +3174,38 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     });
   }
 
+  async retireGlobalModelProfileIfUnused(profileId) {
+    requireId(profileId, "globalModel.profileId");
+    return this.#transaction(async () => {
+      await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profileId}`]);
+      await this.#database.exec("LOCK TABLE workspace_capability_head IN SHARE ROW EXCLUSIVE MODE");
+      await this.#database.exec("LOCK TABLE understanding_record IN SHARE ROW EXCLUSIVE MODE");
+      if ((await this.#currentModelReplacementReferences(profileId)).length > 0) {
+        throw new PersistenceConflictError(`Model ${profileId} still has current Workspace references; replace them before retirement`);
+      }
+      const current = await this.#database.query(
+        `SELECT lifecycle FROM global_model_lifecycle WHERE profile_id = $1 FOR UPDATE`,
+        [profileId],
+      );
+      const nextLifecycle = current.rows[0]?.lifecycle === "RETIRING" && !(await this.#hasActiveModelRun(profileId))
+        ? "RETIRED"
+        : "RETIRING";
+      const now = new Date().toISOString();
+      const result = await this.#database.query(
+        `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
+         VALUES ($1, $2, 1, $3)
+         ON CONFLICT (profile_id) DO UPDATE
+           SET lifecycle = EXCLUDED.lifecycle,
+               version = global_model_lifecycle.version + 1,
+               updated_at = EXCLUDED.updated_at
+         RETURNING profile_id, lifecycle, version, updated_at`,
+        [profileId, nextLifecycle, now],
+      );
+      const row = result.rows[0];
+      return deepFreeze({ profileId: row.profile_id, lifecycle: row.lifecycle, version: Number(row.version), updatedAt: new Date(row.updated_at).toISOString() });
+    });
+  }
+
   async getGlobalModelProfileRevision(profileId) {
     requireId(profileId, "globalModel.profileId");
     const result = await this.#database.query(
@@ -3396,6 +3428,30 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         version: Number(version),
         recordId,
       }));
+  }
+
+  async #hasActiveModelRun(profileId) {
+    const result = await this.#database.query(
+      `WITH latest_run AS (
+         SELECT DISTINCT ON (project_id, COALESCE(record_payload->>'jobId', record_payload->>'id'))
+           project_id,
+           COALESCE(record_payload->'state', record_payload) AS run
+         FROM understanding_record
+         WHERE record_type = 'WORKSPACE_ANALYSIS_JOB'
+         ORDER BY project_id,
+           COALESCE(record_payload->>'jobId', record_payload->>'id'),
+           COALESCE((record_payload->>'checkpointSequence')::integer, (record_payload->'state'->>'version')::integer, 0) DESC
+       )
+       SELECT profile.record_payload
+       FROM latest_run run
+       JOIN understanding_record profile
+         ON profile.project_id = run.project_id
+        AND profile.record_type = 'WORKSPACE_EXECUTION_PROFILE'
+        AND profile.id = run.run->>'workspaceExecutionProfileRevisionId'
+       WHERE run.run->>'status' = ANY($1::text[])`,
+      [["RUNNING", "PAUSED"]],
+    );
+    return result.rows.some(({ record_payload: profile }) => recordReferencesModel(profile, profileId));
   }
 
   async #assertCurrentModelReplacementReferenceSet(plan) {

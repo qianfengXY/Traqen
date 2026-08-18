@@ -423,8 +423,7 @@ export function createConfiguredApplication({
       },
     }),
   });
-  if (legacyUnderstandingRuntime) {
-    queueMicrotask(() => legacyUnderstandingRuntime.recover().catch(() => undefined));
-  }
-  return { application, corsAllowedOrigins };
+  const ready = application.hydrateGlobalModelProfiles()
+    .then(() => legacyUnderstandingRuntime ? legacyUnderstandingRuntime.recover() : undefined);
+  return { application, corsAllowedOrigins, ready };
 }

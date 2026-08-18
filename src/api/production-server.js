@@ -39,10 +39,12 @@ try {
   await database.close().catch(() => {});
   throw error;
 }
-const { application, corsAllowedOrigins } = createConfiguredApplication({
+const configuredApplication = createConfiguredApplication({
   store: new PostgresTraceabilityStore(database),
   env: process.env,
 });
+await configuredApplication.ready;
+const { application, corsAllowedOrigins } = configuredApplication;
 const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, apiBearerToken });
 
 server.listen(port, host, () => {

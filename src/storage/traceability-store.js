@@ -279,6 +279,10 @@ export class TraceabilityStore {
     throw new Error("setGlobalModelLifecycle must be implemented");
   }
 
+  async retireGlobalModelProfileIfUnused(_profileId) {
+    throw new Error("retireGlobalModelProfileIfUnused must be implemented");
+  }
+
   async getGlobalModelProfileRevision(_profileId) {
     throw new Error("getGlobalModelProfileRevision must be implemented");
   }

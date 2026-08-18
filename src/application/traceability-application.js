@@ -716,6 +716,11 @@ export class TraceabilityApplication {
     return this.#globalModelProfiles();
   }
 
+  async hydrateGlobalModelProfiles() {
+    await this.#syncGlobalModelLifecycles();
+    return this.#analysisModelRegistry?.list() ?? [];
+  }
+
   async getGlobalModelProfile(profileId) {
     requireId(profileId, "profileId");
     return (await this.#globalModelProfiles()).find((profile) => profile.profileId === profileId) ?? null;
@@ -724,10 +729,18 @@ export class TraceabilityApplication {
   async configureGlobalModelProfile(input) {
     const profileId = input.profileId ?? input.id;
     requireId(profileId, "profileId");
-    const configured = await this.#store.mutateGlobalModelProfile(profileId, null, async () => (
-      this.configureAnalysisModelProfile({ ...input, id: profileId }, { persist: false })
-    ));
-    this.#analysisModelRegistry?.persistCredentialHandles?.();
+    const before = this.#analysisModelRegistry?.durableProfileSnapshot?.() ?? null;
+    let configured;
+    try {
+      configured = await this.#store.mutateGlobalModelProfile(profileId, null, async () => {
+        const profile = this.configureAnalysisModelProfile({ ...input, id: profileId }, { persist: false });
+        this.#analysisModelRegistry?.persistCredentialHandles?.();
+        return profile;
+      });
+    } catch (error) {
+      if (before) this.#analysisModelRegistry?.replaceDurableProfiles?.(before);
+      throw error;
+    }
     const lifecycle = await this.#store.getGlobalModelLifecycle(profileId);
     this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
     return this.#globalModelProfile(configured);
@@ -744,10 +757,18 @@ export class TraceabilityApplication {
     if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
     if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
     if (!await this.getGlobalModelProfile(profileId)) return null;
-    const configured = await this.#store.mutateGlobalModelProfile(profileId, input.expectedRevision, async () => (
-      this.configureAnalysisModelProfile({ ...input, id: profileId, profileId }, { persist: false })
-    ));
-    this.#analysisModelRegistry?.persistCredentialHandles?.();
+    const before = this.#analysisModelRegistry?.durableProfileSnapshot?.() ?? null;
+    let configured;
+    try {
+      configured = await this.#store.mutateGlobalModelProfile(profileId, input.expectedRevision, async () => {
+        const profile = this.configureAnalysisModelProfile({ ...input, id: profileId, profileId }, { persist: false });
+        this.#analysisModelRegistry?.persistCredentialHandles?.();
+        return profile;
+      });
+    } catch (error) {
+      if (before) this.#analysisModelRegistry?.replaceDurableProfiles?.(before);
+      throw error;
+    }
     const lifecycle = await this.#store.getGlobalModelLifecycle(profileId);
     this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
     return this.#globalModelProfile(configured);
@@ -760,7 +781,6 @@ export class TraceabilityApplication {
     await this.#store.mutateGlobalModelProfile(profileId, current.revision, async () => (
       this.verifyAnalysisModelProfile(profileId, { persist: false })
     ));
-    this.#analysisModelRegistry?.persistCredentialHandles?.();
     return this.getGlobalModelProfile(profileId);
   }
 
@@ -806,13 +826,13 @@ export class TraceabilityApplication {
     assertOnlyFields(input, ["expectedVersion"], "modelReplacementApply");
     const plan = await this.#workspaceFoundation.getModelReplacementPlan(planId);
     if (!plan || plan.sourceProfileId !== profileId) return null;
-    const begun = this.#analysisModelRegistry.beginReplacementPlan(plan, input?.expectedVersion);
-    if (begun.status === "APPLIED") {
-      const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
-      this.#analysisModelRegistry.applyDurableLifecycle(plan.sourceProfileId, "RETIRING");
-      return applied;
-    }
     try {
+      const begun = this.#analysisModelRegistry.beginReplacementPlan(plan, input?.expectedVersion);
+      if (begun.status === "APPLIED") {
+        const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
+        this.#analysisModelRegistry.applyDurableLifecycle(plan.sourceProfileId, "RETIRING");
+        return applied;
+      }
       const currentChanges = await this.#workspaceFoundation.prepareModelReplacement(
         profileId,
         plan.replacementProfileId,
@@ -828,29 +848,28 @@ export class TraceabilityApplication {
       return Object.freeze(applied);
     } catch (error) {
       this.#analysisModelRegistry.abortReplacementPlan(plan);
-      await this.#store.recordModelReplacementFailureDiagnostic({
-        id: randomUUID(),
-        planId: plan.id,
-        sourceProfileId: plan.sourceProfileId,
-        replacementProfileId: plan.replacementProfileId,
-        expectedVersion: input.expectedVersion,
-        outcome: error instanceof PersistenceConflictError ? "CONFLICT" : "REJECTED",
-        occurredAt: this.#clock().toISOString(),
-      });
+      try {
+        await this.#store.recordModelReplacementFailureDiagnostic({
+          id: randomUUID(),
+          planId: plan.id,
+          sourceProfileId: plan.sourceProfileId,
+          replacementProfileId: plan.replacementProfileId,
+          expectedVersion: input.expectedVersion,
+          outcome: error instanceof PersistenceConflictError ? "CONFLICT" : "REJECTED",
+          occurredAt: this.#clock().toISOString(),
+        });
+      } catch {
+        // Observability must not replace the authoritative replacement failure.
+      }
       throw error;
     }
   }
 
   async retireGlobalModelProfile(profileId) {
-    const usage = await this.getGlobalModelUsage(profileId);
-    if (usage.references.some(({ source }) => source !== 'ACTIVE_RUN')) {
-      throw new TypeError(`Model ${profileId} still has current Workspace references; replace them before retirement`);
-    }
     const current = await this.getGlobalModelProfile(profileId);
     if (!current) throw new TypeError(`Analysis model profile ${profileId} is not configured`);
-    const lifecycle = current.lifecycle === "RETIRING" && usage.references.length === 0 ? "RETIRED" : "RETIRING";
-    await this.#store.setGlobalModelLifecycle(profileId, lifecycle);
-    this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle);
+    const lifecycle = await this.#store.retireGlobalModelProfileIfUnused(profileId);
+    this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
     return this.getGlobalModelProfile(profileId);
   }
 
