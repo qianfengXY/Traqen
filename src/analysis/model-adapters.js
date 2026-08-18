@@ -1041,6 +1041,7 @@ export class AnalysisModelRegistry {
       transport: profile.transport,
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
+      maximumOutputBytes: profile.maximumOutputBytes,
       timeoutMs: profile.timeoutMs,
       stream: profile.stream,
       source: profile.source,
@@ -1112,6 +1113,63 @@ export class AnalysisModelRegistry {
       credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
       environmentCredentialHandles: [...this.#environmentCredentialHandles].map(([profileId, credentialHandleId]) => ({ profileId, credentialHandleId })),
     });
+  }
+
+  persistCredentialHandles() {
+    if (!this.#profileStore) return;
+    const value = {
+      credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
+      environmentCredentialHandles: [...this.#environmentCredentialHandles].map(([profileId, credentialHandleId]) => ({ profileId, credentialHandleId })),
+    };
+    if (typeof this.#profileStore.saveCredentialHandles === "function") {
+      this.#profileStore.saveCredentialHandles(value);
+      return;
+    }
+    this.#persist();
+  }
+
+  refreshCredentialHandles() {
+    if (!this.#profileStore) return;
+    const stored = this.#profileStore.load();
+    this.#credentialHandles = new Map((stored.credentialHandles ?? []).map(({ id, secret }) => [
+      requiredString(id, "stored model credential handle id"),
+      requiredString(secret, `stored model credential ${id}`),
+    ]));
+    this.#environmentCredentialHandles = new Map((stored.environmentCredentialHandles ?? []).map(({ profileId, credentialHandleId }) => [
+      requiredString(profileId, "stored environment model profile id"),
+      requiredString(credentialHandleId, "stored environment model credentialHandleId"),
+    ]));
+  }
+
+  durableProfileSnapshot() {
+    return {
+      profiles: [...this.#profiles.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
+      revisions: [...this.#revisions.values()].filter((profile) => profile.source === "RUNTIME").map((profile) => this.#serializable(profile)),
+    };
+  }
+
+  replaceDurableProfiles(snapshot) {
+    if (!snapshot || !Array.isArray(snapshot.profiles) || !Array.isArray(snapshot.revisions)) {
+      throw new TypeError("durable model profile snapshot requires profiles[] and revisions[]");
+    }
+    const stored = {
+      profiles: structuredClone(snapshot.profiles),
+      revisions: structuredClone(snapshot.revisions),
+      credentialHandles: [...this.#credentialHandles].map(([id, secret]) => ({ id, secret })),
+      environmentCredentialHandles: [...this.#environmentCredentialHandles].map(([profileId, credentialHandleId]) => ({ profileId, credentialHandleId })),
+    };
+    const reloaded = new AnalysisModelRegistry({
+      adapters: this.#adapters,
+      clock: this.#clock,
+      fetchImpl: this.#fetchImpl,
+      profileStore: { load: () => stored, save: () => {} },
+    });
+    this.#profiles = reloaded.#profiles;
+    this.#revisions = reloaded.#revisions;
+    this.#credentialHandles = reloaded.#credentialHandles;
+    this.#environmentCredentialHandles = reloaded.#environmentCredentialHandles;
+    this.#applyingReplacementProfiles.clear();
+    return this.list();
   }
 
   refresh() {
@@ -1210,7 +1268,7 @@ export class AnalysisModelRegistry {
     return scoped ? profile.adapter : null;
   }
 
-  configure(input) {
+  configure(input, { persist = true } = {}) {
     if (!input || typeof input !== "object") throw new TypeError("analysis model profile must be an object");
     const id = requiredString(input.id, "analysis model profile id");
     if (this.#applyingReplacementProfiles.has(id)) {
@@ -1227,7 +1285,7 @@ export class AnalysisModelRegistry {
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
       const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile);
-      this.#persist();
+      if (persist) this.#persist();
       return this.#public(profile);
     }
     if (transport !== "API") throw new TypeError("analysis model transport must be API or CLI");
@@ -1248,17 +1306,17 @@ export class AnalysisModelRegistry {
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
     const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
     this.#publishRevision(profile);
-    this.#persist();
+    if (persist) this.#persist();
     return this.#public(profile);
   }
 
-  async verify(id) {
+  async verify(id, { persist = true } = {}) {
     const profile = this.#profiles.get(requiredString(id, "analysis model profile id"));
     if (!profile) throw new TypeError(`Analysis model profile ${id} is not configured`);
     const verification = await profile.adapter.verify();
     profile.verifiedAt = this.#clock().toISOString();
     this.#revisions.set(profile.currentRevisionId, { ...this.#revisions.get(profile.currentRevisionId), verifiedAt: profile.verifiedAt });
-    this.#persist();
+    if (persist) this.#persist();
     return { ...this.#public(profile), latencyMs: verification.latencyMs };
   }
 
@@ -1310,7 +1368,7 @@ export class AnalysisModelRegistry {
   beginReplacementPlan(plan, expectedVersion) {
     requiredString(plan?.id, "replacement plan id");
     if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new TypeError("replacement plan expectedVersion must be a positive integer");
-    if (plan.status === "APPLIED" && plan.version === expectedVersion + 2) return structuredClone(plan);
+    if (plan.status === "APPLIED" && plan.version === expectedVersion + 1) return structuredClone(plan);
     if (plan.status !== "READY" || plan.version !== expectedVersion) throw new TypeError(`Replacement plan ${plan.id} version conflict`);
     if (this.#profiles.get(plan.sourceProfileId)?.currentRevisionId !== plan.sourceRevisionId
       || this.#profiles.get(plan.replacementProfileId)?.currentRevisionId !== plan.replacementRevisionId) {
@@ -1328,14 +1386,14 @@ export class AnalysisModelRegistry {
     return structuredClone(plan);
   }
 
-  completeReplacementPlan(plan) {
+  completeReplacementPlan(plan, { persist = true } = {}) {
     requiredString(plan?.id, "replacement plan id");
     if (plan.status !== "APPLIED") throw new TypeError(`Replacement plan ${plan.id} is not applied`);
     const source = this.#profiles.get(plan.sourceProfileId);
     if (!source || source.currentRevisionId !== plan.sourceRevisionId) throw new TypeError(`Replacement plan ${plan.id} is stale`);
     try {
       source.lifecycle = "RETIRING";
-      this.#persist();
+      if (persist) this.#persist();
       return structuredClone(plan);
     } finally {
       this.#applyingReplacementProfiles.delete(plan.sourceProfileId);

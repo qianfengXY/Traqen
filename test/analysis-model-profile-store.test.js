@@ -96,3 +96,27 @@ test("the model Registry owns neither replacement lifecycle nor the durable Plan
   assert.equal(Object.hasOwn(profileStore.load().profiles.find(({ id }) => id === "OLD"), "lifecycle"), false);
   assert.equal(reloaded.list().find(({ id }) => id === "OLD").lifecycle, "ACTIVE");
 });
+
+test("encrypted CredentialHandle persistence merges independent Registry revisions instead of overwriting another model", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "traqen-model-profile-merge-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const profileStore = new EncryptedAnalysisModelProfileStore({ filePath: join(directory, "profiles.enc.json") });
+  const primary = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
+  for (const id of ["MODEL-A", "MODEL-B"]) {
+    primary.configure({ id, endpoint: "https://models.example/v1", model: `${id}-v1`, apiKey: `${id}-secret` });
+  }
+  const first = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
+  const second = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
+
+  first.configure({ id: "MODEL-A", endpoint: "https://models.example/v1", model: "model-a-v2", apiKey: "" });
+  second.configure({ id: "MODEL-B", endpoint: "https://models.example/v1", model: "model-b-v2", apiKey: "" });
+
+  const reloaded = new AnalysisModelRegistry({ profileStore, fetchImpl: verifiedFetch() });
+  assert.deepEqual(
+    reloaded.list().map(({ id, model, revision }) => ({ id, model, revision })),
+    [
+      { id: "MODEL-A", model: "model-a-v2", revision: 2 },
+      { id: "MODEL-B", model: "model-b-v2", revision: 2 },
+    ],
+  );
+});

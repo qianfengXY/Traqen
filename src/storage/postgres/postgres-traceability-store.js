@@ -55,6 +55,11 @@ function plannedModelReplacementReferences(plan) {
     || left.headKey.localeCompare(right.headKey));
 }
 
+function durableGlobalModelProfile(profile) {
+  const { apiKey: _apiKey, secret: _secret, latencyMs: _latencyMs, ...durable } = structuredClone(profile);
+  return durable;
+}
+
 function manifestContentHash(manifest) {
   return createHash("sha256")
     .update(
@@ -3199,6 +3204,29 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
          ON CONFLICT (profile_id) DO NOTHING`,
         [profile.id, profile.revision, profile.currentRevisionId, new Date().toISOString()],
       );
+      const durable = durableGlobalModelProfile(profile);
+      await this.#database.query(
+        `INSERT INTO global_model_profile_revision (revision_id, profile_id, revision, profile_payload, created_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (revision_id) DO NOTHING`,
+        [profile.currentRevisionId, profile.id, profile.revision, JSON.stringify(durable), new Date().toISOString()],
+      );
+      const historical = await this.#database.query(
+        `SELECT profile_id, revision, profile_payload
+         FROM global_model_profile_revision WHERE revision_id = $1 FOR UPDATE`,
+        [profile.currentRevisionId],
+      );
+      const historicalRow = historical.rows[0];
+      if (!historicalRow || historicalRow.profile_id !== profile.id || Number(historicalRow.revision) !== profile.revision
+        || canonicalJson(historicalRow.profile_payload) !== canonicalJson(durable)) {
+        throw new PersistenceConflictError(`Global model revision ${profile.currentRevisionId} conflicts with durable metadata`);
+      }
+      await this.#database.query(
+        `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
+         VALUES ($1, 'ACTIVE', 1, $2)
+         ON CONFLICT (profile_id) DO NOTHING`,
+        [profile.id, new Date().toISOString()],
+      );
       const selected = await this.#database.query(
         `SELECT profile_id, revision, current_revision_id, updated_at
          FROM global_model_profile_revision_head WHERE profile_id = $1 FOR UPDATE`,
@@ -3214,6 +3242,25 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
         currentRevisionId: row.current_revision_id,
         updatedAt: new Date(row.updated_at).toISOString(),
       });
+    });
+  }
+
+  async listGlobalModelProfileRevisions() {
+    const [profiles, revisions] = await Promise.all([
+      this.#database.query(
+        `SELECT r.profile_payload
+         FROM global_model_profile_revision_head h
+         JOIN global_model_profile_revision r ON r.revision_id = h.current_revision_id
+         ORDER BY h.profile_id`,
+      ),
+      this.#database.query(
+        `SELECT profile_payload FROM global_model_profile_revision
+         ORDER BY profile_id, revision`,
+      ),
+    ]);
+    return deepFreeze({
+      profiles: profiles.rows.map((row) => structuredClone(row.profile_payload)),
+      revisions: revisions.rows.map((row) => structuredClone(row.profile_payload)),
     });
   }
 
@@ -3249,7 +3296,12 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       }
       const profile = await operation(current ? deepFreeze(structuredClone(current)) : null);
       const nextRevision = (current?.revision ?? 0) + 1;
-      if (!profile || profile.id !== profileId || profile.revision !== nextRevision || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
+      const readinessRefresh = current
+        && profile?.id === profileId
+        && profile.revision === current.revision
+        && profile.currentRevisionId === current.currentRevisionId;
+      if (!profile || profile.id !== profileId || (!readinessRefresh && profile.revision !== nextRevision)
+        || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
         throw new PersistenceConflictError(`Global model mutation for ${profileId} did not produce revision ${nextRevision}`);
       }
       const now = new Date().toISOString();
@@ -3268,6 +3320,23 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
            VALUES ($1, $2, $3, $4)`,
           [profileId, profile.revision, profile.currentRevisionId, now],
         );
+      }
+      const durable = durableGlobalModelProfile(profile);
+      await this.#database.query(
+        `INSERT INTO global_model_profile_revision (revision_id, profile_id, revision, profile_payload, created_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (revision_id) DO ${readinessRefresh ? "UPDATE SET profile_payload = EXCLUDED.profile_payload" : "NOTHING"}`,
+        [profile.currentRevisionId, profileId, profile.revision, JSON.stringify(durable), now],
+      );
+      const historical = await this.#database.query(
+        `SELECT profile_id, revision, profile_payload
+         FROM global_model_profile_revision WHERE revision_id = $1 FOR UPDATE`,
+        [profile.currentRevisionId],
+      );
+      const historicalRow = historical.rows[0];
+      if (!historicalRow || historicalRow.profile_id !== profileId || Number(historicalRow.revision) !== profile.revision
+        || canonicalJson(historicalRow.profile_payload) !== canonicalJson(durable)) {
+        throw new PersistenceConflictError(`Global model revision ${profile.currentRevisionId} conflicts with durable metadata`);
       }
       await this.#database.query(
         `INSERT INTO global_model_lifecycle (profile_id, lifecycle, version, updated_at)
@@ -3349,16 +3418,35 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       await this.#database.query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", [`global-model-profile:${profileId}`]);
     }
     if (expected.length === 0) return;
-    const current = await this.#database.query(
+    const profileIds = expected.map(([profileId]) => profileId);
+    const heads = await this.#database.query(
       `SELECT profile_id, current_revision_id
        FROM global_model_profile_revision_head
        WHERE profile_id = ANY($1::text[]) FOR UPDATE`,
-      [expected.map(([profileId]) => profileId)],
+      [profileIds],
     );
-    const revisions = new Map(current.rows.map((row) => [row.profile_id, row.current_revision_id]));
+    const lifecycles = await this.#database.query(
+      `SELECT profile_id, lifecycle FROM global_model_lifecycle
+       WHERE profile_id = ANY($1::text[]) FOR UPDATE`,
+      [profileIds],
+    );
+    const revisions = new Map(heads.rows.map((row) => [row.profile_id, row]));
+    const lifecycleByProfile = new Map(lifecycles.rows.map((row) => [row.profile_id, row.lifecycle]));
+    const metadata = await this.#database.query(
+      `SELECT revision_id, profile_payload FROM global_model_profile_revision
+       WHERE revision_id = ANY($1::text[]) FOR UPDATE`,
+      [heads.rows.map((row) => row.current_revision_id)],
+    );
+    const metadataByRevision = new Map(metadata.rows.map((row) => [row.revision_id, row.profile_payload]));
     for (const [profileId, expectedRevisionId] of expected) {
-      if (revisions.get(profileId) !== expectedRevisionId) {
+      const currentProfile = revisions.get(profileId);
+      if (currentProfile?.current_revision_id !== expectedRevisionId) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} ${profileId} revision changed; refresh the Workspace usage preview`);
+      }
+    }
+    for (const [profileId, expectedRevisionId] of expected) {
+      if (lifecycleByProfile.get(profileId) !== "ACTIVE" || !metadataByRevision.get(expectedRevisionId)?.ready) {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} ${profileId} must remain READY and ACTIVE`);
       }
     }
   }
@@ -3374,7 +3462,7 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       if (selected.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} does not exist`);
       const row = selected.rows[0];
       const plan = row.plan_payload;
-      if (row.status === "APPLIED" && Number(row.version) === expectedVersion + 2) {
+      if (row.status === "APPLIED" && Number(row.version) === expectedVersion + 1) {
         return deepFreeze({
           plan: structuredClone(plan),
           workspaces: plan.changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })),
@@ -3383,21 +3471,6 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       if (row.status !== "READY" || Number(row.version) !== expectedVersion) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
       }
-      const applyingAt = new Date().toISOString();
-      const applying = {
-        ...plan,
-        status: "APPLYING",
-        version: expectedVersion + 1,
-        applyingAt,
-      };
-      const begun = await this.#database.query(
-        `UPDATE model_replacement_plan
-         SET version = $2, status = 'APPLYING', plan_payload = $3::jsonb, updated_at = $4
-         WHERE plan_id = $1 AND version = $5 AND status = 'READY'
-         RETURNING plan_id`,
-        [planId, applying.version, JSON.stringify(applying), applyingAt, expectedVersion],
-      );
-      if (begun.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
       await this.#assertCurrentModelReplacementRevisions(plan);
       await this.#database.exec("LOCK TABLE workspace_capability_head IN SHARE ROW EXCLUSIVE MODE");
       await this.#assertCurrentModelReplacementReferenceSet(plan);
@@ -3420,19 +3493,50 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
       const applied = {
         ...plan,
         status: "APPLIED",
-        version: expectedVersion + 2,
+        version: expectedVersion + 1,
         appliedAt,
       };
       const updated = await this.#database.query(
         `UPDATE model_replacement_plan
          SET version = $2, status = 'APPLIED', plan_payload = $3::jsonb, updated_at = $4
-         WHERE plan_id = $1 AND version = $5 AND status = 'APPLYING'
+         WHERE plan_id = $1 AND version = $5 AND status = 'READY'
          RETURNING plan_id`,
-        [planId, applied.version, JSON.stringify(applied), applied.appliedAt, expectedVersion + 1],
+        [planId, applied.version, JSON.stringify(applied), applied.appliedAt, expectedVersion],
       );
       if (updated.rows.length !== 1) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} version conflict`);
       return deepFreeze({ plan: structuredClone(applied), workspaces });
     });
+  }
+
+  async recordModelReplacementFailureDiagnostic(diagnostic) {
+    requireId(diagnostic?.id, "modelReplacementFailureDiagnostic.id");
+    requireId(diagnostic?.planId, "modelReplacementFailureDiagnostic.planId");
+    const { apiKey: _apiKey, secret: _secret, ...safe } = structuredClone(diagnostic);
+    await this.#database.query(
+      `INSERT INTO model_replacement_failure_diagnostic (diagnostic_id, plan_id, diagnostic_payload, occurred_at)
+       VALUES ($1, $2, $3::jsonb, $4)
+       ON CONFLICT (diagnostic_id) DO NOTHING`,
+      [safe.id, safe.planId, JSON.stringify(safe), safe.occurredAt],
+    );
+    const result = await this.#database.query(
+      `SELECT diagnostic_payload FROM model_replacement_failure_diagnostic WHERE diagnostic_id = $1`,
+      [safe.id],
+    );
+    const stored = result.rows[0]?.diagnostic_payload;
+    if (!stored || canonicalJson(stored) !== canonicalJson(safe)) {
+      throw new PersistenceConflictError(`Model replacement failure diagnostic ${safe.id} conflicts with an existing observation`);
+    }
+    return deepFreeze(structuredClone(stored));
+  }
+
+  async listModelReplacementFailureDiagnostics(planId) {
+    requireId(planId, "modelReplacementPlan.id");
+    const result = await this.#database.query(
+      `SELECT diagnostic_payload FROM model_replacement_failure_diagnostic
+       WHERE plan_id = $1 ORDER BY occurred_at, diagnostic_id`,
+      [planId],
+    );
+    return deepFreeze(result.rows.map((row) => structuredClone(row.diagnostic_payload)));
   }
 
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {

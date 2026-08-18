@@ -248,7 +248,7 @@ test("model replacement plans pin both model revisions before retiring the sourc
   assert.equal(plan.status, "READY");
   assert.equal(registry.beginReplacementPlan(plan, plan.version).status, "READY");
   assert.equal(registry.beginReplacementPlan(plan, plan.version).status, "READY", "a retry resumes an interrupted apply");
-  const applied = { ...plan, status: "APPLIED", version: plan.version + 2 };
+  const applied = { ...plan, status: "APPLIED", version: plan.version + 1 };
   assert.equal(registry.completeReplacementPlan(applied).status, "APPLIED");
   assert.equal(registry.beginReplacementPlan(applied, plan.version).status, "APPLIED", "a retry observes an already completed apply");
   assert.equal(registry.completeReplacementPlan(applied).status, "APPLIED");

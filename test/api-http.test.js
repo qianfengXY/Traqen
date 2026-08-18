@@ -648,6 +648,51 @@ test("global model revision CAS rejects a stale writer from an independently rel
   assert.equal(reloaded.list().find(({ id }) => id === "MODEL-RELOADED-CAS").revision, created.revision + 1);
 });
 
+test("ReplacementPlan rechecks durable readiness and lifecycle, records a redacted failure, and advances READY directly to APPLIED", async () => {
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({
+      clock: fixedClock,
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+    }),
+  });
+  for (const profileId of ["MODEL-PLAN-SOURCE", "MODEL-PLAN-REPLACEMENT"]) {
+    await application.configureGlobalModelProfile({
+      profileId,
+      displayName: profileId,
+      transport: "API",
+      endpoint: "https://models.example/v1",
+      model: profileId.toLowerCase(),
+      apiKey: `${profileId}-secret`,
+    });
+    await application.verifyGlobalModelProfile(profileId);
+  }
+  const plan = await application.createGlobalModelReplacementPlan("MODEL-PLAN-SOURCE", {
+    replacementProfileId: "MODEL-PLAN-REPLACEMENT",
+  });
+  await store.setGlobalModelLifecycle("MODEL-PLAN-REPLACEMENT", "RETIRING");
+
+  await assert.rejects(
+    () => application.applyGlobalModelReplacementPlan("MODEL-PLAN-SOURCE", plan.id, { expectedVersion: plan.version }),
+    /READY and ACTIVE|must be ACTIVE/,
+  );
+  const rejected = await store.getModelReplacementPlan(plan.id);
+  assert.deepEqual({ status: rejected.status, version: rejected.version }, { status: "READY", version: 1 });
+  const diagnostics = await store.listModelReplacementFailureDiagnostics(plan.id);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(JSON.stringify(diagnostics).includes("MODEL-PLAN-REPLACEMENT-secret"), false);
+  assert.equal(Object.hasOwn(diagnostics[0], "message"), false);
+
+  await store.setGlobalModelLifecycle("MODEL-PLAN-REPLACEMENT", "ACTIVE");
+  const applied = await application.applyGlobalModelReplacementPlan("MODEL-PLAN-SOURCE", plan.id, { expectedVersion: plan.version });
+  assert.deepEqual({ status: applied.plan.status, version: applied.plan.version }, { status: "APPLIED", version: 2 });
+  const durable = await store.listGlobalModelProfileRevisions();
+  assert.equal(JSON.stringify(durable).includes("MODEL-PLAN-SOURCE-secret"), false);
+  assert.equal(durable.revisions.length >= 2, true, "each configured Global Model revision is a durable Store record");
+});
+
 test("a replacement Plan cannot apply after an independently reloaded Registry revises its frozen model", async () => {
   const store = new MemoryTraceabilityStore();
   let persistedProfiles = { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };

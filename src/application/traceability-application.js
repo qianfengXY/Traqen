@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   createClaim,
   createClaimScope,
@@ -667,7 +669,15 @@ export class TraceabilityApplication {
 
   async #syncGlobalModelLifecycles() {
     if (!this.#analysisModelRegistry) return;
-    this.#analysisModelRegistry.refresh?.();
+    this.#analysisModelRegistry.refreshCredentialHandles?.();
+    let durableProfiles = await this.#store.listGlobalModelProfileRevisions();
+    if (durableProfiles.profiles.length === 0) {
+      for (const profile of this.#analysisModelRegistry.list()) {
+        await this.#store.ensureGlobalModelProfileRevision(profile);
+      }
+      durableProfiles = await this.#store.listGlobalModelProfileRevisions();
+    }
+    if (durableProfiles.profiles.length > 0) this.#analysisModelRegistry.replaceDurableProfiles?.(durableProfiles);
     await Promise.all(this.#analysisModelRegistry.list().map(async (profile) => {
       await this.#store.ensureGlobalModelProfileRevision(profile);
       const durable = await this.#store.getGlobalModelLifecycle(profile.id);
@@ -715,8 +725,9 @@ export class TraceabilityApplication {
     const profileId = input.profileId ?? input.id;
     requireId(profileId, "profileId");
     const configured = await this.#store.mutateGlobalModelProfile(profileId, null, async () => (
-      this.configureAnalysisModelProfile({ ...input, id: profileId })
+      this.configureAnalysisModelProfile({ ...input, id: profileId }, { persist: false })
     ));
+    this.#analysisModelRegistry?.persistCredentialHandles?.();
     const lifecycle = await this.#store.getGlobalModelLifecycle(profileId);
     this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
     return this.#globalModelProfile(configured);
@@ -734,8 +745,9 @@ export class TraceabilityApplication {
     if (!Number.isInteger(input?.expectedRevision) || input.expectedRevision < 1) throw new TypeError("expectedRevision is required");
     if (!await this.getGlobalModelProfile(profileId)) return null;
     const configured = await this.#store.mutateGlobalModelProfile(profileId, input.expectedRevision, async () => (
-      this.configureAnalysisModelProfile({ ...input, id: profileId, profileId })
+      this.configureAnalysisModelProfile({ ...input, id: profileId, profileId }, { persist: false })
     ));
+    this.#analysisModelRegistry?.persistCredentialHandles?.();
     const lifecycle = await this.#store.getGlobalModelLifecycle(profileId);
     this.#analysisModelRegistry?.applyDurableLifecycle(profileId, lifecycle.lifecycle);
     return this.#globalModelProfile(configured);
@@ -743,7 +755,12 @@ export class TraceabilityApplication {
 
   async verifyGlobalModelProfile(profileId) {
     await this.#syncGlobalModelLifecycles();
-    await this.verifyAnalysisModelProfile(profileId);
+    const current = await this.getGlobalModelProfile(profileId);
+    if (!current) return null;
+    await this.#store.mutateGlobalModelProfile(profileId, current.revision, async () => (
+      this.verifyAnalysisModelProfile(profileId, { persist: false })
+    ));
+    this.#analysisModelRegistry?.persistCredentialHandles?.();
     return this.getGlobalModelProfile(profileId);
   }
 
@@ -807,10 +824,19 @@ export class TraceabilityApplication {
       }
       const applied = await this.#workspaceFoundation.applyModelReplacementPlan(planId, input?.expectedVersion);
       this.#analysisModelRegistry.applyDurableLifecycle(plan.sourceProfileId, "RETIRING");
-      this.#analysisModelRegistry.completeReplacementPlan(applied.plan);
+      this.#analysisModelRegistry.completeReplacementPlan(applied.plan, { persist: false });
       return Object.freeze(applied);
     } catch (error) {
       this.#analysisModelRegistry.abortReplacementPlan(plan);
+      await this.#store.recordModelReplacementFailureDiagnostic({
+        id: randomUUID(),
+        planId: plan.id,
+        sourceProfileId: plan.sourceProfileId,
+        replacementProfileId: plan.replacementProfileId,
+        expectedVersion: input.expectedVersion,
+        outcome: error instanceof PersistenceConflictError ? "CONFLICT" : "REJECTED",
+        occurredAt: this.#clock().toISOString(),
+      });
       throw error;
     }
   }
@@ -1892,14 +1918,14 @@ export class TraceabilityApplication {
     return this.#analysisModelRegistry.list();
   }
 
-  configureAnalysisModelProfile(input) {
+  configureAnalysisModelProfile(input, options = {}) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
-    return this.#analysisModelRegistry.configure(input);
+    return this.#analysisModelRegistry.configure(input, options);
   }
 
-  async verifyAnalysisModelProfile(profileId) {
+  async verifyAnalysisModelProfile(profileId, options = {}) {
     if (!this.#analysisModelRegistry) throw new TypeError("Analysis model registry is not configured");
-    return this.#analysisModelRegistry.verify(requireId(profileId, "analysisModelProfileId"));
+    return this.#analysisModelRegistry.verify(requireId(profileId, "analysisModelProfileId"), options);
   }
 
   removeAnalysisModelProfile(profileId, options = {}) {

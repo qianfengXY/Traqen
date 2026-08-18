@@ -44,6 +44,11 @@ function plannedModelReplacementReferences(plan) {
     || left.headKey.localeCompare(right.headKey));
 }
 
+function durableGlobalModelProfile(profile) {
+  const { apiKey: _apiKey, secret: _secret, latencyMs: _latencyMs, ...durable } = structuredClone(profile);
+  return deepFreeze(durable);
+}
+
 export class MemoryTraceabilityStore extends TraceabilityStore {
   #projects = new Map();
   #capabilityTemplates = new Map();
@@ -84,6 +89,8 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   #modelReplacementPlans = new Map();
   #globalModelLifecycles = new Map();
   #globalModelProfileRevisions = new Map();
+  #globalModelProfileRevisionRecords = new Map();
+  #modelReplacementFailureDiagnostics = new Map();
   #headMutationTail = Promise.resolve();
   #sourceSliceCredentialUses = new Map();
   #currentGraphHeads = new Map();
@@ -1435,7 +1442,28 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
           updatedAt: new Date().toISOString(),
         }));
       }
+      const durable = durableGlobalModelProfile(profile);
+      const historical = this.#globalModelProfileRevisionRecords.get(profile.currentRevisionId);
+      if (historical && canonicalJson(historical) !== canonicalJson(durable)) {
+        throw new PersistenceConflictError(`Global model revision ${profile.currentRevisionId} conflicts with durable metadata`);
+      }
+      if (!historical) this.#globalModelProfileRevisionRecords.set(profile.currentRevisionId, durable);
+      if (!this.#globalModelLifecycles.has(profile.id)) await this.#setGlobalModelLifecycle(profile.id, "ACTIVE");
       return deepFreeze(structuredClone(this.#globalModelProfileRevisions.get(profile.id)));
+    });
+  }
+
+  async listGlobalModelProfileRevisions() {
+    return this.#serializeHeadMutation(async () => {
+      const profiles = [...this.#globalModelProfileRevisions.values()]
+        .map(({ currentRevisionId }) => this.#globalModelProfileRevisionRecords.get(currentRevisionId))
+        .filter(Boolean)
+        .map((profile) => structuredClone(profile))
+        .sort((left, right) => left.id.localeCompare(right.id));
+      const revisions = [...this.#globalModelProfileRevisionRecords.values()]
+        .map((profile) => structuredClone(profile))
+        .sort((left, right) => left.id.localeCompare(right.id) || left.revision - right.revision);
+      return deepFreeze({ profiles, revisions });
     });
   }
 
@@ -1457,9 +1485,20 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       }
       const profile = await operation(current ? deepFreeze(structuredClone(current)) : null);
       const nextRevision = (current?.revision ?? 0) + 1;
-      if (!profile || profile.id !== profileId || profile.revision !== nextRevision || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
+      const readinessRefresh = current
+        && profile?.id === profileId
+        && profile.revision === current.revision
+        && profile.currentRevisionId === current.currentRevisionId;
+      if (!profile || profile.id !== profileId || (!readinessRefresh && profile.revision !== nextRevision)
+        || typeof profile.currentRevisionId !== "string" || profile.currentRevisionId === "") {
         throw new PersistenceConflictError(`Global model mutation for ${profileId} did not produce revision ${nextRevision}`);
       }
+      const durable = durableGlobalModelProfile(profile);
+      const historical = this.#globalModelProfileRevisionRecords.get(profile.currentRevisionId);
+      if (historical && !readinessRefresh && canonicalJson(historical) !== canonicalJson(durable)) {
+        throw new PersistenceConflictError(`Global model revision ${profile.currentRevisionId} conflicts with durable metadata`);
+      }
+      this.#globalModelProfileRevisionRecords.set(profile.currentRevisionId, durable);
       const next = deepFreeze({
         profileId,
         revision: profile.revision,
@@ -1527,6 +1566,11 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       if (!current || current.currentRevisionId !== expectedRevisionId) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} ${profileId} revision changed; refresh the Workspace usage preview`);
       }
+      const durable = this.#globalModelProfileRevisionRecords.get(expectedRevisionId);
+      const lifecycle = this.#globalModelLifecycles.get(profileId);
+      if (!durable?.ready || lifecycle?.lifecycle !== "ACTIVE") {
+        throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} ${profileId} must remain READY and ACTIVE`);
+      }
     }
   }
 
@@ -1537,7 +1581,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
   async #applyModelReplacementPlan(planId, expectedVersion) {
     const plan = this.#modelReplacementPlans.get(planId);
     if (!plan) throw new PersistenceConflictError(`ModelReplacementPlan ${planId} does not exist`);
-    if (plan.status === "APPLIED" && plan.version === expectedVersion + 2) {
+    if (plan.status === "APPLIED" && plan.version === expectedVersion + 1) {
       return deepFreeze({ plan: structuredClone(plan), workspaces: plan.changes.map(({ workspaceId, draft, profile }) => ({ workspaceId, draft, profile })) });
     }
     if (plan.status !== "READY" || plan.version !== expectedVersion) {
@@ -1564,12 +1608,6 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       plan: this.#modelReplacementPlans.get(planId) ?? null,
     };
     try {
-      this.#modelReplacementPlans.set(planId, deepFreeze({
-        ...structuredClone(plan),
-        status: "APPLYING",
-        version: expectedVersion + 1,
-        applyingAt: new Date().toISOString(),
-      }));
       const workspaces = await this.#applyWorkspaceModelReplacement(plan.changes);
       if (this.#currentModelReplacementReferences(plan.sourceProfileId).length > 0) {
         throw new PersistenceConflictError(`ModelReplacementPlan ${plan.id} current source reference remained after apply`);
@@ -1581,7 +1619,7 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
         version: (priorLifecycle?.version ?? 0) + 1,
         updatedAt: new Date().toISOString(),
       }));
-      const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 2, appliedAt: new Date().toISOString() });
+      const applied = deepFreeze({ ...structuredClone(plan), status: "APPLIED", version: expectedVersion + 1, appliedAt: new Date().toISOString() });
       this.#modelReplacementPlans.set(planId, applied);
       return deepFreeze({ plan: structuredClone(applied), workspaces });
     } catch (error) {
@@ -1597,6 +1635,26 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       else this.#modelReplacementPlans.delete(planId);
       throw error;
     }
+  }
+
+  async recordModelReplacementFailureDiagnostic(diagnostic) {
+    if (!diagnostic || typeof diagnostic.id !== "string" || diagnostic.id === "" || typeof diagnostic.planId !== "string" || diagnostic.planId === "") {
+      throw new TypeError("model replacement failure diagnostic is invalid");
+    }
+    const { apiKey: _apiKey, secret: _secret, ...safe } = structuredClone(diagnostic);
+    const existing = this.#modelReplacementFailureDiagnostics.get(safe.id);
+    if (existing && canonicalJson(existing) !== canonicalJson(safe)) {
+      throw new PersistenceConflictError(`Model replacement failure diagnostic ${safe.id} conflicts with an existing observation`);
+    }
+    if (!existing) this.#modelReplacementFailureDiagnostics.set(safe.id, deepFreeze(safe));
+    return deepFreeze(structuredClone(this.#modelReplacementFailureDiagnostics.get(safe.id)));
+  }
+
+  async listModelReplacementFailureDiagnostics(planId) {
+    return deepFreeze([...this.#modelReplacementFailureDiagnostics.values()]
+      .filter((diagnostic) => diagnostic.planId === planId)
+      .map((diagnostic) => structuredClone(diagnostic))
+      .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id)));
   }
 
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {

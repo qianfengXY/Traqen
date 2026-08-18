@@ -287,6 +287,10 @@ export class TraceabilityStore {
     throw new Error("ensureGlobalModelProfileRevision must be implemented");
   }
 
+  async listGlobalModelProfileRevisions() {
+    throw new Error("listGlobalModelProfileRevisions must be implemented");
+  }
+
   async mutateGlobalModelProfile(_profileId, _expectedRevision, _operation) {
     throw new Error("mutateGlobalModelProfile must be implemented");
   }
@@ -301,6 +305,14 @@ export class TraceabilityStore {
 
   async applyModelReplacementPlan(_planId, _expectedVersion) {
     throw new Error("applyModelReplacementPlan must be implemented");
+  }
+
+  async recordModelReplacementFailureDiagnostic(_diagnostic) {
+    throw new Error("recordModelReplacementFailureDiagnostic must be implemented");
+  }
+
+  async listModelReplacementFailureDiagnostics(_planId) {
+    throw new Error("listModelReplacementFailureDiagnostics must be implemented");
   }
 
   async appendWorkspaceAnalysisJobCheckpoint(projectId, checkpoint) {

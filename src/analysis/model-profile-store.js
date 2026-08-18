@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -7,6 +7,22 @@ const formatVersion = 1;
 
 export function defaultAnalysisModelProfileStorePath() {
   return join(homedir(), ".traqen", "analysis-model-profiles.enc.json");
+}
+
+function preferNewestProfile(existing, incoming) {
+  if (!existing) return incoming;
+  if ((incoming.revision ?? 0) > (existing.revision ?? 0)) return incoming;
+  if ((incoming.revision ?? 0) < (existing.revision ?? 0)) return existing;
+  return incoming.currentRevisionId === existing.currentRevisionId ? incoming : existing;
+}
+
+function mergeBy(values, keyOf, chooser = (_existing, incoming) => incoming) {
+  const merged = new Map();
+  for (const value of values.flat()) {
+    const key = keyOf(value);
+    merged.set(key, chooser(merged.get(key), value));
+  }
+  return [...merged.values()];
 }
 
 export class EncryptedAnalysisModelProfileStore {
@@ -50,8 +66,29 @@ export class EncryptedAnalysisModelProfileStore {
     };
   }
 
-  save(value) {
-    if (!value || !Array.isArray(value.profiles)) throw new TypeError("analysis model profile store value requires profiles[]");
+  #withWriteLock(operation) {
+    const lockPath = `${this.filePath}.lock`;
+    const waiter = new Int32Array(new SharedArrayBuffer(4));
+    mkdirSync(dirname(lockPath), { recursive: true, mode: 0o700 });
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      try {
+        mkdirSync(lockPath, { mode: 0o700 });
+        try {
+          return operation();
+        } finally {
+          rmdirSync(lockPath);
+        }
+      } catch (error) {
+        if (error?.code !== "EEXIST") throw error;
+        Atomics.wait(waiter, 0, 0, 10);
+      }
+    }
+    const error = new Error("Timed out waiting for the analysis model credential store lock");
+    error.code = "ANALYSIS_MODEL_PROFILE_STORE_BUSY";
+    throw error;
+  }
+
+  #write(value) {
     mkdirSync(dirname(this.filePath), { recursive: true, mode: 0o700 });
     const key = this.#key({ create: true });
     const iv = randomBytes(12);
@@ -63,5 +100,30 @@ export class EncryptedAnalysisModelProfileStore {
     chmodSync(temporaryPath, 0o600);
     renameSync(temporaryPath, this.filePath);
     chmodSync(this.filePath, 0o600);
+  }
+
+  save(value) {
+    if (!value || !Array.isArray(value.profiles)) throw new TypeError("analysis model profile store value requires profiles[]");
+    return this.#withWriteLock(() => {
+      const existing = this.load();
+      this.#write({
+        profiles: mergeBy([existing.profiles, value.profiles], ({ id }) => id, preferNewestProfile),
+        revisions: mergeBy([existing.revisions, value.revisions ?? []], ({ currentRevisionId }) => currentRevisionId),
+        credentialHandles: mergeBy([existing.credentialHandles, value.credentialHandles ?? []], ({ id }) => id),
+        environmentCredentialHandles: mergeBy([existing.environmentCredentialHandles, value.environmentCredentialHandles ?? []], ({ profileId }) => profileId),
+      });
+    });
+  }
+
+  saveCredentialHandles(value) {
+    if (!value || !Array.isArray(value.credentialHandles)) throw new TypeError("analysis model credential store value requires credentialHandles[]");
+    return this.#withWriteLock(() => {
+      const existing = this.load();
+      this.#write({
+        ...existing,
+        credentialHandles: mergeBy([existing.credentialHandles, value.credentialHandles], ({ id }) => id),
+        environmentCredentialHandles: mergeBy([existing.environmentCredentialHandles, value.environmentCredentialHandles ?? []], ({ profileId }) => profileId),
+      });
+    });
   }
 }

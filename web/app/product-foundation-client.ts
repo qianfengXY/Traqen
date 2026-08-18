@@ -205,7 +205,7 @@ export async function getGlobalModelUsage(apiBase: string, apiToken: string, pro
 export type ModelReplacementPlan = {
   id: string;
   version: number;
-  status: "READY" | "APPLYING" | "APPLIED";
+  status: "READY" | "APPLIED";
   sourceProfileId: string;
   replacementProfileId: string;
   references: GlobalModelUsage["references"];

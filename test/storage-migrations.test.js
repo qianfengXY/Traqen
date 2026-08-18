@@ -58,6 +58,7 @@ async function migratedDatabase() {
     "0022_model_replacement_plan",
     "0023_global_model_lifecycle",
     "0024_global_model_profile_revision_head",
+    "0025_global_model_profile_revision_records",
   ]);
   return database;
 }
@@ -407,6 +408,8 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "workspace_capability_head",
     "global_model_lifecycle",
     "global_model_profile_revision_head",
+    "global_model_profile_revision",
+    "model_replacement_failure_diagnostic",
     "source_slice_worker_credential_use",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
@@ -482,7 +485,7 @@ test("PostgreSQL model replacement rolls back every Workspace when one pinned he
   await store.createModelReplacementPlan(freshPlan);
   const applied = await store.applyModelReplacementPlan(freshPlan.id, freshPlan.version);
   assert.equal(applied.plan.status, "APPLIED");
-  assert.equal(applied.plan.version, 3);
+  assert.equal(applied.plan.version, 2);
   assert.equal((await store.getGlobalModelLifecycle("MODEL-OLD")).lifecycle, "RETIRING", "the successful Workspace replacement transaction must also own source lifecycle");
   assert.equal((await store.getUnderstandingHead("PROJECT-001", "WORKSPACE_CAPABILITY_DRAFT")).version, 2);
   assert.equal((await store.getUnderstandingHead("PROJECT-002", "WORKSPACE_CAPABILITY_DRAFT")).version, 3);
@@ -576,6 +579,43 @@ test("PostgreSQL replacement Plan checks its frozen model revisions inside the s
   );
   assert.equal((await store.getModelReplacementPlan(plan.id)).status, "READY");
   assert.equal((await store.getGlobalModelLifecycle("MODEL-PLAN-OLD")).lifecycle, "ACTIVE");
+});
+
+test("PostgreSQL replacement Plan locks and rechecks replacement readiness and lifecycle", async (t) => {
+  const database = await migratedDatabase();
+  t.after(() => database.close());
+  const store = new PostgresTraceabilityStore(database);
+  const revise = (profileId) => store.mutateGlobalModelProfile(
+    profileId,
+    null,
+    async () => ({ id: profileId, revision: 1, currentRevisionId: `${profileId}-REVISION-1`, ready: true }),
+  );
+  await revise("MODEL-LIFECYCLE-SOURCE");
+  await revise("MODEL-LIFECYCLE-REPLACEMENT");
+  const plan = {
+    id: "PLAN-LIFECYCLE-RECHECK",
+    version: 1,
+    status: "READY",
+    sourceProfileId: "MODEL-LIFECYCLE-SOURCE",
+    sourceRevisionId: "MODEL-LIFECYCLE-SOURCE-REVISION-1",
+    replacementProfileId: "MODEL-LIFECYCLE-REPLACEMENT",
+    replacementRevisionId: "MODEL-LIFECYCLE-REPLACEMENT-REVISION-1",
+    changes: [],
+    createdAt: "2026-08-16T00:00:00.000Z",
+    appliedAt: null,
+  };
+  await store.createModelReplacementPlan(plan);
+  await store.setGlobalModelLifecycle("MODEL-LIFECYCLE-REPLACEMENT", "RETIRING");
+
+  await assert.rejects(
+    () => store.applyModelReplacementPlan(plan.id, plan.version),
+    /READY and ACTIVE/,
+  );
+  assert.deepEqual(
+    (await store.getModelReplacementPlan(plan.id)),
+    plan,
+    "a rejected lifecycle recheck must leave the durable Plan READY at its original version",
+  );
 });
 
 test("PostgreSQL persists resumable Analysis Agent checkpoints and immutable historical results", async (t) => {
