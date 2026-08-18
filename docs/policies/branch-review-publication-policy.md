@@ -55,7 +55,7 @@ publication gate must provide equivalent English and Simplified Chinese versions
 - Informal scratch notes may use one language, but they cannot serve as an independent
   confirmation or consensus record until the bilingual description is complete.
 
-## 5. Publish bilingual content through the Issue tracker only
+## 5. Publish Simplified Chinese Issue content through the Issue tracker only
 
 After the consensus gate passes, deduplicate the confirmed findings and publish them only through
 the project's Issue tracker. Do not commit a review report or consensus document as the
@@ -70,13 +70,22 @@ requires a consolidated report. Every published Issue must include:
 - verification or reproduction evidence;
 - impact;
 - recommended correction and observable acceptance conditions;
-- confirming reviewer identities; and
+- confirming reviewer identities;
+- submitting model identity; and
 - unresolved disagreement or open questions, if any.
 
-The Issue title and body must be bilingual. Use an English title followed by its Simplified
-Chinese equivalent. In the body, provide complete `## English` and `## 简体中文` sections; every
-required field above must appear with equivalent meaning in both sections. A link from one
-language to the other, or a one-language summary, does not satisfy this requirement.
+The Issue title and body must use Simplified Chinese only. Do not add an English title, English
+summary, or separate English section. Preserve code symbols, paths, commands, identifiers, and
+quoted source text exactly when translating them would make the evidence inaccurate.
+
+Every Issue must include a stable model-identity line, for example
+`提交模型：CodeX / GPT-5`, and must end with the submitting cat's cat model signature, for
+example `[CodeX/GPT-5🐾]`. The submitting model identity is distinct from the confirming reviewer
+identities: the former identifies who published or last materially rewrote the Issue, while the
+latter records whose independent evidence satisfied the consensus gate.
+
+When an existing Issue is brought under this policy, normalize its title and body to these rules
+without deleting its historical comments or other audit evidence.
 
 A request to review a branch authorizes publication of findings that pass this policy unless the
 requester explicitly asks for draft-only output. Never publish findings that fail the consensus
@@ -107,7 +116,9 @@ Publish no Issue when:
 - reviewers examined different commit SHAs;
 - evidence cannot be reproduced or anchored;
 - the reviewers do not reach material consensus;
-- the required bilingual review or Issue content is missing or not equivalent; or
+- the required bilingual independent review or convergence record is missing or not equivalent;
+- the Issue title or body is not Simplified-Chinese-only, omits the submitting model identity, or
+  omits the cat model signature; or
 - reviewer independence cannot be established.
 
 In that case, report which gate was not met and retain the findings locally. When publication
