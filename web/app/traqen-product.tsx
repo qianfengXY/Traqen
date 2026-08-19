@@ -12,6 +12,7 @@ import {
   GlobalModelLibrary,
   ImpactWorkspace,
   ReviewWorkspace,
+  Unavailable,
   WorkspaceOverview,
   AnalysisCommandCenter,
   type GraphArtifact,
@@ -870,7 +871,7 @@ function ServerOwnedProduct() {
     || artifact?.productionEligible === false;
   const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
   const renderView = () => {
-    if (!activeWorkspace) return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
+    if (!activeWorkspace && view !== "models" && view !== "settings") return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={activeWorkspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
     if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => setView("settings")} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
@@ -878,6 +879,7 @@ function ServerOwnedProduct() {
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
+    if (!activeWorkspace) return <Unavailable t={t} reason={t("请先选择或创建一个 Workspace，再配置能力设置。", "Select or create a Workspace before configuring capability settings.")} />;
     return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
   };
 
