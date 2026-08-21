@@ -19,6 +19,7 @@ import {
   buildDraftValidation,
   buildEffectiveDiff,
   buildLocalEffectiveCatalog,
+  hasUnsavedCapabilityDraftChanges,
   type SecurityBoundaryDraft,
 } from "./capability-settings-state";
 import type { ServerUnderstandingJob } from "./server-understanding-client";
@@ -2584,6 +2585,7 @@ export function CapabilitySettings({
   globalTemplates,
   catalog,
   draft,
+  draftInput,
   profile,
   profileHistory,
   mainModel,
@@ -2623,6 +2625,7 @@ export function CapabilitySettings({
   globalTemplates: GlobalCapabilityTemplate[];
   catalog: EffectiveCapabilityCatalog;
   draft: WorkspaceCapabilityDraft | null;
+  draftInput: WorkspaceCapabilityDraftSaveInput;
   profile: ExecutionProfile | null;
   profileHistory: ExecutionProfile[];
   mainModel: string;
@@ -2665,7 +2668,7 @@ export function CapabilitySettings({
   onSave: () => void;
   onRetryDraftConflict: () => void;
   onUseCurrentDraft: () => void;
-  onResolve: () => void;
+  onResolve: (input: WorkspaceCapabilityDraftSaveInput) => void;
 }) {
   const [projectKind, setProjectKind] = useState<"SKILL" | "MCP">("SKILL");
   const [projectName, setProjectName] = useState("");
@@ -2678,6 +2681,7 @@ export function CapabilitySettings({
       readiness === "READY" && lifecycle === "ACTIVE",
   );
   const localCatalog = buildLocalEffectiveCatalog({ catalog, globalTemplates, importedKeys, disabledKeys });
+  const draftDirty = draft !== null && hasUnsavedCapabilityDraftChanges(draft, draftInput);
   const skills = localCatalog.entries.filter(({ kind }) => kind === "SKILL");
   const mcps = localCatalog.entries.filter(({ kind }) => kind === "MCP");
   const validationSummaries = buildDraftValidation({ models, catalog: localCatalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, draft, importedKeys, disabledKeys });
@@ -2806,6 +2810,9 @@ export function CapabilitySettings({
           </span>
         ) : (
           <span className="authority-pill candidate">DRAFT</span>
+        )}
+        {draftDirty && (
+          <span className="authority-pill candidate">DIRTY DRAFT · UNSAVED</span>
         )}
       </section>
       {draftConflict && (
@@ -3321,7 +3328,9 @@ export function CapabilitySettings({
             <p className="eyebrow">{t("解析摘要", "Resolution summary")}</p>
             <h2>
               {profile
-                ? t("已激活", "Activated")
+                ? draftDirty
+                  ? t("已激活（草稿未保存）", "Activated (Draft unsaved)")
+                  : t("已激活", "Activated")
                 : draft
                   ? t("草稿已保存", "Draft saved")
                   : t("尚未保存", "Unsaved")}
@@ -3379,12 +3388,21 @@ export function CapabilitySettings({
               disabled={
                 editingDisabled ||
                 !draft ||
+                draftDirty ||
                 blockingSummaries.length > 0
               }
-              onClick={onResolve}
+              onClick={() => onResolve(draftInput)}
             >
               {t("验证并激活", "Validate and activate")}
             </button>
+            {draftDirty && (
+              <small className="explicit-empty" role="status">
+                {t(
+                  "当前编辑尚未保存；Active Revision 保持不变。请先保存完整 Effective Diff，再验证并激活。",
+                  "These edits are unsaved; the Active Revision remains unchanged. Save the complete Effective Diff before validating and activating.",
+                )}
+              </small>
+            )}
             <small>
               {t(
                 "无效草稿仍会保存。现有 Run 继续固定旧 Revision；只有后续 Run 使用新 Revision。",

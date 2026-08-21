@@ -5,6 +5,7 @@ import {
   buildDraftValidation,
   buildEffectiveDiff,
   buildLocalEffectiveCatalog,
+  hasUnsavedCapabilityDraftChanges,
 } from "../app/capability-settings-state.ts";
 
 const readyModel = {
@@ -153,4 +154,34 @@ test("F006 Effective Diff names a Dirty Agent capability-grant change", () => {
   const main = diff.find(({ id }) => id === "main-agent");
   assert.equal(main?.change, "CHANGED");
   assert.match(main?.detail ?? "", /Skills review/);
+});
+
+test("F006 prevents activating a saved Draft when the visible Role policy is dirty", () => {
+  const savedDraft = {
+    revision: 2,
+    mainAgentSlot: {
+      id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: "MODEL-1",
+      skillGrants: [], mcpGrants: [], rolePolicy: "PRIMARY_ANALYST", independenceGroup: "MAIN", enabled: true,
+    },
+    childAgentSlots: [{
+      id: "CHILD-1", role: "CHILD", displayName: "Child Agent 1", modelProfileId: "MODEL-1",
+      skillGrants: [], mcpGrants: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1", enabled: true,
+    }],
+    projectCapabilityRevisionIds: [],
+    importedKeys: [],
+    disabledKeys: [],
+    dependencies: { notes: "" },
+    conventions: { notes: "" },
+    securityPolicy: {
+      notes: "", dataBoundary: "WORKSPACE", budgetLimit: "100", mcpPermissionMode: "ALLOW_SELECTED_MCP",
+      grantedHandleIds: [], telemetryPolicy: "METADATA_ONLY",
+    },
+  };
+  const visibleInput = {
+    expectedVersion: 2,
+    ...savedDraft,
+    mainAgentSlot: { ...savedDraft.mainAgentSlot, rolePolicy: "DIRTY_UNSAVED_ROLE" },
+  };
+  assert.equal(hasUnsavedCapabilityDraftChanges(savedDraft, visibleInput), true);
+  assert.equal(hasUnsavedCapabilityDraftChanges(savedDraft, { ...visibleInput, mainAgentSlot: savedDraft.mainAgentSlot }), false);
 });

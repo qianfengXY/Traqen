@@ -6,6 +6,7 @@ import type {
   GlobalCapabilityTemplate,
   GlobalModelProfile,
   WorkspaceCapabilityDraft,
+  WorkspaceCapabilityDraftSaveInput,
 } from "./product-foundation-client";
 
 export type SecurityBoundaryDraft = {
@@ -32,6 +33,50 @@ export type EffectiveDiffEntry = {
 };
 
 const typedKey = ({ kind, normalizedName }: CapabilityKey) => `${kind}:${normalizedName}`;
+
+function canonicalValue(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalValue).join(",")}]`;
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalValue(entry)}`)
+    .join(",")}}`;
+}
+
+function comparableSlot(slot: WorkspaceCapabilityDraftSaveInput["mainAgentSlot"]) {
+  return {
+    id: slot.id,
+    role: slot.role,
+    displayName: slot.displayName,
+    modelProfileId: slot.modelProfileId,
+    skillGrants: [...slot.skillGrants.map(typedKey)].sort(),
+    mcpGrants: [...slot.mcpGrants.map(typedKey)].sort(),
+    rolePolicy: slot.rolePolicy,
+    independenceGroup: slot.independenceGroup,
+    enabled: slot.enabled,
+  };
+}
+
+function comparableDraft(input: Omit<WorkspaceCapabilityDraftSaveInput, "expectedVersion">) {
+  return {
+    mainAgentSlot: comparableSlot(input.mainAgentSlot),
+    childAgentSlots: input.childAgentSlots.map(comparableSlot),
+    projectCapabilityRevisionIds: [...input.projectCapabilityRevisionIds].sort(),
+    importedKeys: [...input.importedKeys.map(typedKey)].sort(),
+    disabledKeys: [...input.disabledKeys.map(typedKey)].sort(),
+    dependencies: input.dependencies ?? {},
+    conventions: input.conventions ?? {},
+    securityPolicy: input.securityPolicy ?? {},
+  };
+}
+
+export function hasUnsavedCapabilityDraftChanges(
+  draft: WorkspaceCapabilityDraft | null,
+  input: WorkspaceCapabilityDraftSaveInput,
+): boolean {
+  if (!draft || input.expectedVersion !== draft.revision) return true;
+  return canonicalValue(comparableDraft(draft)) !== canonicalValue(comparableDraft(input));
+}
 
 export function buildLocalEffectiveCatalog({
   catalog,
