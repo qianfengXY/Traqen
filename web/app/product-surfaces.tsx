@@ -2678,9 +2678,9 @@ export function CapabilitySettings({
   );
   const skills = catalog.entries.filter(({ kind }) => kind === "SKILL");
   const mcps = catalog.entries.filter(({ kind }) => kind === "MCP");
-  const validationSummaries = buildDraftValidation({ models, catalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, disabledKeys });
+  const validationSummaries = buildDraftValidation({ models, catalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, draft, importedKeys, disabledKeys });
   const blockingSummaries = validationSummaries.filter(({ blocking }) => blocking);
-  const effectiveDiff = buildEffectiveDiff({ catalog, globalTemplates, draft, importedKeys, disabledKeys, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security });
+  const effectiveDiff = buildEffectiveDiff({ catalog, globalTemplates, draft, importedKeys, disabledKeys, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, dependencyNotes, conventionNotes, securityNotes });
   const fieldInvalid = (field: string) => validationSummaries.some((summary) => summary.blocking && (summary.field === field || summary.field.startsWith(`${field}.`)));
   const updateSecurity = (patch: Partial<SecurityBoundaryDraft>) => setSecurity({ ...security, ...patch });
   const selectedCapabilityIds = new Set([

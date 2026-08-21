@@ -52,6 +52,8 @@ export function buildDraftValidation({
   mainMcpNames,
   childSlots,
   security,
+  draft = null,
+  importedKeys,
   disabledKeys = [],
 }: {
   models: GlobalModelProfile[];
@@ -62,11 +64,16 @@ export function buildDraftValidation({
   mainMcpNames: string[];
   childSlots: ChildCapabilityRole[];
   security: SecurityBoundaryDraft;
+  draft?: WorkspaceCapabilityDraft | null;
+  importedKeys?: CapabilityKey[];
   disabledKeys?: CapabilityKey[];
 }): ValidationSummary[] {
   const summaries: ValidationSummary[] = [];
   const modelById = new Map(models.map((model) => [model.profileId, model]));
   const locallyDisabled = new Set(disabledKeys.map(typedKey));
+  const savedImported = new Set((draft?.importedKeys ?? []).map(typedKey));
+  const currentImported = new Set((importedKeys ?? draft?.importedKeys ?? []).map(typedKey));
+  const locallyUnimported = new Set([...savedImported].filter((key) => !currentImported.has(key)));
   const selected = selectedCapabilityNames(mainSkillNames, mainMcpNames, childSlots);
   const requiredHandleIds = catalog.entries
     .filter((entry) => selected.has(`${entry.kind}:${entry.normalizedName}`) && !locallyDisabled.has(`${entry.kind}:${entry.normalizedName}`))
@@ -96,11 +103,15 @@ export function buildDraftValidation({
       summaries.push({ field: `childAgentSlots[${index}].independenceGroup`, title: "Independence group", message: `${slot.id} needs an independence group.`, blocking: true });
     }
   });
+  const locallyUnimportedGrant = [...selected].find((value) => locallyUnimported.has(value));
+  if (locallyUnimportedGrant) {
+    summaries.push({ field: "agentSlots.grants", title: "Capability import", message: `${locallyUnimportedGrant} is removed from this unsaved Workspace Draft.`, blocking: true });
+  }
   const unavailableGrant = [...selected].find((value) => {
     const [kind, normalizedName] = value.split(":");
-    return locallyDisabled.has(value) || !catalog.entries.some((entry) => entry.kind === kind && entry.normalizedName === normalizedName && entry.effective);
+    return locallyDisabled.has(value) || locallyUnimported.has(value) || !catalog.entries.some((entry) => entry.kind === kind && entry.normalizedName === normalizedName && entry.effective);
   });
-  if (unavailableGrant) {
+  if (unavailableGrant && unavailableGrant !== locallyUnimportedGrant) {
     summaries.push({ field: "agentSlots.grants", title: unavailableGrant.startsWith("SKILL:") ? "Skill signature" : "MCP permission", message: `${unavailableGrant} is not in the effective Workspace catalog.`, blocking: true });
   }
   const unsignedSkill = [...selected].find((value) => {
@@ -142,6 +153,9 @@ export function buildEffectiveDiff({
   mainMcpNames = [],
   childSlots,
   security,
+  dependencyNotes = "",
+  conventionNotes = "",
+  securityNotes = "",
 }: {
   catalog: EffectiveCapabilityCatalog;
   globalTemplates?: GlobalCapabilityTemplate[];
@@ -154,6 +168,9 @@ export function buildEffectiveDiff({
   mainMcpNames?: string[];
   childSlots: ChildCapabilityRole[];
   security: SecurityBoundaryDraft;
+  dependencyNotes?: string;
+  conventionNotes?: string;
+  securityNotes?: string;
 }): EffectiveDiffEntry[] {
   const disabled = new Set(disabledKeys.map(typedKey));
   const latestTemplates = new Map<string, GlobalCapabilityTemplate>();
@@ -252,13 +269,32 @@ export function buildEffectiveDiff({
     agentChanges.push({ id: `child-slot:${slot.id}`, category: "AGENT", change: "REMOVED", label: `Child Agent ${slot.id}`, detail: "Removed from this Workspace Draft" });
   }
   const savedPolicy = draft?.securityPolicy ?? {};
-  const policyDetail = `${security.dataBoundary} · budget ${security.budgetLimit || "not set"} · ${security.mcpPermissionMode} · ${security.telemetryPolicy} · ${security.grantedHandleIds.length} scoped grants`;
+  const securityNotesChanged = String(savedPolicy.notes ?? "") !== securityNotes;
+  const policyDetail = `${security.dataBoundary} · budget ${security.budgetLimit || "not set"} · ${security.mcpPermissionMode} · ${security.telemetryPolicy} · ${security.grantedHandleIds.length} scoped grants${securityNotesChanged ? " · security notes changed" : ""}`;
   const policyChanged = !draft
     || String(savedPolicy.dataBoundary ?? "") !== security.dataBoundary
     || String(savedPolicy.budgetLimit ?? "") !== security.budgetLimit
     || String(savedPolicy.mcpPermissionMode ?? "") !== security.mcpPermissionMode
     || String(savedPolicy.telemetryPolicy ?? "") !== security.telemetryPolicy
+    || securityNotesChanged
     || JSON.stringify([...(Array.isArray(savedPolicy.grantedHandleIds) ? savedPolicy.grantedHandleIds : [])].sort()) !== JSON.stringify([...security.grantedHandleIds].sort());
   const policy = [{ id: "security-policy", category: "POLICY" as const, change: policyChanged ? "CHANGED" as const : "INHERITED" as const, label: "Security boundary", detail: policyDetail }];
-  return [...capabilities, ...agentChanges, ...policy].sort((left, right) => left.category.localeCompare(right.category) || left.id.localeCompare(right.id));
+  const draftNotes = (value: Record<string, unknown> | undefined) => String(value?.notes ?? "");
+  const workspaceMetadata: EffectiveDiffEntry[] = [
+    {
+      id: "dependencies",
+      category: "POLICY",
+      change: !draft || draftNotes(draft.dependencies) !== dependencyNotes ? "CHANGED" : "INHERITED",
+      label: "Dependencies",
+      detail: !draft || draftNotes(draft.dependencies) !== dependencyNotes ? "Workspace dependency notes changed" : "Workspace dependency notes inherited",
+    },
+    {
+      id: "conventions",
+      category: "POLICY",
+      change: !draft || draftNotes(draft.conventions) !== conventionNotes ? "CHANGED" : "INHERITED",
+      label: "Conventions and constraints",
+      detail: !draft || draftNotes(draft.conventions) !== conventionNotes ? "Workspace convention notes changed" : "Workspace convention notes inherited",
+    },
+  ];
+  return [...capabilities, ...agentChanges, ...workspaceMetadata, ...policy].sort((left, right) => left.category.localeCompare(right.category) || left.id.localeCompare(right.id));
 }

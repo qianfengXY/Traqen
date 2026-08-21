@@ -71,6 +71,20 @@ test("F006 blocks a locally removed selected capability before the Draft is save
   assert.equal(summaries.some(({ field, blocking }) => field === "agentSlots.grants" && blocking), true);
 });
 
+test("F006 blocks a selected template that is locally unimported before the Draft is saved", () => {
+  const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
+  const savedDraft = {
+    importedKeys: [{ kind: "SKILL", normalizedName: "review" }],
+    disabledKeys: [],
+  };
+  const summaries = buildDraftValidation({
+    models: [readyModel], catalog, mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST",
+    mainSkillNames: ["review"], mainMcpNames: [], childSlots, security,
+    draft: savedDraft, importedKeys: [], disabledKeys: [],
+  });
+  assert.equal(summaries.some(({ field, blocking }) => field === "agentSlots.grants" && blocking), true);
+});
+
 test("F006 effective Diff records an explicit global-template import before saving", () => {
   const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
   const diff = buildEffectiveDiff({
@@ -84,4 +98,24 @@ test("F006 effective Diff records an explicit global-template import before savi
     disabledKeys: [], mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST", childSlots, security,
   });
   assert.equal(diff.find(({ id }) => id === "SKILL:review").change, "IMPORTED");
+});
+
+test("F006 Effective Diff includes dirty dependency, convention, and safe security-note changes", () => {
+  const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
+  const savedDraft = {
+    importedKeys: [], disabledKeys: [],
+    mainAgentSlot: { modelProfileId: "MODEL-1", rolePolicy: "PRIMARY_ANALYST", skillGrants: [], mcpGrants: [] },
+    childAgentSlots: [],
+    securityPolicy: { ...security, notes: "saved security note" },
+    dependencies: { notes: "saved dependency note" },
+    conventions: { notes: "saved convention note" },
+  };
+  const diff = buildEffectiveDiff({
+    catalog, draft: savedDraft, disabledKeys: [], mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST", childSlots, security,
+    dependencyNotes: "changed dependency note", conventionNotes: "changed convention note", securityNotes: "changed security note",
+  });
+  assert.equal(diff.find(({ id }) => id === "dependencies")?.change, "CHANGED");
+  assert.equal(diff.find(({ id }) => id === "conventions")?.change, "CHANGED");
+  assert.equal(diff.find(({ id }) => id === "security-policy")?.change, "CHANGED");
+  assert.doesNotMatch(JSON.stringify(diff), /changed security note/);
 });
