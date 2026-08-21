@@ -427,6 +427,52 @@ test("F006 exposes reusable global Skill and MCP templates while keeping legacy 
   })).status, 404);
 });
 
+test("F006 HTTP validation fails closed for unverified capabilities and contradictory boundary policy", async (t) => {
+  const baseUrl = await startServer(t, {
+    analysisModelRegistry: new AnalysisModelRegistry({
+      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
+    }),
+  });
+  assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: "W-BOUNDARY", name: "Boundary", actorId: "OWNER" })).response.status, 201);
+  assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "MODEL-BOUNDARY", displayName: "Boundary model", transport: "API",
+    endpoint: "https://models.example/v1", model: "boundary", apiKey: "server-only-secret",
+  })).response.status, 201);
+  assert.equal((await fetch(`${baseUrl}/v1/global-models/MODEL-BOUNDARY/verify`, { method: "POST" })).status, 200);
+  assert.equal((await postJson(`${baseUrl}/v1/capability-templates`, {
+    kind: "SKILL", logicalName: "unverified", revision: 1,
+    manifest: { signature: "UNVERIFIED" }, credentialHandleIds: ["HANDLE-SKILL"],
+  })).response.status, 201);
+  assert.equal((await postJson(`${baseUrl}/v1/capability-templates`, {
+    kind: "MCP", logicalName: "review", revision: 1,
+    manifest: {}, credentialHandleIds: ["HANDLE-MCP"],
+  })).response.status, 201);
+  assert.equal((await fetch(`${baseUrl}/v1/workspaces/W-BOUNDARY/capability-draft`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedVersion: 0,
+      importedKeys: [{ kind: "SKILL", normalizedName: "unverified" }, { kind: "MCP", normalizedName: "review" }],
+      mainAgentSlot: {
+        modelProfileId: "MODEL-BOUNDARY",
+        skillGrants: [{ kind: "SKILL", normalizedName: "unverified" }],
+        mcpGrants: [{ kind: "MCP", normalizedName: "review" }],
+      },
+      childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-BOUNDARY", independenceGroup: "I1" }],
+      projectCapabilityRevisionIds: [], disabledKeys: [],
+      securityPolicy: { dataBoundary: "", budgetLimit: "", mcpPermissionMode: "DENY_MCP", grantedHandleIds: [] },
+    }),
+  })).status, 200);
+  const validation = await postJson(`${baseUrl}/v1/workspaces/W-BOUNDARY/capability-draft/validate`, {});
+  assert.equal(validation.response.status, 200);
+  assert.equal(validation.body.validation.valid, false);
+  assert.deepEqual(
+    [...new Set(validation.body.validation.errors.map(({ code }) => code))].sort(),
+    ["MCP_PERMISSION_DENIED", "SECRET_GRANT_REQUIRED", "SECURITY_BUDGET_INVALID", "SECURITY_DATA_BOUNDARY_INVALID", "SKILL_SIGNATURE_UNVERIFIED"],
+  );
+  assert.equal((await postJson(`${baseUrl}/v1/workspaces/W-BOUNDARY/capability-draft/activate`, {})).response.status, 400);
+});
+
 test("global CLI model API cannot bypass the adapter executable allowlist", async (t) => {
   const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
   const rejected = await postJson(`${baseUrl}/v1/global-models`, {

@@ -1873,12 +1873,13 @@
       },
       "WorkspaceCapabilityDraftRequest": {
         "type": "object",
-        "required": ["expectedVersion", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "disabledKeys"],
+        "required": ["expectedVersion", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "importedKeys", "disabledKeys"],
         "properties": {
           "expectedVersion": { "type": "integer", "minimum": 0 },
           "mainAgentSlot": { "$ref": "#/components/schemas/WorkspaceAgentSlotInput" },
           "childAgentSlots": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceAgentSlotInput" } },
           "projectCapabilityRevisionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "importedKeys": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
           "disabledKeys": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
           "dependencies": { "type": "object" },
           "conventions": { "type": "object" },
@@ -1891,7 +1892,7 @@
       },
       "WorkspaceCapabilityDraft": {
         "type": "object",
-        "required": ["id", "workspaceId", "revision", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "disabledKeys", "dependencyPolicyRevisionId", "conventionRevisionId", "securityPolicyRevisionId", "dependencies", "conventions", "securityPolicy", "createdAt"],
+        "required": ["id", "workspaceId", "revision", "mainAgentSlot", "childAgentSlots", "projectCapabilityRevisionIds", "importedKeys", "disabledKeys", "dependencyPolicyRevisionId", "conventionRevisionId", "securityPolicyRevisionId", "dependencies", "conventions", "securityPolicy", "createdAt"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "workspaceId": { "type": "string", "minLength": 1 },
@@ -1899,6 +1900,7 @@
           "mainAgentSlot": { "$ref": "#/components/schemas/WorkspaceAgentSlot" },
           "childAgentSlots": { "type": "array", "items": { "$ref": "#/components/schemas/WorkspaceAgentSlot" } },
           "projectCapabilityRevisionIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+          "importedKeys": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
           "disabledKeys": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
           "dependencyPolicyRevisionId": { "type": "string", "minLength": 1 },
           "conventionRevisionId": { "type": "string", "minLength": 1 },

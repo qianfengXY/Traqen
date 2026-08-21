@@ -2580,6 +2580,7 @@ export function GlobalCapabilityTemplateLibrary({
 export function CapabilitySettings({
   t,
   models,
+  globalTemplates,
   catalog,
   draft,
   profile,
@@ -2594,6 +2595,8 @@ export function CapabilitySettings({
   setMainMcpNames,
   childSlots,
   setChildSlots,
+  importedKeys,
+  setImportedKeys,
   disabledKeys,
   setDisabledKeys,
   dependencyNotes,
@@ -2616,6 +2619,7 @@ export function CapabilitySettings({
 }: {
   t: T;
   models: GlobalModelProfile[];
+  globalTemplates: GlobalCapabilityTemplate[];
   catalog: EffectiveCapabilityCatalog;
   draft: WorkspaceCapabilityDraft | null;
   profile: ExecutionProfile | null;
@@ -2630,6 +2634,8 @@ export function CapabilitySettings({
   setMainMcpNames: (value: string[]) => void;
   childSlots: ChildCapabilityRole[];
   setChildSlots: (value: ChildCapabilityRole[]) => void;
+  importedKeys: CapabilityKey[];
+  setImportedKeys: (value: CapabilityKey[]) => void;
   disabledKeys: CapabilityKey[];
   setDisabledKeys: (value: CapabilityKey[]) => void;
   dependencyNotes: string;
@@ -2672,12 +2678,22 @@ export function CapabilitySettings({
   );
   const skills = catalog.entries.filter(({ kind }) => kind === "SKILL");
   const mcps = catalog.entries.filter(({ kind }) => kind === "MCP");
-  const validationSummaries = buildDraftValidation({ models, catalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security });
+  const validationSummaries = buildDraftValidation({ models, catalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, disabledKeys });
   const blockingSummaries = validationSummaries.filter(({ blocking }) => blocking);
-  const effectiveDiff = buildEffectiveDiff({ catalog, draft, disabledKeys, mainModel, mainRolePolicy, childSlots, security });
+  const effectiveDiff = buildEffectiveDiff({ catalog, globalTemplates, draft, importedKeys, disabledKeys, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security });
   const fieldInvalid = (field: string) => validationSummaries.some((summary) => summary.blocking && (summary.field === field || summary.field.startsWith(`${field}.`)));
   const updateSecurity = (patch: Partial<SecurityBoundaryDraft>) => setSecurity({ ...security, ...patch });
-  const scopedHandleIds = [...new Set(catalog.entries.flatMap((entry) => entry.credentialHandleIds ?? []))];
+  const selectedCapabilityIds = new Set([
+    ...mainSkillNames.map((normalizedName) => `SKILL:${normalizedName}`),
+    ...mainMcpNames.map((normalizedName) => `MCP:${normalizedName}`),
+    ...childSlots.flatMap((slot) => [
+      ...slot.skillNames.map((normalizedName) => `SKILL:${normalizedName}`),
+      ...slot.mcpNames.map((normalizedName) => `MCP:${normalizedName}`),
+    ]),
+  ]);
+  const scopedHandleIds = [...new Set([
+    ...catalog.entries.filter((entry) => selectedCapabilityIds.has(`${entry.kind}:${entry.normalizedName}`) && !disabledKeys.some((key) => key.kind === entry.kind && key.normalizedName === entry.normalizedName)).flatMap((entry) => entry.credentialHandleIds ?? []),
+  ])];
   const draftRoster = (main: WorkspaceCapabilityDraftSaveInput["mainAgentSlot"], children: WorkspaceCapabilityDraftSaveInput["childAgentSlots"]) =>
     `${main.modelProfileId || "—"} · ${children.map(({ modelProfileId }) => modelProfileId || "—").join(", ") || t("无 Child slot", "no Child slots")}`;
   const draftCapabilities = (keys: CapabilityKey[]) => keys.map(({ kind, normalizedName }) => `${kind}:${normalizedName}`).join(", ") || "—";
@@ -2703,6 +2719,19 @@ export function CapabilitySettings({
             (key) => key.kind !== kind || key.normalizedName !== normalizedName,
           ),
     );
+  const imported = (kind: "SKILL" | "MCP", name: string) =>
+    importedKeys.some((key) => key.kind === kind && key.normalizedName === name);
+  const toggleImported = (kind: "SKILL" | "MCP", normalizedName: string) => {
+    if (imported(kind, normalizedName)) {
+      setImportedKeys(importedKeys.filter((key) => key.kind !== kind || key.normalizedName !== normalizedName));
+      setDisabledKeys(disabledKeys.filter((key) => key.kind !== kind || key.normalizedName !== normalizedName));
+      return;
+    }
+    setImportedKeys([...importedKeys, { kind, normalizedName }]);
+  };
+  const templateSources = [...globalTemplates]
+    .sort((left, right) => right.revision - left.revision || left.kind.localeCompare(right.kind) || left.logicalName.localeCompare(right.logicalName))
+    .filter((template, index, values) => values.findIndex((candidate) => candidate.kind === template.kind && candidate.logicalName === template.logicalName) === index);
   const toggleGrant = (
     values: string[],
     setValues: (value: string[]) => void,
@@ -2870,6 +2899,28 @@ export function CapabilitySettings({
               </div>
               <button className="button mobile-settings-back" onClick={() => setMobileSection(null)}>{t("返回分区", "Back to sections")}</button>
             </header>
+            <section className="catalog-table" aria-label={t("全局模板导入来源", "Global template import sources")}>
+              {templateSources.map((template) => {
+                const normalizedName = template.logicalName.trim().toLowerCase();
+                return (
+                  <div key={`template-${template.kind}-${normalizedName}`} className={imported(template.kind, normalizedName) ? "" : "disabled"}>
+                    <b>{normalizedName}</b>
+                    <span>{template.kind}</span>
+                    <span>{t(`全局模板 v${template.revision}`, `Global template v${template.revision}`)}</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={imported(template.kind, normalizedName)}
+                        disabled={editingDisabled}
+                        onChange={() => toggleImported(template.kind, normalizedName)}
+                      />
+                      {t("导入到 Draft", "Import into Draft")}
+                    </label>
+                  </div>
+                );
+              })}
+              {templateSources.length === 0 && <p className="explicit-empty">{t("尚无全局 Skill / MCP 模板。可在“能力模板”中先创建。", "No global Skill / MCP templates yet. Create one in Capability templates first.")}</p>}
+            </section>
             <div className="catalog-table">
               {[...skills, ...mcps].map((entry) => (
                 <div
@@ -2893,7 +2944,7 @@ export function CapabilitySettings({
                         toggleDisabled(entry.kind, entry.normalizedName)
                       }
                     />
-                    {t("导入到 Draft", "Imported into Draft")}
+                    {t("在 Draft 中可用", "Available in Draft")}
                   </label>
                   {entry.source === "PROJECT" && (
                     <button

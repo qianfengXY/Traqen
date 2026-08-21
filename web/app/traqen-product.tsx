@@ -193,6 +193,7 @@ function ServerOwnedProduct() {
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
   const [capabilityDraftConflict, setCapabilityDraftConflict] = useState<CapabilityDraftConflict | null>(null);
   const [capabilitySettingsReady, setCapabilitySettingsReady] = useState(false);
+  const [importedKeys, setImportedKeys] = useState<CapabilityKey[]>([]);
   const [disabledKeys, setDisabledKeys] = useState<CapabilityKey[]>([]);
   const [dependencyNotes, setDependencyNotes] = useState("");
   const [conventionNotes, setConventionNotes] = useState("");
@@ -263,6 +264,7 @@ function ServerOwnedProduct() {
       setExecutionProfile(latestProfile);
       setProfileRevisionId(latestProfile?.id ?? "");
       setCapabilityDraft(draft);
+      setImportedKeys(draft?.importedKeys ?? []);
       setDisabledKeys(draft?.disabledKeys ?? []);
       if (draft) {
         const main = draft.mainAgentSlot;
@@ -330,6 +332,7 @@ function ServerOwnedProduct() {
     setCapabilityDraftConflict(null);
     setStartConfirmation(null);
     setCapabilitySettingsReady(false);
+    setImportedKeys([]);
     setDisabledKeys([]);
     setDependencyNotes("");
     setConventionNotes("");
@@ -694,6 +697,7 @@ function ServerOwnedProduct() {
       mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: mainRolePolicy, independenceGroup: "MAIN", enabled: true },
       childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: slot.rolePolicy, independenceGroup: slot.independenceGroup, enabled: true })),
       projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
+      importedKeys,
       disabledKeys,
       dependencies: { notes: dependencyNotes },
       conventions: { notes: conventionNotes },
@@ -770,6 +774,7 @@ function ServerOwnedProduct() {
     }
     const main = current.mainAgentSlot;
     setCapabilityDraft(current);
+    setImportedKeys(current.importedKeys);
     setDisabledKeys(current.disabledKeys);
     setMainModel(main.modelProfileId);
     setMainRolePolicy(main.rolePolicy || "PRIMARY_ANALYST");
@@ -938,7 +943,7 @@ function ServerOwnedProduct() {
     if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
+    return <CapabilitySettings t={t} models={globalModels} globalTemplates={globalCapabilityTemplates} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} importedKeys={importedKeys} setImportedKeys={setImportedKeys} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">

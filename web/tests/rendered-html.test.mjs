@@ -179,4 +179,8 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "mobile settings need an index before rendering a single selected section");
   assert.match(product, /Capability templates/,
     "the global configuration navigation must expose reusable Skill and MCP templates");
+  assert.match(product, /importedKeys/,
+    "the Workspace Draft must persist explicit global-template imports instead of treating every template as implicitly mounted");
+  assert.match(surfaces, /Global template import sources[\s\S]*Import into Draft/,
+    "the Workspace settings journey must expose global templates as explicit Draft import sources");
 });

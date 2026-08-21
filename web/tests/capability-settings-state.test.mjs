@@ -60,3 +60,28 @@ test("F006 blocks a required scoped Handle and exposes deterministic import/remo
   const removed = buildEffectiveDiff({ catalog, draft: null, disabledKeys: [{ kind: "SKILL", normalizedName: "review" }], mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST", childSlots, security });
   assert.equal(removed.find(({ id }) => id === "SKILL:review").change, "REMOVED");
 });
+
+test("F006 blocks a locally removed selected capability before the Draft is saved", () => {
+  const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
+  const summaries = buildDraftValidation({
+    models: [readyModel], catalog, mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST",
+    mainSkillNames: ["review"], mainMcpNames: [], childSlots, security,
+    disabledKeys: [{ kind: "SKILL", normalizedName: "review" }],
+  });
+  assert.equal(summaries.some(({ field, blocking }) => field === "agentSlots.grants" && blocking), true);
+});
+
+test("F006 effective Diff records an explicit global-template import before saving", () => {
+  const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
+  const diff = buildEffectiveDiff({
+    catalog,
+    globalTemplates: [{
+      id: "SKILL-REVIEW-1", kind: "SKILL", logicalName: "review", revision: 1,
+      manifest: { signature: "VERIFIED" }, credentialHandleIds: [], createdAt: "2026-08-20T00:00:00.000Z",
+    }],
+    draft: null,
+    importedKeys: [{ kind: "SKILL", normalizedName: "review" }],
+    disabledKeys: [], mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST", childSlots, security,
+  });
+  assert.equal(diff.find(({ id }) => id === "SKILL:review").change, "IMPORTED");
+});

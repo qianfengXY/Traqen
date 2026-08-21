@@ -62,6 +62,7 @@ export type WorkspaceCapabilityDraft = {
   mainAgentSlot: AgentSlotDraft;
   childAgentSlots: AgentSlotDraft[];
   disabledKeys: CapabilityKey[];
+  importedKeys: CapabilityKey[];
   projectCapabilityRevisionIds: string[];
   dependencyPolicyRevisionId: string;
   conventionRevisionId: string;
@@ -77,6 +78,7 @@ export type WorkspaceCapabilityDraftSaveInput = {
   mainAgentSlot: AgentSlotDraft;
   childAgentSlots: AgentSlotDraft[];
   projectCapabilityRevisionIds: string[];
+  importedKeys: CapabilityKey[];
   disabledKeys: CapabilityKey[];
   dependencies?: Record<string, unknown>;
   conventions?: Record<string, unknown>;

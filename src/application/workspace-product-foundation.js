@@ -213,6 +213,7 @@ export class WorkspaceProductFoundation {
     };
     return Object.freeze({
       ...draft,
+      importedKeys: draft.importedKeys ?? [],
       dependencies: await policy(draft.dependencyPolicyRevisionId, 'DEPENDENCY'),
       conventions: await policy(draft.conventionRevisionId, 'CONVENTION'),
       securityPolicy: await policy(draft.securityPolicyRevisionId, 'SECURITY'),
@@ -235,7 +236,19 @@ export class WorkspaceProductFoundation {
       }
       const head = await this.store.getUnderstandingHead(workspaceId, `WORKSPACE_POLICY_REVISION:${kind}`);
       const revision = head.version + 1;
-      const record = createWorkspacePolicyRevision({ workspaceId, kind, revision, content: content ?? {} }, this.clock);
+      const defaultSecurityPolicy = {
+        dataBoundary: 'WORKSPACE',
+        budgetLimit: '100',
+        mcpPermissionMode: 'ALLOW_SELECTED_MCP',
+        grantedHandleIds: [],
+        telemetryPolicy: 'METADATA_ONLY',
+      };
+      const record = createWorkspacePolicyRevision({
+        workspaceId,
+        kind,
+        revision,
+        content: content === undefined && kind === 'SECURITY' ? defaultSecurityPolicy : content ?? {},
+      }, this.clock);
       return { record, expectedVersion: revision - 1, isNew: true };
     };
     const [dependency, convention, security] = await Promise.all([
@@ -263,7 +276,7 @@ export class WorkspaceProductFoundation {
     return this.getCapabilityDraft(workspaceId);
   }
 
-  async effectiveCapabilityCatalog(workspaceId, disabledKeys = null, projectCapabilityRevisionIds = null) {
+  async effectiveCapabilityCatalog(workspaceId, disabledKeys = null, projectCapabilityRevisionIds = null, importedKeys = null) {
     const draft = await this.getCapabilityDraft(workspaceId);
     const pinnedIds = projectCapabilityRevisionIds;
     let projectCatalog;
@@ -282,6 +295,7 @@ export class WorkspaceProductFoundation {
     return resolveWorkspaceCapabilityCatalog({
       builtinCatalog: await this.listBuiltinCapabilities(),
       projectCatalog,
+      importedKeys: importedKeys ?? draft?.importedKeys ?? [],
       disabledKeys: disabledKeys ?? draft?.disabledKeys ?? [],
     });
   }
@@ -289,8 +303,8 @@ export class WorkspaceProductFoundation {
   async validateCapabilityDraft(workspaceId, modelProfiles) {
     const draft = await this.getCapabilityDraft(workspaceId);
     if (!draft) return null;
-    const catalog = await this.effectiveCapabilityCatalog(workspaceId, draft.disabledKeys, draft.projectCapabilityRevisionIds);
-    return Object.freeze({ draft, catalog, validation: validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective }) });
+    const catalog = await this.effectiveCapabilityCatalog(workspaceId, draft.disabledKeys, draft.projectCapabilityRevisionIds, draft.importedKeys);
+    return Object.freeze({ draft, catalog, validation: validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective, securityPolicy: draft.securityPolicy }) });
   }
 
   async activateCapabilityDraft(workspaceId, modelProfiles) {
@@ -339,8 +353,8 @@ export class WorkspaceProductFoundation {
       }, this.clock) : null;
       let profile = null;
       if (replacementDraft) {
-        const catalog = await this.effectiveCapabilityCatalog(workspace.id, replacementDraft.disabledKeys, replacementDraft.projectCapabilityRevisionIds);
-        const validation = validateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, effectiveCatalog: catalog.effective });
+        const catalog = await this.effectiveCapabilityCatalog(workspace.id, replacementDraft.disabledKeys, replacementDraft.projectCapabilityRevisionIds, replacementDraft.importedKeys);
+        const validation = validateWorkspaceCapabilityDraft({ draft: replacementDraft, modelProfiles, effectiveCatalog: catalog.effective, securityPolicy: draft.securityPolicy });
         if (!validation.valid) throw new TypeError(`Workspace ${workspace.id} replacement is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(', ')}`);
         if (activeReferencesSource && activeProfile?.draftRevisionId === draft.id) {
           const policyRevisions = await Promise.all([

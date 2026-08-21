@@ -100,7 +100,7 @@ export function createProjectCapabilityRevision(input, clock = () => new Date())
   });
 }
 
-export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], projectCatalog = [], disabledKeys = [] }) {
+export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], projectCatalog = [], importedKeys = null, disabledKeys = [] }) {
   const latest = (entries, source) => {
     const result = new Map();
     for (const raw of entries) {
@@ -112,11 +112,15 @@ export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], project
     }
     return result;
   };
-  const builtins = latest(builtinCatalog, "BUILTIN");
+  const availableBuiltins = latest(builtinCatalog, "BUILTIN");
+  const imported = importedKeys === null
+    ? new Set(availableBuiltins.keys())
+    : new Set(uniqueCapabilityKeys(importedKeys, "importedKeys").map(typedKey));
+  const builtins = new Map([...availableBuiltins].filter(([key]) => imported.has(key)));
   const projects = latest(projectCatalog, "PROJECT");
   const disabled = new Set(uniqueCapabilityKeys(disabledKeys, "disabledKeys").map(typedKey));
   const merged = new Map(builtins);
-  for (const [key, entry] of projects) merged.set(key, { ...entry, projectRelation: builtins.has(key) ? "OVERRIDE" : "ADDITION" });
+  for (const [key, entry] of projects) merged.set(key, { ...entry, projectRelation: availableBuiltins.has(key) ? "OVERRIDE" : "ADDITION" });
   const entries = [...merged.entries()].map(([key, entry]) => deepFreeze({
     ...entry,
     disabled: disabled.has(key),
@@ -127,8 +131,8 @@ export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], project
     effective: entries.filter(({ effective }) => effective),
     summary: {
       builtinCount: [...builtins.keys()].filter((key) => !projects.has(key)).length,
-      projectOverrideCount: [...projects.keys()].filter((key) => builtins.has(key)).length,
-      projectAdditionCount: [...projects.keys()].filter((key) => !builtins.has(key)).length,
+      projectOverrideCount: [...projects.keys()].filter((key) => availableBuiltins.has(key)).length,
+      projectAdditionCount: [...projects.keys()].filter((key) => !availableBuiltins.has(key)).length,
       disabledCount: entries.filter(({ disabled }) => disabled).length,
       effectiveCount: entries.filter(({ effective }) => effective).length,
     },
@@ -157,6 +161,7 @@ export function createWorkspaceCapabilityDraftRevision(input, clock = () => new 
   if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
   const mainAgentSlot = draftAgentSlot(input.mainAgentSlot ?? input.mainAgent, "MAIN");
   const childAgentSlots = (input.childAgentSlots ?? input.childSlots ?? [{}, {}]).map((slot, index) => draftAgentSlot(slot, "CHILD", index));
+  const importedKeys = uniqueCapabilityKeys(input.importedKeys, "importedKeys");
   const disabledKeys = uniqueCapabilityKeys(input.disabledKeys, "disabledKeys");
   const identity = {
     workspaceId,
@@ -164,6 +169,7 @@ export function createWorkspaceCapabilityDraftRevision(input, clock = () => new 
     mainAgentSlot,
     childAgentSlots,
     projectCapabilityRevisionIds: uniqueStrings(input.projectCapabilityRevisionIds, "projectCapabilityRevisionIds"),
+    importedKeys,
     disabledKeys,
     dependencyPolicyRevisionId: String(input.dependencyPolicyRevisionId ?? ""),
     conventionRevisionId: String(input.conventionRevisionId ?? ""),
@@ -185,7 +191,7 @@ export function createWorkspacePolicyRevision(input, clock = () => new Date()) {
   return deepFreeze({ id: contentId("WORKSPACE-POLICY-REVISION", identity), ...identity, contentDigest: contentId("WORKSPACE-POLICY-CONTENT", { kind, content }), createdAt: clock().toISOString() });
 }
 
-export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], effectiveCatalog = [] }) {
+export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], effectiveCatalog = [], securityPolicy = {} }) {
   const errors = [];
   const models = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
   const effectiveKeys = new Set(effectiveCatalog.filter((entry) => entry.effective !== false && entry.disabled !== true).map(typedKey));
@@ -206,12 +212,45 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
       if (!effectiveKeys.has(typedKey(grant))) errors.push({ field: path, code: "CAPABILITY_UNAVAILABLE", capabilityKey: grant, message: `${grant.kind} ${grant.normalizedName} is disabled or unavailable` });
     }
   }
+  const effectiveByKey = new Map(effectiveCatalog.filter((entry) => entry.effective !== false && entry.disabled !== true).map((entry) => [typedKey(entry), entry]));
+  const selectedSlots = slots.filter(({ enabled }) => enabled);
+  const selectedCapabilities = selectedSlots.flatMap((slot) => [...slot.skillGrants, ...slot.mcpGrants]);
+  for (const grant of selectedCapabilities.filter(({ kind }) => kind === "SKILL")) {
+    const capability = effectiveByKey.get(typedKey(grant));
+    if (String(capability?.manifest?.signature ?? "").toUpperCase() !== "VERIFIED") {
+      errors.push({ field: "agentSlots.grants", code: "SKILL_SIGNATURE_UNVERIFIED", capabilityKey: grant, message: `SKILL ${grant.normalizedName} must have a VERIFIED signature` });
+    }
+  }
+  const boundary = String(securityPolicy?.dataBoundary ?? "").toUpperCase();
+  if (!new Set(["WORKSPACE", "REPOSITORY", "EXTERNAL"]).has(boundary)) {
+    errors.push({ field: "securityPolicy.dataBoundary", code: "SECURITY_DATA_BOUNDARY_INVALID", message: "Select a valid Workspace data boundary" });
+  }
+  const budgetLimit = Number(securityPolicy?.budgetLimit);
+  if (!Number.isFinite(budgetLimit) || budgetLimit <= 0) {
+    errors.push({ field: "securityPolicy.budgetLimit", code: "SECURITY_BUDGET_INVALID", message: "Budget must be a positive finite value" });
+  }
+  const mcpPermissionMode = String(securityPolicy?.mcpPermissionMode ?? "").toUpperCase();
+  if (!new Set(["ALLOW_SELECTED_MCP", "DENY_MCP"]).has(mcpPermissionMode)) {
+    errors.push({ field: "securityPolicy.mcpPermissionMode", code: "MCP_PERMISSION_INVALID", message: "Select an MCP permission mode" });
+  } else if (selectedCapabilities.some(({ kind }) => kind === "MCP") && mcpPermissionMode === "DENY_MCP") {
+    errors.push({ field: "securityPolicy.mcpPermissionMode", code: "MCP_PERMISSION_DENIED", message: "Selected MCP capabilities are denied by the security policy" });
+  }
+  const grantedHandleIds = uniqueStrings(securityPolicy?.grantedHandleIds, "securityPolicy.grantedHandleIds");
+  const requiredHandleIds = [
+    ...selectedCapabilities.flatMap((grant) => effectiveByKey.get(typedKey(grant))?.credentialHandleIds ?? []),
+  ];
+  for (const handleId of new Set(requiredHandleIds)) {
+    if (!grantedHandleIds.includes(handleId)) {
+      errors.push({ field: "securityPolicy.grantedHandleIds", code: "SECRET_GRANT_REQUIRED", credentialHandleId: handleId, message: `Scoped handle ${handleId} requires an explicit grant` });
+    }
+  }
   if (new Set(slots.map(({ id }) => id).filter(Boolean)).size !== slots.filter(({ id }) => id).length) errors.push({ field: "agentSlots", code: "DUPLICATE_SLOT_ID", message: "Agent slot ids must be unique" });
   return deepFreeze({ valid: errors.length === 0, errors });
 }
 
-export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], catalog, policyRevisions = [], clock = () => new Date() }) {
-  const validation = validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective ?? catalog.entries ?? catalog });
+export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], catalog, policyRevisions = [], securityPolicy = null, clock = () => new Date() }) {
+  const resolvedSecurityPolicy = securityPolicy ?? policyRevisions.find(({ kind }) => kind === "SECURITY")?.content ?? {};
+  const validation = validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective ?? catalog.entries ?? catalog, securityPolicy: resolvedSecurityPolicy });
   if (!validation.valid) throw new TypeError(`Workspace capability draft is invalid: ${validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
   const modelById = new Map(modelProfiles.map((model) => [model.profileId ?? model.id, model]));
   const effectiveByKey = new Map((catalog.effective ?? catalog.entries ?? catalog).filter((entry) => entry.effective !== false).map((entry) => [typedKey(entry), entry]));

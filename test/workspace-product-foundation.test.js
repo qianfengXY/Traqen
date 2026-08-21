@@ -26,6 +26,14 @@ const clock = (() => {
   return () => new Date(Date.UTC(2026, 6, 31, 0, 0, tick++));
 })();
 
+const validSecurityPolicy = {
+  dataBoundary: "WORKSPACE",
+  budgetLimit: "100",
+  mcpPermissionMode: "ALLOW_SELECTED_MCP",
+  grantedHandleIds: [],
+  telemetryPolicy: "METADATA_ONLY",
+};
+
 async function foundation() {
   const store = new MemoryTraceabilityStore();
   await store.appendProjectFoundation(createProjectFoundation({
@@ -93,7 +101,7 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
   const builtins = [
     { id: "BS1", kind: "SKILL", normalizedName: "source", revision: 1, manifest: { origin: "builtin" } },
     { id: "BM1", kind: "MCP", normalizedName: "source", revision: 1, manifest: { origin: "builtin-mcp" } },
-    { id: "BS2", kind: "SKILL", normalizedName: "review", revision: 1, manifest: {} },
+    { id: "BS2", kind: "SKILL", normalizedName: "review", revision: 1, manifest: { signature: "VERIFIED" } },
   ];
   const project = [createProjectCapabilityRevision({ workspaceId: "W1", kind: "SKILL", normalizedName: "source", manifest: { origin: "project" } }, clock)];
   const catalog = resolveWorkspaceCapabilityCatalog({
@@ -118,7 +126,7 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
     conventionRevisionId: "CON-1",
     securityPolicyRevisionId: "SEC-1",
   }, clock);
-  const profile = activateWorkspaceCapabilityDraft({ draft, modelProfiles: [model], catalog, clock });
+  const profile = activateWorkspaceCapabilityDraft({ draft, modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock });
   assert.equal(profile.childAgentSlots.length, 2);
   assert.equal(profile.mainAgentSlot.modelProfileRevisionId, model.id);
   assert.equal(profile.mainAgent.model, model.id, "runtime compatibility fields also pin the immutable model revision");
@@ -127,16 +135,16 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
   assert.throws(() => createGlobalModelProfileRevision({ profileId: "CLI-1", transport: "CLI", cliAdapter: "CODEX", executablePath: "/tmp/codex" }, clock), /allowlist/);
   const oneChildProfile = activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 2, childAgentSlots: [draft.childAgentSlots[0]] }, clock),
-    modelProfiles: [model], catalog, clock,
+    modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
   });
   assert.equal(oneChildProfile.childAgentSlots.length, 1);
   assert.throws(() => activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 3, childAgentSlots: [] }, clock),
-    modelProfiles: [model], catalog, clock,
+    modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
   }), /MINIMUM_CHILDREN/);
   assert.throws(() => activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 4, mainAgentSlot: { ...draft.mainAgentSlot, enabled: false } }, clock),
-    modelProfiles: [model], catalog, clock,
+    modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
   }), /MAIN_REQUIRED/);
 });
 
@@ -167,6 +175,72 @@ test("F006 rejects plaintext Authorization material and keeps secret grants type
   ]);
 });
 
+test("F006 server validation rejects unsafe security policy and unverified selected capabilities", async () => {
+  const { service } = await foundation();
+  await service.registerCapabilityTemplate({
+    kind: "SKILL", logicalName: "unverified-skill", revision: 1,
+    manifest: { signature: "UNVERIFIED" }, credentialHandleIds: ["SKILL-HANDLE"],
+  });
+  await service.registerCapabilityTemplate({
+    kind: "MCP", logicalName: "review-mcp", revision: 1,
+    manifest: {}, credentialHandleIds: ["MCP-HANDLE"],
+  });
+  await service.saveCapabilityDraft("W1", {
+    expectedVersion: 0,
+    importedKeys: [
+      { kind: "SKILL", normalizedName: "unverified-skill" },
+      { kind: "MCP", normalizedName: "review-mcp" },
+    ],
+    mainAgentSlot: {
+      modelProfileId: "MODEL-1",
+      skillGrants: [{ kind: "SKILL", normalizedName: "unverified-skill" }],
+      mcpGrants: [{ kind: "MCP", normalizedName: "review-mcp" }],
+    },
+    childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+    securityPolicy: {
+      dataBoundary: "",
+      budgetLimit: "",
+      mcpPermissionMode: "DENY_MCP",
+      grantedHandleIds: [],
+    },
+  });
+  const validation = await service.validateCapabilityDraft("W1", [{
+    id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE",
+  }]);
+  assert.equal(validation.validation.valid, false);
+  assert.deepEqual(
+    [...new Set(validation.validation.errors.map(({ code }) => code))].sort(),
+    ["MCP_PERMISSION_DENIED", "SECRET_GRANT_REQUIRED", "SECURITY_BUDGET_INVALID", "SECURITY_DATA_BOUNDARY_INVALID", "SKILL_SIGNATURE_UNVERIFIED"],
+  );
+  await assert.rejects(
+    () => service.activateCapabilityDraft("W1", [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE" }]),
+    /MCP_PERMISSION_DENIED/,
+  );
+});
+
+test("F006 only resolves a global Skill template after its Workspace Draft explicitly imports it", async () => {
+  const { service } = await foundation();
+  await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "review", revision: 1, manifest: { signature: "VERIFIED" } });
+  await service.saveCapabilityDraft("W1", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-1" },
+    childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [], importedKeys: [], disabledKeys: [], securityPolicy: validSecurityPolicy,
+  });
+  assert.equal((await service.effectiveCapabilityCatalog("W1")).entries.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "review"), false);
+  await service.saveCapabilityDraft("W1", {
+    expectedVersion: 1,
+    mainAgentSlot: { modelProfileId: "MODEL-1", skillGrants: [{ kind: "SKILL", normalizedName: "review" }] },
+    childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [], importedKeys: [{ kind: "SKILL", normalizedName: "review" }], disabledKeys: [], securityPolicy: validSecurityPolicy,
+  });
+  const validation = await service.validateCapabilityDraft("W1", [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE" }]);
+  assert.equal(validation.validation.valid, true);
+  assert.equal(validation.catalog.effective.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "review"), true);
+});
+
 test("F006 service persists invalid drafts, enforces CAS, and restores project catalog state", async () => {
   const { store, service } = await foundation();
   await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "source", revision: 1, manifest: { origin: "builtin" } });
@@ -177,7 +251,9 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
     mainAgentSlot: { modelProfileId: "MODEL-1" },
     childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
     projectCapabilityRevisionIds: [project.id],
+    importedKeys: [{ kind: "MCP", normalizedName: "source" }],
     disabledKeys: [{ kind: "SKILL", normalizedName: "source" }],
+    securityPolicy: validSecurityPolicy,
   });
   assert.equal((await service.getCapabilityDraft("W1")).id, draft.id);
   await assert.rejects(
@@ -205,6 +281,7 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
     ],
     projectCapabilityRevisionIds: [project.id],
     disabledKeys: [],
+    securityPolicy: validSecurityPolicy,
   });
   assert.equal(valid.revision, 2);
   const profile = await service.activateCapabilityDraft("W1", modelProfiles);
@@ -226,7 +303,7 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
 
 test("F006 restores policy content, honors pinned project revisions, and permits explicit recreate after tombstone", async () => {
   const { store, service } = await foundation();
-  const first = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { marker: "REV1" } });
+  const first = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { marker: "REV1", signature: "VERIFIED" } });
   await service.saveCapabilityDraft("W1", {
     expectedVersion: 0,
     mainAgentSlot: { modelProfileId: "MODEL-1", skillGrants: [{ kind: "SKILL", normalizedName: "source" }] },
@@ -238,9 +315,9 @@ test("F006 restores policy content, honors pinned project revisions, and permits
     disabledKeys: [],
     dependencies: { notes: "dependency-v1" },
     conventions: { notes: "convention-v1" },
-    securityPolicy: { notes: "security-v1" },
+    securityPolicy: { ...validSecurityPolicy, notes: "security-v1" },
   });
-  await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 1, manifest: { marker: "REV2" } });
+  await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 1, manifest: { marker: "REV2", signature: "VERIFIED" } });
   const added = await service.saveProjectCapability("W1", { kind: "MCP", normalizedName: "new-tool", expectedVersion: 0, manifest: { marker: "NEW" } });
   const restored = await service.getCapabilityDraft("W1");
   assert.equal(restored.dependencies.notes, "dependency-v1");
@@ -283,7 +360,7 @@ test("F006 restores policy content, honors pinned project revisions, and permits
     disabledKeys: restored.disabledKeys,
     dependencies: { notes: "dependency-v2" },
     conventions: { notes: "convention-v2" },
-    securityPolicy: { notes: "security-v2" },
+    securityPolicy: { ...validSecurityPolicy, notes: "security-v2" },
   });
   const revisedDependency = await store.getUnderstandingRecord("W1", "WORKSPACE_POLICY_REVISION", revised.dependencyPolicyRevisionId);
   assert.equal(revisedDependency.revision, 2,
@@ -311,6 +388,7 @@ test("F006 model usage reads the latest durable job checkpoint state", async () 
       { id: "C2", modelProfileId: "MODEL-1", independenceGroup: "I2" },
     ],
     projectCapabilityRevisionIds: [], disabledKeys: [],
+    securityPolicy: validSecurityPolicy,
   });
   const profile = await service.activateCapabilityDraft("W1", modelProfiles);
   await store.appendUnderstandingRecord("W1", "WORKSPACE_ANALYSIS_JOB", {
@@ -341,6 +419,7 @@ test("F006 model replacement applies every Workspace atomically and rolls back o
         { id: "C2", modelProfileId: "MODEL-OLD", independenceGroup: "I2" },
       ],
       projectCapabilityRevisionIds: [], disabledKeys: [],
+      securityPolicy: validSecurityPolicy,
     });
     await service.activateCapabilityDraft(workspaceId, models);
   }
@@ -501,7 +580,7 @@ test("F006 active execution profile reads follow the CAS head even when timestam
       { id: "C1", modelProfileId: "MODEL-OLD", independenceGroup: "I1" },
       { id: "C2", modelProfileId: "MODEL-OLD", independenceGroup: "I2" },
     ],
-    projectCapabilityRevisionIds: [], disabledKeys: [],
+    projectCapabilityRevisionIds: [], disabledKeys: [], securityPolicy: validSecurityPolicy,
   });
   await service.activateCapabilityDraft("W1", models);
   const plan = await service.prepareModelReplacement("MODEL-OLD", "MODEL-NEW", models);
