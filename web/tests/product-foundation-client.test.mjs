@@ -11,12 +11,32 @@ import {
   getEffectiveCapabilities,
   getWorkspaceCapabilityDraft,
   loadWorkspaceCapabilitySettings,
+  listGlobalCapabilityTemplates,
   getWorkspaceReviewQueue,
   listWorkspaceExecutionProfiles,
   activateWorkspaceCapabilityDraft,
   ProductFoundationApiError,
   saveWorkspaceCapabilityDraft,
+  saveGlobalCapabilityTemplate,
 } from "../app/product-foundation-client.ts";
+
+test("global Skill and MCP template client uses explicit list and revision writes", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    return Response.json(options.method === "GET" ? { templates: [] } : { id: "T-1", kind: "SKILL", logicalName: "review", revision: 1, manifest: {}, credentialHandleIds: [], createdAt: "2026-08-20T00:00:00.000Z" });
+  };
+  try {
+    await listGlobalCapabilityTemplates("http://api", "secret");
+    await saveGlobalCapabilityTemplate("http://api", "secret", { kind: "SKILL", logicalName: "review", revision: 1, manifest: {}, credentialHandleIds: ["HANDLE-REVIEW"] });
+    assert.deepEqual(calls.map(({ options }) => options.method), ["GET", "POST"]);
+    assert.ok(calls.every(({ url }) => url.endsWith("/v1/capability-templates")));
+    assert.deepEqual(JSON.parse(calls[1].options.body), { kind: "SKILL", logicalName: "review", revision: 1, manifest: {}, credentialHandleIds: ["HANDLE-REVIEW"] });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("capability settings recovery is all-or-nothing when the catalog cannot be restored", async () => {
   const calls = [];

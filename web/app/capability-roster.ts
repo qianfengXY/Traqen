@@ -1,6 +1,6 @@
 import type { ChildCapabilityRole } from "./product-foundation-client";
 
-type SlotDefaults = Pick<ChildCapabilityRole, "model" | "skillNames" | "mcpNames">;
+type SlotDefaults = Pick<ChildCapabilityRole, "model" | "skillNames" | "mcpNames"> & Partial<Pick<ChildCapabilityRole, "rolePolicy">>;
 
 function cloneValues(values: string[]) {
   return [...values];
@@ -21,6 +21,7 @@ export function createDefaultChildSlots(
     model,
     skillNames: cloneValues(skillNames),
     mcpNames: cloneValues(mcpNames),
+    rolePolicy: "SPECIALIST",
     independenceGroup: `GROUP-${number}`,
   }));
 }
@@ -37,10 +38,11 @@ export function addChildSlot(
     model: defaults.model,
     skillNames: cloneValues(defaults.skillNames),
     mcpNames: cloneValues(defaults.mcpNames),
+    rolePolicy: defaults.rolePolicy ?? "SPECIALIST",
     independenceGroup: `GROUP-${number}`,
   }];
 }
 
 export function removeChildSlot(slots: ChildCapabilityRole[], slotId: string) {
-  return slots.length <= 2 ? slots : slots.filter(({ id }) => id !== slotId);
+  return slots.length <= 1 ? slots : slots.filter(({ id }) => id !== slotId);
 }

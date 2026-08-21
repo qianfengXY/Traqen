@@ -16,17 +16,19 @@ test("new Workspace roster defaults to exactly two independently configurable Ch
   assert.notEqual(slots[0].mcpNames, slots[1].mcpNames);
 });
 
-test("roster supports add/remove while enforcing a minimum of two", () => {
+test("roster supports add/remove while enforcing a minimum of one", () => {
   const defaults = createDefaultChildSlots();
   const expanded = addChildSlot(defaults, { model: "model-b", skillNames: [], mcpNames: [] });
   assert.deepEqual(expanded.map(({ id }) => id), ["CHILD-1", "CHILD-2", "CHILD-3"]);
 
   const two = removeChildSlot(expanded, "CHILD-3");
   assert.deepEqual(two.map(({ id }) => id), ["CHILD-1", "CHILD-2"]);
-  assert.deepEqual(removeChildSlot(two, "CHILD-1"), two);
+  const one = removeChildSlot(two, "CHILD-1");
+  assert.deepEqual(one.map(({ id }) => id), ["CHILD-2"]);
+  assert.deepEqual(removeChildSlot(one, "CHILD-2"), one);
 
-  const reexpanded = addChildSlot(two, { model: "model-b", skillNames: [], mcpNames: [] });
-  assert.deepEqual(reexpanded.map(({ id }) => id), ["CHILD-1", "CHILD-2", "CHILD-3"]);
+  const reexpanded = addChildSlot(one, { model: "model-b", skillNames: [], mcpNames: [] });
+  assert.deepEqual(reexpanded.map(({ id }) => id), ["CHILD-2", "CHILD-1"]);
 });
 
 test("persisted server roster stays authoritative and is not replaced by defaults", () => {

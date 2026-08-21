@@ -376,6 +376,20 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 201, await application.configureGlobalModelProfile(await readJson(request, maxBodyBytes)), id);
         return;
       }
+      if (request.method === "GET" && url.pathname === "/v1/capability-templates") {
+        const templates = await application.listCapabilityTemplates();
+        sendJson(response, 200, { templates: templates.filter(({ kind }) => kind === "SKILL" || kind === "MCP") }, id);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/capability-templates") {
+        requireJson(request);
+        const input = await readJson(request, maxBodyBytes);
+        if (input?.kind !== "SKILL" && input?.kind !== "MCP") {
+          throw new HttpError(400, "INVALID_CAPABILITY_TEMPLATE_KIND", "Global capability templates must be SKILL or MCP");
+        }
+        sendJson(response, 201, await application.registerCapabilityTemplate(input), id);
+        return;
+      }
       const globalModelMatch = /^\/v1\/global-models\/([^/]+)$/.exec(url.pathname);
       if (request.method === "GET" && globalModelMatch) {
         const profile = await application.getGlobalModelProfile(decodePathSegment(globalModelMatch[1]));

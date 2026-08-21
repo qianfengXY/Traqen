@@ -24,6 +24,17 @@ export type EffectiveCapability = CapabilityKey & {
   disabled: boolean;
   effective: boolean;
   manifest: Record<string, unknown>;
+  credentialHandleIds?: string[];
+};
+
+export type GlobalCapabilityTemplate = {
+  id: string;
+  kind: "SKILL" | "MCP";
+  logicalName: string;
+  revision: number;
+  manifest: Record<string, unknown>;
+  credentialHandleIds: string[];
+  createdAt: string;
 };
 
 export type EffectiveCapabilityCatalog = {
@@ -39,6 +50,7 @@ export type AgentSlotDraft = {
   modelProfileId: string;
   skillGrants: CapabilityKey[];
   mcpGrants: CapabilityKey[];
+  rolePolicy: string;
   independenceGroup: string;
   enabled: boolean;
 };
@@ -93,6 +105,7 @@ export type CapabilityRole = {
 
 export type ChildCapabilityRole = CapabilityRole & {
   id: string;
+  rolePolicy: string;
   independenceGroup: string;
 };
 
@@ -160,6 +173,26 @@ export async function getConnectionHealth(apiBase: string) {
 export async function listGlobalModels(apiBase: string, apiToken: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-models`, { method: "GET", headers: headers(apiToken) });
   return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
+}
+
+export async function listGlobalCapabilityTemplates(apiBase: string, apiToken: string) {
+  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, { method: "GET", headers: headers(apiToken) });
+  return (await parseJson<{ templates: GlobalCapabilityTemplate[] }>(response)).templates;
+}
+
+export async function saveGlobalCapabilityTemplate(apiBase: string, apiToken: string, input: {
+  kind: "SKILL" | "MCP";
+  logicalName: string;
+  revision: number;
+  manifest: Record<string, unknown>;
+  credentialHandleIds?: string[];
+}) {
+  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, {
+    method: "POST",
+    headers: headers(apiToken, true),
+    body: JSON.stringify(input),
+  });
+  return parseJson<GlobalCapabilityTemplate>(response);
 }
 
 export async function createGlobalModel(apiBase: string, apiToken: string, input: Record<string, unknown>) {

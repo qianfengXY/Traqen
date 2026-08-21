@@ -89,7 +89,7 @@ test("Workspace execution profiles deterministically override and remove global 
   }), /cannot contain credential material/);
 });
 
-test("F006 resolves typed capability overlays, disables after overlay, and activates only a complete two-Child roster", () => {
+test("F006 resolves typed capability overlays, disables after overlay, and activates a complete one-or-more Child roster", () => {
   const builtins = [
     { id: "BS1", kind: "SKILL", normalizedName: "source", revision: 1, manifest: { origin: "builtin" } },
     { id: "BM1", kind: "MCP", normalizedName: "source", revision: 1, manifest: { origin: "builtin-mcp" } },
@@ -125,12 +125,17 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
   assert.equal(profile.childSlots[0].model, model.id);
   assert.deepEqual(profile.entries.filter(({ kind }) => kind === "MODEL").map(({ logicalName }) => logicalName), [model.id]);
   assert.throws(() => createGlobalModelProfileRevision({ profileId: "CLI-1", transport: "CLI", cliAdapter: "CODEX", executablePath: "/tmp/codex" }, clock), /allowlist/);
-  assert.throws(() => activateWorkspaceCapabilityDraft({
+  const oneChildProfile = activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 2, childAgentSlots: [draft.childAgentSlots[0]] }, clock),
+    modelProfiles: [model], catalog, clock,
+  });
+  assert.equal(oneChildProfile.childAgentSlots.length, 1);
+  assert.throws(() => activateWorkspaceCapabilityDraft({
+    draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 3, childAgentSlots: [] }, clock),
     modelProfiles: [model], catalog, clock,
   }), /MINIMUM_CHILDREN/);
   assert.throws(() => activateWorkspaceCapabilityDraft({
-    draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 3, mainAgentSlot: { ...draft.mainAgentSlot, enabled: false } }, clock),
+    draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 4, mainAgentSlot: { ...draft.mainAgentSlot, enabled: false } }, clock),
     modelProfiles: [model], catalog, clock,
   }), /MAIN_REQUIRED/);
 });
@@ -185,8 +190,8 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
   );
   const modelProfiles = [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE" }];
   const validation = await service.validateCapabilityDraft("W1", modelProfiles);
-  assert.equal(validation.validation.valid, false);
-  assert.equal(validation.validation.errors.some(({ code }) => code === "MINIMUM_CHILDREN"), true);
+  assert.equal(validation.validation.valid, true);
+  assert.equal(validation.validation.errors.some(({ code }) => code === "MINIMUM_CHILDREN"), false);
   assert.equal(validation.catalog.entries.find(({ kind }) => kind === "SKILL").source, "PROJECT");
   assert.equal(validation.catalog.entries.find(({ kind }) => kind === "MCP").effective, true);
   await assert.rejects(() => service.deleteProjectCapability("W1", "SKILL", "source"), /expectedVersion is required/);

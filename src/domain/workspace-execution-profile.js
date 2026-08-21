@@ -144,6 +144,7 @@ function draftAgentSlot(input, role, index = 0) {
     modelProfileId: String(value.modelProfileId ?? value.model ?? ""),
     skillGrants: uniqueCapabilityKeys(value.skillGrants ?? (value.skillNames ?? []).map((normalizedName) => ({ kind: "SKILL", normalizedName })), `${role}.skillGrants`),
     mcpGrants: uniqueCapabilityKeys(value.mcpGrants ?? (value.mcpNames ?? []).map((normalizedName) => ({ kind: "MCP", normalizedName })), `${role}.mcpGrants`),
+    rolePolicy: String(value.rolePolicy ?? (role === "MAIN" ? "PRIMARY_ANALYST" : "SPECIALIST")),
     independenceGroup: String(value.independenceGroup ?? (role === "MAIN" ? "MAIN" : "")),
     enabled: value.enabled !== false,
   };
@@ -190,12 +191,13 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
   const effectiveKeys = new Set(effectiveCatalog.filter((entry) => entry.effective !== false && entry.disabled !== true).map(typedKey));
   const enabledChildren = draft.childAgentSlots.filter(({ enabled }) => enabled);
   if (!draft.mainAgentSlot.enabled) errors.push({ field: "mainAgentSlot.enabled", code: "MAIN_REQUIRED", message: "The Main Agent slot must be enabled" });
-  if (enabledChildren.length < 2) errors.push({ field: "childAgentSlots", code: "MINIMUM_CHILDREN", message: "At least two enabled Child Agent slots are required" });
+  if (enabledChildren.length < 1) errors.push({ field: "childAgentSlots", code: "MINIMUM_CHILDREN", message: "At least one enabled Child Agent slot is required" });
   const slots = [draft.mainAgentSlot, ...draft.childAgentSlots];
   for (const [index, slot] of slots.entries()) {
     const path = index === 0 ? "mainAgentSlot" : `childAgentSlots[${index - 1}]`;
     if (!slot.enabled) continue;
     if (!slot.id.trim()) errors.push({ field: `${path}.id`, code: "REQUIRED", message: "Slot id is required" });
+    if (!slot.rolePolicy.trim()) errors.push({ field: `${path}.rolePolicy`, code: "REQUIRED", message: "Role policy is required" });
     const model = models.get(slot.modelProfileId);
     if (!slot.modelProfileId || !model) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_UNAVAILABLE", message: "Select a global model profile" });
     else if ((model.readiness ?? (model.ready ? "READY" : "UNVERIFIED")) !== "READY" || (model.lifecycle ?? "ACTIVE") !== "ACTIVE") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_NOT_READY", message: "Selected model must be READY and ACTIVE" });
@@ -421,7 +423,7 @@ export function createWorkspaceCapabilityConfig(input, clock = () => new Date())
     mcpNames: uniqueStrings(slot.mcpNames, `childSlots[${index}].mcpNames`),
     independenceGroup: requireNonEmptyString(slot.independenceGroup, `childSlots[${index}].independenceGroup`),
   }));
-  if (childSlots.length < 2) throw new TypeError("at least two Child Agent slots are required");
+  if (childSlots.length < 1) throw new TypeError("at least one Child Agent slot is required");
   if (new Set(childSlots.map(({ id }) => id)).size !== childSlots.length) throw new TypeError("Child Agent slot ids must be unique");
   return deepFreeze({
     id: contentId("WORKSPACE-CAPABILITY-CONFIG", { workspaceId, version, input }),

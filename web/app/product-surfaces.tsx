@@ -8,12 +8,18 @@ import type {
   ChildCapabilityRole,
   EffectiveCapabilityCatalog,
   ExecutionProfile,
+  GlobalCapabilityTemplate,
   GlobalModelProfile,
   GlobalModelUsage,
   ReviewQueueItem,
   WorkspaceCapabilityDraft,
   WorkspaceCapabilityDraftSaveInput,
 } from "./product-foundation-client";
+import {
+  buildDraftValidation,
+  buildEffectiveDiff,
+  type SecurityBoundaryDraft,
+} from "./capability-settings-state";
 import type { ServerUnderstandingJob } from "./server-understanding-client";
 import {
   buildFeatureDetail,
@@ -2480,6 +2486,97 @@ export function GlobalModelLibrary({
   );
 }
 
+export function GlobalCapabilityTemplateLibrary({
+  t,
+  templates,
+  working,
+  onSave,
+}: {
+  t: T;
+  templates: GlobalCapabilityTemplate[];
+  working: boolean;
+  onSave: (input: {
+    kind: "SKILL" | "MCP";
+    logicalName: string;
+    revision: number;
+    manifest: Record<string, unknown>;
+    credentialHandleIds: string[];
+  }) => void;
+}) {
+  const [kind, setKind] = useState<"SKILL" | "MCP">("SKILL");
+  const [logicalName, setLogicalName] = useState("");
+  const [manifest, setManifest] = useState("{}");
+  const [handleIds, setHandleIds] = useState("");
+  const [error, setError] = useState("");
+  const latest = [...templates]
+    .sort((left, right) => left.kind.localeCompare(right.kind) || left.logicalName.localeCompare(right.logicalName) || right.revision - left.revision)
+    .filter((template, index, all) => index === all.findIndex((candidate) => candidate.kind === template.kind && candidate.logicalName === template.logicalName));
+
+  return (
+    <>
+      <section className="page-heading">
+        <div>
+          <p className="eyebrow">F006 · Reusable import source</p>
+          <h1>{t("全局能力模板", "Global capability templates")}</h1>
+          <p>{t("Skill 和 MCP 模板只提供可复用的导入来源；运行时只能使用 Workspace 已解析并固定的 Revision。", "Skill and MCP templates are reusable import sources only; runtime can use only a Workspace-resolved, pinned revision.")}</p>
+        </div>
+        <span className="authority-pill neutral">{latest.length} templates</span>
+      </section>
+      <section className="panel">
+        <header className="panel-head">
+          <div>
+            <h2>{t("可导入模板", "Importable templates")}</h2>
+            <p>{t("创建或修订后，在某个 Workspace 的能力设置中显式导入、覆盖或移除。", "After creating or revising a template, explicitly import, override, or remove it from a Workspace capability Draft.")}</p>
+          </div>
+        </header>
+        <div className="revision-list">
+          {latest.map((template) => (
+            <div key={`${template.kind}-${template.logicalName}`}>
+              <b>{template.kind}</b>
+              <code>{template.logicalName}</code>
+              <small>v{template.revision} · {template.credentialHandleIds.length ? `${template.credentialHandleIds.length} scoped handles` : t("无需 Handle", "no Handle required")}</small>
+            </div>
+          ))}
+          {latest.length === 0 && <p className="explicit-empty">{t("尚无全局 Skill 或 MCP 模板。", "No global Skill or MCP templates yet.")}</p>}
+        </div>
+      </section>
+      <section className="panel">
+        <header className="panel-head">
+          <div>
+            <h2>{t("创建模板 Revision", "Create a template revision")}</h2>
+            <p>{t("仅记录 Manifest 与作用域 Handle 标识。界面和请求都不接受或显示 Secret Value。", "Record only a manifest and scoped handle identifiers. This UI and request never accept or show secret values.")}</p>
+          </div>
+        </header>
+        <div className="form-grid">
+          <label>Kind
+            <select value={kind} disabled={working} onChange={(event) => setKind(event.currentTarget.value as "SKILL" | "MCP")}><option>SKILL</option><option>MCP</option></select>
+          </label>
+          <label>{t("规范化名称", "Normalized name")}
+            <input value={logicalName} disabled={working} onChange={(event) => { setLogicalName(event.currentTarget.value.toLowerCase()); setError(""); }} />
+          </label>
+          <label>Manifest JSON
+            <textarea rows={5} value={manifest} disabled={working} onChange={(event) => { setManifest(event.currentTarget.value); setError(""); }} />
+          </label>
+          <label>{t("Scoped Handle 标识（逗号分隔）", "Scoped handle identifiers (comma separated)")}
+            <input value={handleIds} disabled={working} autoComplete="off" placeholder="credential-handle-id" onChange={(event) => setHandleIds(event.currentTarget.value)} />
+          </label>
+          {error && <p className="explicit-empty" role="alert">{error}</p>}
+          <button className="button primary" disabled={working || !logicalName.trim()} onClick={() => {
+            try {
+              const parsed = JSON.parse(manifest) as Record<string, unknown>;
+              if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new TypeError("Manifest must be a JSON object");
+              const previous = latest.find((template) => template.kind === kind && template.logicalName === logicalName);
+              onSave({ kind, logicalName, revision: (previous?.revision ?? 0) + 1, manifest: parsed, credentialHandleIds: handleIds.split(",").map((value) => value.trim()).filter(Boolean) });
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : t("Manifest JSON 无效", "Invalid manifest JSON"));
+            }
+          }}>{t("保存模板 Revision", "Save template revision")}</button>
+        </div>
+      </section>
+    </>
+  );
+}
+
 export function CapabilitySettings({
   t,
   models,
@@ -2489,6 +2586,8 @@ export function CapabilitySettings({
   profileHistory,
   mainModel,
   setMainModel,
+  mainRolePolicy,
+  setMainRolePolicy,
   mainSkillNames,
   setMainSkillNames,
   mainMcpNames,
@@ -2503,6 +2602,8 @@ export function CapabilitySettings({
   setConventionNotes,
   securityNotes,
   setSecurityNotes,
+  security,
+  setSecurity,
   recoveryReady,
   working,
   draftConflict,
@@ -2521,6 +2622,8 @@ export function CapabilitySettings({
   profileHistory: ExecutionProfile[];
   mainModel: string;
   setMainModel: (value: string) => void;
+  mainRolePolicy: string;
+  setMainRolePolicy: (value: string) => void;
   mainSkillNames: string[];
   setMainSkillNames: (value: string[]) => void;
   mainMcpNames: string[];
@@ -2535,6 +2638,8 @@ export function CapabilitySettings({
   setConventionNotes: (value: string) => void;
   securityNotes: string;
   setSecurityNotes: (value: string) => void;
+  security: SecurityBoundaryDraft;
+  setSecurity: (value: SecurityBoundaryDraft) => void;
   recoveryReady: boolean;
   working: boolean;
   draftConflict: {
@@ -2559,6 +2664,7 @@ export function CapabilitySettings({
   const [projectName, setProjectName] = useState("");
   const [projectManifest, setProjectManifest] = useState("{}");
   const [projectManifestError, setProjectManifestError] = useState("");
+  const [mobileSection, setMobileSection] = useState<string | null>(null);
   const editingDisabled = working || !recoveryReady || Boolean(draftConflict);
   const readyModels = models.filter(
     ({ readiness, lifecycle }) =>
@@ -2566,6 +2672,12 @@ export function CapabilitySettings({
   );
   const skills = catalog.entries.filter(({ kind }) => kind === "SKILL");
   const mcps = catalog.entries.filter(({ kind }) => kind === "MCP");
+  const validationSummaries = buildDraftValidation({ models, catalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security });
+  const blockingSummaries = validationSummaries.filter(({ blocking }) => blocking);
+  const effectiveDiff = buildEffectiveDiff({ catalog, draft, disabledKeys, mainModel, mainRolePolicy, childSlots, security });
+  const fieldInvalid = (field: string) => validationSummaries.some((summary) => summary.blocking && (summary.field === field || summary.field.startsWith(`${field}.`)));
+  const updateSecurity = (patch: Partial<SecurityBoundaryDraft>) => setSecurity({ ...security, ...patch });
+  const scopedHandleIds = [...new Set(catalog.entries.flatMap((entry) => entry.credentialHandleIds ?? []))];
   const draftRoster = (main: WorkspaceCapabilityDraftSaveInput["mainAgentSlot"], children: WorkspaceCapabilityDraftSaveInput["childAgentSlots"]) =>
     `${main.modelProfileId || "—"} · ${children.map(({ modelProfileId }) => modelProfileId || "—").join(", ") || t("无 Child slot", "no Child slots")}`;
   const draftCapabilities = (keys: CapabilityKey[]) => keys.map(({ kind, normalizedName }) => `${kind}:${normalizedName}`).join(", ") || "—";
@@ -2726,19 +2838,37 @@ export function CapabilitySettings({
           </span>
         </article>
       </section>
-      <section className="settings-layout">
+      <section className="mobile-settings-section-list" aria-label={t("移动端设置分区", "Mobile settings sections")} data-section-selected={mobileSection ?? ""}>
+        <header className="panel-head">
+          <div>
+            <h2>{t("设置分区", "Settings sections")}</h2>
+            <p>{t("选择一个分区后再编辑；验证摘要和完整 Effective Diff 始终保留在下方。", "Choose one section before editing; the validation summary and full Effective Diff remain below.")}</p>
+          </div>
+        </header>
+        <div className="mobile-settings-section-buttons">
+          {[
+            ["catalog", t("模板与导入", "Templates and imports")],
+            ["main", t("Main Agent", "Main Agent")],
+            ["children", t("Child 槽位", "Child slots")],
+            ["policy", t("边界与安全", "Boundaries and security")],
+            ["history", t("Revision 历史", "Revision history")],
+          ].map(([id, label]) => <button key={id} className="button" aria-pressed={mobileSection === id} onClick={() => setMobileSection(id)}>{label}</button>)}
+        </div>
+      </section>
+      <section className="settings-layout" data-mobile-section={mobileSection ?? ""}>
         <div>
-          <article className="panel settings-card">
+          <article className="panel settings-card" data-settings-section="catalog">
             <header className="panel-head">
               <div>
-                <h2>{t("有效 Skill / MCP", "Effective Skills / MCPs")}</h2>
+                <h2>{t("全局模板与 Workspace 导入", "Global templates and Workspace imports")}</h2>
                 <p>
                   {t(
-                    "项目同 typed key 条目完整覆盖内置条目；禁用发生在覆盖之后。",
-                    "A project entry fully overlays a built-in entry with the same typed key; disable is applied after overlay.",
+                    "全局 Skill / MCP 仅作为导入来源。通过此 Draft 显式导入、覆盖、新增或移除；禁用发生在覆盖之后。",
+                    "Global Skill / MCP entries are import sources only. This Draft explicitly imports, overrides, adds, or removes them; disable is applied after overlay.",
                   )}
                 </p>
               </div>
+              <button className="button mobile-settings-back" onClick={() => setMobileSection(null)}>{t("返回分区", "Back to sections")}</button>
             </header>
             <div className="catalog-table">
               {[...skills, ...mcps].map((entry) => (
@@ -2763,7 +2893,7 @@ export function CapabilitySettings({
                         toggleDisabled(entry.kind, entry.normalizedName)
                       }
                     />
-                    {t("启用", "Enabled")}
+                    {t("导入到 Draft", "Imported into Draft")}
                   </label>
                   {entry.source === "PROJECT" && (
                     <button
@@ -2852,7 +2982,7 @@ export function CapabilitySettings({
               </button>
             </div>
           </article>
-          <article className="panel settings-card">
+          <article className="panel settings-card" data-settings-section="main">
             <header className="panel-head">
               <div>
                 <h2>Main Agent</h2>
@@ -2863,6 +2993,7 @@ export function CapabilitySettings({
                   )}
                 </p>
               </div>
+              <button className="button mobile-settings-back" onClick={() => setMobileSection(null)}>{t("返回分区", "Back to sections")}</button>
             </header>
             <div className="form-grid">
               <label>
@@ -2870,6 +3001,8 @@ export function CapabilitySettings({
                 <select
                   value={mainModel}
                   disabled={editingDisabled}
+                  aria-invalid={fieldInvalid("mainAgentSlot.modelProfileId")}
+                  aria-describedby="main-model-validation"
                   onChange={(event) => setMainModel(event.currentTarget.value)}
                 >
                   <option value="">
@@ -2881,6 +3014,17 @@ export function CapabilitySettings({
                     </option>
                   ))}
                 </select>
+                <small id="main-model-validation">{fieldInvalid("mainAgentSlot.modelProfileId") ? validationSummaries.find((summary) => summary.field === "mainAgentSlot.modelProfileId")?.message : t("仅 READY 且 ACTIVE 的模型可用于新 Revision。", "Only READY and ACTIVE models can be used by a new Revision.")}</small>
+              </label>
+              <label>
+                {t("角色策略", "Role policy")}
+                <input
+                  value={mainRolePolicy}
+                  disabled={editingDisabled}
+                  aria-invalid={fieldInvalid("mainAgentSlot.rolePolicy")}
+                  onChange={(event) => setMainRolePolicy(event.currentTarget.value)}
+                  placeholder="PRIMARY_ANALYST"
+                />
               </label>
               <div>
                 <b>Skills</b>
@@ -2897,14 +3041,14 @@ export function CapabilitySettings({
               </div>
             </div>
           </article>
-          <article className="panel settings-card">
+          <article className="panel settings-card" data-settings-section="children">
             <header className="panel-head">
               <div>
                 <h2>Child Agent Slots</h2>
                 <p>
                   {t(
-                    "至少两个启用且完整的 Child；可以继续添加。",
-                    "At least two enabled and complete Child slots are required; more may be added.",
+                    "至少一个启用且完整的 Child；默认提供两个，但可以添加或减少到一个。",
+                    "At least one enabled and complete Child slot is required. Two are the default, and you can add or reduce to one.",
                   )}
                 </p>
               </div>
@@ -2923,6 +3067,7 @@ export function CapabilitySettings({
               >
                 ＋ {t("添加槽位", "Add slot")}
               </button>
+              <button className="button mobile-settings-back" onClick={() => setMobileSection(null)}>{t("返回分区", "Back to sections")}</button>
             </header>
             <div className="child-slot-list">
               {childSlots.map((slot, index) => (
@@ -2933,6 +3078,7 @@ export function CapabilitySettings({
                     <select
                       value={slot.model}
                       disabled={editingDisabled}
+                      aria-invalid={fieldInvalid(`childAgentSlots[${index}].modelProfileId`)}
                       onChange={(event) =>
                         updateSlot(index, { model: event.currentTarget.value })
                       }
@@ -2961,10 +3107,21 @@ export function CapabilitySettings({
                     )}
                   </div>
                   <label>
+                    {t("角色策略", "Role policy")}
+                    <input
+                      value={slot.rolePolicy}
+                      disabled={editingDisabled}
+                      aria-invalid={fieldInvalid(`childAgentSlots[${index}].rolePolicy`)}
+                      onChange={(event) => updateSlot(index, { rolePolicy: event.currentTarget.value })}
+                      placeholder="SPECIALIST"
+                    />
+                  </label>
+                  <label>
                     {t("独立组", "Independence group")}
                     <input
                       value={slot.independenceGroup}
                       disabled={editingDisabled}
+                      aria-invalid={fieldInvalid(`childAgentSlots[${index}].independenceGroup`)}
                       onChange={(event) =>
                         updateSlot(index, {
                           independenceGroup: event.currentTarget.value,
@@ -2974,7 +3131,7 @@ export function CapabilitySettings({
                   </label>
                   <button
                     aria-label={t("删除槽位", "Remove slot")}
-                    disabled={editingDisabled || childSlots.length <= 2}
+                    disabled={editingDisabled || childSlots.length <= 1}
                     onClick={() =>
                       setChildSlots(removeChildSlot(childSlots, slot.id))
                     }
@@ -2985,7 +3142,7 @@ export function CapabilitySettings({
               ))}
             </div>
           </article>
-          <article className="panel settings-card">
+          <article className="panel settings-card" data-settings-section="policy">
             <header className="panel-head">
               <div>
                 <h2>
@@ -3001,6 +3158,7 @@ export function CapabilitySettings({
                   )}
                 </p>
               </div>
+              <button className="button mobile-settings-back" onClick={() => setMobileSection(null)}>{t("返回分区", "Back to sections")}</button>
             </header>
             <div className="form-grid">
               <label>
@@ -3026,7 +3184,45 @@ export function CapabilitySettings({
                 />
               </label>
               <label>
-                {t("安全与权限边界", "Security and permission boundaries")}
+                {t("数据边界", "Data boundary")}
+                <select value={security.dataBoundary} disabled={editingDisabled} aria-invalid={fieldInvalid("securityPolicy.dataBoundary")} onChange={(event) => updateSecurity({ dataBoundary: event.currentTarget.value as SecurityBoundaryDraft["dataBoundary"] })}>
+                  <option value="WORKSPACE">WORKSPACE</option>
+                  <option value="REPOSITORY">REPOSITORY</option>
+                  <option value="EXTERNAL">EXTERNAL</option>
+                </select>
+              </label>
+              <label>
+                {t("预算上限", "Budget limit")}
+                <input value={security.budgetLimit} disabled={editingDisabled} aria-invalid={fieldInvalid("securityPolicy.budgetLimit")} inputMode="numeric" placeholder="100" onChange={(event) => updateSecurity({ budgetLimit: event.currentTarget.value })} />
+              </label>
+              <label>
+                {t("MCP Permission", "MCP permission")}
+                <select value={security.mcpPermissionMode} disabled={editingDisabled} aria-invalid={fieldInvalid("securityPolicy.mcpPermissionMode")} onChange={(event) => updateSecurity({ mcpPermissionMode: event.currentTarget.value as SecurityBoundaryDraft["mcpPermissionMode"] })}>
+                  <option value="ALLOW_SELECTED_MCP">{t("允许已选择 MCP", "Allow selected MCPs")}</option>
+                  <option value="DENY_MCP">{t("拒绝全部 MCP", "Deny all MCPs")}</option>
+                </select>
+              </label>
+              <div className="scoped-handle-grants" aria-label={t("Secret Handle 与 Grant", "Secret Handle and Grant")}>
+                <b>{t("Secret Handle 与 Grant", "Secret Handle and Grant")}</b>
+                <small>{t("仅展示模板声明的作用域 Handle 标识；绝不显示或接收 Secret Value。", "Only template-declared scoped handle identifiers are shown; secret values are never displayed or accepted.")}</small>
+                {scopedHandleIds.map((handleId) => (
+                  <label key={handleId}>
+                    <input type="checkbox" checked={security.grantedHandleIds.includes(handleId)} disabled={editingDisabled} onChange={() => updateSecurity({ grantedHandleIds: security.grantedHandleIds.includes(handleId) ? security.grantedHandleIds.filter((value) => value !== handleId) : [...security.grantedHandleIds, handleId] })} />
+                    <span>{handleId}</span>
+                    <small>{security.grantedHandleIds.includes(handleId) ? t("Grant 已记录，待服务端验证", "Grant recorded; pending server validation") : t("未授予", "Not granted")}</small>
+                  </label>
+                ))}
+                {scopedHandleIds.length === 0 && <small>{t("当前导入能力不需要 Scoped Handle。", "Current imported capabilities require no scoped handle.")}</small>}
+              </div>
+              <label>
+                {t("Telemetry 策略", "Telemetry policy")}
+                <select value={security.telemetryPolicy} disabled={editingDisabled} onChange={(event) => updateSecurity({ telemetryPolicy: event.currentTarget.value as SecurityBoundaryDraft["telemetryPolicy"] })}>
+                  <option value="METADATA_ONLY">{t("仅元数据", "Metadata only")}</option>
+                  <option value="DISABLED">{t("禁用遥测", "Disabled")}</option>
+                </select>
+              </label>
+              <label>
+                {t("安全与权限边界说明", "Security and permission boundary notes")}
                 <textarea
                   rows={5}
                   value={securityNotes}
@@ -3038,7 +3234,7 @@ export function CapabilitySettings({
               </label>
             </div>
           </article>
-          <article className="panel settings-card">
+          <article className="panel settings-card" data-settings-section="history">
             <header className="panel-head">
               <div>
                 <h2>{t("Revision 历史", "Revision history")}</h2>
@@ -3049,6 +3245,7 @@ export function CapabilitySettings({
                   )}
                 </p>
               </div>
+              <button className="button mobile-settings-back" onClick={() => setMobileSection(null)}>{t("返回分区", "Back to sections")}</button>
             </header>
             <div className="revision-list">
               {profileHistory.map((item) => (
@@ -3076,6 +3273,24 @@ export function CapabilitySettings({
                   ? t("草稿已保存", "Draft saved")
                   : t("尚未保存", "Unsaved")}
             </h2>
+            <section className="validation-summary" aria-label={t("校验摘要", "Validation summary")}>
+              <header>
+                <b>{t("校验摘要", "Validation summary")}</b>
+                <small>{blockingSummaries.length ? t(`${blockingSummaries.length} 项阻断`, `${blockingSummaries.length} blocking`) : t("无本地阻断", "No local blockers")}</small>
+              </header>
+              <ul>
+                {validationSummaries.map((summary) => <li key={`${summary.field}-${summary.title}`} className={summary.blocking ? "blocking" : "ready"}>
+                  <b>{summary.title}</b><span>{summary.message}</span>
+                </li>)}
+              </ul>
+            </section>
+            <section className="effective-diff" aria-label="Effective Diff">
+              <header><b>Effective Diff</b><small>{t("保存前完整预览", "Complete pre-save preview")}</small></header>
+              <ul>
+                {effectiveDiff.map((entry) => <li key={entry.id}><em>{entry.change}</em><span><b>{entry.label}</b><small>{entry.detail}</small></span></li>)}
+                {effectiveDiff.length === 0 && <li><span>{t("没有尚未保存的有效变更。", "No unsaved effective changes.")}</span></li>}
+              </ul>
+            </section>
             <dl>
               <dt>Built-in</dt>
               <dd>{catalog.summary.builtinCount}</dd>
@@ -3111,12 +3326,7 @@ export function CapabilitySettings({
               disabled={
                 editingDisabled ||
                 !draft ||
-                !mainModel ||
-                childSlots.length < 2 ||
-                childSlots.some(
-                  ({ model, independenceGroup }) =>
-                    !model || !independenceGroup,
-                )
+                blockingSummaries.length > 0
               }
               onClick={onResolve}
             >

@@ -9,6 +9,7 @@ import {
   EmptyWorkspace,
   FeatureExplorer,
   GraphExplorer,
+  GlobalCapabilityTemplateLibrary,
   GlobalModelLibrary,
   ImpactWorkspace,
   ReviewWorkspace,
@@ -32,6 +33,7 @@ import {
   loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
   listGlobalModels,
+  listGlobalCapabilityTemplates,
   retireGlobalModel,
   updateGlobalModel,
   verifyGlobalModel,
@@ -39,16 +41,19 @@ import {
   ProductFoundationApiError,
   saveWorkspaceCapabilityDraft,
   saveProjectCapability,
+  saveGlobalCapabilityTemplate,
   type CapabilityKey,
   type ChildCapabilityRole,
   type EffectiveCapabilityCatalog,
   type ExecutionProfile,
   type ReviewQueueItem,
   type GlobalModelProfile,
+  type GlobalCapabilityTemplate,
   type GlobalModelUsage,
   type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityDraftSaveInput,
 } from "./product-foundation-client";
+import type { SecurityBoundaryDraft } from "./capability-settings-state";
 import {
   controlServerWorkspaceUnderstanding,
   getServerWorkspaceUnderstanding,
@@ -80,7 +85,7 @@ import {
 } from "./understanding-graph-client";
 import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
-type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "models" | "settings";
+type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "models" | "templates" | "settings";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
 type CapabilityDraftConflict = {
@@ -99,6 +104,13 @@ type StartConfirmation = {
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_TRAQEN_API_BASE ?? "http://127.0.0.1:3100";
 const DEFAULT_SOURCE_ROOT = process.env.NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT ?? "";
 const WEB_OPERATOR = "WEB-OPERATOR";
+const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
+  dataBoundary: "WORKSPACE",
+  budgetLimit: "100",
+  mcpPermissionMode: "ALLOW_SELECTED_MCP",
+  grantedHandleIds: [],
+  telemetryPolicy: "METADATA_ONLY",
+};
 
 const modules: Array<{ key: View; icon: string; section: "overview" | "understanding" | "governance" | "configuration"; zh: string; en: string }> = [
   { key: "overview", icon: "⌂", section: "overview", zh: "工作台概览", en: "Workspace overview" },
@@ -108,6 +120,7 @@ const modules: Array<{ key: View; icon: string; section: "overview" | "understan
   { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
   { key: "impact", icon: "↗", section: "governance", zh: "变更影响", en: "Change impact" },
   { key: "models", icon: "◉", section: "configuration", zh: "全局模型", en: "Global models" },
+  { key: "templates", icon: "◇", section: "configuration", zh: "能力模板", en: "Capability templates" },
   { key: "settings", icon: "⚙", section: "configuration", zh: "能力设置", en: "Capability settings" },
 ];
 
@@ -175,6 +188,7 @@ function ServerOwnedProduct() {
   const [reviewRationale, setReviewRationale] = useState("");
   const [impact, setImpact] = useState<Record<string, unknown> | null>(null);
   const [globalModels, setGlobalModels] = useState<GlobalModelProfile[]>([]);
+  const [globalCapabilityTemplates, setGlobalCapabilityTemplates] = useState<GlobalCapabilityTemplate[]>([]);
   const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
   const [capabilityDraftConflict, setCapabilityDraftConflict] = useState<CapabilityDraftConflict | null>(null);
@@ -183,9 +197,11 @@ function ServerOwnedProduct() {
   const [dependencyNotes, setDependencyNotes] = useState("");
   const [conventionNotes, setConventionNotes] = useState("");
   const [securityNotes, setSecurityNotes] = useState("");
+  const [securityBoundary, setSecurityBoundary] = useState<SecurityBoundaryDraft>(DEFAULT_SECURITY_BOUNDARY);
   const [executionProfile, setExecutionProfile] = useState<ExecutionProfile | null>(null);
   const [profileHistory, setProfileHistory] = useState<ExecutionProfile[]>([]);
   const [mainModel, setMainModel] = useState("");
+  const [mainRolePolicy, setMainRolePolicy] = useState("PRIMARY_ANALYST");
   const [mainSkillNames, setMainSkillNames] = useState<string[]>([]);
   const [mainMcpNames, setMainMcpNames] = useState<string[]>([]);
   const [childSlots, setChildSlots] = useState<ChildCapabilityRole[]>(() => createDefaultChildSlots());
@@ -251,20 +267,30 @@ function ServerOwnedProduct() {
       if (draft) {
         const main = draft.mainAgentSlot;
         setMainModel(main.modelProfileId);
+        setMainRolePolicy(main.rolePolicy || "PRIMARY_ANALYST");
         setMainSkillNames(main.skillGrants.map(({ normalizedName }) => normalizedName));
         setMainMcpNames(main.mcpGrants.map(({ normalizedName }) => normalizedName));
-        setChildSlots(draft.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), independenceGroup: slot.independenceGroup })));
+        setChildSlots(draft.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), rolePolicy: slot.rolePolicy || "SPECIALIST", independenceGroup: slot.independenceGroup })));
         setDependencyNotes(String(draft.dependencies?.notes ?? ""));
         setConventionNotes(String(draft.conventions?.notes ?? ""));
         setSecurityNotes(String(draft.securityPolicy?.notes ?? ""));
+        setSecurityBoundary({
+          dataBoundary: draft.securityPolicy?.dataBoundary === "REPOSITORY" || draft.securityPolicy?.dataBoundary === "EXTERNAL" ? draft.securityPolicy.dataBoundary : "WORKSPACE",
+          budgetLimit: String(draft.securityPolicy?.budgetLimit ?? "100"),
+          mcpPermissionMode: draft.securityPolicy?.mcpPermissionMode === "DENY_MCP" ? "DENY_MCP" : "ALLOW_SELECTED_MCP",
+          grantedHandleIds: Array.isArray(draft.securityPolicy?.grantedHandleIds) ? draft.securityPolicy.grantedHandleIds.filter((value): value is string => typeof value === "string") : [],
+          telemetryPolicy: draft.securityPolicy?.telemetryPolicy === "DISABLED" ? "DISABLED" : "METADATA_ONLY",
+        });
       } else {
         setMainModel("");
+        setMainRolePolicy("PRIMARY_ANALYST");
         setMainSkillNames([]);
         setMainMcpNames([]);
         setChildSlots(createDefaultChildSlots());
         setDependencyNotes("");
         setConventionNotes("");
         setSecurityNotes("");
+        setSecurityBoundary(DEFAULT_SECURITY_BOUNDARY);
       }
       setEffectiveCatalog(catalog);
       setCapabilitySettingsReady(true);
@@ -308,10 +334,12 @@ function ServerOwnedProduct() {
     setDependencyNotes("");
     setConventionNotes("");
     setSecurityNotes("");
+    setSecurityBoundary(DEFAULT_SECURITY_BOUNDARY);
     setExecutionProfile(null);
     setProfileHistory([]);
     setEffectiveCatalog({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
     setMainModel("");
+    setMainRolePolicy("PRIMARY_ANALYST");
     setMainSkillNames([]);
     setMainMcpNames([]);
     setChildSlots(createDefaultChildSlots());
@@ -327,15 +355,17 @@ function ServerOwnedProduct() {
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableModels] = await Promise.all([
+      const [available, , availableModels, availableTemplates] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
         listGlobalModels(apiBase, apiToken),
+        listGlobalCapabilityTemplates(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
       setGlobalModels(availableModels);
+      setGlobalCapabilityTemplates(availableTemplates);
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
       if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
@@ -661,13 +691,13 @@ function ServerOwnedProduct() {
   function currentCapabilityDraftInput(expectedVersion: number): WorkspaceCapabilityDraftSaveInput {
     return {
       expectedVersion,
-      mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: "MAIN", enabled: true },
-      childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), independenceGroup: slot.independenceGroup, enabled: true })),
+      mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: mainRolePolicy, independenceGroup: "MAIN", enabled: true },
+      childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: slot.rolePolicy, independenceGroup: slot.independenceGroup, enabled: true })),
       projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
       disabledKeys,
       dependencies: { notes: dependencyNotes },
       conventions: { notes: conventionNotes },
-      securityPolicy: { notes: securityNotes, dataBoundary: "WORKSPACE" },
+      securityPolicy: { notes: securityNotes, dataBoundary: securityBoundary.dataBoundary, budgetLimit: securityBoundary.budgetLimit, mcpPermissionMode: securityBoundary.mcpPermissionMode, grantedHandleIds: securityBoundary.grantedHandleIds, telemetryPolicy: securityBoundary.telemetryPolicy },
     };
   }
 
@@ -742,12 +772,20 @@ function ServerOwnedProduct() {
     setCapabilityDraft(current);
     setDisabledKeys(current.disabledKeys);
     setMainModel(main.modelProfileId);
+    setMainRolePolicy(main.rolePolicy || "PRIMARY_ANALYST");
     setMainSkillNames(main.skillGrants.map(({ normalizedName }) => normalizedName));
     setMainMcpNames(main.mcpGrants.map(({ normalizedName }) => normalizedName));
-    setChildSlots(current.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), independenceGroup: slot.independenceGroup })));
+    setChildSlots(current.childAgentSlots.map((slot) => ({ id: slot.id, model: slot.modelProfileId, skillNames: slot.skillGrants.map(({ normalizedName }) => normalizedName), mcpNames: slot.mcpGrants.map(({ normalizedName }) => normalizedName), rolePolicy: slot.rolePolicy || "SPECIALIST", independenceGroup: slot.independenceGroup })));
     setDependencyNotes(String(current.dependencies?.notes ?? ""));
     setConventionNotes(String(current.conventions?.notes ?? ""));
     setSecurityNotes(String(current.securityPolicy?.notes ?? ""));
+    setSecurityBoundary({
+      dataBoundary: current.securityPolicy?.dataBoundary === "REPOSITORY" || current.securityPolicy?.dataBoundary === "EXTERNAL" ? current.securityPolicy.dataBoundary : "WORKSPACE",
+      budgetLimit: String(current.securityPolicy?.budgetLimit ?? "100"),
+      mcpPermissionMode: current.securityPolicy?.mcpPermissionMode === "DENY_MCP" ? "DENY_MCP" : "ALLOW_SELECTED_MCP",
+      grantedHandleIds: Array.isArray(current.securityPolicy?.grantedHandleIds) ? current.securityPolicy.grantedHandleIds.filter((value): value is string => typeof value === "string") : [],
+      telemetryPolicy: current.securityPolicy?.telemetryPolicy === "DISABLED" ? "DISABLED" : "METADATA_ONLY",
+    });
     setEffectiveCatalog(conflict.currentCatalog);
     setCapabilityDraftConflict(null);
     notify(t("已采用新的 Workspace Draft。", "The newer Workspace Draft is now in the editor."));
@@ -780,6 +818,22 @@ function ServerOwnedProduct() {
       setEffectiveCatalog(catalog);
       notify(t("项目能力已删除；typed key 的禁用状态保持不变。", "Project capability removed; the typed key's disable state is preserved."));
     } catch (error) { notify(messageOf(error, t("项目能力删除失败", "Unable to delete project capability")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function saveGlobalTemplate(input: {
+    kind: "SKILL" | "MCP";
+    logicalName: string;
+    revision: number;
+    manifest: Record<string, unknown>;
+    credentialHandleIds: string[];
+  }) {
+    setWorking(true);
+    try {
+      await saveGlobalCapabilityTemplate(apiBase, apiToken, input);
+      setGlobalCapabilityTemplates(await listGlobalCapabilityTemplates(apiBase, apiToken));
+      notify(t("全局能力模板 Revision 已保存；请在 Workspace Draft 中显式导入。", "Global capability template revision saved; explicitly import it from a Workspace Draft."));
+    } catch (error) { notify(messageOf(error, t("模板保存失败", "Unable to save capability template")), "error"); }
     finally { setWorking(false); }
   }
 
@@ -871,16 +925,20 @@ function ServerOwnedProduct() {
     || artifact?.productionEligible === false;
   const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
   const renderView = () => {
-    if (!activeWorkspace && view !== "models" && view !== "settings") return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
-    if (view === "overview") return <WorkspaceOverview t={t} workspace={activeWorkspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
+    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
+    if (view === "templates") return <GlobalCapabilityTemplateLibrary t={t} templates={globalCapabilityTemplates} working={working} onSave={(input) => void saveGlobalTemplate(input)} />;
+    if (!activeWorkspace) {
+      if (view === "settings") return <Unavailable t={t} reason={t("请先选择或创建一个 Workspace，再配置能力设置。", "Select or create a Workspace before configuring capability settings.")} />;
+      return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
+    }
+    const workspace = activeWorkspace;
+    if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
     if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => setView("settings")} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
-    if (view === "feature") return <FeatureExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
-    if (view === "graph") return <GraphExplorer t={t} workspaceId={activeWorkspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
+    if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
+    if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
-    if (!activeWorkspace) return <Unavailable t={t} reason={t("请先选择或创建一个 Workspace，再配置能力设置。", "Select or create a Workspace before configuring capability settings.")} />;
-    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
+    return <CapabilitySettings t={t} models={globalModels} catalog={effectiveCatalog} draft={capabilityDraft} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={() => void resolveCapabilities()} />;
   };
 
   return <main className="app-shell">

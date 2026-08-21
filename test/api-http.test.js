@@ -401,9 +401,24 @@ test("analysis model connectivity failures use a distinct gateway error", async 
   assert.equal((await response.json()).error.code, "ANALYSIS_MODEL_UNAVAILABLE");
 });
 
-test("F006 exposes no legacy template or capability-config mutation authority", async (t) => {
+test("F006 exposes reusable global Skill and MCP templates while keeping legacy capability-config mutation unavailable", async (t) => {
   const baseUrl = await startServer(t);
-  assert.equal((await fetch(`${baseUrl}/v1/capability-templates`)).status, 404);
+  const created = await postJson(`${baseUrl}/v1/capability-templates`, {
+    kind: "SKILL",
+    logicalName: "review",
+    revision: 1,
+    manifest: { signature: "verified" },
+    credentialHandleIds: ["HANDLE-REVIEW"],
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.kind, "SKILL");
+  assert.deepEqual(created.body.credentialHandleIds, ["HANDLE-REVIEW"]);
+  const listed = await fetch(`${baseUrl}/v1/capability-templates`);
+  assert.equal(listed.status, 200);
+  assert.deepEqual((await listed.json()).templates.map(({ logicalName }) => logicalName), ["review"]);
+  assert.equal((await postJson(`${baseUrl}/v1/capability-templates`, {
+    kind: "MODEL", logicalName: "not-duplicated", revision: 1, manifest: {},
+  })).response.status, 400);
   assert.equal((await fetch(`${baseUrl}/v1/workspaces/W1/capability-configs`)).status, 404);
   assert.equal((await fetch(`${baseUrl}/v1/workspaces/W1/execution-profile-revisions`, {
     method: "POST",

@@ -86,6 +86,10 @@
       "get": { "operationId": "listGlobalModelProfiles", "responses": { "200": { "description": "Reusable global API and allowlisted CLI model profiles without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } },
       "post": { "operationId": "createGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "201": { "description": "Persisted global model connection profile", "content": { "application/json": { "schema": { "type": "object" } } } } } }
     },
+    "/v1/capability-templates": {
+      "get": { "operationId": "listGlobalCapabilityTemplates", "responses": { "200": { "description": "Reusable global Skill and MCP import sources without secret values", "content": { "application/json": { "schema": { "type": "object", "required": ["templates"], "properties": { "templates": { "type": "array", "items": { "type": "object" } } }, "additionalProperties": false } } } } } },
+      "post": { "operationId": "createGlobalCapabilityTemplate", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["kind", "logicalName", "revision", "manifest"], "properties": { "kind": { "enum": ["SKILL", "MCP"] }, "logicalName": { "type": "string", "minLength": 1 }, "revision": { "type": "integer", "minimum": 1 }, "manifest": { "type": "object" }, "credentialHandleIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Immutable global Skill or MCP template revision", "content": { "application/json": { "schema": { "type": "object" } } } } } }
+    },
     "/v1/global-models/{modelId}": {
       "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
       "get": { "operationId": "getGlobalModelProfile", "responses": { "200": { "description": "One immutable-revision global model profile without credential values", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelProfile" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
@@ -1845,6 +1849,7 @@
           "modelProfileId": { "type": "string" },
           "skillGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
           "mcpGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "rolePolicy": { "type": "string" },
           "independenceGroup": { "type": "string" },
           "enabled": { "type": "boolean" }
         },
@@ -1852,7 +1857,7 @@
       },
       "WorkspaceAgentSlot": {
         "type": "object",
-        "required": ["id", "role", "displayName", "modelProfileId", "skillGrants", "mcpGrants", "independenceGroup", "enabled"],
+        "required": ["id", "role", "displayName", "modelProfileId", "skillGrants", "mcpGrants", "rolePolicy", "independenceGroup", "enabled"],
         "properties": {
           "id": { "type": "string" },
           "role": { "enum": ["MAIN", "CHILD"] },
@@ -1860,6 +1865,7 @@
           "modelProfileId": { "type": "string" },
           "skillGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
           "mcpGrants": { "type": "array", "items": { "$ref": "#/components/schemas/CapabilityKey" }, "uniqueItems": true },
+          "rolePolicy": { "type": "string" },
           "independenceGroup": { "type": "string" },
           "enabled": { "type": "boolean" }
         },

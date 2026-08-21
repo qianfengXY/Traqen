@@ -271,7 +271,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/projects/{projectId}/changes/{changeSetId}/impact"].get.operationId, "getUnderstandingChangeImpact");
   assert.equal(contract.paths["/v1/projects/{projectId}/analysis-runs/{analysisRunId}/work-units/{workUnitId}/source-slices"].post.operationId, "requestSourceSlice");
   assert.equal(contract.paths["/v1/projects/{projectId}/source-registrations"].post.operationId, "registerUnderstandingSource");
-  assert.equal(contract.paths["/v1/capability-templates"], undefined);
+  const globalCapabilityTemplates = contract.paths["/v1/capability-templates"];
+  assert.equal(globalCapabilityTemplates.get.operationId, "listGlobalCapabilityTemplates");
+  assert.equal(globalCapabilityTemplates.post.operationId, "createGlobalCapabilityTemplate");
+  assert.deepEqual(globalCapabilityTemplates.post.requestBody.content["application/json"].schema.properties.kind.enum, ["SKILL", "MCP"]);
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}/capability-configs"], undefined);
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].get.operationId, "listWorkspaceExecutionProfileRevisions");
   assert.equal(contract.paths["/v1/projects/{projectId}/workspace-analysis-jobs"].post.operationId, "startWorkspaceUnderstandingJob");

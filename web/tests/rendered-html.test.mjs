@@ -167,4 +167,16 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "adopting the newer Draft must also adopt the catalog shown during comparison");
   assert.match(surfaces, /const editingDisabled = working \|\| !recoveryReady \|\| Boolean\(draftConflict\)/,
     "the editor must be frozen while the retained Draft snapshot is awaiting an explicit conflict choice");
+  assert.match(surfaces, /Role policy/,
+    "every Agent slot needs a visible Role policy control");
+  assert.match(surfaces, /Secret Handle/,
+    "security settings must expose a scoped handle, never a secret value");
+  assert.match(surfaces, /Validation summary/,
+    "an invalid Draft needs an actionable, field-linked validation summary");
+  assert.match(surfaces, /Effective Diff/,
+    "the mutable Draft needs a complete pre-save effective diff");
+  assert.match(surfaces, /mobile-settings-section-list/,
+    "mobile settings need an index before rendering a single selected section");
+  assert.match(product, /Capability templates/,
+    "the global configuration navigation must expose reusable Skill and MCP templates");
 });
