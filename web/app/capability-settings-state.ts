@@ -1,6 +1,7 @@
 import type {
   CapabilityKey,
   ChildCapabilityRole,
+  EffectiveCapability,
   EffectiveCapabilityCatalog,
   GlobalCapabilityTemplate,
   GlobalModelProfile,
@@ -31,6 +32,83 @@ export type EffectiveDiffEntry = {
 };
 
 const typedKey = ({ kind, normalizedName }: CapabilityKey) => `${kind}:${normalizedName}`;
+
+export function buildLocalEffectiveCatalog({
+  catalog,
+  globalTemplates,
+  importedKeys,
+  disabledKeys,
+}: {
+  catalog: EffectiveCapabilityCatalog;
+  globalTemplates: GlobalCapabilityTemplate[];
+  importedKeys: CapabilityKey[];
+  disabledKeys: CapabilityKey[];
+}): EffectiveCapabilityCatalog {
+  const availableTemplates = new Map<string, GlobalCapabilityTemplate>();
+  for (const entry of catalog.entries.filter(({ source }) => source === "BUILTIN")) {
+    availableTemplates.set(`${entry.kind}:${entry.normalizedName}`, {
+      id: entry.id,
+      kind: entry.kind,
+      logicalName: entry.normalizedName,
+      revision: entry.revision ?? 1,
+      manifest: entry.manifest,
+      credentialHandleIds: entry.credentialHandleIds ?? [],
+      createdAt: "",
+    });
+  }
+  for (const template of globalTemplates) {
+    const normalizedName = template.logicalName.trim().toLowerCase();
+    const key = `${template.kind}:${normalizedName}`;
+    const prior = availableTemplates.get(key);
+    if (!prior || template.revision > prior.revision) {
+      availableTemplates.set(key, { ...template, logicalName: normalizedName });
+    }
+  }
+  const imported = new Set(importedKeys.map(typedKey));
+  const builtins = new Map<string, EffectiveCapability>();
+  for (const [key, template] of availableTemplates) {
+    if (!imported.has(key)) continue;
+    builtins.set(key, {
+      id: template.id,
+      kind: template.kind,
+      normalizedName: template.logicalName,
+      revision: template.revision,
+      source: "BUILTIN",
+      disabled: false,
+      effective: true,
+      manifest: template.manifest,
+      credentialHandleIds: template.credentialHandleIds,
+    });
+  }
+  const projects = new Map<string, EffectiveCapability>();
+  for (const entry of catalog.entries.filter(({ source }) => source === "PROJECT")) {
+    const key = `${entry.kind}:${entry.normalizedName}`;
+    const prior = projects.get(key);
+    if (!prior || (entry.revision ?? 1) > (prior.revision ?? 1)) projects.set(key, entry);
+  }
+  const disabled = new Set(disabledKeys.map(typedKey));
+  const merged = new Map(builtins);
+  for (const [key, entry] of projects) {
+    merged.set(key, {
+      ...entry,
+      projectRelation: availableTemplates.has(key) ? "OVERRIDE" : "ADDITION",
+    });
+  }
+  const entries = [...merged.entries()]
+    .map(([key, entry]) => ({ ...entry, disabled: disabled.has(key), effective: !disabled.has(key) }))
+    .sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName));
+  return {
+    entries,
+    effective: entries.filter(({ effective }) => effective),
+    summary: {
+      builtinCount: [...builtins.keys()].filter((key) => !projects.has(key)).length,
+      projectOverrideCount: [...projects.keys()].filter((key) => availableTemplates.has(key)).length,
+      projectAdditionCount: [...projects.keys()].filter((key) => !availableTemplates.has(key)).length,
+      disabledCount: entries.filter(({ disabled }) => disabled).length,
+      effectiveCount: entries.filter(({ effective }) => effective).length,
+    },
+  };
+}
 
 function selectedCapabilityNames(mainSkillNames: string[], mainMcpNames: string[], childSlots: ChildCapabilityRole[]) {
   return new Set([
@@ -252,7 +330,7 @@ export function buildEffectiveDiff({
     category: "AGENT",
     change: !draft || slotDetail(draft.mainAgentSlot) !== slotDetail({ ...draft.mainAgentSlot, modelProfileId: mainModel, rolePolicy: mainRolePolicy, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL" as const, normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP" as const, normalizedName })) }) ? "CHANGED" : "INHERITED",
     label: "Main Agent",
-    detail: `${mainModel || "No model"} · ${mainRolePolicy || "No role policy"}`,
+    detail: `${mainModel || "No model"} · ${mainRolePolicy || "No role policy"} · Skills ${[...mainSkillNames].sort().join(",") || "—"} · MCP ${[...mainMcpNames].sort().join(",") || "—"}`,
   }];
   for (const slot of childSlots) {
     const saved = savedChildren.get(slot.id);

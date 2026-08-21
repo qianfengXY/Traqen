@@ -18,6 +18,7 @@ import type {
 import {
   buildDraftValidation,
   buildEffectiveDiff,
+  buildLocalEffectiveCatalog,
   type SecurityBoundaryDraft,
 } from "./capability-settings-state";
 import type { ServerUnderstandingJob } from "./server-understanding-client";
@@ -2676,11 +2677,12 @@ export function CapabilitySettings({
     ({ readiness, lifecycle }) =>
       readiness === "READY" && lifecycle === "ACTIVE",
   );
-  const skills = catalog.entries.filter(({ kind }) => kind === "SKILL");
-  const mcps = catalog.entries.filter(({ kind }) => kind === "MCP");
-  const validationSummaries = buildDraftValidation({ models, catalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, draft, importedKeys, disabledKeys });
+  const localCatalog = buildLocalEffectiveCatalog({ catalog, globalTemplates, importedKeys, disabledKeys });
+  const skills = localCatalog.entries.filter(({ kind }) => kind === "SKILL");
+  const mcps = localCatalog.entries.filter(({ kind }) => kind === "MCP");
+  const validationSummaries = buildDraftValidation({ models, catalog: localCatalog, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, draft, importedKeys, disabledKeys });
   const blockingSummaries = validationSummaries.filter(({ blocking }) => blocking);
-  const effectiveDiff = buildEffectiveDiff({ catalog, globalTemplates, draft, importedKeys, disabledKeys, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, dependencyNotes, conventionNotes, securityNotes });
+  const effectiveDiff = buildEffectiveDiff({ catalog: localCatalog, globalTemplates, draft, importedKeys, disabledKeys, mainModel, mainRolePolicy, mainSkillNames, mainMcpNames, childSlots, security, dependencyNotes, conventionNotes, securityNotes });
   const fieldInvalid = (field: string) => validationSummaries.some((summary) => summary.blocking && (summary.field === field || summary.field.startsWith(`${field}.`)));
   const updateSecurity = (patch: Partial<SecurityBoundaryDraft>) => setSecurity({ ...security, ...patch });
   const selectedCapabilityIds = new Set([
@@ -2692,7 +2694,7 @@ export function CapabilitySettings({
     ]),
   ]);
   const scopedHandleIds = [...new Set([
-    ...catalog.entries.filter((entry) => selectedCapabilityIds.has(`${entry.kind}:${entry.normalizedName}`) && !disabledKeys.some((key) => key.kind === entry.kind && key.normalizedName === entry.normalizedName)).flatMap((entry) => entry.credentialHandleIds ?? []),
+    ...localCatalog.entries.filter((entry) => selectedCapabilityIds.has(`${entry.kind}:${entry.normalizedName}`) && !disabledKeys.some((key) => key.kind === entry.kind && key.normalizedName === entry.normalizedName)).flatMap((entry) => entry.credentialHandleIds ?? []),
   ])];
   const draftRoster = (main: WorkspaceCapabilityDraftSaveInput["mainAgentSlot"], children: WorkspaceCapabilityDraftSaveInput["childAgentSlots"]) =>
     `${main.modelProfileId || "—"} · ${children.map(({ modelProfileId }) => modelProfileId || "—").join(", ") || t("无 Child slot", "no Child slots")}`;
@@ -2847,7 +2849,7 @@ export function CapabilitySettings({
           <b>2</b>
           <span>
             {t("能力目录", "Capability catalog")}
-            <small>{catalog.summary.effectiveCount} effective</small>
+            <small>{localCatalog.summary.effectiveCount} effective</small>
           </span>
         </article>
         <article className="active">
@@ -2959,7 +2961,7 @@ export function CapabilitySettings({
                   )}
                 </div>
               ))}
-              {catalog.entries.length === 0 && (
+              {localCatalog.entries.length === 0 && (
                 <p className="explicit-empty">
                   {t(
                     "内置与项目目录均为空；这是正常状态。",
@@ -3009,7 +3011,7 @@ export function CapabilitySettings({
                 className="button"
                 disabled={editingDisabled || !projectName.trim()}
                 onClick={() => {
-                  const prior = catalog.entries.find(
+                  const prior = localCatalog.entries.find(
                     (entry) =>
                       entry.kind === projectKind &&
                       entry.normalizedName === projectName &&
@@ -3344,19 +3346,19 @@ export function CapabilitySettings({
             </section>
             <dl>
               <dt>Built-in</dt>
-              <dd>{catalog.summary.builtinCount}</dd>
+              <dd>{localCatalog.summary.builtinCount}</dd>
               <dt>Overrides</dt>
-              <dd>{catalog.summary.projectOverrideCount}</dd>
+              <dd>{localCatalog.summary.projectOverrideCount}</dd>
               <dt>Additions</dt>
-              <dd>{catalog.summary.projectAdditionCount}</dd>
+              <dd>{localCatalog.summary.projectAdditionCount}</dd>
               <dt>Disabled</dt>
               <dd>{disabledKeys.length}</dd>
               <dt>Effective</dt>
               <dd>
-                {catalog.summary.effectiveCount -
+                {localCatalog.summary.effectiveCount -
                   disabledKeys.filter(
                     (key) =>
-                      !catalog.entries.some(
+                      !localCatalog.entries.some(
                         (entry) =>
                           entry.kind === key.kind &&
                           entry.normalizedName === key.normalizedName &&

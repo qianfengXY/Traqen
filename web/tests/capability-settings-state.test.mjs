@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildDraftValidation,
   buildEffectiveDiff,
+  buildLocalEffectiveCatalog,
 } from "../app/capability-settings-state.ts";
 
 const readyModel = {
@@ -118,4 +119,38 @@ test("F006 Effective Diff includes dirty dependency, convention, and safe securi
   assert.equal(diff.find(({ id }) => id === "conventions")?.change, "CHANGED");
   assert.equal(diff.find(({ id }) => id === "security-policy")?.change, "CHANGED");
   assert.doesNotMatch(JSON.stringify(diff), /changed security note/);
+});
+
+test("F006 locally imported templates immediately enter the Draft effective catalog", () => {
+  const emptyCatalog = {
+    entries: [], effective: [],
+    summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 },
+  };
+  const localCatalog = buildLocalEffectiveCatalog({
+    catalog: emptyCatalog,
+    globalTemplates: [
+      { id: "SKILL-REVIEW-1", kind: "SKILL", logicalName: "review", revision: 1, manifest: { signature: "VERIFIED" }, credentialHandleIds: ["HANDLE-REVIEW"], createdAt: "2026-08-21T00:00:00.000Z" },
+      { id: "MCP-SEARCH-1", kind: "MCP", logicalName: "search", revision: 1, manifest: {}, credentialHandleIds: [], createdAt: "2026-08-21T00:00:00.000Z" },
+    ],
+    importedKeys: [{ kind: "SKILL", normalizedName: "review" }, { kind: "MCP", normalizedName: "search" }],
+    disabledKeys: [],
+  });
+  assert.deepEqual(localCatalog.effective.map(({ kind, normalizedName }) => `${kind}:${normalizedName}`), ["MCP:search", "SKILL:review"]);
+  assert.equal(localCatalog.summary.effectiveCount, 2);
+  assert.deepEqual(localCatalog.effective.find(({ normalizedName }) => normalizedName === "review")?.credentialHandleIds, ["HANDLE-REVIEW"]);
+});
+
+test("F006 Effective Diff names a Dirty Agent capability-grant change", () => {
+  const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
+  const draft = {
+    importedKeys: [], disabledKeys: [],
+    mainAgentSlot: { modelProfileId: "MODEL-1", rolePolicy: "PRIMARY_ANALYST", skillGrants: [], mcpGrants: [] },
+    childAgentSlots: [], securityPolicy: security, dependencies: {}, conventions: {},
+  };
+  const diff = buildEffectiveDiff({
+    catalog, draft, disabledKeys: [], mainModel: "MODEL-1", mainRolePolicy: "PRIMARY_ANALYST", mainSkillNames: ["review"], childSlots, security,
+  });
+  const main = diff.find(({ id }) => id === "main-agent");
+  assert.equal(main?.change, "CHANGED");
+  assert.match(main?.detail ?? "", /Skills review/);
 });
