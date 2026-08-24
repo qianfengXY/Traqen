@@ -3349,7 +3349,7 @@ export function CapabilitySettings({
             <section className="effective-diff" aria-label="Effective Diff">
               <header><b>Effective Diff</b><small>{t("保存前完整预览", "Complete pre-save preview")}</small></header>
               <ul>
-                {effectiveDiff.map((entry) => <li key={entry.id}><em>{entry.change}</em><span><b>{entry.label}</b><small>{entry.detail}</small></span></li>)}
+                {effectiveDiff.map((entry) => <li key={entry.renderKey}><em>{entry.change}</em><span><b>{entry.label}</b><small>{entry.detail}</small></span></li>)}
                 {effectiveDiff.length === 0 && <li><span>{t("没有尚未保存的有效变更。", "No unsaved effective changes.")}</span></li>}
               </ul>
             </section>

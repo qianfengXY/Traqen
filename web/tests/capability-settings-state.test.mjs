@@ -102,6 +102,46 @@ test("F006 effective Diff records an explicit global-template import before savi
   assert.equal(diff.find(({ id }) => id === "SKILL:review").change, "IMPORTED");
 });
 
+test("F006 Effective Diff assigns distinct deterministic render keys to a same-named Workspace override", () => {
+  const diff = buildEffectiveDiff({
+    catalog: {
+      ...catalog,
+      entries: [{
+        id: "SKILL-REVIEW-WORKSPACE-1",
+        kind: "SKILL",
+        normalizedName: "review",
+        source: "PROJECT",
+        projectRelation: "OVERRIDE",
+        disabled: false,
+        effective: true,
+        manifest: { signature: "verified" },
+        credentialHandleIds: [],
+      }],
+    },
+    globalTemplates: [{
+      id: "SKILL-REVIEW-1", kind: "SKILL", logicalName: "review", revision: 1,
+      manifest: { signature: "VERIFIED" }, credentialHandleIds: [], createdAt: "2026-08-20T00:00:00.000Z",
+    }],
+    draft: null,
+    importedKeys: [{ kind: "SKILL", normalizedName: "review" }],
+    disabledKeys: [],
+    mainModel: "MODEL-1",
+    mainRolePolicy: "PRIMARY_ANALYST",
+    childSlots: [],
+    security,
+  });
+  const reviewEntries = diff.filter(({ id }) => id === "SKILL:review");
+  assert.equal(reviewEntries.length, 2);
+  assert.equal(new Set(reviewEntries.map(({ renderKey }) => renderKey)).size, 2);
+  assert.deepEqual(
+    reviewEntries.map(({ renderKey }) => renderKey),
+    [
+      "GLOBAL_TEMPLATE:IMPORTED:CAPABILITY:SKILL:review",
+      "WORKSPACE_OVERRIDE:OVERRIDE:CAPABILITY:SKILL:review",
+    ],
+  );
+});
+
 test("F006 Effective Diff includes dirty dependency, convention, and safe security-note changes", () => {
   const childSlots = [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [], rolePolicy: "SPECIALIST", independenceGroup: "GROUP-1" }];
   const savedDraft = {

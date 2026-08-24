@@ -26,11 +26,24 @@ export type ValidationSummary = {
 
 export type EffectiveDiffEntry = {
   id: string;
+  renderKey: string;
+  source: "GLOBAL_TEMPLATE" | "WORKSPACE_OVERRIDE" | "WORKSPACE_ADDITION" | "WORKSPACE_CONFIGURATION";
   category: "CAPABILITY" | "AGENT" | "POLICY";
   change: "IMPORTED" | "OVERRIDE" | "ADDED" | "REMOVED" | "CHANGED" | "INHERITED";
   label: string;
   detail: string;
 };
+
+function effectiveDiffEntry(
+  source: EffectiveDiffEntry["source"],
+  entry: Omit<EffectiveDiffEntry, "renderKey" | "source">,
+): EffectiveDiffEntry {
+  return {
+    ...entry,
+    source,
+    renderKey: `${source}:${entry.change}:${entry.category}:${entry.id}`,
+  };
+}
 
 const typedKey = ({ kind, normalizedName }: CapabilityKey) => `${kind}:${normalizedName}`;
 
@@ -351,17 +364,27 @@ export function buildEffectiveDiff({
             : wasDisabled
               ? "Restored from an explicit removal"
               : `Inherited global template revision ${template.revision}`;
-      return { id, category: "CAPABILITY" as const, change, label: `${template.kind} · ${template.logicalName}`, detail };
+      return effectiveDiffEntry("GLOBAL_TEMPLATE", {
+        id,
+        category: "CAPABILITY",
+        change,
+        label: `${template.kind} · ${template.logicalName}`,
+        detail,
+      });
     });
   for (const entry of catalog.entries.filter(({ source }) => source === "PROJECT")) {
     const id = `${entry.kind}:${entry.normalizedName}`;
-    capabilities.push({
-      id,
-      category: "CAPABILITY",
-      change: disabled.has(id) ? "REMOVED" : entry.projectRelation === "OVERRIDE" ? "OVERRIDE" : "ADDED",
-      label: `${entry.kind} · ${entry.normalizedName}`,
-      detail: disabled.has(id) ? "Explicitly removed from this Workspace Draft" : entry.projectRelation === "OVERRIDE" ? "Workspace override" : "Workspace addition",
-    });
+    const change = disabled.has(id) ? "REMOVED" : entry.projectRelation === "OVERRIDE" ? "OVERRIDE" : "ADDED";
+    capabilities.push(effectiveDiffEntry(
+      entry.projectRelation === "OVERRIDE" ? "WORKSPACE_OVERRIDE" : "WORKSPACE_ADDITION",
+      {
+        id,
+        category: "CAPABILITY",
+        change,
+        label: `${entry.kind} · ${entry.normalizedName}`,
+        detail: disabled.has(id) ? "Explicitly removed from this Workspace Draft" : entry.projectRelation === "OVERRIDE" ? "Workspace override" : "Workspace addition",
+      },
+    ));
   }
   const slotDetail = (slot: ChildCapabilityRole | WorkspaceCapabilityDraft["mainAgentSlot"]) => {
     const skills = "skillNames" in slot ? slot.skillNames : slot.skillGrants.map(({ normalizedName }) => normalizedName);
@@ -370,26 +393,26 @@ export function buildEffectiveDiff({
     return `${model || "No model"} · ${slot.rolePolicy || "No role policy"} · Skills ${[...skills].sort().join(",") || "—"} · MCP ${[...mcps].sort().join(",") || "—"}`;
   };
   const savedChildren = new Map((draft?.childAgentSlots ?? []).map((slot) => [slot.id, slot]));
-  const agentChanges: EffectiveDiffEntry[] = [{
+  const agentChanges: EffectiveDiffEntry[] = [effectiveDiffEntry("WORKSPACE_CONFIGURATION", {
     id: "main-agent",
     category: "AGENT",
     change: !draft || slotDetail(draft.mainAgentSlot) !== slotDetail({ ...draft.mainAgentSlot, modelProfileId: mainModel, rolePolicy: mainRolePolicy, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL" as const, normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP" as const, normalizedName })) }) ? "CHANGED" : "INHERITED",
     label: "Main Agent",
     detail: `${mainModel || "No model"} · ${mainRolePolicy || "No role policy"} · Skills ${[...mainSkillNames].sort().join(",") || "—"} · MCP ${[...mainMcpNames].sort().join(",") || "—"}`,
-  }];
+  })];
   for (const slot of childSlots) {
     const saved = savedChildren.get(slot.id);
-    agentChanges.push({
+    agentChanges.push(effectiveDiffEntry("WORKSPACE_CONFIGURATION", {
       id: `child-slot:${slot.id}`,
       category: "AGENT",
       change: !saved ? "ADDED" : slotDetail(saved) === slotDetail(slot) && saved.independenceGroup === slot.independenceGroup ? "INHERITED" : "CHANGED",
       label: `Child Agent ${slot.id}`,
       detail: `${slotDetail(slot)} · Group ${slot.independenceGroup || "not set"}`,
-    });
+    }));
     savedChildren.delete(slot.id);
   }
   for (const slot of savedChildren.values()) {
-    agentChanges.push({ id: `child-slot:${slot.id}`, category: "AGENT", change: "REMOVED", label: `Child Agent ${slot.id}`, detail: "Removed from this Workspace Draft" });
+    agentChanges.push(effectiveDiffEntry("WORKSPACE_CONFIGURATION", { id: `child-slot:${slot.id}`, category: "AGENT", change: "REMOVED", label: `Child Agent ${slot.id}`, detail: "Removed from this Workspace Draft" }));
   }
   const savedPolicy = draft?.securityPolicy ?? {};
   const securityNotesChanged = String(savedPolicy.notes ?? "") !== securityNotes;
@@ -401,23 +424,23 @@ export function buildEffectiveDiff({
     || String(savedPolicy.telemetryPolicy ?? "") !== security.telemetryPolicy
     || securityNotesChanged
     || JSON.stringify([...(Array.isArray(savedPolicy.grantedHandleIds) ? savedPolicy.grantedHandleIds : [])].sort()) !== JSON.stringify([...security.grantedHandleIds].sort());
-  const policy = [{ id: "security-policy", category: "POLICY" as const, change: policyChanged ? "CHANGED" as const : "INHERITED" as const, label: "Security boundary", detail: policyDetail }];
+  const policy = [effectiveDiffEntry("WORKSPACE_CONFIGURATION", { id: "security-policy", category: "POLICY", change: policyChanged ? "CHANGED" : "INHERITED", label: "Security boundary", detail: policyDetail })];
   const draftNotes = (value: Record<string, unknown> | undefined) => String(value?.notes ?? "");
   const workspaceMetadata: EffectiveDiffEntry[] = [
-    {
+    effectiveDiffEntry("WORKSPACE_CONFIGURATION", {
       id: "dependencies",
-      category: "POLICY",
+      category: "POLICY" as const,
       change: !draft || draftNotes(draft.dependencies) !== dependencyNotes ? "CHANGED" : "INHERITED",
       label: "Dependencies",
       detail: !draft || draftNotes(draft.dependencies) !== dependencyNotes ? "Workspace dependency notes changed" : "Workspace dependency notes inherited",
-    },
-    {
+    }),
+    effectiveDiffEntry("WORKSPACE_CONFIGURATION", {
       id: "conventions",
-      category: "POLICY",
+      category: "POLICY" as const,
       change: !draft || draftNotes(draft.conventions) !== conventionNotes ? "CHANGED" : "INHERITED",
       label: "Conventions and constraints",
       detail: !draft || draftNotes(draft.conventions) !== conventionNotes ? "Workspace convention notes changed" : "Workspace convention notes inherited",
-    },
+    }),
   ];
   return [...capabilities, ...agentChanges, ...workspaceMetadata, ...policy].sort((left, right) => left.category.localeCompare(right.category) || left.id.localeCompare(right.id));
 }
