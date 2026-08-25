@@ -1,11 +1,11 @@
 > 语言：**简体中文** · [English](ROADMAP.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F005, F006]
+feature_ids: [F001, F002, F003, F004, F005, F006, F007]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-08-11
+updated: 2026-08-25
 ---
 
 # Traqen Feature 路线图
@@ -29,6 +29,7 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 | F004 | P0 | 声明审核 | spec | TBD | operator 产品规划 | [F004](features/F004-claim-review.zh-CN.md) |
 | F005 | P1 | 变更影响 | spec | TBD | operator 产品规划 | [F005](features/F005-change-impact.zh-CN.md) |
 | F006 | P0 | Workspace 能力设置 | spec | TBD | operator 已确认的[讨论记录](../feature-discussions/2026-08-11-F006-workspace-capability-settings/README.md) | [F006](features/F006-workspace-capability-settings.zh-CN.md) |
+| F007 | P0 | 项目重新启动与发现 | spec | CodeX | operator 批准的保留历史式重启 | [F007](features/F007-traqen-project-relaunch.zh-CN.md) |
 
 ## 交付波次
 
@@ -39,3 +40,4 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 | 2 | 通过最新/历史 Tree 和审核队列让图谱可审核 | F002 + F004 | 端到端证据旅程与批量审核 |
 | 3 | 探索并演进图谱 | F003 + F005 | 可解释 Graph Path 与 Full-to-Incremental Impact |
 | 4 | 用 Traqen 自身证明系统 | 全部 | 两个固定 Traqen Snapshot、独立验收、无 Demo Fallback |
+| R | 继续实现前重新确认产品方向 | F007 | 证据化现状审计、已确认的愿景/用户旅程/MVP，以及分阶段计划 |
