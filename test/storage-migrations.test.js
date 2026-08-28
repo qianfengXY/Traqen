@@ -59,6 +59,7 @@ async function migratedDatabase() {
     "0023_global_model_lifecycle",
     "0024_global_model_profile_revision_head",
     "0025_global_model_profile_revision_records",
+    "0026_global_account_revision",
   ]);
   return database;
 }
@@ -409,6 +410,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "global_model_lifecycle",
     "global_model_profile_revision_head",
     "global_model_profile_revision",
+    "global_account_revision",
     "model_replacement_failure_diagnostic",
     "source_slice_worker_credential_use",
   ]) {

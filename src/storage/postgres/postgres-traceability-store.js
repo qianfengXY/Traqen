@@ -266,6 +266,33 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     return deepFreeze(result.rows.map(({ payload }) => payload));
   }
 
+  async appendGlobalAccountRevision(account) {
+    return this.#transaction(async () => {
+      await this.#database.query(
+        `INSERT INTO global_account_revision (account_id, revision, id, payload, created_at)
+         VALUES ($1, $2, $3, $4::jsonb, $5)
+         ON CONFLICT (account_id, revision) DO NOTHING`,
+        [account.accountId, account.revision, account.id, JSON.stringify(account), account.createdAt],
+      );
+      const result = await this.#database.query(
+        `SELECT payload FROM global_account_revision WHERE account_id = $1 AND revision = $2`,
+        [account.accountId, account.revision],
+      );
+      const stored = result.rows[0]?.payload;
+      if (!stored || canonicalJson(stored) !== canonicalJson(account)) {
+        throw new PersistenceConflictError(`Global account ${account.accountId} revision ${account.revision} conflicts`);
+      }
+      return deepFreeze(stored);
+    });
+  }
+
+  async listGlobalAccountRevisions() {
+    const result = await this.#database.query(
+      `SELECT payload FROM global_account_revision ORDER BY account_id, revision DESC`,
+    );
+    return deepFreeze(result.rows.map(({ payload }) => payload));
+  }
+
   async appendSnapshotManifest(projectId, manifest) {
     requireId(projectId, "projectId");
     requireId(manifest?.id, "manifest.id");

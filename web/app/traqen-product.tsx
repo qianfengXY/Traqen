@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { createDefaultChildSlots } from "./capability-roster";
+import { F006SettingsCenter } from "./f006-settings-center";
 import {
   CapabilitySettings,
   EmptyWorkspace,
@@ -13,7 +14,6 @@ import {
   GlobalModelLibrary,
   ImpactWorkspace,
   ReviewWorkspace,
-  Unavailable,
   WorkspaceOverview,
   AnalysisCommandCenter,
   type GraphArtifact,
@@ -34,6 +34,14 @@ import {
   getWorkspaceReviewQueue,
   listGlobalModels,
   listGlobalCapabilityTemplates,
+  listGlobalAccounts,
+  listGlobalCapabilities,
+  createGlobalCliModel,
+  getGlobalCapabilityImpact,
+  recheckGlobalAccount,
+  saveGlobalAccount,
+  saveGlobalCapability,
+  setGlobalCapabilityLifecycle,
   retireGlobalModel,
   updateGlobalModel,
   verifyGlobalModel,
@@ -49,6 +57,9 @@ import {
   type ReviewQueueItem,
   type GlobalModelProfile,
   type GlobalCapabilityTemplate,
+  type GlobalAccount,
+  type GlobalCapability,
+  type GlobalCapabilityImpact,
   type GlobalModelUsage,
   type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityDraftSaveInput,
@@ -86,6 +97,7 @@ import {
 import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
 type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "models" | "templates" | "settings";
+type SettingsScope = "chooser" | "global" | "workspace";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
 type CapabilityDraftConflict = {
@@ -119,9 +131,7 @@ const modules: Array<{ key: View; icon: string; section: "overview" | "understan
   { key: "graph", icon: "⌘", section: "understanding", zh: "理解图谱", en: "Understanding graph" },
   { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
   { key: "impact", icon: "↗", section: "governance", zh: "变更影响", en: "Change impact" },
-  { key: "models", icon: "◉", section: "configuration", zh: "全局模型", en: "Global models" },
-  { key: "templates", icon: "◇", section: "configuration", zh: "能力模板", en: "Capability templates" },
-  { key: "settings", icon: "⚙", section: "configuration", zh: "能力设置", en: "Capability settings" },
+  { key: "settings", icon: "⚙", section: "configuration", zh: "设置中心", en: "Settings center" },
 ];
 
 function messageOf(error: unknown, fallback: string) {
@@ -189,7 +199,10 @@ function ServerOwnedProduct() {
   const [impact, setImpact] = useState<Record<string, unknown> | null>(null);
   const [globalModels, setGlobalModels] = useState<GlobalModelProfile[]>([]);
   const [globalCapabilityTemplates, setGlobalCapabilityTemplates] = useState<GlobalCapabilityTemplate[]>([]);
-  const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
+  const [globalAccounts, setGlobalAccounts] = useState<GlobalAccount[]>([]);
+  const [globalCapabilities, setGlobalCapabilities] = useState<GlobalCapability[]>([]);
+  const [settingsScope, setSettingsScope] = useState<SettingsScope>("chooser");
+  const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { globalAvailableCount: 0, workspaceDisabledCount: 0, workspaceLocalCount: 0, globalUnavailableCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
   const [capabilityDraftConflict, setCapabilityDraftConflict] = useState<CapabilityDraftConflict | null>(null);
   const [capabilitySettingsReady, setCapabilitySettingsReady] = useState(false);
@@ -340,7 +353,7 @@ function ServerOwnedProduct() {
     setSecurityBoundary(DEFAULT_SECURITY_BOUNDARY);
     setExecutionProfile(null);
     setProfileHistory([]);
-    setEffectiveCatalog({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
+    setEffectiveCatalog({ entries: [], effective: [], summary: { globalAvailableCount: 0, workspaceDisabledCount: 0, workspaceLocalCount: 0, globalUnavailableCount: 0, effectiveCount: 0 } });
     setMainModel("");
     setMainRolePolicy("PRIMARY_ANALYST");
     setMainSkillNames([]);
@@ -358,17 +371,21 @@ function ServerOwnedProduct() {
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableModels, availableTemplates] = await Promise.all([
+      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
         listGlobalModels(apiBase, apiToken),
         listGlobalCapabilityTemplates(apiBase, apiToken),
+        listGlobalAccounts(apiBase, apiToken),
+        listGlobalCapabilities(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
       setGlobalModels(availableModels);
       setGlobalCapabilityTemplates(availableTemplates);
+      setGlobalAccounts(availableAccounts);
+      setGlobalCapabilities(availableCapabilities);
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
       if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
@@ -696,8 +713,10 @@ function ServerOwnedProduct() {
       expectedVersion,
       mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: mainRolePolicy, independenceGroup: "MAIN", enabled: true },
       childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: slot.rolePolicy, independenceGroup: slot.independenceGroup, enabled: true })),
-      projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
-      importedKeys,
+      projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "WORKSPACE" || source === "PROJECT").map(({ id }) => id),
+      // Global active capabilities are automatically available. This legacy field
+      // stays in the payload for backwards-compatible storage reads only.
+      importedKeys: [],
       disabledKeys,
       dependencies: { notes: dependencyNotes },
       conventions: { notes: conventionNotes },
@@ -705,7 +724,7 @@ function ServerOwnedProduct() {
     };
   }
 
-  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput) {
+  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput, { quiet = false } = {}) {
     if (!activeWorkspace || !capabilitySettingsReady) return;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
@@ -717,7 +736,7 @@ function ServerOwnedProduct() {
       setCapabilityDraft(saved);
       setCapabilityDraftConflict(null);
       setEffectiveCatalog(catalog);
-      notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
+      if (!quiet) notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
     } catch (error) {
       if (
         error instanceof ProductFoundationApiError
@@ -751,6 +770,10 @@ function ServerOwnedProduct() {
 
   async function saveCapabilities() {
     await saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0));
+  }
+
+  function autoSaveCapabilities() {
+    void saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0), { quiet: true });
   }
 
   async function retryCapabilityDraft() {
@@ -824,6 +847,96 @@ function ServerOwnedProduct() {
       notify(t("项目能力已删除；typed key 的禁用状态保持不变。", "Project capability removed; the typed key's disable state is preserved."));
     } catch (error) { notify(messageOf(error, t("项目能力删除失败", "Unable to delete project capability")), "error"); }
     finally { setWorking(false); }
+  }
+
+  async function refreshGlobalSettingsAssets() {
+    const [accounts, models, capabilities] = await Promise.all([
+      listGlobalAccounts(apiBase, apiToken),
+      listGlobalModels(apiBase, apiToken),
+      listGlobalCapabilities(apiBase, apiToken),
+    ]);
+    setGlobalAccounts(accounts);
+    setGlobalModels(models);
+    setGlobalCapabilities(capabilities);
+  }
+
+  async function saveGlobalAccountFromSettings(input: Record<string, unknown>) {
+    setWorking(true);
+    try {
+      await saveGlobalAccount(apiBase, apiToken, input);
+      await refreshGlobalSettingsAssets();
+      notify(t("全局账号已保存。OAuth 仍由对应 CLI 自行登录。", "Global account saved. OAuth remains owned by its CLI."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("账号保存失败", "Unable to save global account")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
+  async function recheckGlobalAccountFromSettings(accountId: string) {
+    setWorking(true);
+    try {
+      const rechecked = await recheckGlobalAccount(apiBase, apiToken, accountId);
+      setGlobalAccounts((accounts) => accounts.map((account) => account.accountId === accountId ? rechecked : account));
+      notify(rechecked.instruction ?? t("账号状态已重新检查。", "Account status rechecked."));
+    } catch (error) { notify(messageOf(error, t("账号重新检查失败", "Unable to recheck account")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function saveGlobalCliModelFromSettings(input: Record<string, unknown>) {
+    setWorking(true);
+    try {
+      await createGlobalCliModel(apiBase, apiToken, input);
+      await refreshGlobalSettingsAssets();
+      notify(t("CLI 模型已保存；验证成功后会进入 Agent 选择器。", "CLI model saved. It enters Agent selectors after verification."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("CLI 模型保存失败", "Unable to save CLI model")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
+  async function saveGlobalCapabilityFromSettings(input: Record<string, unknown>) {
+    setWorking(true);
+    try {
+      await saveGlobalCapability(apiBase, apiToken, input);
+      await refreshGlobalSettingsAssets();
+      if (activeWorkspace) await refreshWorkspaceReads(activeWorkspace, { ...contextRef.current });
+      notify(t("全局能力已保存；它进入项目可选目录，但不会自动授予 Agent。", "Global capability saved. It enters Workspace availability without being auto-granted."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("全局能力保存失败", "Unable to save global capability")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
+  async function previewGlobalCapabilityImpactFromSettings(kind: "SKILL" | "MCP", normalizedName: string): Promise<GlobalCapabilityImpact | null> {
+    try {
+      return await getGlobalCapabilityImpact(apiBase, apiToken, kind, normalizedName);
+    } catch (error) {
+      notify(messageOf(error, t("无法读取全局能力影响", "Unable to read global capability impact")), "error");
+      return null;
+    }
+  }
+
+  async function setGlobalCapabilityLifecycleFromSettings(
+    kind: "SKILL" | "MCP",
+    normalizedName: string,
+    input: { expectedVersion: number; lifecycle: "ACTIVE" | "INACTIVE" | "DELETED"; confirmation?: string },
+  ) {
+    setWorking(true);
+    try {
+      await setGlobalCapabilityLifecycle(apiBase, apiToken, kind, normalizedName, input);
+      await refreshGlobalSettingsAssets();
+      if (activeWorkspace) await refreshWorkspaceReads(activeWorkspace, { ...contextRef.current });
+      notify(input.lifecycle === "ACTIVE"
+        ? t("全局能力已重新启用。", "Global capability reactivated.")
+        : t("全局能力状态已更新；历史运行仍保持自己的快照。", "Global capability updated; historical runs keep their snapshots."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("全局能力状态更新失败", "Unable to update global capability")), "error");
+      return false;
+    } finally { setWorking(false); }
   }
 
   async function saveGlobalTemplate(input: {
@@ -934,15 +1047,52 @@ function ServerOwnedProduct() {
     || artifact?.productionEligible === false;
   const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
   const renderView = () => {
+    if (view === "settings") return <F006SettingsCenter
+      t={t}
+      scope={settingsScope}
+      setScope={setSettingsScope}
+      workspace={activeWorkspace}
+      accounts={globalAccounts}
+      models={globalModels}
+      capabilities={globalCapabilities}
+      catalog={effectiveCatalog}
+      draft={capabilityDraft}
+      draftConflict={Boolean(capabilityDraftConflict)}
+      profile={executionProfile}
+      mainModel={mainModel}
+      setMainModel={setMainModel}
+      mainSkillNames={mainSkillNames}
+      setMainSkillNames={setMainSkillNames}
+      mainMcpNames={mainMcpNames}
+      setMainMcpNames={setMainMcpNames}
+      childSlots={childSlots}
+      setChildSlots={setChildSlots}
+      disabledKeys={disabledKeys}
+      setDisabledKeys={setDisabledKeys}
+      working={working}
+      recoveryReady={capabilitySettingsReady}
+      onAutoSave={autoSaveCapabilities}
+      onApply={() => void resolveCapabilities(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0))}
+      onRetryDraftConflict={() => void retryCapabilityDraft()}
+      onUseCurrentDraft={useCurrentCapabilityDraft}
+      onSaveLocalCapability={(input) => void upsertProjectCapability(input)}
+      onDeleteLocalCapability={(kind, name, version) => void removeProjectCapability(kind, name, version)}
+      onSaveAccount={saveGlobalAccountFromSettings}
+      onRecheckAccount={(accountId) => void recheckGlobalAccountFromSettings(accountId)}
+      onSaveCliModel={saveGlobalCliModelFromSettings}
+      onVerifyModel={(profileId) => void verifyModel(profileId)}
+      onPreviewCapabilityImpact={previewGlobalCapabilityImpactFromSettings}
+      onSetCapabilityLifecycle={setGlobalCapabilityLifecycleFromSettings}
+      onSaveGlobalCapability={saveGlobalCapabilityFromSettings}
+    />;
     if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
     if (view === "templates") return <GlobalCapabilityTemplateLibrary t={t} templates={globalCapabilityTemplates} working={working} onSave={(input) => void saveGlobalTemplate(input)} />;
     if (!activeWorkspace) {
-      if (view === "settings") return <Unavailable t={t} reason={t("请先选择或创建一个 Workspace，再配置能力设置。", "Select or create a Workspace before configuring capability settings.")} />;
       return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
     }
     const workspace = activeWorkspace;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
-    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => setView("settings")} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
+    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => { setSettingsScope("workspace"); setView("settings"); }} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
@@ -954,7 +1104,7 @@ function ServerOwnedProduct() {
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">T</span><span>Traqen</span></div>
       <div className="workspace-block"><div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button title={t("刷新 Workspace", "Refresh Workspaces")} onClick={() => void reconnect(false)}>↻</button><button className="workspace-add-button" title={t("新建 Workspace", "New Workspace")} onClick={() => { setActiveWorkspace(null); setView("overview"); }}>＋</button></div></div>{activeWorkspace ? <div className="workspace active-workspace"><strong>{activeWorkspace.name}</strong><small>{current ? `Published revision ${current.head.version}` : t("等待首次发布", "Awaiting first publication")}</small></div> : <div className="workspace active-workspace empty-workspace"><strong>{t("未选择 Workspace", "No Workspace selected")}</strong><small>{t("选择或创建一个项目", "Select or create a project")}</small></div>}<div className="workspace-project-list">{workspaces.map((workspace) => <div key={workspace.id} className={`workspace-project-row ${workspace.id === activeWorkspace?.id ? "active" : ""}`}><button className="workspace-project-open" onClick={() => selectWorkspace(workspace)}><strong>{workspace.name}</strong><small>{workspace.lifecycleState}</small></button></div>)}</div></div>
-      {(["overview", "understanding", "governance", "configuration"] as const).map((section) => <nav key={section} className="nav" aria-label={section}><p className="workspace-label">{section === "understanding" ? t("理解", "Understanding") : section === "governance" ? t("治理", "Governance") : section === "configuration" ? t("配置", "Configuration") : t("工作台", "Workspace")}</p>{modules.filter((item) => item.section === section).map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => setView(item.key)}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "review" && openReviewCount > 0 && <em>{openReviewCount}</em>}{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>)}
+      {(["overview", "understanding", "governance", "configuration"] as const).map((section) => <nav key={section} className="nav" aria-label={section}><p className="workspace-label">{section === "understanding" ? t("理解", "Understanding") : section === "governance" ? t("治理", "Governance") : section === "configuration" ? t("配置", "Configuration") : t("工作台", "Workspace")}</p>{modules.filter((item) => item.section === section).map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => { if (item.key === "settings") setSettingsScope("chooser"); setView(item.key); }}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "review" && openReviewCount > 0 && <em>{openReviewCount}</em>}{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>)}
       <div className="shell-status-summary" aria-label={t("全局状态摘要", "Global status summary")}><span>Published Head <b>{current ? `r${current.head.version}` : "—"}</b></span><span>Review Queue <b>{openReviewCount}</b></span><span>Impact Actions <b>{impactActionCount}</b></span></div>
       <div className="sidebar-note"><b>{t("权威边界", "Authority boundary")}</b><br />{t("实线为 Published；虚线为 Candidate。历史版本只读。", "Solid is Published; dashed is Candidate. Historical revisions are read-only.")}</div>
     </aside>

@@ -667,6 +667,34 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.listCapabilityTemplates();
   }
 
+  async listGlobalCapabilities() {
+    return this.#workspaceFoundation.listGlobalCapabilities();
+  }
+
+  async listGlobalAccounts() {
+    return this.#workspaceFoundation.listGlobalAccounts();
+  }
+
+  async saveGlobalAccount(input) {
+    return this.#workspaceFoundation.saveGlobalAccount(input);
+  }
+
+  async recheckGlobalAccount(accountId) {
+    return this.#workspaceFoundation.recheckGlobalAccount(accountId);
+  }
+
+  async saveGlobalCapability(input) {
+    return this.#workspaceFoundation.saveGlobalCapability(input);
+  }
+
+  async previewGlobalCapabilityImpact(kind, normalizedName) {
+    return this.#workspaceFoundation.previewGlobalCapabilityImpact(kind, normalizedName);
+  }
+
+  async setGlobalCapabilityLifecycle(kind, normalizedName, input) {
+    return this.#workspaceFoundation.setGlobalCapabilityLifecycle(kind, normalizedName, input);
+  }
+
   async #syncGlobalModelLifecycles() {
     if (!this.#analysisModelRegistry) return;
     this.#analysisModelRegistry.refreshCredentialHandles?.();
@@ -698,6 +726,7 @@ export class TraceabilityApplication {
       currentRevisionId: profile.currentRevisionId,
       revision: profile.revision,
       displayName: profile.displayName ?? profile.id,
+      accountId: profile.accountId ?? null,
       transport: profile.transport ?? 'API',
       providerAdapter: profile.providerAdapter ?? 'OPENAI_COMPATIBLE',
       endpoint: profile.endpoint,
@@ -746,11 +775,20 @@ export class TraceabilityApplication {
     return this.#globalModelProfile(configured);
   }
 
+  async configureGlobalCliModel(input) {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('global CLI model input must be an object');
+    const accountId = requireId(input.accountId, 'accountId');
+    const account = await this.#workspaceFoundation.getGlobalAccount(accountId);
+    if (!account || account.lifecycle !== 'ACTIVE') throw new TypeError('A selected ACTIVE global account is required');
+    if (String(input.transport ?? 'CLI').toUpperCase() !== 'CLI') throw new TypeError('F006 global models must use the CLI transport');
+    return this.configureGlobalModelProfile({ ...input, transport: 'CLI', accountId });
+  }
+
   async updateGlobalModelProfile(profileId, input) {
     requireId(profileId, "profileId");
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
     assertOnlyFields(input, [
-      "id", "profileId", "displayName", "transport", "providerAdapter", "endpoint", "model", "apiKey",
+      "id", "profileId", "displayName", "accountId", "transport", "providerAdapter", "endpoint", "model", "apiKey",
       "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
     ], "globalModelRevision");
     if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
@@ -3264,6 +3302,11 @@ export class TraceabilityApplication {
     );
     if (activeProfile.id !== expectedProfileId) {
       throw workspaceExecutionProfileConflict(expectedProfileId, activeProfile.id);
+    }
+    const configurationIssues = await this.#workspaceFoundation.activeConfigurationIssues(projectId);
+    if (configurationIssues.length > 0) {
+      const labels = configurationIssues.map(({ kind, normalizedName, lifecycle }) => `${kind} ${normalizedName} (${lifecycle})`).join(', ');
+      throw new TypeError(`Active Workspace configuration needs attention before a new run: ${labels}`);
     }
     return this.#legacyUnderstandingRuntime.start({
       ...input,

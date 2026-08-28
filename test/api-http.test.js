@@ -427,6 +427,58 @@ test("F006 exposes reusable global Skill and MCP templates while keeping legacy 
   })).status, 404);
 });
 
+test("F006 global capability HTTP contract is server-authoritative about lifecycle and impact", async (t) => {
+  const baseUrl = await startServer(t);
+  const created = await postJson(`${baseUrl}/v1/global-capabilities`, {
+    kind: "SKILL", normalizedName: "review", expectedVersion: 0, manifest: { signature: "VERIFIED" },
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.lifecycle, "ACTIVE");
+
+  const listed = await fetch(`${baseUrl}/v1/global-capabilities`);
+  assert.equal(listed.status, 200);
+  assert.deepEqual((await listed.json()).capabilities.map(({ normalizedName, lifecycle }) => ({ normalizedName, lifecycle })), [
+    { normalizedName: "review", lifecycle: "ACTIVE" },
+  ]);
+  const impact = await fetch(`${baseUrl}/v1/global-capabilities/SKILL/review/impact`);
+  assert.equal(impact.status, 200);
+  assert.deepEqual((await impact.json()).impacts, []);
+
+  const deactivated = await fetch(`${baseUrl}/v1/global-capabilities/SKILL/review/lifecycle`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedVersion: 1, lifecycle: "INACTIVE" }),
+  });
+  assert.equal(deactivated.status, 200);
+  assert.equal((await deactivated.json()).lifecycle, "INACTIVE");
+});
+
+test("F006 account HTTP contract never performs or stores OAuth login material", async (t) => {
+  const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
+  const created = await postJson(`${baseUrl}/v1/global-accounts`, {
+    accountId: "codex-oauth", displayName: "Codex", authMethod: "OAUTH", cliAdapter: "CODEX", oauthStatus: "NOT_AUTHENTICATED", expectedVersion: 0,
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.oauthStatus, "NOT_AUTHENTICATED");
+  assert.equal(Object.hasOwn(created.body, "accessToken"), false);
+  const rechecked = await postJson(`${baseUrl}/v1/global-accounts/codex-oauth/recheck`, {});
+  assert.equal(rechecked.response.status, 200);
+  assert.equal(rechecked.body.recheck, "EXTERNAL_CLI_REQUIRED");
+  assert.match(rechecked.body.instruction, /own CLI/);
+  const rejected = await postJson(`${baseUrl}/v1/global-accounts`, {
+    accountId: "bad", displayName: "Bad", authMethod: "OAUTH", cliAdapter: "CODEX", accessToken: "plaintext", expectedVersion: 0,
+  });
+  assert.equal(rejected.response.status, 400);
+  const model = await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "codex-cli", displayName: "Codex CLI", accountId: "codex-oauth", cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  assert.equal(model.response.status, 201);
+  assert.equal(model.body.transport, "CLI");
+  assert.equal(model.body.accountId, "codex-oauth");
+  assert.equal((await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "not-cli", displayName: "Not CLI", accountId: "codex-oauth", transport: "API", cliAdapter: "CODEX",
+  })).response.status, 400);
+});
+
 test("F006 HTTP validation fails closed for unverified capabilities and contradictory boundary policy", async (t) => {
   const baseUrl = await startServer(t, {
     analysisModelRegistry: new AnalysisModelRegistry({

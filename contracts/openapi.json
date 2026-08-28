@@ -86,6 +86,29 @@
       "get": { "operationId": "listGlobalModelProfiles", "responses": { "200": { "description": "Reusable global API and allowlisted CLI model profiles without credential values", "content": { "application/json": { "schema": { "type": "object" } } } } } },
       "post": { "operationId": "createGlobalModelProfile", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object" } } } }, "responses": { "201": { "description": "Persisted global model connection profile", "content": { "application/json": { "schema": { "type": "object" } } } } } }
     },
+    "/v1/global-accounts": {
+      "get": { "operationId": "listGlobalAccounts", "responses": { "200": { "description": "Global account revisions with secret references or CLI-owned OAuth status only", "content": { "application/json": { "schema": { "type": "object", "required": ["accounts"], "properties": { "accounts": { "type": "array", "items": { "type": "object" } } }, "additionalProperties": false } } } } } },
+      "post": { "operationId": "saveGlobalAccount", "description": "Creates an immutable global account revision. OAuth is represented by a CLI-owned status; raw credential material is not accepted.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["accountId", "displayName", "authMethod", "expectedVersion"], "properties": { "accountId": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 }, "authMethod": { "enum": ["API_KEY", "OAUTH"] }, "secretRefId": { "type": "string", "minLength": 1 }, "cliAdapter": { "enum": ["CODEX", "CLAUDE", "GEMINI", "KIMI"] }, "oauthStatus": { "enum": ["UNKNOWN", "AUTHENTICATED", "NOT_AUTHENTICATED", "CLI_UNAVAILABLE"] }, "expectedVersion": { "type": "integer", "minimum": 0 } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Immutable global account revision without raw credentials", "content": { "application/json": { "schema": { "type": "object" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/v1/global-accounts/{accountId}/recheck": {
+      "parameters": [{ "name": "accountId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "post": { "operationId": "recheckGlobalAccount", "description": "Rechecks the externally managed CLI state. It never initiates OAuth or handles credential material.", "responses": { "200": { "description": "Current account plus an external CLI instruction when recheck is required", "content": { "application/json": { "schema": { "type": "object" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/v1/global-cli-models": {
+      "post": { "operationId": "createGlobalCliModel", "description": "Creates a reusable model profile through an allowlisted local CLI and an active global account. API transport is rejected by this v1 route.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "displayName", "accountId", "cliAdapter"], "properties": { "profileId": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 }, "accountId": { "type": "string", "minLength": 1 }, "cliAdapter": { "enum": ["CODEX", "CLAUDE", "GEMINI", "KIMI"] }, "model": { "type": "string" } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Persisted CLI-backed global model profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelProfile" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/v1/global-capabilities": {
+      "get": { "operationId": "listGlobalCapabilities", "responses": { "200": { "description": "Latest global Skill and MCP capability lifecycle revisions", "content": { "application/json": { "schema": { "type": "object", "required": ["capabilities"], "properties": { "capabilities": { "type": "array", "items": { "type": "object" } } }, "additionalProperties": false } } } } } },
+      "post": { "operationId": "saveGlobalCapability", "description": "Creates an immutable global Skill or MCP revision. An active capability is available to Workspaces but never auto-granted to an Agent.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["kind", "normalizedName", "expectedVersion", "manifest"], "properties": { "kind": { "enum": ["SKILL", "MCP"] }, "normalizedName": { "type": "string", "minLength": 1 }, "expectedVersion": { "type": "integer", "minimum": 0 }, "lifecycle": { "enum": ["ACTIVE", "INACTIVE", "DELETED"] }, "manifest": { "type": "object" }, "credentialHandleIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Immutable global capability revision", "content": { "application/json": { "schema": { "type": "object" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/v1/global-capabilities/{kind}/{normalizedName}/impact": {
+      "parameters": [{ "name": "kind", "in": "path", "required": true, "schema": { "enum": ["SKILL", "MCP"] } }, { "name": "normalizedName", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "get": { "operationId": "previewGlobalCapabilityImpact", "responses": { "200": { "description": "Server-derived active configuration and Agent grant impact; clients cannot supply the affected Workspace set", "content": { "application/json": { "schema": { "type": "object", "required": ["capability", "impacts"], "properties": { "capability": { "type": "object" }, "impacts": { "type": "array", "items": { "type": "object", "required": ["workspaceId", "grantedSlotIds"], "properties": { "workspaceId": { "type": "string" }, "workspaceName": { "type": "string" }, "activeProfileId": { "type": "string" }, "grantedSlotIds": { "type": "array", "items": { "type": "string" } } } } } }, "additionalProperties": false } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/v1/global-capabilities/{kind}/{normalizedName}/lifecycle": {
+      "parameters": [{ "name": "kind", "in": "path", "required": true, "schema": { "enum": ["SKILL", "MCP"] } }, { "name": "normalizedName", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
+      "put": { "operationId": "setGlobalCapabilityLifecycle", "description": "Changes a global lifecycle. Deactivation or deletion with active grants requires the server-derived capability name confirmation.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["expectedVersion", "lifecycle"], "properties": { "expectedVersion": { "type": "integer", "minimum": 1 }, "lifecycle": { "enum": ["ACTIVE", "INACTIVE", "DELETED"] }, "confirmation": { "type": "string" } }, "additionalProperties": false } } } }, "responses": { "200": { "description": "Immutable global capability lifecycle revision", "content": { "application/json": { "schema": { "type": "object" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
     "/v1/capability-templates": {
       "get": { "operationId": "listGlobalCapabilityTemplates", "responses": { "200": { "description": "Reusable global Skill and MCP import sources without secret values", "content": { "application/json": { "schema": { "type": "object", "required": ["templates"], "properties": { "templates": { "type": "array", "items": { "type": "object" } } }, "additionalProperties": false } } } } } },
       "post": { "operationId": "createGlobalCapabilityTemplate", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["kind", "logicalName", "revision", "manifest"], "properties": { "kind": { "enum": ["SKILL", "MCP"] }, "logicalName": { "type": "string", "minLength": 1 }, "revision": { "type": "integer", "minimum": 1 }, "manifest": { "type": "object" }, "credentialHandleIds": { "type": "array", "items": { "type": "string" }, "uniqueItems": true } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Immutable global Skill or MCP template revision", "content": { "application/json": { "schema": { "type": "object" } } } } } }
@@ -1976,13 +1999,14 @@
       },
       "GlobalModelProfile": {
         "type": "object",
-        "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "transport", "providerAdapter", "endpoint", "model", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
+        "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "accountId", "transport", "providerAdapter", "endpoint", "model", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "profileId": { "type": "string", "minLength": 1 },
           "currentRevisionId": { "type": "string", "minLength": 1 },
           "revision": { "type": "integer", "minimum": 1 },
           "displayName": { "type": "string", "minLength": 1 },
+          "accountId": { "type": ["string", "null"] },
           "transport": { "enum": ["API", "CLI"] },
           "providerAdapter": { "type": "string", "minLength": 1 },
           "endpoint": { "type": ["string", "null"] },
@@ -2005,6 +2029,7 @@
           "id": { "type": "string", "minLength": 1 },
           "profileId": { "type": "string", "minLength": 1 },
           "displayName": { "type": "string", "minLength": 1 },
+          "accountId": { "type": "string", "minLength": 1 },
           "transport": { "enum": ["API", "CLI"] },
           "providerAdapter": { "const": "OPENAI_COMPATIBLE" },
           "endpoint": { "type": "string", "format": "uri" },

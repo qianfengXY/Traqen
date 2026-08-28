@@ -2,6 +2,7 @@ import {
   commitChildBatchResult,
   createAnalysisBatch,
   createCapabilityTemplateRevision,
+  createGlobalAccountRevision,
   createProjectCapabilityRevision,
   createWorkspace,
   createWorkspaceCapabilityDraftRevision,
@@ -131,13 +132,158 @@ export class WorkspaceProductFoundation {
     return this.store.listCapabilityTemplateRevisions();
   }
 
+  async listGlobalCapabilities({ includeDeleted = true } = {}) {
+    const latest = new Map();
+    for (const entry of await this.store.listCapabilityTemplateRevisions()) {
+      if (!['SKILL', 'MCP'].includes(entry.kind)) continue;
+      const normalizedName = entry.logicalName.trim().toLowerCase();
+      const key = `${entry.kind}\u0000${normalizedName}`;
+      if (!latest.has(key)) latest.set(key, Object.freeze({ ...entry, normalizedName, lifecycle: entry.lifecycle ?? 'ACTIVE' }));
+    }
+    return Object.freeze([...latest.values()]
+      .filter((entry) => includeDeleted || entry.lifecycle !== 'DELETED')
+      .sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName)));
+  }
+
+  async listGlobalAccounts({ includeDeleted = true } = {}) {
+    const latest = new Map();
+    for (const entry of await this.store.listGlobalAccountRevisions()) {
+      if (!latest.has(entry.accountId)) latest.set(entry.accountId, entry);
+    }
+    return Object.freeze([...latest.values()]
+      .filter((entry) => includeDeleted || entry.lifecycle !== 'DELETED')
+      .sort((left, right) => left.displayName.localeCompare(right.displayName) || left.accountId.localeCompare(right.accountId)));
+  }
+
+  async getGlobalAccount(accountId) {
+    const normalizedAccountId = String(accountId ?? '').trim();
+    return (await this.listGlobalAccounts()).find((entry) => entry.accountId === normalizedAccountId) ?? null;
+  }
+
+  async saveGlobalAccount(input) {
+    const accountId = String(input?.accountId ?? input?.id ?? '').trim();
+    if (!accountId) throw new TypeError('accountId is required');
+    const current = await this.getGlobalAccount(accountId);
+    const expectedVersion = Number(input?.expectedVersion);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new TypeError('expectedVersion is required');
+    if (expectedVersion !== (current?.revision ?? 0)) {
+      throw new TypeError(`Global account version conflict: expected ${expectedVersion}, current ${current?.revision ?? 0}`);
+    }
+    const lifecycle = String(input?.lifecycle ?? current?.lifecycle ?? 'ACTIVE').toUpperCase();
+    if (current?.lifecycle === 'DELETED' && lifecycle !== 'DELETED') throw new TypeError('A deleted global account cannot be reactivated');
+    const account = createGlobalAccountRevision({
+      ...current,
+      ...input,
+      accountId,
+      revision: (current?.revision ?? 0) + 1,
+      lifecycle,
+      secretRefId: input?.secretRefId ?? current?.secretRefId,
+      cliAdapter: input?.cliAdapter ?? current?.cliAdapter,
+      oauthStatus: input?.oauthStatus ?? current?.oauthStatus,
+    }, this.clock);
+    return this.store.appendGlobalAccountRevision(account);
+  }
+
+  async recheckGlobalAccount(accountId) {
+    const account = await this.getGlobalAccount(accountId);
+    if (!account) return null;
+    if (account.authMethod !== 'OAUTH') return Object.freeze({ ...account, recheck: 'NOT_APPLICABLE' });
+    return Object.freeze({
+      ...account,
+      recheck: 'EXTERNAL_CLI_REQUIRED',
+      checkedAt: this.clock().toISOString(),
+      instruction: `Complete ${account.cliAdapter} OAuth in its own CLI, then recheck this account.`,
+    });
+  }
+
+  async getGlobalCapability(kind, normalizedName) {
+    const normalizedKind = String(kind ?? '').toUpperCase();
+    const normalized = String(normalizedName ?? '').trim().toLowerCase();
+    return (await this.listGlobalCapabilities()).find((entry) => entry.kind === normalizedKind && entry.normalizedName === normalized) ?? null;
+  }
+
+  async saveGlobalCapability(input) {
+    const kind = String(input?.kind ?? '').toUpperCase();
+    const normalizedName = String(input?.normalizedName ?? input?.logicalName ?? input?.name ?? '').trim().toLowerCase();
+    if (!['SKILL', 'MCP'].includes(kind)) throw new TypeError('Global capability kind must be SKILL or MCP');
+    if (!normalizedName) throw new TypeError('Global capability name is required');
+    const current = await this.getGlobalCapability(kind, normalizedName);
+    const expectedVersion = Number(input?.expectedVersion);
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 0) throw new TypeError('expectedVersion is required');
+    if (expectedVersion !== (current?.revision ?? 0)) {
+      throw new TypeError(`Global capability version conflict: expected ${expectedVersion}, current ${current?.revision ?? 0}`);
+    }
+    const lifecycle = String(input?.lifecycle ?? current?.lifecycle ?? 'ACTIVE').toUpperCase();
+    if (current?.lifecycle === 'DELETED' && lifecycle !== 'DELETED') {
+      throw new TypeError('A deleted global capability cannot be reactivated');
+    }
+    const template = createCapabilityTemplateRevision({
+      kind,
+      logicalName: normalizedName,
+      revision: (current?.revision ?? 0) + 1,
+      lifecycle,
+      manifest: input?.manifest ?? current?.manifest ?? {},
+      credentialHandleIds: input?.credentialHandleIds ?? current?.credentialHandleIds ?? [],
+    }, this.clock);
+    return this.store.appendCapabilityTemplateRevision(template);
+  }
+
+  async previewGlobalCapabilityImpact(kind, normalizedName) {
+    const capability = await this.getGlobalCapability(kind, normalizedName);
+    if (!capability) return null;
+    const target = `${capability.kind}\u0000${capability.normalizedName}`;
+    const impacts = [];
+    for (const workspace of await this.listWorkspaces(null, { includeDeleted: false })) {
+      const activeProfile = await this.getActiveWorkspaceProfile(workspace.id);
+      if (!activeProfile) continue;
+      const globallySourced = (activeProfile.catalogProvenance ?? []).some((entry) => (
+        `${entry.kind}\u0000${entry.normalizedName}` === target && ['GLOBAL', 'BUILTIN'].includes(entry.source)
+      ));
+      if (!globallySourced) continue;
+      const grantedSlotIds = [activeProfile.mainAgentSlot, ...(activeProfile.childAgentSlots ?? [])]
+        .filter(Boolean)
+        .filter((slot) => [...(slot.skillGrants ?? []), ...(slot.mcpGrants ?? [])]
+          .some((grant) => `${grant.kind}\u0000${grant.normalizedName}` === target))
+        .map((slot) => slot.id);
+      if (grantedSlotIds.length > 0) {
+        impacts.push(Object.freeze({
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+          activeProfileId: activeProfile.id,
+          grantedSlotIds,
+        }));
+      }
+    }
+    return Object.freeze({ capability, impacts: Object.freeze(impacts) });
+  }
+
+  async setGlobalCapabilityLifecycle(kind, normalizedName, input) {
+    const current = await this.getGlobalCapability(kind, normalizedName);
+    if (!current) return null;
+    const lifecycle = String(input?.lifecycle ?? '').toUpperCase();
+    if (!['ACTIVE', 'INACTIVE', 'DELETED'].includes(lifecycle)) throw new TypeError('Global capability lifecycle is invalid');
+    if ((lifecycle === 'INACTIVE' || lifecycle === 'DELETED')) {
+      const preview = await this.previewGlobalCapabilityImpact(current.kind, current.normalizedName);
+      if (preview.impacts.length > 0 && input?.confirmation !== current.normalizedName) {
+        throw new TypeError(`Type ${current.normalizedName} to confirm impact on ${preview.impacts.length} active Workspace configuration(s)`);
+      }
+    }
+    return this.saveGlobalCapability({
+      ...current,
+      expectedVersion: input?.expectedVersion,
+      lifecycle,
+      manifest: current.manifest,
+      credentialHandleIds: current.credentialHandleIds,
+    });
+  }
+
   async listBuiltinCapabilities() {
     const latest = new Map();
     for (const entry of await this.store.listCapabilityTemplateRevisions()) {
       if (!['SKILL', 'MCP'].includes(entry.kind)) continue;
       const normalizedName = entry.logicalName.trim().toLowerCase();
       const key = `${entry.kind}\u0000${normalizedName}`;
-      if (!latest.has(key)) latest.set(key, Object.freeze({ ...entry, normalizedName, source: 'BUILTIN' }));
+      if (!latest.has(key)) latest.set(key, Object.freeze({ ...entry, normalizedName, source: 'GLOBAL', lifecycle: entry.lifecycle ?? 'ACTIVE' }));
     }
     return Object.freeze([...latest.values()]);
   }
@@ -166,6 +312,9 @@ export class WorkspaceProductFoundation {
     const existing = await this.listProjectCapabilities(workspaceId, { includeDeleted: true });
     const normalizedName = String(input.normalizedName ?? input.name ?? input.logicalName ?? '').trim().toLowerCase();
     const kind = String(input.kind ?? '').toUpperCase();
+    if ((await this.listBuiltinCapabilities()).some((entry) => entry.kind === kind && entry.normalizedName === normalizedName)) {
+      throw new TypeError('Workspace-local capability cannot replace a global capability');
+    }
     const prior = existing.find((entry) => entry.kind === kind && entry.normalizedName === normalizedName);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) throw new TypeError('expectedVersion is required');
     const currentVersion = prior?.revision ?? 0;
@@ -479,6 +628,37 @@ export class WorkspaceProductFoundation {
     const profile = await this.store.getUnderstandingRecord(workspaceId, "WORKSPACE_EXECUTION_PROFILE", head.recordId);
     if (!profile) throw new TypeError(`Workspace execution Profile Head ${head.recordId} is unavailable`);
     return profile;
+  }
+
+  async activeConfigurationIssues(workspaceId) {
+    const profile = await this.getActiveWorkspaceProfile(workspaceId);
+    if (!profile) return Object.freeze([]);
+    const grantedByKey = new Map();
+    for (const slot of [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])].filter(Boolean)) {
+      for (const grant of [...(slot.skillGrants ?? []), ...(slot.mcpGrants ?? [])]) {
+        const key = `${grant.kind}\u0000${grant.normalizedName}`;
+        grantedByKey.set(key, [...(grantedByKey.get(key) ?? []), slot.id]);
+      }
+    }
+    const issues = [];
+    for (const entry of profile.catalogProvenance ?? []) {
+      if (!['GLOBAL', 'BUILTIN'].includes(entry.source)) continue;
+      const key = `${entry.kind}\u0000${entry.normalizedName}`;
+      const grantedSlotIds = grantedByKey.get(key) ?? [];
+      if (grantedSlotIds.length === 0) continue;
+      const current = await this.getGlobalCapability(entry.kind, entry.normalizedName);
+      const lifecycle = current?.lifecycle ?? 'DELETED';
+      if (lifecycle === 'ACTIVE') continue;
+      issues.push(Object.freeze({
+        workspaceId,
+        activeProfileId: profile.id,
+        kind: entry.kind,
+        normalizedName: entry.normalizedName,
+        lifecycle,
+        grantedSlotIds: Object.freeze([...grantedSlotIds]),
+      }));
+    }
+    return Object.freeze(issues.sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName)));
   }
 
   async listWorkspaceProfiles(workspaceId) {

@@ -26,7 +26,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
     "理解图谱",
     "声明审核",
     "变更影响",
-    "能力设置",
+    "设置中心",
     "创建第一个 Workspace",
     "新建 Workspace",
     "中文",
@@ -177,10 +177,12 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "the mutable Draft needs a complete pre-save effective diff");
   assert.match(surfaces, /mobile-settings-section-list/,
     "mobile settings need an index before rendering a single selected section");
-  assert.match(product, /Capability templates/,
-    "the global configuration navigation must expose reusable Skill and MCP templates");
-  assert.match(product, /importedKeys/,
-    "the Workspace Draft must persist explicit global-template imports instead of treating every template as implicitly mounted");
-  assert.match(surfaces, /Global template import sources[\s\S]*Import into Draft/,
-    "the Workspace settings journey must expose global templates as explicit Draft import sources");
+  assert.match(product, /F006SettingsCenter/,
+    "the global configuration navigation must route through the F006 settings center");
+  assert.match(product, /listGlobalAccounts[\s\S]*listGlobalCapabilities/,
+    "the settings center must load both global accounts and global capabilities");
+  assert.match(product, /createGlobalCliModel/,
+    "the v1 settings flow must create CLI-backed models through its dedicated boundary");
+  assert.match(product, /importedKeys: \[\]/,
+    "legacy import fields remain only as an empty backwards-compatible transport value; active global capability availability is server-derived");
 });

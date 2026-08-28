@@ -990,6 +990,7 @@ export class AnalysisModelRegistry {
       const profile = {
         id,
         displayName: value.displayName ?? id,
+        accountId: value.accountId ?? null,
         transport,
         endpoint: adapter.endpoint ?? null,
         model,
@@ -1038,6 +1039,7 @@ export class AnalysisModelRegistry {
       endpoint: profile.endpoint,
       model: profile.model,
       displayName: profile.displayName,
+      accountId: profile.accountId ?? null,
       transport: profile.transport,
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
@@ -1060,6 +1062,7 @@ export class AnalysisModelRegistry {
       profileId: profile.id,
       revision: profile.revision,
       displayName: profile.displayName,
+      accountId: profile.accountId ?? null,
       transport: profile.transport,
       ...(profile.transport === "API" ? {
         providerAdapter: "OPENAI_COMPATIBLE",
@@ -1094,7 +1097,7 @@ export class AnalysisModelRegistry {
 
   #serializable(profile) {
     return {
-      id: profile.id, displayName: profile.displayName, transport: profile.transport, endpoint: profile.endpoint,
+      id: profile.id, displayName: profile.displayName, accountId: profile.accountId ?? null, transport: profile.transport, endpoint: profile.endpoint,
       model: profile.model, timeoutMs: profile.timeoutMs, stream: profile.stream, configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt, credentialHandleId: profile.credentialHandleId,
       legacyCredentialHandleId: profile.legacyCredentialHandleId, cliAdapter: profile.cliAdapter,
@@ -1283,7 +1286,7 @@ export class AnalysisModelRegistry {
       const timeoutMs = input.timeoutMs ?? 120_000;
       const adapter = new AllowlistedCliModelAdapter({ id, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
-      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
+      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile);
       if (persist) this.#persist();
       return this.#public(profile);
@@ -1304,7 +1307,7 @@ export class AnalysisModelRegistry {
     const stream = input.stream ?? false;
     const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credentialHandleId) ?? null });
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
-    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
+    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
     this.#publishRevision(profile);
     if (persist) this.#persist();
     return this.#public(profile);

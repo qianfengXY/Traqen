@@ -49,6 +49,42 @@ function uniqueCapabilityKeys(values, fieldName) {
   return result;
 }
 
+export function createGlobalAccountRevision(input, clock = () => new Date()) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global account must be an object");
+  const { secretRefId, ...nonSecretInput } = input;
+  assertSecretFree(nonSecretInput, "global account");
+  const accountId = requireNonEmptyString(input.accountId ?? input.id, "accountId");
+  const revision = Number(input.revision ?? 1);
+  if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  const authMethod = requireNonEmptyString(input.authMethod, "authMethod").toUpperCase();
+  if (!new Set(["API_KEY", "OAUTH"]).has(authMethod)) throw new TypeError("authMethod must be API_KEY or OAUTH");
+  const lifecycle = String(input.lifecycle ?? "ACTIVE").toUpperCase();
+  if (!new Set(["ACTIVE", "INACTIVE", "DELETED"]).has(lifecycle)) throw new TypeError("account lifecycle must be ACTIVE, INACTIVE, or DELETED");
+  const connection = authMethod === "API_KEY"
+    ? { secretRefId: requireNonEmptyString(secretRefId, "secretRefId") }
+    : {
+        cliAdapter: requireNonEmptyString(input.cliAdapter, "cliAdapter").toUpperCase(),
+        oauthStatus: String(input.oauthStatus ?? "UNKNOWN").toUpperCase(),
+      };
+  if (authMethod === "OAUTH" && !cliAdapters.has(connection.cliAdapter)) throw new TypeError("unsupported CLI adapter");
+  if (authMethod === "OAUTH" && !new Set(["UNKNOWN", "AUTHENTICATED", "NOT_AUTHENTICATED", "CLI_UNAVAILABLE"]).has(connection.oauthStatus)) {
+    throw new TypeError("oauthStatus is invalid");
+  }
+  const identity = {
+    accountId,
+    revision,
+    displayName: requireNonEmptyString(input.displayName ?? accountId, "displayName"),
+    authMethod,
+    lifecycle,
+    ...connection,
+  };
+  return deepFreeze({
+    id: contentId("GLOBAL-ACCOUNT-REVISION", identity),
+    ...identity,
+    createdAt: clock().toISOString(),
+  });
+}
+
 export function createGlobalModelProfileRevision(input, clock = () => new Date()) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model profile must be an object");
   const profileId = requireNonEmptyString(input.profileId ?? input.id, "profileId");
@@ -72,7 +108,13 @@ export function createGlobalModelProfileRevision(input, clock = () => new Date()
     throw new TypeError("CLI executable must match the adapter allowlist");
   }
   assertSecretFree(connection, "global model profile");
-  const identity = { profileId, revision, transport, connection };
+  const identity = {
+    profileId,
+    revision,
+    accountId: input.accountId ? requireNonEmptyString(input.accountId, "accountId") : null,
+    transport,
+    connection,
+  };
   return deepFreeze({
     id: contentId("GLOBAL-MODEL-PROFILE-REVISION", identity),
     ...identity,
@@ -100,7 +142,13 @@ export function createProjectCapabilityRevision(input, clock = () => new Date())
   });
 }
 
-export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], projectCatalog = [], importedKeys = null, disabledKeys = [] }) {
+export function resolveWorkspaceCapabilityCatalog({
+  globalCatalog = null,
+  builtinCatalog = [],
+  workspaceLocalCatalog = null,
+  projectCatalog = [],
+  disabledKeys = [],
+}) {
   const latest = (entries, source) => {
     const result = new Map();
     for (const raw of entries) {
@@ -112,28 +160,47 @@ export function resolveWorkspaceCapabilityCatalog({ builtinCatalog = [], project
     }
     return result;
   };
-  const availableBuiltins = latest(builtinCatalog, "BUILTIN");
-  const imported = importedKeys === null
-    ? new Set(availableBuiltins.keys())
-    : new Set(uniqueCapabilityKeys(importedKeys, "importedKeys").map(typedKey));
-  const builtins = new Map([...availableBuiltins].filter(([key]) => imported.has(key)));
-  const projects = latest(projectCatalog, "PROJECT");
+  const globals = latest(globalCatalog ?? builtinCatalog, "GLOBAL");
+  const workspaceLocals = latest(workspaceLocalCatalog ?? projectCatalog, "WORKSPACE");
   const disabled = new Set(uniqueCapabilityKeys(disabledKeys, "disabledKeys").map(typedKey));
-  const merged = new Map(builtins);
-  for (const [key, entry] of projects) merged.set(key, { ...entry, projectRelation: availableBuiltins.has(key) ? "OVERRIDE" : "ADDITION" });
-  const entries = [...merged.entries()].map(([key, entry]) => deepFreeze({
-    ...entry,
-    disabled: disabled.has(key),
-    effective: !disabled.has(key),
-  })).sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName));
+  for (const key of workspaceLocals.keys()) {
+    if (globals.has(key)) throw new TypeError("Workspace-local capability cannot replace a global capability");
+  }
+  const globalIsAvailable = (entry) => {
+    const lifecycle = String(entry.lifecycle ?? "ACTIVE").toUpperCase();
+    return entry.deleted !== true && entry.active !== false && lifecycle === "ACTIVE";
+  };
+  const entries = [
+    ...[...globals.entries()].map(([key, entry]) => {
+      const available = globalIsAvailable(entry);
+      const isDisabled = available && disabled.has(key);
+      return deepFreeze({
+        ...entry,
+        source: "GLOBAL",
+        availability: available ? (isDisabled ? "WORKSPACE_DISABLED" : "AVAILABLE") : "GLOBAL_UNAVAILABLE",
+        disabled: isDisabled,
+        effective: available && !isDisabled,
+      });
+    }),
+    ...[...workspaceLocals.entries()].map(([key, entry]) => {
+      const isDisabled = disabled.has(key);
+      return deepFreeze({
+        ...entry,
+        source: "WORKSPACE",
+        availability: isDisabled ? "WORKSPACE_DISABLED" : "AVAILABLE",
+        disabled: isDisabled,
+        effective: !isDisabled,
+      });
+    }),
+  ].sort((left, right) => left.kind.localeCompare(right.kind) || left.normalizedName.localeCompare(right.normalizedName));
   return deepFreeze({
     entries,
     effective: entries.filter(({ effective }) => effective),
     summary: {
-      builtinCount: [...builtins.keys()].filter((key) => !projects.has(key)).length,
-      projectOverrideCount: [...projects.keys()].filter((key) => availableBuiltins.has(key)).length,
-      projectAdditionCount: [...projects.keys()].filter((key) => !availableBuiltins.has(key)).length,
-      disabledCount: entries.filter(({ disabled }) => disabled).length,
+      globalAvailableCount: entries.filter(({ source, availability }) => source === "GLOBAL" && availability !== "GLOBAL_UNAVAILABLE").length,
+      workspaceDisabledCount: entries.filter(({ availability }) => availability === "WORKSPACE_DISABLED").length,
+      workspaceLocalCount: entries.filter(({ source }) => source === "WORKSPACE").length,
+      globalUnavailableCount: entries.filter(({ availability }) => availability === "GLOBAL_UNAVAILABLE").length,
       effectiveCount: entries.filter(({ effective }) => effective).length,
     },
   });
@@ -160,7 +227,7 @@ export function createWorkspaceCapabilityDraftRevision(input, clock = () => new 
   const revision = Number(input.revision ?? 1);
   if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
   const mainAgentSlot = draftAgentSlot(input.mainAgentSlot ?? input.mainAgent, "MAIN");
-  const childAgentSlots = (input.childAgentSlots ?? input.childSlots ?? [{}, {}]).map((slot, index) => draftAgentSlot(slot, "CHILD", index));
+  const childAgentSlots = (input.childAgentSlots ?? input.childSlots ?? [{}]).map((slot, index) => draftAgentSlot(slot, "CHILD", index));
   const importedKeys = uniqueCapabilityKeys(input.importedKeys, "importedKeys");
   const disabledKeys = uniqueCapabilityKeys(input.disabledKeys, "disabledKeys");
   const identity = {
@@ -308,7 +375,7 @@ export function activateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ca
       logicalName: entry.normalizedName,
       kind: entry.kind,
       manifest: structuredClone(entry.manifest ?? {}),
-      sourceTemplateId: entry.source === "BUILTIN" ? entry.id : null,
+      sourceTemplateId: entry.source === "GLOBAL" ? entry.id : null,
       credentialHandleIds: [...(entry.credentialHandleIds ?? [])],
     }))].sort((left, right) => left.kind.localeCompare(right.kind) || left.logicalName.localeCompare(right.logicalName)),
     dependencies: { revisionId: draft.dependencyPolicyRevisionId },
@@ -422,15 +489,18 @@ export function createCapabilityTemplateRevision(input, clock = () => new Date()
   const logicalName = requireNonEmptyString(input.logicalName, "logicalName");
   const revision = Number(input.revision);
   if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
+  const lifecycle = String(input.lifecycle ?? "ACTIVE").toUpperCase();
+  if (!new Set(["ACTIVE", "INACTIVE", "DELETED"]).has(lifecycle)) throw new TypeError("capability lifecycle must be ACTIVE, INACTIVE, or DELETED");
   const manifest = input.manifest && typeof input.manifest === "object" && !Array.isArray(input.manifest)
     ? structuredClone(input.manifest)
     : {};
   assertSecretFree(manifest, "capability manifest");
   return deepFreeze({
-    id: contentId("CAPABILITY-TEMPLATE", { kind, logicalName, revision, manifest }),
+    id: contentId("CAPABILITY-TEMPLATE", { kind, logicalName, revision, lifecycle, manifest }),
     kind,
     logicalName,
     revision,
+    lifecycle,
     manifest,
     credentialHandleIds: uniqueStrings(input.credentialHandleIds, "credentialHandleIds"),
     createdAt: clock().toISOString(),
@@ -454,7 +524,6 @@ export function createWorkspaceCapabilityConfig(input, clock = () => new Date())
   }
   const childSlots = (input.childSlots ?? [
     { id: "CHILD-1", model: input.mainAgent?.model, skillNames: [], mcpNames: [], independenceGroup: "DEFAULT-1" },
-    { id: "CHILD-2", model: input.mainAgent?.model, skillNames: [], mcpNames: [], independenceGroup: "DEFAULT-2" },
   ]).map((slot, index) => ({
     id: requireNonEmptyString(slot.id, `childSlots[${index}].id`),
     model: requireNonEmptyString(slot.model, `childSlots[${index}].model`),

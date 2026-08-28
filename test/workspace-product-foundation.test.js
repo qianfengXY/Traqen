@@ -97,22 +97,23 @@ test("Workspace execution profiles deterministically override and remove global 
   }), /cannot contain credential material/);
 });
 
-test("F006 resolves typed capability overlays, disables after overlay, and activates a complete one-or-more Child roster", () => {
+test("F006 resolves global availability, Workspace-local additions, and a complete one-or-more Child roster", () => {
   const builtins = [
     { id: "BS1", kind: "SKILL", normalizedName: "source", revision: 1, manifest: { origin: "builtin" } },
     { id: "BM1", kind: "MCP", normalizedName: "source", revision: 1, manifest: { origin: "builtin-mcp" } },
     { id: "BS2", kind: "SKILL", normalizedName: "review", revision: 1, manifest: { signature: "VERIFIED" } },
   ];
-  const project = [createProjectCapabilityRevision({ workspaceId: "W1", kind: "SKILL", normalizedName: "source", manifest: { origin: "project" } }, clock)];
+  const project = [createProjectCapabilityRevision({ workspaceId: "W1", kind: "SKILL", normalizedName: "workspace-notes", manifest: { origin: "project", signature: "VERIFIED" } }, clock)];
   const catalog = resolveWorkspaceCapabilityCatalog({
     builtinCatalog: builtins,
     projectCatalog: project,
     disabledKeys: [{ kind: "SKILL", normalizedName: "source" }],
   });
-  assert.deepEqual(catalog.summary, { builtinCount: 2, projectOverrideCount: 1, projectAdditionCount: 0, disabledCount: 1, effectiveCount: 2 });
-  assert.equal(catalog.entries.find(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source").source, "PROJECT");
+  assert.deepEqual(catalog.summary, { globalAvailableCount: 3, workspaceDisabledCount: 1, workspaceLocalCount: 1, globalUnavailableCount: 0, effectiveCount: 3 });
+  assert.equal(catalog.entries.find(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source").source, "GLOBAL");
   assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "source"), false);
   assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "MCP" && normalizedName === "source"), true);
+  assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "workspace-notes"), true);
 
   const model = createGlobalModelProfileRevision({ profileId: "MODEL-1", transport: "API", providerAdapter: "OPENAI", endpoint: "https://example.test/v1", model: "m", credentialHandleId: "CRED-1", readiness: "READY" }, clock);
   const draft = createWorkspaceCapabilityDraftRevision({
@@ -146,6 +147,16 @@ test("F006 resolves typed capability overlays, disables after overlay, and activ
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 4, mainAgentSlot: { ...draft.mainAgentSlot, enabled: false } }, clock),
     modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
   }), /MAIN_REQUIRED/);
+});
+
+test("F006 drafts start with one unconfigured Child Agent", () => {
+  const draft = createWorkspaceCapabilityDraftRevision({ workspaceId: "W1" }, clock);
+
+  assert.equal(draft.childAgentSlots.length, 1);
+  assert.equal(draft.childAgentSlots[0].id, "CHILD-1");
+  assert.equal(draft.childAgentSlots[0].modelProfileId, "");
+  assert.deepEqual(draft.childAgentSlots[0].skillGrants, []);
+  assert.deepEqual(draft.childAgentSlots[0].mcpGrants, []);
 });
 
 test("F006 rejects plaintext Authorization material and keeps secret grants typed", () => {
@@ -220,7 +231,7 @@ test("F006 server validation rejects unsafe security policy and unverified selec
   );
 });
 
-test("F006 only resolves a global Skill template after its Workspace Draft explicitly imports it", async () => {
+test("F006 makes an active global Skill available without implicitly granting it", async () => {
   const { service } = await foundation();
   await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "review", revision: 1, manifest: { signature: "VERIFIED" } });
   await service.saveCapabilityDraft("W1", {
@@ -229,12 +240,12 @@ test("F006 only resolves a global Skill template after its Workspace Draft expli
     childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
     projectCapabilityRevisionIds: [], importedKeys: [], disabledKeys: [], securityPolicy: validSecurityPolicy,
   });
-  assert.equal((await service.effectiveCapabilityCatalog("W1")).entries.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "review"), false);
+  assert.equal((await service.effectiveCapabilityCatalog("W1")).entries.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "review"), true);
   await service.saveCapabilityDraft("W1", {
     expectedVersion: 1,
     mainAgentSlot: { modelProfileId: "MODEL-1", skillGrants: [{ kind: "SKILL", normalizedName: "review" }] },
     childAgentSlots: [{ id: "C1", modelProfileId: "MODEL-1", independenceGroup: "I1" }],
-    projectCapabilityRevisionIds: [], importedKeys: [{ kind: "SKILL", normalizedName: "review" }], disabledKeys: [], securityPolicy: validSecurityPolicy,
+    projectCapabilityRevisionIds: [], importedKeys: [], disabledKeys: [], securityPolicy: validSecurityPolicy,
   });
   const validation = await service.validateCapabilityDraft("W1", [{ id: "MODEL-REV-1", profileId: "MODEL-1", readiness: "READY", lifecycle: "ACTIVE" }]);
   assert.equal(validation.validation.valid, true);
@@ -245,7 +256,7 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
   const { store, service } = await foundation();
   await service.registerCapabilityTemplate({ kind: "SKILL", logicalName: "source", revision: 1, manifest: { origin: "builtin" } });
   await service.registerCapabilityTemplate({ kind: "MCP", logicalName: "source", revision: 1, manifest: { origin: "builtin-mcp" } });
-  const project = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "source", expectedVersion: 0, manifest: { origin: "project" } });
+  const project = await service.saveProjectCapability("W1", { kind: "SKILL", normalizedName: "workspace-only", expectedVersion: 0, manifest: { origin: "project" } });
   const draft = await service.saveCapabilityDraft("W1", {
     expectedVersion: 0,
     mainAgentSlot: { modelProfileId: "MODEL-1" },
@@ -268,9 +279,9 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
   const validation = await service.validateCapabilityDraft("W1", modelProfiles);
   assert.equal(validation.validation.valid, true);
   assert.equal(validation.validation.errors.some(({ code }) => code === "MINIMUM_CHILDREN"), false);
-  assert.equal(validation.catalog.entries.find(({ kind }) => kind === "SKILL").source, "PROJECT");
+  assert.equal(validation.catalog.entries.find(({ normalizedName }) => normalizedName === "workspace-only").source, "WORKSPACE");
   assert.equal(validation.catalog.entries.find(({ kind }) => kind === "MCP").effective, true);
-  await assert.rejects(() => service.deleteProjectCapability("W1", "SKILL", "source"), /expectedVersion is required/);
+  await assert.rejects(() => service.deleteProjectCapability("W1", "SKILL", "workspace-only"), /expectedVersion is required/);
 
   const valid = await service.saveCapabilityDraft("W1", {
     expectedVersion: 1,
