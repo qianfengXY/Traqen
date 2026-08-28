@@ -268,7 +268,8 @@ export class WorkspaceProductFoundation {
     if (!['ACTIVE', 'INACTIVE', 'DELETED'].includes(lifecycle)) throw new TypeError('Global capability lifecycle is invalid');
     if ((lifecycle === 'INACTIVE' || lifecycle === 'DELETED')) {
       const preview = await this.previewGlobalCapabilityImpact(current.kind, current.normalizedName);
-      if (preview.impacts.length > 0 && input?.confirmation !== current.normalizedName) {
+      const confirmationRequired = lifecycle === 'DELETED' || preview.impacts.length > 0;
+      if (confirmationRequired && input?.confirmation !== current.normalizedName) {
         throw new TypeError(`Type ${current.normalizedName} to confirm impact on ${preview.impacts.length} active Workspace configuration(s)`);
       }
     }

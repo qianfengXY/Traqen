@@ -277,6 +277,18 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
     if (!slot.rolePolicy.trim()) errors.push({ field: `${path}.rolePolicy`, code: "REQUIRED", message: "Role policy is required" });
     const model = models.get(slot.modelProfileId);
     if (!slot.modelProfileId || !model) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_UNAVAILABLE", message: "Select a global model profile" });
+    // Account context is deliberately attached only by the F006 application service.
+    // This keeps historical/domain-only callers from silently changing semantics while
+    // ensuring every executable F006 draft rejects legacy direct-API profiles.
+    else if (model.account !== undefined && String(model.transport ?? "").toUpperCase() === "API") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_NOT_F006_CLI", message: "F006 requires an account-backed CLI model" });
+    else if (model.account === null) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_UNAVAILABLE", message: "Select a CLI model backed by an active global account" });
+    // Callers that only own a historical model snapshot do not have account context.
+    // F006 service paths always attach it; legacy-domain callers retain their prior
+    // readiness-only validation rather than being mistaken for a missing account.
+    else if (model.account !== undefined && model.account.lifecycle !== "ACTIVE") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_INACTIVE", message: "Selected model account must be ACTIVE" });
+    else if (model.account?.authMethod === "OAUTH" && model.account.oauthStatus !== "AUTHENTICATED") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_NOT_AUTHENTICATED", message: "Selected OAuth account must be authenticated" });
+    else if (model.account?.authMethod === "OAUTH" && model.account.cliAdapter !== model.cliAdapter) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_ADAPTER_MISMATCH", message: "Selected OAuth account must match the CLI adapter" });
+    else if (model.account?.authMethod === "API_KEY" && (!model.account.secretRefId || model.account.secretResolved === false)) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_SECRET_UNRESOLVED", message: "Selected API-key account secret reference is unavailable" });
     else if ((model.readiness ?? (model.ready ? "READY" : "UNVERIFIED")) !== "READY" || (model.lifecycle ?? "ACTIVE") !== "ACTIVE") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_NOT_READY", message: "Selected model must be READY and ACTIVE" });
     if (slot.role === "CHILD" && !slot.independenceGroup.trim()) errors.push({ field: `${path}.independenceGroup`, code: "REQUIRED", message: "Independence group is required" });
     for (const grant of [...slot.skillGrants, ...slot.mcpGrants]) {

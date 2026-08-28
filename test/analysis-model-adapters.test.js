@@ -102,6 +102,23 @@ test("OAuth status recheck reports an absent CLI without attempting a login", as
   assert.equal(calls[0].options.shell, false);
 });
 
+test("OAuth status recheck terminates a probe that does not close", async () => {
+  const child = new EventEmitter();
+  child.pid = 99999999;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => { child.killed = true; };
+
+  const status = await probeCliOAuthStatus("CODEX", {
+    spawnImpl: () => child,
+    timeoutMs: 5,
+  });
+
+  assert.deepEqual(status, { oauthStatus: "UNKNOWN" });
+  assert.equal(child.killed, true);
+  child.emit("close", 0);
+});
+
 test("allowlisted CLI models enforce timeout and output bounds", async () => {
   const outputBounded = new AllowlistedCliModelAdapter({ id: "CLI-OUT", cliAdapter: "KIMI", maximumOutputBytes: 4, spawnImpl: cliSpawn({ stdout: "12345" }, []) });
   await assert.rejects(() => outputBounded.planWorkspaceAnalysis({}), /output limit/);
@@ -131,6 +148,23 @@ test("allowlisted CLI verification exercises authenticated model execution inste
     spawnImpl: cliSpawn({ stdout: '{}\n' }, []),
   });
   await assert.rejects(() => unauthenticated.verify(), /verification challenge/);
+});
+
+test("account-bound CLI execution resolves an API-key reference only into the selected adapter environment", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CLI-ACCOUNT-BOUND",
+    cliAdapter: "CODEX",
+    environmentResolver: async () => ({ OPENAI_API_KEY: "runtime-only-secret" }),
+    spawnImpl: cliSpawn(({ args }) => {
+      const request = JSON.parse(args.at(-1));
+      return { stdout: `${JSON.stringify({ ready: true, challenge: request.input.challenge })}\n` };
+    }, calls),
+  });
+
+  await adapter.verify();
+  assert.equal(calls[0].options.env.OPENAI_API_KEY, "runtime-only-secret");
+  assert.equal(JSON.stringify({ id: adapter.id, cliAdapter: adapter.cliAdapter }).includes("runtime-only-secret"), false);
 });
 
 test("allowlisted CLI verification decodes each supported CLI's real JSON output envelope", async () => {

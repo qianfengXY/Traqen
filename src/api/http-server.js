@@ -397,6 +397,15 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 201, await application.configureGlobalCliModel(await readJson(request, maxBodyBytes)), id);
         return;
       }
+      if (request.method === "GET" && url.pathname === "/v1/global-cli-models") {
+        sendJson(response, 200, { models: await application.listGlobalCliModelProfiles() }, id);
+        return;
+      }
+      const globalCliModelVerifyMatch = /^\/v1\/global-cli-models\/([^/]+)\/verify$/.exec(url.pathname);
+      if (request.method === "POST" && globalCliModelVerifyMatch) {
+        sendJson(response, 200, await application.verifyGlobalCliModel(decodePathSegment(globalCliModelVerifyMatch[1])), id);
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/v1/global-capabilities") {
         sendJson(response, 200, { capabilities: await application.listGlobalCapabilities() }, id);
         return;

@@ -17,6 +17,7 @@ import {
   activateWorkspaceCapabilityDraft,
   resolveWorkspaceCapabilityCatalog,
   resolveWorkspaceExecutionProfile,
+  validateWorkspaceCapabilityDraft,
 } from "../src/domain/index.js";
 import { WorkspaceProductFoundation } from "../src/application/workspace-product-foundation.js";
 import { MemoryTraceabilityStore, PersistenceConflictError } from "../src/storage/index.js";
@@ -115,7 +116,7 @@ test("F006 resolves global availability, Workspace-local additions, and a comple
   assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "MCP" && normalizedName === "source"), true);
   assert.equal(catalog.effective.some(({ kind, normalizedName }) => kind === "SKILL" && normalizedName === "workspace-notes"), true);
 
-  const model = createGlobalModelProfileRevision({ profileId: "MODEL-1", transport: "API", providerAdapter: "OPENAI", endpoint: "https://example.test/v1", model: "m", credentialHandleId: "CRED-1", readiness: "READY" }, clock);
+  const model = createGlobalModelProfileRevision({ profileId: "MODEL-1", transport: "CLI", cliAdapter: "CODEX", executablePath: "codex", model: "m", readiness: "READY" }, clock);
   const draft = createWorkspaceCapabilityDraftRevision({
     workspaceId: "W1",
     mainAgentSlot: { modelProfileId: "MODEL-1", skillGrants: [{ kind: "SKILL", normalizedName: "review" }] },
@@ -127,7 +128,7 @@ test("F006 resolves global availability, Workspace-local additions, and a comple
     conventionRevisionId: "CON-1",
     securityPolicyRevisionId: "SEC-1",
   }, clock);
-  const profile = activateWorkspaceCapabilityDraft({ draft, modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock });
+  const profile = activateWorkspaceCapabilityDraft({ draft, modelProfiles: [model], catalog, securityPolicy: validSecurityPolicy, clock });
   assert.equal(profile.childAgentSlots.length, 2);
   assert.equal(profile.mainAgentSlot.modelProfileRevisionId, model.id);
   assert.equal(profile.mainAgent.model, model.id, "runtime compatibility fields also pin the immutable model revision");
@@ -136,17 +137,45 @@ test("F006 resolves global availability, Workspace-local additions, and a comple
   assert.throws(() => createGlobalModelProfileRevision({ profileId: "CLI-1", transport: "CLI", cliAdapter: "CODEX", executablePath: "/tmp/codex" }, clock), /allowlist/);
   const oneChildProfile = activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 2, childAgentSlots: [draft.childAgentSlots[0]] }, clock),
-    modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
+    modelProfiles: [model], catalog, securityPolicy: validSecurityPolicy, clock,
   });
   assert.equal(oneChildProfile.childAgentSlots.length, 1);
   assert.throws(() => activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 3, childAgentSlots: [] }, clock),
-    modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
+    modelProfiles: [model], catalog, securityPolicy: validSecurityPolicy, clock,
   }), /MINIMUM_CHILDREN/);
   assert.throws(() => activateWorkspaceCapabilityDraft({
     draft: createWorkspaceCapabilityDraftRevision({ ...draft, id: undefined, revision: 4, mainAgentSlot: { ...draft.mainAgentSlot, enabled: false } }, clock),
-    modelProfiles: [model], catalog, securityPolicy: { ...validSecurityPolicy, grantedHandleIds: ["CRED-1"] }, clock,
+    modelProfiles: [model], catalog, securityPolicy: validSecurityPolicy, clock,
   }), /MAIN_REQUIRED/);
+});
+
+test("F006 rejects a READY legacy API model from an executable Workspace draft", () => {
+  const legacyApiModel = createGlobalModelProfileRevision({
+    profileId: "LEGACY-API",
+    transport: "API",
+    providerAdapter: "OPENAI",
+    endpoint: "https://models.example/v1",
+    model: "legacy",
+    credentialHandleId: "LEGACY-CREDENTIAL",
+    readiness: "READY",
+  }, clock);
+  const catalog = resolveWorkspaceCapabilityCatalog({ builtinCatalog: [] });
+  const draft = createWorkspaceCapabilityDraftRevision({
+    workspaceId: "W1",
+    mainAgentSlot: { modelProfileId: "LEGACY-API" },
+    childAgentSlots: [{ id: "C1", modelProfileId: "LEGACY-API", independenceGroup: "I1" }],
+  }, clock);
+
+  const validation = validateWorkspaceCapabilityDraft({
+    draft,
+    modelProfiles: [{ ...legacyApiModel, account: null }],
+    effectiveCatalog: catalog.effective,
+    securityPolicy: validSecurityPolicy,
+  });
+
+  assert.equal(validation.valid, false);
+  assert.equal(validation.errors.some(({ code }) => code === "MODEL_NOT_F006_CLI"), true);
 });
 
 test("F006 drafts start with one unconfigured Child Agent", () => {

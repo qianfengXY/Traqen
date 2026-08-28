@@ -131,11 +131,17 @@ test("ships only the server-owned understanding path after Web cutover", async (
     "start confirmation must pin one immutable Active Profile revision rather than read a live selection");
   assert.match(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{startConfirmation\.profile\.childSlots\.length\} Child slots<\/dd>/,
     "start confirmation must display the roster belonging to that same pinned Active Profile");
+  assert.match(startConfirmationSource, /Main 模型", "Main model"\)\}<\/dt><dd>\{startConfirmation\.profile\.mainAgentSlot\.modelProfileId\}<\/dd>/,
+    "start confirmation must show the pinned Main model");
+  assert.match(startConfirmationSource, /能力数量", "Capability count"\)\}<\/dt><dd>\{startConfirmation\.profile\.entries\.filter/,
+    "start confirmation must show the pinned capability count");
   assert.doesNotMatch(startConfirmationSource, /\{childSlots\.length\}|executionProfile\?\.childSlots/,
     "start confirmation must not mix mutable Draft or independently refreshed profile state into its snapshot");
   const openStartConfirmationSource = product.slice(product.indexOf("function openStartConfirmation"), product.indexOf("async function startUnderstanding"));
   assert.match(openStartConfirmationSource, /profile: structuredClone\(executionProfile\)/,
     "opening the modal must capture a detached Active Profile snapshot");
+  assert.match(openStartConfirmationSource, /window\.sessionStorage\.getItem\(confirmedProfileStorageKey/,
+    "a refresh in the same browser session must retain the confirmed active profile");
   const startUnderstandingSource = product.slice(product.indexOf("async function startUnderstanding"), product.indexOf("async function controlUnderstanding"));
   assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"[\s\S]*error\.details\?\.head === "WORKSPACE_EXECUTION_PROFILE"/,
     "a stale start confirmation must identify the structured conflict rather than treating it as a generic error");

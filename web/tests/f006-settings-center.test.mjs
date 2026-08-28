@@ -12,9 +12,14 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /Complete .* OAuth in its own CLI|Sign in in the CLI/);
   assert.doesNotMatch(source, /accessToken|refreshToken|beginOAuthLogin/, "the UI must not create an OAuth token or login flow");
   assert.match(source, /Apply configuration/);
-  assert.match(source, /setTimeout\(\(\) => \{\s*props\.onAutoSave\(\)/);
+  assert.match(source, /setTimeout\(\(\) => \{\s*autosaveInFlight\.current = true/);
+  assert.match(source, /onAutoSave\(\)\.then\(\(saved\)/);
+  assert.match(source, /Retry save/);
   assert.match(source, /Cannot re-enable here/);
   assert.match(source, /actualUnavailable/);
   assert.match(source, /Granted to/);
   assert.match(source, /onOpenAgentSettings/);
+  assert.match(source, /f006-settings-nav/);
+  assert.match(source, /f006-mobile-agent-back/);
+  assert.match(source, /agentDrawerOpen/);
 });

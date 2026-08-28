@@ -219,6 +219,11 @@ export async function listGlobalModels(apiBase: string, apiToken: string) {
   return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
 }
 
+export async function listGlobalCliModels(apiBase: string, apiToken: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, { method: "GET", headers: headers(apiToken) });
+  return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
+}
+
 export async function listGlobalAccounts(apiBase: string, apiToken: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-accounts`, { method: "GET", headers: headers(apiToken) });
   return (await parseJson<{ accounts: GlobalAccount[] }>(response)).accounts;
@@ -323,6 +328,11 @@ export async function loadWorkspaceCapabilitySettings(apiBase: string, apiToken:
 
 export async function verifyGlobalModel(apiBase: string, apiToken: string, profileId: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
+  return parseJson<Record<string, unknown>>(response);
+}
+
+export async function verifyGlobalCliModel(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-cli-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
   return parseJson<Record<string, unknown>>(response);
 }
 

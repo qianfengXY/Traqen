@@ -31,13 +31,32 @@ export async function probeCliOAuthStatus(cliAdapter, { spawnImpl = spawn, timeo
     let stdout = "";
     let stderr = "";
     let timer = null;
-    const finish = (oauthStatus) => {
+    let child = null;
+    const cleanup = () => {
+      child?.stdout?.off?.("data", onStdout);
+      child?.stderr?.off?.("data", onStderr);
+      child?.off?.("error", onError);
+      child?.off?.("close", onClose);
+    };
+    const finish = (oauthStatus, { terminate = false } = {}) => {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      cleanup();
+      if (terminate) {
+        try { child?.kill?.("SIGKILL"); } catch { /* A failed cleanup must not change the bounded UNKNOWN result. */ }
+      }
       resolve(Object.freeze({ oauthStatus }));
     };
-    let child;
+    const onStdout = (chunk) => { stdout = append(stdout, chunk); };
+    const onStderr = (chunk) => { stderr = append(stderr, chunk); };
+    const onError = (error) => finish(error?.code === "ENOENT" ? "CLI_UNAVAILABLE" : "UNKNOWN");
+    const onClose = (code) => {
+      const output = `${stdout}\n${stderr}`;
+      if (/not\s+(?:logged\s+in|authenticated)|unauthenticated/i.test(output)) return finish("NOT_AUTHENTICATED");
+      if (code === 0 && /logged\s+in|authenticated/i.test(output)) return finish("AUTHENTICATED");
+      finish("UNKNOWN");
+    };
     try {
       child = spawnImpl(command.executable, command.args, {
         shell: false,
@@ -49,17 +68,12 @@ export async function probeCliOAuthStatus(cliAdapter, { spawnImpl = spawn, timeo
       return;
     }
     const append = (value, chunk) => `${value}${Buffer.from(chunk).toString("utf8")}`.slice(0, 8_192);
-    timer = setTimeout(() => finish("UNKNOWN"), Number(timeoutMs));
+    timer = setTimeout(() => finish("UNKNOWN", { terminate: true }), Number(timeoutMs));
     timer.unref?.();
-    child.stdout?.on("data", (chunk) => { stdout = append(stdout, chunk); });
-    child.stderr?.on("data", (chunk) => { stderr = append(stderr, chunk); });
-    child.once("error", (error) => finish(error?.code === "ENOENT" ? "CLI_UNAVAILABLE" : "UNKNOWN"));
-    child.once("close", (code) => {
-      const output = `${stdout}\n${stderr}`;
-      if (/not\s+(?:logged\s+in|authenticated)|unauthenticated/i.test(output)) return finish("NOT_AUTHENTICATED");
-      if (code === 0 && /logged\s+in|authenticated/i.test(output)) return finish("AUTHENTICATED");
-      finish("UNKNOWN");
-    });
+    child.stdout?.on("data", onStdout);
+    child.stderr?.on("data", onStderr);
+    child.once("error", onError);
+    child.once("close", onClose);
   });
 }
 
@@ -105,7 +119,7 @@ function decodeCliJsonOutput(cliAdapter, raw) {
 }
 
 export class AllowlistedCliModelAdapter {
-  constructor({ id, cliAdapter, model = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn }) {
+  constructor({ id, cliAdapter, model = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn, environmentResolver = null }) {
     this.id = requiredString(id, "CLI model profile id");
     this.cliAdapter = requiredString(cliAdapter, "CLI adapter").toUpperCase();
     if (!CLI_MODEL_ADAPTERS[this.cliAdapter]) throw new TypeError(`unsupported CLI adapter ${this.cliAdapter}`);
@@ -116,14 +130,30 @@ export class AllowlistedCliModelAdapter {
     if (!Number.isInteger(this.timeoutMs) || this.timeoutMs < 1) throw new TypeError("CLI timeoutMs must be a positive integer");
     if (!Number.isInteger(this.maximumOutputBytes) || this.maximumOutputBytes < 1) throw new TypeError("CLI maximumOutputBytes must be a positive integer");
     if (typeof spawnImpl !== "function") throw new TypeError("CLI spawnImpl must be a function");
+    if (environmentResolver !== null && typeof environmentResolver !== "function") throw new TypeError("CLI environmentResolver must be a function or null");
     this.spawnImpl = spawnImpl;
+    this.environmentResolver = environmentResolver;
   }
 
-  #run(args, { signal = null } = {}) {
+  async #run(args, { signal = null } = {}) {
     const definition = CLI_MODEL_ADAPTERS[this.cliAdapter];
     const executable = this.executablePath;
+    const suppliedEnvironment = this.environmentResolver ? await this.environmentResolver() : null;
+    if (suppliedEnvironment !== null && (!suppliedEnvironment || typeof suppliedEnvironment !== "object" || Array.isArray(suppliedEnvironment))) {
+      throw new TypeError("CLI environment resolver must return an object or null");
+    }
+    for (const [key, value] of Object.entries(suppliedEnvironment ?? {})) {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || typeof value !== "string" || value.length === 0) {
+        throw new TypeError("CLI environment resolver returned an invalid environment entry");
+      }
+    }
     return new Promise((resolve, reject) => {
-      const child = this.spawnImpl(executable, args, { shell: false, detached: process.platform !== "win32", stdio: ["ignore", "pipe", "pipe"] });
+      const child = this.spawnImpl(executable, args, {
+        shell: false,
+        detached: process.platform !== "win32",
+        stdio: ["ignore", "pipe", "pipe"],
+        ...(suppliedEnvironment ? { env: { ...process.env, ...suppliedEnvironment } } : {}),
+      });
       let stdout = Buffer.alloc(0);
       let stderr = Buffer.alloc(0);
       let settled = false;
@@ -990,16 +1020,22 @@ export class AnalysisModelRegistry {
   #credentialHandles = new Map();
   #environmentCredentialHandles = new Map();
   #issuedSecretGrants = new Map();
+  #cliSpawn;
+  #cliEnvironmentResolver;
 
-  constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null } = {}) {
+  constructor({ adapters = new Map(), clock = () => new Date(), fetchImpl = globalThis.fetch, profileStore = null, cliSpawn = spawn, cliEnvironmentResolver = null } = {}) {
     if (!(adapters instanceof Map)) throw new TypeError("analysis model adapters must be a Map");
     if (typeof clock !== "function") throw new TypeError("analysis model registry clock must be a function");
     if (typeof fetchImpl !== "function") throw new TypeError("analysis model registry fetchImpl must be a function");
+    if (typeof cliSpawn !== "function") throw new TypeError("analysis model registry cliSpawn must be a function");
+    if (cliEnvironmentResolver !== null && typeof cliEnvironmentResolver !== "function") throw new TypeError("analysis model registry cliEnvironmentResolver must be a function or null");
     if (profileStore && (typeof profileStore.load !== "function" || typeof profileStore.save !== "function")) throw new TypeError("analysis model profileStore requires load and save functions");
     this.#clock = clock;
     this.#fetchImpl = fetchImpl;
     this.#profileStore = profileStore;
     this.#adapters = new Map(adapters);
+    this.#cliSpawn = cliSpawn;
+    this.#cliEnvironmentResolver = cliEnvironmentResolver;
     const stored = this.#profileStore?.load() ?? { profiles: [], revisions: [], credentialHandles: [], environmentCredentialHandles: [] };
     for (const value of stored.credentialHandles ?? []) {
       const handleId = requiredString(value?.id, "stored model credential handle id");
@@ -1034,7 +1070,7 @@ export class AnalysisModelRegistry {
       const credential = transport === "API" ? this.#storedCredential(value, id) : null;
       const adapter = transport === "API"
         ? new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credential.credentialHandleId) ?? null })
-        : new AllowlistedCliModelAdapter({ id, cliAdapter: value.cliAdapter, model, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
+        : this.#cliAdapter({ id, accountId: value.accountId ?? null, cliAdapter: value.cliAdapter, model, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
       const profile = {
         id,
         displayName: value.displayName ?? id,
@@ -1079,6 +1115,21 @@ export class AnalysisModelRegistry {
         ? requiredString(value.legacyCredentialHandleId, "stored model legacyCredentialHandleId")
         : legacySecret ? `MODEL-CREDENTIAL-${profileId}` : null,
     };
+  }
+
+  #cliAdapter({ id, accountId, cliAdapter, model, executablePath, timeoutMs, maximumOutputBytes }) {
+    return new AllowlistedCliModelAdapter({
+      id,
+      cliAdapter,
+      model,
+      executablePath,
+      timeoutMs,
+      maximumOutputBytes,
+      spawnImpl: this.#cliSpawn,
+      environmentResolver: accountId && this.#cliEnvironmentResolver
+        ? () => this.#cliEnvironmentResolver({ profileId: id, accountId, cliAdapter: String(cliAdapter).toUpperCase() })
+        : null,
+    });
   }
 
   #public(profile) {
@@ -1138,7 +1189,7 @@ export class AnalysisModelRegistry {
     const credential = transport === "API" ? this.#storedCredential(value, value.id) : null;
     const adapter = transport === "API"
       ? new OpenAICompatibleAnalysisModelAdapter({ id: value.id, endpoint: value.endpoint, model: value.model, timeoutMs: value.timeoutMs, stream: value.stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credential.credentialHandleId) ?? null })
-      : new AllowlistedCliModelAdapter({ id: value.id, cliAdapter: value.cliAdapter, model: value.model, executablePath: value.executablePath, timeoutMs: value.timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
+      : this.#cliAdapter({ id: value.id, accountId: value.accountId ?? null, cliAdapter: value.cliAdapter, model: value.model, executablePath: value.executablePath, timeoutMs: value.timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
     const { apiKey: _apiKey, ...safeValue } = value;
     this.#revisions.set(value.currentRevisionId, { ...safeValue, transport, credentialHandleId: credential?.credentialHandleId ?? null, legacyCredentialHandleId: credential?.legacyCredentialHandleId ?? null, adapter });
   }
@@ -1213,6 +1264,8 @@ export class AnalysisModelRegistry {
       adapters: this.#adapters,
       clock: this.#clock,
       fetchImpl: this.#fetchImpl,
+      cliSpawn: this.#cliSpawn,
+      cliEnvironmentResolver: this.#cliEnvironmentResolver,
       profileStore: { load: () => stored, save: () => {} },
     });
     this.#profiles = reloaded.#profiles;
@@ -1229,6 +1282,8 @@ export class AnalysisModelRegistry {
       adapters: this.#adapters,
       clock: this.#clock,
       fetchImpl: this.#fetchImpl,
+      cliSpawn: this.#cliSpawn,
+      cliEnvironmentResolver: this.#cliEnvironmentResolver,
       profileStore: this.#profileStore,
     });
     this.#profiles = reloaded.#profiles;
@@ -1241,6 +1296,14 @@ export class AnalysisModelRegistry {
 
   list() {
     return [...this.#profiles.values()].map((profile) => this.#public(profile)).sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  setCliEnvironmentResolver(resolver) {
+    if (resolver !== null && typeof resolver !== "function") throw new TypeError("analysis model registry cliEnvironmentResolver must be a function or null");
+    this.#cliEnvironmentResolver = resolver;
+    // Rehydrate adapters so future verification and execution receive the current
+    // account binding without persisting secret material in model revisions.
+    this.replaceDurableProfiles(this.durableProfileSnapshot());
   }
 
   applyDurableLifecycle(profileId, lifecycle) {
@@ -1332,7 +1395,7 @@ export class AnalysisModelRegistry {
     const transport = String(input.transport ?? existing?.transport ?? "API").toUpperCase();
     if (transport === "CLI") {
       const timeoutMs = input.timeoutMs ?? 120_000;
-      const adapter = new AllowlistedCliModelAdapter({ id, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
+      const adapter = this.#cliAdapter({ id, accountId: input.accountId ?? existing?.accountId ?? null, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
       const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
       const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile);

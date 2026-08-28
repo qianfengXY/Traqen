@@ -69,8 +69,10 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.match(globalAccountsPath.post.description, /OAuth/i);
   assert.doesNotMatch(globalAccountsPath.post.description, /login|token/i);
   assert.equal(contract.paths["/v1/global-accounts/{accountId}/recheck"].post.operationId, "recheckGlobalAccount");
+  assert.equal(contract.paths["/v1/global-cli-models"].get.operationId, "listGlobalCliModelProfiles");
   assert.equal(contract.paths["/v1/global-cli-models"].post.operationId, "createGlobalCliModel");
   assert.match(contract.paths["/v1/global-cli-models"].post.description, /CLI/i);
+  assert.equal(contract.paths["/v1/global-cli-models/{modelId}/verify"].post.operationId, "verifyGlobalCliModel");
   const globalCapabilitiesPath = contract.paths["/v1/global-capabilities"];
   assert.equal(globalCapabilitiesPath.get.operationId, "listGlobalCapabilities");
   assert.equal(globalCapabilitiesPath.post.operationId, "saveGlobalCapability");

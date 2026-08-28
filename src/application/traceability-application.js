@@ -106,6 +106,21 @@ function replacementChangesIdentity(changes) {
   })).sort((left, right) => left.workspaceId.localeCompare(right.workspaceId));
 }
 
+const CLI_API_KEY_ENVIRONMENT = Object.freeze({
+  CODEX: "OPENAI_API_KEY",
+  CLAUDE: "ANTHROPIC_API_KEY",
+  GEMINI: "GEMINI_API_KEY",
+  KIMI: "KIMI_API_KEY",
+});
+
+function resolveEnvironmentSecretReference(secretRefId) {
+  const match = /^env:\/\/([A-Z_][A-Z0-9_]*)$/.exec(String(secretRefId ?? ""));
+  if (!match) throw new TypeError("A configured secret provider is required to resolve this API-key reference");
+  const secret = process.env[match[1]];
+  if (typeof secret !== "string" || secret.length === 0) throw new TypeError(`The configured secret reference ${secretRefId} is unavailable`);
+  return secret;
+}
+
 function graphEvidenceResolver(projectId, revisionId, kind, id, { featureId, rootNodeId, snapshotManifestId }) {
   const query = new URLSearchParams({ featureId, rootNodeId, snapshotManifestId });
   return `/v1/projects/${encodeURIComponent(projectId)}/graph/revisions/${encodeURIComponent(revisionId)}/evidence/${kind}s/${encodeURIComponent(id)}?${query}`;
@@ -551,6 +566,7 @@ export class TraceabilityApplication {
   #legacyUnderstandingRuntime;
   #sourceSliceWorkerCredentialService;
   #workspaceFoundation;
+  #secretReferenceResolver;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
 
@@ -576,6 +592,7 @@ export class TraceabilityApplication {
     sourceSliceWorkerCredentialService = null,
     workspaceFoundation = null,
     oauthStatusProbe = null,
+    secretReferenceResolver = resolveEnvironmentSecretReference,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -597,6 +614,7 @@ export class TraceabilityApplication {
     if (typeof productMetricsPolicyResolver !== "function") {
       throw new TypeError("productMetricsPolicyResolver must be a function");
     }
+    if (typeof secretReferenceResolver !== "function") throw new TypeError("secretReferenceResolver must be a function");
     this.#store = store;
     this.#clock = clock;
     this.#runnerKeyResolver = runnerKeyResolver;
@@ -621,6 +639,8 @@ export class TraceabilityApplication {
       clock,
       ...(oauthStatusProbe ? { oauthStatusProbe } : {}),
     });
+    this.#secretReferenceResolver = secretReferenceResolver;
+    this.#analysisModelRegistry?.setCliEnvironmentResolver?.((context) => this.#resolveF006CliEnvironment(context));
   }
 
   async createProject(input) {
@@ -721,7 +741,29 @@ export class TraceabilityApplication {
   async #globalModelProfiles() {
     if (!this.#analysisModelRegistry) return [];
     await this.#syncGlobalModelLifecycles();
-    return this.#analysisModelRegistry.list().map((profile) => this.#globalModelProfile(profile));
+    return this.#analysisModelRegistry.list().map((profile) => Object.freeze(this.#globalModelProfile(profile)));
+  }
+
+  // Account records are server-only eligibility context.  They must not be added to
+  // the legacy public GlobalModelProfile contract simply because F006 needs them.
+  async #f006ModelProfiles() {
+    const profiles = await this.#globalModelProfiles();
+    const accounts = await this.#workspaceFoundation.listGlobalAccounts();
+    const accountById = new Map(await Promise.all(accounts.map(async (account) => {
+      if (account.authMethod !== "API_KEY") return [account.accountId, account];
+      let secretResolved = false;
+      try {
+        const resolved = await this.#secretReferenceResolver(account.secretRefId, { accountId: account.accountId, cliAdapter: null });
+        secretResolved = typeof resolved === "string" && resolved.length > 0;
+      } catch { /* The Draft receives an explainable eligibility error without exposing a secret or resolver detail. */ }
+      return [account.accountId, Object.freeze({ ...account, secretResolved })];
+    })));
+    return profiles.map((publicProfile) => {
+      return Object.freeze({
+        ...publicProfile,
+        account: publicProfile.accountId ? accountById.get(publicProfile.accountId) ?? null : null,
+      });
+    });
   }
 
   #globalModelProfile(profile) {
@@ -748,6 +790,10 @@ export class TraceabilityApplication {
 
   async listGlobalModelProfiles() {
     return this.#globalModelProfiles();
+  }
+
+  async listGlobalCliModelProfiles() {
+    return (await this.#globalModelProfiles()).filter((profile) => profile.transport === "CLI");
   }
 
   async hydrateGlobalModelProfiles() {
@@ -780,12 +826,30 @@ export class TraceabilityApplication {
     return this.#globalModelProfile(configured);
   }
 
+  async #resolveF006CliEnvironment({ accountId, cliAdapter }) {
+    const account = await this.#workspaceFoundation.getGlobalAccount(requireId(accountId, "accountId"));
+    const adapter = String(cliAdapter ?? "").toUpperCase();
+    if (!account || account.lifecycle !== "ACTIVE") throw new TypeError("A selected ACTIVE global account is required");
+    if (!CLI_API_KEY_ENVIRONMENT[adapter]) throw new TypeError("A supported CLI adapter is required");
+    if (account.authMethod === "OAUTH") {
+      if (account.oauthStatus !== "AUTHENTICATED") throw new TypeError("An OAuth account must be authenticated before it can back a CLI model");
+      if (account.cliAdapter !== adapter) throw new TypeError("An OAuth account must use a matching CLI adapter");
+      return null;
+    }
+    if (account.authMethod !== "API_KEY" || !account.secretRefId) {
+      throw new TypeError("An API-key account must resolve to a secret reference before it can back a CLI model");
+    }
+    const secret = await this.#secretReferenceResolver(account.secretRefId, { accountId: account.accountId, cliAdapter: adapter });
+    if (typeof secret !== "string" || secret.length === 0) throw new TypeError("The selected API-key account secret could not be resolved");
+    return Object.freeze({ [CLI_API_KEY_ENVIRONMENT[adapter]]: secret });
+  }
+
   async configureGlobalCliModel(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('global CLI model input must be an object');
     const accountId = requireId(input.accountId, 'accountId');
-    const account = await this.#workspaceFoundation.getGlobalAccount(accountId);
-    if (!account || account.lifecycle !== 'ACTIVE') throw new TypeError('A selected ACTIVE global account is required');
     if (String(input.transport ?? 'CLI').toUpperCase() !== 'CLI') throw new TypeError('F006 global models must use the CLI transport');
+    const cliAdapter = String(input.cliAdapter ?? '').toUpperCase();
+    await this.#resolveF006CliEnvironment({ accountId, cliAdapter });
     return this.configureGlobalModelProfile({ ...input, transport: 'CLI', accountId });
   }
 
@@ -821,10 +885,20 @@ export class TraceabilityApplication {
     await this.#syncGlobalModelLifecycles();
     const current = await this.getGlobalModelProfile(profileId);
     if (!current) return null;
+    if (current.transport === 'CLI' && current.accountId) await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
     await this.#store.mutateGlobalModelProfile(profileId, current.revision, async () => (
       this.verifyAnalysisModelProfile(profileId, { persist: false })
     ));
     return this.getGlobalModelProfile(profileId);
+  }
+
+  async verifyGlobalCliModel(profileId) {
+    const current = await this.getGlobalModelProfile(profileId);
+    if (!current || current.transport !== "CLI" || !current.accountId) {
+      throw new TypeError("F006 can verify only account-backed CLI model profiles");
+    }
+    await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
+    return this.verifyGlobalModelProfile(profileId);
   }
 
   getGlobalModelUsage(profileId) {
@@ -838,7 +912,7 @@ export class TraceabilityApplication {
     assertOnlyFields(input, ["replacementProfileId"], "modelReplacementPlan");
     const replacementProfileId = requireId(input?.replacementProfileId, "replacementProfileId");
     const usage = await this.getGlobalModelUsage(profileId);
-    const modelProfiles = await this.#globalModelProfiles();
+    const modelProfiles = await this.#f006ModelProfiles();
     const provisionalChanges = await this.#workspaceFoundation.prepareModelReplacement(profileId, replacementProfileId, modelProfiles);
     const provisionalPlan = this.#analysisModelRegistry.createReplacementPlan({
       sourceProfileId: profileId,
@@ -879,7 +953,7 @@ export class TraceabilityApplication {
       const currentChanges = await this.#workspaceFoundation.prepareModelReplacement(
         profileId,
         plan.replacementProfileId,
-        await this.#globalModelProfiles(),
+        await this.#f006ModelProfiles(),
         { id: plan.id, version: plan.version },
       );
       if (canonicalJson(replacementChangesIdentity(currentChanges)) !== canonicalJson(replacementChangesIdentity(plan.changes))) {
@@ -942,13 +1016,13 @@ export class TraceabilityApplication {
   }
 
   async validateWorkspaceCapabilityDraft(workspaceId) {
-    return this.#workspaceFoundation.validateCapabilityDraft(workspaceId, await this.#globalModelProfiles());
+    return this.#workspaceFoundation.validateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
   }
 
   async activateWorkspaceCapabilityDraft(workspaceId) {
     const draft = await this.#workspaceFoundation.getCapabilityDraft(workspaceId);
     if (draft) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(draft));
-    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, await this.#globalModelProfiles());
+    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
   }
 
   async saveWorkspaceCapabilityConfig(workspaceId, input) {

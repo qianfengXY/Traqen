@@ -2,262 +2,54 @@
   "schema_version": 1,
   "diagram_type": "dataflow",
   "meta": {
-    "title": "Workspace Capability Resolution and Runtime Isolation",
-    "subtitle": "Reusable models plus typed built-in/project capability overlay become one immutable Run profile",
+    "title": "Workspace Capability Resolution and Run Pinning",
+    "subtitle": "Account-backed local CLI models and explicit Workspace grants become one immutable, non-secret Run snapshot",
     "output": "docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html",
-    "animation": "trace",
+    "animation": "none",
     "visual_preset": "blueprint",
     "quality_profile": "showcase",
-    "viewBox": [1280, 900],
+    "viewBox": [1440, 900],
     "views": [
-      {
-        "id": "model-selection",
-        "label": "Model selection",
-        "focus": ["models", "draft", "resolver", "profile"],
-        "note": "Workspace slots select reusable API or allowlisted CLI profiles; activation pins exact revisions."
-      },
-      {
-        "id": "overlay-disable",
-        "label": "Overlay + disable",
-        "focus": ["builtin", "project", "disabled", "resolver", "profile"],
-        "note": "Project typed keys fully override built-ins, then Workspace disabled keys remove merged entries."
-      },
-      {
-        "id": "scoped-secrets",
-        "label": "Scoped secrets",
-        "focus": ["vault", "draft", "resolver", "profile"],
-        "note": "Profiles retain handles and least-privilege grants, never plaintext credentials."
-      },
-      {
-        "id": "runtime-pinning",
-        "label": "Runtime pinning",
-        "focus": ["profile", "main", "children"],
-        "note": "One Main and Child slots 2..N receive only the Run-pinned immutable profile."
-      }
+      { "id": "account-boundary", "label": "Account boundary", "focus": ["accounts", "cliModels", "secretRefs"], "note": "Only active Account-backed local CLI models enter F006; API keys remain references and OAuth stays owned by the CLI." },
+      { "id": "workspace-draft", "label": "Workspace draft", "focus": ["workspaceDraft", "localCapabilities", "resolver"], "note": "A Workspace may disable inherited capabilities or add independent local ones, then explicitly grant them to Agents." },
+      { "id": "run-pinning", "label": "Run pinning", "focus": ["resolver", "activeProfile", "runSnapshot", "main", "children"], "note": "Apply produces an immutable active configuration; start pins it into a non-secret snapshot for Main and Child Agents." }
     ]
   },
   "stages": [
-    {"label": "Sources"},
-    {"label": "Workspace intent"},
-    {"label": "Resolve + validate"},
-    {"label": "Immutable revision"},
-    {"label": "Runtime mount"}
+    { "label": "Global assets" },
+    { "label": "Workspace draft" },
+    { "label": "Resolve + validate" },
+    { "label": "Immutable configuration" },
+    { "label": "Run runtime" }
   ],
   "nodes": [
-    {
-      "id": "models",
-      "type": "database",
-      "label": "Global models",
-      "sublabel": "API / allowlisted CLI",
-      "stage": 0,
-      "row": 0,
-      "tag": "reusable revisions",
-      "width": 128
-    },
-    {
-      "id": "builtin",
-      "type": "database",
-      "label": "Built-in catalog",
-      "sublabel": "Skill / MCP · read-only",
-      "stage": 0,
-      "row": 1,
-      "tag": "may be empty",
-      "width": 128
-    },
-    {
-      "id": "project",
-      "type": "database",
-      "label": "Project catalog",
-      "sublabel": "immutable artifacts",
-      "stage": 0,
-      "row": 2,
-      "tag": "Workspace owned",
-      "width": 128
-    },
-    {
-      "id": "vault",
-      "type": "security",
-      "label": "Secret vault",
-      "sublabel": "credential handles",
-      "stage": 0,
-      "row": 3,
-      "tag": "no plaintext"
-    },
-    {
-      "id": "draft",
-      "type": "frontend",
-      "label": "Workspace draft",
-      "sublabel": "Main + Child 2..N",
-      "stage": 1,
-      "row": 0,
-      "tag": "durable + editable",
-      "width": 132
-    },
-    {
-      "id": "disabled",
-      "type": "security",
-      "label": "Disabled keys",
-      "sublabel": "kind + normalized name",
-      "stage": 1,
-      "row": 4,
-      "tag": "after overlay",
-      "width": 132
-    },
-    {
-      "id": "resolver",
-      "type": "backend",
-      "label": "Profile resolver",
-      "sublabel": "overlay · disable · grants",
-      "stage": 2,
-      "row": 2,
-      "tag": "deterministic",
-      "width": 134
-    },
-    {
-      "id": "profile",
-      "type": "database",
-      "label": "Execution profile",
-      "sublabel": "immutable revision",
-      "stage": 3,
-      "row": 2,
-      "tag": "digest pinned",
-      "width": 126
-    },
-    {
-      "id": "main",
-      "type": "backend",
-      "label": "Main Agent",
-      "sublabel": "plan + reconcile",
-      "stage": 4,
-      "row": 0,
-      "tag": "profile only"
-    },
-    {
-      "id": "children",
-      "type": "backend",
-      "label": "Child roster",
-      "sublabel": "2..N same-batch slots",
-      "stage": 4,
-      "row": 4,
-      "tag": "profile only",
-      "width": 122
-    }
+    { "id": "accounts", "type": "security", "label": "Global Accounts", "sublabel": "API-key reference / CLI OAuth state", "stage": 0, "row": 0, "tag": "no token" },
+    { "id": "cliModels", "type": "database", "label": "Global CLI Models", "sublabel": "allowlisted adapter + Account", "stage": 0, "row": 1, "tag": "CLI only" },
+    { "id": "globalCapabilities", "type": "database", "label": "Global Skill / MCP", "sublabel": "active lifecycle ceiling", "stage": 0, "row": 2, "tag": "not granted" },
+    { "id": "secretRefs", "type": "security", "label": "Secret References", "sublabel": "resolved only at local CLI launch", "stage": 0, "row": 4, "tag": "scoped" },
+    { "id": "workspaceDraft", "type": "frontend", "label": "Workspace Settings Draft", "sublabel": "Main + required Child 1..N", "stage": 1, "row": 1, "tag": "auto-save", "width": 164 },
+    { "id": "localCapabilities", "type": "database", "label": "Workspace Capability State", "sublabel": "disabled inherited + local additions", "stage": 1, "row": 3, "tag": "explicit grants", "width": 164 },
+    { "id": "resolver", "type": "backend", "label": "F006 Resolver", "sublabel": "eligibility · availability · grants", "stage": 2, "row": 2, "tag": "fail closed", "width": 172 },
+    { "id": "activeProfile", "type": "database", "label": "Active Configuration", "sublabel": "Apply creates immutable revision", "stage": 3, "row": 1, "tag": "versioned", "width": 164 },
+    { "id": "runSnapshot", "type": "database", "label": "Run Snapshot", "sublabel": "pinned non-secret profile", "stage": 3, "row": 3, "tag": "no hot-swap", "width": 164 },
+    { "id": "main", "type": "backend", "label": "Main Agent", "sublabel": "plan + reconcile", "stage": 4, "row": 1, "tag": "snapshot only", "width": 142 },
+    { "id": "children", "type": "backend", "label": "Child Agents", "sublabel": "one or more sealed slots", "stage": 4, "row": 3, "tag": "snapshot only", "width": 142 }
   ],
   "flows": [
-    {
-      "id": "models-draft",
-      "from": "models",
-      "to": "draft",
-      "label": "models",
-      "classification": "explicit model choice",
-      "variant": "emphasis",
-      "route": "straight",
-      "labelDy": 53
-    },
-    {
-      "id": "draft-resolver",
-      "from": "draft",
-      "to": "resolver",
-      "label": "roster",
-      "classification": "authoritative intent",
-      "variant": "emphasis",
-      "route": "auto"
-    },
-    {
-      "id": "builtin-resolver",
-      "from": "builtin",
-      "to": "resolver",
-      "label": "built-ins",
-      "classification": "read-only catalog",
-      "variant": "dashed",
-      "route": "auto"
-    },
-    {
-      "id": "project-resolver",
-      "from": "project",
-      "to": "resolver",
-      "label": "overrides",
-      "classification": "full-key override",
-      "variant": "default",
-      "route": "straight",
-      "labelAt": [250, 342]
-    },
-    {
-      "id": "disabled-resolver",
-      "from": "disabled",
-      "to": "resolver",
-      "label": "disabled",
-      "classification": "fail closed",
-      "variant": "security",
-      "route": "auto"
-    },
-    {
-      "id": "vault-resolver",
-      "from": "vault",
-      "to": "resolver",
-      "label": "handles",
-      "classification": "secret metadata",
-      "variant": "security",
-      "route": "auto"
-    },
-    {
-      "id": "resolver-profile",
-      "from": "resolver",
-      "to": "profile",
-      "label": "effective set",
-      "classification": "resolved set",
-      "variant": "emphasis",
-      "route": "straight"
-    },
-    {
-      "id": "profile-main",
-      "from": "profile",
-      "to": "main",
-      "label": "Main",
-      "classification": "runtime mount",
-      "variant": "emphasis",
-      "route": "auto"
-    },
-    {
-      "id": "profile-children",
-      "from": "profile",
-      "to": "children",
-      "label": "Child 2..N",
-      "classification": "runtime mount",
-      "variant": "emphasis",
-      "route": "auto"
-    }
+    { "id": "account-model-eligibility", "from": "accounts", "to": "cliModels", "label": "auth readiness", "classification": "adapter match", "variant": "security", "route": "auto" },
+    { "id": "account-secret-reference", "from": "secretRefs", "to": "resolver", "label": "reference only", "classification": "API-key launch env", "variant": "security", "fromSide": "bottom", "toSide": "bottom", "via": [[100, 740], [590, 740], [590, 414]], "labelAt": [590, 600] },
+    { "id": "model-choice", "from": "cliModels", "to": "workspaceDraft", "label": "ready CLI model", "classification": "explicit selection", "variant": "emphasis", "route": "auto", "labelDy": 53 },
+    { "id": "draft-autosave", "from": "workspaceDraft", "to": "resolver", "label": "durable draft", "classification": "incomplete allowed", "variant": "default", "route": "auto" },
+    { "id": "capability-ceiling", "from": "globalCapabilities", "to": "resolver", "label": "active ceiling", "classification": "global unavailable blocks", "variant": "security", "route": "straight" },
+    { "id": "workspace-capability-state", "from": "localCapabilities", "to": "resolver", "label": "availability + grants", "classification": "no implicit grant", "variant": "emphasis", "route": "auto", "labelDy": -5 },
+    { "id": "apply-configuration", "from": "resolver", "to": "activeProfile", "label": "explicit Apply", "classification": "validated revision", "variant": "emphasis", "route": "auto" },
+    { "id": "pin-at-start", "from": "activeProfile", "to": "runSnapshot", "label": "start pins", "classification": "immutable non-secret input", "variant": "emphasis", "route": "auto" },
+    { "id": "snapshot-main", "from": "runSnapshot", "to": "main", "label": "Main grant", "classification": "selected model + capabilities", "variant": "default", "route": "auto", "labelDy": 40 },
+    { "id": "snapshot-children", "from": "runSnapshot", "to": "children", "label": "Child grants", "classification": "one or more Agents", "variant": "default", "route": "straight", "labelDy": 49 }
   ],
   "cards": [
-    {
-      "dot": "cyan",
-      "title": "Separate Authorities",
-      "items": [
-        "Global models are reusable connection assets, not templates",
-        "Built-in catalogs are read-only and may be empty",
-        "Project capability revisions and disabled keys belong to one Workspace",
-        "Draft intent remains editable after a Run starts"
-      ]
-    },
-    {
-      "dot": "emerald",
-      "title": "Deterministic Effective Set",
-      "items": [
-        "Skill and MCP identity includes kind plus normalized name",
-        "Project same-key entries completely replace built-ins",
-        "Disable applies after overlay and never falls back",
-        "Agent grants further narrow the effective catalog"
-      ]
-    },
-    {
-      "dot": "rose",
-      "title": "Pinned Runtime Boundary",
-      "items": [
-        "Activation creates one immutable execution-profile revision",
-        "Runtime receives no mutable model or capability registry handle",
-        "Active and paused Runs keep their start revision",
-        "Secrets remain scoped by Workspace, Run, and Agent slot"
-      ]
-    }
+    { "dot": "cyan", "title": "F006 authority boundary", "items": ["The F006 settings surface lists, creates, and verifies only Account-backed local CLI models", "Legacy direct-API model profiles remain compatibility history and cannot be selected, applied, or started by F006", "OAuth login is performed by the installed CLI; Traqen only rechecks its local status"] },
+    { "dot": "emerald", "title": "Explicit Workspace control", "items": ["Global active Skill/MCP assets become available, never automatically granted", "A Workspace may disable an inherited asset or add an independent local asset", "Agent capability use is the effective Workspace set intersected with explicit grants"] },
+    { "dot": "rose", "title": "Pinned runtime isolation", "items": ["Apply and Start have separate immutable boundaries", "Runs mount a non-secret snapshot, not mutable global registries", "Deletion only blocks a new run when its active configuration actually grants the unavailable asset"] }
   ]
 }
