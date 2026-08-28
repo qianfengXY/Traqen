@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
-import { createDefaultChildSlots } from "./capability-roster";
+import { createDefaultChildSlots, needsStartConfirmation } from "./capability-roster";
 import { F006SettingsCenter } from "./f006-settings-center";
 import {
   CapabilitySettings,
@@ -228,6 +228,7 @@ function ServerOwnedProduct() {
   const graphRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const revisionRequestRef = useRef(0);
+  const lastConfirmedExecutionProfileIdRef = useRef<string | null>(null);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
   const resolveEvidence = useCallback((resolver: string) =>
     resolveGraphEvidence(apiBase, apiToken, resolver), [apiBase, apiToken]);
@@ -554,12 +555,17 @@ function ServerOwnedProduct() {
 
   function openStartConfirmation() {
     if (!activeWorkspace || !sourceRegistrationId || !executionProfile) return;
-    setStartConfirmation({
+    const confirmation = {
       workspaceId: activeWorkspace.id,
       sourceRegistrationId,
       requestedMode: jobs.length === 0 ? "FULL" : "AUTO",
       profile: structuredClone(executionProfile),
-    });
+    };
+    if (!needsStartConfirmation(lastConfirmedExecutionProfileIdRef.current, confirmation.profile.id)) {
+      void startUnderstanding(confirmation);
+      return;
+    }
+    setStartConfirmation(confirmation);
   }
 
   async function startUnderstanding(confirmation: StartConfirmation) {
@@ -572,6 +578,7 @@ function ServerOwnedProduct() {
         requestedMode: confirmation.requestedMode,
         expectedWorkspaceExecutionProfileRevisionId: confirmation.profile.id,
       });
+      lastConfirmedExecutionProfileIdRef.current = confirmation.profile.id;
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);
       setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);

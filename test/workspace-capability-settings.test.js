@@ -43,6 +43,30 @@ test("F006 accounts retain only a secret reference or CLI-owned OAuth status", (
   assert.throws(() => createGlobalAccountRevision({
     accountId: "token", displayName: "Token", authMethod: "OAUTH", accessToken: "plaintext", revision: 1,
   }), /credential material/);
+  assert.throws(() => createGlobalAccountRevision({
+    accountId: "raw-ref", displayName: "Raw ref", authMethod: "API_KEY", secretRefId: "sk-live-not-a-reference", revision: 1,
+  }), /secretRefId must be an approved secret reference/);
+});
+
+test("F006 rechecks OAuth through a server-owned probe and persists only its derived status", async () => {
+  const store = new MemoryTraceabilityStore();
+  const probeCalls = [];
+  const service = new WorkspaceProductFoundation({
+    store,
+    oauthStatusProbe: async (adapter) => {
+      probeCalls.push(adapter);
+      return { oauthStatus: "AUTHENTICATED" };
+    },
+  });
+  await service.saveGlobalAccount({
+    accountId: "codex-oauth", displayName: "Codex OAuth", authMethod: "OAUTH", cliAdapter: "CODEX", oauthStatus: "AUTHENTICATED", expectedVersion: 0,
+  });
+
+  const checked = await service.recheckGlobalAccount("codex-oauth");
+  assert.deepEqual(probeCalls, ["CODEX"]);
+  assert.equal(checked.oauthStatus, "AUTHENTICATED");
+  assert.equal(checked.revision, 2);
+  assert.equal(Object.hasOwn(checked, "instruction"), false);
 });
 
 test("F006 resolves global availability as a Workspace ceiling without implicit grants", () => {

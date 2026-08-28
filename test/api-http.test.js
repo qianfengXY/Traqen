@@ -94,6 +94,7 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    oauthStatusProbe,
     setup,
     ...serverOptions
   } = options;
@@ -115,6 +116,7 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    oauthStatusProbe,
   });
   await setup?.({ store, application });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
@@ -453,17 +455,21 @@ test("F006 global capability HTTP contract is server-authoritative about lifecyc
 });
 
 test("F006 account HTTP contract never performs or stores OAuth login material", async (t) => {
-  const baseUrl = await startServer(t, { analysisModelRegistry: new AnalysisModelRegistry() });
+  const baseUrl = await startServer(t, {
+    analysisModelRegistry: new AnalysisModelRegistry(),
+    oauthStatusProbe: async () => ({ oauthStatus: "AUTHENTICATED" }),
+  });
   const created = await postJson(`${baseUrl}/v1/global-accounts`, {
     accountId: "codex-oauth", displayName: "Codex", authMethod: "OAUTH", cliAdapter: "CODEX", oauthStatus: "NOT_AUTHENTICATED", expectedVersion: 0,
   });
   assert.equal(created.response.status, 201);
-  assert.equal(created.body.oauthStatus, "NOT_AUTHENTICATED");
+  assert.equal(created.body.oauthStatus, "UNKNOWN");
   assert.equal(Object.hasOwn(created.body, "accessToken"), false);
   const rechecked = await postJson(`${baseUrl}/v1/global-accounts/codex-oauth/recheck`, {});
   assert.equal(rechecked.response.status, 200);
-  assert.equal(rechecked.body.recheck, "EXTERNAL_CLI_REQUIRED");
-  assert.match(rechecked.body.instruction, /own CLI/);
+  assert.equal(rechecked.body.oauthStatus, "AUTHENTICATED");
+  assert.equal(rechecked.body.revision, 2);
+  assert.equal(Object.hasOwn(rechecked.body, "instruction"), false);
   const rejected = await postJson(`${baseUrl}/v1/global-accounts`, {
     accountId: "bad", displayName: "Bad", authMethod: "OAUTH", cliAdapter: "CODEX", accessToken: "plaintext", expectedVersion: 0,
   });

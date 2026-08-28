@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   addChildSlot,
   createDefaultChildSlots,
+  needsStartConfirmation,
   removeChildSlot,
 } from "../app/capability-roster.ts";
 
@@ -45,4 +46,10 @@ test("persisted server roster stays authoritative and is not replaced by default
   }));
   assert.deepEqual(reloaded, persisted);
   assert.notDeepEqual(reloaded, createDefaultChildSlots());
+});
+
+test("a Workspace confirms the first start of an active profile but not an unchanged repeat", () => {
+  assert.equal(needsStartConfirmation(null, "PROFILE-1"), true);
+  assert.equal(needsStartConfirmation("PROFILE-1", "PROFILE-1"), false);
+  assert.equal(needsStartConfirmation("PROFILE-1", "PROFILE-2"), true);
 });

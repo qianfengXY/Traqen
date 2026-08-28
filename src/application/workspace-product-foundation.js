@@ -20,6 +20,7 @@ import {
   resolveWorkspaceExecutionProfile,
   validateWorkspaceCapabilityDraft,
 } from "../domain/index.js";
+import { probeCliOAuthStatus } from "../analysis/model-adapters.js";
 import { PersistenceConflictError } from "../storage/index.js";
 
 function workspaceCapabilityDraftConflict(expectedVersion, currentVersion, cause) {
@@ -36,10 +37,12 @@ function workspaceCapabilityDraftConflict(expectedVersion, currentVersion, cause
 }
 
 export class WorkspaceProductFoundation {
-  constructor({ store, clock = () => new Date() }) {
+  constructor({ store, clock = () => new Date(), oauthStatusProbe = probeCliOAuthStatus }) {
     if (!store) throw new TypeError("store is required");
+    if (typeof oauthStatusProbe !== "function") throw new TypeError("oauthStatusProbe must be a function");
     this.store = store;
     this.clock = clock;
+    this.oauthStatusProbe = oauthStatusProbe;
   }
 
   async #events(workspaceId) {
@@ -171,6 +174,7 @@ export class WorkspaceProductFoundation {
     }
     const lifecycle = String(input?.lifecycle ?? current?.lifecycle ?? 'ACTIVE').toUpperCase();
     if (current?.lifecycle === 'DELETED' && lifecycle !== 'DELETED') throw new TypeError('A deleted global account cannot be reactivated');
+    const authMethod = String(input?.authMethod ?? current?.authMethod ?? '').toUpperCase();
     const account = createGlobalAccountRevision({
       ...current,
       ...input,
@@ -179,7 +183,7 @@ export class WorkspaceProductFoundation {
       lifecycle,
       secretRefId: input?.secretRefId ?? current?.secretRefId,
       cliAdapter: input?.cliAdapter ?? current?.cliAdapter,
-      oauthStatus: input?.oauthStatus ?? current?.oauthStatus,
+      oauthStatus: authMethod === 'OAUTH' ? current?.oauthStatus ?? 'UNKNOWN' : undefined,
     }, this.clock);
     return this.store.appendGlobalAccountRevision(account);
   }
@@ -188,12 +192,12 @@ export class WorkspaceProductFoundation {
     const account = await this.getGlobalAccount(accountId);
     if (!account) return null;
     if (account.authMethod !== 'OAUTH') return Object.freeze({ ...account, recheck: 'NOT_APPLICABLE' });
-    return Object.freeze({
+    const status = await this.oauthStatusProbe(account.cliAdapter);
+    return this.store.appendGlobalAccountRevision(createGlobalAccountRevision({
       ...account,
-      recheck: 'EXTERNAL_CLI_REQUIRED',
-      checkedAt: this.clock().toISOString(),
-      instruction: `Complete ${account.cliAdapter} OAuth in its own CLI, then recheck this account.`,
-    });
+      revision: account.revision + 1,
+      oauthStatus: status?.oauthStatus ?? 'UNKNOWN',
+    }, this.clock));
   }
 
   async getGlobalCapability(kind, normalizedName) {

@@ -15,4 +15,6 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /setTimeout\(\(\) => \{\s*props\.onAutoSave\(\)/);
   assert.match(source, /Cannot re-enable here/);
   assert.match(source, /actualUnavailable/);
+  assert.match(source, /Granted to/);
+  assert.match(source, /onOpenAgentSettings/);
 });

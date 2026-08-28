@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
-import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels } from "../src/analysis/index.js";
+import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels, probeCliOAuthStatus } from "../src/analysis/index.js";
 import { issueScopedSecretGrants } from "../src/domain/index.js";
 
 function cliSpawn(result, calls) {
@@ -67,6 +67,39 @@ test("allowlisted CLI models reject executable path substitution", () => {
   assert.doesNotThrow(() => new AllowlistedCliModelAdapter({
     id: "CLI-EXACT", cliAdapter: "CODEX", executablePath: "codex", spawnImpl: cliSpawn({ stdout: "{}" }, []),
   }));
+});
+
+test("OAuth status recheck uses only an allowlisted read-only CLI command and never returns CLI output", async () => {
+  const calls = [];
+  const status = await probeCliOAuthStatus("CODEX", {
+    spawnImpl: cliSpawn({ stdout: "Logged in using ChatGPT\n" }, calls),
+  });
+
+  assert.deepEqual(status, { oauthStatus: "AUTHENTICATED" });
+  assert.deepEqual(calls[0].args, ["login", "status"]);
+  assert.equal(calls[0].executable, "codex");
+  assert.equal(calls[0].options.shell, false);
+  assert.equal(JSON.stringify(status).includes("ChatGPT"), false);
+});
+
+test("OAuth status recheck reports an absent CLI without attempting a login", async () => {
+  const calls = [];
+  const spawnImpl = (executable, args, options) => {
+    calls.push({ executable, args, options });
+    const child = new EventEmitter();
+    child.pid = 99999999;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => {};
+    queueMicrotask(() => child.emit("error", Object.assign(new Error("not found"), { code: "ENOENT" })));
+    return child;
+  };
+
+  const status = await probeCliOAuthStatus("CLAUDE", { spawnImpl });
+  assert.deepEqual(status, { oauthStatus: "CLI_UNAVAILABLE" });
+  assert.equal(calls[0].executable, "claude");
+  assert.deepEqual(calls[0].args, ["auth", "status"]);
+  assert.equal(calls[0].options.shell, false);
 });
 
 test("allowlisted CLI models enforce timeout and output bounds", async () => {

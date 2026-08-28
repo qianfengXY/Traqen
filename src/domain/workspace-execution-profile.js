@@ -8,6 +8,7 @@ const catalogKinds = new Set(["SKILL", "MCP"]);
 const modelTransports = new Set(["API", "CLI"]);
 const cliAdapters = new Set(["CODEX", "CLAUDE", "GEMINI", "KIMI"]);
 const cliExecutables = new Map([["CODEX", "codex"], ["CLAUDE", "claude"], ["GEMINI", "gemini"], ["KIMI", "kimi"]]);
+const approvedSecretReference = /^(?:vault|secret|keychain|env):\/\/[A-Za-z0-9._~:/@+=-]+$/i;
 
 function assertSecretFree(value, fieldName) {
   if (!value || typeof value !== "object") return;
@@ -67,6 +68,9 @@ export function createGlobalAccountRevision(input, clock = () => new Date()) {
         oauthStatus: String(input.oauthStatus ?? "UNKNOWN").toUpperCase(),
       };
   if (authMethod === "OAUTH" && !cliAdapters.has(connection.cliAdapter)) throw new TypeError("unsupported CLI adapter");
+  if (authMethod === "API_KEY" && !approvedSecretReference.test(connection.secretRefId)) {
+    throw new TypeError("secretRefId must be an approved secret reference");
+  }
   if (authMethod === "OAUTH" && !new Set(["UNKNOWN", "AUTHENTICATED", "NOT_AUTHENTICATED", "CLI_UNAVAILABLE"]).has(connection.oauthStatus)) {
     throw new TypeError("oauthStatus is invalid");
   }

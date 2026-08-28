@@ -575,6 +575,7 @@ export class TraceabilityApplication {
     legacyUnderstandingRuntime = null,
     sourceSliceWorkerCredentialService = null,
     workspaceFoundation = null,
+    oauthStatusProbe = null,
   }) {
     if (!store) throw new TypeError("store is required");
     if (typeof runnerKeyResolver !== "function") throw new TypeError("runnerKeyResolver must be a function");
@@ -615,7 +616,11 @@ export class TraceabilityApplication {
     this.#sourceSliceBroker = sourceSliceBroker;
     this.#legacyUnderstandingRuntime = legacyUnderstandingRuntime;
     this.#sourceSliceWorkerCredentialService = sourceSliceWorkerCredentialService;
-    this.#workspaceFoundation = workspaceFoundation ?? new WorkspaceProductFoundation({ store, clock });
+    this.#workspaceFoundation = workspaceFoundation ?? new WorkspaceProductFoundation({
+      store,
+      clock,
+      ...(oauthStatusProbe ? { oauthStatusProbe } : {}),
+    });
   }
 
   async createProject(input) {

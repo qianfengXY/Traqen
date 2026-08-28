@@ -15,6 +15,54 @@ const CLI_MODEL_ADAPTERS = Object.freeze({
   KIMI: { executable: "kimi", args: (prompt, model) => [...(model ? ["--model", model] : []), "--prompt", prompt] },
 });
 
+const CLI_OAUTH_STATUS_COMMANDS = Object.freeze({
+  CODEX: { executable: "codex", args: ["login", "status"] },
+  CLAUDE: { executable: "claude", args: ["auth", "status"] },
+});
+
+export async function probeCliOAuthStatus(cliAdapter, { spawnImpl = spawn, timeoutMs = 10_000 } = {}) {
+  const adapter = requiredString(cliAdapter, "CLI adapter").toUpperCase();
+  const command = CLI_OAUTH_STATUS_COMMANDS[adapter];
+  if (!command) return Object.freeze({ oauthStatus: "UNKNOWN" });
+  if (typeof spawnImpl !== "function") throw new TypeError("CLI spawnImpl must be a function");
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    let timer = null;
+    const finish = (oauthStatus) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(Object.freeze({ oauthStatus }));
+    };
+    let child;
+    try {
+      child = spawnImpl(command.executable, command.args, {
+        shell: false,
+        detached: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      finish(error?.code === "ENOENT" ? "CLI_UNAVAILABLE" : "UNKNOWN");
+      return;
+    }
+    const append = (value, chunk) => `${value}${Buffer.from(chunk).toString("utf8")}`.slice(0, 8_192);
+    timer = setTimeout(() => finish("UNKNOWN"), Number(timeoutMs));
+    timer.unref?.();
+    child.stdout?.on("data", (chunk) => { stdout = append(stdout, chunk); });
+    child.stderr?.on("data", (chunk) => { stderr = append(stderr, chunk); });
+    child.once("error", (error) => finish(error?.code === "ENOENT" ? "CLI_UNAVAILABLE" : "UNKNOWN"));
+    child.once("close", (code) => {
+      const output = `${stdout}\n${stderr}`;
+      if (/not\s+(?:logged\s+in|authenticated)|unauthenticated/i.test(output)) return finish("NOT_AUTHENTICATED");
+      if (code === 0 && /logged\s+in|authenticated/i.test(output)) return finish("AUTHENTICATED");
+      finish("UNKNOWN");
+    });
+  });
+}
+
 function allowlistedCliExecutable(cliAdapter, executablePath) {
   const expected = CLI_MODEL_ADAPTERS[cliAdapter].executable;
   if (executablePath === null || executablePath === undefined || executablePath === "") return expected;

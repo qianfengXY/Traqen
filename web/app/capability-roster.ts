@@ -42,3 +42,7 @@ export function addChildSlot(
 export function removeChildSlot(slots: ChildCapabilityRole[], slotId: string) {
   return slots.length <= 1 ? slots : slots.filter(({ id }) => id !== slotId);
 }
+
+export function needsStartConfirmation(lastConfirmedExecutionProfileId: string | null, nextExecutionProfileId: string) {
+  return lastConfirmedExecutionProfileId !== nextExecutionProfileId;
+}
