@@ -6,7 +6,7 @@ related_features: []
 topics: [workspace, aggregate-root, context-switch, capability-isolation, model-registry, capability-overlay, model-retirement]
 doc_kind: adr
 created: 2026-07-31
-updated: 2026-08-11
+updated: 2026-08-28
 status: accepted
 ---
 
@@ -38,6 +38,17 @@ GPT 与 Kimi 的独立设计先认同 Workspace 全局产品边界，随后对�
 9. **Run 固定启动时的 Revision。** Active/Paused Run 不热切换设置，Resume 也不选择更新 Revision。operator 可以继续编辑并激活 Workspace，后续 Run 使用更新的 Active Revision。
 10. **删除被引用模型时先全 Workspace 替换，再退役。** 服务端计算所有当前 Workspace 引用并固定 Expected Version，通过一个事务应用；任一冲突或校验失败都会回滚整个操作。历史 Revision 与 Active Run 不改写；普通生命周期为 `ACTIVE -> RETIRING -> RETIRED`。
 11. **模块不能另建项目选择器或图谱 Store。** F002～F005 消费 F001/F006 建立的 Workspace 作用域 Canonical Contract。
+
+### 修订——2026-08-28 F006 设置合同
+
+以下修订取代上文决策第 5–10 条中与 F006 有关的部分；Workspace 聚合根裁决不变。
+
+1. **全局设置负责账号、白名单 CLI 模型和全局 Skill/MCP 资产。** 认证是通过 Secret 引用的 API Key 或 CLI-owned OAuth 状态。Traqen 不执行 CLI OAuth 登录、不保存 OAuth Token，且 v1 没有直接 API 模型 Runtime。
+2. **Workspace 设置负责可用能力选择与 Agent 团队。** Workspace 可禁用继承的 active 全局资产或增加独立本地资产；不可重新启用全局 inactive 资产，也不可替换或字段级 patch 全局 Manifest。
+3. **Agent 授权必须显式。** 生效可用性为 `active global − Workspace disabled + Workspace local`，Agent 只能获得其 Grant 交集；新增全局资产不自动授权。
+4. **生效要求一个 Main 和一个或多个完整 Child。** `Child 1` 是默认的未完成占位。更严格的分析运行策略可要求更多 Child，但不改变 F006 生效。
+5. **自动保存 Draft 与显式 Apply 分离。** Apply 创建不可变 Active Configuration，每个 Run 固定该配置的非敏感 Snapshot。Active/Paused Run 永不热切换。
+6. **全局 Skill/MCP 删除必须感知影响。** 服务端计算影响预览后再输入名称确认。既有 Snapshot 保持有效；只有 Active Configuration 实际授权了不可用能力时才阻断新 Run。
 
 ## 被否决方案
 

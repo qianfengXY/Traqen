@@ -14,7 +14,7 @@ topics:
   - capability-settings
 doc_kind: system-requirements
 created: 2026-07-29
-updated: 2026-08-11
+updated: 2026-08-28
 status: proposed
 priority: P0
 ---
@@ -249,10 +249,10 @@ Feature
 | SR-021 | 从 Snapshot/ArtifactInventory 派生确定性完整 UnderstandingPlan，Partition 稳定、`unassignedCount=0`，并用有界动态 WorkUnit 依赖 DAG 扩展到超出单 Prompt 或固定子任务数量的工程。 |
 | SR-022 | 每个 WorkUnit 都必须基于已验证模型能力/校准 Profile、签名 Skill 合同与部署数据边界持久化版本固定的 AnalysisRouteDecision；能力缺失必须以 `NO_ELIGIBLE_PRODUCER` 关闭失败。 |
 | SR-023 | 每个有界 AnalysisBatch 都发送给所有已配置且相互独立的子 Agent；Batch 与同批 sibling 可以并发，但主 Agent 必须对完整终态 sibling 集合与静态 Facts 做对账并保留冲突，不能把相关一致或多数票当真相。 |
-| SR-024 | 持久化一份可复用全局模型 Registry，支持带 Revision 的 API Profile 与 Allowlist 本机 CLI Adapter；Workspace Agent Slot 显式选择模型，且任何全局 Active/Default Model 都不能启动 Run。 |
-| SR-025 | 内置只读与 Workspace 项目 Skill/MCP 先按 Typed Key 完整覆盖，再应用 Workspace Disable 与 Agent Grant；已禁用、未授权或未物化能力在 Runtime 不可用。 |
-| SR-026 | 每个 Workspace 持久化可编辑 Draft 与不可变 Active Profile 历史；激活要求恰好一个 Main 和至少两个已启用且完整的 Child；服务重启后恢复设置且不改变 Active/Paused Run。 |
-| SR-027 | 退役被引用的全局模型前，先在 Expected-version 并发控制下预览并原子替换所有当前 Workspace 引用；保留历史 Profile Revision 与 Active Run，并把紧急凭据撤销作为单独的破坏性操作。 |
+| SR-024 | 持久化带 API-key Secret 引用或 CLI-owned OAuth 就绪状态的全局账号，以及显式引用账号的可复用 Allowlist 本地 CLI 模型。Traqen 不得发起 CLI OAuth 登录、保存 OAuth Token、执行直接 API 模型，也不得暴露全局 Active/Default Model。 |
+| SR-025 | 持久化全局 Skill/MCP 生命周期状态、Workspace 禁用继承能力、Workspace 本地能力和显式 Agent Grant。生效能力解析为 `active global − Workspace disabled + Workspace local`，再取 Grant 交集；全局 inactive/deleted 资产不能被 Workspace 重新启用或授权。 |
+| SR-026 | 为每个 Workspace 持久化自动保存的可编辑 Draft 和不可变 Active Configuration 历史；Apply 要求恰好一个 Main 和至少一个启用且完整的 Child；重启后恢复 Draft/Active Head，不改变 Active 或 Paused Run。 |
+| SR-027 | 全局停用/删除 Skill/MCP 前必须计算影响预览并要求输入名称确认。保留已固定的现有 Run；只有其 Active Configuration 实际授权了不可用能力时才阻断新 Run，并提供明确修复路径。 |
 
 ## 9. 核心用户旅程
 

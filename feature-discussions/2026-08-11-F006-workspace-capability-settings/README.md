@@ -6,10 +6,13 @@ related_features: [F001]
 topics: [workspace-settings, global-models, cli-runtime, skills, mcp, capability-overlay, persistence, model-retirement]
 doc_kind: discussion
 created: 2026-08-11
-status: converged
+status: superseded
+superseded_by: feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.md
 ---
 
 # F006 Discussion: Persistent Workspace Capability Settings Without Templates
+
+> **Historical record — not product truth.** It is superseded by the [2026-08-28 F006 design convergence](../2026-08-28-F006-workspace-capability-settings-design/README.md) and the current F006 specification. Its API-runtime, project-overlay, model-retirement, and two-Child assumptions must not guide implementation.
 
 ## Operator experience
 

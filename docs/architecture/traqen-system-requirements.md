@@ -14,7 +14,7 @@ topics:
   - capability-settings
 doc_kind: system-requirements
 created: 2026-07-29
-updated: 2026-08-11
+updated: 2026-08-28
 status: proposed
 priority: P0
 ---
@@ -249,10 +249,10 @@ Durability is necessary for correct large-repository analysis, but it is not a s
 | SR-021 | Derive a deterministic complete UnderstandingPlan from Snapshot/ArtifactInventory with stable partitions, `unassignedCount=0`, and a bounded dynamic WorkUnit dependency DAG that scales beyond one prompt or fixed child count. |
 | SR-022 | Persist a version-pinned AnalysisRouteDecision for every WorkUnit using verified model capability/calibration profiles, signed Skill contracts, and deployment data boundaries; missing capability must fail closed as `NO_ELIGIBLE_PRODUCER`. |
 | SR-023 | Send each bounded AnalysisBatch to every configured independent Child Agent, allow batches and siblings to run concurrently, and require the Main Agent to reconcile the complete terminal sibling set against static Facts while preserving conflict instead of using correlated agreement or majority count as truth. |
-| SR-024 | Persist one reusable global model registry with revisioned API profiles and allowlisted local CLI adapters; Workspace Agent slots explicitly select models and no global active/default model may start a Run. |
-| SR-025 | Resolve read-only built-in and Workspace project Skill/MCP entries by typed-key full override followed by Workspace disable and Agent grants; disabled, ungranted, or unmaterialized capabilities are unavailable at runtime. |
-| SR-026 | Persist an editable draft and immutable active-profile history for every Workspace, require exactly one Main plus at least two enabled complete Child slots for activation, and restore settings after service restart without changing active or paused Runs. |
-| SR-027 | Before retiring a referenced global model, preview and atomically replace every current Workspace reference under expected-version concurrency; preserve historical profile revisions and active Runs, and expose emergency credential revocation as a separate destructive action. |
+| SR-024 | Persist global Accounts with API-key secret references or CLI-owned OAuth readiness, and reusable allowlisted local CLI Models that explicitly reference an account. Traqen must not initiate CLI OAuth login, store OAuth tokens, execute direct API models, or expose a global active/default model. |
+| SR-025 | Persist global Skill/MCP lifecycle state, Workspace disabled inherited capabilities, Workspace-local capabilities, and explicit Agent grants. Effective capability resolution is `active global − Workspace disabled + Workspace local`, then grant intersection; a globally inactive/deleted asset cannot be re-enabled or granted by a Workspace. |
+| SR-026 | Persist an auto-saved editable draft and immutable active-configuration history for every Workspace, require exactly one Main plus at least one enabled complete Child for Apply, and restore draft/active heads after restart without changing active or paused Runs. |
+| SR-027 | Before disabling/deleting a global Skill/MCP, derive an impact preview and require typed-name confirmation. Preserve pinned existing Runs; block a new Run only when its active configuration actually grants an unavailable capability, and provide explicit repair paths. |
 
 ## 9. Primary user journeys
 

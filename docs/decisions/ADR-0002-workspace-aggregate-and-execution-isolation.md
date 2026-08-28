@@ -6,7 +6,7 @@ related_features: []
 topics: [workspace, aggregate-root, context-switch, capability-isolation, model-registry, capability-overlay, model-retirement]
 doc_kind: adr
 created: 2026-07-31
-updated: 2026-08-11
+updated: 2026-08-28
 status: accepted
 ---
 
@@ -38,6 +38,17 @@ Independent GPT and Kimi design passes agreed on the Workspace-wide product boun
 9. **A Run pins its start revision.** Running and paused Runs never hot-swap settings or select a newer revision on resume. Operators may continue editing and activating the Workspace; later Runs use the newer active revision.
 10. **Referenced model deletion is all-Workspace replacement followed by retirement.** The server derives all current Workspace references, freezes expected versions, and applies one transaction. Any conflict or validation failure rolls back the complete operation. Historical revisions and active Runs are not rewritten; ordinary lifecycle is `ACTIVE -> RETIRING -> RETIRED`.
 11. **No module may create another project selector or graph store.** F002–F005 consume Workspace-scoped canonical contracts created by F001/F006.
+
+### Amendment — 2026-08-28 F006 settings contract
+
+The following amendment supersedes F006-specific portions of Decision items 5–10 above; the Workspace aggregate decision remains unchanged.
+
+1. **Global Settings owns Accounts, allowlisted CLI Models, and global Skill/MCP assets.** Authentication is API Key through a secret reference or CLI-owned OAuth state. Traqen neither performs CLI OAuth login nor stores OAuth tokens, and v1 has no direct API model runtime.
+2. **Workspace Settings owns available capability choices and an Agent team.** A Workspace may disable inherited active global assets or add independent local assets. It cannot re-enable globally inactive assets, replace a global manifest, or field-patch it.
+3. **Agent grants are explicit.** Effective availability is `active global − Workspace disabled + Workspace local`; an Agent receives only its grant intersection. Global additions never auto-grant.
+4. **Activation requires one Main and one-or-more complete Children.** `Child 1` is the default incomplete placeholder. A stricter analysis-run policy may require additional Children without changing F006 activation.
+5. **Autosaved drafts and explicit Apply are separate.** Apply creates the immutable active configuration, and each Run pins a non-secret snapshot of that active configuration. Running/paused Runs never hot-swap.
+6. **Global Skill/MCP deletion is impact-aware.** Typed-name confirmation follows a server-derived impact preview. Existing snapshots remain valid; a new run is blocked only when its active configuration actually grants an unavailable capability.
 
 ## Rejected alternatives
 

@@ -14,7 +14,7 @@ topics:
   - user-journey
 doc_kind: architecture
 created: 2026-07-31
-updated: 2026-08-11
+updated: 2026-08-28
 status: proposed
 ---
 
@@ -41,9 +41,9 @@ Detailed execution contracts remain in [F001 Workspace scan and Analysis Agent l
 2. **Switching Workspace switches the whole product.** Navigation can remain on the same module, but data, selections, subscriptions, settings, and current graph head must all rebind to the new Workspace.
 3. **Hide is not delete.** Add/remove only changes whether a Workspace appears in the user's switcher. Delete changes the Workspace lifecycle under an audited retention policy.
 4. **Raw source is the Agent task source.** A complete immutable `SourceSnapshot` and `ArtifactInventory` define analysis coverage. Scanner Facts are an independent reconciliation reference, never the Child Agent task universe.
-5. **Every configured Child Agent receives the same batch.** A Workspace has one Main Agent and at least two enabled, complete Child Agent slots. For a given `AnalysisBatch`, every active Child slot receives the same source scope and output contract so the Main Agent can compare independently produced results.
+5. **Every configured Child Agent receives the same batch.** F006 activation has one Main Agent and at least one enabled, complete Child Agent slot. For a given `AnalysisBatch`, every active Child slot receives the same source scope and output contract; a run policy may require multiple independent results when corroboration is required.
 6. **Models, Skills, and MCPs are explicit runtime inputs.** Main and Child slots may select different model profiles. The run pins an immutable Workspace-effective execution profile.
-7. **Configuration authorities are separate.** Global models are reusable API/allowlisted-CLI assets; built-in Skill/MCP catalogs are read-only; project entries, disabled typed keys, and Agent slots belong to one Workspace. Runtime workers receive only the materialized Workspace profile and cannot query mutable registries.
+7. **Configuration authorities are separate.** Global Accounts/allowlisted-CLI Models and Skill/MCP assets are reusable; Workspace availability, local capabilities, and Agent slots belong to one Workspace. Runtime workers receive only a materialized snapshot and cannot query mutable registries.
 8. **Untrusted evidence never silently passes.** Invalid, out-of-scope, contradictory, or unverifiable evidence quarantines the Candidate or records a Gap. It is never discarded without a ledger entry and never promoted by vote.
 9. **Live trees are projections, not authority.** The Workspace Analysis tree may stream reconciled working Candidates. Governed Feature/API trees default to the latest published `CurrentGraphHead`.
 10. **History is append-only.** A new Snapshot or implementation mapping does not rewrite a business Feature version. Decisions, mappings, GraphRevisions, ChangeSets, impacts, tests, and results remain queryable.
@@ -57,7 +57,7 @@ Detailed execution contracts remain in [F001 Workspace scan and Analysis Agent l
 | F003 | Traceability Graph | interactive graph projection and evidence-path exploration | F001, F002 |
 | F004 | Claim Review | review queue, evidence-insufficient workflows, batch decisions, and editing automated admissions | F001, F002 |
 | F005 | Change Impact | incremental change paths, affected objects, and revalidation plans | F001, F002, F003 |
-| F006 | Workspace Capability Settings | global API/CLI model registry, built-in/project Skill/MCP overlay and disable, Agent roster, dependencies, conventions, durable drafts, and immutable execution profiles | none |
+| F006 | Workspace Capability Settings | global Accounts, allowlisted CLI Models, global Skill/MCP availability, Workspace-local/disabled capabilities, explicit Agent grants, durable drafts, active versions, and immutable execution snapshots | none |
 
 The engineering `Fxxx` IDs above are delivery identifiers. They are not governed business `Feature.id` values inside a Traqen graph.
 
@@ -197,7 +197,7 @@ Each active Child Agent:
 - analyzes independently and cannot read another Child's output or private reasoning;
 - returns evidence-bound Candidate observations or explicit uncertainty.
 
-A new Workspace starts with two empty Child slots and may add more without importing a template. Activation rejects fewer than two enabled, complete Child slots. A run records whether two outputs are genuinely independent through `independenceGroup`; using the same underlying model family remains valid but does not count as independent corroboration.
+A new Workspace starts with one empty `Child 1` slot and may add more without importing a template. F006 activation rejects fewer than one enabled, complete Child slot. A run policy records whether multiple outputs are genuinely independent through `independenceGroup`; using the same underlying model family remains valid but does not count as independent corroboration when corroboration is required.
 
 [Open the interactive Analysis batch workflow](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html) · [Archify source](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
 
@@ -234,33 +234,33 @@ The live tree updates only after batch reconciliation. Raw model text never muta
 
 ### 7.1 Four authorities, one runtime snapshot
 
-Global Settings owns reusable model connection assets. Traqen owns read-only built-in Skill/MCP catalogs, which may be empty. Workspace Settings owns explicit project capability revisions, typed disabled keys, dependencies, conventions, policy, and the Main/Child roster. There is no editable global template or active/default model.
+Global Settings owns Accounts, reusable allowlisted CLI Models, and global Skill/MCP assets. Workspace Settings owns a durable draft with Workspace availability choices, local capabilities, and a Main/Child roster. Agents receive explicit grants from the effective Workspace set. There is no editable global template, global active/default model, direct API model runtime, or implicit grant.
 
 ```text
-GlobalModelProfileRegistry (API / allowlisted local CLI)
+Global Accounts (API-key secret reference / CLI-owned OAuth status)
                   +
-BuiltInSkillMcpCatalog (read-only, may be empty)
+Global CLI Models + active Skill/MCP assets
+                  ↓ availability ceiling
+Workspace draft: disabled inherited + independent local capabilities
                   +
-WorkspaceProjectCapabilityRegistry + disabled typed keys
-                  +
-Workspace Agent roster (one Main + Child slots 2..N)
-                  ↓ save, resolve, validate
-WorkspaceCapabilityDraftRevision
-                  ↓ activate
-WorkspaceExecutionProfileRevision (immutable run input)
-                  ↓ mount only this revision
+Workspace Agent roster (one Main + Child slots 1..N)
+                  ↓ auto-save, validate, explicit Apply
+Workspace active configuration
+                  ↓ pin at run start
+Immutable non-secret execution snapshot
+                  ↓ mount only this snapshot
 Main Agent / Child Agents / workers
 ```
 
-[Open the interactive configuration data flow](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) · [Archify source](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.json)
+[The earlier interactive configuration data flow](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) is historical and must be regenerated during F006 implementation; it encodes the superseded overlay model.
 
-Capability resolution is `typed overlay -> disable -> Agent grants`. A project entry completely replaces the same `(kind, normalizedName)` built-in entry. Disable acts on the merged key; disabling an override cannot fall back to the built-in.
+Capability resolution is `active global − Workspace disabled + Workspace local`, then `effective set ∩ explicit Agent grants`. A globally inactive/deleted asset cannot be re-enabled by a Workspace. A Workspace-local item is independent; it does not replace or field-patch a global manifest.
 
 The Workspace execution revision contains:
 
 - Main Agent model revision and planning/reconciliation Skill/MCP grants;
 - ordered Child Agent slots and their model/Skill/MCP grants;
-- exact built-in/project capability artifact provenance and disabled-key digest;
+- global/local capability provenance, Workspace disabled state, and explicit grant digest;
 - project dependencies;
 - project conventions and constraints;
 - data-boundary, budget, concurrency, retry, and calibration policies;
@@ -268,9 +268,7 @@ The Workspace execution revision contains:
 
 Runtime code receives no global registry handle. A Skill or MCP not present in the Workspace revision is unavailable even if globally installed.
 
-Settings remain editable after a Run starts. Saving advances a durable draft head; activation creates a new immutable profile for later Runs. Running and paused Runs remain pinned to their start revision and never hot-swap settings.
-
-A referenced global model can retire only after one server-derived, all-Workspace replacement plan removes every current configuration reference. Apply is atomic under expected-version CAS. Historical revisions and active Runs are not rewritten; normal lifecycle is `ACTIVE -> RETIRING -> RETIRED`.
+Settings remain editable after a Run starts. Autosave advances a durable draft; explicit Apply creates a new immutable active configuration for later Runs. A Run remains pinned to its snapshot and never hot-swaps settings. Global Skill/MCP removal requires a server-derived impact preview and typed confirmation; it blocks a new run only when the active configuration actually grants the now-unavailable asset.
 
 ### 7.2 Secrets
 
@@ -314,10 +312,10 @@ This table describes repository implementation, not design intent.
 | Create, hide/show, delete | Partial | browser UI creates and hides local records; `contracts/openapi.json` exposes only `POST /v1/projects` and `GET /v1/projects/{projectId}` | separate view preference from audited delete; add list/lifecycle APIs |
 | Static scan of complete project | Partial | browser scan filters text extensions and files above 768 KiB; `LegacyUnderstandingRuntime` has a server inventory path | remove competing authoritative scan paths; keep every artifact disposition, including images/binary |
 | Raw-source Agent analysis | Partial | `LegacyUnderstandingRuntime` reads Snapshot `SourceSlice`; older `AnalysisAgent` consumes only a scanner FactGraph | converge on one runtime where Child Agents read Snapshot slices and scanner Facts remain reconciliation input |
-| Configurable Main + Child 2..N | Missing/conflicting | one global active model profile; capability domain permits one Child; Web renders three fixed idle Child slots; model planner requires exactly three assignments | introduce persisted role-specific Workspace Agent slots, enforce the lower bound in domain/API/Web, and remove hard-coded three |
+| Configurable Main + Child 1..N | Missing/conflicting | one global active model profile; capability domain permits one Child; Web renders three fixed idle Child slots; model planner requires exactly three assignments | introduce persisted role-specific Workspace Agent slots, require one complete Child for F006 activation, and remove hard-coded three |
 | Same batch sent to all Child Agents | Missing | the unused planner splits modules across three assignments; server `AnalysisAgent` invokes one model per WorkUnit | create `AnalysisBatch` plus one ChildWorkUnit per configured slot |
 | Main planning and multi-result reconciliation | Partial | deterministic reconciliation exists; client helper compares one enrichment set with scanner candidates | reconcile the complete sibling result set against static Facts and lineage |
-| Global models + project Skill/MCP overlay and disable | Missing | model registry exposes one active profile and API-oriented adapters; Skills/policies bootstrap globally; resolver uses name-only lookup; no project capability or Workspace MCP management exists | add API/allowlisted-CLI model revisions, typed overlay/disable, durable draft/active heads, all-Workspace model replacement, and profile-only runtime access |
+| Global accounts/CLI models + Workspace Skill/MCP availability and grants | Missing | model registry exposes one active profile and API-oriented adapters; Skills/policies bootstrap globally; resolver uses name-only lookup; no project capability or Workspace MCP management exists | add account status, allowlisted CLI models, global availability, Workspace disabled/local capability records, explicit grants, draft/active heads, run snapshots, and profile-only runtime access |
 | Live analysis statistics/tree | Partial | browser publishes scanner-derived progress trees; server AnalysisRun exposes WorkUnit counters | stream reconciled batch projections and independent coverage/quality denominators |
 | Feature/API traceability and history | Partial | trees and APIs exist; `getFeatureUnderstandingHistory` is implemented but not used by the main product UI | bind both trees and history to published Workspace graph projections |
 | Traceability graph | Partial | interactive graph and current-head APIs exist | remove demo fallback and make every path evidence-resolvable |

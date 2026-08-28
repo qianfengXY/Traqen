@@ -3,357 +3,164 @@
 ---
 feature_ids: [F006]
 related_features: [F001]
-topics: [settings, global-model-registry, cli-model-runtime, skills, mcp, project-capabilities, runtime-isolation, persistence, frontend, user-journey]
+topics: [settings, workspace, cli, oauth, api-key, models, skills, mcp, agents, runtime-isolation, frontend]
 doc_kind: spec
 created: 2026-07-31
-updated: 2026-08-11
+updated: 2026-08-28
+description: Global capability assets and Workspace-scoped Agent configuration with draft-to-active execution snapshots.
+description_source: human
+description_author: cat-4v94tazw
+description_updated_at: 2026-08-28T14:53:00Z
 ---
 
 # F006: Workspace Capability Settings
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P0
+> **Status:** spec · **Priority:** P2 · **Owner:** TBD
+> **Product truth:** this document supersedes the earlier F006 specification and its template/override model.
 
-## Why
+## 1. Purpose
 
-Analysis quality changes materially with the selected model, Skill, MCP, dependency knowledge, and project conventions. A global active model and globally mounted tools cannot represent one Workspace's execution policy or protect another Workspace from capability leakage.
+Traqen must let an administrator define reusable, global execution assets once, then configure each Workspace with an explicit Agent team and only the capabilities that team may use. A setting change must be recoverable, understandable, durable, and unable to silently alter a running analysis.
 
-Operators must be able to configure a Workspace once, reopen it without repeating that work, and continue revising it later. At the same time, a running analysis must remain explainable: changing settings cannot silently replace the model or capability set already pinned to that run.
+F006 is a settings feature, not an Agent runtime: v1 uses installed model CLIs. It does not implement a self-designed Agent or direct API model execution.
 
-## Scope and authority
+## 2. Product model and authority
 
-F006 defines four cooperating authorities rather than an editable global template layer:
+There are three deliberately separate scopes:
 
-1. a reusable global model-profile registry for API and allowlisted local CLI execution;
-2. read-only built-in Skill/MCP catalogs, which may contain zero entries;
-3. one persisted project-capability registry and disabled-key set per Workspace;
-4. one editable Workspace draft head that validates into immutable execution-profile revisions.
+| Scope | Contains | Does not decide |
+|---|---|---|
+| Global Settings | accounts, CLI-backed models, Skills, MCPs | which Workspace or Agent may use an asset |
+| Workspace Settings | one Main Agent, one or more Child Agents, the Workspace-effective capability set | global asset availability |
+| Agent configuration | the model and explicit Skill/MCP grants for one Agent | the Workspace-wide capability catalog |
 
-Workspace is the project scope. There is no global active model, editable role template, implicit capability inheritance, or runtime fallback to a global registry.
-
-## Global model registry
-
-Models are reusable global connection assets. Workspace Agent slots reference them explicitly; they are not Skill/MCP catalog entries and are never copied into each Workspace.
-
-```ts
-type GlobalModelProfile = {
-  id: string;
-  displayName: string;
-  transport: "API" | "CLI";
-  readiness: "UNVERIFIED" | "READY" | "ERROR";
-  lifecycle: "ACTIVE" | "RETIRING" | "RETIRED";
-  currentRevisionId: string;
-};
-
-type GlobalModelProfileRevision =
-  | {
-      id: string;
-      profileId: string;
-      transport: "API";
-      providerAdapter: string;
-      endpoint: string;
-      model: string;
-      credentialHandleId: string;
-      createdAt: string;
-    }
-  | {
-      id: string;
-      profileId: string;
-      transport: "CLI";
-      cliAdapter: "CODEX" | "CLAUDE" | "GEMINI" | "KIMI";
-      model?: string;
-      executablePath?: string;
-      createdAt: string;
-    };
-```
-
-- API mode records display name, provider adapter, endpoint, model, and an encrypted credential handle.
-- CLI mode executes through an allowlisted adapter using the CLI's existing local login state.
-- A CLI adapter constructs argv directly. User-supplied shell commands, shell interpolation, and arbitrary argument strings are forbidden.
-- Verification checks endpoint/authentication for API profiles and executable/login/model readiness for CLI profiles.
-- Editing a profile creates a new immutable revision. Existing execution profiles and runs continue to pin the previous revision until a Workspace explicitly validates and activates a newer configuration.
-- Connection readiness proves transport availability, not semantic capability or calibration for every analysis role.
-
-## Workspace Skill and MCP sources
-
-Only Skill and MCP entries participate in the capability catalog.
-
-### Built-in catalogs
-
-- Built-in Skill and MCP catalogs are read-only product inputs.
-- This version defines their catalog and resolution mechanics but does not prescribe a concrete built-in inventory or add placeholder entries.
-- Either catalog may be empty and must have a normal empty state.
-
-### Project capabilities
-
-- Each Workspace owns a persisted project Skill/MCP registry.
-- Operators may explicitly add, edit, delete, or import a capability from an authorized project path.
-- Traqen stores an immutable artifact revision and content digest for every imported or edited entry.
-- Traqen does not silently scan a project and mutate current settings, and it does not rewrite the user's repository as a side effect of configuration.
-- Project MCP definitions may reference credential handles; plaintext credentials cannot enter the manifest or artifact revision.
-
-### Typed identity, override, and disable
-
-```ts
-type CapabilityKey = {
-  kind: "SKILL" | "MCP";
-  normalizedName: string;
-};
-
-type WorkspaceCapabilityCatalogState = {
-  projectCapabilityRevisionIds: string[];
-  disabledKeys: CapabilityKey[];
-};
-```
-
-Resolution is deterministic and ordered:
+An executable configuration is derived, never inferred:
 
 ```text
-merged = overlayByTypedKey(builtinCatalog, projectCatalog)
-effective = merged - disabledKeys
-agentCapabilities = effective intersect agentGrants
+workspace effective capabilities = active global capabilities
+                               − capabilities disabled by this Workspace
+                               + Workspace-local capabilities
+
+agent actual capabilities = workspace effective capabilities ∩ explicit Agent grants
 ```
 
-1. Skill and MCP with the same normalized name coexist because `kind` is part of identity.
-2. A project entry completely replaces a built-in entry with the same typed key; fields are not deep-merged.
-3. Disable applies after overlay, so built-ins, project additions, and project overrides can all be disabled.
-4. Disabling a project override does not reveal or fall back to the hidden built-in entry.
-5. Removing a project override reveals the built-in entry only when the typed key is not disabled. A disabled key remains disabled until the operator explicitly enables it.
-6. An ungranted or disabled capability is absent from Agent selectors, the execution profile, runtime discovery, and runtime invocation.
+No global asset is implicitly granted to an Agent. The Global capability state is an upper bound: a globally inactive, deleted, or administratively unavailable Skill/MCP cannot be re-enabled from a Workspace.
 
-The backend resolver returns the effective catalog and source-aware counts:
+## 3. Global Settings
 
-```ts
-type EffectiveCatalogSummary = {
-  builtinCount: number;
-  projectOverrideCount: number;
-  projectAdditionCount: number;
-  disabledCount: number;
-  effectiveCount: number;
-};
-```
+The Settings center has four global pages: **Accounts**, **Models**, **Skills**, and **MCP**. They share a left navigation shell on desktop and a compact navigation control on narrow screens.
 
-The Web client displays these values and never reimplements the count or overlay algorithm.
+### 3.1 Accounts and authentication
 
-## Workspace Agent roster
+Only two authentication modes exist:
 
-```ts
-type AgentSlot = {
-  id: string;
-  role: "MAIN" | "CHILD";
-  displayName: string;
-  modelProfileId: string;
-  skillGrants: CapabilityKey[];
-  mcpGrants: CapabilityKey[];
-  independenceGroup: string;
-  enabled: boolean;
-};
+1. **API Key.** The key is written only to the approved secret store; UI, API responses, logs, revisions, audit records, and run snapshots contain a non-secret reference and status only.
+2. **OAuth.** OAuth belongs to the installed CLI client. Traqen detects and reports its local login state but never performs a CLI login, launches arbitrary authentication commands, reads a token, or stores a token.
 
-type WorkspaceCapabilityDraftRevision = {
-  id: string;
-  workspaceId: string;
-  revision: number;
-  mainAgentSlot: AgentSlot;
-  childAgentSlots: AgentSlot[];
-  projectCapabilityRevisionIds: string[];
-  disabledKeys: CapabilityKey[];
-  dependencyPolicyRevisionId: string;
-  conventionRevisionId: string;
-  securityPolicyRevisionId: string;
-  createdAt: string;
-};
-```
+When an OAuth-backed CLI is not logged in, Traqen displays an actionable instruction for the administrator to complete the CLI's own login flow and then use **Recheck status**. The model remains unavailable until the check succeeds.
 
-- A Workspace has exactly one Main slot and at least two enabled, complete Child slots.
-- The lower bound of two is enforced by the domain model, API, and Web client. More Child slots are allowed without a fixed product maximum.
-- Main and every Child independently select one `READY` global model profile plus Skills, MCPs, role policy, and independence group.
-- A new Workspace starts with an empty Main slot and two empty Child slots. It does not import a role template.
-- A draft may be persisted while incomplete or invalid, but it cannot become an active execution profile.
+### 3.2 Models
 
-## Persistence, activation, and run pinning
+Each global Model pairs a supported, allowlisted local CLI client (such as Codex, Claude, or Kimi) with an Account and an optional client-supported model selection. The model card reports CLI installation, account/authentication readiness, and last verification result.
 
-Editable settings and immutable runtime inputs are separate:
+The CLI adapter must construct only fixed, allowlisted executable-and-argument forms. User-provided shell strings, interpolation, and arbitrary arguments are prohibited. A model is selectable only when it is ready; there is no global active/default model.
 
-```text
-WorkspaceCapabilityDraftRevision
-        | save: always persisted
-        v
-validate current global model revisions + effective capabilities + policies
-        | activate: only when valid
-        v
-WorkspaceExecutionProfileRevision
-        | selected when a run starts
-        v
-AnalysisRun.pinnedProfileRevisionId
-```
+### 3.3 Skills and MCPs
 
-- Every draft save creates an immutable draft revision and advances `WorkspaceCapabilityHead` using ETag/version CAS.
-- Validation never discards invalid user input. Field-level failures remain attached to the saved draft.
-- Activation creates a new immutable `WorkspaceExecutionProfileRevision` with exact model, Skill, MCP, policy, convention, dependency, and catalog provenance plus a digest.
-- A Workspace may continue to edit and activate new revisions after analysis has started.
-- A running or paused Run remains pinned to the revision selected at start. Resume cannot select newer settings.
-- A newly created Run uses the Workspace's current active profile revision.
-- To apply new settings to work already in progress, the operator must cancel that Run and start a new one; hot-swapping a model or capability inside a Run is forbidden.
-- Service restart, browser refresh, navigation, and Workspace switching are read-only recovery paths and must restore the current draft head, active profile head, history, and run pinning from durable storage.
+Global Skills and MCPs are reusable asset records with separate identity, metadata, validation, lifecycle, and active/inactive state. Empty states must be normal: v1 does not invent a required built-in inventory. API-key references inside an MCP are secret references, never manifest plaintext.
 
-## Model replacement and retirement
+## 4. Workspace Settings
 
-Deleting a referenced global model is a dependency-aware retirement workflow.
+### 4.1 Agent team
 
-1. Usage preview lists every current Workspace reference, including Main slots, all Child slots, draft heads, active profile heads, and active Runs.
-2. The operator selects one `READY` replacement profile.
-3. The server creates a `ModelReplacementPlan` that freezes every affected Workspace version. The affected Workspace set is server-derived.
-4. The UI has no Workspace selection checkboxes, and the apply API does not accept `workspaceIds`.
-5. Apply creates and activates replacement revisions for every affected Workspace in one transaction.
-6. If any Workspace changed concurrently or any replacement profile fails validation, the complete transaction rolls back and the preview must be refreshed.
-7. Success requires zero current Workspace configuration references to the old profile.
-8. The old profile enters `RETIRING` and disappears from new selectors. Historical revisions are not rewritten.
-9. Active Runs continue with their pinned old model revision and scoped secret grant until completion or cancellation; only then may the profile become `RETIRED`.
+Every Workspace has exactly one non-deletable **Main Agent** and at least one **Child Agent**. A new Workspace visibly contains an unconfigured `Child 1`; it is a required configuration placeholder, not an implicit ready Agent. Additional Child Agents are optional and use the explicit **Add Child** action.
 
-Emergency credential revocation is a separate explicit action. It identifies the active Runs that will fail and never masquerades as ordinary model deletion.
+Each Agent selects one ready global Model and receives explicit Skill/MCP grants from the Workspace-effective capability set. Creating a Child must not silently copy grants; any model copy is a user-confirmed choice. A Workspaces's F006 activation minimum is one Child. A future analysis policy may require more independent Children for a particular run without changing this setting-level minimum.
 
-## User Journey
+### 4.2 Capability management
 
-### Primary journey: configure and analyze one Workspace
+The Workspace Capability Management page governs **availability**, while Agent Settings governs **grants**. The capability page shows, separately:
 
-**Scope unit:** one Workspace, representing one project.
+1. available global inherited capabilities;
+2. capabilities disabled by this Workspace;
+3. Workspace-local capabilities; and
+4. **Globally unavailable / Needs attention** capabilities.
 
-1. The operator opens Global Settings, adds an API or supported local CLI model profile, and verifies it.
-2. The operator opens the Workspace Settings page. The previously saved draft and active revision are restored automatically.
-3. In Skills and MCP, the operator views built-in, project, and effective catalogs; adds or imports project entries; and disables any unwanted built-in or project capability.
-4. In Agents, the operator configures one Main and at least two Child slots with explicit models and effective capability grants.
-5. The operator records dependencies, conventions, security boundaries, budgets, and policies.
-6. Save Draft persists all input. Validate and Activate shows the resolved diff and creates a new immutable profile only when all checks pass.
-7. A new analysis Run pins that active profile. Reopening the Workspace does not require reconfiguration.
-8. The operator may later change and activate a new revision while the old Run continues with its original revision; later Runs use the new revision.
+The fourth group is not labelled as a Workspace disable: the Workspace did not cause the global state. Each row exposes its source, health, effective state, and a read-only summary of granted Agents with a link to edit grants in Agent Settings.
 
-### Supporting journey: replace a referenced model
+A Workspace may disable an inherited capability or add an independent Workspace-local one. In v1 it cannot replace, fork under the same identity, or field-patch a global Skill/MCP manifest. This preserves provenance and prevents a global update from producing an unexplainable merge.
 
-1. The operator requests deletion of a global model profile.
-2. The impact drawer lists every affected Workspace, Main/Child slot, current profile, and active Run.
-3. The operator selects one replacement profile and confirms one all-Workspace operation.
-4. The server either replaces and activates every current reference or changes none.
-5. The old profile retires without mutating historical revisions or an active Run.
+### 4.3 Draft, apply, and run snapshot
 
-## Frontend product experience
+Edits auto-save as a durable **draft** and may remain incomplete. **Apply configuration** validates the draft and creates a new immutable active configuration version; only the active version is eligible for a new run.
 
-### Global Settings: Model Library
+Starting a run records an immutable execution snapshot containing the active configuration, exact model/capability provenance, and non-secret identifiers. A first run or a changed active version opens a compact confirmation showing the Main model, Child models, capability count, and account readiness. Repeated starts with the unchanged active version do not repeat the confirmation. Running and paused analyses never hot-swap to later drafts or active versions.
 
-The model table exposes display name, API/CLI transport, adapter, model, readiness, lifecycle, usage count, Verify, Edit, and Delete/Retire. API forms accept endpoint, model, and token; the token becomes a credential handle and is never returned. CLI forms select an allowlisted adapter and optional executable path, never an arbitrary command string.
+## 5. Deactivation and deletion
 
-A deletion-impact drawer shows all Workspace/slot references, the replacement selector, atomicity warning, active-Run behavior, and blocking validation or concurrency errors.
+Before globally disabling or deleting a Skill/MCP, Traqen shows a server-derived impact preview: affected Workspaces, Agents, active configurations, and existing/future runs. Deletion requires typing the capability name.
 
-### Workspace Settings
+Affected Workspaces enter **Needs attention** and can repair by removing a grant, choosing another available capability, or creating an independent Workspace-local alternative. Existing runs retain their pinned snapshot. A new run is blocked only when its active configuration still grants an unavailable capability; a catalog item that is not granted must not block a run.
 
-The existing template-centric surface is replaced, not duplicated. Sections are:
+## 6. Frontend journeys
 
-- **Agents:** one Main card and two-or-more Child cards with structured model and capability selectors;
-- **Skills:** Built-in, Project, and Effective views with source, override/addition, disabled, validation, and used-by-Agent state;
-- **MCP:** the same views plus transport, permissions, credential-handle state, and health;
-- **Dependencies and Conventions:** project knowledge and constraints with revisions;
-- **Security and Boundaries:** data class, budget, permission, secret-grant, and telemetry policy;
-- **Revision History:** draft and execution revisions, diffs, digests, creators, validation results, and pinned Runs.
+### Settings entry and orientation
 
-Desktop uses section navigation with a summary/diff side panel. Narrow and mobile layouts collapse to a section list, then one section with a sticky validation/action summary. Structured selectors replace comma-separated capability inputs.
+The top-level **Settings** entry opens a scope chooser: **Global Settings** or **Workspace Settings** with a Workspace picker. A settings gear inside a Workspace goes directly to that Workspace. Header, breadcrumb, icon, and text always make the scope explicit; color alone never carries scope meaning.
 
-### In-context status and recovery
+### Workspace settings shell
 
-- Model verification status appears on the model row and in any Agent selector that references it.
-- Capability validation, disabled state, and source appear on the capability row and affected Agent card, not only in an aggregate dashboard.
-- A dirty or invalid draft retains user input and shows exact blocking fields.
-- Save conflict retains the local draft and compares it with the newer Workspace head before explicit retry.
-- An active Run shows its pinned revision beside the new active revision so the operator can understand why current execution did not change.
-- Repeated equivalent validation errors are grouped by typed key and reason; the Revision History remains the deep audit surface.
+A persistent readiness summary lists `Ready`, `Incomplete`, or `Needs attention` plus concrete repair links. The shell has two pages:
 
-## Backend and API contracts
+- **Agent Settings:** team cards/list and persistent detail inspector on desktop; the inspector becomes a full-screen drawer on small screens.
+- **Capability Management:** Skill/MCP segmented catalog and a read-only per-Agent grant summary linked back to Agent Settings.
 
-Durable records include `GlobalModelProfileRevision`, encrypted `CredentialHandle`, `ProjectCapabilityRevision`, `WorkspaceCapabilityDraftRevision`, `WorkspaceCapabilityHead`, `WorkspaceExecutionProfileRevision`, and `ModelReplacementPlan`.
+Object-level errors are shown on the relevant account, model, capability, or Agent card and also summarized at the page level. Every failure names a next action. The experience must provide loading, empty, error, and recovery states; it must not use color as the sole status signal.
 
-```http
-GET    /v1/global-models
-POST   /v1/global-models
-GET    /v1/global-models/{modelId}
-PUT    /v1/global-models/{modelId}
-POST   /v1/global-models/{modelId}/verify
-GET    /v1/global-models/{modelId}/usage
-POST   /v1/global-models/{modelId}/replacement-plans
-POST   /v1/global-models/{modelId}/replacement-plans/{planId}/apply
-POST   /v1/global-models/{modelId}/retire
+## 7. Security and invariants
 
-GET    /v1/workspaces/{workspaceId}/project-capabilities
-POST   /v1/workspaces/{workspaceId}/project-capabilities
-PUT    /v1/workspaces/{workspaceId}/project-capabilities/{kind}/{name}
-DELETE /v1/workspaces/{workspaceId}/project-capabilities/{kind}/{name}
-GET    /v1/workspaces/{workspaceId}/capabilities/effective
+| ID | Invariant |
+|---|---|
+| F006-INV-01 | API-key material never crosses the secret boundary; OAuth tokens never enter Traqen. |
+| F006-INV-02 | CLI invocation is allowlisted and never accepts a user-supplied shell command. |
+| F006-INV-03 | A globally unavailable capability cannot be activated or granted by a Workspace. |
+| F006-INV-04 | Agent grants are a subset of the effective Workspace capability set. |
+| F006-INV-05 | Activation requires exactly one complete Main and at least one complete Child. Drafts may be incomplete. |
+| F006-INV-06 | A run consumes only its pinned active snapshot, not mutable global or Workspace state. |
+| F006-INV-07 | Missing global assets block only active configurations that actually grant them. |
 
-GET    /v1/workspaces/{workspaceId}/capability-draft
-PUT    /v1/workspaces/{workspaceId}/capability-draft
-POST   /v1/workspaces/{workspaceId}/capability-draft/validate
-POST   /v1/workspaces/{workspaceId}/capability-draft/activate
-```
+## 8. Acceptance criteria
 
-All Workspace writes require Workspace scope, authorization, and expected-version CAS. Capability paths carry both `kind` and normalized `name`. Replacement Apply accepts a plan ID and expected plan version, not a client-provided Workspace subset.
+### Global assets
 
-## Security boundaries
+- **AC-A1:** The UI separates Accounts, Models, Skills, and MCPs, including normal empty and recovery states.
+- **AC-A2:** Accounts support API Key through a secret reference and CLI-owned OAuth status detection; Traqen cannot initiate or store OAuth credentials.
+- **AC-A3:** Models are reusable CLI-backed global assets, require readiness, and cannot be a global default.
+- **AC-A4:** Global Skill/MCP active state is an availability ceiling for every Workspace.
 
-- Plaintext API tokens and MCP secrets exist only at the secret-ingress boundary and encrypted secret store.
-- Forms, ordinary configuration rows, API responses, diffs, prompts, execution profiles, telemetry, diagnostics, and logs expose no plaintext secret.
-- CLI execution uses direct process spawning with adapter-generated argv, bounded timeout/output, cancellation, and process-tree cleanup; no shell interpolation is allowed.
-- Runtime receives the pinned execution profile, least-privilege run/slot secret grants, and bounded source/tool handles. It receives no mutable global registry handle.
-- Cross-Workspace capability lookup, grant use, revision access, and replacement are denied and audited.
+### Workspace and Agents
 
-## Acceptance criteria
+- **AC-B1:** A Workspace persists exactly one Main, a default incomplete Child 1, and any additional Children.
+- **AC-B2:** A Workspace can activate only with one complete Main and one or more complete Children.
+- **AC-B3:** A Workspace can disable inherited capabilities or create independent local capabilities, but cannot override/patch global manifests.
+- **AC-B4:** Capability availability and Agent grants are rendered and edited in their respective pages with source-aware summaries.
+- **AC-B5:** Drafts auto-save; Apply creates a durable active version; reloading restores draft and active heads.
 
-### Model registry
+### Runtime safety and UX
 
-- [ ] API and supported local CLI profiles can be persisted, verified, revised, and explicitly selected by Agent slots.
-- [ ] CLI tests cover argument injection, timeout, cancellation, output limits, and process-tree cleanup without invoking a shell.
-- [ ] No global active or implicit fallback model can start a Run.
-- [ ] Plaintext credentials are absent from configuration, API responses, diffs, logs, prompts, telemetry, and revisions.
+- **AC-C1:** A run pins an immutable non-secret snapshot and is unaffected by later edits.
+- **AC-C2:** A configuration change receives start confirmation once; an unchanged active version does not repeatedly prompt.
+- **AC-C3:** Global capability removal shows impact, requires typed confirmation, preserves current runs, and blocks only newly started active configurations that still grant the unavailable capability.
 
-### Capability resolution
+## 9. Relationship to F001
 
-- [ ] Skill and MCP with the same normalized name coexist and are independently configurable.
-- [ ] A project entry completely overrides a built-in entry with the same typed key; removing the override reveals the built-in only when enabled.
-- [ ] Built-in entries, project additions, and project overrides can all be disabled and re-enabled.
-- [ ] Disabling a project override does not fall back to the built-in entry.
-- [ ] Effective counts distinguish project overrides from additions and are returned by the backend resolver.
-- [ ] Disabled and ungranted entries are absent from selectors, execution profiles, runtime discovery, and invocation.
+F001 consumes the immutable active execution snapshot that F006 publishes. F001 may add a run-specific redundancy policy, but it must not mutate settings or redefine the F006 minimum Child count.
 
-### Roster, persistence, and revisions
+## 10. Explicit non-goals for v1
 
-- [ ] Exactly one Main and at least two enabled, complete Child slots are required to activate a profile; domain, API, and Web negative tests reject fewer than two.
-- [ ] Main and every Child can select different verified models, Skills, and MCPs.
-- [ ] Invalid drafts are durably saved with field-level validation and survive service restart, browser refresh, and Workspace switching.
-- [ ] Activating a valid draft creates a new immutable execution profile without mutating earlier draft or profile revisions.
-- [ ] Active and paused Runs remain pinned to their original profile on settings changes and resume; later Runs use the newly active revision.
-- [ ] Runtime cannot discover a global or project capability absent from the pinned profile.
-
-### Model replacement and retirement
-
-- [ ] Usage preview lists all current Workspace and Agent-slot references plus active Runs.
-- [ ] Replacement has no partial-Workspace mode in either UI or API.
-- [ ] Any version conflict or validation failure rolls back every Workspace change.
-- [ ] A successful replacement leaves zero current Workspace references to the old model.
-- [ ] Ordinary retirement preserves historical revisions and active Runs; emergency credential revocation is separate and discloses affected Runs.
-
-### User experience and isolation
-
-- [ ] Global Model Library and Workspace Settings expose the described empty, loading, invalid, conflict, activated, replacing, and pinned-old-Run states on desktop, keyboard, and narrow layouts.
-- [ ] Source, override/addition, disabled state, validation, and used-by-Agent information are visible where the capability is configured.
-- [ ] Two Workspaces can use different project capabilities and Agent rosters without data, capability, or credential leakage.
-- [ ] Dependency and convention revisions enter planning/input digests.
-
-## Dependencies
-
-F006 is a foundation dependency of F001. F001 consumes an activated `WorkspaceExecutionProfileRevision` and its provenance; it does not independently resolve or mutate F006 settings.
-
-## Non-goals
-
-- editable global capability or role templates;
-- prescribing a concrete built-in Skill/MCP inventory in this version;
-- migrating legacy model profiles;
-- arbitrary shell commands or user-authored CLI argv;
-- silently scanning or rewriting the user's project repository;
-- hot-swapping settings inside an active or paused Run;
-- silently falling back to a global or hidden built-in capability;
-- treating a successful connection check as model capability calibration.
+- a third authentication category called “CLI”;
+- Traqen-driven CLI OAuth login or OAuth token handling;
+- direct API model execution;
+- self-designed Agents;
+- project replacement or field-level merging of global Skill/MCP manifests; and
+- any ungranted capability available to runtime discovery or invocation.

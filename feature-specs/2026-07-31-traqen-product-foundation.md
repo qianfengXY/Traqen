@@ -3,7 +3,7 @@ feature_ids: [F001, F002, F003, F004, F005, F006]
 topics: [workspace, product-foundation, implementation-plan, runtime-isolation]
 doc_kind: implementation-plan
 created: 2026-07-31
-updated: 2026-08-11
+updated: 2026-08-28
 ---
 
 # Traqen Workspace-Rooted Product Foundation — Implementation Plan
@@ -14,6 +14,8 @@ updated: 2026-08-11
 **Created:** 2026-07-31
 **Features:** F001, F002, F003, F004, F005, F006
 **Design branch:** `design/f001-legacy-system-understanding`
+
+> **F006 historical scope notice (2026-08-28):** This remains the historical F001 foundation plan. Its F006 Task 2 and every reference to API-runtime models, project-overrides, all-Workspace model replacement, or a two-Child F006 minimum are superseded by `feature-specs/2026-08-28-f006-workspace-capability-settings.md`. Do not implement those F006 clauses from this plan.
 
 ## 1. Goal
 

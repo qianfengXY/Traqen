@@ -6,10 +6,13 @@ related_features: [F001]
 topics: [workspace-settings, global-models, cli-runtime, skills, mcp, capability-overlay, persistence, model-retirement]
 doc_kind: discussion
 created: 2026-08-11
-status: converged
+status: superseded
+superseded_by: feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.md
 ---
 
 # F006 讨论：不依赖模板的持久化 Workspace 能力设置
+
+> **历史记录，不是产品真相。** 本文已被 [2026-08-28 F006 设计收敛](../2026-08-28-F006-workspace-capability-settings-design/README.zh-CN.md) 与当前 F006 规范取代；其中 API Runtime、项目覆盖、模型退役、至少两个 Child 等假设不可用于实施。
 
 ## 操作者诉求
 
