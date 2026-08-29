@@ -2,84 +2,80 @@
 
 ---
 feature_ids: [F003]
-related_features: [F001, F002, F005]
-topics: [traceability-graph, graph-path, evidence, visualization, frontend, user-journey]
-doc_kind: spec
-created: 2026-07-31
+topics: [agent-analysis, semantic-candidates, human-review, business-function-tree, provenance]
+doc_kind: feature-spec
+created: 2026-08-29
+updated: 2026-08-29
+description: 在确定性工作空间证据之上产出可追溯的语义候选和经人工批准的业务功能树。
+description_source: human
+description_author: co-creator
+description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F003：追溯图谱
+# F003 — Agent 候选与审阅后的业务功能树
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P1
+**状态：** Spec
+**负责人：** TBD
+**依赖：** F001、F002、F006
 
-## Why
+## 为什么
 
-列表可以暴露字段缺失；图谱则能展示需求、设计、实现、数据、配置、测试与结果如何相互支持或矛盾。
+事实和 API 路由本身无法说明系统为用户完成什么。这需要模型辅助地跨文档、代码、测试、配置和人的领域知识展开调查。只有当不确定性仍然可见、且由人而不是模型共识决定是否发布时，结果才有价值。
 
-## What
+## 目标结果
 
-F003 从 Canonical Graph Artifact 渲染 Workspace 级可查询投影。用户从 Feature/API Tree 进入，以选中对象为根，展开类型化关系，并打开每条边背后的证据。
+F003 在 F001/F002 的证据边界内运行一个或多个经授权的分析 Agent，并将输出存为 `Candidate`。候选可提出业务功能、API 到功能的关联、设计意图或缺证据假设。只有人工 `ReviewDecision` 才能将候选提升为业务功能树中已发布的 `Claim`。
+
+业务树是已审阅主张的投影。它与 F002 的确定性 API 结构树相互独立，但两者均回溯到同一份版本化证据图谱。
+
+## 安全与真相边界
+
+- Agent 访问受 F001 源码策略和显式 F006 配置约束。
+- 每个候选均记录 `inferenceProvenance`、`evidenceBoundary`、`confidenceKind`、`uncertaintyNotes`、`reproducibilityToken` 和 `reviewState`。
+- 多 Agent 的一致性只能作为佐证，绝不能将候选自动变为主张。
+- 原始提示词、源码片段与模型输出遵从工作空间的保留和出站策略；已发布树保存的是可追溯的证据引用，而非无边界转录。
+- 被拒绝、已被替代或过期的候选保持可审计，不能静默改写已审阅主张。
+
+## 范围
+
+### 包含
+
+- 具备运行级来源信息的单 Agent 与多 Agent 分析。
+- 基于确定性事实、快照绑定证据和已声明假设生成候选。
+- 人工审阅决策：批准、拒绝、要求补充证据、替代和标记过期。
+- 已审阅业务功能树，包含到相关 API、代码、文档、测试和配置证据的链接。
+- 在审阅和树视图中一等展示不确定性与 `CoverageGap`。
+
+### 不包含
+
+- 将模型回答、投票或置信度分数视为无需人工审阅的真相。
+- 取代确定性 API 树，或重写 F002 事实。
+- 基于推断影响自动阻止合并或部署（F004 初期仍仅提供建议）。
 
 ## 用户旅程
 
-1. 在当前 Workspace 选择 Feature 或 API。
-2. 打开以该对象为根的聚焦图谱。
-3. 展开需求、设计、代码、数据、配置、测试、结果、Decision、Conflict 与 Gap。
-4. 选择任意路径，查看每一跳的语义和证据。
-5. 切换到历史 GraphRevision，但不修改 Current Head。
-
-## 前端产品体验
-
-### 聚焦图谱工作区
-
-F003 从当前 F002 Feature/API 选择进入，或通过显式受治理对象搜索进入；默认不能加载整仓图谱。页面包含：
-
-- Root/Context 页头，展示 Workspace、对象身份、Authority Class 与 `GraphRevision`；
-- 有界展开预设和 Node/Relation/Status 筛选；
-- 聚焦图谱画布，初始只加载一跳或声明过的有界邻域，只能按用户命令继续展开；
-- Node/Edge 证据检查器，展示 Identity、Relation Semantics、Authority、Snapshot/Revision 上下文、Conflict/Gap 状态与 Evidence Resolver；
-- 始终可用的关系/路径列表，不使用画布也能完成相同检查。
-
-选择 Edge 后必须解释关系为何存在并解析 Evidence，只高亮一条线不算完成。Change Impact 可以作为 F005 Overlay 展示，但不能修改底层 GraphRevision。
-
-### 历史、状态与可访问性
-
-- **无 Root：** 保留当前 Workspace，并提供 Governed Feature/API 搜索或返回 F002 的入口。
-- **无路径 / 达到有界上限：** 区分已验证空结果、尚未展开完全和 Gap。
-- **部分覆盖：** Candidate、Governed、Conflict、Gap、Stale 与 Missing 除颜色外，还必须使用形状、线型与文字表达。
-- **历史比较：** 并排或以明确图层比较 Current 与 Historical Revision，绝不能合成虚假当前图。
-- **Workspace 切换：** 加载新 Workspace 同一模块前，丢弃旧 Root、展开状态与迟到图谱响应。
-- **v2 之前的 artifact：** F002 追溯不可用状态必须保持明确；F003 的有界 Node、Edge、Path 与 Resolver 只能读取所选旧 GraphArtifact 中实际保存、且能唯一归属于请求的不可变 Feature 的 Evidence。归属缺失或存在歧义时返回空 Projection 或不可用 Resolver 响应，绝不能把另一 Feature 的 Evidence 重新贴标签。
-
-键盘和屏幕阅读器用户可以通过关系/路径列表搜索 Root、展开有界关系组、选择路径并检查每一跳。移动端默认使用该列表，画布为可选视图。
-
-### 前端验收标准
-
-- [ ] 从 F002 打开 F003 时保留 Workspace、Governed Identity 与 Revision，不要求手工输入 ID。
-- [ ] 初始与后续 Graph 查询均有界，并明确是否仍有可加载数据或覆盖不完整。
-- [ ] 每个可见 Node/Edge 都展示 Identity、Authority、Revision/Snapshot 上下文、状态与 Evidence Resolver。
-- [ ] Current、Historical、Candidate、Conflict、Gap、Stale 与 Missing 不能因布局或单一颜色而混淆。
-- [ ] 关系/路径列表在桌面、键盘、屏幕阅读器与移动端提供等价的路径解释能力。
+1. 架构师选择获准分析的 F001 快照和 F002 证据集。
+2. Traqen 运行已配置的一个或多个 Agent，并展示有边界、可追溯的候选。
+3. 架构师逐一审阅候选的证据、不确定性和覆盖缺口。
+4. 被批准候选成为已审阅主张并出现在业务功能树；其他结果同样明确保留。
 
 ## 验收标准
 
-- [ ] 图谱跟随 `CurrentWorkspaceContext` 切换；丢弃旧 Workspace 的迟到响应。
-- [ ] 每个 Node/Edge 都携带 Identity、Authority Class、Snapshot/Revision Context 和 Evidence Resolver。
-- [ ] Candidate、Governed、Conflict、Gap、Stale 与 Missing 状态视觉上明确区分。
-- [ ] 一个 GraphRevision 内的路径查询有界、确定性，并能解释每一跳为何存在。
-- [ ] 图谱可比较最新与历史 Revision，但不能把它们合成虚假的当前状态。
-- [ ] Live 模式不能出现硬编码/Demo Graph Fallback。
+- [ ] 每个候选写明 Agent/运行来源、源码快照、证据边界、不确定性和审阅状态。
+- [ ] 未经过人工批准的候选不能出现在已发布业务功能树中。
+- [ ] 每个已发布业务节点均可追溯到一个或多个已审阅主张及其证据链接。
+- [ ] UI 清晰区分确定性事实、未审候选、已批准主张和覆盖缺口。
+- [ ] 多 Agent 运行会保留每个 Agent 的独立输出；一致性展示为佐证，而非真相规则。
+- [ ] 被拒绝、替代或过期的候选仍可审计，但不显示为当前主张。
 
-## 当前差距
+## 待确认问题
 
-实现提交 `1682d7d` 已有交互图谱 API/UI，但 Live Surface 仍包含 Preset/Demo Fallback，且尚未让每条关系都可以解析到证据。
+- 哪些审阅角色可以批准哪些类别的主张？
+- 首个试点如何校准 `confidenceKind`，而不把不确定性伪装成数值分数？
+- 哪些 Agent 策略最能暴露相互竞争的解释，而不是过早压扁它们？
 
-## 依赖
+## 依赖与交接
 
-F001 负责图谱生产与发布；F002 提供选中 Feature/API Context；F005 提供变更影响 Overlay。
+F003 消费 F001 快照、F002 事实/缺口和 F006 Agent 授权。其已审阅主张与树节点为 F004 影响分析提供输入，但 F004 必须保留原始证据和不确定性，不能把一条树边当作穷尽证明。
 
-## 非目标
-
-- 把图谱布局当作证据；
-- 让客户端生成的 Edge 进入 Canonical Graph；
-- 在有界邻域足以回答问题时加载整仓图谱。
+**下一步：** F004 将已审阅含义、确定性证据和执行结果组合为有边界的变更影响与重验证建议。

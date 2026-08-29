@@ -1,12 +1,12 @@
 > 语言：**简体中文** · [English](ADR-0002-workspace-aggregate-and-execution-isolation.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F005, F006]
+feature_ids: [F001, F002, F003, F004, F006]
 related_features: []
 topics: [workspace, aggregate-root, context-switch, capability-isolation, model-registry, capability-overlay, model-retirement]
 doc_kind: adr
 created: 2026-07-31
-updated: 2026-08-28
+updated: 2026-08-29
 status: accepted
 ---
 
@@ -37,7 +37,7 @@ GPT 与 Kimi 的独立设计先认同 Workspace 全局产品边界，随后对�
 8. **可编辑设置与不可变运行输入分离。** Invalid Draft 仍持久化；激活创建新的 `WorkspaceExecutionProfileRevision`。Main Agent、Child Agent 与 Worker 只接收该 Revision、Scoped Secret Grant 与有界源码/工具 Handle，不能拿到可变全局 Registry Handle。
 9. **Run 固定启动时的 Revision。** Active/Paused Run 不热切换设置，Resume 也不选择更新 Revision。operator 可以继续编辑并激活 Workspace，后续 Run 使用更新的 Active Revision。
 10. **删除被引用模型时先全 Workspace 替换，再退役。** 服务端计算所有当前 Workspace 引用并固定 Expected Version，通过一个事务应用；任一冲突或校验失败都会回滚整个操作。历史 Revision 与 Active Run 不改写；普通生命周期为 `ACTIVE -> RETIRING -> RETIRED`。
-11. **模块不能另建项目选择器或图谱 Store。** F002～F005 消费 F001/F006 建立的 Workspace 作用域 Canonical Contract。
+11. **模块不能另建项目选择器或图谱 Store。** F002～F004 消费 F001/F006 建立的 Workspace 作用域 Canonical Contract。
 
 ### 修订——2026-08-28 F006 设置合同
 

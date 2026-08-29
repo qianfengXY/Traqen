@@ -2,7 +2,7 @@
 
 ---
 feature_ids: [F001, F006]
-related_features: [F002, F003, F004, F005, F006]
+related_features: [F002, F003, F004, F006]
 topics:
   - workspace
   - source-scan
@@ -12,14 +12,14 @@ topics:
   - browser-refresh
 doc_kind: feature-design
 created: 2026-07-29
-updated: 2026-08-11
-status: proposed
+updated: 2026-08-29
+status: superseded
 priority: P0
 ---
 
-# Workspace 扫描与 Analysis Agent 生命周期
+# 历史参考：Workspace 扫描与 Analysis Agent 生命周期
 
-> [F001](F001-legacy-system-understanding.zh-CN.md) 的详细执行设计。[产品架构](../architecture/traqen-product-architecture.zh-CN.md)负责模块边界；本文负责 Workspace 分析、完整源码覆盖、主/子 Agent 执行、对账与持久恢复。
+> **仅作历史参考。** 本设计已被[活动 F001 规格](F001-legacy-system-understanding.zh-CN.md)和[产品架构](../architecture/traqen-product-architecture.zh-CN.md)中的 F001–F004 证据优先重构替代。保留它仅为实现历史兼容；它不是活动合同。
 
 ## 1. 需求定义
 
@@ -101,11 +101,7 @@ Traqen 故意把观察、解释、对账、治理和发布分成不同权威层�
 
 路径名、模型回答、相似度分数和确定性 Hash 都不能创建或合并受治理的 `Feature.id`。
 
-[整体功能架构](../diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
-展示所有模块共享的 Workspace 上下文。自包含
-[图谱治理生命周期](../diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
-及其 [Archify JSON 源](../diagrams/traqen-product-architecture/graph-governance.lifecycle.json)
-明确展示 Candidate、Decision、评估、隔离与发布边界。
+先前的整体功能架构图已随被替代的模块计划移除。本文关于 Candidate、Decision、评估、隔离与发布的讨论只保留为既有实施上下文，而非活动可视化或合同。
 
 ### 3.2 扫描算法：从工程源码到确定性 Facts
 

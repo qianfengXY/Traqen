@@ -2,361 +2,84 @@
 
 ---
 feature_ids: [F001]
-related_features: [F002, F003, F004, F005, F006]
-topics:
-  - workspace
-  - legacy-system-understanding
-  - canonical-graph
-  - source-inventory
-  - analysis-agent
-  - correctness-evaluation
-  - traceability
-  - dogfood
-  - frontend
-  - user-journey
-doc_kind: spec
-created: 2026-07-29
-updated: 2026-08-28
+topics: [workspace, source-snapshot, artifact-inventory, provenance, legacy-system]
+doc_kind: feature-spec
+created: 2026-08-29
+updated: 2026-08-29
+description: Establish the versioned source boundary and complete inventory required for trustworthy legacy-system analysis.
+description_source: human
+description_author: co-creator
+description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F001: Workspace and Legacy-System Analysis Foundation
+# F001 — Workspace & Source Truth
 
-> **Status**: spec | **Owner**: CodeX | **Priority**: P0
+**Status:** Spec
+**Owner:** CodeX
+**Related:** F006 workspace capability settings
 
 ## Why
 
-Traqen's primary capability is to understand existing code and files correctly enough to build a reviewable graph across requirements, design, code, data, configuration, tests, test results, Evidence, changes, and Decisions. A Workspace is the aggregate root for that understanding: every analysis, tree, graph, review, impact view, configuration revision, and history query is scoped by `workspaceId`.
+Before anyone can reason about a legacy system, we need to answer a simpler question precisely: which source, at which version, was actually examined? A directory name, a live checkout, or a chat attachment is not sufficient evidence. Every later conclusion must be able to point back to a stable, permissioned source boundary.
 
-The previous F001 framing treated browser-independent execution as the goal. That is necessary infrastructure, but it does not answer the core question: **did Traqen reconstruct the important capabilities and relations of a legacy system accurately, with explicit evidence and gaps?**
+## Outcome
 
-This Feature therefore owns the entire understanding foundation:
+F001 creates a read-only analysis workspace, an immutable `SourceSnapshot`, and a complete `ArtifactInventory` for the registered source. The inventory covers documentation, code, tests, configuration, and other discovered artifacts, including explicit dispositions for material that was excluded, unsupported, unreadable, redacted, or failed to scan.
 
-```text
-selected Workspace + immutable execution-profile revision
-  → complete immutable source scope
-  → deterministic observations
-  → same AnalysisBatch sent to every configured Child Agent
-  → Main Agent evidence validation and reconciliation
-  → correctness evaluation
-  → canonical Candidate graph
-```
-
-Governed Features and Claims still require human Decisions. Test execution and Evidence remain separate downstream authority.
-
-## Current state
-
-### Capabilities already present
-
-- Snapshot manifests, deterministic Facts, Candidate bundles, evidence-bound validation, and stable lineage;
-- JavaScript scanning plus browser-side multilingual heuristics;
-- Analysis Agent, Reverse Skill contracts, model adapters, and checkpoints;
-- governance, Feature graph, TraceChain, impact, TestSpec, Runner, Evidence, and metrics domains;
-- server-owned AnalysisRun after browser-derived observations have been submitted;
-- a browser-local project list, visibility preference, and workspace-analysis UI skeleton.
-
-### Gaps that block this Feature
-
-- no complete ArtifactInventory denominator for included, unsupported, excluded, failed, generated, binary, or secret-redacted content;
-- browser and server scanning have different capabilities and ownership;
-- some semantic planning starts from scanner-discovered roots, so a scanner miss can propagate;
-- real-repository validation measures volume and noise reduction, not reviewed capability recall, Candidate precision, or relation correctness;
-- no versioned truth set with positive and negative graph assertions;
-- no full-versus-incremental equivalence gate;
-- no required Traqen-on-Traqen product acceptance;
-- source scanning still depends on the browser, so a large analysis can be interrupted before canonical Facts exist;
-- no canonical server-side Workspace aggregate, lifecycle, or versioned switch context;
-- the primary runtime uses one global active model profile while another path hard-codes a local deterministic profile;
-- a fixed three-child planning/UI shape is decorative or assigns different modules instead of executing the same batch across a configurable roster;
-- no Workspace-only Skill/MCP capability boundary or immutable resolved execution profile.
-
-## What
-
-### Phase A: Workspace root, configuration profile, and evaluated truth
-
-Define the Workspace aggregate and lifecycle, versioned `CurrentWorkspaceContext`, F006 activation of global model plus built-in/project capability choices into an immutable `WorkspaceExecutionProfileRevision`, multi-dimensional correctness, reviewed truth-set schema, explicit Unknown states, and regression thresholds.
-
-`ReviewedUnderstandingMeasurement` is a closed, discriminated evidence contract. Production evaluation accepts an independently controlled record with `independent: true`. The isolated development bootstrap may persist only the explicit `LocalReferenceSynthetic` variant with `independent: false`, `dataClassification: LOCAL_DEVELOPMENT_REFERENCE_ONLY`, `productionEligible: false`, and `evaluationEvidenceType: LOCAL_REFERENCE_SYNTHETIC`; that variant can exercise the product but can never satisfy a production publication gate.
-
-### Phase B: Immutable scope and complete inventory
-
-Create authorized source registration, immutable Snapshot capture, complete ArtifactInventory, explicit dispositions, extractor capability registry, and safe source-slice broker.
-
-### Phase C: Same-batch independent understanding lanes
-
-Run deterministic extraction and Agent source analysis as independently observable lanes. The deterministic planner derives bounded `AnalysisBatch` records from the full source manifest and conventions. Every active Child Agent receives the same batch, source scope, and output contract, while using its own Workspace-approved model, Skills, MCPs, and independence group. Children cannot inspect sibling output; the Main Agent owns task intent and post-batch reconciliation, never total-inventory disposition.
-
-### Phase D: Reconciliation and lineage
-
-Validate evidence bounds, reconcile duplicates and hierarchy, preserve conflicts and alternatives, link Candidates across Snapshots, and produce CandidateGraph, CoverageLedger, and ConflictLedger without creating governed authority.
-
-### Phase E: Durable and incremental execution
-
-Execute scan and Agent WorkUnits under one persistent server-owned job. Force `FULL` for the first Snapshot and default later Snapshots to `INCREMENTAL`; reuse committed work, selectively invalidate changed regions, prove incremental/full equivalence, and atomically update `CurrentGraphHead` only from a complete, evaluation-passing GraphRevision. The default graph shows the latest state while FeatureVersion, Snapshot mapping, ChangeSet, ImpactAssessment, Decision, and Evidence history remain durable.
-
-### Phase F: Traqen analyzes Traqen
-
-Analyze a pinned Traqen Snapshot, compare it with a human-reviewed seed truth set, display Traqen's Candidate and governed seed graph inside Traqen, render a complete TraceChain, and verify one controlled change-impact journey.
+It does not infer business meaning, decide ownership, publish a business tree, or claim change impact. Those are later capabilities.
 
 ## User journey
 
-### Primary journey: understand and inspect a legacy system
+1. An architect registers a source root and its allowed analysis policy.
+2. Traqen captures an immutable snapshot identity and inventories every discoverable artifact.
+3. The architect can inspect what was analyzed, what was deliberately excluded, and why.
+4. Downstream facts, candidates, claims, and executions refer to this snapshot rather than to an ambiguous live filesystem.
 
-- **Scope unit**: one Workspace containing immutable repository Snapshots
-- **Actor**: operator
-- **Entry**: the selected Workspace with an authorized source registration and resolved execution-profile revision
-- **Flow**:
-  1. Select a Workspace; every module rebinds to the same versioned Workspace context.
-  2. Resolve its Main/Child models, Skills, MCPs, dependencies, and conventions into one immutable execution-profile revision.
-  3. Start one durable understanding job and inspect the complete artifact denominator.
-  4. Watch the static lane and the same-batch Child Agent roster. F006 defaults to one Child; an analysis policy may require additional independent Children for a particular high-risk run.
-  5. Inspect Main Agent reconciliation, rejected evidence, conflicts, gaps, and reconciled working-tree updates.
-  6. Compare reviewed correctness dimensions rather than a single confidence score.
-  7. Use Decisions to establish governed Features, Claims, taxonomy, and TestSpecs.
-  8. Browse graph, TraceChain, source content, impact, and quality projections from the same canonical model.
-- **Success evidence**: inventory report, evaluation report, graph assertions, replay/incremental reports, durable job trace, and product-visible Traqen self-graph
-- **Non-goals**: automatic truth recovery, automatic Candidate approval, arbitrary source execution, or universal language support in the first release
+## Scope
 
-### Supporting journeys
+### In scope
 
-| ID | Journey | Required evidence |
-|---|---|---|
-| J1 | A parser misses an entrypoint; an independent manifest/source lane still finds and evidences it | adversarial fixture and Candidate provenance |
-| J2 | Two Skills disagree about one capability boundary | ConflictLedger and both alternatives |
-| J3 | A test file exists but no current execution proves a Claim | separate TestAsset/TestSpec/Execution states |
-| J4 | A browser is refreshed or closed during scanning | unchanged job identity and increasing server progress |
-| J5 | After the first full analysis, one changed file affects only one graph region | new Snapshot, incremental/full equivalence, atomic CurrentGraphHead update, and impact paths |
-| J6 | Traqen analyzes its own pinned repository | reviewed self-graph, gaps, TraceChain, and impact report |
-| J7 | Inspect a long-lived Feature | FeatureVersion Decisions, implementation mappings by Snapshot, ChangeSets, impacts, and verification timeline |
-| J8 | Analyze a very large mixed-language repository | complete raw-source disposition, deterministic partitions, dynamic DAG progress, model/Skill route decisions, same-batch Child corroboration, and explicit residual gaps |
+- Workspace registration with source locator, access policy, and source provenance.
+- Immutable snapshot identity: source revision where available, content digest, capture time, and scanner version.
+- Artifact inventory records with path, kind, content digest, size, and disposition.
+- Explicit coverage states: `INCLUDED`, `EXCLUDED`, `UNSUPPORTED`, `FAILED`, and `REDACTED`.
+- A source-access boundary: raw content may be read only by approved local extractors or by an explicitly authorized F006 agent configuration. Unapproved external model egress is prohibited.
 
-## Frontend product experience
+### Out of scope
 
-### Entry and first-run setup
+- Extracting facts or constructing an API tree (F002).
+- LLM semantic interpretation, human review, or the business-function tree (F003).
+- Test execution evidence, impact analysis, and revalidation advice (F004).
+- Enforcing a production deployment or CI gate.
 
-The Workspace landing overview routes the user to the first unmet prerequisite instead of presenting an empty analysis console. The setup sequence is:
+## Required records
 
-1. create or select a Workspace;
-2. register an authorized source;
-3. resolve and validate a Workspace execution-profile revision in F006;
-4. start the first `FULL` analysis.
+| Record | Minimum fields |
+| --- | --- |
+| `Workspace` | workspace ID, registered source locator, access policy, owner |
+| `SourceSnapshot` | snapshot ID, source revision when available, content digest, capture time, scanner version |
+| `ArtifactInventoryItem` | snapshot ID, artifact locator, kind, digest, disposition, disposition reason |
+| `CoverageGap` | affected scope, reason, discovery method, follow-up state |
 
-Creating a Workspace and starting an analysis are separate explicit commands. Before Start, the confirmation summary shows the selected `SourceRegistration` and, when resuming, the pinned Snapshot, plus the execution-profile revision, Main/Child roster, data boundary, budget policy, and selected `AUTO`, `FULL`, or `INCREMENTAL` mode. Advanced mode selection cannot bypass the rule that the first published graph requires `FULL`.
-
-### Analysis command center
-
-The F001 surface presents one durable `WorkspaceAnalysisJob` with:
-
-- a seven-stage track: `SOURCE_SCAN`, `FACT_COMMIT`, `ANALYSIS`, `RECONCILIATION`, `EVALUATION`, `PROJECTION`, and `PUBLISHING`;
-- an independent Static lane showing the complete inventory denominator and every disposition, including excluded, unsupported, binary, oversized, secret-redacted, and read-failed artifacts;
-- an independent Agent lane showing Batch/WorkUnit progress, the Main Agent, every configured Child slot, identical same-batch scope, individual results, and reconciliation status;
-- a visually separate Working Candidate tree with Candidate, conflict, quarantine, and Gap counts;
-- explicit Start, Pause, Resume, and Cancel commands plus a durable job/event history.
-
-The Main Agent is described as reconciling the complete sibling result set against source evidence, deterministic Facts, and history. The UI never represents the result as a vote. Raw prompts, model responses, digests, and trace identifiers stay in a technical-details view; the default event stream explains user-relevant progress and blockers.
-
-### Page states and recovery
-
-- **No source / invalid profile:** show the unmet prerequisite and deep-link to its exact F006 section; Start remains disabled.
-- **Running:** allow navigation away while the server job continues; refresh and reconnect restore the same Job without issuing a lifecycle command.
-- **Pause requested / paused / recovering:** preserve the pinned Snapshot and profile revision and explain whether an atomic WorkUnit is draining or a worker lease is being recovered.
-- **Partial failure / completed with gaps:** preserve completed checkpoints, list retryable units and gaps, and state whether publishing is blocked.
-- **Completed but unpublished:** show evaluation and publishing gates plus the non-authoritative Working Candidate; do not redirect it into the governed F002 tree.
-- **Failed / cancelled:** retain history and diagnostics; retry creates or resumes only through an explicit supported command and never overwrites the failed record.
-
-On desktop, Static and Agent lanes can appear side by side beneath the stage track. On mobile they become ordered sections, while the stage track, command state, denominators, blockers, and Candidate authority label remain available.
-
-### Frontend acceptance
-
-- [ ] The first-run and returning-Workspace journeys always expose one valid next action without requiring a Job, Snapshot, or Candidate ID.
-- [ ] The seven persisted phases and the Static/Agent lane denominators are visible independently; no composite understanding score replaces them.
-- [ ] Every active Child slot is shown against the same Batch scope and output contract, and Main reconciliation never appears as majority voting.
-- [ ] Working Candidate content is visually and textually non-authoritative and never appears inside the governed F002 tree.
-- [ ] Refresh, reconnect, navigation, and Workspace switching are GET-only; they neither pause nor cancel a server job.
-- [ ] All non-terminal states, partial failures, configuration blockers, late Workspace responses, and historical Jobs have explicit recoverable UI states.
+An unreadable file is not silently absent: it produces an inventory disposition and, where it limits analysis, a `CoverageGap`.
 
 ## Acceptance criteria
 
-### A. Scope and deterministic facts
-
-- [ ] **AC-A0**: Workspace create, show/hide, switch, and audited delete lifecycles are server-owned; every feature surface is keyed by `workspaceId` plus a context version, and late responses from a prior Workspace cannot update current UI state.
-- [ ] **AC-A0b**: global Accounts and allowlisted CLI Models are explicitly selected reusable assets; active global Skill/MCP assets plus Workspace disabled/local capability state resolve into an immutable active configuration, and runtime receives only its snapshot and explicit Agent grants without mutable registry access.
-- [ ] **AC-A1**: every artifact in the pinned Snapshot has an explicit inventory disposition and remains in the coverage denominator.
-- [ ] **AC-A2**: every supported extractor declares its exact capability and passes positive, negative, source-span, and diagnostic fixtures.
-- [ ] **AC-A3**: Facts are immutable, Snapshot-bound, source-locatable, and reproducible by extractor version.
-
-### B. Independent Agent/Skill understanding
-
-- [ ] **AC-B1**: the initial WorkUnit plan includes manifest/module/entrypoint/document/test/config roots independent of one scanner's discoveries.
-- [ ] **AC-B2**: an Agent/Skill can request policy-bounded SourceSlices and recover a reviewed anchor intentionally missed by one extractor.
-- [ ] **AC-B3**: every Candidate node and relation cites allowed evidence inside one Snapshot and WorkUnit; invalid IDs and overclaimed confidence are rejected.
-- [ ] **AC-B4**: budget exhaustion, unsupported syntax, ambiguity, and model failure produce explicit gaps rather than fabricated completion.
-- [ ] **AC-B5**: every ArtifactInventory row is directly read from the immutable Snapshot, handled by a declared specialist, or represented by an explicit Gap; scanner Facts are optional enrichment and never define the Agent task universe.
-- [ ] **AC-B6**: the same Snapshot, planner/convention versions, execution policy, and source ranges produce the same complete `UnderstandingPlan` with stable partition IDs and `unassignedCount=0`; its dynamic dependency DAG handles bounded large-file, file, module, cross-module, critic, and synthesis WorkUnits without treating a child summary as sole evidence.
-- [ ] **AC-B7**: every WorkUnit has a persisted, version-pinned `AnalysisRouteDecision` selected from verified model capability/calibration profiles and Skill contracts; high-risk redundancy uses independent producer groups and evidence reconciliation, while no eligible producer and unresolved disagreement remain explicit instead of falling back or becoming majority truth.
-- [ ] **AC-B8**: each activated Workspace profile contains exactly one Main Agent and at least one enabled, complete Child Agent slot; every slot independently pins its model revision, Skills, MCP grants, role policy, and independence group. A run-specific analysis policy may require additional independent Child slots without changing F006 activation.
-- [ ] **AC-B9**: each `AnalysisBatch` is fanned out to the complete active Child roster with identical source scope and output schema; children are isolated until completion, and the Main Agent reconciles the complete sibling result set against static Facts and historical lineage without majority voting.
-- [ ] **AC-B10**: raw Child or Main model output never mutates the Feature/API working tree; only schema-valid, evidence-valid reconciliation output can publish a batch checkpoint, while untrusted evidence becomes quarantine, conflict, or Gap.
-
-### C. Reconciliation and governance
-
-- [ ] **AC-C1**: reconciliation identifies duplicates, hierarchy, contradictions, and alternatives while preserving their evidence.
-- [ ] **AC-C2**: names, paths, domains, or hashes cannot silently create governed Feature identity.
-- [ ] **AC-C3**: only Decisions create or revise FeatureVersions, Claims, taxonomy classifications, and TestSpecs.
-- [ ] **AC-C4**: Candidate, governed, test clue, TestSpec, TestExecution, VerificationResult, and Evidence remain distinct in storage, API, and UI.
-
-### D. Correctness and incrementality
-
-- [ ] **AC-D1**: an evaluation report exposes denominators for inventory, anchor recall, Candidate precision, required/forbidden relations, provenance, gaps, replay, and incremental equivalence.
-- [ ] **AC-D2**: truth-set data is versioned, reviewed, and excluded from production analysis inputs.
-- [ ] **AC-D3**: repeated runs on the same Snapshot and engine produce stable Facts and Candidate lineage.
-- [ ] **AC-D4**: a controlled new Snapshot produces an incremental graph equivalent to a full graph for evaluated scopes and preserves unaffected Decisions.
-- [ ] **AC-D5**: when no published graph exists, only FULL is allowed; with a `CurrentGraphHead`, AUTO defaults to INCREMENTAL while the operator may force FULL.
-- [ ] **AC-D6**: building, failed, or evaluation-rejected runs cannot replace `CurrentGraphHead`; publishing a GraphRevision and moving the head is one atomic transaction.
-- [ ] **AC-D7**: every published Snapshot transition produces a `ChangeSet`, `ImpactAssessment`, affected Feature/Claim/TestSpec/dependency set, and revalidation plan.
-- [ ] **AC-D8**: default graph views show only the latest published state, while Feature history queries each FeatureVersion's Decision, implementation mapping by Snapshot, change impact, and verification result; code change never auto-revises the business FeatureVersion.
-
-### E. Durable lifecycle and security
-
-- [ ] **AC-E1**: scan and Agent stages run under one persisted job; refreshing, closing, reconnecting, or attaching another browser does not change its state.
-- [ ] **AC-E2**: manual Pause/Resume preserves the same Snapshot and skips committed WorkUnits; running work recovers after worker restart while manually paused work remains paused.
-- [ ] **AC-E3**: Local Runner allowlists, path/symlink fencing, source-slice policy, secret redaction, and isolated evaluation stores pass security tests.
-- [ ] **AC-E4**: the browser contains no authoritative scanning or model loop after cutover.
-
-### F. Traqen-on-Traqen
-
-- [ ] **AC-F1**: a pinned Traqen Snapshot inventories `docs/`, `feature-specs/`, `contracts/`, `src/`, `test/`, `web/`, and safe build/test artifacts with explicit exclusions.
-- [ ] **AC-F2**: output is evaluated under `traqen-self-v1` against a blind truth set: 100% inventory disposition; at least 30 positive anchors across 10 capabilities with ≥90% recall; at least 60 required relations at 100%; at least 30 forbidden relations with zero violations; stratified Candidate precision ≥90%; and approval by a non-author.
-- [ ] **AC-F3**: Traqen displays its own Candidate graph and visibly distinct governed seed graph, with source content and a gap report.
-- [ ] **AC-F4**: at least one Traqen capability has a complete reviewed TraceChain from system requirement/design to code, TestSpec, current execution, VerificationResult, and Evidence.
-- [ ] **AC-F5**: one controlled Traqen change produces a reviewed impact path and revalidation plan.
-- [ ] **AC-F6**: backend, Web, build, lint, diff, evaluation, browser acceptance, and independent review gates pass.
-- [ ] **AC-F7**: the Traqen UI defaults to the second Snapshot's latest graph, can open one Feature's version/implementation/impact/verification history, and proves atomic graph switching from the first FULL run to the second INCREMENTAL run.
-
-## Requirements checklist
-
-| ID | Operator requirement | AC | Verification | Status |
-|---|---|---|---|---|
-| R1 | “扫描与分析 Agent 可能需要重新设计。” | AC-B1–B7, AC-C1 | complete-source partition/DAG/router adversarial tests + reconciliation | [ ] |
-| R2 | “这个需求是我最核心的需求，怎么把存量代码的分析正确。” | AC-A1–A3, AC-B5–B7, AC-D1–D8 | complete-source coverage and versioned truth-set evaluation | [ ] |
-| R3 | “做一个需求、设计、代码、测试用例、测试结果、配置等图谱关联。” | AC-C4, AC-F3–F4 | canonical graph assertions and UI | [ ] |
-| R4 | “便于之后做变更影响分析、内容查看、质量追溯。” | AC-D4–D8, AC-F4–F5, AC-F7 | content, TraceChain, impact, and history acceptance | [ ] |
-| R5 | “拿 Traqen 项目做测试验证，通过 Traqen 自己展示自己的功能图谱。” | AC-F1–F7 | isolated Traqen-on-Traqen acceptance | [ ] |
-| R6 | “刷新浏览器，当前运行的任务状态未发生变化。” | AC-E1–E2 | job identity, progress, WorkUnit calls | [ ] |
-| R7 | “第一次分析会得到一个完整的图谱关系……增量分析就应该重新更新图谱……功能点是需要记录变化过程及每次变化会影响哪些功能。” | AC-D4–D8, AC-F5, AC-F7 | two-Snapshot FULL→INCREMENTAL acceptance, CurrentGraphHead, and Feature-history query | [ ] |
-| R8 | “Workspace 切换，则其他功能全部跟随一起变化。” | AC-A0 | Workspace switch integration test with stale-response rejection across every module | [ ] |
-| R9 | Historical F006 requirement; superseded by the one-or-more Child decision of 2026-08-28. | AC-B8–B10 | lower-bound, same-batch fan-out, isolation, complete-set reconciliation, and working-tree checkpoint tests | [ ] |
-| R10 | Historical F006 overlay requirement; superseded by global availability, Workspace-local assets, and explicit grants. | AC-A0b, AC-B8 | capability-resolution fixtures plus runtime capability-denial tests | [ ] |
-
-### Coverage check
-
-- [x] Every stated operator requirement maps to executable ACs.
-- [x] Correctness, graph value, and self-dogfood are primary outcomes.
-- [x] Refresh durability is retained as infrastructure, not the Feature definition.
-- [ ] UI evidence mapping will be completed during implementation acceptance.
-
-## Dependencies
-
-- **System requirements**: `docs/architecture/traqen-system-requirements.md`
-- **Product architecture**: `docs/architecture/traqen-product-architecture.md`
-- **Ontology authority**: ADR-0001 canonical traceability ontology
-- **Existing precursor**: PR #5 server-owned AnalysisRun; it covers only the post-observation Agent stage
-- **Supporting designs**: current Agent, Workspace, graph, TestSpec, Runner, Evidence, and durable lifecycle documents
-- **Implementation gate**: Design Gate approval before replacing current source-scanning ownership
-
-## Architecture ownership
-
-- **Architecture cell**: legacy-system understanding → canonical traceability graph
-- **Map delta**: update required
-- **Why**: F001 expands source-understanding ownership, introduces independent evidence lanes and reconciliation, and makes correctness evaluation plus self-dogfood part of the release boundary.
-
-## Risks
-
-| Risk | Mitigation |
-|---|---|
-| Node count is mistaken for understanding quality | reviewed multi-dimensional evaluation and negative assertions |
-| One scanner's blind spot becomes a pipeline blind spot | manifest-derived planning and independent source lanes |
-| “Analyze all files” becomes one oversized prompt or a partial scan | deterministic Snapshot partitions, bounded hierarchical DAG execution, and `unassignedCount=0` |
-| A generic or miscalibrated model silently handles every language and role | verified ModelCapabilityProfiles, version-pinned Skill contracts, persisted route decisions, and `NO_ELIGIBLE_PRODUCER` |
-| Multiple models turn correlated guesses into majority truth | same-batch isolated Child outputs, independence-group provenance, evidence-based Main reconciliation, and ConflictLedger preservation |
-| Agent prose fabricates relations | structured bundles, bounded source/evidence, deterministic rejection |
-| Current code is frozen as business truth | Candidate/Decision/governed separation |
-| Unsupported scope is hidden | complete inventory denominator and explicit dispositions |
-| Truth set overfits implementation | positive/negative relation assertions, versioning, independent review |
-| Incremental mode drifts from full analysis | full-versus-incremental equivalence gate |
-| A failed incremental run contaminates the current graph | move CurrentGraphHead atomically only after GraphRevision evaluation passes |
-| A code change is mistaken for a new business Feature version | only Decisions create FeatureVersions; implementation mappings and impact history remain separate |
-| “Show only the latest graph” is interpreted as deleting history | separate the current projection from immutable Snapshot/version/impact ledgers |
-| Self-analysis contaminates production data | isolated worktree, store, ports, and reviewed execution |
-| Durability work dominates product correctness again | correctness and dogfood phases are release-blocking |
+- [ ] A reference repository can be registered without mutating its source.
+- [ ] Re-running inventory on the same content produces the same snapshot identity and artifact digests.
+- [ ] Every discovered artifact has exactly one recorded disposition.
+- [ ] An excluded, unsupported, redacted, or failed artifact is visible to the user with its reason.
+- [ ] A downstream record can name its exact `SourceSnapshot` and artifact locator.
+- [ ] The reference-pilot report proves source-boundary and inventory coverage before semantic analysis is enabled.
 
 ## Open questions
 
-| # | Question | Recommendation | Status |
-|---|---|---|---|
-| OQ-1 | Who approves the initial Traqen seed truth set? | operator owns business boundaries; independent reviewer validates technical anchors | Design Gate |
-| OQ-2 | What thresholds block release? | numeric `traqen-self-v1` thresholds are defined; later changes require a Decision | Resolved |
-| OQ-3 | What is the first source connector? | allowlisted Local Runner, followed by remote Git without changing graph contracts | Design Gate |
+- Which source-control systems and archive formats are included in the first production adapter set?
+- What is the approved redaction contract for repositories that contain credentials or regulated data?
+- Which F006 configuration forms count as explicit authorization for a remote analysis agent?
 
-## Key decisions
+## Dependencies and handoff
 
-| # | Decision | Reason | Date |
-|---|---|---|---|
-| KD-1 | F001 is repository-understanding correctness, not a refresh bug. | Durability without semantic correctness does not satisfy the product mission. | 2026-07-29 |
-| KD-2 | Correctness is multi-dimensional and evaluated against reviewed truth sets. | Legacy intent cannot be represented by one model confidence value. | 2026-07-29 |
-| KD-3 | Analysis lanes are independent and reconcile after evidence production. | One extractor must not define what the system is allowed to discover. | 2026-07-29 |
-| KD-4 | Traqen-on-Traqen is a release gate. | The product must demonstrate useful traceability on its own realistic system. | 2026-07-29 |
-| KD-5 | `Fxxx` lifecycle IDs remain separate from governed `Feature.id`. | Engineering planning must not create business authority. | 2026-07-29 |
-| KD-6 | First analysis is FULL, later analyses default to INCREMENTAL, and the current graph head is separate from historical ledgers. | The system must provide the latest usable graph while explaining how Features evolved and what each change affected. | 2026-07-29 |
-| KD-7 | Code/configuration change cannot create a FeatureVersion by itself. | Business-version authority comes from Decisions; implementation evolution belongs to Snapshot mappings, impacts, and verification history. | 2026-07-29 |
-| KD-8 | The Agent plans from the complete immutable Snapshot, executes a deterministic dynamic partition DAG, sends each bounded AnalysisBatch to every configured independent Child slot, and lets the Main Agent reconcile their evidence against static Facts without majority voting. | Large repositories need auditable total disposition, bounded contexts, explicit producer fitness, and preserved disagreement without allowing scanner blind spots or correlated model guesses to define truth. | 2026-07-29 |
-| KD-9 | Workspace is the aggregate root for every product object and view; show/hide is a user preference, while delete is an audited lifecycle. | A single scope identity makes switching atomic and prevents UI visibility from being confused with destructive deletion. | 2026-07-31 |
-| KD-10 | Every active Child Agent analyzes the same bounded batch; the Main Agent reconciles the complete sibling set against static evidence and history. | Comparable independent observations expose disagreement. Splitting different modules among children provides throughput but not corroboration. | 2026-07-31 |
-| KD-11 | Superseded for F006 by KD-14. | Retained only as historical context. | 2026-08-11 |
-| KD-12 | Existing `Project.id` migrates into the canonical Workspace identity or remains only as a compatibility alias; Workspace and Project do not remain independent 1:1 aggregates. | Two lifecycle and authorization identities would recreate the cross-module drift that Workspace is meant to remove. | 2026-07-31 |
-| KD-13 | F001 implementation slices are tasks in the active plan, not new `F001a`–`F001k` lifecycle IDs. | One Feature truth source plus testable plan tasks provides decomposition without creating another competing Feature namespace. | 2026-07-31 |
-| KD-14 | F006 separates global Accounts, CLI-backed Models, and active Skill/MCP assets from Workspace availability and explicit Agent grants; it uses one-or-more Child Agents, durable drafts, explicit Apply, and immutable run snapshots. | This keeps global governance, Workspace intent, Agent authority, and running-analysis provenance independently explainable. | 2026-08-28 |
+F001 is the evidence boundary for F002–F004. F006 supplies reusable workspace and agent-capability settings; F001's local inventory can be validated independently, while any remote-agent access must use an approved F006 configuration.
 
-## Timeline
-
-| Date | Event |
-|---|---|
-| 2026-07-29 | F001 initially created around durable scan lifecycle |
-| 2026-07-29 | operator correction broadened F001 to legacy-system understanding correctness and Traqen self-dogfood |
-| 2026-07-29 | operator established the long-term evolution model: first full, later incremental, latest graph projection plus Feature/Impact history |
-| 2026-07-29 | operator established complete raw-source Agent coverage, deterministic partition/DAG execution, explicit model/Skill routing, and multi-model reconciliation |
-| 2026-07-31 | operator established Workspace-wide switching, same-batch Main/Child Agent corroboration, and Workspace-only runtime capabilities |
-| 2026-07-31 | GPT/Kimi cross-validation confirmed F001–F006 boundaries; the operator selected this design as the baseline and directed removal of superseded documents; ADR-0002 resolved canonical Workspace identity, F006 ordering, and runtime isolation |
-| 2026-08-11 | historical F006 contract recorded; superseded on 2026-08-28 |
-| 2026-08-28 | operator approved F006 global Accounts/CLI Models/Skill/MCP assets, Workspace availability plus explicit Agent grants, Child 1..N, explicit Apply, and immutable run snapshots |
-
-## Review gate
-
-Design Gate must approve:
-
-1. the system mission and canonical graph outcome;
-2. the multi-dimensional correctness contract;
-3. the reviewed truth-set authority;
-4. independent analysis lanes and reconciliation boundary;
-5. Traqen-on-Traqen as required acceptance;
-6. the Local Runner data boundary for the first connector;
-7. FULL→INCREMENTAL behavior, atomic CurrentGraphHead publication, and Feature-history semantics.
-8. complete Snapshot-derived Agent planning, capability-routed model/Skill execution, and evidence-based multi-model reconciliation.
-9. Workspace aggregate ownership, context-version switching, same-batch Child isolation, and immutable project-only capability resolution.
-
-Implementation then follows TDD, quality gate, independent review, and merge gate.
-
-## Links
-
-| Type | Path | Purpose |
-|---|---|---|
-| System requirements | `docs/architecture/traqen-system-requirements.md` | product mission, graph, journeys, system requirements, dogfood contract |
-| Product architecture | `docs/architecture/traqen-product-architecture.md` | Workspace root, F001–F006 boundaries, agent topology, authority model, and implementation gap map |
-| Active F006 implementation plan | `feature-specs/2026-08-28-f006-workspace-capability-settings.md` | F006 implementation order, TDD boundaries, migration, frontend, and acceptance |
-| Historical foundation plan | `feature-specs/2026-07-31-traqen-product-foundation.md` | F001 foundation history; its prior F006 tasks are superseded |
-| Detailed lifecycle design | `docs/features/workspace-scan-and-analysis-lifecycle.md` | complete Inventory, same-batch Main/Child execution, reconciliation, server ownership, and recovery |
-| Overall Excalidraw architecture | `docs/diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw` | editable Workspace-rooted product and module architecture |
-| Archify Analysis workflow | `docs/diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html` | deterministic batches, same-batch Child isolation, capability routing, reconciliation, and gaps |
-| Historical Archify capability resolution | `docs/diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html` | superseded overlay diagram; regenerate it for F006 after implementation validates the current contract |
-| Archify graph lifecycle | `docs/diagrams/traqen-product-architecture/graph-governance.lifecycle.html` | Candidate, Decision, evaluation, publication, rejection, and quarantine |
-| Canonical ontology | `docs/decisions/ADR-0001-canonical-traceability-ontology.md` | truth and authority boundaries |
-| Workspace aggregate ADR | `docs/decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md` | canonical Workspace identity, switching, migration, and runtime capability isolation |
+**Next:** F002 consumes the snapshot and inventory to create deterministic evidence facts and the API-structure projection.

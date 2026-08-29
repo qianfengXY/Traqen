@@ -1,11 +1,11 @@
 > 语言：**简体中文** · [English](ROADMAP.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F005, F006, F007]
+feature_ids: [F001, F002, F003, F004, F006]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-08-28
+updated: 2026-08-29
 ---
 
 # Traqen Feature 路线图
@@ -23,21 +23,19 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 
 | ID | 优先级 | Feature | 状态 | Owner | 来源 | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | Workspace 与存量系统分析基础 | spec | CodeX | operator 核心需求 | [F001](features/F001-legacy-system-understanding.zh-CN.md) |
-| F002 | P0 | 功能与 API 追溯 | spec | TBD | operator 产品规划 | [F002](features/F002-feature-api-traceability.zh-CN.md) |
-| F003 | P1 | 追溯图谱 | spec | TBD | operator 产品规划 | [F003](features/F003-traceability-graph.zh-CN.md) |
-| F004 | P0 | 声明审核 | spec | TBD | operator 产品规划 | [F004](features/F004-claim-review.zh-CN.md) |
-| F005 | P1 | 变更影响 | spec | TBD | operator 产品规划 | [F005](features/F005-change-impact.zh-CN.md) |
+| F001 | P0 | 工作空间与源码真相 | spec | CodeX | operator 已确认的重构 | [F001](features/F001-legacy-system-understanding.zh-CN.md) |
+| F002 | P0 | 确定性证据与 API 结构 | spec | TBD | operator 已确认的重构 | [F002](features/F002-feature-api-traceability.zh-CN.md) |
+| F003 | P1 | Agent 候选与审阅后的业务功能树 | spec | TBD | operator 已确认的重构 | [F003](features/F003-traceability-graph.zh-CN.md) |
+| F004 | P0 | 测试/执行证据、变更影响与重验证 | spec | TBD | operator 已确认的重构 | [F004](features/F004-claim-review.zh-CN.md) |
 | F006 | P2 | Workspace 能力设置 | spec | TBD | operator 已授权的[设计收敛](../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.zh-CN.md) | [F006](features/F006-workspace-capability-settings.zh-CN.md) |
-| F007 | P0 | 项目重新启动与发现 | spec | CodeX | operator 批准的保留历史式重启 | [F007](features/F007-traqen-project-relaunch.zh-CN.md) |
 
 ## 交付波次
 
 | 波次 | 目标 | Feature | 退出证据 |
 |---|---|---|---|
-| 0 | 建立一个 Workspace 根与一个生效能力 Profile | F006 + F001 合同 | 持久全局账号/CLI 模型设置、全局可用性及 Workspace 本地/禁用能力、Main + Child 1..N、生效快照、重启恢复，以及 Runtime 无法访问未授权能力 |
-| 1 | 用一条持久分析运行时替换相互竞争的 Scanner/Agent 路径 | F001 | 完整 Inventory、同批 Child 扇出、对账、Published Graph |
-| 2 | 通过最新/历史 Tree 和审核队列让图谱可审核 | F002 + F004 | 端到端证据旅程与批量审核 |
-| 3 | 探索并演进图谱 | F003 + F005 | 可解释 Graph Path 与 Full-to-Incremental Impact |
-| 4 | 用 Traqen 自身证明系统 | 全部 | 两个固定 Traqen Snapshot、独立验收、无 Demo Fallback |
-| R | 继续实现前重新确认产品方向 | F007 | 证据化现状审计、已确认的愿景/用户旅程/MVP，以及分阶段计划 |
+| 0 | 建立一个 Workspace 根和一份生效能力 Profile | F006 | 获批准的能力配置、生效快照、重启恢复，以及 Runtime 无法访问未授权能力 |
+| 1 | 让被分析的源码边界可复现 | F001 | 不可变源码快照、完整产物清单和明确覆盖处置状态 |
+| 2 | 发布确定性技术证据和 API 投影 | F002 | 可复现事实、证据链接、API 结构树和可见缺口 |
+| 3 | 建立已审阅的业务含义 | F003 | 有边界的 Agent 候选、人工审阅决策和可追溯业务功能树 |
+| 4 | 将理解转为更安全的下一次变更指引 | F004 | 快照绑定的执行证据、建议性影响分类和重验证建议 |
+| 5 | 在受控仓库变更上验证切片 | F001–F004 | 参考试点证据，且不设自动合并、CI 或部署卡点 |

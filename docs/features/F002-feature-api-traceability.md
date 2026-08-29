@@ -2,110 +2,83 @@
 
 ---
 feature_ids: [F002]
-related_features: [F001, F003, F004, F005]
-topics: [feature-tree, api-tree, traceability, history, evidence-gaps, frontend, user-journey]
-doc_kind: spec
-created: 2026-07-31
+topics: [deterministic-analysis, evidence-facts, api-tree, traceability, gaps]
+doc_kind: feature-spec
+created: 2026-08-29
+updated: 2026-08-29
+description: Derive reproducible source facts and an evidence-backed API-structure tree from a versioned workspace snapshot.
+description_source: human
+description_author: co-creator
+description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F002: Feature and API Traceability
+# F002 — Deterministic Evidence & API Structure
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P0
+**Status:** Spec
+**Owner:** TBD
+**Depends on:** F001
 
 ## Why
 
-An understood repository is useful only when a person can select one current Feature or API and see whether its requirement, design, implementation, data, configuration, tests, and results form a complete evidence chain.
+Legacy-system analysis needs a reproducible base that is not a model opinion. Before asking an agent to explain a feature, Traqen must expose what can be deterministically observed in the registered snapshot: artifacts, declarations, imports, routes, handlers, configuration references, and test references.
 
-## What
+## Outcome
 
-F002 owns two Workspace-scoped projections over the same canonical graph:
+F002 turns an F001 snapshot into versioned `Fact` and `EvidenceLink` records. It publishes an API-structure tree whose route, method, declared contract, and source handler are direct observations when the language adapter can prove them. It also publishes gaps where the extractor cannot establish a relationship.
 
-- **Feature Tree:** user-recognizable capabilities and governed Feature identity;
-- **API Tree:** endpoints, contracts, handlers, callers, data/configuration effects, tests, and results.
+The API tree is an evidence projection, not a claim that an endpoint belongs to a particular business capability. Business naming and ownership are F003 work.
 
-Both default to the latest published `CurrentGraphHead`. A working Candidate tree from an active analysis is shown separately and never masquerades as the governed tree.
+## Scope
+
+### In scope
+
+- Deterministic extractors for supported source languages and frameworks.
+- Normalized `Fact` records with extractor version, source snapshot, source range, and reproducibility token.
+- `EvidenceLink` records from facts to artifact ranges and supporting configuration or tests.
+- API-structure projection: route, HTTP method or transport operation, declared request/response contract where statically available, and handler linkage.
+- Explicit `CoverageGap` records for unsupported syntax, unresolved dynamic behavior, and missing evidence.
+
+### Out of scope
+
+- Inferring a business function, user intent, or API ownership from naming conventions.
+- LLM-generated semantic conclusions and review decisions (F003).
+- Recording whether a test actually passed in a particular environment (F004).
+
+## Evidence model
+
+| Record | Meaning |
+| --- | --- |
+| `Fact` | A reproducible observation emitted by a deterministic extractor. |
+| `EvidenceLink` | A precise link from a record to snapshot-bound artifact ranges. |
+| `Derivation` | Extractor name, version, parameters, and reproducibility token used to produce a fact. |
+| `CoverageGap` | A declared limit that prevents a fact or edge from being established. |
+
+Facts may be corrected by an improved extractor, but the prior derivation remains inspectable. Absence of an edge is not evidence of no impact unless the relevant coverage has been proven.
 
 ## User journey
 
-1. The user switches Workspace; the Feature and API trees reload under that Workspace context.
-2. The user selects a Feature or API.
-3. The detail view shows requirement, design, code ranges, data, configuration, test assets, TestSpecs, executions, results, Decisions, conflicts, and gaps.
-4. Missing or stale evidence is visible by evidence class and severity.
-5. The user opens history to compare governed FeatureVersions and implementation mappings by Snapshot while the tree remains on the latest version by default.
-
-## Frontend product experience
-
-### Governed tree and detail workspace
-
-The F002 surface uses a tree/detail workspace:
-
-- the left pane switches between Feature Tree and API Tree, searches the selected projection, and filters by evidence state;
-- the header identifies the current published `GraphRevision` and offers an explicit historical revision selector;
-- the detail pane provides Overview, Evidence, Relations, Gaps, and History views;
-- a compact five-stage Trace Chain preserves the existing visual language, while its detail expands the complete requirement, design, implementation, data, configuration, test-file, TestSpec, execution, result, Decision, conflict, and Gap objects without collapsing their identities.
-
-Every evidence item exposes its state, immutable resolver, Snapshot/Revision context, source location where applicable, and digest validation. Selecting a relation can open the focused F003 graph; selecting reviewable weak evidence can open its F004 queue item without losing the current Workspace and revision context.
-
-### Authority and history
-
-The primary Feature/API tree always reads a published governed projection. Working Candidates may be available in a separate, dashed, explicitly non-authoritative section or through a link back to F001, but they never appear as nodes in the governed tree.
-
-Selecting a historical Revision places the entire tree, detail, evidence, and relation view in read-only historical mode. Feature history shows FeatureVersion Decisions, implementation mappings by Snapshot, impacts, reviews, TestSpecs, executions, results, and Gaps. API history shows contract and implementation changes without inventing business identity.
-
-### States and responsive behavior
-
-- **No published head:** explain that analysis has not produced a governed graph and link to the current F001 Job or setup action.
-- **Partial coverage:** render every required evidence category as `MISSING`, `STALE`, `CONFLICTED`, or `NOT_APPLICABLE`; do not hide empty categories.
-- **Revision unavailable / evidence invalid:** keep the selected identity visible, explain the immutable reference failure, and offer a valid current or historical context.
-- **Workspace switch:** clear the old tree selection and history context before loading the new projection.
-
-### Legacy GraphArtifact compatibility
-
-GraphArtifact schema v2 stores `featureTraceability` inside the artifact digest. Earlier published artifacts remain immutable schema v1 records. Traqen must not reconstruct their missing F002 history from the current Feature baseline. A legacy Feature or selected object is usable only when the immutable artifact contains that exact Feature and proves the object has one unique Feature owner; absent, ambiguous, orphaned, or cross-Feature evidence fails closed as `UNAVAILABLE_REQUIRES_REANALYSIS` with a specific reason code.
-
-The recovery context is advertised as executable only after the server verifies the selected Revision's completed source Job, original SourceRegistration and WorkspaceExecutionProfileRevision, SnapshotManifest, sealed source package, and persisted ArtifactInventory. `POST /v1/projects/{projectId}/graph/revisions/{graphRevisionId}/reanalysis-jobs` derives those bindings from the source Revision; clients cannot substitute current Workspace state. It creates and publishes a new `HISTORICAL_REANALYSIS` GraphRevision linked by `reanalysisOfGraphRevisionId`; it never rewrites the source Revision and never moves `CurrentGraphHead`. If a migrated legacy record lacks any prerequisite, availability returns a distinct non-executable recovery state and no endpoint. The current Published Head remains a separate explicit `GET` context.
-
-Desktop uses tree/detail panes. Mobile uses tree-to-detail navigation with a persistent revision/authority header and returns to the same tree position.
-
-### Frontend acceptance
-
-- [ ] A user can open the latest governed Feature/API evidence chain without typing Workspace, Snapshot, Revision, Feature, or API IDs.
-- [ ] Governed, Working Candidate, and Historical contexts are visually and textually distinct and cannot be merged by a client filter.
-- [ ] The five-stage summary does not collapse test files, TestSpecs, executions, results, Decisions, or Evidence into one object.
-- [ ] All required evidence categories expose explicit missing, stale, conflicted, or not-applicable states and resolve to immutable context.
-- [ ] Tree selection, revision switching, evidence inspection, and return navigation work on desktop, keyboard, and mobile layouts.
-
-## Terminal contract
-
-- every displayed relation resolves to an immutable evidence or Decision reference;
-- latest and historical views use the same identity and lineage rules;
-- a code change may update implementation mapping and impact without creating a new business FeatureVersion;
-- test files, TestSpecs, executions, results, and Evidence remain distinct;
-- the API tree is not a second graph store.
+1. The architect selects an F001 source snapshot.
+2. Traqen runs only the supported deterministic extractors.
+3. The architect opens the API tree and follows every visible endpoint or handler back to evidence.
+4. Unsupported or unresolved areas appear as gaps, not as silently missing branches.
 
 ## Acceptance criteria
 
-- [ ] Switching Workspace changes both trees, selected details, history, and subscriptions atomically.
-- [ ] The default tree reads the latest published head and labels working Candidates separately.
-- [ ] A selected Feature/API exposes all required evidence classes with explicit `MISSING`, `STALE`, `CONFLICTED`, or `NOT_APPLICABLE` states.
-- [ ] Every source excerpt is Snapshot-bound and content-digest verified.
-- [ ] Feature history lists FeatureVersion Decisions, implementation mappings, impacts, reviews, tests, results, and gaps in chronological order.
-- [ ] API history preserves contract and implementation changes without inventing business identity.
-- [ ] No demo fallback can appear in a live Workspace.
+- [ ] A reference-pilot snapshot yields reproducible facts across two identical runs.
+- [ ] Every published fact has a snapshot ID, extractor derivation, and at least one evidence link.
+- [ ] Each discovered supported endpoint shows its route/operation, handler evidence, and declared contract evidence when available.
+- [ ] The API tree labels unavailable evidence and unresolved dynamic routes as gaps.
+- [ ] Facts can link code, configuration, documentation, and test assets without asserting semantic ownership.
+- [ ] The published API tree never promotes a heuristic business classification to a deterministic fact.
 
-## Current gap
+## Open questions
 
-Implementation commit `1682d7d` has Candidate Feature/API modes and traceability/history APIs, but the main UI does not consume the Feature history API and still mixes local Candidate projections with live/demo paths.
+- Which frameworks form the first supported extractor set?
+- How should protocol adapters represent asynchronous events and non-HTTP APIs in the common tree?
+- What source-range format remains stable across generated or vendored files?
 
-## Dependencies
+## Dependencies and handoff
 
-- F001 provides Workspace, Snapshot, Candidate, reconciliation, and published graph foundations.
-- F003 visualizes the same selected object and paths.
-- F004 governs insufficient or automated outcomes.
-- F005 attaches change history and impact.
+F002 requires F001's immutable snapshot and complete inventory. F003 may use facts as evidence but must preserve the distinction between deterministic facts and semantic candidates. F004 uses facts and gaps to calculate bounded, advisory impact.
 
-## Non-goals
-
-- generating business truth from a tree label;
-- hiding missing evidence to simplify the UI;
-- storing a separate Feature tree database.
+**Next:** F003 proposes and reviews business semantics over this evidence base.

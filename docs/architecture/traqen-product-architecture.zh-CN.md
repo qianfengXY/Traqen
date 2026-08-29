@@ -1,350 +1,134 @@
 > 语言：**简体中文** · [English](traqen-product-architecture.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F005, F006]
-related_features: []
-topics:
-  - product-architecture
-  - workspace
-  - analysis-agent
-  - traceability
-  - governance
-  - change-impact
-  - frontend
-  - user-journey
-doc_kind: architecture
-created: 2026-07-31
-updated: 2026-08-28
-status: proposed
+feature_ids: [F001, F002, F003, F004, F006]
+topics: [product-architecture, legacy-system, traceability, evidence, change-impact]
+doc_kind: product-architecture
+created: 2026-07-29
+updated: 2026-08-29
 ---
 
 # Traqen 产品架构
 
-## 1. 使命与设计边界
+## 1. 产品承诺
 
-Traqen 要把一个存量项目的代码和文件理解到足以构建可审核图谱的程度，在图谱中关联需求、设计、代码、数据、配置、测试、测试结果与变更历史。图谱服务于审核，不能假装自动分析已经恢复了不容置疑的业务真相。
+Traqen 帮助架构师接手陌生的存量系统，并让下一次变更更安全。它以版本化证据链把已登记源码连接到两个可理解的投影：
 
-本文是产品级架构真相源，负责定义：
+- **业务功能树**：仅由经人工审阅的主张组成；
+- **API 结构树**：仅在可得时由确定性源码观察组成。
 
-- Workspace 聚合根与跨模块上下文；
-- 产品 Feature 地图；
-- Main/Child Analysis Agent 拓扑；
-- 全局模型资产、内置/项目能力 Catalog 与 Workspace 生效配置；
-- Canonical Graph 权威与历史；
-- 目标架构和实现提交 `1682d7d` 之间经过代码核验的差距。
+产品不会隐藏哪些材料未被分析、提取器无法建立什么关系，或模型在哪些地方作出了不确定解释。
 
-详细执行合同保留在 [F001 Workspace 扫描与 Analysis Agent 生命周期](../features/workspace-scan-and-analysis-lifecycle.zh-CN.md)，Canonical Entity 的权威边界保留在 [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)；Workspace 身份、切换与能力隔离由 [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)固定。
+## 2. 活动设计权威
 
-## 2. 架构不变量
+当前交付合同为 F001–F004：
 
-1. **Workspace 是聚合根。** 每个 Run、Snapshot、Inventory 记录、Fact、Candidate、Decision、GraphRevision、审核、影响评估、配置和投影必须且只能属于一个 `workspaceId`。
-2. **切换 Workspace 就切换整个产品。** 导航可以停留在同一模块，但数据、选择、订阅、设置和 Current Graph Head 必须全部重新绑定到新 Workspace。
-3. **移出不是删除。** 添加/移除只改变 Workspace 是否出现在用户的切换器中；删除则在可审计的保留策略下改变 Workspace 生命周期。
-4. **原始源码是 Agent 任务源。** 完整、不可变的 `SourceSnapshot` 与 `ArtifactInventory` 定义分析覆盖；Scanner Facts 是独立的对账参考，绝不能定义 Child Agent 的任务全集。
-5. **每个已配置 Child Agent 都收到同一批任务。** F006 生效要求一个 Main Agent 和至少一个已启用且完整的 Child Agent 槽位。对同一个 `AnalysisBatch`，所有启用 Child 槽位收到相同源码范围和输出合同；若需要相互印证，运行策略可要求多个独立结果。
-6. **模型、Skill、MCP 都是显式运行输入。** Main 和各 Child 槽位可以选择不同模型 Profile；Run 固定引用不可变的 Workspace 生效执行 Profile。
-7. **配置权威彼此分离。** 全局账号/Allowlist CLI 模型与 Skill/MCP 资产可复用；Workspace 可用性、本地能力和 Agent Slot 属于具体 Workspace。Runtime Worker 只能拿到物化后的 Snapshot，不能查询可变 Registry。
-8. **不可信证据不能静默通过。** 无效、越界、矛盾或不可验证证据必须隔离 Candidate 或记录 Gap；不能无账本丢弃，更不能按票数晋升。
-9. **实时树是投影，不是权威。** Workspace Analysis 可以流式展示已对账 Working Candidate；受治理的 Feature/API 树默认读取最新发布的 `CurrentGraphHead`。
-10. **历史只追加。** 新 Snapshot 或实现映射不能重写业务 Feature 版本；Decision、Mapping、GraphRevision、ChangeSet、Impact、测试与结果始终可查询。
+| Feature | 架构职责 |
+| --- | --- |
+| F001 — 工作空间与源码真相 | 登记受权限约束的源码，捕获不可变 `SourceSnapshot`，并清点每份产物及覆盖处置状态。 |
+| F002 — 确定性证据与 API 结构 | 提取可复现的 `Fact`、`EvidenceLink`、`Derivation` 和 `CoverageGap`；发布 API 结构树。 |
+| F003 — Agent 候选与审阅后的业务功能树 | 产出有边界的语义候选，且只将经人工批准的候选提升为业务主张和业务功能树。 |
+| F004 — 测试/执行证据、变更影响与重验证 | 保存真实执行上下文，比较源码快照，并给出建议性的影响与重验证指引。 |
+| F006 — 工作空间能力设置 | 提供显式、版本化的能力和 Agent 访问配置，但不扩大分析源码边界。 |
 
-## 3. 产品 Feature 地图
+统一本体和权威约束保留在 [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)。工作空间身份和能力隔离规则保留在 [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)。F006 保留既有实施轨道。
 
-| ID | 产品模块 | 负责内容 | 依赖 |
-|---|---|---|---|
-| F001 | Workspace 与分析基础 | Workspace 生命周期、源码登记、静态扫描、Main/Child 分析、对账、进度与 Working Tree | F006 |
-| F002 | 功能与 API 追溯 | 最新 Feature/API 树、证据块、缺口和单 Feature 历史 | F001 |
-| F003 | 追溯图谱 | 交互式图谱投影和证据路径探索 | F001、F002 |
-| F004 | 声明审核 | 审核队列、证据不足流程、批量 Decision 和编辑自动准入结果 | F001、F002 |
-| F005 | 变更影响 | 增量变化路径、受影响对象和重新验证计划 | F001、F002、F003 |
-| F006 | Workspace 能力设置 | 全局账号、白名单 CLI 模型、全局 Skill/MCP 可用性、Workspace 本地/禁用能力、显式 Agent 授权、持久 Draft、生效版本和不可变执行快照 | 无 |
-
-以上工程 `Fxxx` 是交付标识，不是 Traqen 图谱中的受治理业务 `Feature.id`。
-
-## 4. 总体功能架构
-
-[打开可编辑 Excalidraw 源](../diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw) · [静态 SVG](../diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
-
-总体图只遵循一条核心规则：`CurrentWorkspaceContext` 向所有产品界面扇出，任何模块都不能拥有独立的项目选择器。
+## 3. 证据流
 
 ```text
-Workspace 切换器
-  └─ CurrentWorkspaceContext
-       ├─ Workspace 分析
-       ├─ 功能追溯
-       ├─ 追溯图谱
-       ├─ 声明审核
-       ├─ 变更影响
-       └─ Workspace 设置
+已登记源码 + 访问策略
+        │
+        ▼
+F001 工作空间 ──► SourceSnapshot ──► ArtifactInventory ──► CoverageGap
+                                              │
+                    ┌─────────────────────────┴──────────────────────────┐
+                    ▼                                                    ▼
+F002 确定性提取器                                         F003 已授权 Agent
+Fact + EvidenceLink + Derivation                            Candidate + 推断来源
+        │                                                    │
+        ▼                                                    ▼
+API 结构树                                            人工 ReviewDecision
+                                                              │
+                                                              ▼
+                                                     Claim ──► 业务功能树
+                    └─────────────────────────┬──────────────────────────┘
+                                              ▼
+                              F004 ChangeSet + TestExecution 证据
+                                              │
+                                              ▼
+                              建议性的影响与重验证指引
 ```
 
-所有模块读取相同 Canonical Ledgers，但使用不同投影。Working Candidate Tree 与已发布 Governed Tree 必须在视觉和契约上严格区分。
+每条箭头均绑定快照。下游记录必须写明它依赖的源码快照和准确证据，不能依赖会变化的文件系统、记忆中的模型对话或未版本化报告。
 
-### 4.1 跨 Feature 产品体验
+## 4. 真相与不确定性规则
 
-产品 Shell 把上述六个模块组织成一条受 Workspace 定界的用户旅程，而不是六个互不相干的管理页面：
+| 层级 | 创建者 | 可以陈述 | 不可以做 |
+| --- | --- | --- | --- |
+| `Fact` | 确定性提取器 | 可复现的直接源码观察 | 声明业务意图或批准 |
+| `Candidate` | 已授权 Agent | 有边界的语义假设 | 发布业务真相 |
+| `Claim` | 人工审阅决策 | 已批准的当前业务含义 | 抹除其候选/证据历史 |
+| `TestExecution` | 受控 Runner 或集成 CI | 运行了什么、在哪里运行和结果 | 证明未观测行为 |
+| `CoverageGap` | 清单、提取、审阅或执行过程 | 已知的置信度限制 | 从结果中静默消失 |
 
-| 导航分组 | 产品界面 | 用户首要任务 |
-|---|---|---|
-| 理解 | Workspace 分析（F001） | 建立或更新系统理解 |
-| 理解 | 功能 / API（F002） | 核对受治理能力及其证据链 |
-| 理解 | 追溯图谱（F003） | 解释关系与证据路径 |
-| 治理 | 声明审核（F004） | 裁决弱证据、冲突、抽样或过期 Candidate |
-| 治理 | 变更影响（F005） | 解释变化并关闭审核/重验证动作 |
-| 配置 | 能力设置（F006） | 固定 Workspace 执行能力与边界 |
+候选一致性只构成佐证，绝不是判定真相的规则。除非相关覆盖范围已经证明，否则缺少一条边不能得出“无影响”。被拒绝、过期或被替代的材料保持可审计，但不会显示为当前真相。
 
-Workspace 根路径是**落地总览**，不是第七个产品模块。总览汇总当前 Published Head、活跃 Job、审核队列、未关闭影响动作、配置有效性和最近的不可变活动。主操作随 Workspace 状态变化：登记源码、修复配置、开始首次分析、继续活跃 Job、启动增量分析，或处理阻断审核。
+## 5. 源码边界与安全
 
-常驻 Shell 必须展示：
+F001 是分析内容唯一入口。每个工作空间声明源码定位、内容策略、快照身份和产物处置。源码内容只能由获批准的本地提取器，或由 F006 显式授权的 Agent 配置读取。不能仅因系统具有分析能力，就把原始源码传给外部模型。
 
-- Workspace 切换器与当前 Workspace 身份；
-- 当前模块与选中对象的面包屑；
-- 当前已发布 `GraphRevision`，或明确的历史只读上下文；
-- 当前 Workspace 的审核与变更影响数量；
-- 语言、主题、身份、帮助和连接健康状态。
+已发布结果最小不可变来源信息包括：
 
-API Base URL、Token、原始对象 ID 等部署诊断不是产品主导航。开发或部署模式仍需要时，应放入环境级诊断抽屉。正常用户旅程从 Workspace、Job、受治理对象、审核队列或最新已发布 ChangeSet 进入，绝不能要求用户手工输入内部 ID。
+- 源码快照和产物定位/范围；
+- 生产者身份与版本（提取器、Agent、Runner 或审阅者）；
+- 推导或推断输入及可复现令牌；
+- 管理本次运行的访问、出站和保留策略；
+- 置信度与覆盖状态。
 
-### 4.2 权威与视觉状态合同
+## 6. 两棵面向用户的树，一份证据图
 
-所有产品界面必须使用一致的权威语言：
+两棵树是同一证据图谱上的投影，并非两个脱节的存储。
 
-- **Published：** 实线容器、`GraphRevision` 标识和 `PUBLISHED` 文字；
-- **Working Candidate：** 虚线容器、`CANDIDATE` 文字和固定的非权威说明；
-- **Historical：** 显示选中 Revision 的只读横幅，并提供直接返回 Current Head 的入口；
-- **Conflict、Gap、Missing、Stale：** 同时使用图标、文字和颜色，颜色不能成为唯一编码；
-- **Unavailable：** 展示缺失的分母或来源及其原因，不能编造 0 分或满分。
+| 投影 | 包含节点 | 发布规则 |
+| --- | --- | --- |
+| 业务功能树 | 已审阅 `Claim` 节点及其已批准关系 | 必须人工审阅决策 |
+| API 结构树 | 确定性的端点/操作/处理器/契约事实 | 必须有提取器证据 |
 
-Candidate 与 Governed Projection 可以互相跳转，但不能共用一棵树、静默合并，或复用会隐藏权威差异的视觉状态。Graph 布局、客户端选择与缓存偏好都不能创建 Canonical Node、Edge、Decision 或进度。
+业务树可以关联 API、代码、文档、测试、配置和执行记录，但这些链接保留各自原始层级和来源。API 树可以展示未分类端点；为了让展示看起来完整，它不得发明业务负责人或能力。
 
-### 4.3 共享交互与状态合同
+## 7. 变更与测试证据
 
-- 页面 Mount、刷新、重连和 Workspace 切换都是只读操作。Start、Pause、Resume、Cancel、Review 与保存设置只能由用户显式命令触发；Publishing 遵循受治理的服务端工作流，绝不能作为页面生命周期副作用触发。
-- 切换 Workspace 时禁用旧上下文命令、清除旧选择、重绑订阅，并按 5.2 节拒绝迟到响应。
-- 空状态解释对象为什么不存在，并指出下一项有效动作；重试必须保留筛选和未保存输入。
-- 并发命令必须明确失败；审核与设置冲突要同时保留用户输入和服务端新版本以供比较。
-- 进度独立展示 Inventory、静态提取、Agent 工作、审核、评估与发布分母；Traqen 不能把它们压缩成一个置信度或理解度总分。
-- 桌面端可以使用列表/内容/证据多栏；移动端通过列表到详情的逐级导航保留相同任务，Graph 默认展示可访问的关系/路径列表，画布是可选视图。
-- Tree 导航、批量选择、审核 Decision 与图谱路径查看必须支持键盘；实时进度使用摘要播报，不能逐条朗读高频诊断。
+F004 区分三种不同记录：
 
-F001-F006 Feature 文档分别负责本页面的旅程、状态、权威绑定和前端验收标准。[Enterprise Blue](../design/enterprise-blue-theme.zh-CN.md) 继续作为视觉设计系统真相源；本文不重复其颜色或组件 Token。
+1. **测试资产：** 看似定义或调用测试的源码产物。
+2. **测试规格：** 在可得时描述应该验证什么的受治理说明。
+3. **测试执行：** 带运行器、环境、时间、源码快照、结果和保留证据的一次运行。
 
-## 5. Workspace 聚合与生命周期
+对于两个快照之间的 `ChangeSet`，Traqen 遍历事实、已审阅主张和执行证据。每条建议为 `CONFIRMED`、`POSSIBLE` 或 `UNKNOWN`，并携带支撑证据和覆盖限制。第一个版本只提供建议；不阻塞 CI、合并、部署或生产工作。
 
-### 5.1 Canonical 对象
+## 8. 架构师旅程
 
-```ts
-type Workspace = {
-  id: string;
-  name: string;
-  status: "ACTIVE" | "DELETION_PENDING" | "DELETED";
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
-};
+1. 登记源码并确认其分析/出站策略。
+2. 查看不可变快照和全部清单处置状态。
+3. 浏览可复现技术事实和 API 结构树。
+4. 运行一个或多个获批准 Agent；审阅其候选和缺口。
+5. 将已批准主张发布进业务功能树。
+6. 将拟议变更与先前快照比较；查看受影响业务/API 视图、已知执行证据和建议重验证项。
 
-type WorkspaceViewPreference = {
-  workspaceId: string;
-  principalId: string;
-  visible: boolean;
-  lastOpenedAt: string | null;
-};
+每一步均可能以可见缺口停止。产品宁愿给出明确的不完整答案，也不提供貌似有说服力却没有支撑的答案。
 
-type CurrentWorkspaceContext = {
-  workspaceId: string;
-  workspaceVersion: number;
-  effectiveConfigurationRevisionId: string;
-  currentGraphHeadVersion: number | null;
-};
-```
+## 9. 交付与试点门禁
 
-`WorkspaceViewPreference.visible=false` 实现移出/隐藏但保留数据。删除是独立的可审计命令。已删除 Workspace 不能启动 Run 或接收新 Decision，物理清理不可变产物的时机由保留策略控制。
+交付顺序遵从证据依赖：
 
-现有服务端 `Project.id` 应迁移为 `Workspace.id`，或在过渡期仅作为同一身份的兼容别名保留。它不能继续作为第二个 1:1 聚合，拥有独立生命周期、选择状态或授权状态。
+1. F006 能力配置和 F001 源码真相合同。
+2. F002 确定性事实、证据链接、缺口和 API 投影。
+3. F003 候选来源信息、人工审阅和业务功能投影。
+4. F004 执行证据、快照比较、建议性影响和重验证。
+5. 在受控仓库变更上开展参考试点。
 
-### 5.2 切换事务
+只有当试点证明快照/清单稳定、事实可复现、两棵树具有不同权威规则、缺口显式可见，并且影响指引有明确边界时，试点才能通过。不得使用演示兜底或自动强制门禁掩盖缺失证据。
 
-用户选择另一个 Workspace 时，Shell 必须：
+## 10. 与现有实现的关系
 
-1. 替换 `CurrentWorkspaceContext`；
-2. 取消或脱离旧 UI 订阅，但不能取消服务端任务；
-3. 清除旧 Workspace 的 Feature/API/Graph/Review/Impact 选择；
-4. 加载新 Workspace 的生效配置与 Current Graph Head；
-5. 挂接新 Workspace 的活跃 Job 和投影；
-6. 拒绝 `workspaceId` 或 Context Version 已不匹配的迟到响应。
-
-这样可以防止慢响应在切换后把一个 Workspace 的数据展示到另一个 Workspace。
-
-## 6. Workspace Analysis 架构
-
-### 6.1 独立证据通道
-
-一个不可变 Snapshot 同时进入两条独立通道：
-
-- **静态扫描通道：** 清点文件、代码、配置、文档、图片、测试、结果以及不支持/二进制内容；在能力范围内提取确定性 Facts。
-- **Agent 通道：** 从完整 Inventory 确定性产生 `AnalysisBatch`，让每个已配置 Child Agent 从同一批次读取受策略约束的原始 `SourceSlice`。
-
-图片和其他二进制 Artifact 始终留在 Inventory 分母中。只有安装并声明了媒体/OCR 能力的 Specialist 才能分析；否则必须产生显式 Unsupported 或 Unprocessed Gap。
-
-### 6.2 Main 与 Child Agent 合同
-
-Main Agent 负责规划问题、输出合同、生命周期控制、对账、Follow-up、Module/Project 汇总和面向用户的说明。覆盖率统计不归 Main 模型决定；即使 Main 模型失败，确定性 Planner 仍必须保证全部 Artifact 得到处置。
-
-每个启用的 Child Agent：
-
-- 有自己固定的模型、Skill 集、MCP 集与能力 Provenance；
-- 收到与其他启用 Child 完全相同的 `AnalysisBatch` 身份、源码范围、约束和输出 Schema；
-- 独立分析，不能读取其他 Child 的输出或私有推理；
-- 返回有证据约束的 Candidate Observation 或显式不确定性。
-
-新 Workspace 创建一个空的 `Child 1` 槽位并允许继续增加，不导入模板；少于一个已启用且完整的 Child 时不能生效。Run 用 `independenceGroup` 记录多个结果是否真正独立；使用同一底层模型族仍可运行，但在需要相互印证时不能算独立佐证。
-
-[打开交互式 Analysis Batch 工作流](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html) · [Archify 源](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
-
-### 6.3 批次扇出与对账
-
-对每个批次：
-
-1. 确定性 Planner 密封共享输入；
-2. Scheduler 为每个启用 Child 槽位创建一个 `ChildWorkUnit`；
-3. 全部 ChildWorkUnit 独立运行，并允许并发；
-4. 证据校验拒绝 Snapshot、Batch 或 SourceSlice Allowset 以外的引用；
-5. Main Agent 把所有合法 Child 结果与静态 Facts、历史 Lineage 一起比较；
-6. 完全一致只能在校准过的置信上限内增加佐证；
-7. 分歧写入 `ConflictLedger`，不能按多数票决定；
-8. 证据无效输出隔离为 Candidate 或 Gap；
-9. 已对账的批次投影更新 Working Feature/API Tree；
-10. Module 与 Project 汇总读取已对账输出及原始证据引用，绝不能只读 Child Summary。
-
-因此，超大工程无需一个整仓 Prompt。Batch 数量动态增长，逻辑 Child 数量由 Workspace 配置。
-
-### 6.4 实时进度
-
-进度必须分别展示不同分母：
-
-- Snapshot 与 Inventory：发现、密封、纳入、排除、不支持、失败；
-- 静态扫描：计划与完成的 Extractor WorkUnit；
-- Agent 分析：已规划 Batch、已完成 ChildWorkUnit、等待兄弟结果、完成对账；
-- 质量：证据合法 Candidate、隔离 Candidate、冲突、Gap；
-- 发布：Evaluation 与 GraphRevision 状态。
-
-实时树只能在批次对账后更新。原始模型文本永远不能直接修改可见 Feature/API 节点。
-
-## 7. 能力配置与隔离
-
-### 7.1 四类权威、一个运行快照
-
-全局设置负责账号、可复用且白名单化的 CLI 模型，以及全局 Skill/MCP 资产。Workspace 设置负责带有项目可用性、本地能力及 Main/Child Roster 的持久 Draft。Agent 从 Workspace 生效集得到显式授权。系统不存在可编辑全局模板、全局 Active/Default Model、直接 API 模型 Runtime 或隐式授权。
-
-```text
-Global Accounts（API-key Secret 引用 / CLI-owned OAuth 状态）
-                  +
-Global CLI Models + active Skill/MCP Assets
-                  ↓ 可用性上限
-Workspace Draft：禁用继承能力 + 独立本地能力
-                  +
-Workspace Agent Roster（一个 Main + Child 1..N）
-                  ↓ Auto-save、Validate、显式 Apply
-Workspace Active Configuration
-                  ↓ Run 启动时固定
-不可变、非敏感 Execution Snapshot
-                  ↓ 只挂载本 Snapshot
-Main Agent / Child Agents / Worker
-```
-
-[此前的交互式配置数据流](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) 是历史内容，需在 F006 实施时重新生成；它编码的是已被取代的 Overlay 模型。
-
-能力解析顺序是 `active global − Workspace disabled + Workspace local`，再取 `生效集 ∩ 显式 Agent Grant`。全局 inactive/deleted 资产不能由 Workspace 重新启用；Workspace 本地项独立存在，不替换或字段级 patch 全局 Manifest。
-
-Workspace Execution Revision 包含：
-
-- Main Agent 模型 Revision 以及规划/对账 Skill/MCP Grant；
-- 有序 Child Agent 槽位及各自模型/Skill/MCP Grant；
-- 全局/本地能力 Provenance、Workspace 禁用状态和显式 Grant Digest；
-- 项目依赖项；
-- 项目规范与约束；
-- 数据边界、预算、并发、重试与校准策略；
-- 内容 Digest 及创建/校验 Provenance。
-
-Runtime 代码不能拿到全局 Registry Handle。某个 Skill 或 MCP 即使已全局安装，只要没有进入 Workspace Revision，在本次运行就不可用。
-
-Run 启动后仍可继续编辑设置。Auto-save 推进持久 Draft；显式 Apply 为后续 Run 创建新的不可变 Active Configuration。Run 继续固定其 Snapshot，不能热切换。全局 Skill/MCP 删除需要服务端计算的影响预览和输入名称确认；只有 Active Configuration 实际授权了已不可用资产时才阻断新 Run。
-
-### 7.2 Secret
-
-模型与 MCP Revision 只能引用 Credential Handle，不能把明文 Secret 复制进 Run。解析器只向精确的 Workspace、Run 和 Agent 槽位授予最小 Secret Handle。Telemetry、Diff、Diagnostic、Log、Execution Profile 与持久化 Prompt 不包含凭据和未脱敏秘密。本机 CLI Adapter 不通过 Shell 插值构造 argv，并负责有界 Timeout、Output、Cancel 与 Process-tree Cleanup。
-
-## 8. Canonical Graph、审核与历史
-
-权威顺序是：
-
-```text
-SourceSnapshot / ArtifactInventory
-  → 确定性 Facts
-  → Child 结果
-  → 已对账 Candidates + Conflict/Coverage/Gap Ledgers
-  → 人工 Review 与 Decision
-  → 不可变 GraphRevision
-  → 评估通过后原子发布 CurrentGraphHead
-```
-
-Candidate 可以进入 Working Tree，但不能创建或修改受治理 Feature、Claim、FeatureVersion 或 TestSpec。自动准入是可编辑的审核结果，不是不可修改的真相。
-
-[打开交互式 Graph 生命周期](../diagrams/traqen-product-architecture/graph-governance.lifecycle.html) · [Archify 源](../diagrams/traqen-product-architecture/graph-governance.lifecycle.json)
-
-默认 Feature/API Tree 读取最新 Published Head。单个 Feature 的历史视图必须解析：
-
-- 每个受治理 FeatureVersion 及其 Decision；
-- 按 Snapshot 记录的实现映射；
-- 需求、设计、数据、配置、测试和结果证据；
-- ChangeSet 与 ImpactAssessment；
-- Review Event、Conflict、Gap 和 VerificationResult。
-
-历史兼容必须 Fail Closed。v2 之前的 artifact 只能暴露那些可由不可变 artifact 内容唯一证明归属于请求 Feature 的 Node 和 Edge。缺少 F002 Snapshot 时，只有原始 Job、来源/执行配置绑定、封存 Snapshot 与持久化 Inventory 均通过核验，系统才提供服务端重分析命令；否则返回不带命令 endpoint 的不可执行前提原因。恢复绑定由服务端从来源 Revision 推导；新生成的关联历史 GraphRevision 会被发布，但不会改写来源 Revision，也不会改变 `CurrentGraphHead`。
-
-## 9. `1682d7d` 实现差距
-
-下表描述仓库实现，而不是设计意图。
-
-| 愿景领域 | 状态 | 已核验实现证据 | 必须调整 |
-|---|---|---|---|
-| Workspace 根与切换 | 部分具备 | `web/app/traqen-product.tsx` 保存 `workspaceProjectId` 并把 `projectId` 传入多数页面；`local-workspace-store.ts` 在浏览器持久化项目与可见性 | 建立服务端 Workspace 聚合/Context，拒绝跨 Workspace 迟到响应 |
-| 新建、隐藏/显示、删除 | 部分具备 | 浏览器 UI 可新建和隐藏本地记录；`contracts/openapi.json` 只有 `POST /v1/projects` 与 `GET /v1/projects/{projectId}` | 分离 View Preference 与可审计删除，增加 List/Lifecycle API |
-| 完整工程静态扫描 | 部分具备 | 浏览器扫描只读取指定文本扩展和不超过 768 KiB 的文件；`LegacyUnderstandingRuntime` 另有服务端 Inventory 路径 | 删除竞争的权威扫描路径；图片/二进制也必须有处置 |
-| Agent 读取原始源码 | 部分具备 | `LegacyUnderstandingRuntime` 读取 Snapshot `SourceSlice`；旧 `AnalysisAgent` 只消费 Scanner FactGraph | 收敛为一条 Child 读取 Snapshot Slice、Scanner Facts 只用于对账的运行链 |
-| 可配置 Main + Child 1..N | 缺失/冲突 | 只有一个全局 Active Model；能力领域允许一个 Child；Web 固定渲染三个空闲 Child 槽；模型 Planner 强制恰好三个 Assignment | 引入持久化的按角色 Workspace Agent 槽位，F006 生效要求一个完整 Child，并删除硬编码三个 |
-| 同一批任务发送给所有 Child | 缺失 | 未接入的 Planner 把不同 Module 分给三个 Assignment；服务端 `AnalysisAgent` 每个 WorkUnit 只调用一个模型 | 引入 `AnalysisBatch`，为每个已配置槽位创建 ChildWorkUnit |
-| Main 规划与多结果对账 | 部分具备 | 有确定性 Reconciliation；客户端 Helper 只把一组 Enrichment 与 Scanner Candidate 对比 | 对同批全部兄弟结果、静态 Facts 和 Lineage 做对账 |
-| 全局账号/CLI 模型 + Workspace Skill/MCP 可用性和授权 | 缺失 | 模型 Registry 有一个 Active Profile 且 Adapter 偏 API；Skill/Policy 全局启动；Resolver 只按名称查找；没有项目能力或 Workspace MCP 管理 | 增加账号状态、Allowlist CLI 模型、全局可用性、Workspace 禁用/本地能力记录、显式 Grant、Draft/Active Head、Run Snapshot 和 Profile-only Runtime Access |
-| 实时分析统计/树 | 部分具备 | 浏览器发布 Scanner 派生进度树；服务端 AnalysisRun 只提供 WorkUnit 计数 | 流式发布已对账 Batch 投影和独立覆盖/质量分母 |
-| Feature/API 追溯与历史 | 部分具备 | Tree 与 API 已存在；`getFeatureUnderstandingHistory` 已实现但主产品 UI 未使用 | 两棵树与历史统一绑定 Published Workspace Graph Projection |
-| 追溯图谱 | 部分具备 | 已有交互图和 Current Head API | 删除 Demo Fallback，所有路径必须可解析证据 |
-| 审核队列、批量审核、编辑自动通过 | 缺失/部分具备 | 当前 UI 按 ID 读取一个 Reverse Candidate 并单条提交；无批量队列或自动准入编辑器 | 增加 Workspace Review Queue、批量命令、可编辑自动 Outcome 与乐观并发 |
-| 变更影响 | 部分具备 | 有领域/API 与手工 Snapshot 对比 UI，仍带 Demo Fallback | 从 Published Incremental Run 和当前 Workspace 图谱路径驱动 |
-
-因此，当前实现提供的是可复用领域部件，不是本架构的连贯实现。
-
-## 10. 交付顺序
-
-Codex 的唯一活动实施计划是
-[`feature-specs/2026-07-31-traqen-product-foundation.md`](../../feature-specs/2026-07-31-traqen-product-foundation.md)。
-
-1. **基础：** F006 配置解析和 F001 Workspace 聚合合同。
-2. **分析切换：** 一条服务端 Snapshot/Inventory/Scanner/Agent 路径，实现同批 Child 扇出与对账。
-3. **发布投影：** F002 最新/历史 Tree 与 F004 审核队列。
-4. **探索：** F003 图谱路径只能读取 Canonical Ledgers。
-5. **演进：** F005 增量影响与重新验证。
-6. **Dogfood：** 用两个固定 Traqen Snapshot 证明 FULL → INCREMENTAL、审核、历史与影响。
-
-F002～F005 不必等待 F001 所有 Dogfood 活动结束，但必须等各自依赖的 F001 Canonical Contract 稳定后才能开始。它们可以在这些合同上构建投影与工作流，不能为了等待完整发布门禁而另建临时 Store 或权威规则。
-
-后续模块不能再发明另一套项目选择器、模型 Registry、Candidate 权威规则或 Graph Store。
-
-## 11. 非目标
-
-- 自动把模型共识声明为业务真相；
-- 把整个仓库发送给一次模型请求；
-- 在独立完成前让 Child Agent 读取兄弟输出；
-- 在 Runtime 直接使用全局 Skill/MCP；
-- 代码变化后重写历史 Feature Version；
-- 假装不支持的图片、二进制、生成物或秘密不存在。
+现有领域、扫描、图谱、历史、执行和模型 Profile 代码只是实现基线，不能证明本架构已经完成。实现必须将每项行为映射到 F001–F004 合同，并保留 F006 的既有工作；不能在没有本章所述来源和审阅规则时，将旧 Scanner 输出、Agent 对话或 UI 状态提升为权威。

@@ -18,25 +18,23 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 
 | ID | Active Feature document | Supporting design |
 |---|---|---|
-| F001 | [Workspace and Analysis Foundation](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | [Workspace scan and Analysis Agent lifecycle](features/workspace-scan-and-analysis-lifecycle.md) · [中文](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) |
-| F002 | [Feature and API Traceability](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
-| F003 | [Traceability Graph](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | product architecture |
-| F004 | [Claim Review](features/F004-claim-review.md) · [中文](features/F004-claim-review.zh-CN.md) | product architecture |
-| F005 | [Change Impact](features/F005-change-impact.md) · [中文](features/F005-change-impact.zh-CN.md) | product architecture |
+| F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | product architecture |
+| F002 | [Deterministic Evidence & API Structure](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
+| F003 | [Agent Candidates & Reviewed Business Function Tree](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | product architecture |
+| F004 | [Test/Execution Evidence, Change Impact & Revalidation](features/F004-claim-review.md) · [中文](features/F004-claim-review.zh-CN.md) | product architecture |
 | F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
-The current implementation plan is [`feature-specs/2026-07-31-traqen-product-foundation.md`](../feature-specs/2026-07-31-traqen-product-foundation.md). Superseded plan files are removed from the working tree; Git history remains the recovery record.
+F001–F004 are the active legacy-system-understanding design baseline. F006 retains its separate implementation track. Historical working artifacts may remain unlinked for compatibility or audit, but cannot compete with this table, the roadmap, or the active architecture documents.
 
 ## Visual design
 
-- [Overall functional architecture — editable Excalidraw](diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw) · [SVG](diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
-- [Workspace same-batch analysis workflow — Archify](diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
 - [Workspace capability resolution — Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)
-- [Graph governance lifecycle — Archify](diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
+
+The F001–F004 redesign does not treat older visual explorations as active specifications; implementation will add visual projections only after the reference-pilot contracts are proven.
 
 ## Baseline policy
 
-Superseded designs, validation reports, resolved bug reports, diagrams, review notes, and implementation plans are removed from the working tree so the roadmap, active `Fxxx` documents, product architecture, ADRs, and current implementation plan form one design baseline. Git history remains the recovery record.
+The roadmap, active `Fxxx` documents, product architecture, and ADRs form one design baseline. Superseded material is either removed or explicitly unlinked and marked historical; Git history remains the recovery record.
 
 ## Bilingual documentation policy
 

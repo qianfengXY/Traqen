@@ -2,110 +2,83 @@
 
 ---
 feature_ids: [F002]
-related_features: [F001, F003, F004, F005]
-topics: [feature-tree, api-tree, traceability, history, evidence-gaps, frontend, user-journey]
-doc_kind: spec
-created: 2026-07-31
+topics: [deterministic-analysis, evidence-facts, api-tree, traceability, gaps]
+doc_kind: feature-spec
+created: 2026-08-29
+updated: 2026-08-29
+description: 从版本化工作空间快照中提取可复现的源码事实和有证据支撑的 API 结构树。
+description_source: human
+description_author: co-creator
+description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F002：功能与 API 追溯
+# F002 — 确定性证据与 API 结构
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P0
+**状态：** Spec
+**负责人：** TBD
+**依赖：** F001
 
-## Why
+## 为什么
 
-只有当人能够选择当前 Feature 或 API，核对其需求、设计、实现、数据、配置、测试与结果是否形成完整证据链时，对存量工程的理解才真正有价值。
+存量系统分析需要一个可复现、而非模型观点的基础。在让 Agent 解释一个功能之前，Traqen 必须先展示在已登记快照上可确定观察到的内容：产物、声明、导入、路由、处理器、配置引用和测试引用。
 
-## What
+## 目标结果
 
-F002 负责同一 Canonical Graph 上两种 Workspace 级投影：
+F002 将 F001 快照转换成带版本的 `Fact` 和 `EvidenceLink` 记录。它发布 API 结构树：当语言适配器能够证明时，路由、方法、声明式契约与源码处理器都属于直接观察。若提取器无法建立关系，则发布缺口。
 
-- **Feature Tree：** 用户可识别能力与受治理 Feature 身份；
-- **API Tree：** Endpoint、Contract、Handler、Caller、数据/配置影响、测试与结果。
+API 树是证据投影，不表示某个接口已被认定属于特定业务能力。业务命名和归属由 F003 处理。
 
-两棵树默认读取最新发布的 `CurrentGraphHead`。活跃分析产生的 Working Candidate Tree 必须独立展示，绝不能冒充 Governed Tree。
+## 范围
+
+### 包含
+
+- 面向已支持语言和框架的确定性提取器。
+- 规范化 `Fact`：提取器版本、源码快照、源码范围和可复现令牌。
+- 从事实到产物范围、支撑配置或测试的 `EvidenceLink`。
+- API 结构投影：路由、HTTP 方法或传输操作、静态可得的请求/响应契约，以及处理器关联。
+- 对不支持语法、未解析动态行为和缺少证据产生显式 `CoverageGap`。
+
+### 不包含
+
+- 从命名约定推断业务功能、用户意图或 API 归属。
+- LLM 生成的语义结论与审阅决策（F003）。
+- 记录测试在特定环境实际是否通过（F004）。
+
+## 证据模型
+
+| 记录 | 含义 |
+| --- | --- |
+| `Fact` | 由确定性提取器产出的可复现观察。 |
+| `EvidenceLink` | 从记录精确连接到快照绑定的产物范围。 |
+| `Derivation` | 产生事实的提取器名称、版本、参数和可复现令牌。 |
+| `CoverageGap` | 阻止建立某项事实或边的已声明限制。 |
+
+事实可以随改进的提取器得到校正，但旧推导必须仍可查阅。除非相关覆盖范围已获证明，否则不存在某条边不能说明不存在影响。
 
 ## 用户旅程
 
-1. 用户切换 Workspace，Feature/API Tree 在该 Workspace Context 下重新加载。
-2. 用户选择 Feature 或 API。
-3. 详情展示需求、设计、代码范围、数据、配置、测试文件、TestSpec、执行、结果、Decision、冲突与 Gap。
-4. 缺失或过期证据按类别和严重级别清晰可见。
-5. 用户打开历史，对比受治理 FeatureVersion 及按 Snapshot 记录的实现映射；Tree 默认仍显示最新版本。
-
-## 前端产品体验
-
-### Governed Tree 与详情工作区
-
-F002 使用 Tree/Detail 工作区：
-
-- 左栏在 Feature Tree 与 API Tree 间切换，搜索当前投影，并按证据状态筛选；
-- 页头标明当前已发布 `GraphRevision`，并提供显式历史 Revision 选择器；
-- 详情栏提供概览、证据、关系、Gap 与历史视图；
-- 紧凑五段式 Trace Chain 继承现有视觉语言，但其详情必须展开完整的需求、设计、实现、数据、配置、测试文件、TestSpec、执行、结果、Decision、Conflict 与 Gap 对象，不能压缩其身份。
-
-每项 Evidence 都必须展示状态、不可变 Resolver、Snapshot/Revision 上下文、适用时的源码位置和 Digest 校验。选择关系可以打开 F003 聚焦图；选择可审核的弱证据可以打开对应 F004 队列项，同时保留当前 Workspace 与 Revision 上下文。
-
-### 权威与历史
-
-主 Feature/API Tree 始终读取已发布 Governed Projection。Working Candidate 可以在独立的虚线非权威分区中访问，或链接回 F001，但绝不能成为 Governed Tree 的节点。
-
-选择历史 Revision 后，整棵树、详情、证据与关系视图进入只读历史模式。Feature 历史展示 FeatureVersion Decision、各 Snapshot 实现映射、Impact、Review、TestSpec、Execution、Result 与 Gap；API 历史展示 Contract 和实现变化，但不能发明业务身份。
-
-### 状态与响应式行为
-
-- **无 Published Head：** 解释尚未形成受治理图谱，并链接到当前 F001 Job 或设置动作。
-- **部分覆盖：** 每个必需证据类别都渲染为 `MISSING`、`STALE`、`CONFLICTED` 或 `NOT_APPLICABLE`，不能隐藏空类别。
-- **Revision 不可用 / Evidence 无效：** 保留选中身份，解释不可变引用失败，并提供有效的当前或历史上下文。
-- **Workspace 切换：** 加载新投影前先清除旧 Tree 选择和历史上下文。
-
-### 旧版 GraphArtifact 兼容
-
-GraphArtifact schema v2 将 `featureTraceability` 纳入 artifact digest。此前已发布的 artifact 继续作为不可变 schema v1 记录保留。Traqen 不能使用当前 Feature baseline 重建其缺失的 F002 历史。只有当不可变 artifact 包含请求的准确 Feature，并且能证明所选对象只有一个 Feature Owner 时，旧版 Feature 或对象才可使用；Feature 缺失、对象缺失、无主、歧义或跨 Feature Evidence 一律 Fail Closed，以具体 Reason Code 返回 `UNAVAILABLE_REQUIRES_REANALYSIS`。
-
-只有服务端核验所选 Revision 的已完成来源 Job、原始 SourceRegistration、WorkspaceExecutionProfileRevision、SnapshotManifest、封存源码包与持久化 ArtifactInventory 后，恢复上下文才声明为可执行。`POST /v1/projects/{projectId}/graph/revisions/{graphRevisionId}/reanalysis-jobs` 从来源 Revision 推导这些绑定，客户端不能用当前 Workspace 状态替换。命令创建并发布一个由 `reanalysisOfGraphRevisionId` 关联的新 `HISTORICAL_REANALYSIS` GraphRevision；它既不改写来源 Revision，也不移动 `CurrentGraphHead`。迁移而来的旧记录若缺少任何前提，availability 必须返回独立的不可执行恢复状态且不提供 endpoint。当前 Published Head 仍是独立、显式的 `GET` 上下文。
-
-桌面端使用 Tree/Detail 多栏；移动端改为 Tree 到 Detail 的逐级导航，常驻 Revision/Authority 页头，返回后恢复原 Tree 位置。
-
-### 前端验收标准
-
-- [ ] 用户不输入 Workspace、Snapshot、Revision、Feature 或 API ID 即可打开最新 Governed Feature/API 证据链。
-- [ ] Governed、Working Candidate 与 Historical 上下文在视觉和文字上明确区分，客户端筛选不能把它们合并。
-- [ ] 五段摘要不能把测试文件、TestSpec、Execution、Result、Decision 或 Evidence 合并成一个对象。
-- [ ] 所有必需证据类别显示明确的 Missing、Stale、Conflicted 或 Not Applicable 状态，并解析到不可变上下文。
-- [ ] Tree 选择、Revision 切换、证据检查与返回导航在桌面、键盘和移动端布局均可工作。
-
-## 完成态合同
-
-- 每条可见关系都能解析到不可变 Evidence 或 Decision；
-- 最新与历史视图使用相同 Identity/Lineage 规则；
-- 代码变化可以更新实现映射和影响，但不能自动创建业务 FeatureVersion；
-- 测试文件、TestSpec、执行、结果与 Evidence 必须保持不同对象；
-- API Tree 不是第二套 Graph Store。
+1. 架构师选择一个 F001 源码快照。
+2. Traqen 仅运行已支持的确定性提取器。
+3. 架构师打开 API 树，并从任一端点或处理器回溯到证据。
+4. 不支持或未解析区域作为缺口出现，而不是静默丢失分支。
 
 ## 验收标准
 
-- [ ] 切换 Workspace 会原子切换两棵树、选中详情、历史与订阅。
-- [ ] 默认 Tree 读取最新 Published Head，并单独标记 Working Candidate。
-- [ ] 选中 Feature/API 后，所有必需证据类别都有 `MISSING`、`STALE`、`CONFLICTED` 或 `NOT_APPLICABLE` 状态。
-- [ ] 每个源码摘录都绑定 Snapshot，并通过内容 Digest 校验。
-- [ ] Feature 历史按时间展示 FeatureVersion Decision、实现映射、影响、审核、测试、结果与 Gap。
-- [ ] API 历史保留 Contract 与实现变化，但不能发明业务身份。
-- [ ] Live Workspace 中不能出现 Demo Fallback。
+- [ ] 参考试点快照在两次相同运行中产生可复现的事实。
+- [ ] 每个已发布事实都有快照 ID、提取推导和至少一条证据链接。
+- [ ] 每个已发现且受支持的端点均展示路由/操作、处理器证据，以及可得时的声明式契约证据。
+- [ ] API 树会标记不可得证据和未解析动态路由为缺口。
+- [ ] 事实可连接代码、配置、文档和测试资产，而不宣称语义归属。
+- [ ] 已发布 API 树绝不将启发式业务分类提升为确定性事实。
 
-## 当前差距
+## 待确认问题
 
-实现提交 `1682d7d` 已有 Candidate Feature/API 模式及追溯/历史 API，但主 UI 没有消费 Feature History API，并且仍混合本地 Candidate Projection、Live 与 Demo 路径。
+- 首批提取器支持哪些框架？
+- 异步事件和非 HTTP API 在通用树中如何表示？
+- 对生成文件或 vendor 文件，何种源码范围格式能保持稳定？
 
-## 依赖
+## 依赖与交接
 
-- F001 提供 Workspace、Snapshot、Candidate、对账和 Published Graph 基础。
-- F003 展示同一选中对象及路径。
-- F004 治理证据不足或自动结果。
-- F005 关联变化历史与影响。
+F002 依赖 F001 的不可变快照和完整清单。F003 可把事实作为证据，但必须保持确定性事实与语义候选之间的边界。F004 使用事实与缺口计算有边界的建议性影响。
 
-## 非目标
-
-- 从 Tree Label 生成业务真相；
-- 为简化 UI 隐藏缺失证据；
-- 存储独立的 Feature Tree 数据库。
+**下一步：** F003 在这套证据基础上提出并审阅业务语义。

@@ -18,25 +18,23 @@
 
 | ID | 活动 Feature 文档 | 支撑设计 |
 |---|---|---|
-| F001 | [Workspace 与分析基础](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | [Workspace 扫描与 Analysis Agent 生命周期](features/workspace-scan-and-analysis-lifecycle.zh-CN.md) · [English](features/workspace-scan-and-analysis-lifecycle.md) |
-| F002 | [功能与 API 追溯](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | 产品架构 |
-| F003 | [追溯图谱](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | 产品架构 |
-| F004 | [声明审核](features/F004-claim-review.zh-CN.md) · [English](features/F004-claim-review.md) | 产品架构 |
-| F005 | [变更影响](features/F005-change-impact.zh-CN.md) · [English](features/F005-change-impact.md) | 产品架构 |
+| F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | 产品架构 |
+| F002 | [确定性证据与 API 结构](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | 产品架构 |
+| F003 | [Agent 候选与审阅后的业务功能树](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | 产品架构 |
+| F004 | [测试/执行证据、变更影响与重验证](features/F004-claim-review.zh-CN.md) · [English](features/F004-claim-review.md) | 产品架构 |
 | F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [能力解析图](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
-当前实施计划为 [`feature-specs/2026-07-31-traqen-product-foundation.md`](../feature-specs/2026-07-31-traqen-product-foundation.md)。被替代的计划文件从工作树删除；Git 历史仍是可恢复记录。
+F001–F004 是当前存量系统理解的设计基线。F006 保留其独立实施轨道。历史工作产物可因兼容性或审计目的而保留为未链接文档，但不得与本表、路线图或活动架构文档竞争真相源。
 
 ## 可视化设计
 
-- [整体功能架构——可编辑 Excalidraw](diagrams/traqen-product-architecture/traqen-product-functional-architecture.excalidraw) · [SVG](diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
-- [Workspace 同批分析工作流——Archify](diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
 - [Workspace 能力解析——Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)
-- [图谱治理生命周期——Archify](diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
+
+F001–F004 重构不会把旧的可视化探索当作活动规格；只有参考试点合同被证明后，实施才会加入可视化投影。
 
 ## 基线规则
 
-被替代的设计、验证报告、已解决 Bug 报告、旧图、review note 和实施计划从工作树删除，使路线图、活动 `Fxxx` 文档、产品架构、ADR 与当前实施计划构成唯一设计基线。Git 历史仍是可恢复记录。
+路线图、活动 `Fxxx` 文档、产品架构和 ADR 构成唯一设计基线。被替代材料要么移除，要么明确取消链接并标为历史；Git 历史仍是可恢复记录。
 
 ## 双语文档策略
 

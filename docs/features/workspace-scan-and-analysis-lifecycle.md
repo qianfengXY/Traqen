@@ -2,7 +2,7 @@
 
 ---
 feature_ids: [F001, F006]
-related_features: [F002, F003, F004, F005, F006]
+related_features: [F002, F003, F004, F006]
 topics:
   - workspace
   - source-scan
@@ -12,14 +12,14 @@ topics:
   - browser-refresh
 doc_kind: feature-design
 created: 2026-07-29
-updated: 2026-08-11
-status: proposed
+updated: 2026-08-29
+status: superseded
 priority: P0
 ---
 
-# Workspace Scan and Analysis Agent Lifecycle
+# Historical: Workspace Scan and Analysis Agent Lifecycle
 
-> Detailed execution design for [F001](F001-legacy-system-understanding.md). The [product architecture](../architecture/traqen-product-architecture.md) owns module boundaries; this document owns Workspace analysis, complete source coverage, Main/Child execution, reconciliation, and durable recovery.
+> **Historical reference only.** This design is superseded by the F001–F004 evidence-first redesign in the [active F001 specification](F001-legacy-system-understanding.md) and [product architecture](../architecture/traqen-product-architecture.md). It remains only for implementation-history compatibility; it is not an active contract.
 
 ## 1. Requirement
 
@@ -88,11 +88,7 @@ Traqen deliberately separates observation, interpretation, reconciliation, gover
 
 Neither a path name, a model response, a similarity score, nor a deterministic hash may create or merge a governed `Feature.id`.
 
-The [overall functional architecture](../diagrams/traqen-product-architecture/traqen-product-functional-architecture.svg)
-shows the Workspace context shared by all modules. The self-contained
-[graph-governance lifecycle](../diagrams/traqen-product-architecture/graph-governance.lifecycle.html)
-and its [Archify JSON source](../diagrams/traqen-product-architecture/graph-governance.lifecycle.json)
-make the Candidate, Decision, evaluation, quarantine, and publication boundaries explicit.
+The earlier overall functional-architecture diagram was removed with the superseded module plan. This historical document's candidate, decision, evaluation, quarantine, and publication discussion is retained only as prior implementation context, not as an active visualization or contract.
 
 ### 3.2 Scanner algorithm: source to deterministic Facts
 

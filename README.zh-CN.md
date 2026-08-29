@@ -14,7 +14,7 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 Web 工作台现在默认使用[企业蓝主题](docs/design/enterprise-blue-theme.zh-CN.md)，提供全局持久化主题切换，并针对信息密集的 27 英寸桌面进行布局优化。该配色与组件规范统一覆盖 Workspace 分析、功能追溯、图谱、审核、影响、指标、表单、表格和有界 Agent 控制台。
 
-当前代码已经具备可复用的领域、扫描、图谱、历史、影响分析和模型 Profile 能力，但尚未实现完整目标产品。特别是当前 UI 固定三个子 Agent 面板、旧链路依赖 Scanner/Facts，这些只是实现基线，不是目标合同。活动设计把 Workspace 设为聚合根，默认两个且可配置的子 Agent，把同一个有界批次发给每个活动子 Agent，由主 Agent 对照静态 Facts 对全部 sibling 结果进行对账，并把模型/Skill/MCP 解析成不可变、仅限 Workspace 的执行 Profile。详见[产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)、[F001 生命周期](docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md)和[文档真相源导航](docs/README.zh-CN.md)。
+当前代码已经具备可复用的领域、扫描、图谱、历史、影响分析和模型 Profile 能力，但尚未实现完整目标产品。特别是当前 UI 固定子 Agent 面板、旧链路依赖 Scanner/Facts，这些只是实现基线，不是目标合同。已确认的重构先固定不可变 Workspace 源码边界，再提取确定性事实与 API 树；之后只有经人工审阅的 Agent 候选才能进入业务功能树，最后才把执行证据连接为建议性的影响与重验证。详见[产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)、[F001–F004 Feature 规格](docs/ROADMAP.zh-CN.md)和[文档真相源导航](docs/README.zh-CN.md)。
 
 ## 实施基础
 

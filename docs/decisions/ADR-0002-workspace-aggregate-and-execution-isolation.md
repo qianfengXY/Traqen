@@ -1,12 +1,12 @@
 > Language: **English** · [简体中文](ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F005, F006]
+feature_ids: [F001, F002, F003, F004, F006]
 related_features: []
 topics: [workspace, aggregate-root, context-switch, capability-isolation, model-registry, capability-overlay, model-retirement]
 doc_kind: adr
 created: 2026-07-31
-updated: 2026-08-28
+updated: 2026-08-29
 status: accepted
 ---
 
@@ -37,7 +37,7 @@ Independent GPT and Kimi design passes agreed on the Workspace-wide product boun
 8. **Editable settings and immutable runtime input are distinct.** Invalid drafts remain durable. Activation creates a new `WorkspaceExecutionProfileRevision`. Main Agent, Child Agents, and workers receive that revision, scoped secret grants, and bounded source/tool handles; they receive no mutable global registry handle.
 9. **A Run pins its start revision.** Running and paused Runs never hot-swap settings or select a newer revision on resume. Operators may continue editing and activating the Workspace; later Runs use the newer active revision.
 10. **Referenced model deletion is all-Workspace replacement followed by retirement.** The server derives all current Workspace references, freezes expected versions, and applies one transaction. Any conflict or validation failure rolls back the complete operation. Historical revisions and active Runs are not rewritten; ordinary lifecycle is `ACTIVE -> RETIRING -> RETIRED`.
-11. **No module may create another project selector or graph store.** F002–F005 consume Workspace-scoped canonical contracts created by F001/F006.
+11. **No module may create another project selector or graph store.** F002–F004 consume Workspace-scoped canonical contracts created by F001/F006.
 
 ### Amendment — 2026-08-28 F006 settings contract
 

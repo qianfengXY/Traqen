@@ -2,92 +2,83 @@
 
 ---
 feature_ids: [F004]
-related_features: [F001, F002]
-topics: [claim-review, batch-review, evidence, governance, frontend, user-journey]
-doc_kind: spec
-created: 2026-07-31
+topics: [test-execution, change-impact, revalidation, traceability, advisory]
+doc_kind: feature-spec
+created: 2026-08-29
+updated: 2026-08-29
+description: Connect test execution evidence and versioned traceability to bounded, advisory change-impact and revalidation guidance.
+description_source: human
+description_author: co-creator
+description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F004: Claim Review
+# F004 — Test/Execution Evidence, Change Impact & Revalidation
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P0
+**Status:** Spec
+**Owner:** TBD
+**Depends on:** F001, F002, F003
 
 ## Why
 
-Traqen must fail closed on weak evidence without turning review into a one-ID-at-a-time diagnostic form. Reviewers need a Workspace queue, batch actions, and the ability to correct outcomes that automation previously admitted.
+The value of legacy understanding is a safer next change. But a link from code to a test asset is not proof that the test ran, passed, or covered the changed behavior. Impact analysis must separate structural evidence, reviewed semantic claims, execution results, and unknown coverage so teams can make an informed decision without being misled by a false "no impact" result.
 
-## What
+## Outcome
 
-F004 owns the review projection and Decision commands for:
+F004 records snapshot-bound test and execution evidence, compares a declared change against the evidence graph, and produces advisory revalidation guidance. Results are classified as `CONFIRMED`, `POSSIBLE`, or `UNKNOWN`, with the exact evidence and coverage boundary behind each classification.
 
-- evidence-insufficient or conflicting Candidates;
-- policy-selected samples;
-- automatically admitted Candidate mappings;
-- stale outcomes after an incremental change.
+The first release is decision support only: it neither merges, deploys, nor blocks work automatically.
 
-Automated admission is a reversible review state. Only an authorized Decision creates or revises governed objects.
+## Scope
+
+### In scope
+
+- Distinguish test assets, declared test cases, and executed test runs.
+- `TestExecution` provenance: runner, environment, command or workflow, result, relevant logs/artifacts, source snapshot, and execution time.
+- Versioned `ChangeSet` comparison between source snapshots.
+- Advisory impact paths across code, configuration, APIs, reviewed business claims, test assets, and actual execution evidence.
+- Revalidation recommendations with a classification, rationale, evidence links, and stated coverage gaps.
+- A change review view that shows both the business-function and API projections affected by a change.
+
+### Out of scope
+
+- Claiming a test passed from a static test reference.
+- Claiming "no impact" when a gap, unsupported extractor, unobserved runtime behavior, or stale execution prevents that conclusion.
+- Mandatory CI, merge, release, or production enforcement in the initial release.
+
+## Impact semantics
+
+| Classification | Meaning |
+| --- | --- |
+| `CONFIRMED` | Snapshot-bound evidence establishes the relationship or executed result. |
+| `POSSIBLE` | A traceable path or reviewed claim suggests a relationship, but evidence is incomplete. |
+| `UNKNOWN` | A declared gap, stale run, unsupported behavior, or missing evidence prevents a bounded conclusion. |
+
+An empty impact list is not a pass result. It must name the coverage proof that justifies the conclusion; otherwise the result is `UNKNOWN`.
 
 ## User journey
 
-1. Open the current Workspace review queue.
-2. Filter by evidence state, Candidate type, risk, source module, model/Skill provenance, or change status.
-3. Select one or multiple compatible items.
-4. Inspect source evidence and conflicts; edit normalized statements, scope, mappings, and rationale.
-5. Confirm, reject, defer, mark insufficient evidence, or record an exception.
-6. See immutable audit events and optimistic-concurrency failures instead of silent overwrites.
-
-## Frontend product experience
-
-### Workspace review queue
-
-F004 opens the current Workspace queue without asking for Run or Candidate IDs. The page contains:
-
-- filters for evidence state, Candidate type, risk, source module, model/Skill provenance, and change state;
-- a queue ordered by blocking risk and staleness, with recoverable selection and filter state;
-- a compatibility-aware batch toolbar that explains why selected entries can or cannot share a command;
-- a detail/decision workspace showing source evidence, Agent provenance, conflicts, confidence caps, immutable history, and editable normalized statement, Scope, Mapping, and Rationale;
-- explicit Confirm, Reject, Defer, Insufficient Evidence, and Record Exception outcomes where the command contract permits them.
-
-Batch selection is a command envelope, not one all-or-nothing Decision. The client validates compatibility before submission; the server records a separate Decision and Audit Event per item, and the result view preserves successes, failures, and retryable items.
-
-### Integrity, conflict, and responsive states
-
-- **Empty queue:** confirm that the current filters or Workspace have no review items and expose completed/history views where authorized.
-- **Invalid evidence:** disable Confirm until the invalid resolver is removed or replaced by authorized evidence, while preserving the proposed edits.
-- **Version conflict:** compare the user's input with the newer server version and require an explicit new command; never silently overwrite either side.
-- **Partial batch failure:** retain the batch receipt and per-item outcome, then allow retry only for eligible failures.
-- **Workspace switch:** clear selection and unsaved commands only after warning about local edits; never submit them to the new Workspace.
-
-Desktop uses queue/detail panes. Mobile uses queue-to-review navigation, keeps the decision summary visible before submission, and returns to the same queue position. Reviewer identity and authority are server-owned and cannot be entered as trusted free text.
-
-### Frontend acceptance
-
-- [ ] Queue entry, filtering, evidence inspection, and decisions never require manual Run or Candidate IDs.
-- [ ] Incompatible batch selections explain the incompatible command or authority boundary before submission.
-- [ ] Every item retains an independent Decision/Audit result, including partial batch failure and retry state.
-- [ ] Invalid evidence, confidence caps, conflicts, automated-admission status, and immutable prior Decisions remain visible during editing.
-- [ ] Concurrent edits preserve both inputs, and desktop, keyboard, and mobile journeys can complete the same governed Decision.
+1. An engineer selects the before and after source snapshots for a proposed or completed change.
+2. Traqen identifies changed artifacts and traverses deterministic facts, reviewed claims, and available execution evidence.
+3. The engineer sees affected business functions and APIs, recommended revalidation, and the explicit unknowns.
+4. The engineer records or links new execution evidence; the next analysis remains tied to its exact snapshots and run context.
 
 ## Acceptance criteria
 
-- [ ] The queue is Workspace-scoped and never requires manually entering Run/Candidate IDs.
-- [ ] Batch actions validate that selected items use a compatible command and retain one Decision/audit event per item.
-- [ ] Reviewers can edit an automatically admitted item before or after admission through a new Decision, never by mutating history.
-- [ ] Evidence-invalid Candidates cannot be confirmed until the invalid references are removed or replaced with authorized evidence.
-- [ ] Conflicts and confidence caps remain visible during review.
-- [ ] Concurrent edits fail with a version conflict and preserve both users' inputs.
-- [ ] Bulk operations are resumable and expose partial failure explicitly.
+- [ ] A test execution record cannot be created without runner, environment, result, timestamp, and source snapshot provenance.
+- [ ] A reference-pilot change produces a `ChangeSet` and shows direct evidence paths to affected API and business-tree projections where present.
+- [ ] Every revalidation recommendation contains a classification, rationale, evidence links, and coverage state.
+- [ ] Static test references and executed test results are visibly distinct.
+- [ ] A missing runtime observation, unsupported analysis, or stale run yields `UNKNOWN`, not "no impact".
+- [ ] The initial workflow is advisory and has no automatic merge, deployment, or CI-blocking action.
 
-## Current gap
+## Open questions
 
-Implementation commit `1682d7d` can load one Reverse Candidate by manually entered IDs and submit one review. It has no Workspace queue, batch command, or editor for automated admissions.
+- What staleness policy applies when a test execution predates the compared source snapshot?
+- Which CI systems and test-report formats join the first integration set?
+- When evidence quality has been validated, which narrow policy decisions—if any—may later opt into enforcement?
 
-## Dependencies
+## Dependencies and handoff
 
-F001 provides Candidates, ledgers, identity, and authority boundaries. F002 provides the Feature/API context and evidence detail projection.
+F004 consumes F001 source identity, F002 facts/gaps, and F003 reviewed claims. It adds execution truth without conflating it with static analysis. A reference pilot must demonstrate bounded advice before any proposal to make impact results enforceable.
 
-## Non-goals
-
-- majority-vote approval;
-- mutating past Decisions;
-- hiding rejected or insufficient-evidence outcomes.
+**Next:** validate the F001–F004 slice against a controlled repository change, then decide which adapters and review workflow deserve implementation.

@@ -2,84 +2,80 @@
 
 ---
 feature_ids: [F003]
-related_features: [F001, F002, F005]
-topics: [traceability-graph, graph-path, evidence, visualization, frontend, user-journey]
-doc_kind: spec
-created: 2026-07-31
+topics: [agent-analysis, semantic-candidates, human-review, business-function-tree, provenance]
+doc_kind: feature-spec
+created: 2026-08-29
+updated: 2026-08-29
+description: Produce traceable semantic candidates and a human-approved business-function tree over deterministic workspace evidence.
+description_source: human
+description_author: co-creator
+description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F003: Traceability Graph
+# F003 — Agent Candidates & Reviewed Business Function Tree
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P1
+**Status:** Spec
+**Owner:** TBD
+**Depends on:** F001, F002, F006
 
 ## Why
 
-Lists reveal missing fields; a graph reveals how requirement, design, implementation, data, configuration, tests, and results support or contradict one another.
+Facts and API routes do not by themselves explain what a system does for its users. That interpretation requires a model-assisted investigation across documents, code, tests, configuration, and human domain knowledge. The result is useful only when uncertainty remains visible and a person—not model consensus—has authority to publish it.
 
-## What
+## Outcome
 
-F003 renders a Workspace-scoped, queryable projection from canonical graph artifacts. The user enters from the Feature or API tree, selects a node, expands typed relationships, and opens the evidence behind each edge.
+F003 runs one or more authorized analysis agents over the F001/F002 evidence boundary and stores their outputs as `Candidate` records. A candidate can propose a business function, an API-to-function association, a design intent, or a missing-evidence hypothesis. Only a human `ReviewDecision` may promote a candidate to a published `Claim` in the business-function tree.
+
+The business tree is a projection of reviewed claims. It is distinct from the deterministic API-structure tree in F002, while both trace back to the same versioned evidence graph.
+
+## Safety and truth boundary
+
+- Agent access is bounded by the F001 source policy and explicit F006 configuration.
+- Each candidate records `inferenceProvenance`, `evidenceBoundary`, `confidenceKind`, `uncertaintyNotes`, `reproducibilityToken`, and `reviewState`.
+- Agent agreement is corroborating evidence only. It never converts a candidate into a claim.
+- Raw prompts, source excerpts, and model output follow the workspace retention and egress policy; the published tree stores traceable evidence references, not an unbounded transcript.
+- A rejected, superseded, or stale candidate remains auditable and cannot silently rewrite a reviewed claim.
+
+## Scope
+
+### In scope
+
+- Authorized single-agent and multi-agent analysis runs with run-level provenance.
+- Candidate creation from deterministic facts, source-bound evidence, and declared assumptions.
+- Human review decisions: approve, reject, request-evidence, supersede, and mark-stale.
+- A reviewed business-function tree, including links to related APIs, code, documents, tests, and configuration evidence.
+- First-class uncertainty and `CoverageGap` display in review and tree views.
+
+### Out of scope
+
+- Treating a model answer, vote, or confidence score as truth without human review.
+- Replacing the deterministic API tree or rewriting F002 facts.
+- Automatically blocking a merge or deployment on an inferred impact result (F004 remains advisory initially).
 
 ## User journey
 
-1. Select a Feature or API from the current Workspace.
-2. Open a focused graph with the selected object as root.
-3. Expand requirements, design, code, data, configuration, tests, results, Decisions, conflicts, and gaps.
-4. Choose any path to read its edge meanings and evidence.
-5. Switch to a historical GraphRevision without mutating the current head.
-
-## Frontend product experience
-
-### Focused graph workspace
-
-F003 opens from the current F002 Feature/API selection or from an explicit governed-object search. It does not load a whole-repository graph by default. The page contains:
-
-- a root/context header with Workspace, object identity, authority class, and `GraphRevision`;
-- bounded expansion presets and node/relation/status filters;
-- a focused graph canvas that loads one hop or a declared bounded neighborhood and expands only by user request;
-- a node/edge evidence inspector containing identity, relation semantics, authority, Snapshot/Revision context, Conflict/Gap state, and Evidence Resolver;
-- an always-available relationship/path list that supports the same inspection without the canvas.
-
-Selecting an Edge explains why the relation exists and resolves its evidence; merely highlighting a line is insufficient. Change impact may appear as an F005 overlay, but it cannot mutate the underlying GraphRevision.
-
-### History, states, and accessibility
-
-- **No root:** preserve the current Workspace and offer governed Feature/API search or return to F002.
-- **No path / bounded limit reached:** distinguish a verified empty result from an incomplete expansion or Gap.
-- **Partial coverage:** render Candidate, Governed, Conflict, Gap, Stale, and Missing with shape/line/text semantics in addition to color.
-- **Historical comparison:** compare current and historical Revisions side by side or as explicit layers; never synthesize them into a false current graph.
-- **Workspace switch:** discard the old root, expansion, and late graph response before loading the equivalent module in the new Workspace.
-- **Pre-v2 artifact:** keep F002 traceability unavailability explicit. Bounded F003 node, edge, path, and resolver reads may use only evidence physically stored in the selected legacy GraphArtifact and uniquely owned by the requested immutable Feature. Missing or ambiguous ownership returns an empty projection or unavailable resolver response; it never relabels another Feature's evidence.
-
-Keyboard and screen-reader users can search a root, expand a bounded relation group, select a path, and inspect every hop through the relationship/path list. On mobile this list is the default view; the canvas is optional.
-
-### Frontend acceptance
-
-- [ ] Opening F003 from F002 preserves Workspace, governed identity, and Revision without requiring manual IDs.
-- [ ] Initial and subsequent graph queries are bounded and expose when more data is available or coverage is incomplete.
-- [ ] Every visible Node and Edge exposes identity, authority, Revision/Snapshot context, status, and an Evidence Resolver.
-- [ ] Current, Historical, Candidate, Conflict, Gap, Stale, and Missing states cannot be confused by layout or color alone.
-- [ ] The relationship/path list is functionally equivalent for path explanation on desktop, keyboard, screen reader, and mobile.
+1. The architect selects an F001 snapshot and F002 evidence set permitted for analysis.
+2. Traqen runs the configured analysis agent or agents and shows bounded, traceable candidates.
+3. The architect reviews the evidence, uncertainty, and coverage gaps for each candidate.
+4. Approved candidates become reviewed claims and appear in the business-function tree; all other outcomes remain explicit.
 
 ## Acceptance criteria
 
-- [ ] The graph changes with `CurrentWorkspaceContext`; stale responses from the previous Workspace are discarded.
-- [ ] Every node and edge carries identity, authority class, Snapshot/revision context, and evidence resolvers.
-- [ ] Candidate, governed, conflict, gap, stale, and missing states are visually distinct.
-- [ ] Path queries are bounded, deterministic for one GraphRevision, and explain why each hop exists.
-- [ ] The graph can compare latest and historical revisions without combining them into a false present state.
-- [ ] Live mode has no hard-coded/demo graph fallback.
+- [ ] Every candidate names its agent/run provenance, source snapshot, evidence boundary, uncertainty, and review state.
+- [ ] A candidate cannot appear in the published business-function tree before a human approval decision.
+- [ ] Every published business-function node traces to one or more reviewed claims and their evidence links.
+- [ ] The UI distinguishes deterministic facts, unreviewed candidates, approved claims, and coverage gaps.
+- [ ] A multi-agent run preserves each agent's independent output; agreement is displayed as corroboration, not a truth rule.
+- [ ] Rejected, superseded, and stale candidates remain auditable without appearing as current claims.
 
-## Current gap
+## Open questions
 
-Implementation commit `1682d7d` contains interactive graph APIs and UI, but the live surface still includes preset/demo fallback paths and does not yet make every relationship evidence-resolvable.
+- Which review roles can approve which claim classes?
+- How will the first pilot calibrate `confidenceKind` without disguising uncertainty as a numeric score?
+- Which analysis-agent strategies best expose competing interpretations instead of collapsing them early?
 
-## Dependencies
+## Dependencies and handoff
 
-F001 owns graph production and publication; F002 owns selected Feature/API context; F005 supplies change-impact overlays.
+F003 consumes F001 snapshots, F002 facts/gaps, and F006 agent authorization. Its reviewed claims and tree nodes are inputs to F004 impact analysis, but F004 must retain the originating evidence and uncertainty rather than treating a tree edge as exhaustive proof.
 
-## Non-goals
-
-- using graph layout as evidence;
-- allowing client-side edges to become canonical;
-- loading the entire repository graph when a bounded neighborhood answers the question.
+**Next:** F004 combines reviewed meaning, deterministic evidence, and execution results into bounded change-impact and revalidation advice.

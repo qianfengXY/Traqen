@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](SOP.zh-CN.md)
+
 ---
 topics: [sop, workflow, review, acceptance]
 doc_kind: note
@@ -30,4 +32,4 @@ Traqen keeps product truth in this repository and uses Cat Café as its collabor
 
 ## Project relaunch rule
 
-A relaunch creates a new Feature and baseline; it does not delete the repository, replace the Mission Hub project ID, or erase earlier Feature history. F007 is the current relaunch entry.
+A relaunch creates a new Feature and baseline; it does not delete the repository, replace the Mission Hub project ID, or erase earlier Feature history. Once a redesign is approved, its active Feature documents and roadmap entries replace the relaunch entry; the former entry remains recoverable through Git history.
