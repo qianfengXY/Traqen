@@ -22,4 +22,6 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /f006-settings-nav/);
   assert.match(source, /f006-mobile-agent-back/);
   assert.match(source, /agentDrawerOpen/);
+  assert.match(source, /availableSkills\.length \?/);
+  assert.match(source, /availableMcps\.length \?/);
 });

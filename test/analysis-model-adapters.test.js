@@ -167,6 +167,29 @@ test("account-bound CLI execution resolves an API-key reference only into the se
   assert.equal(JSON.stringify({ id: adapter.id, cliAdapter: adapter.cliAdapter }).includes("runtime-only-secret"), false);
 });
 
+test("account-bound OAuth CLI execution removes an ambient adapter API key", async () => {
+  const calls = [];
+  const previous = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "ambient-key-must-not-reach-oauth";
+  try {
+    const adapter = new AllowlistedCliModelAdapter({
+      id: "CLI-OAUTH-ISOLATED",
+      cliAdapter: "CODEX",
+      environmentResolver: async () => ({ OPENAI_API_KEY: null }),
+      spawnImpl: cliSpawn(({ args }) => {
+        const request = JSON.parse(args.at(-1));
+        return { stdout: `${JSON.stringify({ ready: true, challenge: request.input.challenge })}\n` };
+      }, calls),
+    });
+
+    await adapter.verify();
+    assert.equal(calls[0].options.env.OPENAI_API_KEY, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previous;
+  }
+});
+
 test("allowlisted CLI verification decodes each supported CLI's real JSON output envelope", async () => {
   const envelopes = {
     CODEX: (payload) => `${JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: payload } })}\n`,

@@ -140,8 +140,10 @@ test("ships only the server-owned understanding path after Web cutover", async (
   const openStartConfirmationSource = product.slice(product.indexOf("function openStartConfirmation"), product.indexOf("async function startUnderstanding"));
   assert.match(openStartConfirmationSource, /profile: structuredClone\(executionProfile\)/,
     "opening the modal must capture a detached Active Profile snapshot");
-  assert.match(openStartConfirmationSource, /window\.sessionStorage\.getItem\(confirmedProfileStorageKey/,
-    "a refresh in the same browser session must retain the confirmed active profile");
+  assert.match(openStartConfirmationSource, /window\.localStorage\.getItem\(confirmedProfileStorageKey/,
+    "a new browser session must retain the confirmed active profile for the same operator");
+  assert.match(product, /traqen:f006:confirmed-profile:\$\{WEB_OPERATOR\}:\$\{workspaceId\}/,
+    "the durable confirmation key must be scoped to the current Web operator and Workspace");
   const startUnderstandingSource = product.slice(product.indexOf("async function startUnderstanding"), product.indexOf("async function controlUnderstanding"));
   assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"[\s\S]*error\.details\?\.head === "WORKSPACE_EXECUTION_PROFILE"/,
     "a stale start confirmation must identify the structured conflict rather than treating it as a generic error");

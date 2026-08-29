@@ -143,16 +143,21 @@ export class AllowlistedCliModelAdapter {
       throw new TypeError("CLI environment resolver must return an object or null");
     }
     for (const [key, value] of Object.entries(suppliedEnvironment ?? {})) {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || typeof value !== "string" || value.length === 0) {
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || (value !== null && (typeof value !== "string" || value.length === 0))) {
         throw new TypeError("CLI environment resolver returned an invalid environment entry");
       }
+    }
+    const executionEnvironment = suppliedEnvironment === null ? null : { ...process.env };
+    for (const [key, value] of Object.entries(suppliedEnvironment ?? {})) {
+      if (value === null) delete executionEnvironment[key];
+      else executionEnvironment[key] = value;
     }
     return new Promise((resolve, reject) => {
       const child = this.spawnImpl(executable, args, {
         shell: false,
         detached: process.platform !== "win32",
         stdio: ["ignore", "pipe", "pipe"],
-        ...(suppliedEnvironment ? { env: { ...process.env, ...suppliedEnvironment } } : {}),
+        ...(executionEnvironment ? { env: executionEnvironment } : {}),
       });
       let stdout = Buffer.alloc(0);
       let stderr = Buffer.alloc(0);

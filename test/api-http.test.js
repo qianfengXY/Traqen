@@ -531,6 +531,60 @@ test("F006 account HTTP contract never performs or stores OAuth login material",
   })).response.status, 400);
 });
 
+test("F006 refuses a new Run when an Active Profile's selected account later becomes inactive", async () => {
+  const starts = [];
+  const application = new TraceabilityApplication({
+    store: new MemoryTraceabilityStore(),
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    legacyUnderstandingRuntime: {
+      async start(input) {
+        starts.push(input);
+        return { id: "JOB-SHOULD-NOT-START" };
+      },
+    },
+  });
+  await application.createProject({
+    organization: { id: "ORG-RUN-PREFLIGHT", name: "Org" },
+    tenant: { id: "TENANT-RUN-PREFLIGHT", name: "Tenant" },
+    project: { id: "W-RUN-PREFLIGHT", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-RUN-PREFLIGHT", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", expectedVersion: 0,
+  });
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-RUN-PREFLIGHT", displayName: "Model", accountId: "ACCOUNT-RUN-PREFLIGHT",
+    cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  await application.verifyGlobalModelProfile("MODEL-RUN-PREFLIGHT");
+  await application.saveWorkspaceCapabilityDraft("W-RUN-PREFLIGHT", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-RUN-PREFLIGHT" },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-RUN-PREFLIGHT", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  const activeProfile = await application.activateWorkspaceCapabilityDraft("W-RUN-PREFLIGHT");
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-RUN-PREFLIGHT", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", lifecycle: "INACTIVE", expectedVersion: 1,
+  });
+
+  await assert.rejects(
+    () => application.startWorkspaceUnderstandingJob("W-RUN-PREFLIGHT", {
+      sourceRegistrationId: "SOURCE-RUN-PREFLIGHT",
+      requestedMode: "FULL",
+      expectedWorkspaceExecutionProfileRevisionId: activeProfile.id,
+    }),
+    /selected ACTIVE global account is required/,
+  );
+  assert.equal(starts.length, 0, "the runtime must not receive a new Run after account eligibility changes");
+});
+
 test("F006 CLI model routes exclude legacy API profiles from listing and verification", async (t) => {
   const baseUrl = await startServer(t, {
     analysisModelRegistry: f006CliRegistry(),

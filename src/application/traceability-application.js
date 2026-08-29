@@ -834,7 +834,7 @@ export class TraceabilityApplication {
     if (account.authMethod === "OAUTH") {
       if (account.oauthStatus !== "AUTHENTICATED") throw new TypeError("An OAuth account must be authenticated before it can back a CLI model");
       if (account.cliAdapter !== adapter) throw new TypeError("An OAuth account must use a matching CLI adapter");
-      return null;
+      return Object.freeze({ [CLI_API_KEY_ENVIRONMENT[adapter]]: null });
     }
     if (account.authMethod !== "API_KEY" || !account.secretRefId) {
       throw new TypeError("An API-key account must resolve to a secret reference before it can back a CLI model");
@@ -1035,6 +1035,22 @@ export class TraceabilityApplication {
 
   async resolveWorkspaceExecutionProfile(workspaceId, configId = null) {
     return this.#workspaceFoundation.resolveWorkspaceProfile(workspaceId, configId);
+  }
+
+  async #assertActiveF006ProfileEligibility(profile) {
+    const modelsById = new Map((await this.#f006ModelProfiles()).map((model) => [model.profileId, model]));
+    const modelIds = new Set(
+      [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])]
+        .map((slot) => slot?.modelProfileId)
+        .filter(Boolean),
+    );
+    for (const profileId of modelIds) {
+      const model = modelsById.get(profileId);
+      if (!model || model.transport !== "CLI" || model.lifecycle !== "ACTIVE" || model.readiness !== "READY" || !model.accountId) {
+        throw new TypeError(`Active Workspace profile model ${profileId} is no longer eligible for a new Run`);
+      }
+      await this.#resolveF006CliEnvironment({ accountId: model.accountId, cliAdapter: model.cliAdapter });
+    }
   }
 
   async listWorkspaceExecutionProfiles(workspaceId) {
@@ -3382,6 +3398,7 @@ export class TraceabilityApplication {
     if (activeProfile.id !== expectedProfileId) {
       throw workspaceExecutionProfileConflict(expectedProfileId, activeProfile.id);
     }
+    await this.#assertActiveF006ProfileEligibility(activeProfile);
     const configurationIssues = await this.#workspaceFoundation.activeConfigurationIssues(projectId);
     if (configurationIssues.length > 0) {
       const labels = configurationIssues.map(({ kind, normalizedName, lifecycle }) => `${kind} ${normalizedName} (${lifecycle})`).join(', ');

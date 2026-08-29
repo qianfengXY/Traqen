@@ -108,7 +108,7 @@ type StartConfirmation = {
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_TRAQEN_API_BASE ?? "http://127.0.0.1:3100";
 const DEFAULT_SOURCE_ROOT = process.env.NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT ?? "";
 const WEB_OPERATOR = "WEB-OPERATOR";
-const confirmedProfileStorageKey = (workspaceId: string) => `traqen:f006:confirmed-profile:${workspaceId}`;
+const confirmedProfileStorageKey = (workspaceId: string) => `traqen:f006:confirmed-profile:${WEB_OPERATOR}:${workspaceId}`;
 const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
   dataBoundary: "WORKSPACE",
   budgetLimit: "100",
@@ -554,7 +554,7 @@ function ServerOwnedProduct() {
       requestedMode: jobs.length === 0 ? "FULL" : "AUTO",
       profile: structuredClone(executionProfile),
     };
-    const persistedConfirmation = typeof window === "undefined" ? null : window.sessionStorage.getItem(confirmedProfileStorageKey(confirmation.workspaceId));
+    const persistedConfirmation = typeof window === "undefined" ? null : window.localStorage.getItem(confirmedProfileStorageKey(confirmation.workspaceId));
     const lastConfirmed = lastConfirmedExecutionProfileIdRef.current ?? persistedConfirmation;
     if (!needsStartConfirmation(lastConfirmed, confirmation.profile.id)) {
       void startUnderstanding(confirmation);
@@ -574,7 +574,7 @@ function ServerOwnedProduct() {
         expectedWorkspaceExecutionProfileRevisionId: confirmation.profile.id,
       });
       lastConfirmedExecutionProfileIdRef.current = confirmation.profile.id;
-      window.sessionStorage.setItem(confirmedProfileStorageKey(confirmation.workspaceId), confirmation.profile.id);
+      window.localStorage.setItem(confirmedProfileStorageKey(confirmation.workspaceId), confirmation.profile.id);
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);
       setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
