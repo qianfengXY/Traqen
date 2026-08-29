@@ -30,6 +30,7 @@ function oauthStatusFromProbeOutput(output, exitCode) {
     if (!envelope.loggedIn) return "NOT_AUTHENTICATED";
     const authMethod = String(envelope.authMethod ?? "").trim().toLowerCase();
     if (/api[ _-]?key|none/.test(authMethod)) return "NOT_AUTHENTICATED";
+    if (exitCode !== 0) return "UNKNOWN";
     if (/oauth|claude\.ai|chatgpt/.test(authMethod)) return "AUTHENTICATED";
     return "UNKNOWN";
   }

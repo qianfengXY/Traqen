@@ -88,11 +88,12 @@ test("OAuth status recheck interprets the supported CLI status envelopes without
     { adapter: "CODEX", stdout: "Logged in using API key\n", expected: "NOT_AUTHENTICATED" },
     { adapter: "CODEX", stdout: "Not logged in\n", expected: "NOT_AUTHENTICATED" },
     { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}\n', expected: "AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}\n', code: 1, expected: "UNKNOWN" },
     { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"apiKey","apiProvider":"firstParty"}\n', expected: "NOT_AUTHENTICATED" },
     { adapter: "CLAUDE", stdout: '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}\n', expected: "NOT_AUTHENTICATED" },
   ];
-  for (const { adapter, stdout, expected } of cases) {
-    const status = await probeCliOAuthStatus(adapter, { spawnImpl: cliSpawn({ stdout }, []) });
+  for (const { adapter, stdout, code, expected } of cases) {
+    const status = await probeCliOAuthStatus(adapter, { spawnImpl: cliSpawn({ stdout, code }, []) });
     assert.deepEqual(status, { oauthStatus: expected }, `${adapter} must classify its authoritative status output`);
   }
 });
