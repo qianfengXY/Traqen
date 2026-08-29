@@ -82,6 +82,21 @@ test("OAuth status recheck uses only an allowlisted read-only CLI command and ne
   assert.equal(JSON.stringify(status).includes("ChatGPT"), false);
 });
 
+test("OAuth status recheck interprets the supported CLI status envelopes without accepting API-key authentication", async () => {
+  const cases = [
+    { adapter: "CODEX", stdout: "Logged in using ChatGPT\n", expected: "AUTHENTICATED" },
+    { adapter: "CODEX", stdout: "Logged in using API key\n", expected: "NOT_AUTHENTICATED" },
+    { adapter: "CODEX", stdout: "Not logged in\n", expected: "NOT_AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}\n', expected: "AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"apiKey","apiProvider":"firstParty"}\n', expected: "NOT_AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}\n', expected: "NOT_AUTHENTICATED" },
+  ];
+  for (const { adapter, stdout, expected } of cases) {
+    const status = await probeCliOAuthStatus(adapter, { spawnImpl: cliSpawn({ stdout }, []) });
+    assert.deepEqual(status, { oauthStatus: expected }, `${adapter} must classify its authoritative status output`);
+  }
+});
+
 test("OAuth status recheck reports an absent CLI without attempting a login", async () => {
   const calls = [];
   const spawnImpl = (executable, args, options) => {
@@ -95,11 +110,13 @@ test("OAuth status recheck reports an absent CLI without attempting a login", as
     return child;
   };
 
-  const status = await probeCliOAuthStatus("CLAUDE", { spawnImpl });
-  assert.deepEqual(status, { oauthStatus: "CLI_UNAVAILABLE" });
-  assert.equal(calls[0].executable, "claude");
-  assert.deepEqual(calls[0].args, ["auth", "status"]);
-  assert.equal(calls[0].options.shell, false);
+  for (const [adapter, executable, args] of [["CODEX", "codex", ["login", "status"]], ["CLAUDE", "claude", ["auth", "status"]]]) {
+    const status = await probeCliOAuthStatus(adapter, { spawnImpl });
+    assert.deepEqual(status, { oauthStatus: "CLI_UNAVAILABLE" });
+    assert.equal(calls.at(-1).executable, executable);
+    assert.deepEqual(calls.at(-1).args, args);
+    assert.equal(calls.at(-1).options.shell, false);
+  }
 });
 
 test("OAuth status recheck terminates a probe that does not close", async () => {

@@ -10,6 +10,10 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /Workspace-local capabilities/);
   assert.match(source, /Workspace availability and Agent grants are separate layers/);
   assert.match(source, /Complete .* OAuth in its own CLI|Sign in in the CLI/);
+  assert.match(source, /const OAUTH_ADAPTERS = \["CODEX", "CLAUDE"\]/,
+    "OAuth is available only for CLIs with a supported read-only status probe");
+  assert.match(source, /const accountAdapters = props\.authMethod === "OAUTH" \? OAUTH_ADAPTERS : ADAPTERS/,
+    "the account form must hide adapters without a supported OAuth status probe");
   assert.doesNotMatch(source, /accessToken|refreshToken|beginOAuthLogin/, "the UI must not create an OAuth token or login flow");
   assert.match(source, /Apply configuration/);
   assert.match(source, /setTimeout\(\(\) => \{\s*autosaveInFlight\.current = true/);

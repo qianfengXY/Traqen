@@ -20,7 +20,7 @@ import {
   resolveWorkspaceExecutionProfile,
   validateWorkspaceCapabilityDraft,
 } from "../domain/index.js";
-import { probeCliOAuthStatus } from "../analysis/model-adapters.js";
+import { probeCliOAuthStatus, supportsCliOAuthStatusProbe } from "../analysis/model-adapters.js";
 import { PersistenceConflictError } from "../storage/index.js";
 
 function workspaceCapabilityDraftConflict(expectedVersion, currentVersion, cause) {
@@ -175,6 +175,10 @@ export class WorkspaceProductFoundation {
     const lifecycle = String(input?.lifecycle ?? current?.lifecycle ?? 'ACTIVE').toUpperCase();
     if (current?.lifecycle === 'DELETED' && lifecycle !== 'DELETED') throw new TypeError('A deleted global account cannot be reactivated');
     const authMethod = String(input?.authMethod ?? current?.authMethod ?? '').toUpperCase();
+    const cliAdapter = input?.cliAdapter ?? current?.cliAdapter;
+    if (authMethod === 'OAUTH' && !supportsCliOAuthStatusProbe(cliAdapter)) {
+      throw new TypeError('OAuth is available only for CLI adapters with a supported read-only status probe');
+    }
     const account = createGlobalAccountRevision({
       ...current,
       ...input,
@@ -182,7 +186,7 @@ export class WorkspaceProductFoundation {
       revision: (current?.revision ?? 0) + 1,
       lifecycle,
       secretRefId: input?.secretRefId ?? current?.secretRefId,
-      cliAdapter: input?.cliAdapter ?? current?.cliAdapter,
+      cliAdapter,
       oauthStatus: authMethod === 'OAUTH' ? current?.oauthStatus ?? 'UNKNOWN' : undefined,
     }, this.clock);
     return this.store.appendGlobalAccountRevision(account);

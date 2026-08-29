@@ -585,6 +585,69 @@ test("F006 refuses a new Run when an Active Profile's selected account later bec
   assert.equal(starts.length, 0, "the runtime must not receive a new Run after account eligibility changes");
 });
 
+test("F006 refuses a new Run when its pinned model revision still uses an account replaced on the mutable model head", async () => {
+  const starts = [];
+  const application = new TraceabilityApplication({
+    store: new MemoryTraceabilityStore(),
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    legacyUnderstandingRuntime: {
+      async start(input) {
+        starts.push(input);
+        return { id: "JOB-SHOULD-NOT-START" };
+      },
+    },
+  });
+  await application.createProject({
+    organization: { id: "ORG-PINNED-REVISION", name: "Org" },
+    tenant: { id: "TENANT-PINNED-REVISION", name: "Tenant" },
+    project: { id: "W-PINNED-REVISION", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  for (const accountId of ["ACCOUNT-REVISION-A", "ACCOUNT-REVISION-B"]) {
+    await application.saveGlobalAccount({
+      accountId, displayName: accountId, authMethod: "API_KEY",
+      secretRefId: "vault://test-account", expectedVersion: 0,
+    });
+  }
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-PINNED-REVISION", displayName: "Model", accountId: "ACCOUNT-REVISION-A",
+    cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  await application.verifyGlobalModelProfile("MODEL-PINNED-REVISION");
+  await application.saveWorkspaceCapabilityDraft("W-PINNED-REVISION", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-PINNED-REVISION" },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-PINNED-REVISION", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  const activeProfile = await application.activateWorkspaceCapabilityDraft("W-PINNED-REVISION");
+  const beforeReplacement = await application.getGlobalModelProfile("MODEL-PINNED-REVISION");
+  await application.updateGlobalModelProfile("MODEL-PINNED-REVISION", {
+    expectedRevision: beforeReplacement.revision,
+    displayName: "Model", accountId: "ACCOUNT-REVISION-B", transport: "CLI",
+    cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  await application.verifyGlobalModelProfile("MODEL-PINNED-REVISION");
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-REVISION-A", displayName: "ACCOUNT-REVISION-A", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", lifecycle: "INACTIVE", expectedVersion: 1,
+  });
+
+  await assert.rejects(
+    () => application.startWorkspaceUnderstandingJob("W-PINNED-REVISION", {
+      sourceRegistrationId: "SOURCE-PINNED-REVISION",
+      requestedMode: "FULL",
+      expectedWorkspaceExecutionProfileRevisionId: activeProfile.id,
+    }),
+    /selected ACTIVE global account is required/,
+  );
+  assert.equal(starts.length, 0, "the runtime must not receive a Run after the pinned revision's account becomes ineligible");
+});
+
 test("F006 CLI model routes exclude legacy API profiles from listing and verification", async (t) => {
   const baseUrl = await startServer(t, {
     analysisModelRegistry: f006CliRegistry(),

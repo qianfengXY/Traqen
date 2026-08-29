@@ -748,6 +748,16 @@ export class TraceabilityApplication {
   // the legacy public GlobalModelProfile contract simply because F006 needs them.
   async #f006ModelProfiles() {
     const profiles = await this.#globalModelProfiles();
+    return this.#withF006AccountContext(profiles);
+  }
+
+  async #f006ModelProfileRevisions() {
+    await this.#syncGlobalModelLifecycles();
+    const { revisions } = await this.#store.listGlobalModelProfileRevisions();
+    return this.#withF006AccountContext(revisions.map((profile) => this.#globalModelProfile(profile)));
+  }
+
+  async #withF006AccountContext(profiles) {
     const accounts = await this.#workspaceFoundation.listGlobalAccounts();
     const accountById = new Map(await Promise.all(accounts.map(async (account) => {
       if (account.authMethod !== "API_KEY") return [account.accountId, account];
@@ -781,7 +791,7 @@ export class TraceabilityApplication {
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
       credentialHandleId: profile.credentialHandleId,
-      readiness: profile.ready ? 'READY' : 'UNVERIFIED',
+      readiness: profile.ready || profile.verifiedAt ? 'READY' : 'UNVERIFIED',
       lifecycle: profile.lifecycle ?? 'ACTIVE',
       configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt,
@@ -1038,16 +1048,17 @@ export class TraceabilityApplication {
   }
 
   async #assertActiveF006ProfileEligibility(profile) {
-    const modelsById = new Map((await this.#f006ModelProfiles()).map((model) => [model.profileId, model]));
-    const modelIds = new Set(
+    const modelsByRevisionId = new Map((await this.#f006ModelProfileRevisions()).map((model) => [model.id, model]));
+    const modelRevisionIds = new Set(
       [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])]
-        .map((slot) => slot?.modelProfileId)
+        .map((slot) => slot?.modelProfileRevisionId)
         .filter(Boolean),
     );
-    for (const profileId of modelIds) {
-      const model = modelsById.get(profileId);
-      if (!model || model.transport !== "CLI" || model.lifecycle !== "ACTIVE" || model.readiness !== "READY" || !model.accountId) {
-        throw new TypeError(`Active Workspace profile model ${profileId} is no longer eligible for a new Run`);
+    for (const revisionId of modelRevisionIds) {
+      const model = modelsByRevisionId.get(revisionId);
+      const lifecycle = model ? await this.#store.getGlobalModelLifecycle(model.profileId) : null;
+      if (!model || model.transport !== "CLI" || model.lifecycle !== "ACTIVE" || lifecycle?.lifecycle !== "ACTIVE" || model.readiness !== "READY" || !model.accountId) {
+        throw new TypeError(`Active Workspace profile model revision ${revisionId} is no longer eligible for a new Run`);
       }
       await this.#resolveF006CliEnvironment({ accountId: model.accountId, cliAdapter: model.cliAdapter });
     }

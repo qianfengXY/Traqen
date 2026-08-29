@@ -67,6 +67,13 @@ test("F006 rechecks OAuth through a server-owned probe and persists only its der
   assert.equal(checked.oauthStatus, "AUTHENTICATED");
   assert.equal(checked.revision, 2);
   assert.equal(Object.hasOwn(checked, "instruction"), false);
+
+  await assert.rejects(
+    () => service.saveGlobalAccount({
+      accountId: "gemini-oauth", displayName: "Gemini OAuth", authMethod: "OAUTH", cliAdapter: "GEMINI", expectedVersion: 0,
+    }),
+    /supported read-only status probe/,
+  );
 });
 
 test("F006 resolves global availability as a Workspace ceiling without implicit grants", () => {

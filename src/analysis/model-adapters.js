@@ -20,6 +20,25 @@ const CLI_OAUTH_STATUS_COMMANDS = Object.freeze({
   CLAUDE: { executable: "claude", args: ["auth", "status"] },
 });
 
+export function supportsCliOAuthStatusProbe(cliAdapter) {
+  return Object.hasOwn(CLI_OAUTH_STATUS_COMMANDS, String(cliAdapter ?? "").trim().toUpperCase());
+}
+
+function oauthStatusFromProbeOutput(output, exitCode) {
+  const envelope = parseCliJsonDocument(output);
+  if (envelope && typeof envelope === "object" && typeof envelope.loggedIn === "boolean") {
+    if (!envelope.loggedIn) return "NOT_AUTHENTICATED";
+    const authMethod = String(envelope.authMethod ?? "").trim().toLowerCase();
+    if (/api[ _-]?key|none/.test(authMethod)) return "NOT_AUTHENTICATED";
+    if (/oauth|claude\.ai|chatgpt/.test(authMethod)) return "AUTHENTICATED";
+    return "UNKNOWN";
+  }
+  if (/not\s+(?:logged\s+in|authenticated)|unauthenticated/i.test(output)) return "NOT_AUTHENTICATED";
+  if (/api[ _-]?key/i.test(output)) return "NOT_AUTHENTICATED";
+  if (exitCode === 0 && /logged\s+in|authenticated/i.test(output)) return "AUTHENTICATED";
+  return "UNKNOWN";
+}
+
 export async function probeCliOAuthStatus(cliAdapter, { spawnImpl = spawn, timeoutMs = 10_000 } = {}) {
   const adapter = requiredString(cliAdapter, "CLI adapter").toUpperCase();
   const command = CLI_OAUTH_STATUS_COMMANDS[adapter];
@@ -53,9 +72,7 @@ export async function probeCliOAuthStatus(cliAdapter, { spawnImpl = spawn, timeo
     const onError = (error) => finish(error?.code === "ENOENT" ? "CLI_UNAVAILABLE" : "UNKNOWN");
     const onClose = (code) => {
       const output = `${stdout}\n${stderr}`;
-      if (/not\s+(?:logged\s+in|authenticated)|unauthenticated/i.test(output)) return finish("NOT_AUTHENTICATED");
-      if (code === 0 && /logged\s+in|authenticated/i.test(output)) return finish("AUTHENTICATED");
-      finish("UNKNOWN");
+      finish(oauthStatusFromProbeOutput(output, code));
     };
     try {
       child = spawnImpl(command.executable, command.args, {
