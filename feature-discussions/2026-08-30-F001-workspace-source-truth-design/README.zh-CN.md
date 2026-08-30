@@ -194,7 +194,7 @@ Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 se
 
 ### 10.2 采集前被阻断
 
-![默认中文、因路径边界而被阻断的来源预检](assets/source-truth-preflight-blocked-zh-CN.png)
+![默认中文、因路径边界而被阻断的来源预检](assets/source-truth-preflight-blocked-zh-CN-v2.png)
 
 阻断条件留在同一条用户旅程里。界面说明失败检查、受影响边界和修复动作；它禁用 snapshot 创建，并明确 F002 当前不可用。同时它说明早先 sealed snapshot 没有被改动。安全或完整性 blocker 没有“接受”这一逃生入口。
 

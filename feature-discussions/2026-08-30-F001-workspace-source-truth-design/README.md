@@ -216,7 +216,7 @@ of the sealed snapshot.
 
 ### 10.2 Preflight blocked before capture
 
-![Chinese-default source preflight blocked by a path boundary](assets/source-truth-preflight-blocked-zh-CN.png)
+![Chinese-default source preflight blocked by a path boundary](assets/source-truth-preflight-blocked-zh-CN-v2.png)
 
 Blocking conditions stay in the same user journey. The screen names the failed check, the
 affected boundary, and the corrective action; it disables snapshot creation and makes F002
