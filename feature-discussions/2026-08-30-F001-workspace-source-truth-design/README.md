@@ -182,13 +182,21 @@ only a success state.
 
 ### 10.1 Eligible with an accepted limitation
 
-![Source Truth receipt eligible with an accepted limitation](assets/source-truth-ready-with-accepted-gaps.png)
+![Source Truth receipt eligible with an accepted limitation](assets/source-truth-ready-with-accepted-gaps-v2.png)
 
 The receipt is deliberately orange rather than green. `READY_WITH_ACCEPTED_GAPS` means the
 sealed snapshot is eligible, **not complete**: the coverage card gives the coverage denominator,
 the Gap remains readable with its owner and expiry, and the downstream action says that F002
 will inherit the limitation. The user can open the artifact inventory or receipt history before
 starting F002; F002 does not receive a live path or working tree.
+
+`Display-redacted` has a deliberately narrower meaning: the content was completely captured and
+remains available to authorized downstream analysis, but is omitted from this UI. It is not an
+analysis limitation. Conversely, any redaction that prevents analysis from accessing material
+must create its own `CoverageGap` and be included in the inherited Gap set; it may never be
+represented only as a coverage count. The lower `Artifact inventory` panel names all discovered
+records—including out-of-scope and unavailable records—rather than implying all 192 are contents
+of the sealed snapshot.
 
 ### 10.2 Preflight blocked before capture
 
@@ -206,8 +214,8 @@ is no "accept" escape hatch for a safety or integrity blocker.
 | Source setup | authorized repository, requested ref, resolved commit preview, whole-repository or directory-root scope | continue to automatic preflight | no credentials or security-rule editor is exposed |
 | Preflight | `can start`, `can start with expected gaps`, or `blocked`, with a reason and affected scope | capture, or edit source/scope | a block cannot be overridden |
 | Capture and sealing | stage rail, observed counts, current operation, cancellation/retry | cancel before seal or retry as a new run | progress is event-derived; it never invents a percentage |
-| Source Truth receipt | resolved commit, declared scope, receipt status, coverage summary, material gaps, policy and inventory identity | open coverage/history; start F002 only when eligible | warning limitations remain visible and are inherited |
-| Coverage / history detail | every artifact disposition and reason, every Gap, its acceptance validity, and earlier immutable receipts | inspect or create a new capture | neither history nor a Gap can be edited into a better result |
+| Source Truth receipt | resolved commit, declared scope, receipt status, coverage summary, material gaps, policy and inventory identity | open coverage/history; start F002 only when eligible | display-only redaction is explicitly distinguished; warning limitations remain visible and are inherited |
+| Coverage / history detail | every artifact disposition and reason, every Gap, its acceptance validity, and earlier immutable receipts | inspect or create a new capture | an all-record inventory is not mislabeled as sealed content; neither history nor a Gap can be edited into a better result |
 
 The Source Truth card/receipt is the **primary surface**. Coverage and receipt history are the
 deep-dive surfaces. The workspace shell displays only the latest state for each source to avoid

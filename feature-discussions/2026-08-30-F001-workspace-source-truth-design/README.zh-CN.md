@@ -173,9 +173,11 @@ REQUESTED → PREFLIGHTING
 
 ### 10.1 可用，但带已接受限制
 
-![带已接受限制、可用于下游的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps.png)
+![带已接受限制、可用于下游的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps-v2.png)
 
 Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 sealed snapshot 可用，**不表示完整**：coverage 卡给出覆盖分母，Gap 仍展示负责人和有效期，下游动作明确 F002 会继承这项限制。用户可在启动 F002 前打开 artifact inventory 或 receipt history；F002 拿到的不是实时路径或 working tree。
+
+`Display-redacted` 的含义被刻意收窄：内容已完整采集，且仍可供获授权的下游分析使用，只是不在这个界面中展示；它不是分析限制。反过来，任何使分析无法取得材料的脱敏都必须生成独立的 `CoverageGap`，并进入 inherited Gap 集；不能只作为一个 coverage 计数出现。下方的 `Artifact inventory` 面板指的是所有已发现记录（包括范围外与不可用记录），不会暗示 192 项都属于 sealed snapshot 内容。
 
 ### 10.2 采集前被阻断
 
@@ -190,8 +192,8 @@ Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 se
 | 来源设置 | 已授权仓库、请求 ref、resolved commit 预览、全仓或目录根范围 | 继续自动预检 | 不暴露凭据或安全规则编辑器 |
 | 预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，以及原因和受影响范围 | 采集，或修改来源/范围 | blocker 不能被覆盖 |
 | 采集和 seal | 阶段条、已观测计数、当前操作、取消/重试 | seal 前取消，或以新 run 重试 | 进度基于事件，不伪造百分比 |
-| Source Truth Receipt | resolved commit、声明范围、receipt 状态、覆盖汇总、material Gap、policy 和 inventory identity | 打开 coverage/history；仅合格时启动 F002 | 警告限制一直可见且必被继承 |
-| Coverage / History 详情 | 每项 artifact disposition/reason、每个 Gap、其接受有效性以及早期不可变 receipt | 审阅，或新建采集 | history 或 Gap 都不能被编辑成更好的结果 |
+| Source Truth Receipt | resolved commit、声明范围、receipt 状态、覆盖汇总、material Gap、policy 和 inventory identity | 打开 coverage/history；仅合格时启动 F002 | 明确区分仅展示脱敏；警告限制一直可见且必被继承 |
+| Coverage / History 详情 | 每项 artifact disposition/reason、每个 Gap、其接受有效性以及早期不可变 receipt | 审阅，或新建采集 | 不把全量记录清单误标为 sealed 内容；history 或 Gap 都不能被编辑成更好的结果 |
 
 Source Truth 卡/Receipt 是**主现场**；coverage 和 receipt history 是深入查看界面。为避免事件噪声，Workspace shell 对每个 source 只显示最新状态，按阶段汇总进度，把完整、带 reason code 的历史保留在 receipt 后。
 
