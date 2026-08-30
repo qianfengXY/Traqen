@@ -37,7 +37,7 @@ F001 **不会**产生 API 树、推断业务功能、执行测试或给出变更
 | 安全不可变采集 | 从 committed Git object 生成、且不执行源码的 sealed `SourceSnapshot`。 | working tree 修改、hook、构建、依赖安装不会改变或威胁证据。 |
 | Source Coverage 清单 | 每项范围内已发现产物都有 disposition/reason，范围边界可见。 | 文档、配置、SQL、测试、二进制及读取失败不能静默消失。 |
 | Coverage Gap 管理 | 阻断 Gap 保持阻断；非阻断 Gap 可带负责人、理由、有效期被接受。 | 不能用一次点击掩盖完整性失败，同时常见存量系统的不完整性仍然可见、可管理。 |
-| Receipt、历史与 F002 交接 | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED` 和历史采集；F002 只接收合格输入。 | 后续能力不能基于路径、branch、dirty checkout 或不完整采集，产出看似权威的结论。 |
+| Receipt、历史与 F002 交接 | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED` 和历史采集；F002 只接收合格输入。 | 后续能力不能基于路径、branch、dirty checkout，或非阻断限制未经显式接受并继承的不完整采集，产出看似权威的结论。 |
 
 ## 3. 与愿景是否一致
 
@@ -123,8 +123,9 @@ REQUESTED → PREFLIGHTING
        └─ SEALING（原子边界，不能再取消）
             ├─ safety/integrity block ──────► BLOCKED receipt
             └─ SEALED
+                 ├─ 存在阻断型 CoverageGap ─► BLOCKED receipt
                  ├─ 无相关 Gap ─────────────► READY receipt
-                 └─ 非阻断 Gap ─────────────► AWAITING_GAP_DECISION
+                 └─ 仅有非阻断 Gap ─────────► AWAITING_GAP_DECISION
                                                 └─ 有效接受
                                                    ► READY_WITH_ACCEPTED_GAPS receipt
 ```

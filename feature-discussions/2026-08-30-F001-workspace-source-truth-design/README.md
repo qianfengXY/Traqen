@@ -37,7 +37,7 @@ F001 does **not** yet generate the API tree, infer business functions, execute t
 | Safe immutable capture | A sealed `SourceSnapshot`, created from committed Git objects without executing source code. | Working-tree edits, hooks, builds, and dependency installation cannot change or endanger the evidence. |
 | Source Coverage inventory | One disposition and reason for every discovered in-scope item, with a visible scope boundary. | Documentation, configuration, SQL, tests, binaries, and failed reads cannot silently vanish. |
 | Coverage Gap management | Blocking gaps remain blockers; non-blocking gaps can be accepted with responsibility, rationale, and expiry. | A click-through warning cannot disguise an integrity failure, while ordinary legacy-system incompleteness remains visible and manageable. |
-| Receipt, history, and F002 handoff | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED`, retained with prior captures; F002 receives only a qualified input. | Later capabilities cannot derive authoritative-looking conclusions from a path, branch, dirty checkout, or incomplete capture. |
+| Receipt, history, and F002 handoff | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED`, retained with prior captures; F002 receives only a qualified input. | Later capabilities cannot derive authoritative-looking conclusions from a path, branch, dirty checkout, or an incomplete capture whose non-blocking limitations were not explicitly accepted and inherited. |
 
 ## 3. Alignment with the product vision
 
@@ -124,8 +124,9 @@ REQUESTED → PREFLIGHTING
        └─ SEALING (atomic; cancellation closes)
             ├─ safety/integrity block ──────► BLOCKED receipt
             └─ SEALED
+                 ├─ any blocking CoverageGap ► BLOCKED receipt
                  ├─ no relevant gaps ───────► READY receipt
-                 └─ non-blocking gaps ──────► AWAITING_GAP_DECISION
+                 └─ only non-blocking gaps ─► AWAITING_GAP_DECISION
                                                 └─ valid acceptance
                                                    ► READY_WITH_ACCEPTED_GAPS receipt
 ```
