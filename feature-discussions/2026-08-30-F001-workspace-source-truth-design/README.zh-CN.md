@@ -165,7 +165,39 @@ REQUESTED → PREFLIGHTING
 
 每个错误必须说明：失败了什么、哪段范围没获得、旧 snapshot 是否仍可用、下一步是什么。进度默认聚合为每个 source 的最新状态，深层界面保留完整历史；诊断使用 reason code 并脱敏。
 
-## 10. F002 准入合同
+## 10. 前端交互设计提案
+
+界面是 **Workspace 的扩展**，不是另建仪表盘。下列界面稿是带示例数据的交互设计提案，不含后端实现。它延续 Traqen 现有的浅色控制台语言——常驻导航、白色任务面板、蓝色主动作，以及明确的警告/阻断色——让用户在来源所属的 Workspace 内作出来源决策。
+
+**设计门问题：** 架构师是否无需打开诊断日志，就能判断某份来源结果能否用于后续分析、F002 会继承什么限制，以及不可用时该做什么？下面第一张是回答这个问题的核心画面；第二张证明同一现场有诚实的恢复路径，而不是只展示成功态。
+
+### 10.1 可用，但带已接受限制
+
+![带已接受限制、可用于下游的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps.png)
+
+Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 sealed snapshot 可用，**不表示完整**：coverage 卡给出覆盖分母，Gap 仍展示负责人和有效期，下游动作明确 F002 会继承这项限制。用户可在启动 F002 前打开 artifact inventory 或 receipt history；F002 拿到的不是实时路径或 working tree。
+
+### 10.2 采集前被阻断
+
+![因路径边界而被阻断的来源预检](assets/source-truth-preflight-blocked.png)
+
+阻断条件留在同一条用户旅程里。界面说明失败检查、受影响边界和修复动作；它禁用 snapshot 创建，并明确 F002 当前不可用。同时它说明早先 sealed snapshot 没有被改动。安全或完整性 blocker 没有“接受”这一逃生入口。
+
+### 10.3 界面合同
+
+| 时刻 | 首要信息 | 首要动作 | 必须诚实呈现的约束 |
+| --- | --- | --- | --- |
+| 来源设置 | 已授权仓库、请求 ref、resolved commit 预览、全仓或目录根范围 | 继续自动预检 | 不暴露凭据或安全规则编辑器 |
+| 预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，以及原因和受影响范围 | 采集，或修改来源/范围 | blocker 不能被覆盖 |
+| 采集和 seal | 阶段条、已观测计数、当前操作、取消/重试 | seal 前取消，或以新 run 重试 | 进度基于事件，不伪造百分比 |
+| Source Truth Receipt | resolved commit、声明范围、receipt 状态、覆盖汇总、material Gap、policy 和 inventory identity | 打开 coverage/history；仅合格时启动 F002 | 警告限制一直可见且必被继承 |
+| Coverage / History 详情 | 每项 artifact disposition/reason、每个 Gap、其接受有效性以及早期不可变 receipt | 审阅，或新建采集 | history 或 Gap 都不能被编辑成更好的结果 |
+
+Source Truth 卡/Receipt 是**主现场**；coverage 和 receipt history 是深入查看界面。为避免事件噪声，Workspace shell 对每个 source 只显示最新状态，按阶段汇总进度，把完整、带 reason code 的历史保留在 receipt 后。
+
+**本提案不包含：** 全局仪表盘、实时日志尾随、原始秘密查看器、源码浏览器、API/功能树可视化或生产实现。它们要么绕开来源决策，要么属于后续功能。
+
+## 11. F002 准入合同
 
 ```ts
 type QualifiedSourceInput = {
@@ -188,7 +220,7 @@ type QualifiedSourceInput = {
 
 F002 的每个派生结果固化 receipt/snapshot/inventory/policy 身份与**完整 inherited Gap 集**。F002 可创建独立的解析层 Gap 并链接 F001 Gap，但不得修改、隐藏、降级或重新接受 F001 Gap。F003/F004 只能经由 F002 得到来源 provenance。
 
-## 11. 参考试点
+## 12. 参考试点
 
 使用由 order-platform 参考产物播种的一次性 Git fixture，含固定 commit A/B，不使用开发者 working tree。
 
@@ -205,7 +237,7 @@ F002 的每个派生结果固化 receipt/snapshot/inventory/policy 身份与**�
 
 首要失效模式是 **false-green receipt**：材料静默消失却被宣称 READY。防线是 Git-object capture、inventory 守恒、显式 disposition、material Gap、原子 seal、不可变 receipt 和强制下游继承。
 
-## 12. 审阅结论与下一门
+## 13. 审阅结论与下一门
 
 砚砚与 Kimi 的独立审阅在对象、旅程、状态机、F002 继承和负向试点上达成一致。两项收敛为：
 

@@ -166,7 +166,59 @@ The primary surface is the **Source Truth card inside the Workspace**, because s
 
 Every error explains what failed, what scope was not obtained, whether a prior snapshot remains usable, and the next user action. Progress events are aggregated to one latest state per source; deep views retain complete history. Diagnostics are reason-coded and redacted.
 
-## 10. F002 admission contract
+## 10. Front-end interaction design proposal
+
+The UI is a **Workspace extension**, not a new dashboard. The supplied screens are an
+interaction-design proposal with illustrative data and no backend implementation. They use
+Traqen's existing light console language—persistent navigation, white task panels, blue
+primary actions, and explicit warning/blocking colours—so the user can make a source decision
+where the source belongs.
+
+**Design-gate question:** can an architect tell, without opening a diagnostic log, whether a
+particular source result is usable for downstream analysis, what limitation F002 will inherit,
+and what action is required when it is not usable? The first screen below is the soul frame for
+that decision. The second proves that the same surface has an honest recovery path, rather than
+only a success state.
+
+### 10.1 Eligible with an accepted limitation
+
+![Source Truth receipt eligible with an accepted limitation](assets/source-truth-ready-with-accepted-gaps.png)
+
+The receipt is deliberately orange rather than green. `READY_WITH_ACCEPTED_GAPS` means the
+sealed snapshot is eligible, **not complete**: the coverage card gives the coverage denominator,
+the Gap remains readable with its owner and expiry, and the downstream action says that F002
+will inherit the limitation. The user can open the artifact inventory or receipt history before
+starting F002; F002 does not receive a live path or working tree.
+
+### 10.2 Preflight blocked before capture
+
+![Source preflight blocked by a path boundary](assets/source-truth-preflight-blocked.png)
+
+Blocking conditions stay in the same user journey. The screen names the failed check, the
+affected boundary, and the corrective action; it disables snapshot creation and makes F002
+unavailable. It also reassures the user that an earlier sealed snapshot was not changed. There
+is no "accept" escape hatch for a safety or integrity blocker.
+
+### 10.3 Screen contract
+
+| Moment | Primary information | Primary action | Honest constraint |
+| --- | --- | --- | --- |
+| Source setup | authorized repository, requested ref, resolved commit preview, whole-repository or directory-root scope | continue to automatic preflight | no credentials or security-rule editor is exposed |
+| Preflight | `can start`, `can start with expected gaps`, or `blocked`, with a reason and affected scope | capture, or edit source/scope | a block cannot be overridden |
+| Capture and sealing | stage rail, observed counts, current operation, cancellation/retry | cancel before seal or retry as a new run | progress is event-derived; it never invents a percentage |
+| Source Truth receipt | resolved commit, declared scope, receipt status, coverage summary, material gaps, policy and inventory identity | open coverage/history; start F002 only when eligible | warning limitations remain visible and are inherited |
+| Coverage / history detail | every artifact disposition and reason, every Gap, its acceptance validity, and earlier immutable receipts | inspect or create a new capture | neither history nor a Gap can be edited into a better result |
+
+The Source Truth card/receipt is the **primary surface**. Coverage and receipt history are the
+deep-dive surfaces. The workspace shell displays only the latest state for each source to avoid
+event noise; it aggregates progress by stage and preserves the detailed, reason-coded history
+behind the receipt.
+
+**Not included in this proposal:** a global dashboard, live log tailing, a raw-secret viewer, a
+source-code browser, API/function-tree visualization, or production implementation. Those would
+either bypass the source decision or belong to later features.
+
+## 11. F002 admission contract
 
 ```ts
 type QualifiedSourceInput = {
@@ -189,7 +241,7 @@ Admission requires Workspace access, a sealed and integrity-verified snapshot/in
 
 F002 persists receipt/snapshot/inventory/policy identities and the *complete inherited gap set* on every derived result. It can create a separate extraction-layer Gap linked to an F001 Gap; it cannot modify, suppress, downgrade, or re-accept F001’s Gap. F003/F004 get source provenance through F002 only.
 
-## 11. Reference pilot
+## 12. Reference pilot
 
 Use a disposable Git fixture seeded from the order-platform reference artifacts, with fixed commits A and B—not a developer working tree.
 
@@ -206,7 +258,7 @@ Use a disposable Git fixture seeded from the order-platform reference artifacts,
 
 The key failure mode is a **false-green receipt**: material silently disappears yet a ready state is issued. The defense is Git-object capture, inventory conservation, explicit dispositions, material gaps, atomic seal, immutable receipt evidence, and mandatory downstream inheritance.
 
-## 12. Review outcome and next gate
+## 13. Review outcome and next gate
 
 Independent reviews by 砚砚 and Kimi agreed on the records, user journey, state machine, F002 inheritance, and negative pilot. This proposal resolves the two meaningful design differences:
 
