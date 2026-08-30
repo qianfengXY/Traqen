@@ -77,6 +77,10 @@ function statusCopy(account: GlobalAccount) {
   return "等待 CLI 登录";
 }
 
+function hasPinnedModelId(model: GlobalModelProfile) {
+  return typeof model.model === "string" && model.model.trim().length > 0;
+}
+
 function capabilityLabel(entry: EffectiveCapability) {
   if (entry.availability === "GLOBAL_UNAVAILABLE") return "全局不可用 / 需要处理";
   if (entry.availability === "WORKSPACE_DISABLED") return "本项目已停用";
@@ -104,7 +108,8 @@ export function F006SettingsCenter(props: Props) {
   const [modelId, setModelId] = useState("");
   const [modelAccountId, setModelAccountId] = useState("");
   const [modelAdapter, setModelAdapter] = useState<(typeof ADAPTERS)[number]>("CODEX");
-  const [modelValue, setModelValue] = useState("");
+  const [modelValue, setModelValue] = useState("gpt-5.6-sol");
+  const [modelReasoningEffort, setModelReasoningEffort] = useState<"minimal" | "low" | "medium" | "high" | "xhigh">("medium");
   const [capabilityName, setCapabilityName] = useState("");
   const [capabilityDescription, setCapabilityDescription] = useState("");
   const [localName, setLocalName] = useState("");
@@ -121,6 +126,7 @@ export function F006SettingsCenter(props: Props) {
     return model.transport === "CLI"
       && model.lifecycle === "ACTIVE"
       && model.readiness === "READY"
+      && hasPinnedModelId(model)
       && account?.lifecycle === "ACTIVE"
       && (account.authMethod !== "OAUTH" || (account.oauthStatus === "AUTHENTICATED" && account.cliAdapter === model.cliAdapter));
   }), [props.accounts, props.models]);
@@ -212,10 +218,11 @@ export function F006SettingsCenter(props: Props) {
       displayName: modelName.trim() || id,
       accountId: modelAccountId,
       cliAdapter: modelAdapter,
-      model: modelValue.trim() || undefined,
+      model: modelValue.trim(),
+      reasoningEffort: modelAdapter === "CODEX" ? modelReasoningEffort : undefined,
     });
     if (created) {
-      setModelName(""); setModelId(""); setModelValue("");
+      setModelName(""); setModelId(""); setModelValue(modelAdapter === "CODEX" ? "gpt-5.6-sol" : ""); setModelReasoningEffort("medium");
     }
   }
 
@@ -287,7 +294,7 @@ export function F006SettingsCenter(props: Props) {
       </nav>
       <div className="f006-global-content">
         {globalPage === "accounts" && <GlobalAccounts {...props} accountName={accountName} setAccountName={setAccountName} accountId={accountId} setAccountId={setAccountId} authMethod={authMethod} setAuthMethod={setAuthMethod} adapter={accountAdapter} setAdapter={setAccountAdapter} secretRefId={secretRefId} setSecretRefId={setSecretRefId} onAdd={() => void addAccount()} />}
-        {globalPage === "models" && <GlobalModels {...props} modelName={modelName} setModelName={setModelName} modelId={modelId} setModelId={setModelId} accountId={modelAccountId} setAccountId={setModelAccountId} adapter={modelAdapter} setAdapter={setModelAdapter} modelValue={modelValue} setModelValue={setModelValue} onAdd={() => void addModel()} />}
+        {globalPage === "models" && <GlobalModels {...props} modelName={modelName} setModelName={setModelName} modelId={modelId} setModelId={setModelId} accountId={modelAccountId} setAccountId={setModelAccountId} adapter={modelAdapter} setAdapter={setModelAdapter} modelValue={modelValue} setModelValue={setModelValue} reasoningEffort={modelReasoningEffort} setReasoningEffort={setModelReasoningEffort} onAdd={() => void addModel()} />}
         {(globalPage === "skills" || globalPage === "mcp") && <GlobalCapabilities {...props} kind={globalPage === "skills" ? "SKILL" : "MCP"} name={capabilityName} setName={setCapabilityName} description={capabilityDescription} setDescription={setCapabilityDescription} onAdd={() => void addGlobalCapability(globalPage === "skills" ? "SKILL" : "MCP")} onLifecycle={(target) => void requestLifecycle(target)} />}
       </div>
     </div>
@@ -315,10 +322,69 @@ function GlobalAccounts(props: Props & { accountName: string; setAccountName: (v
   return <div className="f006-page-grid"><section className="f006-form-card"><div><p className="eyebrow">Account</p><h2>{props.t("添加全局账号", "Add a global account")}</h2><p>{props.t("OAuth 的登录状态由对应 CLI 维护；Traqen 不显示、不保存 token。", "OAuth state belongs to its CLI. Traqen neither displays nor stores a token.")}</p></div><label>{props.t("显示名称", "Display name")}<input value={props.accountName} onChange={(event) => props.setAccountName(event.currentTarget.value)} placeholder="Codex work account" /></label><label>{props.t("稳定 ID（可选）", "Stable ID (optional)")}<input value={props.accountId} onChange={(event) => props.setAccountId(event.currentTarget.value)} placeholder="codex-work" /></label><fieldset><legend>{props.t("认证方式", "Authentication")}</legend><div className="f006-choice-row"><button className={props.authMethod === "OAUTH" ? "selected" : ""} onClick={() => selectAuthMethod("OAUTH")}>OAuth / CLI</button><button className={props.authMethod === "API_KEY" ? "selected" : ""} onClick={() => selectAuthMethod("API_KEY")}>API Key</button></div></fieldset><label>{props.t("CLI 客户端", "CLI client")}<select value={props.adapter} onChange={(event) => props.setAdapter(event.currentTarget.value as (typeof ADAPTERS)[number])}>{accountAdapters.map((adapter) => <option key={adapter}>{adapter}</option>)}</select></label>{props.authMethod === "API_KEY" ? <label>{props.t("安全凭据引用", "Secret reference")}<input value={props.secretRefId} onChange={(event) => props.setSecretRefId(event.currentTarget.value)} placeholder="vault://…" autoComplete="off" /><small>{props.t("只保存引用，不接受明文 API Key。", "Only a reference is stored; raw API keys are not accepted.")}</small></label> : <div className="f006-info-note"><b>{props.t("在 CLI 中登录", "Sign in in the CLI")}</b><span>{props.t("请由管理员在终端完成登录，然后回到此页点击“重新检查”。", "An administrator signs in in the terminal, then returns here to recheck.")}</span></div>}<button className="button primary" disabled={props.working || (props.authMethod === "API_KEY" && !props.secretRefId.trim())} onClick={props.onAdd}>{props.t("保存账号", "Save account")}</button></section><section className="f006-list-card"><div className="f006-list-head"><div><p className="eyebrow">Global accounts</p><h2>{props.t("账号状态", "Account status")}</h2></div><span>{props.accounts.length}</span></div>{props.accounts.length ? props.accounts.map((account) => <article className="f006-resource-row" key={account.id}><div className="f006-resource-icon">{account.authMethod === "OAUTH" ? "◌" : "◆"}</div><div><strong>{account.displayName}</strong><small>{account.cliAdapter ?? "—"} · {account.authMethod}</small><p>{statusCopy(account)}</p></div><div className={`f006-status ${account.lifecycle === "ACTIVE" && account.oauthStatus !== "CLI_UNAVAILABLE" ? "success" : "warning"}`}>{account.lifecycle === "ACTIVE" ? account.oauthStatus ?? "ACTIVE" : account.lifecycle}</div>{account.authMethod === "OAUTH" && <button className="button" disabled={props.working} onClick={() => props.onRecheckAccount(account.accountId)}>{props.t("重新检查", "Recheck")}</button>}</article>) : <EmptyList title={props.t("还没有账号", "No accounts yet")} detail={props.t("从一个 CLI 账号开始。", "Start with one CLI account.")} />}</section></div>;
 }
 
-function GlobalModels(props: Props & { modelName: string; setModelName: (value: string) => void; modelId: string; setModelId: (value: string) => void; accountId: string; setAccountId: (value: string) => void; adapter: (typeof ADAPTERS)[number]; setAdapter: (value: (typeof ADAPTERS)[number]) => void; modelValue: string; setModelValue: (value: string) => void; onAdd: () => void }) {
+function GlobalModels(props: Props & {
+  modelName: string;
+  setModelName: (value: string) => void;
+  modelId: string;
+  setModelId: (value: string) => void;
+  accountId: string;
+  setAccountId: (value: string) => void;
+  adapter: (typeof ADAPTERS)[number];
+  setAdapter: (value: (typeof ADAPTERS)[number]) => void;
+  modelValue: string;
+  setModelValue: (value: string) => void;
+  reasoningEffort: "minimal" | "low" | "medium" | "high" | "xhigh";
+  setReasoningEffort: (value: "minimal" | "low" | "medium" | "high" | "xhigh") => void;
+  onAdd: () => void;
+}) {
   const activeAccounts = props.accounts.filter((account) => account.lifecycle === "ACTIVE" && (account.authMethod !== "OAUTH" || account.oauthStatus === "AUTHENTICATED"));
   const cliModels = props.models.filter((model) => model.transport === "CLI");
-  return <div className="f006-page-grid"><section className="f006-form-card"><div><p className="eyebrow">CLI model</p><h2>{props.t("创建 CLI 模型", "Create a CLI model")}</h2><p>{props.t("v1 只允许本机 CLI。API 模式不会出现在此流程中。", "v1 only supports a local CLI. API transport is not part of this flow.")}</p></div><label>{props.t("显示名称", "Display name")}<input value={props.modelName} onChange={(event) => props.setModelName(event.currentTarget.value)} placeholder="Codex · GPT-5.6" /></label><label>{props.t("稳定 ID（可选）", "Stable ID (optional)")}<input value={props.modelId} onChange={(event) => props.setModelId(event.currentTarget.value)} placeholder="codex-gpt-5" /></label><label>{props.t("账号", "Account")}<select value={props.accountId} onChange={(event) => props.setAccountId(event.currentTarget.value)}><option value="">{props.t("选择账号", "Select account")}</option>{activeAccounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.displayName} · {account.authMethod}</option>)}</select></label><label>{props.t("CLI 客户端", "CLI client")}<select value={props.adapter} onChange={(event) => props.setAdapter(event.currentTarget.value as (typeof ADAPTERS)[number])}>{ADAPTERS.map((adapter) => <option key={adapter}>{adapter}</option>)}</select></label><label>{props.t("模型标识（可选）", "Model ID (optional)")}<input value={props.modelValue} onChange={(event) => props.setModelValue(event.currentTarget.value)} placeholder="gpt-5.6" /></label><button className="button primary" disabled={props.working || !props.accountId} onClick={props.onAdd}>{props.t("保存 CLI 模型", "Save CLI model")}</button></section><section className="f006-list-card"><div className="f006-list-head"><div><p className="eyebrow">Global models</p><h2>{props.t("模型可用性", "Model readiness")}</h2></div><span>{cliModels.length}</span></div>{cliModels.length ? cliModels.map((model) => <article className="f006-resource-row" key={model.id}><div className="f006-resource-icon">⌘</div><div><strong>{model.displayName}</strong><small>{model.cliAdapter ?? "CLI"} · {model.accountId ?? "未关联账号"}{model.model ? ` · ${model.model}` : ""}</small><p>{model.readiness === "READY" ? props.t("可供 Agent 选择", "Available to Agents") : props.t("验证后才会进入 Agent 选择器", "Verify before it appears in Agent selectors")}</p></div><div className={`f006-status ${model.readiness === "READY" ? "success" : "warning"}`}>{model.readiness}</div><button className="button" disabled={props.working || model.lifecycle !== "ACTIVE"} onClick={() => props.onVerifyModel(model.profileId)}>{props.t("验证", "Verify")}</button></article>) : <EmptyList title={props.t("还没有模型", "No models yet")} detail={props.t("选择一个全局账号后创建本机 CLI 模型。", "Choose a global account, then create a local CLI model.")} />}</section></div>;
+  const selectAdapter = (adapter: (typeof ADAPTERS)[number]) => {
+    props.setAdapter(adapter);
+    if (adapter === "CODEX" && !props.modelValue.trim()) props.setModelValue("gpt-5.6-sol");
+    if (adapter !== "CODEX" && /^gpt-5\.6-(sol|terra|luna)$/.test(props.modelValue)) props.setModelValue("");
+  };
+  return <div className="f006-page-grid">
+    <section className="f006-form-card">
+      <div>
+        <p className="eyebrow">CLI model</p>
+        <h2>{props.t("创建 CLI 模型", "Create a CLI model")}</h2>
+        <p>{props.t("每个新模型都固定模型 ID；验证和运行将使用下方显示的精确配置。", "Every new profile pins a model ID; verification and Runs use the exact configuration shown below.")}</p>
+      </div>
+      <label>{props.t("显示名称", "Display name")}<input value={props.modelName} onChange={(event) => props.setModelName(event.currentTarget.value)} placeholder="Codex · Terra · High" /></label>
+      <label>{props.t("稳定 ID（可选）", "Stable ID (optional)")}<input value={props.modelId} onChange={(event) => props.setModelId(event.currentTarget.value)} placeholder="codex-terra-high" /></label>
+      <label>{props.t("账号", "Account")}<select value={props.accountId} onChange={(event) => props.setAccountId(event.currentTarget.value)}><option value="">{props.t("选择账号", "Select account")}</option>{activeAccounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.displayName} · {account.authMethod}</option>)}</select></label>
+      <label>{props.t("CLI 客户端", "CLI client")}<select value={props.adapter} onChange={(event) => selectAdapter(event.currentTarget.value as (typeof ADAPTERS)[number])}>{ADAPTERS.map((adapter) => <option key={adapter}>{adapter}</option>)}</select></label>
+      <label>{props.adapter === "CODEX" ? props.t("Codex 模型 ID", "Codex model ID") : props.t("模型 ID", "Model ID")}<input value={props.modelValue} onChange={(event) => props.setModelValue(event.currentTarget.value)} placeholder={props.adapter === "CODEX" ? "gpt-5.6-sol" : "provider model ID"} list={props.adapter === "CODEX" ? "f006-codex-model-presets" : undefined} /><small>{props.adapter === "CODEX" ? props.t("可选择 Sol、Terra、Luna，或直接输入你账户可用的精确 Codex 模型 ID。", "Choose Sol, Terra, or Luna—or type the exact Codex model ID available to your account.") : props.t("请填写这个 CLI 支持的精确模型 ID。", "Enter the exact model ID supported by this CLI.")}</small></label>
+      {props.adapter === "CODEX" && <datalist id="f006-codex-model-presets"><option value="gpt-5.6-sol">Sol</option><option value="gpt-5.6-terra">Terra</option><option value="gpt-5.6-luna">Luna</option></datalist>}
+      {props.adapter === "CODEX" && <label>{props.t("推理档位", "Reasoning effort")}<select value={props.reasoningEffort} onChange={(event) => props.setReasoningEffort(event.currentTarget.value as "minimal" | "low" | "medium" | "high" | "xhigh")}><option value="minimal">{props.t("极速 · minimal", "Fastest · minimal")}</option><option value="low">{props.t("快速 · low", "Fast · low")}</option><option value="medium">{props.t("均衡 · medium", "Balanced · medium")}</option><option value="high">{props.t("深入 · high", "Deep · high")}</option><option value="xhigh">{props.t("极深 · xhigh", "Deepest · xhigh")}</option></select><small>{props.t("将以 Codex 配置项 model_reasoning_effort 执行；档位越高通常推理越深入、耗时越长。", "Executed as Codex model_reasoning_effort; higher effort generally reasons more deeply and takes longer.")}</small></label>}
+      <button className="button primary" disabled={props.working || !props.accountId || !props.modelValue.trim()} onClick={props.onAdd}>{props.t("保存 CLI 模型", "Save CLI model")}</button>
+    </section>
+    <section className="f006-list-card">
+      <div className="f006-list-head"><div><p className="eyebrow">Global models</p><h2>{props.t("模型可用性", "Model readiness")}</h2></div><span>{cliModels.length}</span></div>
+      {cliModels.length ? cliModels.map((model) => {
+        const pinned = hasPinnedModelId(model);
+        const recoveryAdapter = ADAPTERS.includes(model.cliAdapter as (typeof ADAPTERS)[number])
+          ? model.cliAdapter as (typeof ADAPTERS)[number]
+          : "CODEX";
+        const createPinnedReplacement = () => {
+          props.setModelName(`${model.displayName} · pinned`);
+          props.setModelId("");
+          props.setAccountId(model.accountId ?? "");
+          props.setAdapter(recoveryAdapter);
+          props.setModelValue("");
+          props.setReasoningEffort("medium");
+        };
+        return <article className="f006-resource-row" key={model.id}>
+          <div className="f006-resource-icon">⌘</div>
+          <div><strong>{model.displayName}</strong><small>{model.cliAdapter ?? "CLI"} · {model.accountId ?? "未关联账号"} · {model.model ?? props.t("旧版默认模型（未固定）", "Legacy default (un-pinned)")}{model.cliAdapter === "CODEX" && ` · ${model.reasoningEffort ?? props.t("旧版默认档位", "legacy default effort")}`}</small><p>{!pinned ? props.t("固定模型后才能验证；请创建固定模型副本。", "Pin a model ID before verification; create a pinned replacement.") : model.readiness === "READY" ? props.t("可供 Agent 选择", "Available to Agents") : props.t("验证后才会进入 Agent 选择器", "Verify before it appears in Agent selectors")}</p></div>
+          <div className={`f006-status ${pinned && model.readiness === "READY" ? "success" : "warning"}`}>{pinned ? model.readiness : "UNPINNED"}</div>
+          <button className="button" disabled={props.working || model.lifecycle !== "ACTIVE" || !pinned} onClick={() => props.onVerifyModel(model.profileId)}>{props.t("验证", "Verify")}</button>
+          {!pinned && <button className="button" disabled={props.working} onClick={createPinnedReplacement}>{props.t("创建固定模型副本", "Create pinned replacement")}</button>}
+        </article>;
+      }) : <EmptyList title={props.t("还没有模型", "No models yet")} detail={props.t("选择一个全局账号、固定模型 ID 与推理档位。", "Choose a global account, pin a model ID and reasoning effort.")} />}
+    </section>
+  </div>;
 }
 
 function GlobalCapabilities(props: Props & { kind: "SKILL" | "MCP"; name: string; setName: (value: string) => void; description: string; setDescription: (value: string) => void; onAdd: () => void; onLifecycle: (target: LifecycleTarget) => void }) {

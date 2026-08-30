@@ -60,6 +60,35 @@ test("allowlisted CLI models pass untrusted prompts as one argv value without a 
   assert.equal(calls[0].args.filter((value) => value.includes("touch")).length, 1);
 });
 
+test("Codex CLI profiles pin both their model and reasoning effort in argv", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CODEX-TERRA-HIGH",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    reasoningEffort: "high",
+    spawnImpl: cliSpawn({ stdout: "{}\n" }, calls),
+  });
+
+  await adapter.planWorkspaceAnalysis({ scope: "workspace" });
+
+  assert.deepEqual(calls[0].args.slice(0, -1), [
+    "exec", "--json", "--model", "gpt-5.6-terra", "-c", 'model_reasoning_effort="high"',
+  ]);
+  assert.equal(calls[0].options.shell, false);
+});
+
+test("CLI profiles reject unsupported or non-Codex reasoning effort", () => {
+  assert.throws(() => new AllowlistedCliModelAdapter({
+    id: "CODEX-INVALID-EFFORT", cliAdapter: "CODEX", reasoningEffort: "turbo",
+    spawnImpl: cliSpawn({ stdout: "{}" }, []),
+  }), /reasoning effort/);
+  assert.throws(() => new AllowlistedCliModelAdapter({
+    id: "CLAUDE-EFFORT", cliAdapter: "CLAUDE", reasoningEffort: "high",
+    spawnImpl: cliSpawn({ stdout: "{}" }, []),
+  }), /only supported for CODEX/);
+});
+
 test("allowlisted CLI models reject executable path substitution", () => {
   assert.throws(() => new AllowlistedCliModelAdapter({
     id: "CLI-ESCAPE", cliAdapter: "CODEX", executablePath: "/tmp/not-allowlisted", spawnImpl: cliSpawn({ stdout: "{}" }, []),

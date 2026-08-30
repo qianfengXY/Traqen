@@ -10,6 +10,7 @@ export type GlobalModelProfile = {
   accountId: string | null;
   endpoint?: string;
   model?: string;
+  reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | null;
   cliAdapter?: "CODEX" | "CLAUDE" | "GEMINI" | "KIMI";
   executablePath?: string;
   credentialHandleId?: string;

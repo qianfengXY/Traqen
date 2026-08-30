@@ -788,6 +788,7 @@ export class TraceabilityApplication {
       providerAdapter: profile.providerAdapter ?? 'OPENAI_COMPATIBLE',
       endpoint: profile.endpoint,
       model: profile.model,
+      reasoningEffort: profile.reasoningEffort ?? null,
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
       credentialHandleId: profile.credentialHandleId,
@@ -857,10 +858,11 @@ export class TraceabilityApplication {
   async configureGlobalCliModel(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('global CLI model input must be an object');
     const accountId = requireId(input.accountId, 'accountId');
+    const model = requireId(input.model, 'model').trim();
     if (String(input.transport ?? 'CLI').toUpperCase() !== 'CLI') throw new TypeError('F006 global models must use the CLI transport');
     const cliAdapter = String(input.cliAdapter ?? '').toUpperCase();
     await this.#resolveF006CliEnvironment({ accountId, cliAdapter });
-    return this.configureGlobalModelProfile({ ...input, transport: 'CLI', accountId });
+    return this.configureGlobalModelProfile({ ...input, transport: 'CLI', accountId, model });
   }
 
   async updateGlobalModelProfile(profileId, input) {
@@ -868,7 +870,7 @@ export class TraceabilityApplication {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
     assertOnlyFields(input, [
       "id", "profileId", "displayName", "accountId", "transport", "providerAdapter", "endpoint", "model", "apiKey",
-      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
+      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "reasoningEffort", "expectedRevision",
     ], "globalModelRevision");
     if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
     if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");
@@ -895,6 +897,9 @@ export class TraceabilityApplication {
     await this.#syncGlobalModelLifecycles();
     const current = await this.getGlobalModelProfile(profileId);
     if (!current) return null;
+    if (String(current.transport ?? "").toUpperCase() === "CLI" && (typeof current.model !== "string" || current.model.trim() === "")) {
+      throw new TypeError("CLI model profiles must pin a non-empty model before verification");
+    }
     if (current.transport === 'CLI' && current.accountId) await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
     await this.#store.mutateGlobalModelProfile(profileId, current.revision, async () => (
       this.verifyAnalysisModelProfile(profileId, { persist: false })
@@ -906,6 +911,9 @@ export class TraceabilityApplication {
     const current = await this.getGlobalModelProfile(profileId);
     if (!current || current.transport !== "CLI" || !current.accountId) {
       throw new TypeError("F006 can verify only account-backed CLI model profiles");
+    }
+    if (typeof current.model !== "string" || current.model.trim() === "") {
+      throw new TypeError("F006 CLI model profiles must pin a non-empty model before verification");
     }
     await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
     return this.verifyGlobalModelProfile(profileId);
@@ -1048,17 +1056,29 @@ export class TraceabilityApplication {
   }
 
   async #assertActiveF006ProfileEligibility(profile) {
+    const agentSlots = [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])]
+      .filter((slot) => slot !== null && slot !== undefined);
+    // Pre-F006 execution profiles use mainAgent/childSlots rather than the
+    // F006 Agent-slot contract. They are retained for historical recovery,
+    // but never take the F006 model-profile path.
+    if (agentSlots.length === 0) return;
     const modelsByRevisionId = new Map((await this.#f006ModelProfileRevisions()).map((model) => [model.id, model]));
-    const modelRevisionIds = new Set(
-      [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])]
-        .map((slot) => slot?.modelProfileRevisionId)
-        .filter(Boolean),
-    );
+    const modelRevisionIds = new Set();
+    for (const slot of agentSlots) {
+      const revisionId = slot?.modelProfileRevisionId;
+      if (typeof revisionId !== "string" || revisionId.trim() === "") {
+        throw new TypeError("Every Agent slot must pin a model profile revision before a new Run");
+      }
+      modelRevisionIds.add(revisionId);
+    }
     for (const revisionId of modelRevisionIds) {
       const model = modelsByRevisionId.get(revisionId);
       const lifecycle = model ? await this.#store.getGlobalModelLifecycle(model.profileId) : null;
       if (!model || model.transport !== "CLI" || model.lifecycle !== "ACTIVE" || lifecycle?.lifecycle !== "ACTIVE" || model.readiness !== "READY" || !model.accountId) {
         throw new TypeError(`Active Workspace profile model revision ${revisionId} is no longer eligible for a new Run`);
+      }
+      if (typeof model.model !== "string" || model.model.trim() === "") {
+        throw new TypeError(`Active Workspace profile model revision ${revisionId} must pin a non-empty model for a new Run`);
       }
       await this.#resolveF006CliEnvironment({ accountId: model.accountId, cliAdapter: model.cliAdapter });
     }
@@ -3444,6 +3464,15 @@ export class TraceabilityApplication {
         `Historical reanalysis is unavailable [${recovery.reasonCode}]: ${recovery.message}`,
       );
     }
+    const recoveredProfile = await this.#store.getUnderstandingRecord(
+      projectId,
+      "WORKSPACE_EXECUTION_PROFILE",
+      recovery.workspaceExecutionProfileRevisionId,
+    );
+    if (!recoveredProfile || recoveredProfile.workspaceId !== projectId) {
+      throw new PersistenceConflictError("Historical reanalysis requires its retained WorkspaceExecutionProfileRevision");
+    }
+    await this.#assertActiveF006ProfileEligibility(recoveredProfile);
     return this.#legacyUnderstandingRuntime.start({
       projectId,
       sourceRegistrationId: recovery.sourceRegistrationId,

@@ -129,6 +129,60 @@ test("F006 rejects local manifest replacement and inactive global grants", () =>
   assert.equal(validation.errors.some(({ code }) => code === "CAPABILITY_UNAVAILABLE"), true);
 });
 
+test("F006 global Codex profiles make the selected model and effort part of the immutable revision", () => {
+  const terraHigh = createGlobalModelProfileRevision({
+    profileId: "CODEX-TERRA",
+    transport: "CLI",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    reasoningEffort: "high",
+  });
+  const terraLow = createGlobalModelProfileRevision({
+    profileId: "CODEX-TERRA",
+    transport: "CLI",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    reasoningEffort: "low",
+  });
+
+  assert.equal(terraHigh.connection.reasoningEffort, "high");
+  assert.notEqual(terraHigh.id, terraLow.id, "an effort change must create a distinct immutable revision");
+  assert.throws(() => createGlobalModelProfileRevision({
+    profileId: "CODEX-BAD-EFFORT", transport: "CLI", cliAdapter: "CODEX", reasoningEffort: "turbo",
+  }), /reasoning effort/);
+  assert.throws(() => createGlobalModelProfileRevision({
+    profileId: "CLAUDE-EFFORT", transport: "CLI", cliAdapter: "CLAUDE", reasoningEffort: "high",
+  }), /only supported for CODEX/);
+});
+
+test("F006 keeps hydrated unpinned CLI profiles visible but rejects them from Agent drafts", () => {
+  const draft = createWorkspaceCapabilityDraftRevision({
+    workspaceId: "W-LEGACY-UNPINNED",
+    mainAgentSlot: { modelProfileId: "LEGACY-UNPINNED" },
+    childAgentSlots: [{ modelProfileId: "LEGACY-UNPINNED", independenceGroup: "GROUP-1" }],
+  });
+  const validation = validateWorkspaceCapabilityDraft({
+    draft,
+    modelProfiles: [{
+      id: "LEGACY-UNPINNED-R1",
+      profileId: "LEGACY-UNPINNED",
+      transport: "CLI",
+      cliAdapter: "CODEX",
+      model: null,
+      readiness: "READY",
+      lifecycle: "ACTIVE",
+    }],
+    effectiveCatalog: [],
+    securityPolicy: { dataBoundary: "WORKSPACE", budgetLimit: "1", mcpPermissionMode: "ALLOW_SELECTED_MCP", grantedHandleIds: [] },
+  });
+
+  assert.equal(validation.valid, false);
+  assert.deepEqual(
+    validation.errors.filter(({ code }) => code === "MODEL_UNPINNED").map(({ field }) => field),
+    ["mainAgentSlot.modelProfileId", "childAgentSlots[0].modelProfileId"],
+  );
+});
+
 test("F006 previews active grant impact and requires typed confirmation before global deactivation", async () => {
   const store = new MemoryTraceabilityStore();
   await store.appendProjectFoundation(createProjectFoundation({

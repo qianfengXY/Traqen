@@ -29,3 +29,29 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /availableSkills\.length \?/);
   assert.match(source, /availableMcps\.length \?/);
 });
+
+test("F006 Codex model settings require an explicit model and expose reasoning effort", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /useState\("gpt-5\.6-sol"\)/,
+    "new Codex profiles must start from a visible pinned model instead of an implicit CLI default");
+  for (const model of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+    assert.match(source, new RegExp(model), `the ${model} preset must be discoverable`);
+  }
+  assert.match(source, /model_reasoning_effort/,
+    "the form must name the real Codex configuration key it controls");
+  assert.match(source, /reasoningEffort: modelAdapter === "CODEX"/,
+    "only Codex profiles may submit a reasoning effort");
+  assert.match(source, /!props\.modelValue\.trim\(\)/,
+    "the save action must refuse an unpinned new model");
+  assert.match(source, /Legacy default \(un-pinned\)/,
+    "existing blank profiles remain intelligible without being silently rewritten");
+  assert.match(source, /function hasPinnedModelId\(model: GlobalModelProfile\)/,
+    "the settings center must identify legacy unpinned records explicitly");
+  assert.match(source, /&& hasPinnedModelId\(model\)/,
+    "legacy unpinned records must never enter Agent model selectors");
+  assert.match(source, /Pin a model ID before verification|固定模型后才能验证/,
+    "the UI must explain why a legacy record cannot be re-verified");
+  assert.match(source, /Create pinned replacement|创建固定模型副本/,
+    "the UI must offer a recovery path for a legacy unpinned profile");
+});

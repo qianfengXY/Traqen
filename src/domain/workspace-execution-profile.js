@@ -8,6 +8,7 @@ const catalogKinds = new Set(["SKILL", "MCP"]);
 const modelTransports = new Set(["API", "CLI"]);
 const cliAdapters = new Set(["CODEX", "CLAUDE", "GEMINI", "KIMI"]);
 const cliExecutables = new Map([["CODEX", "codex"], ["CLAUDE", "claude"], ["GEMINI", "gemini"], ["KIMI", "kimi"]]);
+const codexReasoningEfforts = new Set(["minimal", "low", "medium", "high", "xhigh"]);
 const approvedSecretReference = /^(?:vault|secret|keychain|env):\/\/[A-Za-z0-9._~:/@+=-]+$/i;
 
 function assertSecretFree(value, fieldName) {
@@ -29,6 +30,23 @@ function uniqueStrings(values, fieldName) {
 
 function normalizedCapabilityName(value, fieldName = "capability name") {
   return requireNonEmptyString(value, fieldName).trim().toLowerCase();
+}
+
+function hasPinnedModelId(model) {
+  const value = model?.model ?? model?.connection?.model;
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+export function normalizeCodexReasoningEffort(value, cliAdapter) {
+  if (value === undefined || value === null) return null;
+  if (String(cliAdapter ?? "").toUpperCase() !== "CODEX") {
+    throw new TypeError("reasoning effort is only supported for CODEX");
+  }
+  const normalized = requireNonEmptyString(value, "reasoning effort").toLowerCase();
+  if (!codexReasoningEfforts.has(normalized)) {
+    throw new TypeError("reasoning effort must be minimal, low, medium, high, or xhigh");
+  }
+  return normalized;
 }
 
 export function capabilityKey(input, fieldName = "capability") {
@@ -96,6 +114,9 @@ export function createGlobalModelProfileRevision(input, clock = () => new Date()
   if (!Number.isInteger(revision) || revision < 1) throw new TypeError("revision must be a positive integer");
   const transport = requireNonEmptyString(input.transport, "transport").toUpperCase();
   if (!modelTransports.has(transport)) throw new TypeError("transport must be API or CLI");
+  if (transport === "API" && input.reasoningEffort !== undefined && input.reasoningEffort !== null) {
+    throw new TypeError("reasoning effort is only supported for CODEX");
+  }
   const connection = transport === "API"
     ? {
         providerAdapter: requireNonEmptyString(input.providerAdapter, "providerAdapter"),
@@ -103,10 +124,15 @@ export function createGlobalModelProfileRevision(input, clock = () => new Date()
         model: requireNonEmptyString(input.model, "model"),
         credentialHandleId: requireNonEmptyString(input.credentialHandleId, "credentialHandleId"),
       }
-    : {
-        cliAdapter: requireNonEmptyString(input.cliAdapter, "cliAdapter").toUpperCase(),
-        ...(input.model ? { model: requireNonEmptyString(input.model, "model") } : {}),
-      };
+    : (() => {
+        const cliAdapter = requireNonEmptyString(input.cliAdapter, "cliAdapter").toUpperCase();
+        const reasoningEffort = normalizeCodexReasoningEffort(input.reasoningEffort, cliAdapter);
+        return {
+          cliAdapter,
+          ...(input.model ? { model: requireNonEmptyString(input.model, "model") } : {}),
+          ...(reasoningEffort ? { reasoningEffort } : {}),
+        };
+      })();
   if (transport === "CLI" && !cliAdapters.has(connection.cliAdapter)) throw new TypeError("unsupported CLI adapter");
   if (transport === "CLI" && input.executablePath && requireNonEmptyString(input.executablePath, "executablePath") !== cliExecutables.get(connection.cliAdapter)) {
     throw new TypeError("CLI executable must match the adapter allowlist");
@@ -281,6 +307,7 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
     // This keeps historical/domain-only callers from silently changing semantics while
     // ensuring every executable F006 draft rejects legacy direct-API profiles.
     else if (model.account !== undefined && String(model.transport ?? "").toUpperCase() === "API") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_NOT_F006_CLI", message: "F006 requires an account-backed CLI model" });
+    else if (String(model.transport ?? "").toUpperCase() === "CLI" && !hasPinnedModelId(model)) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_UNPINNED", message: "Selected CLI model must pin a non-empty model ID" });
     else if (model.account === null) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_UNAVAILABLE", message: "Select a CLI model backed by an active global account" });
     // Callers that only own a historical model snapshot do not have account context.
     // F006 service paths always attach it; legacy-domain callers retain their prior
