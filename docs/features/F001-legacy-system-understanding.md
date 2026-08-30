@@ -118,5 +118,6 @@ F001 is the evidence boundary for F002–F004. F006 supplies related Workspace c
 
 - [2026-08-30 F001 source-truth convergence](../../feature-discussions/2026-08-30-F001-workspace-source-truth/README.md)
 - [ADR-0003: Source Truth boundary and downstream admission](../decisions/ADR-0003-source-truth-boundary.md)
+- [2026-08-30 F001 solution design proposal](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md) — operator review pending; implementation remains unauthorized.
 
 **Next:** F002 consumes a qualifying receipt, snapshot, inventory, and inherited gaps to create deterministic evidence facts and the API-structure projection.

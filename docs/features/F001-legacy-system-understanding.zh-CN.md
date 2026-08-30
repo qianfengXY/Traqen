@@ -118,5 +118,6 @@ F001 是 F002–F004 的证据边界。F006 提供关联的 Workspace 能力设�
 
 - [2026-08-30 F001 源码真相收敛](../../feature-discussions/2026-08-30-F001-workspace-source-truth/README.zh-CN.md)
 - [ADR-0003：源码真相边界与下游准入](../decisions/ADR-0003-source-truth-boundary.zh-CN.md)
+- [2026-08-30 F001 方案设计提案](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) — 等待 co-creator 审阅；尚未授权实现。
 
 **下一步：** F002 消费合格 Receipt、快照、清单及继承 Gap，产生确定性证据事实与 API 结构投影。
