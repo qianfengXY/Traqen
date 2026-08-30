@@ -5,7 +5,7 @@ feature_ids: [F001, F002, F003, F004, F006]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Traqen Feature 路线图
@@ -23,7 +23,7 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 
 | ID | 优先级 | Feature | 状态 | Owner | 来源 | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | 工作空间与源码真相 | spec | CodeX | operator 已确认的重构 | [F001](features/F001-legacy-system-understanding.zh-CN.md) |
+| F001 | P0 | 工作空间与源码真相 | spec | CodeX | operator 已授权的[源码真相收敛](../feature-discussions/2026-08-30-F001-workspace-source-truth/README.zh-CN.md) | [F001](features/F001-legacy-system-understanding.zh-CN.md) |
 | F002 | P0 | 确定性证据与 API 结构 | spec | TBD | operator 已确认的重构 | [F002](features/F002-feature-api-traceability.zh-CN.md) |
 | F003 | P1 | Agent 候选与审阅后的业务功能树 | spec | TBD | operator 已确认的重构 | [F003](features/F003-traceability-graph.zh-CN.md) |
 | F004 | P0 | 测试/执行证据、变更影响与重验证 | spec | TBD | operator 已确认的重构 | [F004](features/F004-claim-review.zh-CN.md) |
@@ -34,7 +34,7 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 | 波次 | 目标 | Feature | 退出证据 |
 |---|---|---|---|
 | 0 | 建立一个 Workspace 根和一份生效能力 Profile | F006 | 获批准的能力配置、生效快照、重启恢复，以及 Runtime 无法访问未授权能力 |
-| 1 | 让被分析的源码边界可复现 | F001 | 不可变源码快照、完整产物清单和明确覆盖处置状态 |
+| 1 | 让被分析的源码边界可复现 | F001 | 合格的 Source Truth Receipt、不可变快照、完整清单、明确 Gap 与受控 F002 准入 |
 | 2 | 发布确定性技术证据和 API 投影 | F002 | 可复现事实、证据链接、API 结构树和可见缺口 |
 | 3 | 建立已审阅的业务含义 | F003 | 有边界的 Agent 候选、人工审阅决策和可追溯业务功能树 |
 | 4 | 将理解转为更安全的下一次变更指引 | F004 | 快照绑定的执行证据、建议性影响分类和重验证建议 |

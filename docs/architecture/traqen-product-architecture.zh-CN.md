@@ -5,7 +5,7 @@ feature_ids: [F001, F002, F003, F004, F006]
 topics: [product-architecture, legacy-system, traceability, evidence, change-impact]
 doc_kind: product-architecture
 created: 2026-07-29
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Traqen 产品架构
@@ -31,7 +31,7 @@ Traqen 帮助架构师接手陌生的存量系统，并让下一次变更更安�
 | F004 — 测试/执行证据、变更影响与重验证 | 保存真实执行上下文，比较源码快照，并给出建议性的影响与重验证指引。 |
 | F006 — 工作空间能力设置 | 提供显式、版本化的能力和 Agent 访问配置，但不扩大分析源码边界。 |
 
-统一本体和权威约束保留在 [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)。工作空间身份和能力隔离规则保留在 [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)。F006 保留既有实施轨道。
+统一本体和权威约束保留在 [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)。工作空间身份和能力隔离规则保留在 [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)。F001 的可重放源码边界和下游准入规则保留在 [ADR-0003](../decisions/ADR-0003-source-truth-boundary.zh-CN.md)。F006 保留既有实施轨道。
 
 ## 3. 证据流
 

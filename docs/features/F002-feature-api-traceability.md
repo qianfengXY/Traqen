@@ -5,11 +5,11 @@ feature_ids: [F002]
 topics: [deterministic-analysis, evidence-facts, api-tree, traceability, gaps]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-08-30
 description: Derive reproducible source facts and an evidence-backed API-structure tree from a versioned workspace snapshot.
 description_source: human
 description_author: co-creator
-description_updated_at: 2026-08-29T03:18:18Z
+description_updated_at: 2026-08-30T06:44:00Z
 ---
 
 # F002 — Deterministic Evidence & API Structure
@@ -24,7 +24,7 @@ Legacy-system analysis needs a reproducible base that is not a model opinion. Be
 
 ## Outcome
 
-F002 turns an F001 snapshot into versioned `Fact` and `EvidenceLink` records. It publishes an API-structure tree whose route, method, declared contract, and source handler are direct observations when the language adapter can prove them. It also publishes gaps where the extractor cannot establish a relationship.
+F002 turns a qualifying F001 `SourceTruthReceipt` and its `SourceSnapshot` into versioned `Fact` and `EvidenceLink` records. It publishes an API-structure tree whose route, method, declared contract, and source handler are direct observations when the language adapter can prove them. It also publishes gaps where the extractor cannot establish a relationship.
 
 The API tree is an evidence projection, not a claim that an endpoint belongs to a particular business capability. Business naming and ownership are F003 work.
 
@@ -32,7 +32,7 @@ The API tree is an evidence projection, not a claim that an endpoint belongs to 
 
 ### In scope
 
-- Deterministic extractors for supported source languages and frameworks.
+- Deterministic extractors for supported source languages and frameworks, admitted only with an F001 `READY` or `READY_WITH_ACCEPTED_GAPS` receipt and its inherited gaps.
 - Normalized `Fact` records with extractor version, source snapshot, source range, and reproducibility token.
 - `EvidenceLink` records from facts to artifact ranges and supporting configuration or tests.
 - API-structure projection: route, HTTP method or transport operation, declared request/response contract where statically available, and handler linkage.
@@ -57,7 +57,7 @@ Facts may be corrected by an improved extractor, but the prior derivation remain
 
 ## User journey
 
-1. The architect selects an F001 source snapshot.
+1. The architect selects an F001 `READY` or `READY_WITH_ACCEPTED_GAPS` Source Truth Receipt.
 2. Traqen runs only the supported deterministic extractors.
 3. The architect opens the API tree and follows every visible endpoint or handler back to evidence.
 4. Unsupported or unresolved areas appear as gaps, not as silently missing branches.
@@ -70,6 +70,7 @@ Facts may be corrected by an improved extractor, but the prior derivation remain
 - [ ] The API tree labels unavailable evidence and unresolved dynamic routes as gaps.
 - [ ] Facts can link code, configuration, documentation, and test assets without asserting semantic ownership.
 - [ ] The published API tree never promotes a heuristic business classification to a deterministic fact.
+- [ ] F002 rejects a direct source path, branch name, dirty worktree, incomplete snapshot, or `BLOCKED` receipt as input.
 
 ## Open questions
 
@@ -79,6 +80,6 @@ Facts may be corrected by an improved extractor, but the prior derivation remain
 
 ## Dependencies and handoff
 
-F002 requires F001's immutable snapshot and complete inventory. F003 may use facts as evidence but must preserve the distinction between deterministic facts and semantic candidates. F004 uses facts and gaps to calculate bounded, advisory impact.
+F002 requires F001's qualifying immutable receipt, snapshot, complete inventory, and inherited gaps. F003 may use facts as evidence but must preserve the distinction between deterministic facts and semantic candidates. F004 uses facts and gaps to calculate bounded, advisory impact.
 
 **Next:** F003 proposes and reviews business semantics over this evidence base.

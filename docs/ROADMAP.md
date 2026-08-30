@@ -5,7 +5,7 @@ feature_ids: [F001, F002, F003, F004, F006]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Traqen Feature Roadmap
@@ -23,7 +23,7 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 
 | ID | Priority | Feature | Status | Owner | Source | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | Workspace & Source Truth | spec | CodeX | operator-confirmed redesign | [F001](features/F001-legacy-system-understanding.md) |
+| F001 | P0 | Workspace & Source Truth | spec | CodeX | operator-authorized [source-truth convergence](../feature-discussions/2026-08-30-F001-workspace-source-truth/README.md) | [F001](features/F001-legacy-system-understanding.md) |
 | F002 | P0 | Deterministic Evidence & API Structure | spec | TBD | operator-confirmed redesign | [F002](features/F002-feature-api-traceability.md) |
 | F003 | P1 | Agent Candidates & Reviewed Business Function Tree | spec | TBD | operator-confirmed redesign | [F003](features/F003-traceability-graph.md) |
 | F004 | P0 | Test/Execution Evidence, Change Impact & Revalidation | spec | TBD | operator-confirmed redesign | [F004](features/F004-claim-review.md) |
@@ -34,7 +34,7 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 | Wave | Goal | Features | Exit evidence |
 |---|---|---|---|
 | 0 | Establish one Workspace root and an effective capability profile | F006 | approved capability configuration, active snapshots, restart recovery, and no ungranted runtime capability access |
-| 1 | Make the analyzed source boundary reproducible | F001 | immutable source snapshot, complete artifact inventory, and explicit coverage dispositions |
+| 1 | Make the analyzed source boundary reproducible | F001 | qualifying Source Truth Receipt, immutable snapshot, complete inventory, explicit gaps, and controlled F002 admission |
 | 2 | Publish deterministic technical evidence and the API projection | F002 | reproducible facts, evidence links, API structure tree, and visible gaps |
 | 3 | Establish reviewed business meaning | F003 | bounded agent candidates, human review decisions, and a traceable business-function tree |
 | 4 | Turn understanding into safer next-change guidance | F004 | snapshot-bound execution evidence, advisory impact classifications, and revalidation recommendations |

@@ -5,7 +5,7 @@ feature_ids: [F001, F002, F003, F004, F006]
 topics: [product-architecture, legacy-system, traceability, evidence, change-impact]
 doc_kind: product-architecture
 created: 2026-07-29
-updated: 2026-08-29
+updated: 2026-08-30
 ---
 
 # Traqen Product Architecture
@@ -31,7 +31,7 @@ The active delivery contract is the F001–F004 feature set:
 | F004 — Test/Execution Evidence, Change Impact & Revalidation | Preserve actual execution context, compare source snapshots, and issue advisory impact and revalidation guidance. |
 | F006 — Workspace Capability Settings | Supply explicit, versioned capability and Agent-access configuration without expanding the analysis source boundary. |
 
-The canonical ontology and authority constraints remain in [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md). Workspace identity and capability-isolation rules remain in [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md). F006 keeps its existing implementation track.
+The canonical ontology and authority constraints remain in [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md). Workspace identity and capability-isolation rules remain in [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md). F001's replayable source boundary and downstream-admission rule remain in [ADR-0003](../decisions/ADR-0003-source-truth-boundary.md). F006 keeps its existing implementation track.
 
 ## 3. Evidence flow
 
