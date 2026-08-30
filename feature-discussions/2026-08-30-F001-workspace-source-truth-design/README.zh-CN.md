@@ -12,11 +12,50 @@ design_gate: operator-review-pending
 
 # F001 方案设计 — Workspace & Source Truth
 
-## 状态与边界
+## 1. F001 完成时，用户得到什么
+
+当架构师能把一个已授权 Git 仓库的某个精确 commit，变成一份**可重放的 Source Truth Receipt** 时，F001 才算完成。Receipt 明确回答：Traqen 安全采集了什么、没有获得什么、下一项能力能不能使用这份结果。
+
+具体而言，架构师可以：
+
+1. 登记一个已授权的仓库，选择 branch/tag/commit，并看到它被解析为精确 commit；
+2. 采用全仓默认范围，或有意识地选择一个目录根；
+3. 自动预检，并在不执行仓库代码的前提下安全采集这份固定源码；
+4. 查看完整的源码覆盖清单和每一项已知限制；
+5. 仅对非阻断限制，以负责人、理由和有效期做接受；
+6. 将合格的不可变 snapshot 连同限制交给 F002，而不是交一个会变化的路径或 branch 名称。
+
+F001 **不会**产生 API 树、推断业务功能、执行测试或给出变更影响建议；这些分别属于 F002–F004。F001 的产物是可信证据地基，后续结果才有资格被相信。
+
+## 2. 功能清单、作用与解决的问题
+
+| 功能 | 架构师获得什么 | 解决什么问题 |
+| --- | --- | --- |
+| Workspace 与来源登记 | 一个绑定 Workspace、已获只读授权的 Git 来源；凭据只是受保护的引用。 | 分析不能悄悄使用任意本地目录，也不会泄露凭据。 |
+| 精确版本与范围 | 已解析 commit，以及全仓或一个明确目录根。 | 移动中的 branch 或模糊的“只扫代码”不能伪装成稳定覆盖。 |
+| 自动预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，并给出修复动作。 | 权限、路径边界、完整性、外部内容问题不会等扫描成功后才暴露。 |
+| 安全不可变采集 | 从 committed Git object 生成、且不执行源码的 sealed `SourceSnapshot`。 | working tree 修改、hook、构建、依赖安装不会改变或威胁证据。 |
+| Source Coverage 清单 | 每项范围内已发现产物都有 disposition/reason，范围边界可见。 | 文档、配置、SQL、测试、二进制及读取失败不能静默消失。 |
+| Coverage Gap 管理 | 阻断 Gap 保持阻断；非阻断 Gap 可带负责人、理由、有效期被接受。 | 不能用一次点击掩盖完整性失败，同时常见存量系统的不完整性仍然可见、可管理。 |
+| Receipt、历史与 F002 交接 | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED` 和历史采集；F002 只接收合格输入。 | 后续能力不能基于路径、branch、dirty checkout 或不完整采集，产出看似权威的结论。 |
+
+## 3. 与愿景是否一致
+
+| 产品愿景 | F001 的贡献 | 刻意的边界 |
+| --- | --- | --- |
+| 帮架构师接管陌生的存量系统。 | 在解释任何内容前，先建立精确源码基线。 | 它本身不解释业务含义。 |
+| 从源码到结论保留可追溯链路。 | 建立第一段长期有效链路：仓库 → commit → 范围 → snapshot → inventory → Gap → Receipt。 | Fact、Candidate、Claim、测试、影响链路由 F002–F004 补齐。 |
+| 展示可信 API 树和经过审核的业务功能树。 | 防止两棵树在来源不完整时仍表现得像“完整”。 | F001 不解析 API，也不发布任一棵树。 |
+| 让下一次变更更安全。 | 后续比较与影响分析能引用一份固定、可审计的源码。 | 不运行测试，也不产生影响建议。 |
+| 宁可明确不完整，也不输出看似可信但无证据的答案。 | 排除项、读取失败、外部材料、已接受限制均显式可见并被继承。 | 阻断安全/完整性条件不能被转成可用结果。 |
+
+所以 F001 与愿景一致，但它是**诚实的源码地基**，不是独立完成“存量理解”的产品。它的成功标准不是“扫描跑完”，而是“后续结论能明确说出并证明自己基于什么输入、受什么限制”。
+
+## 4. 方案状态与阅读顺序
 
 本文件是对已确认 F001 产品边界的**方案设计提案**，等待 co-creator 审阅；它不授权写实现代码，也不重新讨论 [ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md) 已经确定的边界。
 
-在任何存量系统推理开始前，F001 必须先回答：**这一次精确采集了哪份 Git 内容、哪些内容没有获得、F002 能否使用它。**
+第 1–3 节先说明产品产出；后续章节再解释用什么设计保证这些产出。
 
 ```text
 Architecture cell: source-truth（需要新建）
@@ -26,7 +65,7 @@ Why: 来源身份、采集权威、密封证据、下游准入现在没有唯一
 
 未来的 `source-truth` cell 只拥有来源登记、采集生命周期、快照、清单、Gap、Receipt 与 F002 准入；不拥有 F002 提取、F003 审核、F004 执行/影响或 F006 设置。这是 F303 的 authority/consumer 变化：`SourceTruthRepository` 是唯一权威，F002 只收到 `QualifiedSourceInput`，绝不收到路径、ref、working tree 或凭据；合同测试必须证明这点。
 
-## 总体架构
+## 5. 总体架构
 
 ```text
 Workspace
@@ -53,7 +92,7 @@ GitSourceGateway → committed tree/blob reader → staged SourceSnapshot
 
 `SourceCaptureRun` 记录操作进度、取消和重试；密封来源结果记录不可变证据和下游资格。二者分开，避免半成品运行伪装成半成品快照，也避免重试改写历史。
 
-## 领域对象与不变量
+## 6. 领域对象与不变量
 
 | 对象 | 职责 | 不变量 |
 | --- | --- | --- |
@@ -71,7 +110,7 @@ GitSourceGateway → committed tree/blob reader → staged SourceSnapshot
 
 用户至少必须能看出：安全采集、平台策略隔离、敏感脱敏、外部不可得、不可读/失败、不支持/二进制、目录根外。disposition 说明“对条目发生了什么”，Gap 说明“这会怎样限制后续结论”；有实质限制时两者都必须存在。两种记录都不得泄露原始敏感内容或凭据。
 
-## 采集状态机
+## 7. 采集状态机
 
 对外 Receipt 始终只有 `READY`、`READY_WITH_ACCEPTED_GAPS`、`BLOCKED` 三种状态；`AWAITING_GAP_DECISION` 只是 Capture Run 状态。
 
@@ -97,7 +136,7 @@ REQUESTED → PREFLIGHTING
 - receipt append-only。Gap 接受过期只会让 receipt 不能用于新的 F002 准入，不会抹去历史证据或历史分析。
 - 后续 failed/cancelled/blocked run 不得使更早 READY snapshot 失效。
 
-## 安全采集、迁移边界
+## 8. 安全采集、迁移边界
 
 | 接口 | 职责 | 禁止 |
 | --- | --- | --- |
@@ -109,7 +148,7 @@ REQUESTED → PREFLIGHTING
 
 `LocalSourceSnapshotCapture` 只可复用 staging/seal/digest/path-escape 的安全经验。它现在的本地 allowlisted-root reader、逐项强制 digest、直接连接 `WorkspaceAnalysisJob` 均与新合同不符。新 F001 必须以 resolved Git objects 为证据权威；服务器 cache/checkout 至多是性能优化。F001 变成 `SourceCaptureRun`，F002 及后续工作只能在准入后启动。
 
-## 用户界面与现场可观测性
+## 9. 用户界面与现场可观测性
 
 **Workspace 内的 Source Truth 卡** 是用户判断“来源能不能用”的主现场；不能只放在仪表盘，因为来源、范围和 Gap 接受正是在该 Workspace 上决定。
 
@@ -125,7 +164,7 @@ REQUESTED → PREFLIGHTING
 
 每个错误必须说明：失败了什么、哪段范围没获得、旧 snapshot 是否仍可用、下一步是什么。进度默认聚合为每个 source 的最新状态，深层界面保留完整历史；诊断使用 reason code 并脱敏。
 
-## F002 准入合同
+## 10. F002 准入合同
 
 ```ts
 type QualifiedSourceInput = {
@@ -148,7 +187,7 @@ type QualifiedSourceInput = {
 
 F002 的每个派生结果固化 receipt/snapshot/inventory/policy 身份与**完整 inherited Gap 集**。F002 可创建独立的解析层 Gap 并链接 F001 Gap，但不得修改、隐藏、降级或重新接受 F001 Gap。F003/F004 只能经由 F002 得到来源 provenance。
 
-## 参考试点
+## 11. 参考试点
 
 使用由 order-platform 参考产物播种的一次性 Git fixture，含固定 commit A/B，不使用开发者 working tree。
 
@@ -165,7 +204,7 @@ F002 的每个派生结果固化 receipt/snapshot/inventory/policy 身份与**�
 
 首要失效模式是 **false-green receipt**：材料静默消失却被宣称 READY。防线是 Git-object capture、inventory 守恒、显式 disposition、material Gap、原子 seal、不可变 receipt 和强制下游继承。
 
-## 审阅结论与下一门
+## 12. 审阅结论与下一门
 
 砚砚与 Kimi 的独立审阅在对象、旅程、状态机、F002 继承和负向试点上达成一致。两项收敛为：
 
