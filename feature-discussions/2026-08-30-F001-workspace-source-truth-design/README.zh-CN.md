@@ -169,11 +169,24 @@ REQUESTED → PREFLIGHTING
 
 界面是 **Workspace 的扩展**，不是另建仪表盘。下列界面稿是带示例数据的交互设计提案，不含后端实现。它延续 Traqen 现有的浅色控制台语言——常驻导航、白色任务面板、蓝色主动作，以及明确的警告/阻断色——让用户在来源所属的 Workspace 内作出来源决策。
 
+视觉稿默认使用**简体中文**，使当前 operator 能直接审阅 F001 旅程；这不承诺最终产品运行时语言或国际化实现方式。
+
 **设计门问题：** 架构师是否无需打开诊断日志，就能判断某份来源结果能否用于后续分析、F002 会继承什么限制，以及不可用时该做什么？下面第一张是回答这个问题的核心画面；第二张证明同一现场有诚实的恢复路径，而不是只展示成功态。
+
+应用壳层是固定约束，不随状态改变。两张图都使用相同顺序的左侧导航，且固定选中 `工作空间分析`：
+
+```text
+主页
+工作空间：全部工作空间 · 工作空间分析 · 快照历史 · 设置
+理解：代码地图 · 搜索 · 依赖关系
+治理：策略 · 审计日志 · 成员与权限
+```
+
+合格 Receipt 与预检阻断之间，只有 Workspace 主内容区可以变化。
 
 ### 10.1 可用，但带已接受限制
 
-![带已接受限制、可用于下游的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps-v2.png)
+![默认中文、带已接受限制且可用于下游的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
 
 Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 sealed snapshot 可用，**不表示完整**：coverage 卡给出覆盖分母，Gap 仍展示负责人和有效期，下游动作明确 F002 会继承这项限制。用户可在启动 F002 前打开 artifact inventory 或 receipt history；F002 拿到的不是实时路径或 working tree。
 
@@ -181,7 +194,7 @@ Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 se
 
 ### 10.2 采集前被阻断
 
-![因路径边界而被阻断的来源预检](assets/source-truth-preflight-blocked.png)
+![默认中文、因路径边界而被阻断的来源预检](assets/source-truth-preflight-blocked-zh-CN.png)
 
 阻断条件留在同一条用户旅程里。界面说明失败检查、受影响边界和修复动作；它禁用 snapshot 创建，并明确 F002 当前不可用。同时它说明早先 sealed snapshot 没有被改动。安全或完整性 blocker 没有“接受”这一逃生入口。
 

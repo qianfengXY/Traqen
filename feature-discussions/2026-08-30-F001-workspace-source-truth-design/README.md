@@ -174,15 +174,31 @@ Traqen's existing light console language—persistent navigation, white task pan
 primary actions, and explicit warning/blocking colours—so the user can make a source decision
 where the source belongs.
 
+The visual-design default is **Simplified Chinese**. This makes the reviewable F001 journey
+readable to its current operators; it does not make a claim about the eventual runtime locale or
+internationalization implementation.
+
 **Design-gate question:** can an architect tell, without opening a diagnostic log, whether a
 particular source result is usable for downstream analysis, what limitation F002 will inherit,
 and what action is required when it is not usable? The first screen below is the soul frame for
 that decision. The second proves that the same surface has an honest recovery path, rather than
 only a success state.
 
+The application shell is an invariant, not a state-dependent design choice. Both screens use the
+same sidebar, in the same order, with `工作空间分析` selected:
+
+```text
+主页
+工作空间: 全部工作空间 · 工作空间分析 · 快照历史 · 设置
+理解: 代码地图 · 搜索 · 依赖关系
+治理: 策略 · 审计日志 · 成员与权限
+```
+
+Only the main workspace content changes between a qualifying receipt and a preflight block.
+
 ### 10.1 Eligible with an accepted limitation
 
-![Source Truth receipt eligible with an accepted limitation](assets/source-truth-ready-with-accepted-gaps-v2.png)
+![Chinese-default Source Truth receipt eligible with an accepted limitation](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
 
 The receipt is deliberately orange rather than green. `READY_WITH_ACCEPTED_GAPS` means the
 sealed snapshot is eligible, **not complete**: the coverage card gives the coverage denominator,
@@ -200,7 +216,7 @@ of the sealed snapshot.
 
 ### 10.2 Preflight blocked before capture
 
-![Source preflight blocked by a path boundary](assets/source-truth-preflight-blocked.png)
+![Chinese-default source preflight blocked by a path boundary](assets/source-truth-preflight-blocked-zh-CN.png)
 
 Blocking conditions stay in the same user journey. The screen names the failed check, the
 affected boundary, and the corrective action; it disables snapshot creation and makes F002
