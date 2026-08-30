@@ -59,9 +59,97 @@ async function migratedDatabase() {
     "0023_global_model_lifecycle",
     "0024_global_model_profile_revision_head",
     "0025_global_model_profile_revision_records",
+    "0026_global_account_revision",
+    "0027_f006_legacy_settings_receipts",
   ]);
   return database;
 }
+
+test("F006 legacy-settings migration records deterministic, immutable API and CLI source receipts", async (t) => {
+  const stagedMigrations = await mkdtemp(join(tmpdir(), "traqen-f006-legacy-receipts-"));
+  t.after(() => rm(stagedMigrations, { recursive: true, force: true }));
+  const migrationFiles = (await readdir(migrationsDirectory)).filter((name) => /^\d{4}_.+\.sql$/.test(name)).sort();
+  for (const name of migrationFiles.filter((name) => name < "0027_")) {
+    await copyFile(join(migrationsDirectory, name), join(stagedMigrations, name));
+  }
+  const database = await PGlite.create();
+  t.after(() => database.close());
+  await applyMigrations(database, stagedMigrations);
+  await insertProjectFoundation(database);
+  await database.query(`INSERT INTO global_model_profile_revision (revision_id, profile_id, revision, profile_payload, created_at) VALUES
+    ('MODEL-REV-API', 'MODEL-API', 1, '{"transport":"API"}'::jsonb, now()),
+    ('MODEL-REV-CLI', 'MODEL-CLI', 1, '{"transport":"CLI","accountId":"ACCOUNT-1"}'::jsonb, now())`);
+  await database.query(
+    `INSERT INTO capability_template_revision (kind, logical_name, revision, id, payload, created_at)
+     VALUES ('SKILL', 'legacy-review', 1, 'TEMPLATE-LEGACY-REVIEW', '{"legacy":true}'::jsonb, now())`,
+  );
+  const legacyDraft = {
+    id: "LEGACY-DRAFT-EMPTY-CHILD",
+    workspaceId: "PROJECT-001",
+    revision: 1,
+    mainAgentSlot: { id: "MAIN", role: "MAIN", modelProfileId: "MODEL-CLI", skillGrants: [], mcpGrants: [], enabled: true },
+    childAgentSlots: [
+      { id: "CHILD-1", role: "CHILD", modelProfileId: "", skillGrants: [], mcpGrants: [], enabled: true },
+      { id: "CHILD-2", role: "CHILD", modelProfileId: "", skillGrants: [], mcpGrants: [], enabled: true },
+      { id: "CHILD-3", role: "CHILD", modelProfileId: "MODEL-CLI", skillGrants: [], mcpGrants: [], enabled: true },
+    ],
+    projectCapabilityRevisionIds: [], importedKeys: [], disabledKeys: [],
+  };
+  await database.query(
+    `INSERT INTO understanding_record (project_id, record_type, id, snapshot_manifest_id, analysis_run_id, status, record_payload, created_at)
+     VALUES ($1, 'WORKSPACE_CAPABILITY_DRAFT', $2, NULL, NULL, NULL, $3::jsonb, now()),
+            ($1, 'WORKSPACE_CAPABILITY_CONFIG', 'LEGACY-CONFIG', NULL, NULL, NULL, '{}'::jsonb, now()),
+            ($1, 'WORKSPACE_ANALYSIS_JOB', 'LEGACY-RUN', NULL, NULL, 'RUNNING', '{"status":"RUNNING"}'::jsonb, now())`,
+    ["PROJECT-001", legacyDraft.id, JSON.stringify(legacyDraft)],
+  );
+  await database.query(
+    `INSERT INTO workspace_capability_head (project_id, head_key, version, record_id)
+     VALUES ('PROJECT-001', 'WORKSPACE_CAPABILITY_DRAFT', 1, $1)`,
+    [legacyDraft.id],
+  );
+  await copyFile(join(migrationsDirectory, "0027_f006_legacy_settings_receipts.sql"), join(stagedMigrations, "0027_f006_legacy_settings_receipts.sql"));
+
+  assert.deepEqual(await applyMigrations(database, stagedMigrations), ["0027_f006_legacy_settings_receipts"]);
+  const receipts = await database.query(
+    "SELECT source_id, outcome FROM f006_legacy_settings_migration_receipt WHERE source_kind = 'GLOBAL_MODEL_PROFILE_REVISION' ORDER BY source_id",
+  );
+  assert.deepEqual(receipts.rows, [
+    { source_id: "MODEL-REV-API", outcome: "UNSUPPORTED_F006_V1" },
+    { source_id: "MODEL-REV-CLI", outcome: "CLI_CANDIDATE" },
+  ]);
+  const normalizedHead = await database.query(
+    `SELECT draft.record_payload
+       FROM workspace_capability_head head
+       JOIN understanding_record draft ON draft.project_id = head.project_id AND draft.id = head.record_id
+      WHERE head.project_id = 'PROJECT-001' AND head.head_key = 'WORKSPACE_CAPABILITY_DRAFT'`,
+  );
+  assert.equal(normalizedHead.rows[0].record_payload.revision, 2);
+  assert.deepEqual(normalizedHead.rows[0].record_payload.childAgentSlots.map(({ id }) => id), ["CHILD-1", "CHILD-3"],
+    "only empty extra Child placeholders are removed; the required first and meaningful later Child remain");
+  const repairReceipts = await database.query(
+    `SELECT source_kind, source_id, outcome FROM f006_legacy_settings_migration_receipt
+      WHERE source_kind <> 'GLOBAL_MODEL_PROFILE_REVISION' ORDER BY source_kind, source_id`,
+  );
+  assert.deepEqual(repairReceipts.rows, [
+    { source_kind: "CAPABILITY_TEMPLATE_REVISION", source_id: "TEMPLATE-LEGACY-REVIEW", outcome: "NEEDS_ATTENTION" },
+    { source_kind: "WORKSPACE_ANALYSIS_JOB", source_id: "PROJECT-001:LEGACY-RUN", outcome: "NEEDS_ATTENTION" },
+    { source_kind: "WORKSPACE_CAPABILITY_CONFIG", source_id: "PROJECT-001:LEGACY-CONFIG", outcome: "NEEDS_ATTENTION" },
+    { source_kind: "WORKSPACE_CAPABILITY_DRAFT", source_id: "PROJECT-001:LEGACY-DRAFT-EMPTY-CHILD", outcome: "NEEDS_ATTENTION" },
+  ]);
+  assert.deepEqual(await applyMigrations(database, stagedMigrations), []);
+  const mappings = await database.query(
+    "SELECT source_id FROM f006_legacy_settings_source_mapping WHERE source_kind = 'GLOBAL_MODEL_PROFILE_REVISION' ORDER BY source_id",
+  );
+  assert.deepEqual(mappings.rows, [{ source_id: "MODEL-REV-API" }, { source_id: "MODEL-REV-CLI" }]);
+  await assert.rejects(
+    () => database.query("UPDATE f006_legacy_settings_migration_receipt SET reason = 'changed' WHERE source_id = 'MODEL-REV-API'"),
+    /append-only|forbidden/i,
+  );
+  await assert.rejects(
+    () => database.query("DELETE FROM f006_legacy_settings_source_mapping WHERE source_id = 'MODEL-REV-API'"),
+    /append-only|forbidden/i,
+  );
+});
 
 test("F006 migration backfills immutable Policy revisions for a pre-policy Draft", async (t) => {
   const stagedMigrations = await mkdtemp(join(tmpdir(), "traqen-f006-migrations-"));
@@ -409,6 +497,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "global_model_lifecycle",
     "global_model_profile_revision_head",
     "global_model_profile_revision",
+    "global_account_revision",
     "model_replacement_failure_diagnostic",
     "source_slice_worker_credential_use",
   ]) {

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import test from "node:test";
 
-import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels } from "../src/analysis/index.js";
+import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels, probeCliOAuthStatus } from "../src/analysis/index.js";
 import { issueScopedSecretGrants } from "../src/domain/index.js";
 
 function cliSpawn(result, calls) {
@@ -69,6 +69,74 @@ test("allowlisted CLI models reject executable path substitution", () => {
   }));
 });
 
+test("OAuth status recheck uses only an allowlisted read-only CLI command and never returns CLI output", async () => {
+  const calls = [];
+  const status = await probeCliOAuthStatus("CODEX", {
+    spawnImpl: cliSpawn({ stdout: "Logged in using ChatGPT\n" }, calls),
+  });
+
+  assert.deepEqual(status, { oauthStatus: "AUTHENTICATED" });
+  assert.deepEqual(calls[0].args, ["login", "status"]);
+  assert.equal(calls[0].executable, "codex");
+  assert.equal(calls[0].options.shell, false);
+  assert.equal(JSON.stringify(status).includes("ChatGPT"), false);
+});
+
+test("OAuth status recheck interprets the supported CLI status envelopes without accepting API-key authentication", async () => {
+  const cases = [
+    { adapter: "CODEX", stdout: "Logged in using ChatGPT\n", expected: "AUTHENTICATED" },
+    { adapter: "CODEX", stdout: "Logged in using API key\n", expected: "NOT_AUTHENTICATED" },
+    { adapter: "CODEX", stdout: "Not logged in\n", expected: "NOT_AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}\n', expected: "AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"claude.ai","apiProvider":"firstParty"}\n', code: 1, expected: "UNKNOWN" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":true,"authMethod":"apiKey","apiProvider":"firstParty"}\n', expected: "NOT_AUTHENTICATED" },
+    { adapter: "CLAUDE", stdout: '{"loggedIn":false,"authMethod":"none","apiProvider":"firstParty"}\n', expected: "NOT_AUTHENTICATED" },
+  ];
+  for (const { adapter, stdout, code, expected } of cases) {
+    const status = await probeCliOAuthStatus(adapter, { spawnImpl: cliSpawn({ stdout, code }, []) });
+    assert.deepEqual(status, { oauthStatus: expected }, `${adapter} must classify its authoritative status output`);
+  }
+});
+
+test("OAuth status recheck reports an absent CLI without attempting a login", async () => {
+  const calls = [];
+  const spawnImpl = (executable, args, options) => {
+    calls.push({ executable, args, options });
+    const child = new EventEmitter();
+    child.pid = 99999999;
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => {};
+    queueMicrotask(() => child.emit("error", Object.assign(new Error("not found"), { code: "ENOENT" })));
+    return child;
+  };
+
+  for (const [adapter, executable, args] of [["CODEX", "codex", ["login", "status"]], ["CLAUDE", "claude", ["auth", "status"]]]) {
+    const status = await probeCliOAuthStatus(adapter, { spawnImpl });
+    assert.deepEqual(status, { oauthStatus: "CLI_UNAVAILABLE" });
+    assert.equal(calls.at(-1).executable, executable);
+    assert.deepEqual(calls.at(-1).args, args);
+    assert.equal(calls.at(-1).options.shell, false);
+  }
+});
+
+test("OAuth status recheck terminates a probe that does not close", async () => {
+  const child = new EventEmitter();
+  child.pid = 99999999;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => { child.killed = true; };
+
+  const status = await probeCliOAuthStatus("CODEX", {
+    spawnImpl: () => child,
+    timeoutMs: 5,
+  });
+
+  assert.deepEqual(status, { oauthStatus: "UNKNOWN" });
+  assert.equal(child.killed, true);
+  child.emit("close", 0);
+});
+
 test("allowlisted CLI models enforce timeout and output bounds", async () => {
   const outputBounded = new AllowlistedCliModelAdapter({ id: "CLI-OUT", cliAdapter: "KIMI", maximumOutputBytes: 4, spawnImpl: cliSpawn({ stdout: "12345" }, []) });
   await assert.rejects(() => outputBounded.planWorkspaceAnalysis({}), /output limit/);
@@ -98,6 +166,46 @@ test("allowlisted CLI verification exercises authenticated model execution inste
     spawnImpl: cliSpawn({ stdout: '{}\n' }, []),
   });
   await assert.rejects(() => unauthenticated.verify(), /verification challenge/);
+});
+
+test("account-bound CLI execution resolves an API-key reference only into the selected adapter environment", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CLI-ACCOUNT-BOUND",
+    cliAdapter: "CODEX",
+    environmentResolver: async () => ({ OPENAI_API_KEY: "runtime-only-secret" }),
+    spawnImpl: cliSpawn(({ args }) => {
+      const request = JSON.parse(args.at(-1));
+      return { stdout: `${JSON.stringify({ ready: true, challenge: request.input.challenge })}\n` };
+    }, calls),
+  });
+
+  await adapter.verify();
+  assert.equal(calls[0].options.env.OPENAI_API_KEY, "runtime-only-secret");
+  assert.equal(JSON.stringify({ id: adapter.id, cliAdapter: adapter.cliAdapter }).includes("runtime-only-secret"), false);
+});
+
+test("account-bound OAuth CLI execution removes an ambient adapter API key", async () => {
+  const calls = [];
+  const previous = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "ambient-key-must-not-reach-oauth";
+  try {
+    const adapter = new AllowlistedCliModelAdapter({
+      id: "CLI-OAUTH-ISOLATED",
+      cliAdapter: "CODEX",
+      environmentResolver: async () => ({ OPENAI_API_KEY: null }),
+      spawnImpl: cliSpawn(({ args }) => {
+        const request = JSON.parse(args.at(-1));
+        return { stdout: `${JSON.stringify({ ready: true, challenge: request.input.challenge })}\n` };
+      }, calls),
+    });
+
+    await adapter.verify();
+    assert.equal(calls[0].options.env.OPENAI_API_KEY, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previous;
+  }
 });
 
 test("allowlisted CLI verification decodes each supported CLI's real JSON output envelope", async () => {

@@ -3,40 +3,41 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
-import { createDefaultChildSlots } from "./capability-roster";
+import { createDefaultChildSlots, needsStartConfirmation } from "./capability-roster";
+import { F006SettingsCenter } from "./f006-settings-center";
 import {
   CapabilitySettings,
   EmptyWorkspace,
   FeatureExplorer,
   GraphExplorer,
   GlobalCapabilityTemplateLibrary,
-  GlobalModelLibrary,
   ImpactWorkspace,
   ReviewWorkspace,
-  Unavailable,
   WorkspaceOverview,
   AnalysisCommandCenter,
   type GraphArtifact,
   type T,
 } from "./product-surfaces";
 import {
-  createGlobalModel,
-  createGlobalModelReplacementPlan,
-  applyGlobalModelReplacementPlan,
   deleteProjectCapability,
   decideWorkspaceReviewBatch,
   getConnectionHealth,
   getEffectiveCapabilities,
-  getGlobalModelUsage,
   getWorkspaceCapabilityDraft,
   listWorkspaceExecutionProfiles,
   loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
-  listGlobalModels,
+  listGlobalCliModels,
   listGlobalCapabilityTemplates,
-  retireGlobalModel,
-  updateGlobalModel,
-  verifyGlobalModel,
+  listGlobalAccounts,
+  listGlobalCapabilities,
+  createGlobalCliModel,
+  getGlobalCapabilityImpact,
+  recheckGlobalAccount,
+  saveGlobalAccount,
+  saveGlobalCapability,
+  setGlobalCapabilityLifecycle,
+  verifyGlobalCliModel,
   activateWorkspaceCapabilityDraft,
   ProductFoundationApiError,
   saveWorkspaceCapabilityDraft,
@@ -49,7 +50,9 @@ import {
   type ReviewQueueItem,
   type GlobalModelProfile,
   type GlobalCapabilityTemplate,
-  type GlobalModelUsage,
+  type GlobalAccount,
+  type GlobalCapability,
+  type GlobalCapabilityImpact,
   type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityDraftSaveInput,
 } from "./product-foundation-client";
@@ -85,7 +88,8 @@ import {
 } from "./understanding-graph-client";
 import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
-type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "models" | "templates" | "settings";
+type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "templates" | "settings";
+type SettingsScope = "chooser" | "global" | "workspace";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
 type CapabilityDraftConflict = {
@@ -104,6 +108,7 @@ type StartConfirmation = {
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_TRAQEN_API_BASE ?? "http://127.0.0.1:3100";
 const DEFAULT_SOURCE_ROOT = process.env.NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT ?? "";
 const WEB_OPERATOR = "WEB-OPERATOR";
+const confirmedProfileStorageKey = (workspaceId: string) => `traqen:f006:confirmed-profile:${WEB_OPERATOR}:${workspaceId}`;
 const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
   dataBoundary: "WORKSPACE",
   budgetLimit: "100",
@@ -119,9 +124,7 @@ const modules: Array<{ key: View; icon: string; section: "overview" | "understan
   { key: "graph", icon: "⌘", section: "understanding", zh: "理解图谱", en: "Understanding graph" },
   { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
   { key: "impact", icon: "↗", section: "governance", zh: "变更影响", en: "Change impact" },
-  { key: "models", icon: "◉", section: "configuration", zh: "全局模型", en: "Global models" },
-  { key: "templates", icon: "◇", section: "configuration", zh: "能力模板", en: "Capability templates" },
-  { key: "settings", icon: "⚙", section: "configuration", zh: "能力设置", en: "Capability settings" },
+  { key: "settings", icon: "⚙", section: "configuration", zh: "设置中心", en: "Settings center" },
 ];
 
 function messageOf(error: unknown, fallback: string) {
@@ -189,7 +192,10 @@ function ServerOwnedProduct() {
   const [impact, setImpact] = useState<Record<string, unknown> | null>(null);
   const [globalModels, setGlobalModels] = useState<GlobalModelProfile[]>([]);
   const [globalCapabilityTemplates, setGlobalCapabilityTemplates] = useState<GlobalCapabilityTemplate[]>([]);
-  const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
+  const [globalAccounts, setGlobalAccounts] = useState<GlobalAccount[]>([]);
+  const [globalCapabilities, setGlobalCapabilities] = useState<GlobalCapability[]>([]);
+  const [settingsScope, setSettingsScope] = useState<SettingsScope>("chooser");
+  const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { globalAvailableCount: 0, workspaceDisabledCount: 0, workspaceLocalCount: 0, globalUnavailableCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
   const [capabilityDraftConflict, setCapabilityDraftConflict] = useState<CapabilityDraftConflict | null>(null);
   const [capabilitySettingsReady, setCapabilitySettingsReady] = useState(false);
@@ -215,6 +221,7 @@ function ServerOwnedProduct() {
   const graphRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const revisionRequestRef = useRef(0);
+  const lastConfirmedExecutionProfileIdRef = useRef<string | null>(null);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
   const resolveEvidence = useCallback((resolver: string) =>
     resolveGraphEvidence(apiBase, apiToken, resolver), [apiBase, apiToken]);
@@ -340,7 +347,7 @@ function ServerOwnedProduct() {
     setSecurityBoundary(DEFAULT_SECURITY_BOUNDARY);
     setExecutionProfile(null);
     setProfileHistory([]);
-    setEffectiveCatalog({ entries: [], effective: [], summary: { builtinCount: 0, projectOverrideCount: 0, projectAdditionCount: 0, disabledCount: 0, effectiveCount: 0 } });
+    setEffectiveCatalog({ entries: [], effective: [], summary: { globalAvailableCount: 0, workspaceDisabledCount: 0, workspaceLocalCount: 0, globalUnavailableCount: 0, effectiveCount: 0 } });
     setMainModel("");
     setMainRolePolicy("PRIMARY_ANALYST");
     setMainSkillNames([]);
@@ -358,17 +365,21 @@ function ServerOwnedProduct() {
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableModels, availableTemplates] = await Promise.all([
+      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
-        listGlobalModels(apiBase, apiToken),
+        listGlobalCliModels(apiBase, apiToken),
         listGlobalCapabilityTemplates(apiBase, apiToken),
+        listGlobalAccounts(apiBase, apiToken),
+        listGlobalCapabilities(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
       setGlobalModels(availableModels);
       setGlobalCapabilityTemplates(availableTemplates);
+      setGlobalAccounts(availableAccounts);
+      setGlobalCapabilities(availableCapabilities);
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
       if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
@@ -537,12 +548,19 @@ function ServerOwnedProduct() {
 
   function openStartConfirmation() {
     if (!activeWorkspace || !sourceRegistrationId || !executionProfile) return;
-    setStartConfirmation({
+    const confirmation = {
       workspaceId: activeWorkspace.id,
       sourceRegistrationId,
       requestedMode: jobs.length === 0 ? "FULL" : "AUTO",
       profile: structuredClone(executionProfile),
-    });
+    };
+    const persistedConfirmation = typeof window === "undefined" ? null : window.localStorage.getItem(confirmedProfileStorageKey(confirmation.workspaceId));
+    const lastConfirmed = lastConfirmedExecutionProfileIdRef.current ?? persistedConfirmation;
+    if (!needsStartConfirmation(lastConfirmed, confirmation.profile.id)) {
+      void startUnderstanding(confirmation);
+      return;
+    }
+    setStartConfirmation(confirmation);
   }
 
   async function startUnderstanding(confirmation: StartConfirmation) {
@@ -555,6 +573,8 @@ function ServerOwnedProduct() {
         requestedMode: confirmation.requestedMode,
         expectedWorkspaceExecutionProfileRevisionId: confirmation.profile.id,
       });
+      lastConfirmedExecutionProfileIdRef.current = confirmation.profile.id;
+      window.localStorage.setItem(confirmedProfileStorageKey(confirmation.workspaceId), confirmation.profile.id);
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);
       setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
@@ -696,8 +716,10 @@ function ServerOwnedProduct() {
       expectedVersion,
       mainAgentSlot: { id: "MAIN", role: "MAIN", displayName: "Main Agent", modelProfileId: mainModel, skillGrants: mainSkillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: mainMcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: mainRolePolicy, independenceGroup: "MAIN", enabled: true },
       childAgentSlots: childSlots.map((slot, index) => ({ id: slot.id, role: "CHILD", displayName: `Child Agent ${index + 1}`, modelProfileId: slot.model, skillGrants: slot.skillNames.map((normalizedName) => ({ kind: "SKILL", normalizedName })), mcpGrants: slot.mcpNames.map((normalizedName) => ({ kind: "MCP", normalizedName })), rolePolicy: slot.rolePolicy, independenceGroup: slot.independenceGroup, enabled: true })),
-      projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "PROJECT").map(({ id }) => id),
-      importedKeys,
+      projectCapabilityRevisionIds: effectiveCatalog.entries.filter(({ source }) => source === "WORKSPACE" || source === "PROJECT").map(({ id }) => id),
+      // Global active capabilities are automatically available. This legacy field
+      // stays in the payload for backwards-compatible storage reads only.
+      importedKeys: [],
       disabledKeys,
       dependencies: { notes: dependencyNotes },
       conventions: { notes: conventionNotes },
@@ -705,8 +727,8 @@ function ServerOwnedProduct() {
     };
   }
 
-  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput) {
-    if (!activeWorkspace || !capabilitySettingsReady) return;
+  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput, { quiet = false } = {}) {
+    if (!activeWorkspace || !capabilitySettingsReady) return false;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
     setWorking(true);
@@ -717,7 +739,8 @@ function ServerOwnedProduct() {
       setCapabilityDraft(saved);
       setCapabilityDraftConflict(null);
       setEffectiveCatalog(catalog);
-      notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
+      if (!quiet) notify(t("Workspace 能力草稿已保存。", "Workspace capability draft saved."));
+      return true;
     } catch (error) {
       if (
         error instanceof ProductFoundationApiError
@@ -730,7 +753,7 @@ function ServerOwnedProduct() {
             getWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id),
             getEffectiveCapabilities(apiBase, apiToken, workspace.id),
           ]);
-          if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+          if (staleWorkspaceResponse(requestContext, contextRef.current)) return false;
           setCapabilityDraftConflict({
             head: "WORKSPACE_CAPABILITY_DRAFT",
             local: structuredClone(input),
@@ -738,19 +761,24 @@ function ServerOwnedProduct() {
             currentCatalog: structuredClone(currentCatalog),
           });
           notify(t("Workspace Draft 已更新；本地编辑已保留，请比较后显式选择。", "The Workspace Draft changed. Your local edits are retained; compare the two versions and choose explicitly."), "error");
-          return;
+          return false;
         } catch (recoveryError) {
           notify(messageOf(recoveryError, t("无法读取新的 Workspace Draft", "Unable to read the newer Workspace Draft")), "error");
-          return;
+          return false;
         }
       }
       notify(messageOf(error, t("能力配置保存失败", "Unable to save capability configuration")), "error");
+      return false;
     }
     finally { setWorking(false); }
   }
 
   async function saveCapabilities() {
     await saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0));
+  }
+
+  function autoSaveCapabilities() {
+    return saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0), { quiet: true });
   }
 
   async function retryCapabilityDraft() {
@@ -826,6 +854,96 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
+  async function refreshGlobalSettingsAssets() {
+    const [accounts, models, capabilities] = await Promise.all([
+      listGlobalAccounts(apiBase, apiToken),
+      listGlobalCliModels(apiBase, apiToken),
+      listGlobalCapabilities(apiBase, apiToken),
+    ]);
+    setGlobalAccounts(accounts);
+    setGlobalModels(models);
+    setGlobalCapabilities(capabilities);
+  }
+
+  async function saveGlobalAccountFromSettings(input: Record<string, unknown>) {
+    setWorking(true);
+    try {
+      await saveGlobalAccount(apiBase, apiToken, input);
+      await refreshGlobalSettingsAssets();
+      notify(t("全局账号已保存。OAuth 仍由对应 CLI 自行登录。", "Global account saved. OAuth remains owned by its CLI."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("账号保存失败", "Unable to save global account")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
+  async function recheckGlobalAccountFromSettings(accountId: string) {
+    setWorking(true);
+    try {
+      const rechecked = await recheckGlobalAccount(apiBase, apiToken, accountId);
+      setGlobalAccounts((accounts) => accounts.map((account) => account.accountId === accountId ? rechecked : account));
+      notify(rechecked.instruction ?? t("账号状态已重新检查。", "Account status rechecked."));
+    } catch (error) { notify(messageOf(error, t("账号重新检查失败", "Unable to recheck account")), "error"); }
+    finally { setWorking(false); }
+  }
+
+  async function saveGlobalCliModelFromSettings(input: Record<string, unknown>) {
+    setWorking(true);
+    try {
+      await createGlobalCliModel(apiBase, apiToken, input);
+      await refreshGlobalSettingsAssets();
+      notify(t("CLI 模型已保存；验证成功后会进入 Agent 选择器。", "CLI model saved. It enters Agent selectors after verification."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("CLI 模型保存失败", "Unable to save CLI model")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
+  async function saveGlobalCapabilityFromSettings(input: Record<string, unknown>) {
+    setWorking(true);
+    try {
+      await saveGlobalCapability(apiBase, apiToken, input);
+      await refreshGlobalSettingsAssets();
+      if (activeWorkspace) await refreshWorkspaceReads(activeWorkspace, { ...contextRef.current });
+      notify(t("全局能力已保存；它进入项目可选目录，但不会自动授予 Agent。", "Global capability saved. It enters Workspace availability without being auto-granted."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("全局能力保存失败", "Unable to save global capability")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
+  async function previewGlobalCapabilityImpactFromSettings(kind: "SKILL" | "MCP", normalizedName: string): Promise<GlobalCapabilityImpact | null> {
+    try {
+      return await getGlobalCapabilityImpact(apiBase, apiToken, kind, normalizedName);
+    } catch (error) {
+      notify(messageOf(error, t("无法读取全局能力影响", "Unable to read global capability impact")), "error");
+      return null;
+    }
+  }
+
+  async function setGlobalCapabilityLifecycleFromSettings(
+    kind: "SKILL" | "MCP",
+    normalizedName: string,
+    input: { expectedVersion: number; lifecycle: "ACTIVE" | "INACTIVE" | "DELETED"; confirmation?: string },
+  ) {
+    setWorking(true);
+    try {
+      await setGlobalCapabilityLifecycle(apiBase, apiToken, kind, normalizedName, input);
+      await refreshGlobalSettingsAssets();
+      if (activeWorkspace) await refreshWorkspaceReads(activeWorkspace, { ...contextRef.current });
+      notify(input.lifecycle === "ACTIVE"
+        ? t("全局能力已重新启用。", "Global capability reactivated.")
+        : t("全局能力状态已更新；历史运行仍保持自己的快照。", "Global capability updated; historical runs keep their snapshots."));
+      return true;
+    } catch (error) {
+      notify(messageOf(error, t("全局能力状态更新失败", "Unable to update global capability")), "error");
+      return false;
+    } finally { setWorking(false); }
+  }
+
   async function saveGlobalTemplate(input: {
     kind: "SKILL" | "MCP";
     logicalName: string;
@@ -842,69 +960,14 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
-  async function saveGlobalModel(input: Record<string, unknown>) {
-    setWorking(true);
-    try {
-      const profileId = String(input.profileId ?? "");
-      if (globalModels.some((profile) => profile.profileId === profileId)) await updateGlobalModel(apiBase, apiToken, profileId, input);
-      else await createGlobalModel(apiBase, apiToken, input);
-      setGlobalModels(await listGlobalModels(apiBase, apiToken));
-      notify(t("模型 Profile 已保存；验证成功后才会进入 Agent selector。", "Model profile saved. It enters Agent selectors only after verification."));
-      return true;
-    } catch (error) { notify(messageOf(error, t("模型保存失败", "Unable to save model profile")), "error"); return false; }
-    finally { setWorking(false); }
-  }
-
   async function verifyModel(profileId: string) {
     setWorking(true);
     try {
-      await verifyGlobalModel(apiBase, apiToken, profileId);
-      setGlobalModels(await listGlobalModels(apiBase, apiToken));
+      await verifyGlobalCliModel(apiBase, apiToken, profileId);
+      setGlobalModels(await listGlobalCliModels(apiBase, apiToken));
       notify(t("模型连接已验证。", "Model connection verified."));
     } catch (error) { notify(messageOf(error, t("模型验证失败", "Model verification failed")), "error"); }
     finally { setWorking(false); }
-  }
-
-  async function inspectModelUsage(profileId: string): Promise<GlobalModelUsage | null> {
-    setWorking(true);
-    try {
-      const usage = await getGlobalModelUsage(apiBase, apiToken, profileId);
-      const workspaces = [...new Set(usage.references.map(({ workspaceName }) => workspaceName))];
-      notify(usage.usageCount
-        ? t(`该模型有 ${usage.usageCount} 个引用：${workspaces.join("、")}`, `${usage.usageCount} references across: ${workspaces.join(", ")}`)
-        : t("该模型没有 Workspace 或运行引用。", "This model has no Workspace or run references."));
-      return usage;
-    } catch (error) { notify(messageOf(error, t("无法读取模型影响", "Unable to load model impact")), "error"); return null; }
-    finally { setWorking(false); }
-  }
-
-  async function retireModel(profileId: string) {
-    setWorking(true);
-    try {
-      await retireGlobalModel(apiBase, apiToken, profileId);
-      setGlobalModels(await listGlobalModels(apiBase, apiToken));
-      notify(t("模型进入 RETIRING；已固定的历史运行仍可解析其 Revision。", "Model is RETIRING; pinned historical runs can still resolve its revision."));
-    } catch (error) { notify(messageOf(error, t("模型仍被当前 Workspace 使用，无法退休", "Model is still used by current Workspaces and cannot retire")), "error"); }
-    finally { setWorking(false); }
-  }
-
-  async function replaceModel(profileId: string, replacementProfileId: string) {
-    const workspace = activeWorkspace;
-    const requestContext = { ...contextRef.current };
-    setWorking(true);
-    try {
-      const plan = await createGlobalModelReplacementPlan(apiBase, apiToken, profileId, replacementProfileId);
-      await applyGlobalModelReplacementPlan(apiBase, apiToken, profileId, plan.id, plan.version);
-      setGlobalModels(await listGlobalModels(apiBase, apiToken));
-      if (workspace && !staleWorkspaceResponse(requestContext, contextRef.current)) await refreshWorkspaceReads(workspace, requestContext);
-      notify(t("跨 Workspace 模型替换已原子应用；旧模型进入 RETIRING。", "The cross-Workspace replacement applied atomically; the old model is RETIRING."));
-      return true;
-    } catch (error) {
-      notify(messageOf(error, t("模型替换失败；未应用部分 Workspace 变更", "Model replacement failed; no partial Workspace changes were applied")), "error");
-      return false;
-    } finally {
-      setWorking(false);
-    }
   }
 
   async function resolveCapabilities(input: WorkspaceCapabilityDraftSaveInput) {
@@ -934,15 +997,51 @@ function ServerOwnedProduct() {
     || artifact?.productionEligible === false;
   const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
   const renderView = () => {
-    if (view === "models") return <GlobalModelLibrary t={t} models={globalModels} working={working} onCreate={saveGlobalModel} onVerify={(profileId) => void verifyModel(profileId)} onInspectUsage={inspectModelUsage} onReplace={replaceModel} onRetire={(profileId) => void retireModel(profileId)} />;
+    if (view === "settings") return <F006SettingsCenter
+      t={t}
+      scope={settingsScope}
+      setScope={setSettingsScope}
+      workspace={activeWorkspace}
+      accounts={globalAccounts}
+      models={globalModels}
+      capabilities={globalCapabilities}
+      catalog={effectiveCatalog}
+      draft={capabilityDraft}
+      draftConflict={Boolean(capabilityDraftConflict)}
+      profile={executionProfile}
+      mainModel={mainModel}
+      setMainModel={setMainModel}
+      mainSkillNames={mainSkillNames}
+      setMainSkillNames={setMainSkillNames}
+      mainMcpNames={mainMcpNames}
+      setMainMcpNames={setMainMcpNames}
+      childSlots={childSlots}
+      setChildSlots={setChildSlots}
+      disabledKeys={disabledKeys}
+      setDisabledKeys={setDisabledKeys}
+      working={working}
+      recoveryReady={capabilitySettingsReady}
+      onAutoSave={autoSaveCapabilities}
+      onApply={() => void resolveCapabilities(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0))}
+      onRetryDraftConflict={() => void retryCapabilityDraft()}
+      onUseCurrentDraft={useCurrentCapabilityDraft}
+      onSaveLocalCapability={(input) => void upsertProjectCapability(input)}
+      onDeleteLocalCapability={(kind, name, version) => void removeProjectCapability(kind, name, version)}
+      onSaveAccount={saveGlobalAccountFromSettings}
+      onRecheckAccount={(accountId) => void recheckGlobalAccountFromSettings(accountId)}
+      onSaveCliModel={saveGlobalCliModelFromSettings}
+      onVerifyModel={(profileId) => void verifyModel(profileId)}
+      onPreviewCapabilityImpact={previewGlobalCapabilityImpactFromSettings}
+      onSetCapabilityLifecycle={setGlobalCapabilityLifecycleFromSettings}
+      onSaveGlobalCapability={saveGlobalCapabilityFromSettings}
+    />;
     if (view === "templates") return <GlobalCapabilityTemplateLibrary t={t} templates={globalCapabilityTemplates} working={working} onSave={(input) => void saveGlobalTemplate(input)} />;
     if (!activeWorkspace) {
-      if (view === "settings") return <Unavailable t={t} reason={t("请先选择或创建一个 Workspace，再配置能力设置。", "Select or create a Workspace before configuring capability settings.")} />;
       return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
     }
     const workspace = activeWorkspace;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
-    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => setView("settings")} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
+    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => { setSettingsScope("workspace"); setView("settings"); }} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
@@ -954,7 +1053,7 @@ function ServerOwnedProduct() {
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark">T</span><span>Traqen</span></div>
       <div className="workspace-block"><div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button title={t("刷新 Workspace", "Refresh Workspaces")} onClick={() => void reconnect(false)}>↻</button><button className="workspace-add-button" title={t("新建 Workspace", "New Workspace")} onClick={() => { setActiveWorkspace(null); setView("overview"); }}>＋</button></div></div>{activeWorkspace ? <div className="workspace active-workspace"><strong>{activeWorkspace.name}</strong><small>{current ? `Published revision ${current.head.version}` : t("等待首次发布", "Awaiting first publication")}</small></div> : <div className="workspace active-workspace empty-workspace"><strong>{t("未选择 Workspace", "No Workspace selected")}</strong><small>{t("选择或创建一个项目", "Select or create a project")}</small></div>}<div className="workspace-project-list">{workspaces.map((workspace) => <div key={workspace.id} className={`workspace-project-row ${workspace.id === activeWorkspace?.id ? "active" : ""}`}><button className="workspace-project-open" onClick={() => selectWorkspace(workspace)}><strong>{workspace.name}</strong><small>{workspace.lifecycleState}</small></button></div>)}</div></div>
-      {(["overview", "understanding", "governance", "configuration"] as const).map((section) => <nav key={section} className="nav" aria-label={section}><p className="workspace-label">{section === "understanding" ? t("理解", "Understanding") : section === "governance" ? t("治理", "Governance") : section === "configuration" ? t("配置", "Configuration") : t("工作台", "Workspace")}</p>{modules.filter((item) => item.section === section).map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => setView(item.key)}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "review" && openReviewCount > 0 && <em>{openReviewCount}</em>}{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>)}
+      {(["overview", "understanding", "governance", "configuration"] as const).map((section) => <nav key={section} className="nav" aria-label={section}><p className="workspace-label">{section === "understanding" ? t("理解", "Understanding") : section === "governance" ? t("治理", "Governance") : section === "configuration" ? t("配置", "Configuration") : t("工作台", "Workspace")}</p>{modules.filter((item) => item.section === section).map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => { if (item.key === "settings") setSettingsScope("chooser"); setView(item.key); }}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "review" && openReviewCount > 0 && <em>{openReviewCount}</em>}{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>)}
       <div className="shell-status-summary" aria-label={t("全局状态摘要", "Global status summary")}><span>Published Head <b>{current ? `r${current.head.version}` : "—"}</b></span><span>Review Queue <b>{openReviewCount}</b></span><span>Impact Actions <b>{impactActionCount}</b></span></div>
       <div className="sidebar-note"><b>{t("权威边界", "Authority boundary")}</b><br />{t("实线为 Published；虚线为 Candidate。历史版本只读。", "Solid is Published; dashed is Candidate. Historical revisions are read-only.")}</div>
     </aside>
@@ -965,7 +1064,7 @@ function ServerOwnedProduct() {
       {renderView()}
     </div>
     {diagnosticsOpen && <div className="drawer-backdrop" onMouseDown={() => setDiagnosticsOpen(false)}><aside className="diagnostic-drawer" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Deployment diagnostics</p><h2>{t("部署诊断", "Deployment diagnostics")}</h2></div><button onClick={() => setDiagnosticsOpen(false)}>×</button></header><p>{t("这些信息用于部署与故障诊断，不属于产品主导航。", "These settings are deployment diagnostics and are not primary product navigation.")}</p><label>{t("API 地址", "API base")}<input value={apiBase} onChange={(event) => setApiBase(event.currentTarget.value)} /></label><label>{t("API token（仅当前页面内存）", "API token (page memory only)")}<input type="password" value={apiToken} onChange={(event) => setApiToken(event.currentTarget.value)} autoComplete="off" /></label><dl><dt>Connection Health</dt><dd>{health}</dd><dt>Workspace ID</dt><dd>{activeWorkspace?.id ?? "—"}</dd><dt>GraphRevision ID</dt><dd>{displayRevision?.id ?? "—"}</dd></dl><button className="button primary" disabled={health === "checking"} onClick={() => void reconnect(false)}>{t("重新连接并刷新", "Reconnect and refresh")}</button></aside></div>}
-    {startConfirmation && activeWorkspace && <div className="modal-backdrop"><section className="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="start-confirmation-title"><p className="eyebrow">Explicit command</p><h2 id="start-confirmation-title">{t("确认启动 Workspace 分析", "Confirm Workspace analysis start")}</h2><p>{t("以下输入将被固定到服务端任务。启动后仍可暂停、恢复或取消。", "The following inputs will be pinned to the server job. You may pause, resume, or cancel after start.")}</p><dl><dt>Workspace</dt><dd>{activeWorkspace.name}</dd><dt>SourceRegistration</dt><dd>{startConfirmation.sourceRegistrationId}</dd><dt>Snapshot</dt><dd>{job?.snapshotManifestId ?? t("服务端启动时创建", "Created by server at start")}</dd><dt>Profile Revision</dt><dd>{startConfirmation.profile.id}</dd><dt>Agent roster</dt><dd>Main + {startConfirmation.profile.childSlots.length} Child slots</dd><dt>{t("数据边界", "Data boundary")}</dt><dd>WORKSPACE</dd><dt>{t("模式", "Mode")}</dt><dd>{startConfirmation.requestedMode === "FULL" ? "FULL" : "AUTO (FULL / INCREMENTAL)"}</dd></dl><div className="modal-actions"><button className="button" onClick={() => setStartConfirmation(null)}>{t("返回", "Back")}</button><button className="button primary" disabled={working} onClick={() => void startUnderstanding(startConfirmation)}>{t("确认并启动", "Confirm and start")}</button></div></section></div>}
+    {startConfirmation && activeWorkspace && <div className="modal-backdrop"><section className="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="start-confirmation-title"><p className="eyebrow">Explicit command</p><h2 id="start-confirmation-title">{t("确认启动 Workspace 分析", "Confirm Workspace analysis start")}</h2><p>{t("以下输入将被固定到服务端任务。启动后仍可暂停、恢复或取消。", "The following inputs will be pinned to the server job. You may pause, resume, or cancel after start.")}</p><dl><dt>Workspace</dt><dd>{activeWorkspace.name}</dd><dt>SourceRegistration</dt><dd>{startConfirmation.sourceRegistrationId}</dd><dt>Snapshot</dt><dd>{job?.snapshotManifestId ?? t("服务端启动时创建", "Created by server at start")}</dd><dt>Profile Revision</dt><dd>{startConfirmation.profile.id}</dd><dt>{t("Main 模型", "Main model")}</dt><dd>{startConfirmation.profile.mainAgentSlot.modelProfileId}</dd><dt>{t("Child 模型", "Child models")}</dt><dd>{startConfirmation.profile.childAgentSlots.map((slot) => `${slot.displayName}: ${slot.modelProfileId}`).join(" · ")}</dd><dt>{t("能力数量", "Capability count")}</dt><dd>{startConfirmation.profile.entries.filter((entry) => entry.kind === "SKILL" || entry.kind === "MCP").length}</dd><dt>Agent roster</dt><dd>Main + {startConfirmation.profile.childSlots.length} Child slots</dd><dt>{t("数据边界", "Data boundary")}</dt><dd>WORKSPACE</dd><dt>{t("模式", "Mode")}</dt><dd>{startConfirmation.requestedMode === "FULL" ? "FULL" : "AUTO (FULL / INCREMENTAL)"}</dd></dl><div className="modal-actions"><button className="button" onClick={() => setStartConfirmation(null)}>{t("返回", "Back")}</button><button className="button primary" disabled={working} onClick={() => void startUnderstanding(startConfirmation)}>{t("确认并启动", "Confirm and start")}</button></div></section></div>}
   </main>;
 }
 

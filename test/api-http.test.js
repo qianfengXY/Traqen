@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { readFile } from "node:fs/promises";
+import { PassThrough } from "node:stream";
 import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
@@ -94,6 +96,8 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    oauthStatusProbe,
+    secretReferenceResolver,
     setup,
     ...serverOptions
   } = options;
@@ -115,6 +119,8 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    oauthStatusProbe,
+    secretReferenceResolver,
   });
   await setup?.({ store, application });
   const server = createTraceabilityHttpServer({ application, ...serverOptions });
@@ -124,6 +130,50 @@ async function startServer(t, options = {}) {
   });
   t.after(() => new Promise((resolve) => server.close(resolve)));
   return `http://127.0.0.1:${server.address().port}`;
+}
+
+function cliVerificationSpawn(executable, args, options) {
+  const child = new EventEmitter();
+  child.pid = 99999999;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  child.kill = () => { child.killed = true; };
+  queueMicrotask(() => {
+    const request = JSON.parse(args.at(-1));
+    child.stdout.write(`${JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: JSON.stringify({ ready: true, challenge: request.input.challenge }) } })}\n`);
+    child.stdout.end();
+    child.stderr.end();
+    child.emit("close", 0);
+  });
+  return child;
+}
+
+function f006CliRegistry() {
+  return new AnalysisModelRegistry({ cliSpawn: cliVerificationSpawn });
+}
+
+async function createF006CliAccount(baseUrl, accountId = "ACCOUNT-F006") {
+  const created = await postJson(`${baseUrl}/v1/global-accounts`, {
+    accountId,
+    displayName: accountId,
+    authMethod: "API_KEY",
+    secretRefId: "vault://test-account",
+    expectedVersion: 0,
+  });
+  assert.equal(created.response.status, 201);
+  return accountId;
+}
+
+async function createVerifiedF006CliModel(baseUrl, profileId, accountId = "ACCOUNT-F006") {
+  const created = await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId,
+    displayName: profileId,
+    accountId,
+    cliAdapter: "CODEX",
+    model: profileId.toLowerCase(),
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
 }
 
 async function postJson(url, body, headers = {}) {
@@ -159,9 +209,8 @@ test("health endpoint returns a request correlation ID", async (t) => {
 test("Workspace API owns lifecycle, capability isolation, and same-batch Child execution", async (t) => {
   let workspaceStore;
   const baseUrl = await startServer(t, {
-    analysisModelRegistry: new AnalysisModelRegistry({
-      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
-    }),
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
     reviewerResolver: (_projectId, context) => context.authorization === "Bearer workspace-reviewer"
       ? { actorId: "REVIEWER-FROM-AUTH", actorRole: "business-owner" }
       : null,
@@ -200,15 +249,8 @@ test("Workspace API owns lifecycle, capability isolation, and same-batch Child e
   const listed = await fetch(`${baseUrl}/v1/workspaces?userId=OWNER`);
   assert.equal((await listed.json()).workspaces[0].hidden, true);
 
-  assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
-    profileId: "main-model",
-    displayName: "Main model",
-    transport: "API",
-    endpoint: "https://models.example/v1",
-    model: "main-model",
-    apiKey: "server-only-secret",
-  })).response.status, 201);
-  assert.equal((await fetch(`${baseUrl}/v1/global-models/main-model/verify`, { method: "POST" })).status, 200);
+  const accountId = await createF006CliAccount(baseUrl);
+  await createVerifiedF006CliModel(baseUrl, "main-model", accountId);
   const draft = await fetch(`${baseUrl}/v1/workspaces/W-HTTP/capability-draft`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
@@ -427,6 +469,208 @@ test("F006 exposes reusable global Skill and MCP templates while keeping legacy 
   })).status, 404);
 });
 
+test("F006 global capability HTTP contract is server-authoritative about lifecycle and impact", async (t) => {
+  const baseUrl = await startServer(t);
+  const created = await postJson(`${baseUrl}/v1/global-capabilities`, {
+    kind: "SKILL", normalizedName: "review", expectedVersion: 0, manifest: { signature: "VERIFIED" },
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.lifecycle, "ACTIVE");
+
+  const listed = await fetch(`${baseUrl}/v1/global-capabilities`);
+  assert.equal(listed.status, 200);
+  assert.deepEqual((await listed.json()).capabilities.map(({ normalizedName, lifecycle }) => ({ normalizedName, lifecycle })), [
+    { normalizedName: "review", lifecycle: "ACTIVE" },
+  ]);
+  const impact = await fetch(`${baseUrl}/v1/global-capabilities/SKILL/review/impact`);
+  assert.equal(impact.status, 200);
+  assert.deepEqual((await impact.json()).impacts, []);
+
+  const deactivated = await fetch(`${baseUrl}/v1/global-capabilities/SKILL/review/lifecycle`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ expectedVersion: 1, lifecycle: "INACTIVE" }),
+  });
+  assert.equal(deactivated.status, 200);
+  assert.equal((await deactivated.json()).lifecycle, "INACTIVE");
+});
+
+test("F006 account HTTP contract never performs or stores OAuth login material", async (t) => {
+  const baseUrl = await startServer(t, {
+    analysisModelRegistry: new AnalysisModelRegistry(),
+    oauthStatusProbe: async () => ({ oauthStatus: "AUTHENTICATED" }),
+  });
+  const created = await postJson(`${baseUrl}/v1/global-accounts`, {
+    accountId: "codex-oauth", displayName: "Codex", authMethod: "OAUTH", cliAdapter: "CODEX", oauthStatus: "NOT_AUTHENTICATED", expectedVersion: 0,
+  });
+  assert.equal(created.response.status, 201);
+  assert.equal(created.body.oauthStatus, "UNKNOWN");
+  assert.equal(Object.hasOwn(created.body, "accessToken"), false);
+  assert.equal((await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "codex-before-login", displayName: "Codex before login", accountId: "codex-oauth", cliAdapter: "CODEX",
+  })).response.status, 400);
+  const rechecked = await postJson(`${baseUrl}/v1/global-accounts/codex-oauth/recheck`, {});
+  assert.equal(rechecked.response.status, 200);
+  assert.equal(rechecked.body.oauthStatus, "AUTHENTICATED");
+  assert.equal(rechecked.body.revision, 2);
+  assert.equal(Object.hasOwn(rechecked.body, "instruction"), false);
+  const rejected = await postJson(`${baseUrl}/v1/global-accounts`, {
+    accountId: "bad", displayName: "Bad", authMethod: "OAUTH", cliAdapter: "CODEX", accessToken: "plaintext", expectedVersion: 0,
+  });
+  assert.equal(rejected.response.status, 400);
+  const model = await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "codex-cli", displayName: "Codex CLI", accountId: "codex-oauth", cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  assert.equal(model.response.status, 201);
+  assert.equal(model.body.transport, "CLI");
+  assert.equal(model.body.accountId, "codex-oauth");
+  assert.equal((await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "adapter-mismatch", displayName: "Adapter mismatch", accountId: "codex-oauth", cliAdapter: "CLAUDE",
+  })).response.status, 400);
+  assert.equal((await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "not-cli", displayName: "Not CLI", accountId: "codex-oauth", transport: "API", cliAdapter: "CODEX",
+  })).response.status, 400);
+});
+
+test("F006 refuses a new Run when an Active Profile's selected account later becomes inactive", async () => {
+  const starts = [];
+  const application = new TraceabilityApplication({
+    store: new MemoryTraceabilityStore(),
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    legacyUnderstandingRuntime: {
+      async start(input) {
+        starts.push(input);
+        return { id: "JOB-SHOULD-NOT-START" };
+      },
+    },
+  });
+  await application.createProject({
+    organization: { id: "ORG-RUN-PREFLIGHT", name: "Org" },
+    tenant: { id: "TENANT-RUN-PREFLIGHT", name: "Tenant" },
+    project: { id: "W-RUN-PREFLIGHT", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-RUN-PREFLIGHT", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", expectedVersion: 0,
+  });
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-RUN-PREFLIGHT", displayName: "Model", accountId: "ACCOUNT-RUN-PREFLIGHT",
+    cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  await application.verifyGlobalModelProfile("MODEL-RUN-PREFLIGHT");
+  await application.saveWorkspaceCapabilityDraft("W-RUN-PREFLIGHT", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-RUN-PREFLIGHT" },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-RUN-PREFLIGHT", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  const activeProfile = await application.activateWorkspaceCapabilityDraft("W-RUN-PREFLIGHT");
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-RUN-PREFLIGHT", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", lifecycle: "INACTIVE", expectedVersion: 1,
+  });
+
+  await assert.rejects(
+    () => application.startWorkspaceUnderstandingJob("W-RUN-PREFLIGHT", {
+      sourceRegistrationId: "SOURCE-RUN-PREFLIGHT",
+      requestedMode: "FULL",
+      expectedWorkspaceExecutionProfileRevisionId: activeProfile.id,
+    }),
+    /selected ACTIVE global account is required/,
+  );
+  assert.equal(starts.length, 0, "the runtime must not receive a new Run after account eligibility changes");
+});
+
+test("F006 refuses a new Run when its pinned model revision still uses an account replaced on the mutable model head", async () => {
+  const starts = [];
+  const application = new TraceabilityApplication({
+    store: new MemoryTraceabilityStore(),
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    legacyUnderstandingRuntime: {
+      async start(input) {
+        starts.push(input);
+        return { id: "JOB-SHOULD-NOT-START" };
+      },
+    },
+  });
+  await application.createProject({
+    organization: { id: "ORG-PINNED-REVISION", name: "Org" },
+    tenant: { id: "TENANT-PINNED-REVISION", name: "Tenant" },
+    project: { id: "W-PINNED-REVISION", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  for (const accountId of ["ACCOUNT-REVISION-A", "ACCOUNT-REVISION-B"]) {
+    await application.saveGlobalAccount({
+      accountId, displayName: accountId, authMethod: "API_KEY",
+      secretRefId: "vault://test-account", expectedVersion: 0,
+    });
+  }
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-PINNED-REVISION", displayName: "Model", accountId: "ACCOUNT-REVISION-A",
+    cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  await application.verifyGlobalModelProfile("MODEL-PINNED-REVISION");
+  await application.saveWorkspaceCapabilityDraft("W-PINNED-REVISION", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-PINNED-REVISION" },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-PINNED-REVISION", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  const activeProfile = await application.activateWorkspaceCapabilityDraft("W-PINNED-REVISION");
+  const beforeReplacement = await application.getGlobalModelProfile("MODEL-PINNED-REVISION");
+  await application.updateGlobalModelProfile("MODEL-PINNED-REVISION", {
+    expectedRevision: beforeReplacement.revision,
+    displayName: "Model", accountId: "ACCOUNT-REVISION-B", transport: "CLI",
+    cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  await application.verifyGlobalModelProfile("MODEL-PINNED-REVISION");
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-REVISION-A", displayName: "ACCOUNT-REVISION-A", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", lifecycle: "INACTIVE", expectedVersion: 1,
+  });
+
+  await assert.rejects(
+    () => application.startWorkspaceUnderstandingJob("W-PINNED-REVISION", {
+      sourceRegistrationId: "SOURCE-PINNED-REVISION",
+      requestedMode: "FULL",
+      expectedWorkspaceExecutionProfileRevisionId: activeProfile.id,
+    }),
+    /selected ACTIVE global account is required/,
+  );
+  assert.equal(starts.length, 0, "the runtime must not receive a Run after the pinned revision's account becomes ineligible");
+});
+
+test("F006 CLI model routes exclude legacy API profiles from listing and verification", async (t) => {
+  const baseUrl = await startServer(t, {
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+  });
+  const legacy = await postJson(`${baseUrl}/v1/global-models`, {
+    profileId: "legacy-api", displayName: "Legacy API", transport: "API",
+    endpoint: "https://models.example/v1", model: "legacy", apiKey: "legacy-key",
+  });
+  assert.equal(legacy.response.status, 201);
+  const accountId = await createF006CliAccount(baseUrl, "ACCOUNT-CLI-ONLY");
+  const cli = await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "codex-cli", displayName: "Codex CLI", accountId, cliAdapter: "CODEX", model: "gpt-5.6",
+  });
+  assert.equal(cli.response.status, 201);
+
+  const listed = await fetch(`${baseUrl}/v1/global-cli-models`);
+  assert.equal(listed.status, 200);
+  assert.deepEqual((await listed.json()).models.map((model) => model.profileId), ["codex-cli"]);
+  assert.equal((await fetch(`${baseUrl}/v1/global-cli-models/legacy-api/verify`, { method: "POST" })).status, 400);
+  assert.equal((await fetch(`${baseUrl}/v1/global-cli-models/codex-cli/verify`, { method: "POST" })).status, 200);
+});
+
 test("F006 HTTP validation fails closed for unverified capabilities and contradictory boundary policy", async (t) => {
   const baseUrl = await startServer(t, {
     analysisModelRegistry: new AnalysisModelRegistry({
@@ -468,7 +712,7 @@ test("F006 HTTP validation fails closed for unverified capabilities and contradi
   assert.equal(validation.body.validation.valid, false);
   assert.deepEqual(
     [...new Set(validation.body.validation.errors.map(({ code }) => code))].sort(),
-    ["MCP_PERMISSION_DENIED", "SECRET_GRANT_REQUIRED", "SECURITY_BUDGET_INVALID", "SECURITY_DATA_BOUNDARY_INVALID", "SKILL_SIGNATURE_UNVERIFIED"],
+    ["MCP_PERMISSION_DENIED", "MODEL_NOT_F006_CLI", "SECRET_GRANT_REQUIRED", "SECURITY_BUDGET_INVALID", "SECURITY_DATA_BOUNDARY_INVALID", "SKILL_SIGNATURE_UNVERIFIED"],
   );
   assert.equal((await postJson(`${baseUrl}/v1/workspaces/W-BOUNDARY/capability-draft/activate`, {})).response.status, 400);
 });
@@ -759,10 +1003,8 @@ test("retirement checks current Workspace references inside the Store mutation b
   const application = new TraceabilityApplication({
     store,
     clock: fixedClock,
-    analysisModelRegistry: new AnalysisModelRegistry({
-      clock: fixedClock,
-      fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
-    }),
+    analysisModelRegistry: new AnalysisModelRegistry({ clock: fixedClock, cliSpawn: cliVerificationSpawn }),
+    secretReferenceResolver: async () => "test-api-key",
   });
   await application.createProject({
     organization: { id: "ORG-RETIRE-RACE", name: "Org" },
@@ -771,14 +1013,16 @@ test("retirement checks current Workspace references inside the Store mutation b
     principals: [],
     actorId: "OWNER",
   });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-RETIRE", displayName: "Account retire", authMethod: "API_KEY", secretRefId: "vault://test-account", expectedVersion: 0,
+  });
   for (const profileId of ["MODEL-RETIRE-OLD", "MODEL-RETIRE-NEW"]) {
-    await application.configureGlobalModelProfile({
+    await application.configureGlobalCliModel({
       profileId,
       displayName: profileId,
-      transport: "API",
-      endpoint: "https://models.example/v1",
+      accountId: "ACCOUNT-RETIRE",
+      cliAdapter: "CODEX",
       model: profileId.toLowerCase(),
-      apiKey: `${profileId}-secret`,
     });
     await application.verifyGlobalModelProfile(profileId);
   }
@@ -924,23 +1168,15 @@ test("a replacement Plan cannot apply after an independently reloaded Registry r
 
 test("global model replacement HTTP journey atomically advances every Workspace active head", async (t) => {
   let durableStore;
-  const registry = new AnalysisModelRegistry({
-    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
-  });
+  const registry = f006CliRegistry();
   const baseUrl = await startServer(t, {
     analysisModelRegistry: registry,
+    secretReferenceResolver: async () => "test-api-key",
     setup: ({ store }) => { durableStore = store; },
   });
+  const accountId = await createF006CliAccount(baseUrl);
   for (const profileId of ["MODEL-OLD", "MODEL-NEW"]) {
-    assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
-      profileId,
-      displayName: profileId,
-      transport: "API",
-      endpoint: "https://models.example/v1",
-      model: profileId.toLowerCase(),
-      apiKey: "server-only-secret",
-    })).response.status, 201);
-    assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
+    await createVerifiedF006CliModel(baseUrl, profileId, accountId);
   }
   for (const workspaceId of ["W-REPLACE-1", "W-REPLACE-2"]) {
     assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: workspaceId, name: workspaceId, actorId: "OWNER" })).response.status, 201);
@@ -994,20 +1230,11 @@ test("global model replacement HTTP journey atomically advances every Workspace 
 });
 
 test("global model replacement refuses a plan after another Workspace starts using the source model", async (t) => {
-  const registry = new AnalysisModelRegistry({
-    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
-  });
-  const baseUrl = await startServer(t, { analysisModelRegistry: registry });
+  const registry = f006CliRegistry();
+  const baseUrl = await startServer(t, { analysisModelRegistry: registry, secretReferenceResolver: async () => "test-api-key" });
+  const accountId = await createF006CliAccount(baseUrl);
   for (const profileId of ["MODEL-STALE-OLD", "MODEL-STALE-NEW"]) {
-    assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
-      profileId,
-      displayName: profileId,
-      transport: "API",
-      endpoint: "https://models.example/v1",
-      model: profileId.toLowerCase(),
-      apiKey: "server-only-secret",
-    })).response.status, 201);
-    assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
+    await createVerifiedF006CliModel(baseUrl, profileId, accountId);
   }
   const configureWorkspace = async (workspaceId) => {
     assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: workspaceId, name: workspaceId, actorId: "OWNER" })).response.status, 201);
@@ -1044,20 +1271,11 @@ test("global model replacement refuses a plan after another Workspace starts usi
 });
 
 test("global model replacement updates an old active profile without publishing an unrelated newer draft", async (t) => {
-  const registry = new AnalysisModelRegistry({
-    fetchImpl: async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] }),
-  });
-  const baseUrl = await startServer(t, { analysisModelRegistry: registry });
+  const registry = f006CliRegistry();
+  const baseUrl = await startServer(t, { analysisModelRegistry: registry, secretReferenceResolver: async () => "test-api-key" });
+  const accountId = await createF006CliAccount(baseUrl);
   for (const profileId of ["MODEL-HEAD-OLD", "MODEL-HEAD-NEW", "MODEL-HEAD-THIRD"]) {
-    assert.equal((await postJson(`${baseUrl}/v1/global-models`, {
-      profileId,
-      displayName: profileId,
-      transport: "API",
-      endpoint: "https://models.example/v1",
-      model: profileId.toLowerCase(),
-      apiKey: "server-only-secret",
-    })).response.status, 201);
-    assert.equal((await fetch(`${baseUrl}/v1/global-models/${profileId}/verify`, { method: "POST" })).status, 200);
+    await createVerifiedF006CliModel(baseUrl, profileId, accountId);
   }
   const workspaceId = "W-HEAD-SPLIT";
   assert.equal((await postJson(`${baseUrl}/v1/workspaces`, { id: workspaceId, name: workspaceId, actorId: "OWNER" })).response.status, 201);
@@ -1103,9 +1321,8 @@ test("durable ModelReplacementPlan remains applicable after the model Registry l
     load: () => structuredClone(persistedProfiles),
     save: (value) => { persistedProfiles = structuredClone(value); },
   };
-  const fetchImpl = async () => Response.json({ choices: [{ message: { content: '{"ok":true}' } }] });
-  const firstRegistry = new AnalysisModelRegistry({ clock: fixedClock, fetchImpl, profileStore });
-  const first = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: firstRegistry });
+  const firstRegistry = new AnalysisModelRegistry({ clock: fixedClock, cliSpawn: cliVerificationSpawn, profileStore });
+  const first = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: firstRegistry, secretReferenceResolver: async () => "test-api-key" });
   await first.createProject({
     organization: { id: "ORG-PLAN-RESTART", name: "Org" },
     tenant: { id: "TENANT-PLAN-RESTART", name: "Tenant" },
@@ -1113,8 +1330,9 @@ test("durable ModelReplacementPlan remains applicable after the model Registry l
     principals: [],
     actorId: "OWNER",
   });
+  await first.saveGlobalAccount({ accountId: "ACCOUNT-PLAN-RESTART", displayName: "Account restart", authMethod: "API_KEY", secretRefId: "vault://test-account", expectedVersion: 0 });
   for (const profileId of ["MODEL-OLD", "MODEL-NEW"]) {
-    await first.configureGlobalModelProfile({ profileId, displayName: profileId, transport: "API", endpoint: "https://models.example/v1", model: profileId.toLowerCase(), apiKey: `${profileId}-secret` });
+    await first.configureGlobalCliModel({ profileId, displayName: profileId, accountId: "ACCOUNT-PLAN-RESTART", cliAdapter: "CODEX", model: profileId.toLowerCase() });
     await first.verifyGlobalModelProfile(profileId);
   }
   await first.saveWorkspaceCapabilityDraft("W-PLAN-RESTART", {
@@ -1132,13 +1350,13 @@ test("durable ModelReplacementPlan remains applicable after the model Registry l
 
   const restartedRegistry = new AnalysisModelRegistry({
     clock: fixedClock,
-    fetchImpl,
+    cliSpawn: cliVerificationSpawn,
     profileStore: {
       load: () => structuredClone(persistedProfiles),
       save: profileStore.save,
     },
   });
-  const restarted = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: restartedRegistry });
+  const restarted = new TraceabilityApplication({ store, clock: fixedClock, analysisModelRegistry: restartedRegistry, secretReferenceResolver: async () => "test-api-key" });
   const applied = await restarted.applyGlobalModelReplacementPlan("MODEL-OLD", plan.id, { expectedVersion: plan.version });
   assert.equal(applied.plan.status, "APPLIED");
   assert.equal((await restarted.listGlobalModelProfiles()).find(({ profileId }) => profileId === "MODEL-OLD").lifecycle, "RETIRING");

@@ -52,6 +52,7 @@ function durableGlobalModelProfile(profile) {
 export class MemoryTraceabilityStore extends TraceabilityStore {
   #projects = new Map();
   #capabilityTemplates = new Map();
+  #globalAccountRevisions = new Map();
   #manifests = new Map();
   #chains = new Map();
   #features = new Map();
@@ -139,6 +140,20 @@ export class MemoryTraceabilityStore extends TraceabilityStore {
       .sort((left, right) => left.kind.localeCompare(right.kind)
         || left.logicalName.localeCompare(right.logicalName)
         || right.revision - left.revision));
+  }
+
+  async appendGlobalAccountRevision(account) {
+    return this.#appendVersion(
+      this.#globalAccountRevisions,
+      `${account.accountId}\u0000${account.revision}`,
+      account,
+      `Global account ${account.accountId} revision ${account.revision}`,
+    );
+  }
+
+  async listGlobalAccountRevisions() {
+    return deepFreeze([...this.#globalAccountRevisions.values()]
+      .sort((left, right) => left.accountId.localeCompare(right.accountId) || right.revision - left.revision));
   }
 
   async appendSnapshotManifest(projectId, manifest) {

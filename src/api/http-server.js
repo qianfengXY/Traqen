@@ -367,6 +367,22 @@ export function createTraceabilityHttpHandler({
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/v1/global-accounts") {
+        sendJson(response, 200, { accounts: await application.listGlobalAccounts() }, id);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/global-accounts") {
+        requireJson(request);
+        sendJson(response, 201, await application.saveGlobalAccount(await readJson(request, maxBodyBytes)), id);
+        return;
+      }
+      const globalAccountRecheckMatch = /^\/v1\/global-accounts\/([^/]+)\/recheck$/.exec(url.pathname);
+      if (request.method === "POST" && globalAccountRecheckMatch) {
+        const account = await application.recheckGlobalAccount(decodePathSegment(globalAccountRecheckMatch[1]));
+        if (!account) throw new HttpError(404, "GLOBAL_ACCOUNT_NOT_FOUND", "Global account was not found");
+        sendJson(response, 200, account, id);
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/v1/global-models") {
         sendJson(response, 200, { models: await application.listGlobalModelProfiles() }, id);
         return;
@@ -374,6 +390,51 @@ export function createTraceabilityHttpHandler({
       if (request.method === "POST" && url.pathname === "/v1/global-models") {
         requireJson(request);
         sendJson(response, 201, await application.configureGlobalModelProfile(await readJson(request, maxBodyBytes)), id);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/global-cli-models") {
+        requireJson(request);
+        sendJson(response, 201, await application.configureGlobalCliModel(await readJson(request, maxBodyBytes)), id);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/global-cli-models") {
+        sendJson(response, 200, { models: await application.listGlobalCliModelProfiles() }, id);
+        return;
+      }
+      const globalCliModelVerifyMatch = /^\/v1\/global-cli-models\/([^/]+)\/verify$/.exec(url.pathname);
+      if (request.method === "POST" && globalCliModelVerifyMatch) {
+        sendJson(response, 200, await application.verifyGlobalCliModel(decodePathSegment(globalCliModelVerifyMatch[1])), id);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/global-capabilities") {
+        sendJson(response, 200, { capabilities: await application.listGlobalCapabilities() }, id);
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/v1/global-capabilities") {
+        requireJson(request);
+        sendJson(response, 201, await application.saveGlobalCapability(await readJson(request, maxBodyBytes)), id);
+        return;
+      }
+      const globalCapabilityImpactMatch = /^\/v1\/global-capabilities\/(SKILL|MCP)\/([^/]+)\/impact$/.exec(url.pathname);
+      if (request.method === "GET" && globalCapabilityImpactMatch) {
+        const preview = await application.previewGlobalCapabilityImpact(
+          globalCapabilityImpactMatch[1],
+          decodePathSegment(globalCapabilityImpactMatch[2]),
+        );
+        if (!preview) throw new HttpError(404, "GLOBAL_CAPABILITY_NOT_FOUND", "Global capability was not found");
+        sendJson(response, 200, preview, id);
+        return;
+      }
+      const globalCapabilityLifecycleMatch = /^\/v1\/global-capabilities\/(SKILL|MCP)\/([^/]+)\/lifecycle$/.exec(url.pathname);
+      if (request.method === "PUT" && globalCapabilityLifecycleMatch) {
+        requireJson(request);
+        const capability = await application.setGlobalCapabilityLifecycle(
+          globalCapabilityLifecycleMatch[1],
+          decodePathSegment(globalCapabilityLifecycleMatch[2]),
+          await readJson(request, maxBodyBytes),
+        );
+        if (!capability) throw new HttpError(404, "GLOBAL_CAPABILITY_NOT_FOUND", "Global capability was not found");
+        sendJson(response, 200, capability, id);
         return;
       }
       if (request.method === "GET" && url.pathname === "/v1/capability-templates") {

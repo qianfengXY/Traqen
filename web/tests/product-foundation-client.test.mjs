@@ -18,7 +18,48 @@ import {
   ProductFoundationApiError,
   saveWorkspaceCapabilityDraft,
   saveGlobalCapabilityTemplate,
+  createGlobalCliModel,
+  getGlobalCapabilityImpact,
+  listGlobalAccounts,
+  listGlobalCapabilities,
+  recheckGlobalAccount,
+  saveGlobalAccount,
+  saveGlobalCapability,
+  setGlobalCapabilityLifecycle,
 } from "../app/product-foundation-client.ts";
+
+test("F006 settings clients keep OAuth external, models CLI-only, and lifecycle confirmation server-owned", async () => {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).endsWith("/v1/global-accounts")) return Response.json(options.method === "GET" ? { accounts: [] } : { accountId: "codex", authMethod: "OAUTH" });
+    if (String(url).endsWith("/recheck")) return Response.json({ accountId: "codex", recheck: "EXTERNAL_CLI_REQUIRED" });
+    if (String(url).endsWith("/v1/global-capabilities")) return Response.json(options.method === "GET" ? { capabilities: [] } : { kind: "SKILL", normalizedName: "review", lifecycle: "ACTIVE" });
+    if (String(url).endsWith("/impact")) return Response.json({ capability: {}, impacts: [] });
+    return Response.json({ profileId: "codex-cli", transport: "CLI" });
+  };
+  try {
+    await listGlobalAccounts("http://api", "secret");
+    await saveGlobalAccount("http://api", "secret", { accountId: "codex", authMethod: "OAUTH", cliAdapter: "CODEX", expectedVersion: 0 });
+    await recheckGlobalAccount("http://api", "secret", "codex");
+    await createGlobalCliModel("http://api", "secret", { profileId: "codex-cli", accountId: "codex", cliAdapter: "CODEX" });
+    await listGlobalCapabilities("http://api", "secret");
+    await saveGlobalCapability("http://api", "secret", { kind: "SKILL", normalizedName: "review", expectedVersion: 0, manifest: {} });
+    await getGlobalCapabilityImpact("http://api", "secret", "SKILL", "review");
+    await setGlobalCapabilityLifecycle("http://api", "secret", "SKILL", "review", { expectedVersion: 1, lifecycle: "INACTIVE", confirmation: "review" });
+
+    assert.deepEqual(calls.map(({ options }) => options.method), ["GET", "POST", "POST", "POST", "GET", "POST", "GET", "PUT"]);
+    assert.match(calls[2].url, /global-accounts\/codex\/recheck$/);
+    assert.deepEqual(JSON.parse(calls[2].options.body), {});
+    assert.match(calls[3].url, /global-cli-models$/);
+    assert.deepEqual(JSON.parse(calls[3].options.body), { profileId: "codex-cli", accountId: "codex", cliAdapter: "CODEX" });
+    assert.match(calls[6].url, /global-capabilities\/SKILL\/review\/impact$/);
+    assert.deepEqual(JSON.parse(calls[7].options.body), { expectedVersion: 1, lifecycle: "INACTIVE", confirmation: "review" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
 
 test("global Skill and MCP template client uses explicit list and revision writes", async () => {
   const calls = [];

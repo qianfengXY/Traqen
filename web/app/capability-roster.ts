@@ -11,16 +11,12 @@ function childNumber(id: string) {
   return match ? Number(match[1]) : 0;
 }
 
-export function createDefaultChildSlots(
-  model = "",
-  skillNames: string[] = [],
-  mcpNames: string[] = [],
-): ChildCapabilityRole[] {
-  return [1, 2].map((number) => ({
+export function createDefaultChildSlots(): ChildCapabilityRole[] {
+  return [1].map((number) => ({
     id: `CHILD-${number}`,
-    model,
-    skillNames: cloneValues(skillNames),
-    mcpNames: cloneValues(mcpNames),
+    model: "",
+    skillNames: [],
+    mcpNames: [],
     rolePolicy: "SPECIALIST",
     independenceGroup: `GROUP-${number}`,
   }));
@@ -45,4 +41,8 @@ export function addChildSlot(
 
 export function removeChildSlot(slots: ChildCapabilityRole[], slotId: string) {
   return slots.length <= 1 ? slots : slots.filter(({ id }) => id !== slotId);
+}
+
+export function needsStartConfirmation(lastConfirmedExecutionProfileId: string | null, nextExecutionProfileId: string) {
+  return lastConfirmedExecutionProfileId !== nextExecutionProfileId;
 }

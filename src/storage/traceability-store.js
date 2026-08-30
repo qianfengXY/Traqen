@@ -19,6 +19,14 @@ export class TraceabilityStore {
     throw new Error("listCapabilityTemplateRevisions must be implemented");
   }
 
+  async appendGlobalAccountRevision(_account) {
+    throw new Error("appendGlobalAccountRevision must be implemented");
+  }
+
+  async listGlobalAccountRevisions() {
+    throw new Error("listGlobalAccountRevisions must be implemented");
+  }
+
   async appendSnapshotManifest(_projectId, _manifest) {
     throw new Error("appendSnapshotManifest must be implemented");
   }

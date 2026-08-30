@@ -7,6 +7,7 @@ export type GlobalModelProfile = {
   transport: "API" | "CLI";
   readiness: "UNVERIFIED" | "READY" | "ERROR";
   lifecycle: "ACTIVE" | "RETIRING" | "RETIRED";
+  accountId: string | null;
   endpoint?: string;
   model?: string;
   cliAdapter?: "CODEX" | "CLAUDE" | "GEMINI" | "KIMI";
@@ -19,8 +20,9 @@ export type CapabilityKey = { kind: "SKILL" | "MCP"; normalizedName: string };
 export type EffectiveCapability = CapabilityKey & {
   id: string;
   revision?: number;
-  source: "BUILTIN" | "PROJECT";
+  source: "GLOBAL" | "WORKSPACE" | "BUILTIN" | "PROJECT";
   projectRelation?: "OVERRIDE" | "ADDITION";
+  availability?: "AVAILABLE" | "WORKSPACE_DISABLED" | "GLOBAL_UNAVAILABLE";
   disabled: boolean;
   effective: boolean;
   manifest: Record<string, unknown>;
@@ -40,7 +42,47 @@ export type GlobalCapabilityTemplate = {
 export type EffectiveCapabilityCatalog = {
   entries: EffectiveCapability[];
   effective: EffectiveCapability[];
-  summary: { builtinCount: number; projectOverrideCount: number; projectAdditionCount: number; disabledCount: number; effectiveCount: number };
+  summary: {
+    globalAvailableCount?: number;
+    workspaceDisabledCount?: number;
+    workspaceLocalCount?: number;
+    globalUnavailableCount?: number;
+    builtinCount?: number;
+    projectOverrideCount?: number;
+    projectAdditionCount?: number;
+    disabledCount?: number;
+    effectiveCount: number;
+  };
+};
+
+export type GlobalAccount = {
+  id: string;
+  accountId: string;
+  revision: number;
+  displayName: string;
+  authMethod: "API_KEY" | "OAUTH";
+  secretRefId?: string;
+  cliAdapter?: "CODEX" | "CLAUDE" | "GEMINI" | "KIMI";
+  oauthStatus?: "UNKNOWN" | "AUTHENTICATED" | "NOT_AUTHENTICATED" | "CLI_UNAVAILABLE";
+  lifecycle: "ACTIVE" | "INACTIVE" | "DELETED";
+  createdAt: string;
+  recheck?: "EXTERNAL_CLI_REQUIRED";
+  checkedAt?: string;
+  instruction?: string;
+};
+
+export type GlobalCapability = CapabilityKey & {
+  id: string;
+  revision: number;
+  lifecycle: "ACTIVE" | "INACTIVE" | "DELETED";
+  manifest: Record<string, unknown>;
+  credentialHandleIds?: string[];
+  createdAt: string;
+};
+
+export type GlobalCapabilityImpact = {
+  capability: GlobalCapability;
+  impacts: Array<{ workspaceId: string; workspaceName?: string; grantedSlotIds: string[] }>;
 };
 
 export type AgentSlotDraft = {
@@ -177,6 +219,69 @@ export async function listGlobalModels(apiBase: string, apiToken: string) {
   return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
 }
 
+export async function listGlobalCliModels(apiBase: string, apiToken: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, { method: "GET", headers: headers(apiToken) });
+  return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
+}
+
+export async function listGlobalAccounts(apiBase: string, apiToken: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-accounts`, { method: "GET", headers: headers(apiToken) });
+  return (await parseJson<{ accounts: GlobalAccount[] }>(response)).accounts;
+}
+
+export async function saveGlobalAccount(apiBase: string, apiToken: string, input: Record<string, unknown>) {
+  const response = await fetch(`${base(apiBase)}/v1/global-accounts`, {
+    method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input),
+  });
+  return parseJson<GlobalAccount>(response);
+}
+
+export async function recheckGlobalAccount(apiBase: string, apiToken: string, accountId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-accounts/${encodeURIComponent(accountId)}/recheck`, {
+    method: "POST", headers: headers(apiToken, true), body: JSON.stringify({}),
+  });
+  return parseJson<GlobalAccount>(response);
+}
+
+export async function listGlobalCapabilities(apiBase: string, apiToken: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, { method: "GET", headers: headers(apiToken) });
+  return (await parseJson<{ capabilities: GlobalCapability[] }>(response)).capabilities;
+}
+
+export async function saveGlobalCapability(apiBase: string, apiToken: string, input: Record<string, unknown>) {
+  const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, {
+    method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input),
+  });
+  return parseJson<GlobalCapability>(response);
+}
+
+export async function getGlobalCapabilityImpact(apiBase: string, apiToken: string, kind: "SKILL" | "MCP", normalizedName: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-capabilities/${kind}/${encodeURIComponent(normalizedName)}/impact`, {
+    method: "GET", headers: headers(apiToken),
+  });
+  return parseJson<GlobalCapabilityImpact>(response);
+}
+
+export async function setGlobalCapabilityLifecycle(
+  apiBase: string,
+  apiToken: string,
+  kind: "SKILL" | "MCP",
+  normalizedName: string,
+  input: { expectedVersion: number; lifecycle: "ACTIVE" | "INACTIVE" | "DELETED"; confirmation?: string },
+) {
+  const response = await fetch(`${base(apiBase)}/v1/global-capabilities/${kind}/${encodeURIComponent(normalizedName)}/lifecycle`, {
+    method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input),
+  });
+  return parseJson<GlobalCapability>(response);
+}
+
+export async function createGlobalCliModel(apiBase: string, apiToken: string, input: Record<string, unknown>) {
+  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, {
+    method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input),
+  });
+  return parseJson<GlobalModelProfile>(response);
+}
+
 export async function listGlobalCapabilityTemplates(apiBase: string, apiToken: string) {
   const response = await fetch(`${base(apiBase)}/v1/capability-templates`, { method: "GET", headers: headers(apiToken) });
   return (await parseJson<{ templates: GlobalCapabilityTemplate[] }>(response)).templates;
@@ -223,6 +328,11 @@ export async function loadWorkspaceCapabilitySettings(apiBase: string, apiToken:
 
 export async function verifyGlobalModel(apiBase: string, apiToken: string, profileId: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
+  return parseJson<Record<string, unknown>>(response);
+}
+
+export async function verifyGlobalCliModel(apiBase: string, apiToken: string, profileId: string) {
+  const response = await fetch(`${base(apiBase)}/v1/global-cli-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
   return parseJson<Record<string, unknown>>(response);
 }
 

@@ -63,6 +63,23 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(globalModelPath.put.requestBody.content["application/json"].schema.$ref, "#/components/schemas/GlobalModelRevisionRequest");
   assert.equal(globalModelPath.put.responses["200"].content["application/json"].schema.$ref, "#/components/schemas/GlobalModelProfile");
   assert.equal(globalModelPath.put.responses["409"].$ref, "#/components/responses/Conflict");
+  const globalAccountsPath = contract.paths["/v1/global-accounts"];
+  assert.equal(globalAccountsPath.get.operationId, "listGlobalAccounts");
+  assert.equal(globalAccountsPath.post.operationId, "saveGlobalAccount");
+  assert.match(globalAccountsPath.post.description, /OAuth/i);
+  assert.doesNotMatch(globalAccountsPath.post.description, /login|token/i);
+  assert.equal(contract.paths["/v1/global-accounts/{accountId}/recheck"].post.operationId, "recheckGlobalAccount");
+  assert.equal(contract.paths["/v1/global-cli-models"].get.operationId, "listGlobalCliModelProfiles");
+  assert.equal(contract.paths["/v1/global-cli-models"].post.operationId, "createGlobalCliModel");
+  assert.match(contract.paths["/v1/global-cli-models"].post.description, /CLI/i);
+  assert.equal(contract.paths["/v1/global-cli-models/{modelId}/verify"].post.operationId, "verifyGlobalCliModel");
+  const globalCapabilitiesPath = contract.paths["/v1/global-capabilities"];
+  assert.equal(globalCapabilitiesPath.get.operationId, "listGlobalCapabilities");
+  assert.equal(globalCapabilitiesPath.post.operationId, "saveGlobalCapability");
+  assert.equal(contract.paths["/v1/global-capabilities/{kind}/{normalizedName}/impact"].get.operationId, "previewGlobalCapabilityImpact");
+  const lifecycleRequest = contract.paths["/v1/global-capabilities/{kind}/{normalizedName}/lifecycle"].put.requestBody.content["application/json"].schema;
+  assert.deepEqual(lifecycleRequest.required, ["expectedVersion", "lifecycle"]);
+  assert.equal(lifecycleRequest.properties.confirmation.type, "string");
   assert.equal(contract.paths["/v1/workspaces"].post.operationId, "createWorkspace");
   assert.equal(contract.paths["/v1/workspaces"].post.responses["409"].$ref, "#/components/responses/Conflict",
     "Workspace creation conflicts are unrelated to the Active Execution Profile head");
