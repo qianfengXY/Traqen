@@ -788,6 +788,7 @@ export class TraceabilityApplication {
       providerAdapter: profile.providerAdapter ?? 'OPENAI_COMPATIBLE',
       endpoint: profile.endpoint,
       model: profile.model,
+      reasoningEffort: profile.reasoningEffort ?? null,
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
       credentialHandleId: profile.credentialHandleId,
@@ -857,10 +858,11 @@ export class TraceabilityApplication {
   async configureGlobalCliModel(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('global CLI model input must be an object');
     const accountId = requireId(input.accountId, 'accountId');
+    const model = requireId(input.model, 'model').trim();
     if (String(input.transport ?? 'CLI').toUpperCase() !== 'CLI') throw new TypeError('F006 global models must use the CLI transport');
     const cliAdapter = String(input.cliAdapter ?? '').toUpperCase();
     await this.#resolveF006CliEnvironment({ accountId, cliAdapter });
-    return this.configureGlobalModelProfile({ ...input, transport: 'CLI', accountId });
+    return this.configureGlobalModelProfile({ ...input, transport: 'CLI', accountId, model });
   }
 
   async updateGlobalModelProfile(profileId, input) {
@@ -868,7 +870,7 @@ export class TraceabilityApplication {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new TypeError("global model revision input must be an object");
     assertOnlyFields(input, [
       "id", "profileId", "displayName", "accountId", "transport", "providerAdapter", "endpoint", "model", "apiKey",
-      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "expectedRevision",
+      "cliAdapter", "executablePath", "timeoutMs", "stream", "maximumOutputBytes", "reasoningEffort", "expectedRevision",
     ], "globalModelRevision");
     if (input?.profileId !== undefined && input.profileId !== profileId) throw new TypeError("profileId must match the route modelId");
     if (input?.id !== undefined && input.id !== profileId) throw new TypeError("id must match the route modelId");

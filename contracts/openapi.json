@@ -96,7 +96,7 @@
     },
     "/v1/global-cli-models": {
       "get": { "operationId": "listGlobalCliModelProfiles", "description": "Lists only account-backed CLI profiles eligible for the F006 model surface. Legacy API profiles remain available only through the compatibility route.", "responses": { "200": { "description": "CLI-backed global model profiles without credential values", "content": { "application/json": { "schema": { "type": "object", "required": ["models"], "properties": { "models": { "type": "array", "items": { "$ref": "#/components/schemas/GlobalModelProfile" } } }, "additionalProperties": false } } } } } },
-      "post": { "operationId": "createGlobalCliModel", "description": "Creates a reusable model profile through an allowlisted local CLI and an active global account. API transport is rejected by this v1 route.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "displayName", "accountId", "cliAdapter"], "properties": { "profileId": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 }, "accountId": { "type": "string", "minLength": 1 }, "cliAdapter": { "enum": ["CODEX", "CLAUDE", "GEMINI", "KIMI"] }, "model": { "type": "string" } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Persisted CLI-backed global model profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelProfile" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "post": { "operationId": "createGlobalCliModel", "description": "Creates a reusable model profile through an allowlisted local CLI and an active global account. API transport is rejected by this v1 route.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["profileId", "displayName", "accountId", "cliAdapter"], "properties": { "profileId": { "type": "string", "minLength": 1 }, "displayName": { "type": "string", "minLength": 1 }, "accountId": { "type": "string", "minLength": 1 }, "cliAdapter": { "enum": ["CODEX", "CLAUDE", "GEMINI", "KIMI"] }, "model": { "type": "string" }, "reasoningEffort": { "enum": ["minimal", "low", "medium", "high", "xhigh"] } }, "additionalProperties": false } } } }, "responses": { "201": { "description": "Persisted CLI-backed global model profile", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GlobalModelProfile" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
     },
     "/v1/global-cli-models/{modelId}/verify": {
       "parameters": [{ "name": "modelId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }],
@@ -2004,7 +2004,7 @@
       },
       "GlobalModelProfile": {
         "type": "object",
-        "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "accountId", "transport", "providerAdapter", "endpoint", "model", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
+        "required": ["id", "profileId", "currentRevisionId", "revision", "displayName", "accountId", "transport", "providerAdapter", "endpoint", "model", "reasoningEffort", "cliAdapter", "executablePath", "credentialHandleId", "readiness", "lifecycle", "configuredAt", "verifiedAt"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "profileId": { "type": "string", "minLength": 1 },
@@ -2016,6 +2016,7 @@
           "providerAdapter": { "type": "string", "minLength": 1 },
           "endpoint": { "type": ["string", "null"] },
           "model": { "type": ["string", "null"] },
+          "reasoningEffort": { "oneOf": [{ "enum": ["minimal", "low", "medium", "high", "xhigh"] }, { "type": "null" }] },
           "cliAdapter": { "type": ["string", "null"] },
           "executablePath": { "type": ["string", "null"] },
           "credentialHandleId": { "type": ["string", "null"] },
@@ -2039,6 +2040,7 @@
           "providerAdapter": { "const": "OPENAI_COMPATIBLE" },
           "endpoint": { "type": "string", "format": "uri" },
           "model": { "type": "string" },
+          "reasoningEffort": { "enum": ["minimal", "low", "medium", "high", "xhigh"] },
           "apiKey": { "type": "string" },
           "cliAdapter": { "enum": ["CODEX", "CLAUDE", "GEMINI", "KIMI"] },
           "executablePath": { "type": "string" },

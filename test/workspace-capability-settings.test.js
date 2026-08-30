@@ -129,6 +129,32 @@ test("F006 rejects local manifest replacement and inactive global grants", () =>
   assert.equal(validation.errors.some(({ code }) => code === "CAPABILITY_UNAVAILABLE"), true);
 });
 
+test("F006 global Codex profiles make the selected model and effort part of the immutable revision", () => {
+  const terraHigh = createGlobalModelProfileRevision({
+    profileId: "CODEX-TERRA",
+    transport: "CLI",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    reasoningEffort: "high",
+  });
+  const terraLow = createGlobalModelProfileRevision({
+    profileId: "CODEX-TERRA",
+    transport: "CLI",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    reasoningEffort: "low",
+  });
+
+  assert.equal(terraHigh.connection.reasoningEffort, "high");
+  assert.notEqual(terraHigh.id, terraLow.id, "an effort change must create a distinct immutable revision");
+  assert.throws(() => createGlobalModelProfileRevision({
+    profileId: "CODEX-BAD-EFFORT", transport: "CLI", cliAdapter: "CODEX", reasoningEffort: "turbo",
+  }), /reasoning effort/);
+  assert.throws(() => createGlobalModelProfileRevision({
+    profileId: "CLAUDE-EFFORT", transport: "CLI", cliAdapter: "CLAUDE", reasoningEffort: "high",
+  }), /only supported for CODEX/);
+});
+
 test("F006 previews active grant impact and requires typed confirmation before global deactivation", async () => {
   const store = new MemoryTraceabilityStore();
   await store.appendProjectFoundation(createProjectFoundation({

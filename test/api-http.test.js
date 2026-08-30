@@ -659,10 +659,33 @@ test("F006 CLI model routes exclude legacy API profiles from listing and verific
   });
   assert.equal(legacy.response.status, 201);
   const accountId = await createF006CliAccount(baseUrl, "ACCOUNT-CLI-ONLY");
+  const unpinned = await postJson(`${baseUrl}/v1/global-cli-models`, {
+    profileId: "codex-unpinned", displayName: "Codex unpinned", accountId, cliAdapter: "CODEX",
+  });
+  assert.equal(unpinned.response.status, 400, "the F006 model surface must never silently fall back to a CLI default model");
   const cli = await postJson(`${baseUrl}/v1/global-cli-models`, {
-    profileId: "codex-cli", displayName: "Codex CLI", accountId, cliAdapter: "CODEX", model: "gpt-5.6",
+    profileId: "codex-cli", displayName: "Codex CLI", accountId, cliAdapter: "CODEX", model: "gpt-5.6-terra", reasoningEffort: "high",
   });
   assert.equal(cli.response.status, 201);
+  assert.equal(cli.body.model, "gpt-5.6-terra");
+  assert.equal(cli.body.reasoningEffort, "high");
+
+  const revisedResponse = await fetch(`${baseUrl}/v1/global-models/codex-cli`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      expectedRevision: cli.body.revision,
+      displayName: "Codex CLI · lower effort",
+      accountId,
+      transport: "CLI",
+      cliAdapter: "CODEX",
+      reasoningEffort: "low",
+    }),
+  });
+  assert.equal(revisedResponse.status, 200);
+  const revised = await revisedResponse.json();
+  assert.equal(revised.model, "gpt-5.6-terra", "a reasoning-only revision must preserve the pinned model ID");
+  assert.equal(revised.reasoningEffort, "low");
 
   const listed = await fetch(`${baseUrl}/v1/global-cli-models`);
   assert.equal(listed.status, 200);

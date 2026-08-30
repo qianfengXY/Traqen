@@ -6,10 +6,10 @@ import {
   normalizeWorkUnit,
 } from "../shared/candidate-bundle.js";
 import { canonicalJson, contentId } from "../domain/canonical-json.js";
-import { createGlobalModelProfileRevision } from "../domain/workspace-execution-profile.js";
+import { createGlobalModelProfileRevision, normalizeCodexReasoningEffort } from "../domain/workspace-execution-profile.js";
 
 const CLI_MODEL_ADAPTERS = Object.freeze({
-  CODEX: { executable: "codex", args: (prompt, model) => ["exec", "--json", ...(model ? ["--model", model] : []), prompt] },
+  CODEX: { executable: "codex", args: (prompt, model, reasoningEffort) => ["exec", "--json", ...(model ? ["--model", model] : []), ...(reasoningEffort ? ["-c", `model_reasoning_effort=${JSON.stringify(reasoningEffort)}`] : []), prompt] },
   CLAUDE: { executable: "claude", args: (prompt, model) => ["--print", "--output-format", "json", ...(model ? ["--model", model] : []), prompt] },
   GEMINI: { executable: "gemini", args: (prompt, model) => ["--output-format", "json", ...(model ? ["--model", model] : []), "--prompt", prompt] },
   KIMI: { executable: "kimi", args: (prompt, model) => [...(model ? ["--model", model] : []), "--prompt", prompt] },
@@ -137,11 +137,12 @@ function decodeCliJsonOutput(cliAdapter, raw) {
 }
 
 export class AllowlistedCliModelAdapter {
-  constructor({ id, cliAdapter, model = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn, environmentResolver = null }) {
+  constructor({ id, cliAdapter, model = null, reasoningEffort = null, executablePath = null, timeoutMs = 120_000, maximumOutputBytes = 1_000_000, spawnImpl = spawn, environmentResolver = null }) {
     this.id = requiredString(id, "CLI model profile id");
     this.cliAdapter = requiredString(cliAdapter, "CLI adapter").toUpperCase();
     if (!CLI_MODEL_ADAPTERS[this.cliAdapter]) throw new TypeError(`unsupported CLI adapter ${this.cliAdapter}`);
     this.model = model ? requiredString(model, "CLI model name") : null;
+    this.reasoningEffort = normalizeCodexReasoningEffort(reasoningEffort, this.cliAdapter);
     this.executablePath = allowlistedCliExecutable(this.cliAdapter, executablePath);
     this.timeoutMs = Number(timeoutMs);
     this.maximumOutputBytes = Number(maximumOutputBytes);
@@ -225,7 +226,7 @@ export class AllowlistedCliModelAdapter {
 
   async #jsonTask(task, input, options = {}) {
     const prompt = JSON.stringify({ task, input });
-    const raw = await this.#run(CLI_MODEL_ADAPTERS[this.cliAdapter].args(prompt, this.model), { signal: options.signal ?? null });
+    const raw = await this.#run(CLI_MODEL_ADAPTERS[this.cliAdapter].args(prompt, this.model, this.reasoningEffort), { signal: options.signal ?? null });
     return decodeCliJsonOutput(this.cliAdapter, raw);
   }
 
@@ -1090,10 +1091,13 @@ export class AnalysisModelRegistry {
       const stream = transport === "API" ? value.stream ?? false : false;
       const endpoint = transport === "API" ? endpointUrl(value.endpoint) : null;
       const model = value.model ? requiredString(value.model, "stored analysis model name") : null;
+      const reasoningEffort = transport === "CLI"
+        ? normalizeCodexReasoningEffort(value.reasoningEffort, value.cliAdapter)
+        : null;
       const credential = transport === "API" ? this.#storedCredential(value, id) : null;
       const adapter = transport === "API"
         ? new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credential.credentialHandleId) ?? null })
-        : this.#cliAdapter({ id, accountId: value.accountId ?? null, cliAdapter: value.cliAdapter, model, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
+        : this.#cliAdapter({ id, accountId: value.accountId ?? null, cliAdapter: value.cliAdapter, model, reasoningEffort, executablePath: value.executablePath, timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
       const profile = {
         id,
         displayName: value.displayName ?? id,
@@ -1101,6 +1105,7 @@ export class AnalysisModelRegistry {
         transport,
         endpoint: adapter.endpoint ?? null,
         model,
+        reasoningEffort: adapter.reasoningEffort ?? null,
         timeoutMs,
         stream,
         cliAdapter: adapter.cliAdapter ?? null,
@@ -1140,11 +1145,12 @@ export class AnalysisModelRegistry {
     };
   }
 
-  #cliAdapter({ id, accountId, cliAdapter, model, executablePath, timeoutMs, maximumOutputBytes }) {
+  #cliAdapter({ id, accountId, cliAdapter, model, reasoningEffort, executablePath, timeoutMs, maximumOutputBytes }) {
     return new AllowlistedCliModelAdapter({
       id,
       cliAdapter,
       model,
+      reasoningEffort,
       executablePath,
       timeoutMs,
       maximumOutputBytes,
@@ -1160,6 +1166,7 @@ export class AnalysisModelRegistry {
       id: profile.id,
       endpoint: profile.endpoint,
       model: profile.model,
+      reasoningEffort: profile.reasoningEffort ?? null,
       displayName: profile.displayName,
       accountId: profile.accountId ?? null,
       transport: profile.transport,
@@ -1194,6 +1201,7 @@ export class AnalysisModelRegistry {
       } : {
         cliAdapter: profile.cliAdapter,
         model: profile.model,
+        reasoningEffort: profile.reasoningEffort ?? null,
         executablePath: profile.executablePath,
       }),
     }, this.#clock).id;
@@ -1212,7 +1220,7 @@ export class AnalysisModelRegistry {
     const credential = transport === "API" ? this.#storedCredential(value, value.id) : null;
     const adapter = transport === "API"
       ? new OpenAICompatibleAnalysisModelAdapter({ id: value.id, endpoint: value.endpoint, model: value.model, timeoutMs: value.timeoutMs, stream: value.stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credential.credentialHandleId) ?? null })
-      : this.#cliAdapter({ id: value.id, accountId: value.accountId ?? null, cliAdapter: value.cliAdapter, model: value.model, executablePath: value.executablePath, timeoutMs: value.timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
+      : this.#cliAdapter({ id: value.id, accountId: value.accountId ?? null, cliAdapter: value.cliAdapter, model: value.model, reasoningEffort: value.reasoningEffort, executablePath: value.executablePath, timeoutMs: value.timeoutMs, maximumOutputBytes: value.maximumOutputBytes });
     const { apiKey: _apiKey, ...safeValue } = value;
     this.#revisions.set(value.currentRevisionId, { ...safeValue, transport, credentialHandleId: credential?.credentialHandleId ?? null, legacyCredentialHandleId: credential?.legacyCredentialHandleId ?? null, adapter });
   }
@@ -1220,7 +1228,7 @@ export class AnalysisModelRegistry {
   #serializable(profile) {
     return {
       id: profile.id, displayName: profile.displayName, accountId: profile.accountId ?? null, transport: profile.transport, endpoint: profile.endpoint,
-      model: profile.model, timeoutMs: profile.timeoutMs, stream: profile.stream, configuredAt: profile.configuredAt,
+      model: profile.model, reasoningEffort: profile.reasoningEffort ?? null, timeoutMs: profile.timeoutMs, stream: profile.stream, configuredAt: profile.configuredAt,
       verifiedAt: profile.verifiedAt, credentialHandleId: profile.credentialHandleId,
       legacyCredentialHandleId: profile.legacyCredentialHandleId, cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath, maximumOutputBytes: profile.maximumOutputBytes,
@@ -1417,15 +1425,27 @@ export class AnalysisModelRegistry {
     }
     const transport = String(input.transport ?? existing?.transport ?? "API").toUpperCase();
     if (transport === "CLI") {
-      const timeoutMs = input.timeoutMs ?? 120_000;
-      const adapter = this.#cliAdapter({ id, accountId: input.accountId ?? existing?.accountId ?? null, cliAdapter: input.cliAdapter, model: input.model, executablePath: input.executablePath, timeoutMs, maximumOutputBytes: input.maximumOutputBytes ?? 1_000_000 });
-      const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
-      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: null, model: adapter.model, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
+      const timeoutMs = input.timeoutMs ?? existing?.timeoutMs ?? 120_000;
+      const maximumOutputBytes = input.maximumOutputBytes ?? existing?.maximumOutputBytes ?? 1_000_000;
+      const reasoningEffort = input.reasoningEffort === undefined ? existing?.reasoningEffort ?? null : input.reasoningEffort;
+      const adapter = this.#cliAdapter({
+        id,
+        accountId: input.accountId ?? existing?.accountId ?? null,
+        cliAdapter: input.cliAdapter ?? existing?.cliAdapter,
+        model: input.model === undefined ? existing?.model ?? null : input.model,
+        reasoningEffort,
+        executablePath: input.executablePath ?? existing?.executablePath ?? null,
+        timeoutMs,
+        maximumOutputBytes,
+      });
+      const connectionUnchanged = existing?.source === "RUNTIME" && existing.transport === "CLI" && existing.cliAdapter === adapter.cliAdapter && existing.model === adapter.model && existing.reasoningEffort === adapter.reasoningEffort && existing.executablePath === adapter.executablePath && existing.timeoutMs === timeoutMs && existing.maximumOutputBytes === adapter.maximumOutputBytes;
+      const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: null, model: adapter.model, reasoningEffort: adapter.reasoningEffort, timeoutMs, stream: false, cliAdapter: adapter.cliAdapter, executablePath: adapter.executablePath, maximumOutputBytes: adapter.maximumOutputBytes, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId: null, legacyCredentialHandleId: null, adapter };
       this.#publishRevision(profile);
       if (persist) this.#persist();
       return this.#public(profile);
     }
     if (transport !== "API") throw new TypeError("analysis model transport must be API or CLI");
+    if (input.reasoningEffort !== undefined && input.reasoningEffort !== null) throw new TypeError("reasoning effort is only supported for CODEX");
     const endpoint = endpointUrl(input.endpoint);
     const model = requiredString(input.model, "analysis model name");
     const hasNewApiKey = typeof input.apiKey === "string" && input.apiKey.trim() !== "";
@@ -1441,7 +1461,7 @@ export class AnalysisModelRegistry {
     const stream = input.stream ?? false;
     const adapter = new OpenAICompatibleAnalysisModelAdapter({ id, endpoint, model, timeoutMs, stream, fetchImpl: this.#fetchImpl, apiKeyResolver: () => this.#credentialHandles.get(credentialHandleId) ?? null });
     const connectionUnchanged = existing?.source === "RUNTIME" && !hasNewApiKey && existing.endpoint === adapter.endpoint && existing.model === model && existing.timeoutMs === timeoutMs && existing.stream === stream;
-    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: adapter.endpoint, model, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
+    const profile = { id, displayName: input.displayName ?? existing?.displayName ?? id, accountId: input.accountId ?? existing?.accountId ?? null, transport, endpoint: adapter.endpoint, model, reasoningEffort: null, timeoutMs, stream, cliAdapter: null, executablePath: null, maximumOutputBytes: null, source: "RUNTIME", lifecycle: "ACTIVE", revision: (existing?.revision ?? 0) + 1, configuredAt: this.#clock().toISOString(), verifiedAt: connectionUnchanged ? existing.verifiedAt : null, credentialHandleId, legacyCredentialHandleId: existing?.legacyCredentialHandleId ?? null, adapter };
     this.#publishRevision(profile);
     if (persist) this.#persist();
     return this.#public(profile);
