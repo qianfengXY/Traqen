@@ -72,10 +72,15 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.equal(contract.paths["/v1/global-cli-models"].get.operationId, "listGlobalCliModelProfiles");
   assert.equal(contract.paths["/v1/global-cli-models"].post.operationId, "createGlobalCliModel");
   assert.match(contract.paths["/v1/global-cli-models"].post.description, /CLI/i);
-  assert.deepEqual(
-    contract.paths["/v1/global-cli-models"].post.requestBody.content["application/json"].schema.properties.reasoningEffort.enum,
-    ["minimal", "low", "medium", "high", "xhigh"],
-  );
+  const createGlobalCliModelSchema = contract.paths["/v1/global-cli-models"].post.requestBody.content["application/json"].schema;
+  assert.equal(createGlobalCliModelSchema.oneOf.length, 2);
+  const codexCreateSchema = createGlobalCliModelSchema.oneOf.find((schema) => schema.properties.cliAdapter.const === "CODEX");
+  const otherCliCreateSchema = createGlobalCliModelSchema.oneOf.find((schema) => schema.properties.cliAdapter.enum?.includes("CLAUDE"));
+  assert.ok(codexCreateSchema.required.includes("model"));
+  assert.equal(codexCreateSchema.properties.model.pattern, ".*\\S.*");
+  assert.deepEqual(codexCreateSchema.properties.reasoningEffort.enum, ["minimal", "low", "medium", "high", "xhigh"]);
+  assert.ok(otherCliCreateSchema.required.includes("model"));
+  assert.equal(Object.hasOwn(otherCliCreateSchema.properties, "reasoningEffort"), false);
   assert.equal(contract.paths["/v1/global-cli-models/{modelId}/verify"].post.operationId, "verifyGlobalCliModel");
   const globalCapabilitiesPath = contract.paths["/v1/global-capabilities"];
   assert.equal(globalCapabilitiesPath.get.operationId, "listGlobalCapabilities");

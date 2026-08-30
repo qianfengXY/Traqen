@@ -37,6 +37,7 @@ function schemaErrors(value, schema, rootSchema, location = "$") {
     if (typeof value !== "string") errors.push(`${location} must be a string`);
     else {
       if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${location} is too short`);
+      if (schema.pattern !== undefined && !(new RegExp(schema.pattern).test(value))) errors.push(`${location} does not match pattern`);
       if (schema.format === "date-time" && Number.isNaN(Date.parse(value))) errors.push(`${location} must be a date-time`);
     }
   }
@@ -692,6 +693,123 @@ test("F006 CLI model routes exclude legacy API profiles from listing and verific
   assert.deepEqual((await listed.json()).models.map((model) => model.profileId), ["codex-cli"]);
   assert.equal((await fetch(`${baseUrl}/v1/global-cli-models/legacy-api/verify`, { method: "POST" })).status, 400);
   assert.equal((await fetch(`${baseUrl}/v1/global-cli-models/codex-cli/verify`, { method: "POST" })).status, 200);
+});
+
+test("F006 blocks hydrated unpinned CLI profiles before verification, Apply, and Run", async (t) => {
+  const spawnCalls = [];
+  const legacyRevision = {
+    id: "LEGACY-UNPINNED",
+    displayName: "Legacy default",
+    accountId: "ACCOUNT-LEGACY-UNPINNED",
+    transport: "CLI",
+    endpoint: null,
+    model: null,
+    reasoningEffort: null,
+    timeoutMs: 120_000,
+    stream: false,
+    configuredAt: fixedClock().toISOString(),
+    verifiedAt: fixedClock().toISOString(),
+    credentialHandleId: null,
+    legacyCredentialHandleId: null,
+    cliAdapter: "CODEX",
+    executablePath: "codex",
+    maximumOutputBytes: 1_000_000,
+    currentRevisionId: "LEGACY-UNPINNED-R1",
+    revision: 1,
+    source: "RUNTIME",
+  };
+  let persistedProfiles = {
+    profiles: [legacyRevision],
+    revisions: [legacyRevision],
+    credentialHandles: [],
+    environmentCredentialHandles: [],
+  };
+  const profileStore = {
+    load: () => structuredClone(persistedProfiles),
+    save: (value) => { persistedProfiles = structuredClone(value); },
+  };
+  const starts = [];
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: new AnalysisModelRegistry({
+      clock: fixedClock,
+      profileStore,
+      cliSpawn: (...args) => {
+        spawnCalls.push(args);
+        return cliVerificationSpawn(...args);
+      },
+    }),
+    secretReferenceResolver: async () => "test-api-key",
+    legacyUnderstandingRuntime: {
+      async start(input) {
+        starts.push(input);
+        return { id: "JOB-SHOULD-NOT-START" };
+      },
+    },
+  });
+  await application.createProject({
+    organization: { id: "ORG-LEGACY-UNPINNED", name: "Org" },
+    tenant: { id: "TENANT-LEGACY-UNPINNED", name: "Tenant" },
+    project: { id: "W-LEGACY-UNPINNED", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-LEGACY-UNPINNED", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", expectedVersion: 0,
+  });
+  const baseUrl = await startStubServer(t, application);
+
+  const verify = await fetch(`${baseUrl}/v1/global-cli-models/LEGACY-UNPINNED/verify`, { method: "POST" });
+  assert.equal(verify.status, 400);
+  assert.match((await verify.json()).error.message, /pin a non-empty model/i);
+  assert.equal(spawnCalls.length, 0, "an unpinned legacy profile must fail before the CLI is spawned");
+
+  await application.saveWorkspaceCapabilityDraft("W-LEGACY-UNPINNED", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "LEGACY-UNPINNED" },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "LEGACY-UNPINNED", independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  await assert.rejects(
+    () => application.activateWorkspaceCapabilityDraft("W-LEGACY-UNPINNED"),
+    /MODEL_UNPINNED/,
+  );
+
+  const activeProfile = {
+    id: "EXECUTION-LEGACY-UNPINNED",
+    workspaceId: "W-LEGACY-UNPINNED",
+    mainAgentSlot: { id: "MAIN", modelProfileId: "LEGACY-UNPINNED", modelProfileRevisionId: "LEGACY-UNPINNED-R1" },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "LEGACY-UNPINNED", modelProfileRevisionId: "LEGACY-UNPINNED-R1" }],
+    catalogProvenance: [],
+  };
+  await store.appendUnderstandingRecordWithCas("W-LEGACY-UNPINNED", "WORKSPACE_EXECUTION_PROFILE", activeProfile, {
+    headKey: "WORKSPACE_EXECUTION_PROFILE",
+    expectedVersion: 0,
+  });
+  await assert.rejects(
+    () => application.startWorkspaceUnderstandingJob("W-LEGACY-UNPINNED", {
+      sourceRegistrationId: "SOURCE-LEGACY-UNPINNED",
+      requestedMode: "FULL",
+      expectedWorkspaceExecutionProfileRevisionId: activeProfile.id,
+    }),
+    /pin a non-empty model/i,
+  );
+  assert.equal(starts.length, 0, "a historical Active Profile with no pinned model must not reach the runtime");
+});
+
+test("F006 CLI create contract requires a non-blank model and restricts reasoning effort to Codex", async () => {
+  const contract = JSON.parse(await readFile(new URL("../contracts/openapi.json", import.meta.url), "utf8"));
+  const schema = contract.paths["/v1/global-cli-models"].post.requestBody.content["application/json"].schema;
+  const base = { profileId: "MODEL", displayName: "Model", accountId: "ACCOUNT" };
+
+  assert.ok(schemaErrors({ ...base, cliAdapter: "CODEX" }, schema, contract).length > 0, "model must be required by the contract");
+  assert.ok(schemaErrors({ ...base, cliAdapter: "CODEX", model: "   " }, schema, contract).length > 0, "whitespace-only model IDs must be rejected by the contract");
+  assert.deepEqual(schemaErrors({ ...base, cliAdapter: "CODEX", model: "gpt-5.6-terra", reasoningEffort: "high" }, schema, contract), []);
+  assert.ok(schemaErrors({ ...base, cliAdapter: "CLAUDE", model: "claude-model", reasoningEffort: "high" }, schema, contract).length > 0, "non-Codex profiles cannot submit a reasoning effort");
 });
 
 test("F006 HTTP validation fails closed for unverified capabilities and contradictory boundary policy", async (t) => {

@@ -32,6 +32,11 @@ function normalizedCapabilityName(value, fieldName = "capability name") {
   return requireNonEmptyString(value, fieldName).trim().toLowerCase();
 }
 
+function hasPinnedModelId(model) {
+  const value = model?.model ?? model?.connection?.model;
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 export function normalizeCodexReasoningEffort(value, cliAdapter) {
   if (value === undefined || value === null) return null;
   if (String(cliAdapter ?? "").toUpperCase() !== "CODEX") {
@@ -302,6 +307,7 @@ export function validateWorkspaceCapabilityDraft({ draft, modelProfiles = [], ef
     // This keeps historical/domain-only callers from silently changing semantics while
     // ensuring every executable F006 draft rejects legacy direct-API profiles.
     else if (model.account !== undefined && String(model.transport ?? "").toUpperCase() === "API") errors.push({ field: `${path}.modelProfileId`, code: "MODEL_NOT_F006_CLI", message: "F006 requires an account-backed CLI model" });
+    else if (String(model.transport ?? "").toUpperCase() === "CLI" && !hasPinnedModelId(model)) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_UNPINNED", message: "Selected CLI model must pin a non-empty model ID" });
     else if (model.account === null) errors.push({ field: `${path}.modelProfileId`, code: "MODEL_ACCOUNT_UNAVAILABLE", message: "Select a CLI model backed by an active global account" });
     // Callers that only own a historical model snapshot do not have account context.
     // F006 service paths always attach it; legacy-domain callers retain their prior

@@ -897,6 +897,9 @@ export class TraceabilityApplication {
     await this.#syncGlobalModelLifecycles();
     const current = await this.getGlobalModelProfile(profileId);
     if (!current) return null;
+    if (String(current.transport ?? "").toUpperCase() === "CLI" && (typeof current.model !== "string" || current.model.trim() === "")) {
+      throw new TypeError("CLI model profiles must pin a non-empty model before verification");
+    }
     if (current.transport === 'CLI' && current.accountId) await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
     await this.#store.mutateGlobalModelProfile(profileId, current.revision, async () => (
       this.verifyAnalysisModelProfile(profileId, { persist: false })
@@ -908,6 +911,9 @@ export class TraceabilityApplication {
     const current = await this.getGlobalModelProfile(profileId);
     if (!current || current.transport !== "CLI" || !current.accountId) {
       throw new TypeError("F006 can verify only account-backed CLI model profiles");
+    }
+    if (typeof current.model !== "string" || current.model.trim() === "") {
+      throw new TypeError("F006 CLI model profiles must pin a non-empty model before verification");
     }
     await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
     return this.verifyGlobalModelProfile(profileId);
@@ -1061,6 +1067,9 @@ export class TraceabilityApplication {
       const lifecycle = model ? await this.#store.getGlobalModelLifecycle(model.profileId) : null;
       if (!model || model.transport !== "CLI" || model.lifecycle !== "ACTIVE" || lifecycle?.lifecycle !== "ACTIVE" || model.readiness !== "READY" || !model.accountId) {
         throw new TypeError(`Active Workspace profile model revision ${revisionId} is no longer eligible for a new Run`);
+      }
+      if (typeof model.model !== "string" || model.model.trim() === "") {
+        throw new TypeError(`Active Workspace profile model revision ${revisionId} must pin a non-empty model for a new Run`);
       }
       await this.#resolveF006CliEnvironment({ accountId: model.accountId, cliAdapter: model.cliAdapter });
     }

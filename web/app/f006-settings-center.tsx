@@ -77,6 +77,10 @@ function statusCopy(account: GlobalAccount) {
   return "等待 CLI 登录";
 }
 
+function hasPinnedModelId(model: GlobalModelProfile) {
+  return typeof model.model === "string" && model.model.trim().length > 0;
+}
+
 function capabilityLabel(entry: EffectiveCapability) {
   if (entry.availability === "GLOBAL_UNAVAILABLE") return "全局不可用 / 需要处理";
   if (entry.availability === "WORKSPACE_DISABLED") return "本项目已停用";
@@ -122,6 +126,7 @@ export function F006SettingsCenter(props: Props) {
     return model.transport === "CLI"
       && model.lifecycle === "ACTIVE"
       && model.readiness === "READY"
+      && hasPinnedModelId(model)
       && account?.lifecycle === "ACTIVE"
       && (account.authMethod !== "OAUTH" || (account.oauthStatus === "AUTHENTICATED" && account.cliAdapter === model.cliAdapter));
   }), [props.accounts, props.models]);
@@ -357,12 +362,27 @@ function GlobalModels(props: Props & {
     </section>
     <section className="f006-list-card">
       <div className="f006-list-head"><div><p className="eyebrow">Global models</p><h2>{props.t("模型可用性", "Model readiness")}</h2></div><span>{cliModels.length}</span></div>
-      {cliModels.length ? cliModels.map((model) => <article className="f006-resource-row" key={model.id}>
-        <div className="f006-resource-icon">⌘</div>
-        <div><strong>{model.displayName}</strong><small>{model.cliAdapter ?? "CLI"} · {model.accountId ?? "未关联账号"} · {model.model ?? props.t("旧版默认模型（未固定）", "Legacy default (un-pinned)")}{model.cliAdapter === "CODEX" && ` · ${model.reasoningEffort ?? props.t("旧版默认档位", "legacy default effort")}`}</small><p>{model.readiness === "READY" ? props.t("可供 Agent 选择", "Available to Agents") : props.t("验证后才会进入 Agent 选择器", "Verify before it appears in Agent selectors")}</p></div>
-        <div className={`f006-status ${model.readiness === "READY" ? "success" : "warning"}`}>{model.readiness}</div>
-        <button className="button" disabled={props.working || model.lifecycle !== "ACTIVE"} onClick={() => props.onVerifyModel(model.profileId)}>{props.t("验证", "Verify")}</button>
-      </article>) : <EmptyList title={props.t("还没有模型", "No models yet")} detail={props.t("选择一个全局账号、固定模型 ID 与推理档位。", "Choose a global account, pin a model ID and reasoning effort.")} />}
+      {cliModels.length ? cliModels.map((model) => {
+        const pinned = hasPinnedModelId(model);
+        const recoveryAdapter = ADAPTERS.includes(model.cliAdapter as (typeof ADAPTERS)[number])
+          ? model.cliAdapter as (typeof ADAPTERS)[number]
+          : "CODEX";
+        const createPinnedReplacement = () => {
+          props.setModelName(`${model.displayName} · pinned`);
+          props.setModelId("");
+          props.setAccountId(model.accountId ?? "");
+          props.setAdapter(recoveryAdapter);
+          props.setModelValue("");
+          props.setReasoningEffort("medium");
+        };
+        return <article className="f006-resource-row" key={model.id}>
+          <div className="f006-resource-icon">⌘</div>
+          <div><strong>{model.displayName}</strong><small>{model.cliAdapter ?? "CLI"} · {model.accountId ?? "未关联账号"} · {model.model ?? props.t("旧版默认模型（未固定）", "Legacy default (un-pinned)")}{model.cliAdapter === "CODEX" && ` · ${model.reasoningEffort ?? props.t("旧版默认档位", "legacy default effort")}`}</small><p>{!pinned ? props.t("固定模型后才能验证；请创建固定模型副本。", "Pin a model ID before verification; create a pinned replacement.") : model.readiness === "READY" ? props.t("可供 Agent 选择", "Available to Agents") : props.t("验证后才会进入 Agent 选择器", "Verify before it appears in Agent selectors")}</p></div>
+          <div className={`f006-status ${pinned && model.readiness === "READY" ? "success" : "warning"}`}>{pinned ? model.readiness : "UNPINNED"}</div>
+          <button className="button" disabled={props.working || model.lifecycle !== "ACTIVE" || !pinned} onClick={() => props.onVerifyModel(model.profileId)}>{props.t("验证", "Verify")}</button>
+          {!pinned && <button className="button" disabled={props.working} onClick={createPinnedReplacement}>{props.t("创建固定模型副本", "Create pinned replacement")}</button>}
+        </article>;
+      }) : <EmptyList title={props.t("还没有模型", "No models yet")} detail={props.t("选择一个全局账号、固定模型 ID 与推理档位。", "Choose a global account, pin a model ID and reasoning effort.")} />}
     </section>
   </div>;
 }
