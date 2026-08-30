@@ -743,6 +743,13 @@ test("F006 blocks hydrated unpinned CLI profiles before verification, Apply, and
     }),
     secretReferenceResolver: async () => "test-api-key",
     legacyUnderstandingRuntime: {
+      async describeHistoricalReanalysis() {
+        return {
+          executable: true,
+          sourceRegistrationId: "SOURCE-LEGACY-UNPINNED",
+          workspaceExecutionProfileRevisionId: "EXECUTION-LEGACY-UNPINNED",
+        };
+      },
       async start(input) {
         starts.push(input);
         return { id: "JOB-SHOULD-NOT-START" };
@@ -799,6 +806,22 @@ test("F006 blocks hydrated unpinned CLI profiles before verification, Apply, and
     /pin a non-empty model/i,
   );
   assert.equal(starts.length, 0, "a historical Active Profile with no pinned model must not reach the runtime");
+
+  const artifact = { id: "ARTIFACT-LEGACY-UNPINNED", graphArtifactDigest: "DIGEST-LEGACY-UNPINNED" };
+  const revision = {
+    id: "REVISION-LEGACY-UNPINNED",
+    status: "PUBLISHED",
+    graphArtifactId: artifact.id,
+    graphArtifactDigest: artifact.graphArtifactDigest,
+    snapshotManifestId: "SNAPSHOT-LEGACY-UNPINNED",
+  };
+  await store.appendUnderstandingRecord("W-LEGACY-UNPINNED", "GRAPH_ARTIFACT", artifact);
+  await store.appendUnderstandingRecord("W-LEGACY-UNPINNED", "GRAPH_REVISION", revision);
+  await assert.rejects(
+    () => application.reanalyzeHistoricalGraphRevision("W-LEGACY-UNPINNED", revision.id, {}),
+    /pin a non-empty model/i,
+  );
+  assert.equal(starts.length, 0, "historical reanalysis must not start a Run with an unpinned legacy model");
 });
 
 test("F006 CLI create contract requires a non-blank model and restricts reasoning effort to Codex", async () => {

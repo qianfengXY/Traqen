@@ -1056,12 +1056,21 @@ export class TraceabilityApplication {
   }
 
   async #assertActiveF006ProfileEligibility(profile) {
+    const agentSlots = [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])]
+      .filter((slot) => slot !== null && slot !== undefined);
+    // Pre-F006 execution profiles use mainAgent/childSlots rather than the
+    // F006 Agent-slot contract. They are retained for historical recovery,
+    // but never take the F006 model-profile path.
+    if (agentSlots.length === 0) return;
     const modelsByRevisionId = new Map((await this.#f006ModelProfileRevisions()).map((model) => [model.id, model]));
-    const modelRevisionIds = new Set(
-      [profile.mainAgentSlot, ...(profile.childAgentSlots ?? [])]
-        .map((slot) => slot?.modelProfileRevisionId)
-        .filter(Boolean),
-    );
+    const modelRevisionIds = new Set();
+    for (const slot of agentSlots) {
+      const revisionId = slot?.modelProfileRevisionId;
+      if (typeof revisionId !== "string" || revisionId.trim() === "") {
+        throw new TypeError("Every Agent slot must pin a model profile revision before a new Run");
+      }
+      modelRevisionIds.add(revisionId);
+    }
     for (const revisionId of modelRevisionIds) {
       const model = modelsByRevisionId.get(revisionId);
       const lifecycle = model ? await this.#store.getGlobalModelLifecycle(model.profileId) : null;
@@ -3455,6 +3464,15 @@ export class TraceabilityApplication {
         `Historical reanalysis is unavailable [${recovery.reasonCode}]: ${recovery.message}`,
       );
     }
+    const recoveredProfile = await this.#store.getUnderstandingRecord(
+      projectId,
+      "WORKSPACE_EXECUTION_PROFILE",
+      recovery.workspaceExecutionProfileRevisionId,
+    );
+    if (!recoveredProfile || recoveredProfile.workspaceId !== projectId) {
+      throw new PersistenceConflictError("Historical reanalysis requires its retained WorkspaceExecutionProfileRevision");
+    }
+    await this.#assertActiveF006ProfileEligibility(recoveredProfile);
     return this.#legacyUnderstandingRuntime.start({
       projectId,
       sourceRegistrationId: recovery.sourceRegistrationId,
