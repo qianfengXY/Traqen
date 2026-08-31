@@ -23,7 +23,7 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 
 | ID | 优先级 | Feature | 状态 | Owner | 来源 | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | 工作空间与源码真相 | spec | CodeX | operator 已授权的[源码真相收敛](../feature-discussions/2026-08-30-F001-workspace-source-truth/README.zh-CN.md) | [F001](features/F001-legacy-system-understanding.zh-CN.md) |
+| F001 | P0 | 工作空间与源码真相 | spec | CodeX | co-creator 已确认的[Source Truth 方案设计](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) | [F001](features/F001-legacy-system-understanding.zh-CN.md) |
 | F002 | P0 | 确定性证据与 API 结构 | spec | TBD | operator 已确认的重构 | [F002](features/F002-feature-api-traceability.zh-CN.md) |
 | F003 | P1 | Agent 候选与审阅后的业务功能树 | spec | TBD | operator 已确认的重构 | [F003](features/F003-traceability-graph.zh-CN.md) |
 | F004 | P0 | 测试/执行证据、变更影响与重验证 | spec | TBD | operator 已确认的重构 | [F004](features/F004-claim-review.zh-CN.md) |

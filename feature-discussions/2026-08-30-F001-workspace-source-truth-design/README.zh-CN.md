@@ -1,264 +1,289 @@
-> Language: [English](README.md) · **简体中文**
+> 语言：[English](README.md) · **简体中文**
 
 ---
 feature_ids: [F001]
 related_features: [F002, F003, F004, F006]
-topics: [workspace, source-truth, git, source-snapshot, artifact-inventory, coverage-gap, receipt, design-gate]
+topics: [workspace, source-truth, git, directory-upload, source-bundle, incremental, source-snapshot, artifact-inventory, coverage-gap, receipt, design-gate]
 doc_kind: feature-discussion
 created: 2026-08-30
-status: proposed
-design_gate: operator-review-pending
+status: approved
+design_gate: operator-approved
 ---
 
 # F001 方案设计 — Workspace & Source Truth
 
 ## 1. F001 完成时，用户得到什么
 
-当架构师能把一个已授权 Git 仓库的某个精确 commit，变成一份**可重放的 Source Truth Receipt** 时，F001 才算完成。Receipt 明确回答：Traqen 安全采集了什么、没有获得什么、下一项能力能不能使用这份结果。
+当架构师能把一个选定的 Git 版本、一个选定的目录或二者，变成一份**可重放的 Source Truth Receipt** 时，F001 才算完成。Receipt 明确说出 Traqen 安全采集了哪些来源组件、哪些材料没有取得、它代表哪个版本，以及 F002 能否使用结果。
 
 具体而言，架构师可以：
 
-1. 登记一个已授权的仓库，选择 branch/tag/commit，并看到它被解析为精确 commit；
-2. 采用全仓默认范围，或有意识地选择一个目录根；
-3. 自动预检，并在不执行仓库代码的前提下安全采集这份固定源码；
-4. 查看完整的源码覆盖清单和每一项已知限制；
-5. 仅对非阻断限制，以负责人、理由和有效期做接受；
-6. 将合格的不可变 snapshot 连同限制交给 F002，而不是交一个会变化的路径或 branch 名称。
+1. 创建或打开 Workspace，选择**连接 Git**、**上传目录**或两者；
+2. 选择 Git branch/tag/ref 并看到精确解析的 commit，和/或选择一个目录并看到所有已选文件均被验证；
+3. 让 Traqen 自动预检来源，并在不执行用户控制代码的前提下采集；
+4. 查看带组件身份的完整来源清单、覆盖限制、Receipt 和不可变历史；
+5. 在来源变化后创建新版本：比较 Git commit 或重新选择目录的 manifest，只传输变化字节；以及
+6. 将合格的不可变来源包及继承限制交给 F002，而不是交一个会变化的路径或 branch。
 
-F001 **不会**产生 API 树、推断业务功能、执行测试或给出变更影响建议；这些分别属于 F002–F004。F001 的产物是可信证据地基，后续结果才有资格被相信。
+首期允许一个 Git 组件、一个上传目录组件，或两者同时存在。组合来源是带命名空间的并集，不是自动合并：同名路径仍是不同记录。F001 **不会**产生 API 树、推断业务功能、执行测试或给出变更影响建议；这些分别属于 F002–F004。F001 的产物是可信来源地基，后续结果才有资格被相信。
 
 ## 2. 功能清单、作用与解决的问题
 
 | 功能 | 架构师获得什么 | 解决什么问题 |
 | --- | --- | --- |
-| Workspace 与来源登记 | 一个绑定 Workspace、已获只读授权的 Git 来源；凭据只是受保护的引用。 | 分析不能悄悄使用任意本地目录，也不会泄露凭据。 |
-| 精确版本与范围 | 已解析 commit，以及全仓或一个明确目录根。 | 移动中的 branch 或模糊的“只扫代码”不能伪装成稳定覆盖。 |
-| 自动预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，并给出修复动作。 | 权限、路径边界、完整性、外部内容问题不会等扫描成功后才暴露。 |
-| 安全不可变采集 | 从 committed Git object 生成、且不执行源码的 sealed `SourceSnapshot`。 | working tree 修改、hook、构建、依赖安装不会改变或威胁证据。 |
-| Source Coverage 清单 | 每项范围内已发现产物都有 disposition/reason，范围边界可见。 | 文档、配置、SQL、测试、二进制及读取失败不能静默消失。 |
-| Coverage Gap 管理 | 阻断 Gap 保持阻断；非阻断 Gap 可带负责人、理由、有效期被接受。 | 不能用一次点击掩盖完整性失败，同时常见存量系统的不完整性仍然可见、可管理。 |
-| Receipt、历史与 F002 交接 | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED` 和历史采集；F002 只接收合格输入。 | 后续能力不能基于路径、branch、dirty checkout，或非阻断限制未经显式接受并继承的不完整采集，产出看似权威的结论。 |
+| Workspace 与来源选择 | 一个绑定 Workspace 的 Git、目录上传或二者选择。Git 凭据保持受保护；目录上传带用户/会话审计。 | 分析不能悄悄使用任意本地目录，也不会泄露凭据。 |
+| 精确组件身份 | Git ref 被解析为 commit；目录由已验证 manifest 表达。组件保留原生身份。 | 移动中的 branch、本地目录或伪装成 commit 的目录不能冒充稳定证据。 |
+| 自动预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，并给出原因和修复动作。 | 授权、路径安全、限制和完整性问题不会等误导性扫描结束才暴露。 |
+| 安全不可变采集 | 已密封组件快照和一个 `SourceBundleSnapshot`；不执行仓库脚本、构建、hook、filter、依赖安装或上传内容。 | 来源控制的行为和 working tree 修改不能改变或威胁证据。 |
+| Source Coverage 清单 | 每个已发现条目都有带组件身份的定位符、disposition 和 reason；大规模时可搜索、分页。 | 文档、配置、SQL、测试、二进制、读取失败以及组件内同名文件不能静默消失。 |
+| Coverage Gap 管理 | 阻断失败保持阻断；非阻断限制仅能以负责人、理由和有效期接受。 | 不能用点击警告掩盖完整性失败，同时常见存量系统的不完整性仍然可见、可管理。 |
+| 版本历史与文件 Delta | 用户显式操作后得到一份完整不可变新版本；两份已密封 manifest 间的 add/modify/delete 证据。 | 影响分析不能比较移动来源，同时未变化的 50,000 文件组件不被复制或重传。 |
+| Receipt 与 F002 交接 | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED` 及历史；F002 只接收合格来源包/输入。 | 后续能力不能基于路径、branch、部分上传，或未经接受的限制，产出看似权威的结论。 |
 
-## 3. 与愿景是否一致
+## 3. 与产品愿景的对齐
 
-| 产品愿景 | F001 的贡献 | 刻意的边界 |
+| 产品愿景 | F001 的贡献 | 刻意边界 |
 | --- | --- | --- |
-| 帮架构师接管陌生的存量系统。 | 在解释任何内容前，先建立精确源码基线。 | 它本身不解释业务含义。 |
-| 从源码到结论保留可追溯链路。 | 建立第一段长期有效链路：仓库 → commit → 范围 → snapshot → inventory → Gap → Receipt。 | Fact、Candidate、Claim、测试、影响链路由 F002–F004 补齐。 |
-| 展示可信 API 树和经过审核的业务功能树。 | 防止两棵树在来源不完整时仍表现得像“完整”。 | F001 不解析 API，也不发布任一棵树。 |
-| 让下一次变更更安全。 | 后续比较与影响分析能引用一份固定、可审计的源码。 | 不运行测试，也不产生影响建议。 |
-| 宁可明确不完整，也不输出看似可信但无证据的答案。 | 排除项、读取失败、外部材料、已接受限制均显式可见并被继承。 | 阻断安全/完整性条件不能被转成可用结果。 |
+| 帮架构师接管陌生的存量系统。 | 在解释任何内容前，先建立精确材料基线。 | 它本身不解释业务含义。 |
+| 从来源到结论保留可追溯链路。 | 建立第一段长期有效链路：来源组件 → 不可变 manifest → 来源包 → inventory/Gap → Receipt → F002 provenance。 | Fact、Candidate、Claim、测试证据、影响链路由 F002–F004 补齐。 |
+| 展示可信 API 树和经过审核的业务功能树。 | 防止任一棵树在其底层来源不完整时仍表现得像“完整”。 | F001 不解析 API，也不发布任一棵树。 |
+| 让下一次变更更安全。 | 保留可比较来源版本和诚实的文件级 Delta 供后续影响工作使用。 | 不推断影响、不运行测试、不建议复验。 |
+| 宁可明确不完整，也不输出看似可信但无证据的答案。 | 排除项、读取失败、脱敏限制、外部材料、已接受 Gap 都显式可见并被继承。 | 阻断安全/完整性条件不能被转成可用结果。 |
 
-所以 F001 与愿景一致，但它是**诚实的源码地基**，不是独立完成“存量理解”的产品。它的成功标准不是“扫描跑完”，而是“后续结论能明确说出并证明自己基于什么输入、受什么限制”。
+因此，F001 与愿景一致，但它是**诚实的来源地基**，不是独立完成“存量理解”的产品。它的成功标准不是“扫描跑完”，而是“后续结论能说出并证明它基于什么输入、什么版本、受什么限制”。
 
-## 4. 方案状态与阅读顺序
+## 4. 方案状态与权威
 
-本文件是对已确认 F001 产品边界的**方案设计提案**，等待 co-creator 审阅；它不授权写实现代码，也不重新讨论 [ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md) 已经确定的边界。
+本文件是已获 co-creator 确认的 F001 方案设计，更新并实现 [ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md)。它不授权实现代码。
 
-第 1–3 节先说明产品产出；后续章节再解释用什么设计保证这些产出。
-
-```text
-Architecture cell: source-truth（需要新建）
-Map delta: new cell required
-Why: 来源身份、采集权威、密封证据、下游准入现在没有唯一运行时 owner。
-```
-
-未来的 `source-truth` cell 只拥有来源登记、采集生命周期、快照、清单、Gap、Receipt 与 F002 准入；不拥有 F002 提取、F003 审核、F004 执行/影响或 F006 设置。这是 F303 的 authority/consumer 变化：`SourceTruthRepository` 是唯一权威，F002 只收到 `QualifiedSourceInput`，绝不收到路径、ref、working tree 或凭据；合同测试必须证明这点。
+`source-truth` ownership 边界拥有来源登记、上传/采集生命周期、组件和来源包快照、manifest、inventory、Gap/Receipt 状态、版本比较和 F002 准入；不拥有 F002 提取、F003 审阅、F004 执行/影响或 F006 设置。`SourceTruthRepository` 是唯一权威；F002 只接收 `QualifiedSourceInput`，绝不接收路径、ref、working tree、上传会话或凭据。
 
 ## 5. 总体架构
 
 ```text
 Workspace
-  │ 来源、请求版本、可选目录根
-  ▼
-SourceRegistration → SourceCaptureRun → SourcePreflight
-                                            │
-                     BLOCKED receipt ◄──────┘ 通过 / 有预期 Gap
-                                            ▼
-GitSourceGateway → committed tree/blob reader → staged SourceSnapshot
-                                                  │        │
-                                                  ▼        ▼
-                                          ArtifactInventory  CoverageGap(s)
-                                                                  │
-                                                   GapAcceptance（仅非阻断）
-                                                                  ▼
-                                                         SourceTruthReceipt
-                                               READY | READY_WITH_ACCEPTED_GAPS
-                                                                  │
-                                                                  ▼
-                                                SourceTruthAdmission → F002
-                                              （snapshot + inventory + inherited gaps）
+  ├─ GitSourceRegistration ── 解析请求 ref ──► 已提交 Git tree/blob reader
+  └─ DirectoryUploadSession ── 已选文件 ─────► 受控流式上传
+                         │                              │
+                         └────── SourceCaptureRun ──────┘
+                                             │
+         preflight → enumerate → 冻结组件 manifest → 有界采集
+                                             │
+           GitSourceSnapshot / DirectoryUploadSnapshot（已密封组件）
+                                             │
+       SourceBundleSnapshot（仅 Git | 仅目录 | 两者，带命名空间）
+                              ┌──────────────┴─────────────┐
+                     ArtifactInventory                  CoverageGap(s)
+                              │                               │
+                              └──────── 对账 ────────────────┘
+                                             │
+                             SourceTruthReceipt + version lineage
+                       READY | READY_WITH_ACCEPTED_GAPS | BLOCKED
+                                             │
+                               SourceTruthAdmission → F002
+                             （合格来源包 + inherited gaps）
+                                             │
+                          选择已密封版本 → SnapshotDelta → F002
 ```
 
-`SourceCaptureRun` 记录操作进度、取消和重试；密封来源结果记录不可变证据和下游资格。二者分开，避免半成品运行伪装成半成品快照，也避免重试改写历史。
+`SourceCaptureRun` 记录一次尝试、实时进度、取消、重试和 checkpoint。密封组件/来源包记录不可变证据与下游资格。二者分开，防止半成品 run 被看成来源版本，也防止重试重写历史。
 
-## 6. 领域对象与不变量
+## 6. 领域记录与不变量
 
 | 对象 | 职责 | 不变量 |
 | --- | --- | --- |
-| `Workspace` | 授权与隔离聚合根。 | 每条 F001 记录只属于一个 Workspace；元数据与内容遵守同一访问边界。 |
-| `SourceRegistration` | 已获只读授权的 Git 身份与凭据引用。 | 不存裸凭据；branch/tag 只选择 commit，不作为 snapshot 身份。 |
-| `CapturePolicyRevision` | 平台拥有的扫描器、脱敏、大小、Git 安全规则。 | 用户不能编辑完整性/安全规则；历史结果永久绑定原 policy。 |
-| `SourceCaptureRun` | 一次 resolve/preflight/capture/seal 尝试。 | 重试新建 run；失败/取消可审计；一个 run 不会跟随移动 branch。 |
-| `SourcePreflightReport` | 自动的来源、授权、commit、root、边界、外部内容与安全证据。 | `PASS`/`WARN`/`BLOCK` 都有 reason code 和下一步；WARN 不等于最终 Gap。 |
-| `SourceSnapshot` | repository identity + resolved commit + scope + policy 的不可变结果。 | identity 不含采集时间，包含排序 inventory digest；sealed 后不能变。 |
-| `ArtifactInventory` | 覆盖率分母和逐项 disposition。 | 每条已发现、范围内条目恰有一种 disposition/reason；汇总等于明细。目录根结果必须明确不是全仓。 |
-| `CoverageGap` | 已知分析限制。 | append-only，不能编辑为已覆盖；只有新 snapshot 能证明解决。 |
-| `GapAcceptance` | 对非阻断 Gap 的人类负责确认。 | append-only，必须有负责人、理由、有效期；阻断 Gap 没有 accept 操作。 |
-| `SourceTruthReceipt` | 不可变证据/资格决策。 | `READY`=密封来源且无相关 Gap；`READY_WITH_ACCEPTED_GAPS`=密封来源且接受有效；`BLOCKED` 永不可消费。 |
-| `QualifiedSourceInput` | F002 专属的准入结果。 | 包含 receipt、snapshot、inventory、policy 与完整 inherited Gap；没有直接 source locator 或凭据。 |
+| `Workspace` | 授权与隔离聚合根。 | 每条 F001 记录只属于一个 Workspace；元数据与数据访问遵守相同租户/Workspace 边界。 |
+| `GitSourceRegistration` | 已获只读授权的仓库身份和凭据引用。 | 不存裸凭据；请求 ref 选择 commit，但不是 snapshot 身份。 |
+| `DirectoryUploadSession` | 一个用户选择目录的传输和审计轨迹。 | 至少有一个已选文件；成功组件要求每个已选文件均验证。 |
+| `CapturePolicyRevision` | 平台拥有的限制、路径规则、扫描器/脱敏和来源安全。 | 用户不能编辑完整性、安全或 Gap 严重度规则；已密封历史绑定 policy revision。 |
+| `SourceCaptureRun` | 一次 resolve/preflight/capture/seal 尝试。 | 重试创建新 run；run 不跟随移动 branch，也不重写已密封版本。 |
+| `SourcePreflightReport` | 身份、权限、边界、路径、限制、外部内容与安全证据。 | `PASS` / `WARN` / `BLOCK` 均有 reason code 和下一步；`WARN` 不会静默变成最终覆盖。 |
+| `SourceManifest` | 一个组件按序内容寻址的条目和分片摘要。 | 它是覆盖和变更比较的权威；Delta 不能覆盖它。 |
+| `GitSourceSnapshot` | 已解析 commit/tree 与声明 Git 范围的密封 Git 组件。 | seal 后不可变；已提交 object 而非 checkout 是证据权威。 |
+| `DirectoryUploadSnapshot` | 已验证 manifest/upload identity 的密封所选目录组件。 | seal 后不可变；不声称所选目录外的覆盖，也不伪装成 commit。 |
+| `SourceBundleSnapshot` | 有序组件引用与来源包级身份。 | 有一个或两个组件；MVP 每类型仅一个；冲突路径按组件 ID 保持不同。 |
+| `ArtifactInventory` | 覆盖率分母和逐项处置。 | 每个已发现条目恰有一种终态 disposition/reason；seal 前计数/字节/分片摘要必须对账。 |
+| `CoverageGap` / `GapAcceptance` | 实质分析限制与可追责接受。 | Gap 追加写入；只有非阻断 Gap 可接受，且带负责人/理由/有效期；接受不声称材料已获得。 |
+| `SnapshotDelta` | 两个已密封版本的 add/modify/delete 比较。 | 从 manifest 派生、可重放、可选缓存；MVP 中 rename = delete + add。 |
+| `SourceTruthReceipt` | 不可变来源证据和可消费决策。 | `READY` 无实质 Gap；`READY_WITH_ACCEPTED_GAPS` 仅有有效的已接受非阻断 Gap；`BLOCKED` 永不可消费。 |
 
-用户至少必须能看出：安全采集、平台策略隔离、敏感脱敏、外部不可得、不可读/失败、不支持/二进制、目录根外。disposition 说明“对条目发生了什么”，Gap 说明“这会怎样限制后续结论”；有实质限制时两者都必须存在。两种记录都不得泄露原始敏感内容或凭据。
+`display-redacted` 的含义刻意收窄：内容可以被采集并可供获授权下游使用，只是不显示在 UI/日志中。若脱敏令分析不可得，它还会生成实质 `CoverageGap`。任何记录均不泄露来源秘密或凭据。
 
-## 7. 采集状态机
+## 7. 采集与版本生命周期
 
-对外 Receipt 始终只有 `READY`、`READY_WITH_ACCEPTED_GAPS`、`BLOCKED` 三种状态；`AWAITING_GAP_DECISION` 只是 Capture Run 状态。
+### 7.1 初始来源采集
 
 ```text
-REQUESTED → PREFLIGHTING
-  ├─ blocked ───────────────────────────────► BLOCKED receipt
-  └─ READY_TO_CAPTURE → CAPTURING
-       ├─ cancellation requested ───────────► CANCELLED
-       ├─ read/integrity failure ───────────► CAPTURE_FAILED
-       └─ SEALING（原子边界，不能再取消）
-            ├─ safety/integrity block ──────► BLOCKED receipt
-            └─ SEALED
-                 ├─ 存在阻断型 CoverageGap ─► BLOCKED receipt
-                 ├─ 无相关 Gap ─────────────► READY receipt
-                 └─ 仅有非阻断 Gap ─────────► AWAITING_GAP_DECISION
-                                                └─ 有效接受
-                                                   ► READY_WITH_ACCEPTED_GAPS receipt
+REQUESTED → PREFLIGHTING → ENUMERATING → MANIFEST_FROZEN → CAPTURING → RECONCILING → PREPARING_SEAL
+  │              │              │                 │              │              │                 │
+  │              └─ 安全/完整性阻断 ────────────┴──────────────┴──────────────┴──► BLOCKED receipt
+  ├─ seal 前用户取消 ─────────────────────────────────────────────────────────────► CANCELLED run
+  └─ 瞬态失败 ─────────────────────────────────────────────────────────────────────► FAILED_RETRYABLE run
+                                                                                       │
+                                                       原子 seal ────────────────────┘
+                                                                   │
+                                                     已密封 component/bundle
+                                                                   │
+                                    无实质 Gap ───────────────────┼────► READY receipt
+                                    仅非阻断 Gap ──────────────────┼────► AWAITING_GAP_DECISION
+                                                                   │           └─ 有效接受
+                                    存在阻断 Gap ──────────────────└────► BLOCKED receipt
+
+                                                                                 READY_WITH_ACCEPTED_GAPS
 ```
 
-- 先将 branch/tag/commit 解析到完整 commit ID，再采集；身份、授权、边界、完整性、路径安全或篡改信号不可信时，提前阻断。
-- 遍历 resolved Git tree、读取 immutable Git blob；解析之后绝不读取用户可变 working tree；不得执行 hook、filter、仓库脚本、构建或依赖安装。
-- 私有 staging，只有一次原子 seal 才能让 snapshot/inventory 可见；半成品从不可列出、不可消费。
-- 取消只保留 run 审计，不产生可消费 snapshot；重试必须新建 run，默认仍锁定原 commit。若要采集移动后的 branch，必须显式新开请求。
-- receipt append-only。Gap 接受过期只会让 receipt 不能用于新的 F002 准入，不会抹去历史证据或历史分析。
-- 后续 failed/cancelled/blocked run 不得使更早 READY snapshot 失效。
+- Preflight 校验采集前可知的内容：授权、Git 解析、声明 root、上传/会话边界、路径安全、限制和策略；它不伪装成业务理解。
+- Enumerate 冻结含精确条目/字节总数及 root digest 的 manifest。在此之前进度仅可说“已发现 N”；之后 UI 才可按真实总数显示验证文件/字节。
+- 目录初始输入只有所有已选文件到达且验证才成功。损坏传输或策略拒绝不能静默降级为部分成功或“来源完整性未知” Gap；已验证条目仍可在策略允许时携带可见的分析限制 Gap。
+- `DRAFT` 数据保持私有。原子 seal 会在一起发布 snapshot、来源包和 Receipt 前核对 manifest 分片、内容存在性、inventory 总数、处置和实质 Gap。
+- 取消/失败/阻断的后续 run 绝不改变先前已密封版本。
 
-## 8. 安全采集、迁移边界
+### 7.2 增量新版本
+
+```text
+选择基线 + “创建新版本”
+  ├─ Git：解析新精确 commit → 比较已提交 tree → 只取得新增/修改的缺失 blob
+  ├─ 目录：重新选择文件夹 → 完整枚举/哈希 → 服务端 manifest 比较 → 只发送变化字节
+  └─ 未变化组件：复用先前已密封组件
+             │
+             ▼
+新完整已密封组件 → 新 SourceBundleSnapshot → 可重放 SnapshotDelta → 新 Receipt
+```
+
+每个新版本都有完整 manifest。优化的是物理复用，绝不是逻辑不完整。目录客户端必须枚举全部已选文件，因为只有这样能可信地证明删除；客户端哈希只用于挑选传输候选，服务端会在字节成为证据前验证每次传输。F001 不自动跟随 branch、不监视本地文件夹，也不在没有架构师操作时把 ref 移动变为新基线。
+
+## 8. 安全、可扩展的采集设计
 
 | 接口 | 职责 | 禁止 |
 | --- | --- | --- |
-| `GitSourceGateway` | 用只读凭据引用 resolve ref、检查 committed tree、读取 blob。 | 解析后读 mutable working tree，或执行 source-controlled logic。 |
-| `SourcePreflightService` | 授权、commit/root、外部对象、symlink/path、policy 检查。 | 让用户覆盖完整性/安全 block。 |
-| `SnapshotStore` | Workspace 边界中的 staging、hash、原子 seal、校验、留存。 | 暴露 staging 或修改 sealed package。 |
-| `CoverageAssembler` | 完整 inventory 与 material Gap。 | 从 coverage 中隐藏失败/脱敏/不可用/范围外证据。 |
-| `SourceTruthAdmission` | 重验资格，签发 `QualifiedSourceInput`。 | 返回 path/ref，或静默遗漏 inherited Gap。 |
+| `GitSourceGateway` | 用只读授权解析 ref、枚举已提交 tree、流式读取 blob。 | 读取可变 working tree，或执行来源控制的 hook/filter/logic。 |
+| `DirectoryIngestGateway` | 直接流式接收文件到受控存储，规范路径并验证传输字节。 | 将原始本地路径当作身份、展开归档或执行上传文件。 |
+| `SourcePreflightService` | 检查授权、身份、声明 root、上传边界、路径、限制、外部内容和策略。 | 让用户覆盖完整性/安全 block。 |
+| `ManifestDiffer` | 比较两份密封 manifest，得出文件级 add/modify/delete。 | 推断业务影响、识别 rename 相似度或改变已密封 manifest。 |
+| `SnapshotStore` | 租户范围的 staging、内容寻址已验证 blob、manifest/inventory 分片、checkpoint 和原子 seal。 | 暴露 Draft、修改已密封历史或泄漏跨租户去重。 |
+| `CoverageAssembler` | 对账完整 inventory 和实质 Gap。 | 隐藏跳过、读取失败、脱敏限制或范围边界。 |
+| `SourceTruthAdmission` | 重验可消费性，向 F002 签发 `QualifiedSourceInput`。 | 返回 path/ref/upload/credential、遗漏 inherited Gap 或绕过 Receipt 状态。 |
 
-`LocalSourceSnapshotCapture` 只可复用 staging/seal/digest/path-escape 的安全经验。它现在的本地 allowlisted-root reader、逐项强制 digest、直接连接 `WorkspaceAnalysisJob` 均与新合同不符。新 F001 必须以 resolved Git objects 为证据权威；服务器 cache/checkout 至多是性能优化。F001 变成 `SourceCaptureRun`，F002 及后续工作只能在准入后启动。
+快速路径必须有界而非无限：固定资源池、有界队列/背压、在途字节上限、流式哈希、批量元数据写入和分片 manifest/inventory。Git 可经已提交 object 遍历和 object identity 避免重读已知 blob。目录传输可直接流入受控存储并经 checkpoint 恢复。内容复用仅限租户/Workspace，不能成为跨租户存在性查询。
 
-## 9. 用户界面与现场可观测性
+false-green 防线严格：冻结 manifest 中的每项必须对账到恰一种终态 disposition；跳过/缺失的分析材料必须链接对应 Gap；队列清空不能决定成功。seal 失败只留下可重试的私有 Draft/run，绝不会留下对 F002 可见的部分版本。
 
-**Workspace 内的 Source Truth 卡** 是用户判断“来源能不能用”的主现场；不能只放在仪表盘，因为来源、范围和 Gap 接受正是在该 Workspace 上决定。
+## 9. 用户信息架构与交互合同
+
+主现场是 **Workspace 内的 Source Truth**，不是独立仪表盘。用户无需查日志即可回答三个问题：*此版本由什么构成；F002 能否使用；需要修复或继承什么？*
 
 | 界面 | 信息与动作 |
 | --- | --- |
-| Source Truth 卡 | 规范仓库、resolved commit、root、授权、最新 receipt、为何可用/阻断；登记来源、新建采集、打开 receipt。 |
-| 采集设置 | 已授权来源、ref、resolved commit 预览、全仓/单目录根；没有安全规则编辑器。 |
-| 预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，每条含范围和修复动作。 |
-| 采集 | 阶段条：预检 → 采集 → 最终化 → receipt；条目计数、当前操作、取消/重试；禁止假百分比。 |
-| Source Coverage | scope 横幅、树/列表、disposition、理由、计数、Gap 链接；目录根明确“非全仓”。 |
-| Coverage Gaps | 阻断、等待决策、已接受但仍存在；只有非阻断项可接受。 |
-| Receipt & History | 来源、commit、范围、完整性 identity、policy、inventory、Gap、接受有效性、F002 资格、历史结果。 |
+| Source Truth 卡 | 当前 Git/目录组件、最新 Receipt、版本身份、可用/阻断原因、**创建新版本**及 Receipt/历史链接。 |
+| 来源设置 | 选择 Git、目录或两者；Git ref 与 resolved commit 预览；目录选择与已选文件数。没有凭据或安全规则编辑器。 |
+| 预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`、受影响组件/范围、原因和修复动作。blocker 没有接受路线。 |
+| 采集进度 | 真实阶段和流式总数：“发现 N”，之后“已验证 X/Y 文件和字节”、策略/对账/seal。seal 前取消，失败 run 重试。 |
+| Source Coverage | 组件筛选、路径搜索、disposition/reason、计数和 Gap 链接。大 inventory 分页/虚拟列表。 |
+| Receipt 与历史 | 原生组件身份、来源包、策略、inventory identity、Gap/接受、F002 资格及早期不可变版本。 |
+| 新版本比较 | 基线/目标选择、变更组件、传输复用摘要、add/modify/delete 计数及下游 F002/F004 provenance 路径，不展示影响结论。 |
 
-每个错误必须说明：失败了什么、哪段范围没获得、旧 snapshot 是否仍可用、下一步是什么。进度默认聚合为每个 source 的最新状态，深层界面保留完整历史；诊断使用 reason code 并脱敏。
+每个错误均要说明：失败了什么、受影响组件/范围、旧密封版本是否仍可用、下一步纠正动作。Reason 有代码支撑且脱敏。Workspace shell 只展示每个来源/来源包最新状态；详细 Receipt 历史保存完整事件。
 
-## 10. 前端交互设计提案
+## 10. 前端交互设计
 
-界面是 **Workspace 的扩展**，不是另建仪表盘。下列界面稿是带示例数据的交互设计提案，不含后端实现。它延续 Traqen 现有的浅色控制台语言——常驻导航、白色任务面板、蓝色主动作，以及明确的警告/阻断色——让用户在来源所属的 Workspace 内作出来源决策。
+界面扩展 Workspace，而不是新增仪表盘。视觉例稿默认使用**简体中文**，让当前 operator 可直接审阅；这是设计语言选择，不承诺运行时 i18n。成功和阻断状态使用同一稳定应用壳层：只允许 Workspace 主内容变化。
 
-视觉稿默认使用**简体中文**，使当前 operator 能直接审阅 F001 旅程；这不承诺最终产品运行时语言或国际化实现方式。
+### 10.1 可用、但带已接受限制的 Receipt
 
-**设计门问题：** 架构师是否无需打开诊断日志，就能判断某份来源结果能否用于后续分析、F002 会继承什么限制，以及不可用时该做什么？下面第一张是回答这个问题的核心画面；第二张证明同一现场有诚实的恢复路径，而不是只展示成功态。
+![默认中文、带已接受 Gap 的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
 
-应用壳层是固定约束，不随状态改变。两张图都使用相同顺序的左侧导航，且固定选中 `工作空间分析`：
+`READY_WITH_ACCEPTED_GAPS` 刻意使用橙色而非绿色。它表示密封来源包可用，**不表示完整**：Coverage 展示分母，Gap 仍带负责人和有效期，且下游动作说明 F002 将继承限制。`Display-redacted` 与限制分析的脱敏不同；后者必须生成 Gap。
 
-```text
-主页
-工作空间：全部工作空间 · 工作空间分析 · 快照历史 · 设置
-理解：代码地图 · 搜索 · 依赖关系
-治理：策略 · 审计日志 · 成员与权限
-```
+### 10.2 预检被阻断
 
-合格 Receipt 与预检阻断之间，只有 Workspace 主内容区可以变化。
+![默认中文、被阻断的 Source Truth 预检](assets/source-truth-preflight-blocked-zh-CN-v2.png)
 
-### 10.1 可用，但带已接受限制
+阻断处于同一 Workspace 旅程。界面标识失败检查、受影响边界、修复动作、禁用采集动作，并说明早先已密封版本不受影响。安全/完整性 blocker 没有接受或绕过路线。
 
-![默认中文、带已接受限制且可用于下游的 Source Truth Receipt](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
-
-Receipt 刻意使用橙色而不是绿色。`READY_WITH_ACCEPTED_GAPS` 表示 sealed snapshot 可用，**不表示完整**：coverage 卡给出覆盖分母，Gap 仍展示负责人和有效期，下游动作明确 F002 会继承这项限制。用户可在启动 F002 前打开 artifact inventory 或 receipt history；F002 拿到的不是实时路径或 working tree。
-
-`Display-redacted` 的含义被刻意收窄：内容已完整采集，且仍可供获授权的下游分析使用，只是不在这个界面中展示；它不是分析限制。反过来，任何使分析无法取得材料的脱敏都必须生成独立的 `CoverageGap`，并进入 inherited Gap 集；不能只作为一个 coverage 计数出现。下方的 `Artifact inventory` 面板指的是所有已发现记录（包括范围外与不可用记录），不会暗示 192 项都属于 sealed snapshot 内容。
-
-### 10.2 采集前被阻断
-
-![默认中文、因路径边界而被阻断的来源预检](assets/source-truth-preflight-blocked-zh-CN-v2.png)
-
-阻断条件留在同一条用户旅程里。界面说明失败检查、受影响边界和修复动作；它禁用 snapshot 创建，并明确 F002 当前不可用。同时它说明早先 sealed snapshot 没有被改动。安全或完整性 blocker 没有“接受”这一逃生入口。
-
-### 10.3 界面合同
+### 10.3 建立来源与增量版本的屏幕合同
 
 | 时刻 | 首要信息 | 首要动作 | 必须诚实呈现的约束 |
 | --- | --- | --- | --- |
-| 来源设置 | 已授权仓库、请求 ref、resolved commit 预览、全仓或目录根范围 | 继续自动预检 | 不暴露凭据或安全规则编辑器 |
-| 预检 | `可开始` / `可带预期 Gap 开始` / `已阻断`，以及原因和受影响范围 | 采集，或修改来源/范围 | blocker 不能被覆盖 |
-| 采集和 seal | 阶段条、已观测计数、当前操作、取消/重试 | seal 前取消，或以新 run 重试 | 进度基于事件，不伪造百分比 |
-| Source Truth Receipt | resolved commit、声明范围、receipt 状态、覆盖汇总、material Gap、policy 和 inventory identity | 打开 coverage/history；仅合格时启动 F002 | 明确区分仅展示脱敏；警告限制一直可见且必被继承 |
-| Coverage / History 详情 | 每项 artifact disposition/reason、每个 Gap、其接受有效性以及早期不可变 receipt | 审阅，或新建采集 | 不把全量记录清单误标为 sealed 内容；history 或 Gap 都不能被编辑成更好的结果 |
+| 建立来源底座 | Git / 目录 / 两者选择；resolved Git commit；目录已选文件数；组件边界。 | 启动自动预检。 | 目录成功标签只能在 `verified / selected = selected / selected` 出现；组件不能静默覆盖。 |
+| 冻结与采集 | 阶段、已观测数，随后冻结总数；已验证文件/字节；当前组件；取消/重试。 | seal 前取消或重试失败 run。 | 不伪造百分比；不一次渲染 100,000 项。 |
+| Receipt | 来源包与原生组件 ID、覆盖汇总、Gap/接受、策略、历史、F002 资格。 | 审阅 inventory/history；仅合格时启动 F002。 | 已接受限制保持橙色并被继承；Receipt 不泄露原始秘密。 |
+| 创建新版本 | 基线、目标 Git commit 和/或重选目录、未变组件复用、add/modify/delete 总数。 | 确认一次手动新版本采集。 | 这是文件变更证据而非影响分析；目录删除必须重新枚举。 |
 
-Source Truth 卡/Receipt 是**主现场**；coverage 和 receipt history 是深入查看界面。为避免事件噪声，Workspace shell 对每个 source 只显示最新状态，按阶段汇总进度，把完整、带 reason code 的历史保留在 receipt 后。
+本设计不包括全局仪表盘、实时日志 tail、原始秘密查看器、来源浏览器、API/功能树或生产实现。它们要么绕开来源决策，要么属于后续功能。
 
-**本提案不包含：** 全局仪表盘、实时日志尾随、原始秘密查看器、源码浏览器、API/功能树可视化或生产实现。它们要么绕开来源决策，要么属于后续功能。
-
-## 11. F002 准入合同
+## 11. F002 准入与 Delta 合同
 
 ```ts
+type QualifiedSourceComponent =
+  | {
+      componentSnapshotId: string;
+      kind: "GIT";
+      nativeIdentity: { resolvedCommit: string };
+      declaredScope: { kind: "REPOSITORY" } | { kind: "DIRECTORY_ROOT"; path: string };
+      manifestId: string;
+    }
+  | {
+      componentSnapshotId: string;
+      kind: "DIRECTORY_UPLOAD";
+      nativeIdentity: { manifestDigest: string; uploadId: string };
+      declaredScope: { kind: "UPLOADED_DIRECTORY" };
+      manifestId: string;
+    };
+
 type QualifiedSourceInput = {
   workspaceId: string;
   receiptId: string;
   receiptStatus: "READY" | "READY_WITH_ACCEPTED_GAPS";
   receiptValidUntil: string | null;
-  sourceSnapshotId: string;
-  repositoryIdentity: string;
-  resolvedCommit: string;
-  declaredScope: { kind: "REPOSITORY" } | { kind: "DIRECTORY_ROOT"; path: string };
+  sourceBundleSnapshotId: string;
+  components: ReadonlyArray<QualifiedSourceComponent>;
   inventoryId: string;
   inventoryDigest: string;
   policyRevisionId: string;
-  inheritedGaps: ReadonlyArray<{ gapId: string; severity: "NON_BLOCKING"; affectedScope: string; reasonCode: string }>;
+  inheritedGaps: ReadonlyArray<{
+    gapId: string;
+    severity: "NON_BLOCKING";
+    componentSnapshotId: string;
+    affectedScope: string;
+    reasonCode: string;
+  }>;
+};
+
+type SnapshotDeltaInput = {
+  baselineBundleSnapshotId: string;
+  targetBundleSnapshotId: string;
+  operations: ReadonlyArray<{
+    componentKind: "GIT" | "DIRECTORY_UPLOAD";
+    componentSnapshotId: string;
+    path: string;
+    kind: "ADD" | "MODIFY" | "DELETE";
+    beforeDigest: string | null;
+    afterDigest: string | null;
+  }>;
 };
 ```
 
-准入要求：调用者有 Workspace 权限；snapshot/inventory 已密封并验真；receipt 精确匹配且当前可消费；相关接受未过期；不存在 blocker/篡改。它拒绝 direct path、Git URL、单独 ref/commit、dirty checkout、partial snapshot、过期接受和全部 BLOCKED 结果。
+准入要求调用者有 Workspace 权限；组件/来源包/inventory 已密封并验证；存在精确匹配、当前可消费的 Receipt；相关接受未过期；不存在 blocker 或篡改信号。它拒绝 direct path、Git URL、仅 ref 输入、dirty checkout、上传会话、部分 snapshot、过期接受和全部 `BLOCKED` 结果。
 
-F002 的每个派生结果固化 receipt/snapshot/inventory/policy 身份与**完整 inherited Gap 集**。F002 可创建独立的解析层 Gap 并链接 F001 Gap，但不得修改、隐藏、降级或重新接受 F001 Gap。F003/F004 只能经由 F002 得到来源 provenance。
+F002 将来源包/Receipt/inventory/policy 身份及完整 inherited Gap 集固化在每个派生 fact 上。比较已选基线/目标时，F002 可请求 `SnapshotDeltaInput`，但不得修改、隐藏、降级或重新接受 F001 Gap。F003/F004 通过 F002 获取 F001 provenance；F004 的影响结论留在 F001 外。
 
-## 12. 参考试点
+## 12. 参考试点与规模验收
 
-使用由 order-platform 参考产物播种的一次性 Git fixture，含固定 commit A/B，不使用开发者 working tree。
+使用含 Git commit A/B 和目录版本 D1/D2 的受控 fixture。组合 A+D1 包含代码、文档、配置、SQL、测试、安全敏感 fixture 处理、重复内容、零字节文件、深层路径、刻意不可得的非阻断条目、大文件策略条目和阻断路径/完整性 fixture。
 
 | 用例 | 必须证明 |
 | --- | --- |
-| 全仓 commit A | code/docs/config/SQL/tests 每项恰有一个 disposition。 |
-| A 的 `services/orders/` 根 | receipt 命名 root，并显式标示其他仓库内容范围外。 |
-| A 有不可得 LFS-like object | 非阻断 Gap 要理由/有效期；`READY_WITH_ACCEPTED_GAPS` 后 F002 能看到它。 |
-| 重放 A 后移动 branch | snapshot/inventory identity 不变；老结果不变。 |
-| 取消后重试 A | cancelled run 只有审计；重试是新 run，旧 READY 仍可用。 |
-| B 有 path-escape symlink/integrity mismatch | `BLOCKED`，没有 accept，F002 不能准入。 |
-| package script + sensitive fixture | 不执行代码，也不泄露原始秘密。 |
-| F002 receipt 与 direct input | 只有合格 receipt 能启动 F002，Gap 进入其输出。 |
+| 仅 Git、仅目录和 A+D1 | 原生组件身份、所选目录验证、无路径覆盖、每项一种处置。 |
+| 重放 A+D1 | 相同组件/来源包/manifest 身份和 inventory 结果；branch 移动及本地变化不改变它。 |
+| A→B、D1→D2 | Git 只取得变化的缺失 blob；目录重新枚举但只发送变化字节；删除显式记录。 |
+| 仅 Git 变化后的 B+D1 | D1 保持引用而非复制或重传；两个版本均可查询。 |
+| 被阻断的安全/完整性 fixture | `BLOCKED`、无接受操作、不能 F002 准入，旧密封版本仍可用。 |
+| 100,000 文件组合 fixture | 内存/队列/文件描述符有界、inventory 分页、worker/存储/DB 中断后恢复、精确对账、原子 seal、没有 Draft F002 准入。 |
 
-首要失效模式是 **false-green receipt**：材料静默消失却被宣称 READY。防线是 Git-object capture、inventory 守恒、显式 disposition、material Gap、原子 seal、不可变 receipt 和强制下游继承。
+首要失效模式是 **false-green Receipt**：材料静默消失，UI 却显示 ready。冻结 manifest、终态处置守恒、明确实质 Gap、两阶段/原子 seal、不可变 Receipt 和 F002 强制继承 Gap 共同构成防线。
 
-## 13. 审阅结论与下一门
+## 13. 决策闭环与下一门
 
-砚砚与 Kimi 的独立审阅在对象、旅程、状态机、F002 继承和负向试点上达成一致。两项收敛为：
+co-creator 已确认：两类来源及组合；原生组件身份/无覆盖；显式手动创建版本；逻辑完整版本与物理增量复用；目录完整重新枚举但只上传变化字节；Git 手动更新；仅文件级 add/modify/delete；以及 100,000 文件下有界流式/原子真实性。
 
-- `SourceRegistration` 与 `Workspace` 分离，以便来源授权和 snapshot 历史独立审计；Workspace 保持访问聚合根。
-- capture 后立即 seal snapshot/inventory；人类 Gap 接受只产生后续资格 receipt，绝不改写来源证据。
-
-ADR-0003 已包含相关 rejected alternatives，不需要新 ADR；本轮没有新的通用 operating rule/lesson。
-
-**下一步：** co-creator 审阅本方案；获批后先建立 `source-truth` ownership map 与可交互、在上下文中的 Source Truth 设计 demo。在这两个 gate 之前不开始实现。
+砚砚与 Kimi 的独立 F001 头脑风暴和设计审阅提供了本文件采用的对象、安全、增量、规模和交互约束。本文、Feature Spec 和 ADR-0003 已对齐。实现仍需单独授权与规划。

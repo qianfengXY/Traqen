@@ -3,292 +3,287 @@
 ---
 feature_ids: [F001]
 related_features: [F002, F003, F004, F006]
-topics: [workspace, source-truth, git, source-snapshot, artifact-inventory, coverage-gap, receipt, design-gate]
+topics: [workspace, source-truth, git, directory-upload, source-bundle, incremental, source-snapshot, artifact-inventory, coverage-gap, receipt, design-gate]
 doc_kind: feature-discussion
 created: 2026-08-30
-status: proposed
-design_gate: operator-review-pending
+status: approved
+design_gate: operator-approved
 ---
 
-# F001 design proposal — Workspace & Source Truth
+# F001 design — Workspace & Source Truth
 
 ## 1. What F001 completes
 
-F001 is complete when an architect can turn one authorized Git repository at one exact commit into a **replayable Source Truth receipt**. The receipt says what Traqen safely captured, what it could not obtain, and whether the next capability may use the result.
+F001 is complete when an architect can turn either a selected Git revision, a selected directory, or both into a **replayable Source Truth receipt**. The receipt says exactly which source components Traqen safely captured, what it could not obtain, which version it represents, and whether F002 may use it.
 
 In practical terms, the architect can:
 
-1. register an authorized repository, choose a branch/tag/commit, and see it resolved to an exact commit;
-2. keep the whole repository or deliberately limit the capture to one directory root;
-3. automatically preflight and safely capture that fixed source without executing repository code;
-4. inspect a complete source-coverage inventory and every known limitation;
-5. accept only a non-blocking limitation with a named owner, rationale, and expiry; and
-6. hand F002 a qualifying immutable snapshot plus its limitations, rather than a mutable path or branch name.
+1. create or open a Workspace and choose **Connect Git**, **Upload directory**, or both;
+2. select a Git branch/tag/ref and see its exact resolved commit, and/or select one directory and see all selected files verified;
+3. let Traqen preflight the source automatically and capture it without executing user-controlled code;
+4. inspect a complete component-qualified source inventory, coverage limitations, receipt, and immutable history;
+5. create a later source version that compares Git commits or reselected directory manifests and transfers only changed bytes; and
+6. hand F002 a qualifying immutable bundle and inherited limitations, rather than a mutable path or branch.
 
-F001 does **not** yet generate the API tree, infer business functions, execute tests, or advise on change impact. Those are F002–F004. Its outcome is the trustworthy evidence foundation that makes those later results believable.
+The first release permits one Git component, one uploaded-directory component, or the two together. A combined source is a namespaced union, not an automatic merge: same-named paths are still separate records. F001 does **not** generate the API tree, infer business functions, execute tests, or advise on change impact. Those are F002–F004. Its outcome is the trustworthy source foundation that makes their results believable.
 
 ## 2. Functions, purpose, and the problem each resolves
 
-| Function | What the architect gets | Problem it removes |
+| Function | What the architect gets | Problem it resolves |
 | --- | --- | --- |
-| Workspace and source registration | One Workspace-bound, read-authorized Git source; credentials remain a protected reference. | Analysis cannot silently use an arbitrary local directory or leak a credential. |
-| Exact revision and scope | A resolved commit and either whole-repository scope or one explicit directory root. | A moving branch or a vague “code-only” selection cannot pretend to be stable coverage. |
-| Automatic preflight | A clear `can start`, `can start with expected gaps`, or `blocked` decision with remediation. | Permission, path-boundary, integrity, and external-content failures are not discovered only after a misleading scan. |
-| Safe immutable capture | A sealed `SourceSnapshot`, created from committed Git objects without executing source code. | Working-tree edits, hooks, builds, and dependency installation cannot change or endanger the evidence. |
-| Source Coverage inventory | One disposition and reason for every discovered in-scope item, with a visible scope boundary. | Documentation, configuration, SQL, tests, binaries, and failed reads cannot silently vanish. |
-| Coverage Gap management | Blocking gaps remain blockers; non-blocking gaps can be accepted with responsibility, rationale, and expiry. | A click-through warning cannot disguise an integrity failure, while ordinary legacy-system incompleteness remains visible and manageable. |
-| Receipt, history, and F002 handoff | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED`, retained with prior captures; F002 receives only a qualified input. | Later capabilities cannot derive authoritative-looking conclusions from a path, branch, dirty checkout, or an incomplete capture whose non-blocking limitations were not explicitly accepted and inherited. |
+| Workspace and source choice | A Workspace-bound choice of Git, directory upload, or both. Git credentials stay protected; directory upload has an auditable user/session. | Analysis cannot silently use an arbitrary local directory or leak a credential. |
+| Exact component identity | Git ref resolves to a commit; a directory is represented by its verified manifest. Components retain native identities. | A moving branch, local directory, or directory pretending to be a commit cannot masquerade as stable evidence. |
+| Automatic preflight | `can start`, `can start with expected gaps`, or `blocked`, with a reason and remediation. | Authorization, path safety, limits, and integrity problems are not discovered only after a misleading scan. |
+| Safe immutable capture | Sealed component snapshots and one `SourceBundleSnapshot`; no repository script, build, hook, filter, dependency install, or uploaded content executes. | Source-controlled behavior and working-tree edits cannot alter or endanger evidence. |
+| Source Coverage inventory | Every discovered item has a component-qualified locator, disposition, and reason; the UI is searchable and paginated at large scale. | Documentation, configuration, SQL, tests, binaries, failed reads, and same-named component files cannot silently vanish. |
+| Coverage Gap management | Blocking failures remain blocked. A non-blocking limitation can be accepted only with a responsible person, rationale, and expiry. | A click-through warning cannot disguise an integrity failure, while ordinary legacy incompleteness remains visible and manageable. |
+| Version history and file delta | A new complete immutable version after an explicit user action; add/modify/delete evidence between two sealed manifests. | Change impact cannot compare a moving source, while unchanged 50,000-file components are not copied or re-uploaded. |
+| Receipt and F002 handoff | `READY` / `READY_WITH_ACCEPTED_GAPS` / `BLOCKED`, retained with history; F002 receives only a qualified bundle/input. | Later capabilities cannot derive authoritative-looking conclusions from a path, branch, partial upload, or unaccepted limitation. |
 
 ## 3. Alignment with the product vision
 
 | Product vision | F001 contribution | Deliberate boundary |
 | --- | --- | --- |
-| Help an architect take over an unfamiliar legacy system. | Establishes the exact source baseline before any explanation is attempted. | It does not explain business meaning by itself. |
-| Preserve a traceable chain from source to conclusions. | Creates the first durable links: repository → commit → scope → snapshot → inventory → gaps → receipt. | Facts, candidates, claims, tests, and impact links are added by F002–F004. |
-| Present a reliable API tree and reviewed business-function tree. | Prevents both trees from looking complete when their source is incomplete. | F001 does not parse APIs or publish either tree. |
-| Make the next change safer. | Makes later comparison and impact work refer to a fixed, auditable source. | It neither runs tests nor makes impact recommendations. |
-| Prefer an explicit incomplete answer over a persuasive unsupported answer. | Makes exclusions, failed reads, external material, and accepted limitations visible and inherited. | It cannot convert a blocking safety or integrity condition into a usable result. |
+| Help an architect take over an unfamiliar legacy system. | Establishes the exact material baseline before any explanation is attempted. | It does not explain business meaning by itself. |
+| Preserve a traceable chain from source to conclusions. | Creates the first durable links: source component → immutable manifest → bundle → inventory/gaps → receipt → F002 provenance. | Facts, candidates, claims, test evidence, and impact links are added by F002–F004. |
+| Present a reliable API tree and reviewed business-function tree. | Prevents either tree from looking complete when its underlying source is incomplete. | F001 does not parse APIs or publish either tree. |
+| Make the next change safer. | Retains comparable source versions and truthful file-level delta for later impact work. | F001 does not infer impact, run tests, or recommend revalidation. |
+| Prefer an explicit incomplete answer over a persuasive unsupported answer. | Keeps exclusions, failed reads, redaction limits, external material, and accepted gaps visible and inherited. | It cannot convert a blocking safety or integrity condition into a usable result. |
 
-Therefore F001 is aligned with the vision as its **truthful source foundation**, not as a standalone legacy-understanding product. Its success criterion is not “the scan finished”; it is “a later result can name and defend its exact input and limitations.”
+F001 therefore matches the vision as its **truthful source foundation**, not as a standalone legacy-understanding product. Its success criterion is not “the scan finished”; it is “a later result can name and defend its exact input, version, and limitations.”
 
-## 4. Design status and reading order
+## 4. Design status and authority
 
-This is an operator-review proposal for the already approved F001 product boundary. It is not authorization to implement. It implements, and does not reopen, [ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.md).
+This is the **operator-approved** F001 design. It updates and implements [ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.md). It does not authorize implementation code.
 
-Sections 1–3 explain the product outcome. The remaining sections explain how the design achieves it.
+The `source-truth` ownership boundary owns source registration, upload/capture lifecycle, component and bundle snapshots, manifests, inventory, Gap/receipt state, version comparison, and F002 admission. It does not own F002 extraction, F003 review, F004 execution/impact, or F006 settings. `SourceTruthRepository` is the sole authority; F002 receives `QualifiedSourceInput`, never a path, ref, working tree, upload session, or credential.
 
-```text
-Architecture cell: source-truth (new cell required)
-Map delta: new cell required
-Why: source identity, capture authority, sealed evidence, and downstream admission have no
-single runtime owner in the current architecture map.
-```
-
-The future `source-truth` cell owns registration, capture lifecycle, snapshots, inventory, gaps, receipts, and F002 admission. It does not own F002 extraction, F003 review, F004 impact/execution, or F006 settings. This is an F303 authority/consumer change: `SourceTruthRepository` is the canonical source; F002 receives a `QualifiedSourceInput`, never a path, ref, working tree, or credential; contract tests prove that rule.
-
-## 5. Logical architecture
+## 5. Overall architecture
 
 ```text
 Workspace
-  │ source, requested ref, optional directory root
-  ▼
-SourceRegistration → SourceCaptureRun → SourcePreflight
-                                            │
-                     BLOCKED receipt ◄──────┘ pass / warn
-                                            ▼
-GitSourceGateway → committed tree/blob reader → staged SourceSnapshot
-                                                  │        │
-                                                  ▼        ▼
-                                          ArtifactInventory  CoverageGap(s)
-                                                                  │
-                                                   GapAcceptance (non-blocking only)
-                                                                  ▼
-                                                         SourceTruthReceipt
-                                               READY | READY_WITH_ACCEPTED_GAPS
-                                                                  │
-                                                                  ▼
-                                                SourceTruthAdmission → F002
-                                              (snapshot + inventory + inherited gaps)
+  ├─ GitSourceRegistration ── resolve requested ref ──► committed Git tree/blob reader
+  └─ DirectoryUploadSession ── selected files ───────► controlled streaming upload
+                         │                                      │
+                         └──────────── SourceCaptureRun ────────┘
+                                                 │
+              preflight → enumerate → frozen component manifest → bounded capture
+                                                 │
+                    GitSourceSnapshot / DirectoryUploadSnapshot (sealed components)
+                                                 │
+              SourceBundleSnapshot (Git only | directory only | both, namespaced)
+                                  ┌──────────────┴─────────────┐
+                         ArtifactInventory                 CoverageGap(s)
+                                  │                               │
+                                  └──────── reconciliation ───────┘
+                                                 │
+                                   SourceTruthReceipt + lineage
+                             READY | READY_WITH_ACCEPTED_GAPS | BLOCKED
+                                                 │
+                                   SourceTruthAdmission → F002
+                                 (qualified bundle + inherited gaps)
+                                                 │
+                              selected sealed versions → SnapshotDelta → F002
 ```
 
-`SourceCaptureRun` records operational progress, cancellation, and retry. A sealed source result records immutable evidence and downstream eligibility. The two lifecycles are separate so a partial run cannot masquerade as a partial snapshot, and a retry cannot rewrite history.
+`SourceCaptureRun` records an attempt, live progress, cancellation, retry, and checkpoints. A sealed component/bundle records immutable evidence and downstream eligibility. Separating them prevents a half-finished run from looking like a source version, and prevents a retry from rewriting history.
 
-## 6. Canonical records and invariants
+## 6. Domain records and invariants
 
-| Record | Responsibility | Non-negotiable invariant |
+| Object | Responsibility | Invariant |
 | --- | --- | --- |
-| `Workspace` | Authorization and isolation aggregate. | Each F001 record belongs to one Workspace; metadata has the same access boundary as content. |
-| `SourceRegistration` | Read-authorized Git identity and credential reference. | Never stores raw credentials. A branch/tag selects a commit; it is not snapshot identity. |
-| `CapturePolicyRevision` | Platform-owned scanner, redaction, size, and Git-safety rules. | Users do not edit integrity/safety rules; old results retain their original policy revision. |
-| `SourceCaptureRun` | One resolve/preflight/capture/seal attempt. | Retry creates a new run; failure and cancellation remain auditable; a run never follows a moving branch. |
-| `SourcePreflightReport` | Automatic source, authorization, commit, root, boundary, external-content, and safety evidence. | `PASS`/`WARN`/`BLOCK` always carry reason codes and a next action. A warning is not itself a Gap. |
-| `SourceSnapshot` | Immutable result for repository identity + resolved commit + scope + policy. | Identity excludes capture time and includes ordered inventory digest. Sealed snapshots never mutate. |
-| `ArtifactInventory` | Coverage denominator and one per-artifact disposition. | Every discovered in-scope item has exactly one disposition and reason; summary counts equal detail. A directory-root result visibly limits whole-repo coverage. |
-| `CoverageGap` | Known analysis limitation. | Append-only; it cannot be edited into coverage. Only a later snapshot can demonstrate resolution. |
-| `GapAcceptance` | Human acknowledgement of one non-blocking Gap. | Append-only; responsible person, rationale, and expiry are mandatory. Blocking gaps have no acceptance action. |
-| `SourceTruthReceipt` | Immutable evidence/eligibility decision. | `READY` requires sealed source and zero relevant gaps; `READY_WITH_ACCEPTED_GAPS` needs valid acceptances; `BLOCKED` is never consumable. |
-| `QualifiedSourceInput` | F002-only result of admission. | Carries receipt, snapshot, inventory, policy, and all inherited gaps—but no direct source locator or credential. |
+| `Workspace` | Authorization and isolation aggregate root. | Every F001 record has one Workspace; metadata and data access obey the same tenant/workspace boundary. |
+| `GitSourceRegistration` | Read-authorized repository identity and credential reference. | No bare credential; requested ref selects a commit but is not snapshot identity. |
+| `DirectoryUploadSession` | One user-selected directory transfer and audit trail. | At least one selected file; a successful component requires every selected file to be verified. |
+| `CapturePolicyRevision` | Platform-controlled limits, path rules, scanner/redaction, and source safety. | Users cannot edit integrity, safety, or Gap-severity rules; sealed history binds the policy revision. |
+| `SourceCaptureRun` | One resolve/preflight/capture/seal attempt. | Retry creates a new run; a run never follows a moving branch or rewrites a sealed version. |
+| `SourcePreflightReport` | Identity, permission, boundary, path, limit, external-content, and safety evidence. | `PASS` / `WARN` / `BLOCK` always has reason code and next action; `WARN` is not silently converted into final coverage. |
+| `SourceManifest` | Ordered content-addressed entries and shard digests for one component. | It is the authority for coverage and change comparison; Delta cannot override it. |
+| `GitSourceSnapshot` | Sealed Git component at resolved commit/tree and declared Git scope. | Immutable after seal; committed objects, not a checkout, are evidence authority. |
+| `DirectoryUploadSnapshot` | Sealed selected-directory component at verified manifest/upload identity. | Immutable after seal; it never claims coverage outside the selected folder or represents itself as a commit. |
+| `SourceBundleSnapshot` | Ordered component references and bundle-level identity. | Has one or two components; only one per kind in MVP; colliding paths remain distinct by component ID. |
+| `ArtifactInventory` | Coverage denominator and per-item disposition. | Every discovered item has exactly one terminal disposition/reason; counts/bytes/shard digests reconcile before seal. |
+| `CoverageGap` / `GapAcceptance` | Material analysis limitation and accountable acceptance. | Gap is append-only; only non-blocking Gap is acceptable, with owner/rationale/expiry; acceptance never claims the material was obtained. |
+| `SnapshotDelta` | Add/modify/delete comparison of two sealed versions. | Derived from manifests, reproducible, and optional to cache; rename is delete plus add in MVP. |
+| `SourceTruthReceipt` | Immutable source evidence and consumability decision. | `READY` has no material Gap; `READY_WITH_ACCEPTED_GAPS` has only valid accepted non-blocking gaps; `BLOCKED` is never consumable. |
 
-The visible dispositions must at least distinguish safely captured, policy-isolated, redacted, external/unavailable, unreadable/failed, unsupported/binary, and outside the selected directory root. A disposition says what happened to an item; a Gap says how that fact limits later conclusions. Material limitations require both. Neither record may leak raw sensitive content or credentials.
+`display-redacted` is deliberately narrow: content can be captured and available to an authorized downstream system while being hidden in UI/logs. If redaction makes it unavailable to analysis, it also creates a material `CoverageGap`. No record leaks source secrets or credentials.
 
-## 7. Capture lifecycle
+## 7. Capture and version lifecycle
 
-The published receipt has exactly the three product states specified above; `AWAITING_GAP_DECISION` is only a run state.
+### 7.1 Initial source capture
 
 ```text
-REQUESTED → PREFLIGHTING
-  ├─ blocked ───────────────────────────────► BLOCKED receipt
-  └─ READY_TO_CAPTURE → CAPTURING
-       ├─ cancellation requested ───────────► CANCELLED
-       ├─ read/integrity failure ───────────► CAPTURE_FAILED
-       └─ SEALING (atomic; cancellation closes)
-            ├─ safety/integrity block ──────► BLOCKED receipt
-            └─ SEALED
-                 ├─ any blocking CoverageGap ► BLOCKED receipt
-                 ├─ no relevant gaps ───────► READY receipt
-                 └─ only non-blocking gaps ─► AWAITING_GAP_DECISION
-                                                └─ valid acceptance
-                                                   ► READY_WITH_ACCEPTED_GAPS receipt
+REQUESTED → PREFLIGHTING → ENUMERATING → MANIFEST_FROZEN → CAPTURING → RECONCILING → PREPARING_SEAL
+  │              │              │                 │              │              │                 │
+  │              └─ security/integrity block ──────┴──────────────┴──────────────┴──► BLOCKED receipt
+  ├─ user cancellation before seal ─────────────────────────────────────────────────► CANCELLED run
+  └─ transient failure ──────────────────────────────────────────────────────────────► FAILED_RETRYABLE run
+                                                                                         │
+                                                             atomic seal ──────────────┘
+                                                                         │
+                                                            sealed component/bundle
+                                                                         │
+                                    no material Gap ────────────────────┼────► READY receipt
+                                    only non-blocking Gap ───────────────┼────► AWAITING_GAP_DECISION
+                                                                         │           └─ valid acceptance
+                                    blocking Gap ────────────────────────└────► BLOCKED receipt
+
+                                                                                     READY_WITH_ACCEPTED_GAPS
 ```
 
-- Resolve a requested branch/tag/commit to a full commit ID before capture. Identity, permission, path-boundary, policy, integrity, or tampering uncertainty blocks early.
-- Enumerate the committed Git tree and read immutable Git blobs. Do not read a mutable user working tree after ref resolution; do not run hooks, filters, scripts, builds, or dependency installation.
-- Stage privately and make snapshot/inventory visible in one atomic seal. Staging data is never listable or consumable.
-- Cancellation records the run and produces no qualifying snapshot. Retry is a fresh run pinned to the same commit; a newer branch head requires an explicit new request.
-- Receipt publication is append-only. Acceptance expiry makes a receipt ineligible for a new F002 admission; it never erases historical evidence or historical analysis.
-- A later failed/cancelled/blocked run never invalidates an earlier ready snapshot.
+- Preflight validates what can be known before capture: authorization, Git resolution, declared root, upload/session boundary, path safety, limits, and policy. It does not pretend to provide business understanding.
+- Enumeration freezes a manifest with exact item/byte totals and root digest. Before that point progress may say only “discovered N”; afterward the UI may report verified items/bytes against real totals.
+- For a directory input, initial success requires all selected files to arrive and verify. A broken transfer or policy refusal is not quietly downgraded to a partial-success or “source completeness unknown” Gap; a fully verified item can still carry a visible analysis-limitation Gap when policy permits it.
+- `DRAFT` data stays private. Atomic seal checks manifest shards, content presence, inventory totals, dispositions, and material gaps before publishing snapshots, bundle, and receipt together.
+- A cancelled/failed/blocked later run never changes a previously sealed version.
 
-## 8. Safe-capture interfaces and migration
+### 7.2 Incremental new version
 
-| Interface | Owns | Never does |
+```text
+select baseline + “Create new version”
+  ├─ Git: resolve new exact commit → compare committed trees → fetch only added/modified missing blobs
+  ├─ Directory: reselect folder → fully enumerate/hash → server manifest comparison → send only changed bytes
+  └─ unchanged component: reuse prior sealed component
+             │
+             ▼
+new complete sealed component(s) → new SourceBundleSnapshot → reproducible SnapshotDelta → new receipt
+```
+
+Every new version has a full manifest. The optimization is physical reuse, never logical partiality. The directory client must enumerate all selected files because that is how it can credibly establish deletion; client hashes select transfer candidates, while the server verifies every transferred byte before it becomes evidence. F001 does not auto-follow branches, watch local folders, or turn ref movement into a new baseline without the architect's action.
+
+## 8. Safe, scalable capture design
+
+| Interface | Responsibility | Must not do |
 | --- | --- | --- |
-| `GitSourceGateway` | Resolve refs, inspect committed trees, and read blobs through a read-only credential reference. | Read mutable working-tree content after resolution or execute source-controlled logic. |
-| `SourcePreflightService` | Authorization, commit/root, external-object, symlink/path, and policy checks. | Allow an operator override for integrity/safety blocks. |
-| `SnapshotStore` | Workspace-bounded staging, hashing, atomic sealing, verification, retention. | Expose staging or mutate a sealed package. |
-| `CoverageAssembler` | Complete inventory and material gaps. | Hide failed/redacted/unavailable/out-of-scope evidence from coverage. |
-| `SourceTruthAdmission` | Re-validate eligibility and issue `QualifiedSourceInput`. | Return a path/ref or silently omit inherited gaps. |
+| `GitSourceGateway` | Resolve a ref using read authorization; enumerate committed tree and stream blobs. | Read a mutable working tree or execute source-controlled hooks/filters/logic. |
+| `DirectoryIngestGateway` | Receive direct streaming files to controlled storage; normalize paths and verify transferred bytes. | Treat original local paths as identity, expand archives, or execute uploaded files. |
+| `SourcePreflightService` | Check authorization, identity, declared root, upload boundary, path, limit, external content, and policy. | Allow a user to override an integrity/security block. |
+| `ManifestDiffer` | Compare two sealed manifests and derive file-level add/modify/delete. | Infer business impact, rename similarity, or change a sealed manifest. |
+| `SnapshotStore` | Tenant-scoped staging, content-addressed verified blobs, manifest/inventory shards, checkpointing, and atomic seal. | Expose Draft material, modify sealed history, or reveal cross-tenant deduplication. |
+| `CoverageAssembler` | Reconcile complete inventory and material gaps. | Hide a skip, failed read, redaction limitation, or scope boundary. |
+| `SourceTruthAdmission` | Revalidate consumability and issue `QualifiedSourceInput` to F002. | Return path/ref/upload/credential, omit inherited gaps, or bypass receipt state. |
 
-The current `LocalSourceSnapshotCapture` is a migration baseline only for atomic staging/seal, digest verification, and path-escape defense. Its local allowlisted-root reader and its direct connection to `WorkspaceAnalysisJob` are incompatible with this design. A server cache/checkout may optimize reads, but resolved Git objects—not a checkout—remain evidence authority. F001 becomes `SourceCaptureRun`; F002 and later work start only after admission.
+The fast path is bounded rather than unbounded: fixed resource pools, bounded queues/backpressure, in-flight byte limits, streaming hashes, batched metadata writes, and sharded manifest/inventory records. Git can use committed object traversal and object identity to avoid rereading known blobs. Directory transfer can stream directly to controlled storage and resume through checkpoints. Content reuse is tenant/workspace-scoped, not a cross-tenant existence oracle.
 
-## 9. User surfaces and observability
+The false-green prevention rule is strict: every frozen manifest entry must reconcile to exactly one terminal disposition; skipped/absent analysis material must link to its Gap; the queue being empty cannot decide success. Seal failure leaves a private Draft/run that may retry, never a partial version visible to F002.
 
-The primary surface is the **Source Truth card inside the Workspace**, because source choice, scope, and Gap acceptance are made there—not in a dashboard.
+## 9. User information architecture and interaction contract
+
+The main scene is **Source Truth inside the Workspace**, not a separate dashboard. It must make three questions answerable without logs: *what is this version made of; may F002 use it; and what must be fixed or carried forward?*
 
 | Surface | Information and action |
 | --- | --- |
-| Source Truth card | Canonical repository, resolved commit, root, authorization, latest receipt, and why it is usable or blocked; register source, create capture, open receipt. |
-| Capture setup | Authorized source picker, ref selector with resolved commit preview, whole repository or one directory root. There is no security-rule editor. |
-| Preflight | `Can start` / `Can start with expected gaps` / `Blocked`, each with affected scope and remediation. |
-| Capture | Stage rail (preflight → capture → finalizing → receipt), observed counts, current operation, cancellation/retry. Never fake a percentage. |
-| Source Coverage | Scope banner, tree/list, dispositions, reasons, counts, Gap links. Root scope visibly states “not whole repository.” |
-| Coverage Gaps | Blocking, awaiting decision, accepted-but-still-present; only non-blocking items show an accept control. |
-| Receipt & History | Source, commit, scope, integrity identity, policy, inventory, gaps, acceptance validity, F002 eligibility, historical results. |
+| Source Truth card | Current Git/directory components, latest receipt, version identity, why it is usable/blocked, **Create new version**, and receipt/history links. |
+| Source setup | Choose Git, directory, or both; Git ref and resolved commit preview; directory selection and selected-file count. No credential or safety-rule editor. |
+| Preflight | `可开始` / `可带预期 Gap 开始` / `已阻断`, affected component/scope, reason, and correction action. A blocker has no accept route. |
+| Capture progress | Real stages and stream totals: “discovering N”, then “verified X/Y files and bytes”, policy/reconciliation/seal. Cancel before seal; retry a failed run. |
+| Source Coverage | Component filter, path search, disposition/reason, counts, and Gap links. Large inventory is paginated/virtualized. |
+| Receipt and history | Native component identities, source bundle, policy, inventory identity, gaps/acceptance, F002 eligibility, and earlier immutable versions. |
+| New-version comparison | Baseline/target selection, which component changed, transfer reuse summary, add/modify/delete counts, and the downstream F002/F004 provenance path—not an impact verdict. |
 
-Every error explains what failed, what scope was not obtained, whether a prior snapshot remains usable, and the next user action. Progress events are aggregated to one latest state per source; deep views retain complete history. Diagnostics are reason-coded and redacted.
+Every error states what failed, which component/scope is affected, whether older sealed versions are still usable, and the next corrective action. Reasons are code-backed and redacted. The Workspace shell shows only the latest state for each source/bundle; detailed receipt history preserves full events.
 
-## 10. Front-end interaction design proposal
+## 10. Frontend interaction design
 
-The UI is a **Workspace extension**, not a new dashboard. The supplied screens are an
-interaction-design proposal with illustrative data and no backend implementation. They use
-Traqen's existing light console language—persistent navigation, white task panels, blue
-primary actions, and explicit warning/blocking colours—so the user can make a source decision
-where the source belongs.
+The screens extend the Workspace rather than introduce a new dashboard. Visual examples default to **Simplified Chinese** for the current operator; that is a design-language choice, not a runtime i18n implementation promise. The stable application shell remains identical between success and block states: only the Workspace main content changes.
 
-The visual-design default is **Simplified Chinese**. This makes the reviewable F001 journey
-readable to its current operators; it does not make a claim about the eventual runtime locale or
-internationalization implementation.
+### 10.1 A usable receipt with accepted limitations
 
-**Design-gate question:** can an architect tell, without opening a diagnostic log, whether a
-particular source result is usable for downstream analysis, what limitation F002 will inherit,
-and what action is required when it is not usable? The first screen below is the soul frame for
-that decision. The second proves that the same surface has an honest recovery path, rather than
-only a success state.
+![Simplified-Chinese Source Truth receipt with accepted gaps](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
 
-The application shell is an invariant, not a state-dependent design choice. Both screens use the
-same sidebar, in the same order, with `工作空间分析` selected:
+`READY_WITH_ACCEPTED_GAPS` deliberately uses amber rather than green. It means the sealed bundle is usable, **not complete**: Coverage shows its denominator, the Gap remains visible with owner and expiry, and the downstream action says F002 inherits the limitation. `Display-redacted` remains distinct from an analysis-limiting redaction; the latter must create a Gap.
 
-```text
-主页
-工作空间: 全部工作空间 · 工作空间分析 · 快照历史 · 设置
-理解: 代码地图 · 搜索 · 依赖关系
-治理: 策略 · 审计日志 · 成员与权限
-```
+### 10.2 A preflight block
 
-Only the main workspace content changes between a qualifying receipt and a preflight block.
+![Simplified-Chinese blocked Source Truth preflight](assets/source-truth-preflight-blocked-zh-CN-v2.png)
 
-### 10.1 Eligible with an accepted limitation
+The block stays in the same Workspace journey. It identifies the failed check, affected boundary, correction action, disabled capture action, and that an earlier sealed version is unchanged. A safety/integrity blocker offers no accept or bypass path.
 
-![Chinese-default Source Truth receipt eligible with an accepted limitation](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
+### 10.3 Setup and incremental-version screen contracts
 
-The receipt is deliberately orange rather than green. `READY_WITH_ACCEPTED_GAPS` means the
-sealed snapshot is eligible, **not complete**: the coverage card gives the coverage denominator,
-the Gap remains readable with its owner and expiry, and the downstream action says that F002
-will inherit the limitation. The user can open the artifact inventory or receipt history before
-starting F002; F002 does not receive a live path or working tree.
-
-`Display-redacted` has a deliberately narrower meaning: the content was completely captured and
-remains available to authorized downstream analysis, but is omitted from this UI. It is not an
-analysis limitation. Conversely, any redaction that prevents analysis from accessing material
-must create its own `CoverageGap` and be included in the inherited Gap set; it may never be
-represented only as a coverage count. The lower `Artifact inventory` panel names all discovered
-records—including out-of-scope and unavailable records—rather than implying all 192 are contents
-of the sealed snapshot.
-
-### 10.2 Preflight blocked before capture
-
-![Chinese-default source preflight blocked by a path boundary](assets/source-truth-preflight-blocked-zh-CN-v2.png)
-
-Blocking conditions stay in the same user journey. The screen names the failed check, the
-affected boundary, and the corrective action; it disables snapshot creation and makes F002
-unavailable. It also reassures the user that an earlier sealed snapshot was not changed. There
-is no "accept" escape hatch for a safety or integrity blocker.
-
-### 10.3 Screen contract
-
-| Moment | Primary information | Primary action | Honest constraint |
+| Moment | Primary information | Primary action | Required honesty |
 | --- | --- | --- | --- |
-| Source setup | authorized repository, requested ref, resolved commit preview, whole-repository or directory-root scope | continue to automatic preflight | no credentials or security-rule editor is exposed |
-| Preflight | `can start`, `can start with expected gaps`, or `blocked`, with a reason and affected scope | capture, or edit source/scope | a block cannot be overridden |
-| Capture and sealing | stage rail, observed counts, current operation, cancellation/retry | cancel before seal or retry as a new run | progress is event-derived; it never invents a percentage |
-| Source Truth receipt | resolved commit, declared scope, receipt status, coverage summary, material gaps, policy and inventory identity | open coverage/history; start F002 only when eligible | display-only redaction is explicitly distinguished; warning limitations remain visible and are inherited |
-| Coverage / history detail | every artifact disposition and reason, every Gap, its acceptance validity, and earlier immutable receipts | inspect or create a new capture | an all-record inventory is not mislabeled as sealed content; neither history nor a Gap can be edited into a better result |
+| Create source foundation | Git / directory / both selection; resolved Git commit; directory selected-file total; component boundary. | Start automatic preflight. | A directory success label appears only at `verified / selected = selected / selected`; no component is silently overlaid. |
+| Freeze and capture | Stage, observed count, then frozen totals; verified files/bytes; current component; cancel/retry. | Cancel before seal or retry a failed run. | No invented percentage; all 100,000 artifacts are not rendered at once. |
+| Receipt | Bundle and native component IDs, coverage summary, Gap/acceptance, policy, history, F002 eligibility. | Inspect inventory/history or start F002 only if eligible. | Accepted limitation stays amber and inherited; Receipt never leaks raw secret. |
+| Create new version | Baseline, target Git commit and/or reselected directory, unchanged component reuse, add/modify/delete totals. | Confirm a manual new-version capture. | This is file change evidence, not impact analysis; directory deletion requires re-enumeration. |
 
-The Source Truth card/receipt is the **primary surface**. Coverage and receipt history are the
-deep-dive surfaces. The workspace shell displays only the latest state for each source to avoid
-event noise; it aggregates progress by stage and preserves the detailed, reason-coded history
-behind the receipt.
+This design does not include a global dashboard, live log tail, raw-secret viewer, source browser, API/function tree, or production implementation. Those either bypass source decisions or belong to later features.
 
-**Not included in this proposal:** a global dashboard, live log tailing, a raw-secret viewer, a
-source-code browser, API/function-tree visualization, or production implementation. Those would
-either bypass the source decision or belong to later features.
-
-## 11. F002 admission contract
+## 11. F002 admission and delta contracts
 
 ```ts
+type QualifiedSourceComponent =
+  | {
+      componentSnapshotId: string;
+      kind: "GIT";
+      nativeIdentity: { resolvedCommit: string };
+      declaredScope: { kind: "REPOSITORY" } | { kind: "DIRECTORY_ROOT"; path: string };
+      manifestId: string;
+    }
+  | {
+      componentSnapshotId: string;
+      kind: "DIRECTORY_UPLOAD";
+      nativeIdentity: { manifestDigest: string; uploadId: string };
+      declaredScope: { kind: "UPLOADED_DIRECTORY" };
+      manifestId: string;
+    };
+
 type QualifiedSourceInput = {
   workspaceId: string;
   receiptId: string;
   receiptStatus: "READY" | "READY_WITH_ACCEPTED_GAPS";
   receiptValidUntil: string | null;
-  sourceSnapshotId: string;
-  repositoryIdentity: string;
-  resolvedCommit: string;
-  declaredScope: { kind: "REPOSITORY" } | { kind: "DIRECTORY_ROOT"; path: string };
+  sourceBundleSnapshotId: string;
+  components: ReadonlyArray<QualifiedSourceComponent>;
   inventoryId: string;
   inventoryDigest: string;
   policyRevisionId: string;
-  inheritedGaps: ReadonlyArray<{ gapId: string; severity: "NON_BLOCKING"; affectedScope: string; reasonCode: string }>;
+  inheritedGaps: ReadonlyArray<{
+    gapId: string;
+    severity: "NON_BLOCKING";
+    componentSnapshotId: string;
+    affectedScope: string;
+    reasonCode: string;
+  }>;
+};
+
+type SnapshotDeltaInput = {
+  baselineBundleSnapshotId: string;
+  targetBundleSnapshotId: string;
+  operations: ReadonlyArray<{
+    componentKind: "GIT" | "DIRECTORY_UPLOAD";
+    componentSnapshotId: string;
+    path: string;
+    kind: "ADD" | "MODIFY" | "DELETE";
+    beforeDigest: string | null;
+    afterDigest: string | null;
+  }>;
 };
 ```
 
-Admission requires Workspace access, a sealed and integrity-verified snapshot/inventory, an exactly matching current qualifying receipt, valid acceptances, and no blocker/tampering signal. It rejects direct paths, Git URLs, standalone refs/commits, dirty checkouts, partial snapshots, expired acceptances, and all blocked outcomes.
+Admission requires Workspace access; sealed, verified component/bundle/inventory; an exactly matching currently consumable receipt; valid relevant acceptance; and no blocker or tampering signal. It rejects direct paths, Git URLs, ref-only input, dirty checkouts, upload sessions, partial snapshots, expired acceptance, and all `BLOCKED` results.
 
-F002 persists receipt/snapshot/inventory/policy identities and the *complete inherited gap set* on every derived result. It can create a separate extraction-layer Gap linked to an F001 Gap; it cannot modify, suppress, downgrade, or re-accept F001’s Gap. F003/F004 get source provenance through F002 only.
+F002 persists the bundle/receipt/inventory/policy identities and the complete inherited Gap set on every derived fact. It can request a `SnapshotDeltaInput` when comparing a selected baseline/target, but must not mutate, hide, downgrade, or re-accept F001 gaps. F003/F004 receive F001 provenance through F002; F004's impact conclusion stays outside F001.
 
-## 12. Reference pilot
+## 12. Reference pilot and scale acceptance
 
-Use a disposable Git fixture seeded from the order-platform reference artifacts, with fixed commits A and B—not a developer working tree.
+Use a controlled fixture with Git commits A/B plus directory versions D1/D2. The combined A+D1 case includes code, documentation, configuration, SQL, tests, safe sensitive fixture handling, duplicate content, zero-byte files, deep paths, a deliberately unavailable non-blocking item, a large-policy item, and a blocking path/integrity fixture.
 
-| Case | Expected proof |
+| Case | Must prove |
 | --- | --- |
-| Whole repository, commit A | Code, docs, config, SQL, and tests all have exactly one disposition. |
-| `services/orders/` root, commit A | Receipt names the root and visibly declares all other repository content out of scope. |
-| Unavailable LFS-like object in A | A non-blocking Gap requires rationale/expiry; F002 receives it after `READY_WITH_ACCEPTED_GAPS`. |
-| Replay A; then move branch | Same snapshot/inventory identities on replay; branch movement does not alter the old source result. |
-| Cancel, then retry A | Cancelled run has audit only; retry is a new run and old ready results remain usable. |
-| Path-escape symlink or integrity mismatch in B | `BLOCKED`, no accept control, no F002 admission. |
-| Package script plus sensitive fixture | Neither code execution nor raw secret exposure occurs. |
-| F002 receipt vs direct input | Only the qualified receipt starts F002; its inherited Gap appears in F002 output. |
+| Git only, directory only, and A+D1 | Native component identities, selected-directory verification, no path overlay, and one disposition per item. |
+| Replay A+D1 | Same component/bundle/manifest identity and inventory result; branch movement and local change do not alter it. |
+| A→B, D1→D2 | Git fetches only changed missing blobs; directory re-enumerates but sends only changed bytes; deletes are explicit. |
+| B+D1 after Git-only change | D1 remains referenced, not copied or re-uploaded; both versions remain queryable. |
+| Blocked safety/integrity fixture | `BLOCKED`, no accept action, no F002 admission, older sealed version remains usable. |
+| 100,000-file combined fixture | Bounded memory/queues/file descriptors, paginated inventory, restart after worker/storage/DB interruption, exact reconciliation, atomic seal, and no Draft F002 admission. |
 
-The key failure mode is a **false-green receipt**: material silently disappears yet a ready state is issued. The defense is Git-object capture, inventory conservation, explicit dispositions, material gaps, atomic seal, immutable receipt evidence, and mandatory downstream inheritance.
+The primary failure mode is a **false-green receipt**: material silently disappears while the UI says ready. Frozen manifests, terminal disposition conservation, explicit material gaps, two-stage/atomic seal, immutable receipts, and F002's compulsory gap inheritance are the defense.
 
-## 13. Review outcome and next gate
+## 13. Decision closure and next gate
 
-Independent reviews by 砚砚 and Kimi agreed on the records, user journey, state machine, F002 inheritance, and negative pilot. This proposal resolves the two meaningful design differences:
+The operator has confirmed: two source types and their combination; native component identity/no overlay; explicit manual version creation; complete logical versions with physical incremental reuse; full directory re-enumeration but changed-byte upload; manual Git updates; file-level add/modify/delete only; and bounded streaming/atomic truthfulness at 100,000 files.
 
-- `SourceRegistration` remains separate from `Workspace`, so source authorization and snapshot history are independently auditable while Workspace stays the access aggregate.
-- Snapshot/inventory seal immediately after capture; human Gap acceptance produces a later eligibility receipt and never mutates source evidence.
-
-ADR-0003 already contains the relevant rejected alternatives, so no new ADR is required. No new general operating rule or lesson was discovered.
-
-**Next:** operator review, then establish the `source-truth` ownership map and an interactive in-context design demo. Do not begin implementation before those gates.
+Independent F001 brainstorming and design reviews by 砚砚 and Kimi supplied the object, safety, incremental, scale, and interaction constraints incorporated here. This document, the Feature Spec, and ADR-0003 are now aligned. Implementation remains a separate authorization and planning step.
