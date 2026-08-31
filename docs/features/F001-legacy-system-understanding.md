@@ -5,11 +5,11 @@ feature_ids: [F001]
 topics: [workspace, source-truth, source-snapshot, source-bundle, directory-upload, incremental, artifact-inventory, coverage-gap, provenance, git]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-08-30
+updated: 2026-08-31
 description: Establish a reproducible, permissioned source foundation from a pinned Git revision, an uploaded directory, or both, with immutable incremental versions that downstream legacy-system analysis can trust without concealing coverage gaps.
 description_source: human
 description_author: co-creator
-description_updated_at: 2026-08-30T20:20:00-07:00
+description_updated_at: 2026-08-31T00:29:00-07:00
 ---
 
 # F001 — Workspace & Source Truth
@@ -44,7 +44,7 @@ F001 does not infer business meaning, parse APIs, run tests, or claim change imp
 
 ## User journey
 
-1. An architect creates or opens a Workspace and chooses **Connect Git**, **Upload directory**, or both.
+1. An architect creates or opens a Workspace and independently adds a **Git source**, a **directory source**, or both. At least one is required; when both are present, they jointly define the analysis scope. This is two optional inputs, not a three-way choice.
 2. For Git, the architect selects a branch, tag, or commit; Traqen resolves and displays the exact commit before capture. For a directory, the architect selects one folder; Traqen shows the selected-file total and does not call the upload successful until every selected file has been received and verified.
 3. Traqen automatically preflights authorization, source identity, revision/root, upload/session boundaries, paths, policy limits, and capture safety. It reports **can start**, **can start with expected gaps**, or **blocked**, with an actionable reason.
 4. It freezes a manifest, captures material safely, and records one disposition for every discovered item. For a combined input it records the component identity for every item.
@@ -57,6 +57,7 @@ F001 does not infer business meaning, parse APIs, run tests, or claim change imp
 ### In scope
 
 - One Workspace and a source bundle containing one Git component, one directory-upload component, or both.
+- A Chinese-first Source Truth page with two independent source cards: **Add Git source** and **Select directory**. Preflight remains disabled until at least one component is present; adding both never creates a third source type.
 - Read-authorized Git registration; resolution of a selected ref to an exact commit before capture; whole-repository scope or one optional repository directory root.
 - Full user-selected directory upload to Traqen-controlled storage, with an explicit successful-file count (for example, `20 / 20 verified`) and no successful receipt if selected files remain unverified.
 - Automatic preflight for identity, permission, revision, declared boundary, path safety, policy limits, external-content boundary, and capture safety.
@@ -121,7 +122,7 @@ At 100,000 files, success means a fixed Git-plus-directory fixture can be captur
 
 - [ ] **AC-A1:** An architect can register a read-authorized Git source, select a ref, and see it resolved to an exact commit before capture.
 - [ ] **AC-A2:** An architect can select one directory, and a success result proves every selected file was received and verified; a partial directory has no qualifying receipt.
-- [ ] **AC-A3:** A bundle may contain Git only, directory only, or one of each. Component identities stay visible, and same-named paths remain separate rather than overwriting one another.
+- [ ] **AC-A3:** The UI independently permits Git only, directory only, or one of each; it requires at least one. A bundle keeps component identities visible, and same-named paths remain separate rather than overwriting one another.
 - [ ] **AC-A4:** Two captures of the same component inputs, scope, and capture policy yield the same component/bundle identity and inventory integrity result; later branch movement or a new local directory selection does not alter an older version.
 - [ ] **AC-A5:** Every discovered item has exactly one disposition and reason; unreadable, redacted, excluded, unavailable, failed, or out-of-scope material is not silently omitted.
 - [ ] **AC-A6:** Git commit updates and reselected directory updates create a new complete sealed version while transferring only changed bytes; the resulting manifest-derived delta records all adds, modifications, and deletions.

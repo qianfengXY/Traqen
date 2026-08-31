@@ -6,6 +6,7 @@ related_features: [F002, F003, F004, F006]
 topics: [workspace, source-truth, git, directory-upload, source-bundle, incremental, source-snapshot, artifact-inventory, coverage-gap, receipt, design-gate]
 doc_kind: feature-discussion
 created: 2026-08-30
+updated: 2026-08-31
 status: approved
 design_gate: operator-approved
 ---
@@ -18,7 +19,7 @@ F001 is complete when an architect can turn either a selected Git revision, a se
 
 In practical terms, the architect can:
 
-1. create or open a Workspace and choose **Connect Git**, **Upload directory**, or both;
+1. create or open a Workspace and independently add **Git source**, **directory source**, or both; at least one is required, and the two together define one analysis scope;
 2. select a Git branch/tag/ref and see its exact resolved commit, and/or select one directory and see all selected files verified;
 3. let Traqen preflight the source automatically and capture it without executing user-controlled code;
 4. inspect a complete component-qualified source inventory, coverage limitations, receipt, and immutable history;
@@ -31,7 +32,7 @@ The first release permits one Git component, one uploaded-directory component, o
 
 | Function | What the architect gets | Problem it resolves |
 | --- | --- | --- |
-| Workspace and source choice | A Workspace-bound choice of Git, directory upload, or both. Git credentials stay protected; directory upload has an auditable user/session. | Analysis cannot silently use an arbitrary local directory or leak a credential. |
+| Workspace and source choice | Two independent Workspace-bound source cards: Git may be added or omitted; directory upload may be added or omitted; at least one is required. Git credentials stay protected; directory upload has an auditable user/session. | The user never has to choose a misleading third “Git + directory” type; analysis cannot silently use an arbitrary local directory or leak a credential. |
 | Exact component identity | Git ref resolves to a commit; a directory is represented by its verified manifest. Components retain native identities. | A moving branch, local directory, or directory pretending to be a commit cannot masquerade as stable evidence. |
 | Automatic preflight | `can start`, `can start with expected gaps`, or `blocked`, with a reason and remediation. | Authorization, path safety, limits, and integrity problems are not discovered only after a misleading scan. |
 | Safe immutable capture | Sealed component snapshots and one `SourceBundleSnapshot`; no repository script, build, hook, filter, dependency install, or uploaded content executes. | Source-controlled behavior and working-tree edits cannot alter or endanger evidence. |
@@ -75,7 +76,7 @@ Workspace
                                   ┌──────────────┴─────────────┐
                          ArtifactInventory                 CoverageGap(s)
                                   │                               │
-                                  └──────── reconciliation ───────┘
+                                  └── inventory and Gap verification ──┘
                                                  │
                                    SourceTruthReceipt + lineage
                              READY | READY_WITH_ACCEPTED_GAPS | BLOCKED
@@ -175,9 +176,9 @@ The main scene is **Source Truth inside the Workspace**, not a separate dashboar
 | Surface | Information and action |
 | --- | --- |
 | Source Truth card | Current Git/directory components, latest receipt, version identity, why it is usable/blocked, **Create new version**, and receipt/history links. |
-| Source setup | Choose Git, directory, or both; Git ref and resolved commit preview; directory selection and selected-file count. No credential or safety-rule editor. |
+| Source setup | Two independent cards: **Add Git source** and **Select directory**. Either may remain absent; at least one enables preflight, and both become the analysis scope. Git shows ref and resolved-commit preview; directory shows its selected-file total. No credential or safety-rule editor. |
 | Preflight | `可开始` / `可带预期 Gap 开始` / `已阻断`, affected component/scope, reason, and correction action. A blocker has no accept route. |
-| Capture progress | Real stages and stream totals: “discovering N”, then “verified X/Y files and bytes”, policy/reconciliation/seal. Cancel before seal; retry a failed run. |
+| Capture progress | Real stages and stream totals: “discovering N”, then “verified X/Y files and bytes”, policy, **verify captured results**, and seal. Cancel before seal; retry a failed run. |
 | Source Coverage | Component filter, path search, disposition/reason, counts, and Gap links. Large inventory is paginated/virtualized. |
 | Receipt and history | Native component identities, source bundle, policy, inventory identity, gaps/acceptance, F002 eligibility, and earlier immutable versions. |
 | New-version comparison | Baseline/target selection, which component changed, transfer reuse summary, add/modify/delete counts, and the downstream F002/F004 provenance path—not an impact verdict. |
@@ -188,28 +189,102 @@ Every error states what failed, which component/scope is affected, whether older
 
 The screens extend the Workspace rather than introduce a new dashboard. Visual examples default to **Simplified Chinese** for the current operator; that is a design-language choice, not a runtime i18n implementation promise. The stable application shell remains identical between success and block states: only the Workspace main content changes.
 
-### 10.1 A usable receipt with accepted limitations
+### 10.1 Add one or two source components
 
-![Simplified-Chinese Source Truth receipt with accepted gaps](assets/source-truth-ready-with-accepted-gaps-zh-CN.png)
+![Simplified-Chinese starting page with independent Git and directory inputs](assets/source-truth-add-sources-zh-CN.png)
 
-`READY_WITH_ACCEPTED_GAPS` deliberately uses amber rather than green. It means the sealed bundle is usable, **not complete**: Coverage shows its denominator, the Gap remains visible with owner and expiry, and the downstream action says F002 inherits the limitation. `Display-redacted` remains distinct from an analysis-limiting redaction; the latter must create a Gap.
+The page begins with exactly two independent source cards: **Add Git source** and **Select directory**. The user may add either card, or both. At least one enables preflight; when both are present, they jointly define the current analysis range. “Git + directory” is therefore a composition outcome, not a third input type or a mutually exclusive choice.
 
-### 10.2 A preflight block
+### 10.2 Configure both sources without overlay
+
+![Simplified-Chinese composite-source configuration](assets/source-truth-composite-source-setup-zh-CN.png)
+
+After both cards are present, the screen shows their native identities side by side: Git locks a resolved commit; the directory begins full discovery before its manifest is frozen. Same relative paths remain separate records under their component namespace. The composition rule is visible here only because both components have already been added.
+
+### 10.3 Capture a large combined scope
+
+![Simplified-Chinese combined-source capture progress](assets/source-truth-capture-progress-zh-CN.png)
+
+Capture shows each component and the combined total without pretending a single source exists. It first freezes the manifest, then shows real verified totals; the user-facing fourth stage is **Verify captured results**, not accounting jargon. A checkpoint permits safe recovery, and the page never renders a 100,000-row inventory during capture.
+
+### 10.4 A usable receipt with accepted limitations
+
+![Simplified-Chinese composite receipt with an accepted Gap](assets/source-truth-ready-composite-zh-CN.png)
+
+`READY_WITH_ACCEPTED_GAPS` deliberately uses amber, not green. It means the sealed bundle is usable, **not complete**: the Gap keeps an owner and expiry, and the downstream action says F002 inherits the limitation. `Display-redacted` is different from redaction that limits analysis; the latter must create a Gap.
+
+### 10.5 Create a later immutable version
+
+![Simplified-Chinese file-level new-version comparison](assets/source-truth-new-version-file-changes-zh-CN.png)
+
+The version page compares a selected baseline with a target bundle. Git reuses a locked unchanged component; a directory is fully re-enumerated to make deletions visible but transfers only missing changed bytes. Its `add` / `modify` / `delete` list is source evidence only—not an F004 impact verdict.
+
+### 10.6 A preflight block
 
 ![Simplified-Chinese blocked Source Truth preflight](assets/source-truth-preflight-blocked-zh-CN-v2.png)
 
 The block stays in the same Workspace journey. It identifies the failed check, affected boundary, correction action, disabled capture action, and that an earlier sealed version is unchanged. A safety/integrity blocker offers no accept or bypass path.
 
-### 10.3 Setup and incremental-version screen contracts
+### 10.7 Frontend page map
 
-| Moment | Primary information | Primary action | Required honesty |
+F001 opens inside `Workspace Analysis / Source Truth` by default. The left application shell is fixed across states. Only the main Workspace content changes.
+
+| Page | Purpose | Primary components | Out of scope |
 | --- | --- | --- | --- |
-| Create source foundation | Git / directory / both selection; resolved Git commit; directory selected-file total; component boundary. | Start automatic preflight. | A directory success label appears only at `verified / selected = selected / selected`; no component is silently overlaid. |
-| Freeze and capture | Stage, observed count, then frozen totals; verified files/bytes; current component; cancel/retry. | Cancel before seal or retry a failed run. | No invented percentage; all 100,000 artifacts are not rendered at once. |
-| Receipt | Bundle and native component IDs, coverage summary, Gap/acceptance, policy, history, F002 eligibility. | Inspect inventory/history or start F002 only if eligible. | Accepted limitation stays amber and inherited; Receipt never leaks raw secret. |
-| Create new version | Baseline, target Git commit and/or reselected directory, unchanged component reuse, add/modify/delete totals. | Confirm a manual new-version capture. | This is file change evidence, not impact analysis; directory deletion requires re-enumeration. |
+| Source Truth home | Let the user know whether the Workspace has a consumable source foundation. | Current version card, Git component card, directory component card, status label, `Create new version`, `Start F002`. | Business tree, API tree, or impact verdicts. |
+| Add source page | Add Git and/or directory as independent inputs. | Separate **Add Git source** and **Select directory** cards, Git URL/ref/root, directory picker, and a scope summary. | A third “combined” input, user-edited safety rules, verification algorithms, or default exclude lists. |
+| Preflight page | Explain whether capture may start. | `Ready`, `Ready with expected gaps`, `Blocked`; reason, affected component, correction action. | Accept, continue, or bypass controls for blockers. |
+| Capture progress page | Show Git fetch, directory upload, manifest freeze, captured-result verification, and seal. | Stage progress, file/byte counts, current component, run in background, cancel before seal, retry failure. | Log streams that force the user to judge success manually. |
+| Receipt detail page | Show replayable evidence for a sealed source bundle. | Bundle ID, component identities, coverage, gaps, inventory summary, F002 eligibility, history link. | Raw secrets, credentials, temporary upload sessions, or local paths. |
+| Artifact Inventory page | Let the user inspect what was captured or skipped at large scale. | Search, component filter, disposition filter, pagination/virtual list, gap links. | Rendering all 100,000 rows at once or automatically merging colliding paths. |
+| Create new version page | Manually create the next immutable source version. | Baseline version, target Git commit, directory reselection, reuse summary, add/modify/delete preview. | Automatic branch following, local folder watching, or business impact inference. |
 
-This design does not include a global dashboard, live log tail, raw-secret viewer, source browser, API/function tree, or production implementation. Those either bypass source decisions or belong to later features.
+### 10.8 Core user flow
+
+1. The user opens a Workspace and sees Source Truth home. If no source exists, two independent cards appear: `Add Git source` and `Select directory`; preflight stays disabled until one is present.
+2. For Git, the user enters the repository URL, selects a branch/tag/ref and optional directory root. The frontend explains that the ref will resolve to an exact commit, then confirms the locked short SHA and commit time.
+3. For a directory, the user selects a folder through the browser directory picker. The frontend enumerates all selected files and shows `N files selected`; a successful receipt is possible only after `N/N verified`.
+4. If Git and directory are both present, the UI shows two component cards rather than merging them into one tree. Colliding relative paths appear as separate rows with their source component.
+5. After preflight passes, capture starts. Progress first says that files are being discovered; after manifest freeze it shows verified totals. Large inputs show per-component stages.
+6. After seal succeeds, the user lands on receipt details. `READY` may start F002. `READY_WITH_ACCEPTED_GAPS` stays amber and shows inherited limits. `BLOCKED` cannot start F002.
+7. When source material changes, the user clicks `Create new version`. Git chooses a new commit; directory input reselects the business folder or a new folder version. The frontend previews changed files and bytes to transfer while stating that the result is a complete new logical version.
+
+### 10.9 State, button, and copy rules
+
+| State | Main label | Allowed actions | Forbidden actions | Copy requirement |
+| --- | --- | --- | --- | --- |
+| `EMPTY` | No source foundation | Add Git, upload directory | Start F002 | "Select at least one source to establish the analysis foundation." |
+| `PREFLIGHT_READY` | Ready | Create snapshot, edit source | Start F002 | Show the Git commit to lock and/or directory file count. |
+| `PREFLIGHT_WARN` | Ready with expected gaps | Create snapshot, view expected gaps | Green success label | Explain that the limits will enter the receipt and be inherited by F002. |
+| `PREFLIGHT_BLOCKED` | Blocked | Edit source and scope | Create snapshot, accept block, start F002 | Show block reason, affected component, correction action, and old-version availability. |
+| `CAPTURING` | Building snapshot | Run in background, cancel before seal | Start F002, edit active source | Show stage, file/byte progress, and current component. |
+| `FAILED_RETRYABLE` | Retryable failure | Retry, cancel this run | Issue receipt | Separate network/storage transient failures from user-fixable problems. |
+| `SEALED_READY` | Ready for F002 | Start F002, view receipt, create new version | Modify old snapshot | Explain that the version is sealed and later input cannot change it. |
+| `SEALED_WITH_GAPS` | Usable with limitations | Review accepted non-blocking gaps, start F002, create new version | Present status as green complete | Keep gaps in amber with owner, reason, expiry, and inheritance scope. |
+
+Default page copy is Simplified Chinese. English remains only for object names, status codes, commits, hashes, Receipt, Gap, and other terms that must align exactly with implementation and documentation.
+
+### 10.10 100k-file and incremental experience
+
+The frontend cannot treat large capture as an opaque upload. Users must see what the system is doing while the browser avoids large-list overload:
+
+- Discovery shows observed counts only; reliable percentage appears only after manifest freeze gives a known denominator.
+- Git and directory counts/stages are displayed separately, then summarized at bundle level, so a 50,000 + 50,000 combined input is not misread as one source.
+- Artifact Inventory uses search, filters, pagination or virtualization; the default view shows summary, exceptions, and recent changes instead of every row.
+- Creating a new directory version still enumerates every selected file to detect deletions, but uploads only new or modified bytes missing on the server. The UI shows both "enumerated total" and "bytes to transfer".
+- Delta shows only file-level `add`, `modify`, and `delete`, filterable by component. Rename is shown as delete plus add in MVP.
+- Failed draft runs never affect sealed versions. The page must say when the previous receipt remains usable.
+
+### 10.11 Frontend acceptance checks
+
+- The Chinese shell is consistent across success, warning, block, capturing, and new-version states, with only `工作空间分析` selected in the left nav.
+- A user can independently add Git, directory, or both from an empty Workspace within three steps and see component identity, locked commit, or directory verified count; the page never offers a third combined-source mode.
+- A blocked preflight page has no continue, accept, or F002 entry point. Non-blocking gaps remain amber, not green.
+- A 100,000-file combined input does not freeze the browser; Inventory is searchable, filterable, paginated or virtualized.
+- The new-version page shows Git/directory add/modify/delete and reuse summary, but not impact analysis.
+- Receipt details do not display credentials, raw secrets, temporary upload sessions, or local absolute paths.
+
+This design does not include a global dashboard, live log tail, raw-secret viewer, source editor, API/function tree, or production implementation. Those either bypass source decisions or belong to later features.
 
 ## 11. F002 admission and delta contracts
 
