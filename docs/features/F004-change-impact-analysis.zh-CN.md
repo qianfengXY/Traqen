@@ -1,4 +1,4 @@
-> 语言：**简体中文** · [English](F004-claim-review.md)
+> 语言：**简体中文** · [English](F004-change-impact-analysis.md)
 
 ---
 feature_ids: [F004]
@@ -12,7 +12,7 @@ description_author: co-creator
 description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F004 — 测试/执行证据、变更影响与重验证
+# F004 — 变更影响分析
 
 **状态：** Spec
 **负责人：** TBD

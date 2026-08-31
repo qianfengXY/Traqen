@@ -1,4 +1,4 @@
-> Language: **English** · [简体中文](F004-claim-review.zh-CN.md)
+> Language: **English** · [简体中文](F004-change-impact-analysis.zh-CN.md)
 
 ---
 feature_ids: [F004]
@@ -12,7 +12,7 @@ description_author: co-creator
 description_updated_at: 2026-08-29T03:18:18Z
 ---
 
-# F004 — Test/Execution Evidence, Change Impact & Revalidation
+# F004 — Change Impact Analysis
 
 **Status:** Spec
 **Owner:** TBD

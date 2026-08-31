@@ -15,4 +15,4 @@ This is the hot operational view for the approved legacy-system-understanding re
 | F001 | Workspace & Source Truth | spec | CodeX | [F001](docs/features/F001-legacy-system-understanding.md) |
 | F002 | Deterministic Evidence & API Structure | spec | TBD | [F002](docs/features/F002-feature-api-traceability.md) |
 | F003 | Agent Candidates & Reviewed Business Function Tree | spec | TBD | [F003](docs/features/F003-traceability-graph.md) |
-| F004 | Test/Execution Evidence, Change Impact & Revalidation | spec | TBD | [F004](docs/features/F004-claim-review.md) |
+| F004 | Change Impact Analysis | spec | TBD | [F004](docs/features/F004-change-impact-analysis.md) |

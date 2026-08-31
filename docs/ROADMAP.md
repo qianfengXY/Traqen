@@ -26,7 +26,7 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 | F001 | P0 | Workspace & Source Truth | spec | CodeX | operator-approved [source-truth design](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md) | [F001](features/F001-legacy-system-understanding.md) |
 | F002 | P0 | Deterministic Evidence & API Structure | spec | TBD | operator-confirmed redesign | [F002](features/F002-feature-api-traceability.md) |
 | F003 | P1 | Agent Candidates & Reviewed Business Function Tree | spec | TBD | operator-confirmed redesign | [F003](features/F003-traceability-graph.md) |
-| F004 | P0 | Test/Execution Evidence, Change Impact & Revalidation | spec | TBD | operator-confirmed redesign | [F004](features/F004-claim-review.md) |
+| F004 | P0 | Change Impact Analysis | spec | TBD | operator-confirmed redesign | [F004](features/F004-change-impact-analysis.md) |
 | F006 | P2 | Workspace capability settings | spec | TBD | operator-authorized [design convergence](../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.md) | [F006](features/F006-workspace-capability-settings.md) |
 
 ## Delivery waves

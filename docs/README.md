@@ -21,7 +21,7 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 | F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | product architecture |
 | F002 | [Deterministic Evidence & API Structure](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
 | F003 | [Agent Candidates & Reviewed Business Function Tree](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | product architecture |
-| F004 | [Test/Execution Evidence, Change Impact & Revalidation](features/F004-claim-review.md) · [中文](features/F004-claim-review.zh-CN.md) | product architecture |
+| F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
 | F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
 F001–F004 are the active legacy-system-understanding design baseline. F006 retains its separate implementation track. Historical working artifacts may remain unlinked for compatibility or audit, but cannot compete with this table, the roadmap, or the active architecture documents.
