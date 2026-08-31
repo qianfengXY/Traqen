@@ -187,7 +187,7 @@ Every error states what failed, which component/scope is affected, whether older
 
 ## 10. Frontend interaction design
 
-The screens extend the Workspace rather than introduce a new dashboard. Visual examples default to **Simplified Chinese** for the current operator; that is a design-language choice, not a runtime i18n implementation promise. The stable application shell remains identical between success and block states: only the Workspace main content changes.
+The screens extend the Workspace rather than introduce a new dashboard. Visual examples default to **Simplified Chinese** for the current operator; that is a design-language choice, not a runtime i18n implementation promise. The visual shell is the current product shell: its logo, Workspace switcher, top-bar controls, grouped navigation, labels, icons, order, and active marker are copied from the active web application. F001 changes only the Workspace main content.
 
 ### 10.1 Add one or two source components
 
