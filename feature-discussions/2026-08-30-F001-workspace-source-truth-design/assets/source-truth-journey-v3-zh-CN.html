@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>F001 八站来源快照工作台 v3</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --sidebar: #f2f4f8;
+      --text: #111827;
+      --muted: #64748b;
+      --border: #dbe3ef;
+      --border-strong: #cbd5e1;
+      --blue: #2563eb;
+      --blue-soft: #e8f1ff;
+      --green: #16a34a;
+      --green-soft: #eaf8ef;
+      --orange: #d97706;
+      --orange-soft: #fff7e6;
+      --red: #dc2626;
+      --red-soft: #fff0f0;
+      --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 8px 24px rgba(15, 23, 42, .04);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-width: 1180px; height: 100%; color: var(--text); background: var(--bg); }
+    body { display: flex; overflow: hidden; }
+    button { font: inherit; }
+
+    .sidebar {
+      width: 236px;
+      height: 100vh;
+      flex: 0 0 236px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 22px 16px 18px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 24px; font-size: 20px; font-weight: 800; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: var(--blue); box-shadow: 0 7px 14px rgba(37, 99, 235, .2); }
+    .side-label { margin: 0 8px 9px; font-size: 11px; font-weight: 800; letter-spacing: .14em; color: #718096; text-transform: uppercase; }
+    .workspace-card { padding: 13px 14px; border: 1px solid #8fb9ff; border-radius: 12px; background: #e5efff; margin-bottom: 24px; }
+    .workspace-card strong { display: block; font-size: 14px; }
+    .workspace-card span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+    .side-nav { display: grid; gap: 6px; }
+    .side-nav-item { min-height: 42px; padding: 0 12px; border-radius: 9px; display: flex; align-items: center; gap: 10px; color: #526078; font-size: 13px; }
+    .side-nav-item.active { color: #1557c9; background: #dce9fb; box-shadow: inset 3px 0 0 var(--blue); font-weight: 700; }
+    .side-nav-item .icon { width: 18px; text-align: center; font-size: 14px; }
+    .side-separator { height: 1px; background: var(--border); margin: 18px 8px; }
+    .sidebar-spacer { flex: 1; }
+    .truth-note { padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: rgba(255,255,255,.75); color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .truth-note strong { display: block; color: var(--blue); margin-bottom: 4px; }
+
+    .app { min-width: 0; flex: 1; height: 100vh; display: flex; flex-direction: column; }
+    .topbar { height: 58px; flex: 0 0 58px; padding: 0 26px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: rgba(255,255,255,.82); }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .breadcrumb strong { color: var(--text); }
+    .top-actions { display: flex; align-items: center; gap: 9px; }
+    .top-pill { padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: #526078; font-size: 11px; font-weight: 700; }
+    .top-pill.live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--green); }
+
+    .content { flex: 1; min-height: 0; padding: 18px 26px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .page-heading { min-height: 66px; display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+    .eyebrow { margin: 0 0 5px; color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 30px; line-height: 1.12; letter-spacing: -.03em; }
+    .subtitle { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+    .heading-status { margin-top: 3px; display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 9px; color: #174ea6; background: var(--blue-soft); font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .heading-status.warning { color: #9a5800; background: var(--orange-soft); }
+    .heading-status.danger { color: #b42318; background: var(--red-soft); }
+    .heading-status.success { color: #137333; background: var(--green-soft); }
+
+    .panel { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+    .metro-panel { height: 176px; flex: 0 0 176px; padding: 16px 20px 13px; }
+    .metro-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 13px; }
+    .metro-title { font-size: 14px; font-weight: 800; }
+    .metro-caption { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .position-pill { padding: 7px 10px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-size: 11px; font-weight: 800; }
+    .position-pill.warning { color: #9a5800; background: var(--orange-soft); }
+    .position-pill.danger { color: #b42318; background: var(--red-soft); }
+    .position-pill.success { color: #137333; background: var(--green-soft); }
+
+    .rail { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); align-items: start; gap: 0; padding: 0 15px; }
+    .rail::before { content: ""; position: absolute; left: 7.3%; right: 7.3%; top: 17px; height: 4px; border-radius: 999px; background: #d8dde6; }
+    .rail-progress { position: absolute; left: 7.3%; top: 17px; height: 4px; border-radius: 999px; background: var(--green); }
+    .station { position: relative; z-index: 1; text-align: center; }
+    .node { width: 36px; height: 36px; margin: 0 auto 8px; display: grid; place-items: center; border: 3px solid #c8ced8; border-radius: 50%; background: var(--surface); color: #7b8492; font-size: 12px; font-weight: 900; }
+    .station.done .node { border-color: var(--green); color: #fff; background: var(--green); }
+    .station.current .node { border-color: #cfe0ff; color: #fff; background: var(--blue); box-shadow: 0 0 0 5px #eaf2ff; }
+    .station.current.warning .node { border-color: #fde4b2; background: var(--orange); box-shadow: 0 0 0 5px #fff6e5; }
+    .station.current.danger .node { border-color: #fecaca; background: var(--red); box-shadow: 0 0 0 5px #fff0f0; }
+    .station.current.success .node { border-color: #bbf7d0; background: var(--green); box-shadow: 0 0 0 5px #ebfaef; }
+    .station-name { font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .station.current .station-name { color: var(--blue); }
+    .station.current.warning .station-name { color: var(--orange); }
+    .station.current.danger .station-name { color: var(--red); }
+    .station.current.success .station-name { color: var(--green); }
+    .station-hint { margin-top: 4px; color: #8b94a3; font-size: 9px; white-space: nowrap; }
+    .legend { display: flex; align-items: center; gap: 16px; margin-top: 13px; border-top: 1px solid #eef2f7; padding-top: 10px; color: var(--muted); font-size: 10px; }
+    .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: #c8ced8; }
+    .legend .l-done::before { background: var(--green); }
+    .legend .l-current::before { background: var(--blue); }
+    .legend .l-warning::before { background: var(--orange); }
+    .legend .l-danger::before { background: var(--red); }
+
+    .workbench { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(280px, .78fr); gap: 12px; }
+    .current-card { min-height: 0; padding: 17px 18px; display: flex; flex-direction: column; overflow: hidden; }
+    .current-card.state-warning { border-color: #f0bb63; }
+    .current-card.state-danger { border-color: #f39a9a; }
+    .card-head { display: flex; justify-content: space-between; gap: 15px; align-items: flex-start; margin-bottom: 12px; }
+    .step-label { margin: 0 0 4px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .card-head h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+    .card-copy { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .badge { display: inline-flex; align-items: center; padding: 6px 9px; border-radius: 999px; font-size: 10px; font-weight: 900; white-space: nowrap; }
+    .badge.blue { color: #1557c9; background: var(--blue-soft); }
+    .badge.green { color: #137333; background: var(--green-soft); }
+    .badge.orange { color: #9a5800; background: var(--orange-soft); }
+    .badge.red { color: #b42318; background: var(--red-soft); }
+    .badge.gray { color: #5f6b7a; background: #eef2f7; }
+
+    .source-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 11px; }
+    .source-card { padding: 13px 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-soft); }
+    .source-card.selected { border-color: #9ec0fb; background: #f2f7ff; }
+    .source-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; font-weight: 800; }
+    .source-title span:first-child { display: flex; align-items: center; gap: 7px; }
+    .source-meta { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; color: var(--muted); font-size: 10px; }
+    .source-meta strong { color: #253046; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .source-description { min-height: 34px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .source-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+    .progress-block { padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); margin-bottom: 9px; }
+    .progress-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 11px; }
+    .progress-head strong { font-size: 12px; }
+    .progress-meta { color: var(--muted); font-size: 10px; }
+    .progress-track { height: 7px; overflow: hidden; margin: 9px 0 7px; border-radius: 99px; background: #e7ecf3; }
+    .progress-value { height: 100%; border-radius: inherit; background: var(--blue); }
+    .progress-value.green { background: var(--green); }
+    .progress-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+
+    .inventory-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-bottom: 10px; }
+    .metric { padding: 10px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); }
+    .metric span { display: block; color: var(--muted); font-size: 9px; }
+    .metric strong { display: block; margin-top: 3px; font-size: 17px; }
+    .gap-list { display: grid; gap: 7px; }
+    .gap-row { padding: 9px 10px; display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: center; gap: 9px; border: 1px solid #f3d3a0; border-radius: 9px; background: #fffaf0; font-size: 10px; }
+    .gap-row.danger { border-color: #f4b3b3; background: #fff4f4; }
+    .gap-icon { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--orange); font-weight: 900; }
+    .gap-row.danger .gap-icon { background: var(--red); }
+    .gap-row strong { display: block; font-size: 11px; }
+    .gap-row p { margin: 2px 0 0; color: var(--muted); }
+
+    .receipt { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; }
+    .receipt-main, .receipt-side { padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+    .receipt-main h3, .receipt-side h3 { margin: 0 0 9px; font-size: 12px; }
+    .receipt-id { margin-bottom: 9px; color: var(--blue); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 800; }
+    .receipt-line { display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; border-top: 1px solid #e6ebf2; color: var(--muted); font-size: 10px; }
+    .receipt-line strong { color: #253046; text-align: right; }
+    .admission { padding: 10px; border-radius: 9px; background: var(--blue-soft); color: #174ea6; font-size: 10px; line-height: 1.5; }
+
+    .danger-box { padding: 13px; border: 1px solid #f29a9a; border-left: 4px solid var(--red); border-radius: 10px; background: var(--red-soft); }
+    .danger-box h3 { margin: 0 0 7px; font-size: 13px; color: #9f1d1d; }
+    .danger-box p { margin: 4px 0; color: #8f2a2a; font-size: 11px; line-height: 1.55; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .action-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 11px; }
+    .action-set { display: flex; gap: 8px; }
+    .button { min-height: 34px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: #263247; font-size: 11px; font-weight: 800; }
+    .button.primary { border-color: var(--blue); color: #fff; background: var(--blue); }
+    .button.warn { border-color: #e0a64b; color: #8a4e00; background: #fff9ec; }
+    .button.danger { border-color: #f1aaaa; color: #b42318; background: #fff6f6; }
+    .button:disabled { border-color: #dde3ec; color: #a0a8b5; background: #f3f5f8; }
+
+    .context-stack { min-height: 0; display: grid; grid-template-rows: 1fr 1.18fr; gap: 12px; }
+    .context-card { min-height: 0; padding: 15px 16px; overflow: hidden; }
+    .context-card h3 { margin: 0 0 9px; font-size: 13px; }
+    .context-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .context-card .context-kicker { display: block; margin-bottom: 7px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .context-card.next { border-color: #acd0ff; background: #f3f8ff; }
+    .context-card.next h3 { color: #1557c9; }
+    .evidence-list { display: grid; gap: 7px; margin-top: 10px; }
+    .evidence-item { padding: 8px 9px; border-radius: 8px; background: #f3f5f8; color: #445067; font-size: 10px; }
+    .evidence-item::before { content: "✓"; margin-right: 6px; color: var(--green); font-weight: 900; }
+
+    .footer-strip { min-height: 54px; flex: 0 0 54px; padding: 10px 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .footer-copy { min-width: 0; }
+    .footer-copy strong { display: block; font-size: 11px; }
+    .footer-copy span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .footer-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+    @media (max-width: 1300px) {
+      .sidebar { width: 216px; flex-basis: 216px; }
+      .content { padding-left: 20px; padding-right: 20px; }
+      .station-name { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="sidebar" aria-label="F001 工作区上下文">
+    <div class="brand"><span class="brand-mark">T</span><span>Traqen</span></div>
+    <p class="side-label">Workspace</p>
+    <div class="workspace-card">
+      <strong>order-platform</strong>
+      <span><span id="side-baseline">示例工作空间</span></span>
+    </div>
+    <p class="side-label">来源真相</p>
+    <nav class="side-nav">
+      <div class="side-nav-item active"><span class="icon">◎</span><span>来源快照</span></div>
+      <div class="side-nav-item"><span class="icon">◷</span><span>快照历史</span></div>
+    </nav>
+    <div class="side-separator"></div>
+    <div class="side-nav-item"><span class="icon">⌁</span><span>清单与缺口</span></div>
+    <div class="sidebar-spacer"></div>
+    <div class="truth-note">
+      <strong>F001 边界</strong>
+      八站来源快照交互设计。全局导航由 F005 单独设计。
+    </div>
+  </aside>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="breadcrumb"><span>order-platform</span><span>/</span><strong>来源快照</strong></div>
+      <div class="top-actions">
+        <span class="top-pill">交互设计稿 · 演示数据</span>
+        <span class="top-pill">无上传或后端连接</span>
+        <span class="top-pill">中文</span>
+        <span class="top-pill">WEB-OPERATOR</span>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">F001 · Workspace & Source Truth</p>
+          <h1 id="page-title"></h1>
+          <p class="subtitle" id="page-subtitle"></p>
+        </div>
+        <div class="heading-status" id="heading-status"></div>
+      </section>
+
+      <section class="metro-panel panel" aria-label="F001 八站来源包旅程">
+        <div class="metro-head">
+          <div>
+            <div class="metro-title">来源包旅程</div>
+            <div class="metro-caption">完整流程固定在当前任务现场；完成站可回看证据，下一站只显示进入条件。</div>
+          </div>
+          <div class="position-pill" id="position-pill"></div>
+        </div>
+        <div class="rail-window" id="rail-window"><div class="rail" id="rail"></div></div>
+        <div class="legend">
+          <span class="l-done">已完成并留证</span>
+          <span class="l-current">当前步骤</span>
+          <span>尚未到达</span>
+          <span class="l-warning">带已知限制</span>
+          <span class="l-danger">不可绕过的阻断</span>
+        </div>
+      </section>
+
+      <section class="workbench">
+        <article class="current-card panel" id="current-card" aria-label="当前节点"></article>
+        <aside class="context-stack">
+          <section class="context-card panel" id="previous-card"></section>
+          <section class="context-card panel next" id="next-card"></section>
+        </aside>
+      </section>
+
+      <section class="footer-strip panel" id="footer-strip"></section>
+    </main>
+  </div>
+
+
+<style>
+  html,body{min-width:0;height:auto;min-height:100%;overflow:auto}
+  body{padding-bottom:48px} .sidebar{position:sticky;top:0;height:calc(100vh - 48px)}
+  .app{height:auto;min-height:calc(100vh - 48px)}.content{flex:1}
+  .topbar{min-height:58px;flex-wrap:wrap;gap:8px}
+  .workbench{min-height:510px;grid-template-columns:minmax(0,1.85fr) minmax(285px,.85fr)}
+  .current-card{overflow:visible}.context-stack{grid-template-rows:auto 1fr}
+  .context-card{overflow:visible;min-height:175px}
+  .station{background:none;border:0;cursor:pointer;padding:0;color:inherit;font:inherit}
+  .station:focus-visible,.button:focus-visible{outline:3px solid #90b9ff;outline-offset:3px}
+  .station.limited .node{background:var(--orange);border-color:var(--orange)}
+  .station.limited .station-name{color:var(--orange)}
+  .station-hint{font-size:10px}.legend{flex-wrap:wrap}.metro-panel{height:auto;min-height:176px;flex-basis:auto}
+  .rail-window{padding:5px 0}.metro-head{gap:10px}.metro-head>div:first-child{min-width:0}.position-pill{flex:none;white-space:nowrap}
+  .metro-caption{line-height:1.6}
+  .source-description,.source-meta,.progress-foot,.card-copy,.context-card p,.receipt-line{font-size:12px}
+  .source-grid{gap:14px}.source-card{padding:16px}.source-title{font-size:15px}
+  .step-label{font-size:11px}.card-head h2{font-size:22px}
+  .button{font-size:12px;min-height:38px;cursor:pointer}.button:disabled{cursor:not-allowed}
+  .badge{font-size:11px}.action-row{margin-top:auto;flex-wrap:wrap;padding-top:18px}
+  .step-body{display:grid;gap:12px}.hint{font-size:12px;color:var(--muted);line-height:1.7;margin:0}
+  .notice{padding:12px 14px;border-radius:10px;background:var(--blue-soft);color:#174ea6;font-size:12px;line-height:1.65}
+  .notice.orange{background:var(--orange-soft);color:#8a4e00}.notice.red{background:var(--red-soft);color:#a32121}
+  label.field{display:grid;gap:6px;margin-top:12px;font-size:12px;color:#35435a}
+  input,select,textarea{font:inherit;color:var(--text);background:white;border:1px solid var(--border-strong);border-radius:7px;padding:9px 10px;width:100%;min-width:0}
+  textarea{resize:vertical;min-height:58px;font-size:12px}input:focus,select:focus,textarea:focus{outline:2px solid #bdd5ff;border-color:var(--blue)}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.check{display:flex;gap:9px;align-items:center;font-size:12px}.check input{width:16px}
+  .run-list{display:grid;gap:9px}.run-item{display:flex;gap:12px;align-items:center;padding:13px 14px;background:var(--surface-soft);border:1px solid var(--border);border-radius:10px}
+  .run-symbol{width:27px;height:27px;flex:none;border-radius:50%;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center}
+  .run-symbol.done{background:var(--green-soft);color:#137333}.run-item div:nth-child(2){flex:1}.run-item strong{font-size:13px}.run-item p{font-size:11px;color:var(--muted);margin:4px 0 0}
+  .number{font-size:28px;font-weight:800;letter-spacing:-.04em;margin:12px 0 5px}
+  .ledger{width:100%;border-collapse:collapse;font-size:12px}
+  .ledger th,.ledger td{padding:11px 10px;text-align:left;border-bottom:1px solid var(--border);vertical-align:top}
+  .ledger th{color:var(--muted);font-weight:600;background:var(--surface-soft)}
+  .ledger td{overflow-wrap:anywhere}.ledger .mono,.mono{font-family:ui-monospace,monospace;font-size:11px}
+  .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.metric span{font-size:11px}.metric strong{font-size:22px}
+  .gap-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.gap-grid .gap-top{flex-direction:column;align-items:flex-start}
+  .gap-detail{border:1px solid #efcc92;background:#fffcf5;border-radius:10px;padding:12px 14px}
+  .gap-top{display:flex;justify-content:space-between;gap:8px;font-size:13px}.gap-detail p{font-size:11px;line-height:1.6;color:var(--muted);margin:6px 0}
+  .gap-detail.accepted{background:#fff8e9}.gap-detail .field{margin-top:6px}
+  .small-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+  .receipt{grid-template-columns:1fr}.receipt-line strong{overflow-wrap:anywhere;max-width:67%}
+  .context-card.next .button{margin-top:14px}.evidence-item{font-size:11px;line-height:1.5;overflow-wrap:anywhere}
+  .footer-copy span{white-space:normal;font-size:11px}.footer-copy strong{font-size:12px}
+  .status-live{color:var(--muted);font-size:11px}
+  .demo-bar{position:fixed;bottom:0;left:0;right:0;z-index:20;display:flex;gap:8px;align-items:center;padding:7px 18px;background:#132339;color:white;font-size:11px;min-height:48px}
+  .demo-bar select{width:184px;padding:5px;font-size:11px}.demo-bar button{padding:6px 9px;background:#253e5d;color:#fff;border:1px solid #526581;border-radius:6px;cursor:pointer;font:inherit}
+  .demo-bar .spacer{flex:1}.demo-bar .minor{color:#c2cfdf}
+  body.controls-hidden .demo-bar{display:none}body.controls-hidden{padding-bottom:0}.show-controls{display:none}body.controls-hidden .show-controls{display:block;position:fixed;bottom:8px;right:8px;z-index:21}
+  dialog{width:min(620px,calc(100vw - 32px));max-height:85vh;border:1px solid var(--border);border-radius:16px;padding:24px;box-shadow:0 20px 80px #152c4c33}
+  dialog::backdrop{background:#10203966}dialog h2{font-size:20px}dialog p{line-height:1.7;font-size:13px;overflow-wrap:anywhere}dialog .button{margin-top:15px}
+  .error-message{color:#ad2424;font-size:12px;min-height:18px;margin:5px 0}
+  @media(max-width:1150px){.sidebar{width:195px;flex-basis:195px}.content{padding:16px}.workbench{grid-template-columns:minmax(0,1fr) 265px}.rail{padding:0}.station-name{font-size:10px}.topbar{padding:10px 16px}}
+  @media(max-width:900px){.sidebar{display:none}.topbar{height:auto}.workbench{grid-template-columns:1fr}.context-stack{grid-template-columns:1fr 1fr;grid-template-rows:auto}.current-card{min-height:480px}.rail{min-width:850px}.rail-window{overflow-x:auto}.page-heading{min-height:80px}.demo-bar{flex-wrap:wrap}.demo-bar .minor{display:none}}
+  @media(max-width:550px){.content{padding:12px}.top-actions .top-pill:nth-child(n+3){display:none}.top-pill{font-size:9px}.topbar{padding:10px 12px}.page-heading{display:block}.page-heading h1{font-size:24px}.heading-status{margin-top:9px}.source-grid,.field-row,.context-stack,.gap-grid{grid-template-columns:1fr}.context-card{min-height:0}.current-card{padding:15px;min-height:500px}.metrics{gap:5px}.metric{padding:9px}.metric strong{font-size:18px}.action-row,.footer-strip{align-items:flex-start;gap:12px}.footer-strip{flex-direction:column}.source-meta{grid-template-columns:auto 1fr}.demo-bar{padding:6px;gap:5px}.demo-bar select{width:130px}.demo-bar .spacer{display:none}.demo-bar .long{display:none}body{padding-bottom:85px}}
+</style>
+<div class="demo-bar" aria-label="设计稿控制">
+  <strong>设计稿控制</strong>
+  <select id="scene-picker" aria-label="跳看节点"></select>
+  <button data-action="play" id="play-button">暂停系统模拟</button>
+  <button data-action="prev-scene" aria-label="上一张设计稿">←</button>
+  <button data-action="next-scene" aria-label="下一张设计稿">→</button>
+  <span class="minor">跳看会载入预设画面；主流程请用页面内按钮</span>
+  <span class="spacer"></span>
+  <button data-action="inject-block" class="long">模拟预检阻断</button>
+  <button data-action="inject-retry" class="long">模拟传输失败</button>
+  <button data-action="reset">重置演示</button>
+  <button data-action="hide-controls">隐藏</button>
+</div>
+<button class="button show-controls" data-action="show-controls">显示设计稿控制</button>
+<dialog id="detail-dialog"><div id="dialog-body"></div><button class="button" data-action="close-dialog">关闭详情</button></dialog>
+<script>
+const stations=[
+ ["添加来源","用户选择"],["配置范围","用户确认"],["自动预检","系统执行"],["枚举材料","系统执行"],
+ ["冻结清单","系统执行"],["采集与校验","系统执行"],["核对清单与缺口","用户核对"],["冻结来源包","系统执行"]
+];
+const scenes=[["1","01 · 添加来源"],["2","02 · 配置范围"],["3","03 · 自动预检"],["4","04 · 枚举材料"],["5","05 · 冻结清单"],["6","06 · 采集与校验"],["7","07 · 核对清单与缺口"],["8","08 · 正在冻结来源包"],["frozen","08 · 来源包已冻结"],["blocked","03 · 预检阻断"],["retry","06 · 传输失败"],["incremental","02 · 增量新版本"]];
+const key="traqen-f001-journey-v3";
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>Number(n).toLocaleString("en-US");
+const btn=(text,action,cls="",disabled=false)=>'<button class="button '+cls+'" data-action="'+action+'" '+(disabled?"disabled":"")+'>'+text+'</button>';
+const badge=(text,tone="blue")=>'<span class="badge '+tone+'">'+text+'</span>';
+const note=(text,tone="")=>'<div class="notice '+tone+'">'+text+'</div>';
+const field=(label,id,value,type="text")=>'<label class="field">'+label+'<input id="'+id+'" type="'+type+'" value="'+esc(value)+'"></label>';
+const demoCommit="demo-9f2b8e4";
+const gaps=[{id:"G-01",path:"git / media/demo-video.mp4",reason:"Git LFS 对象未取得",impact:"该文件的原始内容不可供下游分析。"},
+{id:"G-02",path:"git / archives/data-dictionary.pdf",reason:"Git LFS 对象未取得",impact:"该文档的原始内容不可供下游分析。"}];
+function fresh(){return {step:1,phase:0,git:false,dir:false,url:"https://example.invalid/order-platform.git",ref:"main",dirName:"legacy-docs",scope:"all",root:"services/orders",baseline:false,paused:false,block:false,retry:false,cancelled:false,sealed:false,attempt:1,accept:{},reason:{},expiry:"2026-12-31",confirmed:false,events:[]};}
+function seeded(scene){
+ const s=fresh();s.paused=true;
+ if(scene!=="1"){s.git=true;s.dir=true;s.step=Math.min(8,Number(scene)||3);s.phase=2;s.confirmed=true;}
+ if(scene==="frozen"){s.step=8;s.phase=4;s.sealed=true;s.accept={"G-01":"试点不依赖演示视频；限制继续继承。","G-02":"已知文档缺失，后续结论需注明覆盖未知。"};}
+ if(scene==="blocked"){s.step=3;s.block=true;s.baseline=true;s.blockedSelection=JSON.stringify([s.ref,s.scope,s.root]);}
+ if(scene==="retry"){s.step=6;s.retry=true;s.baseline=true;}
+ if(scene==="incremental"){s.step=2;s.baseline=true;s.ref="release/next";s.confirmed=false;}
+ return s;
+}
+let S=fresh(),timer;
+const params=new URLSearchParams(location.search),scene=params.get("scene");
+try{S=scene?seeded(scene):JSON.parse(sessionStorage.getItem(key))||fresh();if(!scene&&sessionStorage.getItem(key))S.paused=true;}catch{S=fresh();}
+if(params.get("clean")==="1")document.body.classList.add("controls-hidden");
+function save(){try{sessionStorage.setItem(key,JSON.stringify(S));}catch{}}
+const revision=()=>S.baseline?(S.baselineVersion||3)+1:1;
+const oldRevision=()=>S.baselineVersion||3;
+const totals=()=>({git:S.git?50000:0,dir:S.dir?50000:0,total:(Number(S.git)+Number(S.dir))*50000,missing:S.git?2:0});
+const allAccepted=()=>!S.git||(S.expiry>"2026-09-06"&&gaps.every(g=>S.accept[g.id]));
+function log(text){S.events.push(text);}
+function move(step){S.step=step;S.phase=0;S.confirmed=true;log("进入第 "+step+" 站："+stations[step-1][0]);save();render();}
+function mode(){return S.cancelled?["已取消","gray"]:S.block?["预检阻断","red"]:S.retry?["传输失败 · 可重试","red"]:S.sealed?[S.git?"已冻结 · 带 2 个限制":"已冻结 · 无已知缺口",S.git?"orange":"green"]:S.step===7?[allAccepted()?"缺口已处置 · 待冻结":"需要你核对","orange"]:[S.step<=2?"等待你操作":"系统处理中","blue"];}
+function title(){return S.sealed?"来源包已冻结":S.cancelled?"本次采集已取消":S.block?"预检遇到阻断":S.retry?"采集等待恢复":S.baseline?"建立新版本来源快照":"建立首个来源快照";}
+function previous(){
+ if(S.step===1)return S.baseline?"基线 r"+oldRevision()+" 的 Receipt 仍可用。为新版本重新选择来源；旧版本保持不变。":"这是本次旅程的起点。选择 Git、目录，或两者同时添加。";
+ if(S.step===2)return (S.git?"Git 已添加；":"")+(S.dir?"目录 "+esc(S.dirName)+" 已选择；":"")+"本次使用 "+(Number(S.git)+Number(S.dir))+" 个来源组件。";
+ if(S.step===3)return "已确认 "+(S.git?"Git 请求版本 "+esc(S.ref)+"、"+(S.scope==="all"?"全仓库":"目录根 "+esc(S.root))+"；":"")+(S.dir?"目录 "+esc(S.dirName)+" 的全部已选文件。":"");
+ if(S.step===4)return "来源权限与声明范围预检通过。"+(S.git?"Git 精确版本已锁定为 "+demoCommit+"。":"")+"大文件和外部内容仍在后续逐项确认。";
+ if(S.step===5)return "所选范围已完整枚举，发现 "+fmt(totals().total)+" 个文件条目。目录未枚举完前不会推断删除。";
+ if(S.step===6)return "清单 demo-manifest-r"+(revision())+" 已冻结，固定 "+fmt(totals().total)+" 项。"+(S.git?"Git "+fmt(totals().git)+"；":"")+(S.dir?"目录 "+fmt(totals().dir)+"。":"");
+ if(S.step===7)return fmt(totals().total)+" 项均已有处置："+fmt(totals().total-totals().missing)+" 内容已验证，"+totals().missing+" 明确缺失。清单计数守恒。";
+ return S.git?"两个非阻断 Gap 已留下责任人、理由与有效期。接受仅允许带限制继续，Gap 仍存在。":"完整清单已核对，无已知材料缺口。用户已确认冻结来源包。";
+}
+function nextCopy(){
+ if(S.cancelled)return "如需继续，用相同选择开始新尝试；当前尝试保留取消记录。";
+ if(S.sealed)return "F001 已完成。下游可请求使用此 Receipt；启动时仍需重验权限、有效接受与完整性。";
+ if(S.block)return "先编辑来源或声明范围，再重新运行预检。阻断解决前不会到达第 4 站。";
+ const copy=["至少选择一种来源，点击“继续配置范围”。","确认本次范围后启动自动预检。","全部阻断检查通过后自动枚举；预告的覆盖风险留到逐项核对。","所选范围枚举完成后自动冻结清单；中断不能当作枚举结束。","清单身份与总数固定后自动开始采集与校验。","每项都有明确终态处置后自动进入核对；队列清空不代表内容完整。","没有 blocker，且所有非阻断 Gap 已有效处置后，点击“冻结来源包”。","原子最终化成功后在本节点显示 Receipt；此前不会出现可消费的半包。"];
+ return copy[S.step-1];
+}
+function renderRail(){
+ const [status,tone]=mode(),color=tone==="red"?"danger":tone==="orange"?"warning":tone==="green"?"success":"";
+ $("rail").innerHTML='<div class="rail-progress" style="width:'+((S.step-1)/7*85.4)+'%"></div>'+stations.map((x,i)=>{
+ const current=i+1===S.step;let cls=current?"current "+color:i+1<S.step?"done":"";
+ if(S.step===8&&i===6&&S.git)cls="done limited";
+ return '<button class="station '+cls+'" data-peek="'+(i+1)+'" aria-label="'+(i+1)+" "+x[0]+'"><span class="node">'+(current?(S.block||S.retry?"!":S.sealed?"✓":i+1):i+1<S.step?"✓":i+1)+'</span><div class="station-name">'+x[0]+'</div><div class="station-hint">'+x[1]+'</div></button>';
+ }).join("");
+ const railWindow=$("rail-window"),currentNode=$("rail").querySelector(".station.current .node");
+ if(currentNode&&railWindow.clientWidth<railWindow.scrollWidth){
+  const node=currentNode.getBoundingClientRect(),viewport=railWindow.getBoundingClientRect();
+  railWindow.scrollLeft+=node.left-viewport.left+node.width/2-viewport.width/2;
+ }
+ $("heading-status").className="heading-status "+color;$("heading-status").textContent=status;
+ $("position-pill").className="position-pill "+color;$("position-pill").textContent="第 "+S.step+" / 8 站";
+}
+function sources(){
+ return '<div class="source-grid"><section class="source-card '+(S.git?"selected":"")+'"><div class="source-title">Git 仓库'+badge(S.git?"已添加":"可选",S.git?"green":"gray")+'</div><p class="hint">选择固定版本的代码、文档、配置与测试材料。</p>'+field("仓库地址（演示，请勿填凭据）","git-url",S.url)+field("branch / tag / commit","git-ref",S.ref)+'<div class="source-actions">'+btn(S.git?"移除 Git":"添加 Git 来源",S.git?"remove-git":"add-git",S.git?"":"primary")+'</div></section><section class="source-card '+(S.dir?"selected":"")+'"><div class="source-title">本地目录'+badge(S.dir?"已选择":"可选",S.dir?"green":"gray")+'</div><p class="hint">选择一个目录下的全部文件，保留独立来源身份。</p>'+field("目录名称（演示）","dir-name",S.dirName)+'<p class="hint" style="margin-top:10px">此设计稿载入 50,000 项示例清单，不读取本机文件。</p><div class="source-actions">'+btn(S.dir?"移除目录":"选择示例目录",S.dir?"remove-dir":"add-dir",S.dir?"":"primary")+'</div></section></div>'+note("两种来源可以同时选择。同名路径按来源分开保留。首次采集采用全量路径；后续版本由系统识别可复用内容。")+'<p class="error-message" id="input-error" role="alert"></p>';
+}
+function scope(){
+ return '<div class="source-grid">'+(S.git?'<section class="source-card selected"><div class="source-title">Git 来源'+badge(S.baseline?"新 commit":"首次版本")+'</div><p class="hint mono">'+esc(S.url)+'</p>'+field("请求版本","scope-ref",S.ref)+'<label class="field">采集范围<select id="git-scope"><option value="all" '+(S.scope==="all"?"selected":"")+'>全仓库</option><option value="root" '+(S.scope==="root"?"selected":"")+'>一个目录根</option></select></label><div id="root-field" '+(S.scope!=="root"?"hidden":"")+'>'+field("目录根（仓库内相对路径）","git-root",S.root)+'</div><p class="hint" style="margin-top:9px">预检将请求版本解析并锁定到精确 commit。</p></section>':"")+(S.dir?'<section class="source-card selected"><div class="source-title">目录来源'+badge(S.baseline?"重新枚举":"首次全量")+'</div><p class="number" style="font-size:20px">'+esc(S.dirName)+'</p><p class="hint">范围：所选目录下全部文件。无需声明目录外材料。</p><div class="notice" style="margin-top:16px">'+(S.baseline?"基线：demo-dir-r"+oldRevision()+"<br>仍完整枚举与校验，发现新增、修改、删除；只传服务端缺失的变化字节。":"尚无可复用基线。先完整枚举，再冻结清单并采集。")+'</div></section>':"")+'</div>'+note(S.baseline?"基线 r"+oldRevision()+" → 候选 r"+revision()+" · Git 与目录独立更新。新版本仍有完整清单；未变内容物理复用。":"这是首个来源包。系统负责哈希、并发与安全策略；这里只需确认来源和范围。")+'<p class="hint">组合规则：'+(S.git&&S.dir?"git/ 与 directory/ 两个命名空间，同名文件各自保留。":"只包含已选来源组件。")+'</p><p class="error-message" id="input-error" role="alert"></p>';
+}
+function runRows(rows){return '<div class="run-list">'+rows.map((r,i)=>'<div class="run-item"><span class="run-symbol '+(S.phase>i?"done":"")+'">'+(S.phase>i?"✓":i+1)+'</span><div><strong>'+r[0]+'</strong><p>'+r[1]+'</p></div>'+badge(S.phase>i?"已通过":S.phase===i?"检查中":"等待",S.phase>i?"green":S.phase===i?"blue":"gray")+'</div>').join("")+'</div>';}
+function preflight(){
+ if(S.block)return note('<strong>来源边界校验失败 · PATH_OUTSIDE_SCOPE</strong><br>Git 条目 services/unsafe-link 指向声明范围之外。没有读取目标内容。<br>本次自动预检已停止；安全阻断不能接受或跳过。',"red")+'<div class="source-card"><strong>如何恢复</strong><p class="hint">修复来源提交后重新选择版本，或显式选择有效目录根。改变范围会形成新的预检记录。</p></div>';
+ return runRows([["检查只读授权","当前工作空间的来源读取权限。"],["解析来源身份",S.git?"请求 "+esc(S.ref)+" → 锁定 "+demoCommit:"目录上传组件，版本身份由 manifest 表达。"],["核验声明范围","全仓库 / 单一目录根与所选目录边界。"],["检查安全与采集条件","路径、策略、资源及外部内容风险。"]])+note("预检通过会自动开始枚举。预检提醒只预告风险，最终 Gap 由实际取得材料的结果确定。");
+}
+function enumerate(){
+ const t=totals();const count=S.phase<1?6800:S.phase<2?19000:S.phase<3?34000:47200;
+ return '<div class="source-grid">'+(S.git?'<section class="source-card"><div class="source-title">Git · 已提交 tree'+badge("枚举中")+'</div><div class="number">'+fmt(count)+'</div><p class="hint">已发现文件条目 · 总数尚未确定</p><p class="hint mono" style="margin-top:12px">'+demoCommit+'<br>services/orders/…</p></section>':"")+(S.dir?'<section class="source-card"><div class="source-title">目录 · '+esc(S.dirName)+badge("枚举中")+'</div><div class="number">'+fmt(Math.max(2400,count-2300))+'</div><p class="hint">已发现文件条目 · 正在读取目录层级</p><p class="hint" style="margin-top:12px">新增和删除需等完整枚举结束后确认。</p></section>':"")+'</div>'+note("正在确定本次范围中究竟有哪些文件。此时不显示百分比、预计完成时间或可信删除结论。")+'<p class="hint">完成条件：每个所选组件都枚举闭合；没有未知的未读子范围。</p>';
+}
+function manifest(){
+ const t=totals();return '<div class="metrics"><div class="metric"><span>枚举完成 · 待锁定总数</span><strong>'+fmt(t.total)+'</strong></div><div class="metric"><span>来源组件</span><strong>'+(Number(S.git)+Number(S.dir))+'</strong></div><div class="metric"><span>枚举未闭合范围</span><strong>0</strong></div></div><table class="ledger"><thead><tr><th>组件</th><th>固定身份 / 范围</th><th>文件条目</th></tr></thead><tbody>'+(S.git?'<tr><td>Git</td><td class="mono">'+demoCommit+'<br>'+esc(S.scope==="all"?"全仓库":S.root)+'</td><td>50,000</td></tr>':"")+(S.dir?'<tr><td>目录</td><td>'+esc(S.dirName)+'<br><span class="mono">demo-dir-manifest-r'+(revision())+'</span></td><td>50,000</td></tr>':"")+'</tbody></table>'+note("清单正在最终核验。冻结成功后，第 6 站才使用上述总数计算进度。冻结的是采集清单，文件内容与来源包尚未密封。")+(S.baseline?'<div class="source-card"><strong>文件级变化计划（示例）</strong><p class="hint">'+(S.git?"Git：新增 12 · 修改 23 · 删除 12。":"")+(S.dir?"目录：新增 4 · 修改 6 · 删除 4。":"")+'<br>基线完整清单 → 新完整清单；仅传缺失字节。变化不等于业务影响。</p></div>':"");
+}
+function capture(){
+ const t=totals(),n=35000+S.phase*4000;
+ const block=(kind,total,done,missing)=>'<section class="progress-block"><div class="progress-head"><strong>'+kind+'</strong>'+badge(S.retry?"等待重试":"采集与校验",S.retry?"red":"blue")+'</div><div class="progress-track"><div class="progress-value" style="width:'+(done/total*100)+'%"></div></div><div class="progress-foot"><span>已处置 '+fmt(done)+' / '+fmt(total)+' 项</span><span>'+Math.round(done/total*100)+'%</span></div><p class="hint">内容已验证 '+fmt(done-missing)+' · 明确缺失 '+missing+' · 待处理 '+fmt(total-done)+'</p></section>';
+ return (S.retry?note("<strong>连接中断 · TRANSFER_INTERRUPTED</strong><br>已验证内容与检查点已保留。重试将创建新尝试，并继续校验尚未完成项。","red"):"")+(S.git?block("Git · "+demoCommit,50000,n,2):"")+(S.dir?block("目录 · "+esc(S.dirName),50000,n-3000,0):"")+note(S.baseline?"物理增量：只传服务器缺失内容。示例需传 34.2 MB，已传 21.6 MB；完整新版本仍覆盖 "+fmt(t.total)+" 项。":"分母已冻结。进度表示每项已有明确处置，包含已登记的缺失项；“处置完成”不等于“内容全部取得”。")+ '<p class="hint mono">当前尝试 demo-run-'+S.attempt+' · 检查点 cp-'+S.phase+' · 尚未签发 Receipt</p>';
+}
+function gapReview(){
+ const t=totals();return '<div class="metrics"><div class="metric"><span>完整清单</span><strong>'+fmt(t.total)+'</strong></div><div class="metric"><span>内容已验证</span><strong>'+fmt(t.total-t.missing)+'</strong></div><div class="metric"><span>明确缺失文件</span><strong>'+t.missing+'</strong></div></div>'+note(fmt(t.total-t.missing)+" 已验证 + "+t.missing+" 明确缺失 = "+fmt(t.total)+" 项。"+(S.git?"两个文件对应两个非阻断 Gap，未包含在已验证内容中。":"无已知材料缺口，可核对后冻结。"),S.git?"orange":"")+(S.git?'<div class="field-row"><p class="hint">接受责任人：WEB-OPERATOR（当前用户）</p>'+field("本次接受有效至","gap-expiry",S.expiry,"date")+'</div><div class="gap-grid">'+gaps.map(g=>'<section class="gap-detail '+(S.accept[g.id]?"accepted":"")+'"><div class="gap-top"><strong>'+g.id+" · "+g.reason+'</strong>'+badge(S.accept[g.id]?"已接受 · 仍存在":"非阻断 · 待处置","orange")+'</div><p>'+esc(g.path)+"<br>"+g.impact+" F002 将继承此限制。"+'</p>'+(S.accept[g.id]?'<p>理由：'+esc(S.accept[g.id])+'<br>责任人：WEB-OPERATOR · 有效至 '+esc(S.expiry)+'</p>':'<label class="field">接受理由<textarea data-reason="'+g.id+'" placeholder="说明为何允许在此限制下继续">'+esc(S.reason[g.id]||"")+'</textarea></label>'+btn("接受 "+g.id,"accept-"+g.id,"warn",!(S.reason[g.id]||"").trim()))+'</section>').join("")+'</div>':"");
+}
+function seal(){
+ if(!S.sealed)return runRows([["核对清单与处置","验证每项有且仅有一种终态处置。"],["绑定来源与已接受限制","组件身份、inventory、policy 与 Gap 集一同绑定。"],["原子密封来源包","最终化期间不可取消，尚无可供下游读取的包。"],["签发并发布 Receipt","只有整包成功后才显示可消费身份。"]])+note("正在最终化。此时不能取消，也不能提前进入下游；失败不会留下可见半包。");
+ const t=totals(),r=revision();return '<div class="receipt-main"><h3>不可变来源身份 · 演示</h3><div class="receipt-id">demo-receipt-r'+r+'</div>'+[
+ ["Bundle","demo-bundle-r"+r],...(S.git?[["Git",demoCommit+" · ref "+S.ref]]:[]),...(S.dir?[["目录",S.dirName+" · demo-dir-manifest-r"+r]]:[]),
+ ["Inventory","demo-inventory-r"+r+" · "+fmt(t.total)+" 项"],["策略","demo-policy-v1"],["内容处置",fmt(t.total-t.missing)+" 已验证 / "+t.missing+" 明确缺失"]
+ ].map(x=>'<div class="receipt-line"><span>'+x[0]+'</span><strong>'+esc(x[1])+'</strong></div>').join("")+'</div>'+note(S.git?"READY_WITH_ACCEPTED_GAPS · 已冻结，仍带 2 个已接受限制。Gap、理由、责任人与有效期随 Receipt 保留。":"READY · 已冻结，无已知材料缺口。",S.git?"orange":"")+'<div class="admission">F001 到第 8 站完成。此后展示下游准入结果；F002 启动时仍要重验权限及有效接受。</div>';
+}
+function actions(){
+ if(S.cancelled)return btn("以相同来源开始新尝试","restart","primary");
+ if(S.block)return btn("编辑来源与范围","edit-block","primary")+btn("开始枚举","disabled","",true);
+ if(S.retry)return btn("从检查点重试","retry","primary")+btn("取消本次采集","cancel","danger");
+ switch(S.step){
+ case 1:return btn("继续配置范围","to-scope","primary",!S.git&&!S.dir);
+ case 2:return btn("返回来源选择","to-sources")+btn("确认范围并运行预检","start","primary");
+ case 7:return btn("查看完整清单","inventory")+btn("返回调整来源","adjust")+btn("冻结来源包","seal","primary",!allAccepted());
+ case 8:return S.sealed?btn("查看 Receipt 与接受记录","receipt","primary")+btn("创建新版本","new-version"):btn("最终化中，不能取消","disabled","",true);
+ default:return btn("查看已留证据","evidence")+btn("取消本次采集","cancel","danger");
+ }
+}
+function render(){
+ save();const [status,tone]=mode();$("page-title").textContent=title();$("page-subtitle").textContent="Git 与目录各自留证，汇入一个不可变来源包。每站展示本次动作、已完成证据和下一步条件。";
+ $("side-baseline").textContent=S.sealed?"当前冻结版本 r"+revision():S.baseline?"基线 r"+oldRevision()+" · 仍可用":"尚无已冻结来源包";renderRail();
+ const views=[sources,scope,preflight,enumerate,manifest,capture,gapReview,seal];
+ $("current-card").className="current-card panel "+(tone==="red"?"state-danger":tone==="orange"?"state-warning":"");
+ $("current-card").innerHTML='<div class="card-head"><div><p class="step-label">当前步骤 · 第 '+S.step+' 站 · '+stations[S.step-1][1]+'</p><h2>'+stations[S.step-1][0]+'</h2><p class="card-copy">'+(S.paused&&[3,4,5,6,8].includes(S.step)&&!S.sealed?"设计演示已暂停，可在底部恢复系统模拟。":"在本页完成操作；地铁图持续保留你的进展。")+'</p></div>'+badge(status,tone)+'</div><div class="step-body">'+(S.cancelled?note("本次尝试已取消，没有签发 Receipt。已记录中止位置为第 "+S.step+" 站。","red"):views[S.step-1]())+'</div><div class="action-row"><div class="action-set" style="flex-wrap:wrap">'+actions()+'</div></div>';
+ $("previous-card").innerHTML='<span class="context-kicker">上一步'+(S.step>1?" · 第 "+(S.step-1)+" 站":"")+'</span><h3>'+(S.step>1?stations[S.step-2][0]:"旅程起点")+'</h3><p>'+previous()+'</p><div class="evidence-list">'+(S.step>1?'<div class="evidence-item">范围与所选组件随本次尝试保留</div>':"")+(S.step>5?'<div class="evidence-item">固定清单 · '+fmt(totals().total)+' 项</div>':"")+'</div>'+btn("查看本次证据","evidence");
+ $("next-card").innerHTML='<span class="context-kicker">'+(S.sealed?"完成后的去向":S.block?"修复后恢复":"下一站 · "+(S.step<8?"第 "+(S.step+1)+" 站":"本站完成态"))+'</span><h3>'+(S.sealed?"下游准入":S.block?"重新预检":S.step<8?stations[S.step][0]:"来源包已冻结")+'</h3><p>'+nextCopy()+'</p>'+(S.sealed?btn("查看下游准入条件","admission"):"")+(S.step===7&&S.git?'<div class="notice orange" style="margin-top:16px">已接受 '+gaps.filter(g=>S.accept[g.id]).length+' / 2 个 Gap<br>存在 blocker 时无冻结入口。</div>':"");
+ $("footer-strip").innerHTML='<div class="footer-copy"><strong>'+(S.baseline?"旧版 r"+oldRevision()+" 仍可用；新尝试不会覆盖旧 Receipt":S.sealed?"首个来源包已冻结":"尚无已冻结来源包")+'</strong><span>'+(S.sealed?"每个后续版本都有独立 Receipt；当前版本不可修改。":"当前为私有采集尝试，下游不能消费未密封结果。")+'</span></div><div class="footer-actions">'+badge(S.sealed?(S.git?"已冻结 · 有限制":"已冻结"):"本次尚无 Receipt",S.sealed?(S.git?"orange":"green"):"gray")+'</div>';
+ if($("gap-expiry"))$("gap-expiry").disabled=Object.keys(S.accept).length>0;
+ $("play-button").textContent=S.paused?"播放系统模拟":"暂停系统模拟";
+ $("scene-picker").value=S.sealed?"frozen":S.block?"blocked":S.retry?"retry":String(S.step);
+}
+function show(title,body){$("dialog-body").innerHTML="<h2>"+title+"</h2>"+body;$("detail-dialog").showModal();}
+function evidence(step){
+ const list=S.events.length?S.events.map(x=>"<p>"+esc(x)+"</p>").join(""):"<p>这是直接载入的设计场景，过程记录为示例前提。</p>";
+ show(step?"第 "+step+" 站 · "+stations[step-1][0]:"本次已留证据","<p>来源："+esc([S.git?S.url:null,S.dir?S.dirName:null].filter(Boolean).join(" + "))+"</p><p>当前尝试：demo-run-"+S.attempt+"；当前位置始终为第 "+S.step+" 站。</p>"+list);
+}
+function captureInputs(){
+ for(const [id,k] of [["git-url","url"],["git-ref","ref"],["scope-ref","ref"],["dir-name","dirName"],["git-root","root"],["git-scope","scope"]])if($(id))S[k]=$(id).value;
+}
+function start(){
+ captureInputs();
+ const invalidRoot=S.scope==="root"&&(!S.root.trim()||S.root.startsWith("/")||S.root.split("/").includes(".."));
+ if(S.git&&(!S.ref.trim()||invalidRoot)){$("input-error").textContent="请填写版本及有效的仓库内目录根。";return;}
+ S.block=!!(S.git&&S.blockedSelection===JSON.stringify([S.ref,S.scope,S.root]));S.cancelled=false;S.paused=false;S.phase=0;log("确认范围："+(S.git?S.ref+" / "+(S.scope==="all"?"全仓库":S.root):"")+ (S.dir?"；目录 "+S.dirName:""));move(3);
+}
+document.addEventListener("input",e=>{
+ if(e.target.matches("[data-reason]")){S.reason[e.target.dataset.reason]=e.target.value;const b=document.querySelector('[data-action="accept-'+e.target.dataset.reason+'"]');b.disabled=!e.target.value.trim();}
+ if(e.target.id==="gap-expiry"){S.expiry=e.target.value;}
+ captureInputs();save();
+});
+document.addEventListener("change",e=>{
+ if(e.target.id==="scene-picker"){S=seeded(e.target.value);render();}
+ if(e.target.id==="git-scope"){captureInputs();$("root-field").hidden=S.scope!=="root";save();}
+});
+document.addEventListener("click",e=>{
+ const peek=e.target.closest("[data-peek]");if(peek){const n=Number(peek.dataset.peek);if(n<=S.step)evidence(n);else show("第 "+n+" 站 · 尚未到达","<p>未来站点只预览条件。不能点击跳过本次校验或 Gap 处置。</p><p>"+esc(n===8?"所有条目对账且 Gap 已有效处置后才可冻结。":"按固定顺序完成前置站点后到达。")+"</p>");return;}
+ const a=e.target.closest("[data-action]")?.dataset.action;if(!a)return;captureInputs();
+ if(a==="close-dialog"){$("detail-dialog").close();return;}
+ if(a==="hide-controls"){document.body.classList.add("controls-hidden");return;}
+ if(a==="show-controls"){document.body.classList.remove("controls-hidden");return;}
+ if(a==="add-git"){
+  try{const u=new URL(S.url);if(u.protocol!=="https:"||u.username||u.password||u.search||u.hash||!S.ref.trim())throw new Error();}
+  catch{$("input-error").textContent="演示仅接受不含凭据的 HTTPS 地址和非空版本。不会连接该地址。";return;}
+  S.git=true;log("已添加 Git 来源 "+S.url);
+ }
+ if(a==="remove-git")S.git=false;
+ if(a==="add-dir"){if(!S.dirName.trim()){$("input-error").textContent="请填写示例目录名。";return;}S.dir=true;log("已选择示例目录 "+S.dirName);}
+ if(a==="remove-dir")S.dir=false;
+ if(a==="to-scope"&&(S.git||S.dir)){move(2);return;}
+ if(a==="to-sources"){move(1);return;}
+ if(a==="start"){start();return;}
+ if(a==="play")S.paused=!S.paused;
+ if(a==="cancel"){show("取消本次采集？","<p>本次尝试不会签发 Receipt；旧版（如有）保持可用。以后可以用相同来源创建新尝试。</p>"+btn("确认取消","confirm-cancel","danger"));return;}
+ if(a==="confirm-cancel"){$("detail-dialog").close();S.cancelled=true;log("尝试 "+S.attempt+" 在第 "+S.step+" 站取消");}
+ if(a==="restart"){S.attempt++;S.cancelled=false;S.accept={};S.phase=0;move(2);return;}
+ if(a==="edit-block"||a==="adjust"){S.attempt++;S.block=false;S.accept={};S.phase=0;move(2);return;}
+ if(a==="retry"){S.attempt++;S.retry=false;S.paused=false;log("新尝试 "+S.attempt+" 复用已验证检查点 cp-"+S.phase);}
+ if(a==="seal"&&S.step===7&&allAccepted()){S.paused=false;move(8);return;}
+ if(a.startsWith("accept-")){
+  const id=a.slice(7),reason=(S.reason[id]||"").trim();
+  if(!reason||!S.expiry||S.expiry<="2026-09-06"){show("接受未完成","<p>需要理由与晚于演示日期 2026-09-06 的有效期。</p>");return;}
+  S.accept[id]=reason;log("接受 "+id+"："+reason+"；有效至 "+S.expiry+"；责任人 WEB-OPERATOR");
+ }
+ if(a==="evidence"){evidence();return;}
+ if(a==="inventory"){const t=totals();show("完整清单 · 演示摘要","<p>范围："+fmt(t.total)+" 文件条目；"+fmt(t.total-t.missing)+" 内容已验证 + "+t.missing+" 明确缺失。</p><table class='ledger'><tr><th>组件路径</th><th>处置</th></tr>"+(S.git?"<tr><td>git / services/orders/index.ts</td><td>内容已验证</td></tr>"+gaps.map(g=>"<tr><td>"+g.path+"</td><td>明确缺失 · "+g.id+"</td></tr>").join(""):"")+(S.dir?"<tr><td>directory / design/overview.md</td><td>内容已验证</td></tr>":"")+"</table><p>这里展示示例记录。产品中的完整清单需要分页、搜索与组件筛选。</p>");return;}
+ if(a==="receipt"){show("Receipt 与继承限制","<p>demo-receipt-r"+(revision())+" · demo-bundle-r"+(revision())+" · demo-policy-v1</p><p>"+esc(S.git?S.url+" / "+S.ref:"")+"</p><p>"+esc(S.dir?S.dirName+" / demo-dir-manifest":"")+"</p>"+(S.git?gaps.map(g=>"<p><strong>"+g.id+"</strong> "+g.path+"<br>理由："+esc(S.accept[g.id])+"<br>责任人 WEB-OPERATOR · 有效至 "+esc(S.expiry)+"</p>").join(""):"<p>无已知材料缺口。</p>"));return;}
+ if(a==="admission"){show("下游准入条件","<p>演示状态："+(S.git?"READY_WITH_ACCEPTED_GAPS":"READY")+"。</p><p>F002 启动时重验 Workspace 权限、Receipt 匹配、内容完整性及接受有效期。已接受的 Gap 完整继承，不能变成“完整覆盖”。</p><p>此设计稿没有连接或启动 F002。</p>");return;}
+ if(a==="new-version"){S.baselineVersion=revision();S.baseline=true;S.sealed=false;S.attempt++;S.accept={};S.reason={};S.ref="release/next";S.phase=0;log("手动以已冻结版本创建新版本");move(2);return;}
+ if(a==="inject-block"){S=seeded("blocked");log("设计稿控制注入预检阻断");}
+ if(a==="inject-retry"){S=seeded("retry");log("设计稿控制注入传输失败");}
+ if(a==="reset")S=fresh();
+ if(a==="prev-scene"||a==="next-scene"){let i=scenes.findIndex(x=>x[0]===$("scene-picker").value);i=Math.max(0,Math.min(scenes.length-1,i+(a==="next-scene"?1:-1)));S=seeded(scenes[i][0]);}
+ render();
+});
+document.addEventListener("keydown",e=>{
+ if(e.target.closest("input,textarea,select,button,dialog"))return;
+ if(e.code==="Space"){e.preventDefault();S.paused=!S.paused;render();}
+ if(e.target.closest(".demo-bar")&&(e.key==="ArrowLeft"||e.key==="ArrowRight"))document.querySelector('[data-action="'+(e.key==="ArrowLeft"?"prev-scene":"next-scene")+'"]').click();
+});
+function tick(){
+ if(S.paused||S.block||S.retry||S.cancelled||S.sealed||![3,4,5,6,8].includes(S.step)||$("detail-dialog").open)return;
+ S.phase++;
+ if(S.phase>=4){if(S.step===8){S.sealed=true;log("第 8 站完成，签发示例 Receipt");render();}else move(S.step+1);}
+ else render();
+}
+$("scene-picker").innerHTML=scenes.map(x=>'<option value="'+x[0]+'">'+x[1]+'</option>').join("");
+window.f001Demo={getState:()=>JSON.parse(JSON.stringify(S))};
+render();timer=setInterval(tick,1300);
+</script>
+</body></html>
