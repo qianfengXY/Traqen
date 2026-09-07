@@ -64,6 +64,9 @@ async function migratedDatabase() {
     "0028_f001_source_truth",
     "0029_f001_verified_upload_checkpoints",
     "0030_f001_prepared_evidence",
+    "0031_f001_atomic_publication",
+    "0032_f001_evidence_boundary_guards",
+    "0033_f001_capture_inputs",
   ]);
   return database;
 }

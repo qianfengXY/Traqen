@@ -48,7 +48,7 @@ export class SourceTruthRepository {
   // Deployment/admin boundary, deliberately not exposed as a user HTTP action.
   async provision(workspaceId, { tenantId, grants }) {
     return transaction(this.database, async (tx) => {
-      const { rows } = await tx.query("SELECT tenant_id FROM project WHERE id=$1", [workspaceId]);
+      const { rows } = await tx.query("SELECT tenant_id FROM project WHERE id=$1 FOR UPDATE", [workspaceId]);
       requireValue(rows[0]?.tenant_id === tenantId, "SOURCE_FORBIDDEN", "Workspace 租户边界不匹配", { status: 403 });
       await tx.query("INSERT INTO source_truth_workspace (workspace_id,tenant_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [workspaceId, tenantId]);
       await tx.query("SELECT workspace_id FROM source_truth_workspace WHERE workspace_id=$1 FOR UPDATE", [workspaceId]);
@@ -68,7 +68,10 @@ export class SourceTruthRepository {
       FROM source_truth_workspace w JOIN source_truth_access a USING(workspace_id)
       JOIN project p ON p.id=w.workspace_id AND p.tenant_id=w.tenant_id
       JOIN principal u ON u.id=a.actor_id AND u.tenant_id=w.tenant_id
-      WHERE w.workspace_id=$1 AND w.tenant_id=$2 AND a.actor_id=$3 AND p.status='ACTIVE'`, [workspaceId, actor.tenantId, actor.actorId]);
+      WHERE w.workspace_id=$1 AND w.tenant_id=$2 AND a.actor_id=$3 AND p.status='ACTIVE'
+        AND COALESCE((SELECT e.record_payload->>'type' FROM understanding_record e WHERE e.project_id=p.id
+          AND e.record_type='WORKSPACE_EVENT' AND e.record_payload->>'type' IN ('DELETION_REQUESTED','DELETION_COMPLETED','DELETION_CANCELLED')
+          ORDER BY (e.record_payload->>'version')::bigint DESC LIMIT 1),'ACTIVE') NOT IN ('DELETION_REQUESTED','DELETION_COMPLETED')`, [workspaceId, actor.tenantId, actor.actorId]);
     const state = rows[0];
     requireValue(state && (maintain ? state.role === "MAINTAIN" : ["READ", "MAINTAIN"].includes(state.role)), "SOURCE_FORBIDDEN", "无权访问或维护该 Workspace 来源", { status: 403 });
     return { role: state.role, tenantId: state.tenant_id, draftRevision: state.draft_revision, backupBarrier: state.backup_barrier, restoreReady: state.restore_ready };
@@ -76,6 +79,7 @@ export class SourceTruthRepository {
 
   async withWorkspace(actor, workspaceId, maintain, work) {
     return transaction(this.database, async (tx) => {
+      await tx.query("SELECT id FROM project WHERE id=$1 FOR UPDATE", [workspaceId]);
       // Grants, inputs and publication all take this same lock, establishing a
       // clear order against concurrent revocation instead of trusting a preflight.
       await tx.query("SELECT workspace_id FROM source_truth_workspace WHERE workspace_id=$1 FOR UPDATE", [workspaceId]);
@@ -90,24 +94,27 @@ export class SourceTruthRepository {
 
   async withLease({ workspaceId, runId, generation }, work) {
     return transaction(this.database, async (tx) => {
+      await tx.query("SELECT id FROM project WHERE id=$1 FOR UPDATE", [workspaceId]);
       const workspace = await tx.query("SELECT tenant_id FROM source_truth_workspace WHERE workspace_id=$1 FOR UPDATE", [workspaceId]);
       const { rows } = await tx.query(`SELECT *,lease_until>clock_timestamp() AS lease_valid FROM source_truth_run
         WHERE workspace_id=$1 AND id=$2 FOR UPDATE`, [workspaceId, runId]);
       const run = rows[0];
       requireValue(run && run.generation === generation && run.lease_valid && !terminalRunStates.has(run.status)
         && run.status !== "CANCELLING", "SOURCE_STALE_WORKER", "执行权或任务状态已变化");
-      await this.authorize({ actorId: run.actor_id, tenantId: workspace.rows[0]?.tenant_id }, workspaceId, true, tx);
+      const access = await this.authorize({ actorId: run.actor_id, tenantId: workspace.rows[0]?.tenant_id }, workspaceId, true, tx);
+      requireValue(access.restoreReady, "SOURCE_RESTORE_UNVERIFIED", "恢复尚未完整校验，暂缓任务写入");
       const result = await work(tx, runRecord(run));
       return result;
     });
   }
 
-  async saveDraft(actor, workspaceId, { expectedRevision, input }) {
+  async saveDraft(actor, workspaceId, { expectedRevision, input, beforeSave }) {
     requireValue(Number.isSafeInteger(expectedRevision) && expectedRevision >= 0, "SOURCE_INVALID_INPUT", "缺少草稿修订号", { status: 400 });
     return this.withWorkspace(actor, workspaceId, true, async (tx, state) => {
       requireValue(state.draftRevision === expectedRevision, "SOURCE_REVISION_CONFLICT", "来源草稿已被其他操作更新");
       const active = await this.activeRun(tx, workspaceId);
       requireValue(!active, "SOURCE_RUN_ACTIVE", "请先查看或取消当前任务后编辑来源", { details: { runId: active?.id } });
+      await beforeSave?.(tx);
       const revision = expectedRevision + 1;
       const { rows } = await tx.query("INSERT INTO source_truth_draft (workspace_id,revision,actor_id,input) VALUES ($1,$2,$3,$4) RETURNING *", [workspaceId, revision, actor.actorId, JSON.stringify(input)]);
       await tx.query("UPDATE source_truth_workspace SET draft_revision=$2 WHERE workspace_id=$1", [workspaceId, revision]);
@@ -146,6 +153,8 @@ export class SourceTruthRepository {
       const id = randomUUID();
       const { rows } = await tx.query(`INSERT INTO source_truth_run (workspace_id,id,actor_id,draft_revision,input,policy_revision_id,status,station,retry_of)
         VALUES ($1,$2,$3,$4,$5,$6,'PREFLIGHTING',3,$7) RETURNING *`, [workspaceId, id, actor.actorId, draftRevision, JSON.stringify(input), policyRevisionId, retryOf]);
+      if (retryOf) await tx.query(`INSERT INTO source_truth_resolution (workspace_id,run_id,source_id,payload)
+        SELECT workspace_id,$3,source_id,payload FROM source_truth_resolution WHERE workspace_id=$1 AND run_id=$2`, [workspaceId, retryOf, id]);
       await this.audit(tx, workspaceId, id, actor.actorId, "RUN_STARTED", { retryOf, draftRevision, policyRevisionId });
       return runRecord(rows[0]);
     });

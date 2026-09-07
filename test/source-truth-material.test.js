@@ -73,3 +73,18 @@ test("B-05 worker writes are rejected after its initiating member loses maintena
   await repository.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "owner", role: "REVOKED" }] });
   await assert.rejects(m.appendEntries(context, [entry("after-revocation")]), { code: "SOURCE_FORBIDDEN" });
 });
+
+test("B-05 closed source cannot be reopened or have its native coordinates rewritten", async (t) => {
+  const { m, context, db } = await materialFixture(t);
+  await m.appendEntries(context, [entry("a")]);
+  await m.closeEnumeration(context, { fileCount: "1", directoryCount: "0" });
+  await m.freezeManifest(context);
+  await assert.rejects(db.query("UPDATE source_truth_run_source SET enumeration_closed=false WHERE workspace_id='workspace' AND run_id=$1", [context.runId]), /immutable/i);
+  await assert.rejects(db.query("UPDATE source_truth_run_source SET source='{}' WHERE workspace_id='workspace' AND run_id=$1", [context.runId]), /immutable/i);
+});
+
+test("B-05 directory membership includes every parent directory instead of silently inventing it", async (t) => {
+  const { m, context } = await materialFixture(t);
+  await m.appendEntries(context, [entry("docs/a")]);
+  await assert.rejects(m.closeEnumeration(context, { fileCount: "1", directoryCount: "0" }), { code: "SOURCE_ENUMERATION_INCOMPLETE" });
+});

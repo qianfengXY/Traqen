@@ -20,6 +20,14 @@ export class SourceMaterialRepository {
     return rows[0];
   }
 
+  async readContext(context, tx = this.db) {
+    const source = await this.source(context, tx);
+    if (source.source.mode !== "REUSE") return context;
+    const row = (await tx.query("SELECT run_id,source_id FROM source_truth_component WHERE workspace_id=$1 AND id=$2", [context.workspaceId, source.source.componentId])).rows[0];
+    requireValue(row && row.run_id !== context.runId, "SOURCE_CONTENT_MISSING", "沿用组件的完整材料引用不可用");
+    return { ...context, runId: row.run_id, sourceId: row.source_id };
+  }
+
   async addSource(context, source) {
     return this.repository.withLease(context, async (tx, run) => {
       requireValue(run.status === "ENUMERATING" && source.sourceId === context.sourceId && ["GIT", "DIRECTORY_UPLOAD"].includes(source.kind), "SOURCE_INVALID_INPUT", "来源不属于当前枚举", { status: 400 });
@@ -31,13 +39,21 @@ export class SourceMaterialRepository {
     });
   }
 
-  async appendEntries(context, entries) {
+  async appendEntries(context, entries, { batchId = null } = {}) {
     requireValue(Array.isArray(entries) && entries.length > 0 && entries.length <= this.maxBatchEntries, "SOURCE_INVALID_INPUT", "清单批次为空或超过限制", { status: 400 });
     return this.repository.withLease(context, async (tx, run) => {
       const source = await this.source(context, tx);
+      const normalized = entries.map((row) => manifestEntry(source.kind, row));
+      if (batchId !== null) {
+        requireValue(typeof batchId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(batchId), "SOURCE_INVALID_INPUT", "枚举批次标识无效", { status: 400 });
+        const prior = (await tx.query("SELECT digest,result FROM source_truth_enumeration_batch WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3 AND batch_id=$4", [...values(context), batchId])).rows[0];
+        if (prior) {
+          requireValue(prior.digest === sha(normalized), "SOURCE_ENUMERATION_CONFLICT", "重试批次与原清单不同，请重新核对目录");
+          return prior.result;
+        }
+      }
       requireValue(!source.enumeration_closed && !source.manifest_id, "SOURCE_MANIFEST_LOCKED", "清单已闭合，修改来源需创建新候选");
       requireValue(["ENUMERATING", "WAITING_FOR_CLIENT"].includes(run.status), "SOURCE_INVALID_TRANSITION", "当前阶段不能添加清单");
-      const normalized = entries.map((row) => manifestEntry(source.kind, row));
       const existing = await this.count(context, tx);
       requireValue(BigInt(existing.fileCount) + BigInt(existing.directoryCount) + BigInt(normalized.length) <= BigInt(this.maxEntries), "SOURCE_ENTRY_LIMIT", "文件/目录数量超过平台限制", { status: 413 });
       try {
@@ -48,11 +64,14 @@ export class SourceMaterialRepository {
         if (error.code === "23505") fail("SOURCE_DUPLICATE_PATH", "清单含重复路径，不能合并或忽略", { status: 409 });
         throw error;
       }
-      return { discoveredCount: String(BigInt(existing.fileCount) + BigInt(existing.directoryCount) + BigInt(normalized.length)) };
+      const result = { discoveredCount: String(BigInt(existing.fileCount) + BigInt(existing.directoryCount) + BigInt(normalized.length)) };
+      if (batchId !== null) await tx.query("INSERT INTO source_truth_enumeration_batch (workspace_id,run_id,source_id,batch_id,digest,result) VALUES ($1,$2,$3,$4,$5,$6)", [...values(context), batchId, sha(normalized), JSON.stringify(result)]);
+      return result;
     });
   }
 
   async count(context, tx = this.db) {
+    context = await this.readContext(context, tx);
     const { rows } = await tx.query(`SELECT count(*) FILTER (WHERE entry->>'kind'<>'DIRECTORY')::text AS files,
       count(*) FILTER (WHERE entry->>'kind'='DIRECTORY')::text AS directories,
       COALESCE(sum((entry->>'sizeBytes')::numeric),0)::text AS bytes,
@@ -61,7 +80,7 @@ export class SourceMaterialRepository {
     return { fileCount: rows[0].files, directoryCount: rows[0].directories, knownBytes: rows[0].bytes, pendingCount: rows[0].pending };
   }
 
-  async closeEnumeration(context, { fileCount, directoryCount }) {
+  async closeEnumeration(context, { fileCount, directoryCount, beforeClose }) {
     byteCount(fileCount, "fileCount");
     byteCount(directoryCount, "directoryCount");
     return this.repository.withLease(context, async (tx) => {
@@ -69,12 +88,19 @@ export class SourceMaterialRepository {
       const actual = await this.count(context, tx);
       requireValue(source.kind !== "DIRECTORY_UPLOAD" || fileCount !== "0", "SOURCE_EMPTY_DIRECTORY_UNSUPPORTED", "首期不支持零文件的上传目录；清空目录不能发布删除结论");
       requireValue(actual.fileCount === fileCount && actual.directoryCount === directoryCount, "SOURCE_ENUMERATION_INCOMPLETE", "枚举闭合计数与已收到清单不一致");
+      const missingParent = await tx.query(`SELECT 1 FROM source_truth_entry e WHERE e.workspace_id=$1 AND e.run_id=$2 AND e.source_id=$3
+        AND source_truth_parent_path(e.path_bytes) IS NOT NULL AND NOT EXISTS (SELECT 1 FROM source_truth_entry p
+          WHERE p.workspace_id=e.workspace_id AND p.run_id=e.run_id AND p.source_id=e.source_id
+          AND p.path_bytes=source_truth_parent_path(e.path_bytes) AND p.entry->>'kind'='DIRECTORY') LIMIT 1`, values(context));
+      requireValue(!missingParent.rows.length, "SOURCE_ENUMERATION_INCOMPLETE", "清单缺少父目录或路径层次冲突，不能静默补造");
+      await beforeClose?.(tx);
       await tx.query("UPDATE source_truth_run_source SET enumeration_closed=true WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3", values(context));
       return actual;
     });
   }
 
   async entries(context, { after = null, limit = 100 } = {}, tx = this.db) {
+    context = await this.readContext(context, tx);
     requireValue(Number.isInteger(limit) && limit > 0 && limit <= 1000, "SOURCE_INVALID_INPUT", "分页大小必须为 1～1000", { status: 400 });
     const { rows } = await tx.query(`SELECT entry,disposition FROM source_truth_entry WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3
       AND ($4::bytea IS NULL OR path_bytes>$4) ORDER BY path_bytes LIMIT $5`, [...values(context), after ? decodePathBytes(after) : null, limit + 1]);

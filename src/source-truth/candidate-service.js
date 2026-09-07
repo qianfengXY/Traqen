@@ -26,14 +26,14 @@ export class SourceCandidateService {
     } while (after);
   }
 
-  async *coverage(context, { verify = false, scope } = {}) {
+  async *coverage(context, { verify = false, scope, heartbeat = () => this.repository.heartbeat(context) } = {}) {
     let count = 0;
     for await (const { entry, disposition } of this.rows(context)) {
       requireValue(disposition, "SOURCE_INVENTORY_INCOMPLETE", "清单仍有未验证条目，不能准备冻结包");
       const gaps = gapsFor(context.sourceId, entry, disposition);
       if (verify && disposition.digest) requireValue(await this.blobs.verifyBlob(scope, { digest: disposition.digest, sizeBytes: disposition.sizeBytes }),
         "SOURCE_CONTENT_MISSING", "已引用内容缺失，不能以旧校验记录继续冻结");
-      if (verify && ++count % 100 === 0) await this.repository.heartbeat(context);
+      if (verify && ++count % 100 === 0) await heartbeat();
       yield { sourceId: context.sourceId, pathBytes: entry.pathBytes, disposition: disposition.disposition,
         reasonCode: disposition.reasonCode, contentDigest: disposition.digest, sizeBytes: disposition.sizeBytes, gaps };
     }
@@ -125,5 +125,30 @@ export class SourceCandidateService {
       requireValue(stored.rows[0].id === id && canonicalEncode(stored.rows[0].payload) === canonicalEncode(payload), "SOURCE_CANDIDATE_CONFLICT", "任务已有不同的冻结候选");
     });
     return { id, ...payload, ...counts };
+  }
+
+  async verifyPrepared(context, candidate) {
+    const { scope } = await this.repository.withLease(context, async (tx, run) => {
+      const access = await this.repository.authorize({ actorId: run.actorId, tenantId: (await tx.query("SELECT tenant_id FROM source_truth_workspace WHERE workspace_id=$1", [context.workspaceId])).rows[0].tenant_id }, context.workspaceId, true, tx);
+      return { scope: { tenantId: access.tenantId, workspaceId: context.workspaceId } };
+    });
+    return this.verifyEvidence(context.workspaceId, candidate, { scope, heartbeat: () => this.repository.heartbeat(context) });
+  }
+
+  async verifyEvidence(workspaceId, candidate, { scope, heartbeat }) {
+    const components = [];
+    for (const reference of candidate.payload.components) {
+      const stored = (await this.repository.database.query("SELECT * FROM source_truth_component WHERE workspace_id=$1 AND id=$2", [workspaceId, reference.id])).rows[0];
+      requireValue(stored && structureDigest("component", stored.payload) === reference.id, "SOURCE_MANIFEST_CORRUPT", "组件身份或完成记录损坏");
+      const dataContext = { workspaceId, runId: stored.run_id, sourceId: stored.source_id };
+      const manifestId = await orderedArrayDigest("manifest", { kind: stored.payload.kind }, "entries", this.materials.entryStream(dataContext));
+      const coverageId = await orderedArrayDigest("coverage", {}, "entries", this.coverage(dataContext, { verify: true, scope, heartbeat }));
+      requireValue(manifestId === stored.payload.manifestId && coverageId === stored.payload.coverageId, "SOURCE_MANIFEST_CORRUPT", "组件清单或处置证据损坏");
+      components.push({ id: reference.id, ...stored.payload });
+    }
+    const inventoryId = await orderedArrayDigest("inventory", {}, "entries", this.inventory(workspaceId, components));
+    const gapSetId = await orderedArrayDigest("gaps", {}, "entries", this.gaps(workspaceId, components.map((component) => component.id)));
+    requireValue(inventoryId === candidate.payload.inventoryId && gapSetId === candidate.payload.gapSetId && structureDigest("bundle", candidate.payload) === candidate.id,
+      "SOURCE_MANIFEST_CORRUPT", "候选清单、完整 Gap 集或包身份校验失败");
   }
 }

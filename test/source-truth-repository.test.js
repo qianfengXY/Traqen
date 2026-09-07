@@ -87,3 +87,10 @@ test("B-08 lease heartbeat preserves generation; releasing it permits a fenced t
   assert.equal(next.generation, 2);
   await assert.rejects(r.heartbeat(context), { code: "SOURCE_STALE_WORKER" });
 });
+
+test("B-05 pending Workspace deletion is an access boundary even while the project row is ACTIVE", async (t) => {
+  const { repository: r, db } = await sourceDatabase(t);
+  await db.query(`INSERT INTO understanding_record (project_id,record_type,id,record_payload,created_at)
+    VALUES ('workspace','WORKSPACE_EVENT','delete-request',$1,clock_timestamp())`, [JSON.stringify({ workspaceId: "workspace", type: "DELETION_REQUESTED", version: 2 })]);
+  await assert.rejects(r.authorize(owner, "workspace", true), { code: "SOURCE_FORBIDDEN" });
+});

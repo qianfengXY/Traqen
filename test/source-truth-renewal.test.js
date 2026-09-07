@@ -1,0 +1,36 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { candidateFixture } from "./support/source-truth-candidate-fixture.js";
+import { owner, reader } from "./support/source-truth-database.js";
+import { SourcePublicationService } from "../src/source-truth/publication-service.js";
+import { SourceRenewalService } from "../src/source-truth/renewal-service.js";
+import { SourceAdmissionService } from "../src/source-truth/admission-service.js";
+
+test("B-10 same-bundle renewal appends a Receipt without recapture, altering old receipt or masking gaps", async (t) => {
+  const gap = { ruleCode: "GIT_LFS_EXTERNAL", severity: "NON_BLOCKING", ruleVersion: "v1", affectedScope: "external-content", externalReference: null };
+  const f = await candidateFixture(t, { git: true, gaps: [gap] });
+  const candidate = await f.candidates.prepare(f.context);
+  await f.advance("RECONCILING", "REVIEW_REQUIRED");
+  const publication = new SourcePublicationService(f.repository, f.candidates);
+  const confirmation = await publication.confirm(owner, f.context, { candidateId: candidate.id, gapSetId: candidate.gapSetId, reason: "接受已知限制", expiresAt: new Date(Date.now() + 1000).toISOString() });
+  const original = await publication.seal(owner, f.context, { confirmationId: confirmation.id, clientToken: "original" });
+  await new Promise((resolve) => setTimeout(resolve, 1100));
+  const admission = new SourceAdmissionService(f.repository, f.candidates);
+  const oldRef = { bundleId: original.bundle.id, receiptId: original.receipt.id };
+  await assert.rejects(admission.qualify(reader, "workspace", oldRef), { code: "SOURCE_ACCEPTANCE_EXPIRED" });
+  const renewal = new SourceRenewalService(f.repository, f.candidates);
+  const accept = await renewal.confirm(owner, "workspace", { ...oldRef, gapSetId: candidate.gapSetId, reason: "已重新核对外部材料限制", expiresAt: new Date(Date.now() + 60000).toISOString() });
+  assert.ok(accept?.id);
+  const renewed = await renewal.issue(owner, "workspace", { confirmationId: accept.id, clientToken: "renew" });
+  assert.equal(renewed.bundle.id, original.bundle.id);
+  assert.notEqual(renewed.receipt.id, original.receipt.id);
+  assert.equal(renewed.receipt.status, "READY_WITH_ACCEPTED_GAPS");
+  assert.equal(renewed.receipt.gapSetId, original.receipt.gapSetId);
+  assert.equal((await admission.qualify(reader, "workspace", { bundleId: renewed.bundle.id, receiptId: renewed.receipt.id })).gapCount, "1");
+  await assert.rejects(admission.qualify(reader, "workspace", oldRef), { code: "SOURCE_ACCEPTANCE_EXPIRED" });
+  const counts = await f.db.query("SELECT (SELECT count(*) FROM source_truth_run)::text AS runs,(SELECT count(*) FROM source_truth_bundle)::text AS bundles,(SELECT count(*) FROM source_truth_receipt)::text AS receipts");
+  assert.deepEqual(counts.rows[0], { runs: "1", bundles: "1", receipts: "2" });
+  const repeated = await renewal.issue(owner, "workspace", { confirmationId: accept.id, clientToken: "renew-again" });
+  assert.equal(repeated.receipt.id, renewed.receipt.id);
+  await assert.rejects(renewal.issue(owner, "workspace", { confirmationId: "different", clientToken: "renew-again" }), { code: "SOURCE_IDEMPOTENCY_CONFLICT" });
+});

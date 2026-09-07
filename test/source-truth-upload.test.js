@@ -27,9 +27,10 @@ async function fixture(t) {
   await advance("PREFLIGHTING", "ENUMERATING");
   await materials.addSource(context, source);
   const entry = { pathBytes: pathBytes("docs/a.txt"), kind: "FILE", sizeBytes: String(bytes.length), expectedContent: { algorithm: "sha256", digest: hash(bytes) }, gitMode: null };
-  await materials.appendEntries(context, [entry]);
-  await materials.closeEnumeration(context, { fileCount: "1", directoryCount: "0" });
+  await materials.appendEntries(context, [{ pathBytes: pathBytes("docs"), kind: "DIRECTORY", sizeBytes: null, expectedContent: null, gitMode: null }, entry]);
+  await materials.closeEnumeration(context, { fileCount: "1", directoryCount: "1" });
   await materials.freezeManifest(context);
+  await materials.dispose(context, { pathBytes: pathBytes("docs"), disposition: "METADATA", reasonCode: "DIRECTORY_RECORDED" });
   await advance("ENUMERATING", "MANIFEST_FROZEN");
   await advance("MANIFEST_FROZEN", "CAPTURING");
   return { repository, db, materials, blobs, blobConfig, context, entry, upload: new SourceUploadService(repository, materials, blobs) };
