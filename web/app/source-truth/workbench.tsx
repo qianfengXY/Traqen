@@ -12,6 +12,7 @@ import type { Confirmation, DraftInput, FrozenVersion, Page, RunDetail, SourceOv
 import { SourceVersionView } from "./version-view.tsx";
 import { SourceStagingView } from "./staging-view.tsx";
 import { observeSourceReads } from "./observe.ts";
+import { revealSourceStation } from "./rail.ts";
 import "./workbench.css";
 
 const terminal = new Set(["SUCCEEDED", "BLOCKED", "FAILED_RETRYABLE", "CANCELLED"]);
@@ -57,6 +58,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
   const selectedRun = useRef<string | null>(null), sequence = useRef(0), hydrated = useRef(false), inFlight = useRef(false);
   const historyCursor = useRef<{ bundles: string | null; runs: string | null }>({ bundles: null, runs: null });
   const directory = useRef<DirectoryHandle | null>(null), transferController = useRef<AbortController | null>(null);
+  const rail = useRef<HTMLOListElement | null>(null);
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     const [data, versionPage, runPage] = await Promise.all([client.request<SourceOverview>(), client.request<Page<FrozenVersion>>(`/history/bundles?limit=50${historyCursor.current.bundles ? `&cursor=${historyCursor.current.bundles}` : ""}`), client.request<Page<SourceRun>>(`/history/runs?limit=50${historyCursor.current.runs ? `&cursor=${historyCursor.current.runs}` : ""}`)]);
@@ -77,6 +79,20 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
 
   const run = detail?.run ?? null;
   const journey = sourceJourney(run, editing ? 0 : overview?.draft?.revision ?? 0, Boolean(detail?.confirmation) && detail?.confirmation?.currentlyValid !== false && !reviewAgain, selectedStation);
+  const loaded = overview !== null;
+  useEffect(() => {
+    const element = rail.current;
+    if (!element) return;
+    const reveal = () => revealSourceStation(element, journey.selected);
+    reveal();
+    const resize = new ResizeObserver(reveal);
+    resize.observe(element);
+    return () => resize.disconnect();
+  }, [loaded, journey.selected]);
+  const returnToCurrent = () => {
+    setSelectedStation(null);
+    revealSourceStation(rail.current, journey.current);
+  };
   const writable = overview?.role === "MAINTAIN";
   const hasGaps = Boolean(detail?.candidate && detail.candidate.gapCount !== "0");
   const frozen = versions.items.find((version) => version.id === versionId);
@@ -168,8 +184,8 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
     {notice && <p className="st-callout" role="status">{notice}</p>}
     {!overview ? <p role="status">正在验证来源访问权限和存储状态…</p> : <>
       {!writable && <p className="st-callout">当前成员为只读权限，可查看历史与证据，不能创建任务、上传、确认或冻结。</p>}
-      <section className="st-metro" aria-label="八站来源快照旅程"><div className="st-metro-head"><div><h2>快照旅程</h2><p>一个工作台，八个节点。实线表示已完成；点击节点只回看或预览，不跳过验证。</p></div><button className="st-link" onClick={() => setSelectedStation(null)}>回到当前 · 第 {journey.current} 站</button></div>
-        <ol className="st-rail">{sourceStations.map((name, index) => <li key={name} className={`${index + 1 < journey.current ? "done" : ""} ${index + 1 === journey.current ? `current ${journey.tone}` : ""} ${index + 1 === journey.selected ? "selected" : ""}`}><button aria-current={index + 1 === journey.current ? "step" : undefined} aria-label={`第 ${index + 1} 站 ${name}${index + 1 !== journey.current ? "（只读预览）" : "（当前）"}`} onClick={() => setSelectedStation(index + 1)}><span>{index + 1 < journey.current ? "✓" : index + 1}</span><strong>{name}</strong><small>{index + 1 < journey.current ? "已完成 · 可回看" : index + 1 === journey.current ? "当前节点" : "尚未到达"}</small></button></li>)}</ol>
+      <section className="st-metro" aria-label="八站来源快照旅程"><div className="st-metro-head"><div><h2>快照旅程</h2><p>一个工作台，八个节点。实线表示已完成；点击节点只回看或预览，不跳过验证。</p></div><button className="st-link" onClick={returnToCurrent}>回到当前 · 第 {journey.current} 站</button></div>
+        <ol className="st-rail" ref={rail}>{sourceStations.map((name, index) => <li key={name} className={`${index + 1 < journey.current ? "done" : ""} ${index + 1 === journey.current ? `current ${journey.tone}` : ""} ${index + 1 === journey.selected ? "selected" : ""}`}><button data-station={index + 1} aria-current={index + 1 === journey.current ? "step" : undefined} aria-label={`第 ${index + 1} 站 ${name}${index + 1 !== journey.current ? "（只读预览）" : "（当前）"}`} onClick={() => setSelectedStation(index + 1)}><span>{index + 1 < journey.current ? "✓" : index + 1}</span><strong>{name}</strong><small>{index + 1 < journey.current ? "已完成 · 可回看" : index + 1 === journey.current ? "当前节点" : "尚未到达"}</small></button></li>)}</ol>
       </section>
       <div className="st-grid"><section className={`st-panel st-current ${journey.tone}`}><div className="st-card-head"><div><p className="st-eyebrow">第 {journey.selected} / 8 站</p><h2>{sourceStations[journey.selected - 1]}</h2></div>{journey.preview && <span className="st-badge muted">{journey.selected < journey.current ? "历史回看" : "未来预览"} · 只读</span>}</div><p className="st-muted">{copies[journey.selected - 1]}</p>
         {journey.preview && <p className="st-callout">这是节点说明及已有记录，不改变真实进度。上一步：{sourceStations[journey.selected - 2] ?? "旅程开始"}；下一步：{sourceStations[journey.selected] ?? "包已冻结，旅程结束"}。</p>}
@@ -194,7 +210,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
         {run && terminal.has(run.status) && run.status !== "SUCCEEDED" && <SourceStagingView key={run.id} client={client} runId={run.id} writable={Boolean(writable) && !journey.preview} onChanged={refresh} />}
         {journey.action === "RECONCILE_RESTORE" && <p className="st-callout warning">此任务来自已校验备份中的未完成记录，不代表最新现场或成功包。继续后只恢复原锁定输入；本机目录仍需完整重选核对，缺口接受不会自动续期，系统不会代你冻结。</p>}
         <footer className="st-actions st-sticky-actions">
-          {journey.preview ? <button className="button primary" onClick={() => setSelectedStation(null)}>回到当前节点</button> : journey.action && <button className="button primary" disabled={busy || !writable || confirmDisabled || (journey.action === "SAVE" && !form.sources.length) || (journey.action === "START" && !overview.storage.ready)} onClick={primary}>{busy ? "处理中…" : labels[journey.action]}</button>}
+          {journey.preview ? <button className="button primary" onClick={returnToCurrent}>回到当前节点</button> : journey.action && <button className="button primary" disabled={busy || !writable || confirmDisabled || (journey.action === "SAVE" && !form.sources.length) || (journey.action === "START" && !overview.storage.ready)} onClick={primary}>{busy ? "处理中…" : labels[journey.action]}</button>}
           {!run && !editing && overview.draft && writable && <button className="button" disabled={busy} onClick={() => { setEditing(true); setSelectedStation(null); }}>返回编辑来源</button>}
           {transferring && <button className="button" onClick={() => transferController.current?.abort()}>暂停本机传输</button>}
           {run && !terminal.has(run.status) && run.status !== "FINALIZING" && writable && <button className="button" disabled={cancelling} onClick={() => {
