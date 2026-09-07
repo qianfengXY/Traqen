@@ -14,7 +14,7 @@ export async function continueStagingRelease(client: Pick<SourceTruthClient, "re
     if (!/^(0|[1-9][0-9]*)$/.test(value.remainingChunks)) throw new SourceClientError("暂存处置结果未确认，请查询原处置");
     const pending = BigInt(value.remainingChunks);
     onProgress(value);
-    if (pending === 0n) return value;
+    if (pending === BigInt(0)) return value;
     if (previous !== null && pending >= previous) throw new SourceClientError("尚待处理数量未减少，已停止后续写入；请查询原处置");
     previous = pending;
   }

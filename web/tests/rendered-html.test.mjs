@@ -50,14 +50,14 @@ test("ships only the server-owned understanding path after Web cutover", async (
     readFile(new URL("../app/understanding-graph-client.ts", import.meta.url), "utf8"),
   ]);
   assert.match(page, /<TraqenProduct \/>/);
-  assert.match(product, /registerServerWorkspaceSource/);
+  assert.match(product, /if \(view === "workspace"\) return <SourceTruthWorkbench key=\{workspace\.id\}/,
+    "the source entry must mount the workspace-bound eight-station snapshot workbench");
+  assert.doesNotMatch(product, /registerServerWorkspaceSource|startServerWorkspaceUnderstanding|controlServerWorkspaceUnderstanding|openStartConfirmation|startConfirmation/,
+    "the superseded raw-source analysis entry and its unreachable confirmation must not survive cutover");
   assert.doesNotMatch(product, /resolveServerWorkspaceExecutionProfile/);
-  assert.match(product, /startServerWorkspaceUnderstanding/);
-  assert.match(product, /ServerUnderstandingApiError/);
   assert.match(product, /startHistoricalRevisionReanalysis/);
   assert.match(product, /getServerWorkspaceUnderstanding/);
   assert.match(product, /listServerWorkspaceUnderstandingJobs/);
-  assert.match(product, /controlServerWorkspaceUnderstanding/);
   assert.match(product, /traqen\.activeWorkspaceId/);
   assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "RUNNING"\)/);
   assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "PAUSED"\)/);
@@ -126,30 +126,6 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /item\.readiness\} · \{item\.lifecycle/);
   assert.doesNotMatch(surfaces, /setReplacementBySource\(\(current\)[^\n]*event\.currentTarget/);
   assert.doesNotMatch(product, /scanLocalWorkspaceFile|analyzeLocalWorkspaceRecords|ingestWorkspaceObservations|startWorkspaceAnalysisRun|webkitdirectory|showDirectoryPicker/);
-  const startConfirmationSource = product.slice(product.indexOf("{startConfirmation && activeWorkspace"), product.indexOf("</main>"));
-  assert.match(startConfirmationSource, /Profile Revision<\/dt><dd>\{startConfirmation\.profile\.id\}<\/dd>/,
-    "start confirmation must pin one immutable Active Profile revision rather than read a live selection");
-  assert.match(startConfirmationSource, /Agent roster<\/dt><dd>Main \+ \{startConfirmation\.profile\.childSlots\.length\} Child slots<\/dd>/,
-    "start confirmation must display the roster belonging to that same pinned Active Profile");
-  assert.match(startConfirmationSource, /Main 模型", "Main model"\)\}<\/dt><dd>\{startConfirmation\.profile\.mainAgentSlot\.modelProfileId\}<\/dd>/,
-    "start confirmation must show the pinned Main model");
-  assert.match(startConfirmationSource, /能力数量", "Capability count"\)\}<\/dt><dd>\{startConfirmation\.profile\.entries\.filter/,
-    "start confirmation must show the pinned capability count");
-  assert.doesNotMatch(startConfirmationSource, /\{childSlots\.length\}|executionProfile\?\.childSlots/,
-    "start confirmation must not mix mutable Draft or independently refreshed profile state into its snapshot");
-  const openStartConfirmationSource = product.slice(product.indexOf("function openStartConfirmation"), product.indexOf("async function startUnderstanding"));
-  assert.match(openStartConfirmationSource, /profile: structuredClone\(executionProfile\)/,
-    "opening the modal must capture a detached Active Profile snapshot");
-  assert.match(openStartConfirmationSource, /window\.localStorage\.getItem\(confirmedProfileStorageKey/,
-    "a new browser session must retain the confirmed active profile for the same operator");
-  assert.match(product, /traqen:f006:confirmed-profile:\$\{WEB_OPERATOR\}:\$\{workspaceId\}/,
-    "the durable confirmation key must be scoped to the current Web operator and Workspace");
-  const startUnderstandingSource = product.slice(product.indexOf("async function startUnderstanding"), product.indexOf("async function controlUnderstanding"));
-  assert.match(startUnderstandingSource, /error instanceof ServerUnderstandingApiError[\s\S]*error\.status === 409[\s\S]*error\.code === "PERSISTENCE_CONFLICT"[\s\S]*error\.details\?\.head === "WORKSPACE_EXECUTION_PROFILE"/,
-    "a stale start confirmation must identify the structured conflict rather than treating it as a generic error");
-  assert.match(startUnderstandingSource, /await refreshWorkspaceReads\(activeWorkspace, requestContext\)/,
-    "a stale start confirmation must refresh the Active Profile before allowing a retry");
-  assert.match(startUnderstandingSource, /The Active Profile changed\. The confirmation was refreshed; review it and try again\./);
   assert.match(product, /capabilityDraftConflict/,
     "a stale Workspace Draft save must retain a dedicated conflict state rather than discard the editor");
   assert.match(product, /getWorkspaceCapabilityDraft/,
@@ -165,8 +141,6 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /Current policy content/);
   assert.match(surfaces, /Retry my retained Draft/);
   assert.match(surfaces, /Use newer server Draft/);
-  assert.match(product, /getWorkspaceCapabilityDraft,\s*listWorkspaceExecutionProfiles,\s*loadWorkspaceCapabilitySettings/,
-    "the Active Profile conflict recovery must import the profile-history reader it invokes");
   assert.match(saveCapabilityDraftSource, /Promise\.all\(\[\s*getWorkspaceCapabilityDraft[\s\S]*getEffectiveCapabilities/,
     "a Draft conflict must capture the newer head with its refreshed effective catalog");
   assert.match(product, /async function retryCapabilityDraft\(\)[\s\S]*structuredClone\(conflict\.local\)[\s\S]*expectedVersion: conflict\.current\.revision/,

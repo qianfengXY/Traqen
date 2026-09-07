@@ -1,3 +1,5 @@
+> Language: **English** · [简体中文](TEMPLATE.zh-CN.md)
+
 ---
 feature_ids: [Fxxx]
 related_features: []

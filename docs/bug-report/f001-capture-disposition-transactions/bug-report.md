@@ -1,3 +1,5 @@
+> 语言：**简体中文** · [English](bug-report.en.md)
+
 ---
 feature_ids: [F001]
 topics: [source-truth, performance, transactions, validation]
