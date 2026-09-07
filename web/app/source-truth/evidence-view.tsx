@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SourceTruthClient } from "./client.ts";
+import { observeSourceReads } from "./observe.ts";
 import type { ArtifactRow, Gap, GapPage, Page } from "./types.ts";
 
 export function sourcePath(encoded: string) {
@@ -9,7 +10,7 @@ export function sourcePath(encoded: string) {
   catch { return `原始路径字节：${encoded}`; }
 }
 
-export function ArtifactTable({ client, route, reference }: { client: SourceTruthClient; route: string; reference?: { bundleId: string; receiptId: string } }) {
+export function ArtifactTable({ client, route, reference, live = false }: { client: SourceTruthClient; route: string; reference?: { bundleId: string; receiptId: string }; live?: boolean }) {
   const [page, setPage] = useState<Page<ArtifactRow> | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -29,10 +30,15 @@ export function ArtifactTable({ client, route, reference }: { client: SourceTrut
   };
   useEffect(() => {
     let active = true;
-    client.request<Page<ArtifactRow>>(`${route}${route.includes("?") ? "&" : "?"}limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`)
-      .then((value) => { if (active) { setPage(value); setError(""); } }).catch((error) => { if (active && !client.signal?.aborted) setError(error.message); });
-    return () => { active = false; };
-  }, [client, route, cursor]);
+    const read = async () => {
+      const value = await client.request<Page<ArtifactRow>>(`${route}${route.includes("?") ? "&" : "?"}limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+      if (active && !client.signal?.aborted) { setPage(value); setError(""); }
+    };
+    const onError = (error: Error) => { if (active && !client.signal?.aborted) setError(error.message); };
+    const stop = live ? observeSourceReads(read, { signal: client.signal, onError }) : () => {};
+    if (!live) void read().catch(onError);
+    return () => { active = false; stop(); };
+  }, [client, route, cursor, live]);
   return <div className="st-evidence"><h3>材料清单</h3><p className="st-muted">分页展示所有条目与处置。计数包含目录和不可用项，不等于完整可分析文件数。</p>
     {error ? <p role="alert" className="st-callout danger">{error}</p> : !page ? <p role="status">正在读取清单…</p> : <>
       <div className="st-table-scroll"><table><thead><tr><th>路径</th><th>类型</th><th>字节</th><th>处置</th>{reference && <th>原始材料</th>}</tr></thead><tbody>{page.items.map(({ entry, disposition, componentId }) => <tr key={`${componentId ?? ""}:${entry.pathBytes}`}><td title={entry.pathBytes}>{sourcePath(entry.pathBytes)}</td><td>{entry.kind}</td><td>{entry.sizeBytes ?? "—"}</td><td><span className={`st-badge ${disposition?.disposition === "EXTERNAL_GAP" ? "warning" : "muted"}`}>{disposition?.disposition ?? "待采集"}</span>{disposition?.reasonCode && <small>{disposition.reasonCode}</small>}</td>{reference && <td>{disposition?.digest && componentId ? <button className="st-link" disabled={saving} onClick={() => void download({ entry, disposition, componentId })}>保存原始文件</button> : "无已采集正文"}</td>}</tr>)}</tbody></table></div>

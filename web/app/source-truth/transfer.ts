@@ -34,6 +34,9 @@ export async function transferDirectory(client: SourceTruthClient, runId: string
       signal?.throwIfAborted();
       const localPath = new TextDecoder("utf-8", { fatal: true }).decode(Uint8Array.from(atob(entry.pathBytes.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0)));
       const emit = () => onProgress({ phase: "UPLOAD", path: localPath, verifiedFiles: String(files), sentBytes: String(sent), unnecessaryBytes: String(unnecessary) });
+      // Announce the phase before waiting for any upload response. Counters
+      // still describe only acknowledged files, not bytes currently in flight.
+      emit();
       if (disposition?.disposition === "VERIFIED") { unnecessary += BigInt(entry.sizeBytes!); files++; emit(); continue; }
       const file = await resolveLocalFile(root, localPath);
       if (String(file.size) !== entry.sizeBytes) throw new Error("本机文件已变化，请重新选择目录并核对");

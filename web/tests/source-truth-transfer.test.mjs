@@ -13,7 +13,11 @@ test("small-file transfer requires an exact completion acknowledgement before di
       if (route.endsWith("/view")) return { sources: [{ sourceId: "docs", manifestId: null }] };
       if (route.includes("/entries?") && method === "GET") return { items: rows.map((r) => ({ entry: r.entry, disposition: null })), nextCursor: null };
       if (route.includes("/checkpoint?")) return { verifiedPrefixBytes: "0", completed: false, reusable: false };
-      if (route.includes("/complete-file?")) return reply;
+      if (route.includes("/complete-file?")) {
+        assert.equal(progress.at(-1).phase, "UPLOAD", "upload stage is visible before waiting for the first file response");
+        assert.equal(progress.at(-1).verifiedFiles, "0");
+        return reply;
+      }
       return {};
     } };
     await assert.rejects(transferDirectory(client, "run", "docs", root, store,

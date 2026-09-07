@@ -11,6 +11,7 @@ import type { DirectoryHandle } from "./directory.ts";
 import type { Confirmation, DraftInput, FrozenVersion, Page, RunDetail, SourceOverview, SourceRun } from "./types.ts";
 import { SourceVersionView } from "./version-view.tsx";
 import { SourceStagingView } from "./staging-view.tsx";
+import { observeSourceReads } from "./observe.ts";
 import "./workbench.css";
 
 const terminal = new Set(["SUCCEEDED", "BLOCKED", "FAILED_RETRYABLE", "CANCELLED"]);
@@ -70,9 +71,8 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
     // setup/cleanup/setup cycle. Never reuse the first aborted signal.
     const controller = client.beginSession();
     const report = (error: Error) => { if (!controller.signal.aborted) setError(error); };
-    void refresh().catch(report);
-    const timer = setInterval(() => { if (!inFlight.current) void refresh().catch(report); }, 2500);
-    return () => { clearInterval(timer); controller.abort(); transferController.current?.abort(); };
+    const stop = observeSourceReads(refresh, { signal: controller.signal, onError: report });
+    return () => { stop(); controller.abort(); transferController.current?.abort(); };
   }, [refresh, client]);
 
   const run = detail?.run ?? null;
@@ -101,10 +101,10 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
     const localController = new AbortController(); transferController.current = localController; setTransferring(true);
     const localClient = new SourceTruthClient(apiBase, token, workspaceId, AbortSignal.any([client.signal!, localController.signal]));
     try {
-      let lastUpdate = 0;
+      let lastUpdate = 0, lastPhase = "";
       const result = await transferDirectory(localClient, runId, source.sourceId, handle, store, overview.policy, (progress) => {
         const now = performance.now();
-        if (now - lastUpdate > 100) { setProgress(progress); lastUpdate = now; }
+        if (progress.phase !== lastPhase || now - lastUpdate > 100) { setProgress(progress); lastUpdate = now; lastPhase = progress.phase; }
       });
       setNotice(`本机完整核对完成；本次传输 ${result.sentBytes} 字节，无需再次传输 ${result.unnecessaryBytes} 字节。请继续复核清单。`);
     } catch (error) {
@@ -180,7 +180,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
           {[4, 5, 6].includes(journey.selected) && <>
             {journey.selected === 4 && <p className="st-callout warning">目录需完整枚举、逐文件读取哈希。关页或授权中断时保留原任务；不能把尚未读到的文件计为删除。</p>}
             {progress && <div className="st-callout" role="status"><strong>{progress.phase === "LOCAL_SCAN" ? "本机完整核对" : progress.phase === "MANIFEST" ? "提交预期清单" : "服务端已验证接收"}</strong><p>{progress.path}</p><p>{progress.phase === "LOCAL_SCAN" ? `文件 ${progress.fileCount} · 目录 ${progress.directoryCount} · 读取 ${progress.readBytes} 字节` : `已完成文件 ${progress.verifiedFiles} · 本次传输 ${progress.sentBytes} 字节 · 无需重复 ${progress.unnecessaryBytes} 字节`}</p></div>}
-            {detail?.sources.map((source) => <ArtifactTable key={`${run!.id}:${source.sourceId}`} client={client} route={`/runs/${run!.id}/sources/${source.sourceId}/entries`} />)}
+            {detail?.sources.map((source) => <ArtifactTable key={`${run!.id}:${source.sourceId}`} client={client} route={`/runs/${run!.id}/sources/${source.sourceId}/entries`} live={!terminal.has(run!.status)} />)}
           </>}
           {journey.selected === 7 && detail?.candidate && <>
             <GapBrowser key={detail.candidate.id} client={client} route={`/runs/${run!.id}/gaps`} />
