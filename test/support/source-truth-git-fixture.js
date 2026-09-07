@@ -6,11 +6,13 @@ import path from "node:path";
 import https from "node:https";
 
 const exec = promisify(execFile);
-export async function gitFixture(t) {
+export async function gitFixture(t, { maxOutputBytes = 1024 * 1024 } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "traqen-source-git-test-"));
   const work = path.join(root, "author");
   await mkdir(work);
-  const git = async (...args) => (await exec("/usr/bin/git", args, { cwd: work, env: { PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" } })).stdout.trim();
+  // Fixture commits need their exit status, never the O(file-count) summary.
+  // Keep the output bound rather than increasing it for a large source tree.
+  const git = async (...args) => (await exec("/usr/bin/git", args[0] === "commit" ? ["commit", "--quiet", ...args.slice(1)] : args, { cwd: work, maxBuffer: maxOutputBytes, env: { PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" } })).stdout.trim();
   await git("init", "-b", "main");
   await writeFile(path.join(work, "README.md"), "fixture version A\n");
   await mkdir(path.join(work, "src"));
