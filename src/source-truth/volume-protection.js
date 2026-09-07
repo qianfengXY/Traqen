@@ -33,7 +33,13 @@ export async function probeLocalVolume(root) {
   // adapter, not an environment boolean claiming encryption. Unsupported hosts
   // fail closed until that adapter is configured in trusted runtime code.
   requireValue(process.platform === "darwin", "SOURCE_VOLUME_PROBE_UNAVAILABLE", "此部署平台尚无受支持的卷保护核验器，不能宣称存储就绪", { status: 503 });
-  const info = await diskInfo(root);
+  // diskutil accepts a device or mount point, not arbitrary nested directories.
+  // Resolve the exact filesystem device without interpreting path text as shell.
+  const { stdout } = await exec("/usr/bin/stat", ["-f", "%Sd", root], { timeout: 10000, maxBuffer: 1024,
+    env: { PATH: "/usr/bin:/bin:/usr/sbin", LC_ALL: "C" } });
+  const device = stdout.trim();
+  requireValue(/^disk\d+(?:s\d+)*$/.test(device), "SOURCE_VOLUME_PROBE_UNAVAILABLE", "无法核验目录所属的本机持久化卷", { status: 503 });
+  const info = await diskInfo(device);
   const physicalStores = [];
   for (const item of info.APFSPhysicalStores ?? []) {
     requireValue(/^disk\d+(?:s\d+)*$/.test(item.APFSPhysicalStore), "SOURCE_VOLUME_PROBE_UNAVAILABLE", "卷物理依赖无法核验", { status: 503 });

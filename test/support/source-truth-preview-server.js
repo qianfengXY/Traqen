@@ -24,7 +24,7 @@ const authenticate = sourceTruthAuthenticator([{ tokenDigest: createHash("sha256
 const corsAllowedOrigins = ["http://127.0.0.1:3188", "http://localhost:3188"];
 const configured = createConfiguredApplication({ store: new PostgresTraceabilityStore(db), env: { CORS_ALLOWED_ORIGINS: corsAllowedOrigins.join(",") } });
 await configured.ready;
-const server = createTraceabilityHttpServer({ application: configured.application, corsAllowedOrigins, apiBearerToken: token,
+const server = createTraceabilityHttpServer({ application: configured.application, corsAllowedOrigins, sourceTruthAllowedOrigins: corsAllowedOrigins, apiBearerToken: token,
   sourceTruthHandler: createSourceTruthHttpHandler({ services, authenticate, allowedOrigins: corsAllowedOrigins }) });
 server.listen(3187, "127.0.0.1", () => process.stdout.write("F001 isolated browser fixture listening on 127.0.0.1:3187; not production evidence.\n"));
 for (const signal of ["SIGTERM", "SIGINT"]) process.once(signal, async () => {

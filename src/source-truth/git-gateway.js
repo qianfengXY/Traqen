@@ -6,6 +6,7 @@ import { requireValue, SourceTruthError } from "./errors.js";
 import { resolveGitTarget, validateGitRef } from "./git-target.js";
 import { GitProcess } from "./git-process.js";
 import { verifiedGitBatch } from "./git-batch.js";
+import { managedStoragePath, verifyProtectedVolume } from "./volume-protection.js";
 
 const oidPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 async function directory(location) {
@@ -29,6 +30,12 @@ export class GitSourceGateway {
     return path.join(this.config.cacheRoot, snapshot.cacheKey, snapshot.objectFormat);
   }
 
+  async ready() {
+    this.config.cacheRoot = await managedStoragePath(this.config.cacheRoot, this.config.forbiddenRoots);
+    await directory(this.config.cacheRoot);
+    if (this.config.requireProtectedVolume) await verifyProtectedVolume(this.config.cacheRoot);
+  }
+
   async network(input) {
     const target = await resolveGitTarget(input.url, this.config.targets, this.config.lookup);
     const config = [["http.curloptResolve", target.curlResolve]];
@@ -43,6 +50,7 @@ export class GitSourceGateway {
   }
 
   async capture(scope, input, { signal } = {}) {
+    await this.ready();
     validateGitRef(input.ref);
     if (input.root !== null) pathBytes(input.root);
     const cacheKey = createHash("sha256").update(canonicalEncode(scope)).digest("hex");
