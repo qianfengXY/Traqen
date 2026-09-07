@@ -293,7 +293,12 @@ export class SourceBackupService {
         await writeAll(file, Buffer.from(`\nUPDATE public.source_truth_workspace SET restore_ready=false,backup_barrier=true;
           UPDATE public.source_truth_run SET generation=generation+1,lease_until=NULL,worker_id=NULL,
             progress=progress || jsonb_build_object('restoredPriorStatus',status,'waitingFor','RESTORE_RECONCILIATION'),status='WAITING_FOR_CLIENT'
-            WHERE status NOT IN ('SUCCEEDED','BLOCKED','FAILED_RETRYABLE','CANCELLED');\n`));
+            WHERE status NOT IN ('SUCCEEDED','BLOCKED','FAILED_RETRYABLE','CANCELLED');
+          UPDATE public.source_truth_publication_operation SET execution_generation=execution_generation+1,execution_until=NULL,
+            retry_after=NULL,recovery_blocked=true,last_diagnostic=jsonb_build_object('code','SOURCE_RESTORE_RECONCILIATION_REQUIRED',
+              'message','已恢复到备份水位；请核对原续签请求、当前权限与期限后明确继续','priorVersionsUnchanged',true,
+              'recovery','在原凭据详情查询上次续签并明确继续；已过期则重新接受，系统不会自动签发')
+            WHERE run_id IS NULL AND status='PREPARING';\n`));
         await file.sync();
       } finally { await file.close(); }
       await postgres.restore(sql);

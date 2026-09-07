@@ -8,7 +8,8 @@ import { BackupCoverage, ReceiptHistory } from "./receipt-history.tsx";
 
 type Difference = { pathBytes: string; change: string; before: unknown; after: unknown };
 type Delta = Page<Difference> & { comparable: boolean; reason?: string; counts: Record<string, string> | null; countUnit: string };
-type RenewalState = { confirmation: Confirmation; operation: { id: string; status: string } | null; result: { receipt: Receipt } | null };
+type RenewalState = { confirmation: Confirmation; operation: { id: string; status: string; requiresAction?: boolean; retryAfter?: string | null;
+  diagnostic?: { code: string; message: string; recovery: string } | null } | null; result: { receipt: Receipt } | null };
 
 export function SourceVersionView({ client, version, versions, writable, onChanged }: { client: SourceTruthClient; version: FrozenVersion; versions: FrozenVersion[]; writable: boolean; onChanged: () => Promise<void> }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -27,12 +28,14 @@ export function SourceVersionView({ client, version, versions, writable, onChang
   };
   const compare = (cursor?: string | null) => request(async () => {
     const params = new URLSearchParams({ fromBundleId: from, toBundleId: version.id, sourceId, limit: "100", ...(cursor ? { cursor } : {}) });
-    setDelta(await client.request(`/delta?${params}`));
+    const value = await client.request<Delta>(`/delta?${params}`);
+    if (alive.current && !client.signal?.aborted) setDelta(value);
   });
   const selectReceipt = (value: Receipt) => { setReceipt(value); setRenewal(null); setRenewalChecked(false); setAccepted(false); setAdmission(null); setError(""); };
   const issued = async (value: Receipt) => { if (!alive.current || client.signal?.aborted) return; selectReceipt(value); await onChanged(); };
   const recover = () => request(async () => {
     const value = await client.request<RenewalState | null>(`/renewal-status?bundleId=${version.id}&receiptId=${encodeURIComponent(receipt!.id)}`);
+    if (!alive.current || client.signal?.aborted) return;
     setRenewalChecked(true); setRenewal(value);
     if (value?.result) await issued(value.result.receipt);
   });
@@ -53,7 +56,10 @@ export function SourceVersionView({ client, version, versions, writable, onChang
       {receipt && receipt.gapCount !== "0" && writable && <details className="st-renewal"><summary>同包重新接受缺口并签发新凭据</summary><p>不重新采集、不改 Bundle，不覆盖旧 Receipt，也不会让旧分析自动改用新凭据。</p><GapBrowser client={client} route={`/bundles/${version.id}/gap-history`} />
         <button className="button" disabled={busy} onClick={() => void recover()}>查询本成员上次续签</button>
         {renewalChecked && !renewal && <p>没有未确认的续签结果。可明确填写新的理由与期限。</p>}
-        {renewal && <div className="st-callout warning"><p>服务端已保存确认 {renewal.confirmation.id}；签发结果尚未确认。理由：{renewal.confirmation.reason}；绝对期限：{renewal.confirmation.expiresAt}。</p><button className="button" disabled={busy || renewal.confirmation.currentlyValid === false} onClick={() => void request(() => finishRenewal(renewal.confirmation))}>继续原续签，查询同一结果</button>{renewal.confirmation.currentlyValid === false && <p>该接受已过期，必须重新明确理由与期限；不能自动延长。</p>}</div>}
+        {renewal && <div className="st-callout warning"><p>服务端已保存确认 {renewal.confirmation.id}；签发结果尚未确认。理由：{renewal.confirmation.reason}；绝对期限：{renewal.confirmation.expiresAt}。</p>
+          {renewal.operation?.diagnostic && <p role="status">{renewal.operation.diagnostic.code}：{renewal.operation.diagnostic.message}。{renewal.operation.diagnostic.recovery}。原包与原凭据不变。</p>}
+          {renewal.operation?.retryAfter && !renewal.operation.requiresAction && <p>系统最早恢复尝试时间：{new Date(renewal.operation.retryAfter).toLocaleString("zh-CN")}；这不是签发成功时间。</p>}
+          <button className="button" disabled={busy || renewal.confirmation.currentlyValid === false} onClick={() => void request(() => finishRenewal(renewal.confirmation))}>{renewal.operation?.diagnostic?.code === "SOURCE_RESTORE_RECONCILIATION_REQUIRED" ? "已核对恢复点，继续原续签" : "继续原续签，查询同一结果"}</button>{renewal.confirmation.currentlyValid === false && <p>该接受已过期，必须重新明确理由与期限；不能自动延长。</p>}</div>}
         <label>重新接受的理由<textarea value={reason} maxLength={2000} onChange={(event) => setReason(event.target.value)} disabled={busy} /></label>
         <label>新的绝对失效时间（浏览器本地时间）<input type="datetime-local" value={expires} onChange={(event) => setExpires(event.target.value)} disabled={busy} /></label>
         <label className="st-check"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} disabled={busy} />我重新接受该包完整的 {receipt.gapCount} 项非阻断缺口。</label>

@@ -50,6 +50,11 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   const confirmation = await publication.confirm(owner, f.context, { candidateId: candidate.id, gapSetId: candidate.gapSetId,
     reason: "备份测试明确接受外部缺口", expiresAt: new Date(Date.now() + 60000).toISOString() });
   const result = await publication.seal(owner, f.context, { confirmationId: confirmation.id, clientToken: "before-backup" });
+  const pendingRenewalService = new SourceRenewalService(f.repository, f.candidates, { beforeCommit() { throw new Error("interrupted before backup"); } });
+  const pendingRenewal = await pendingRenewalService.confirm(owner, "workspace", { bundleId: result.bundle.id, receiptId: result.receipt.id,
+    gapSetId: candidate.gapSetId, reason: "水位之前请求但尚未签发", expiresAt: new Date(Date.now() + 120000).toISOString() });
+  await assert.rejects(pendingRenewalService.issue(owner, "workspace", { bundleId: result.bundle.id, receiptId: result.receipt.id,
+    confirmationId: pendingRenewal.id, clientToken: "pending-at-waterline" }), /interrupted before backup/);
   const pendingUpload = await unfinishedDirectory(f);
   const targetRoot = await realpath(await mkdtemp(path.join(tmpdir(), "tq-f001-backup-test-")));
   let independent = false;
@@ -87,6 +92,11 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   assert.equal(restored.backupId, completed.id);
   assert.equal((await destination.db.query("SELECT restore_ready FROM source_truth_workspace WHERE workspace_id='workspace'")).rows[0].restore_ready, true);
   const recovered = sourceTruthServices({ repository: new SourceTruthRepository(destination.db), blobs: targetBlobs, policy: { id: "policy-v1" } });
+  const restoredRenewal = await recovered.renewal.latest(owner, "workspace", reference);
+  assert.equal(restoredRenewal.operation.requiresAction, true, "restored pending requests need explicit reconciliation, not automatic signing after rollback");
+  assert.equal(restoredRenewal.operation.diagnostic.code, "SOURCE_RESTORE_RECONCILIATION_REQUIRED");
+  await recovered.renewal.recover({ limit: 2, signal: new AbortController().signal });
+  assert.equal((await destination.db.query("SELECT count(*)::int AS n FROM source_truth_receipt")).rows[0].n, 1);
   assert.equal((await recovered.admission.qualify(reader, "workspace", reference)).bundleId, result.bundle.id);
   await assert.rejects(recovered.admission.qualify(reader, "workspace", { ...reference, receiptId: renewed.receipt.id }), { code: "SOURCE_RECEIPT_NOT_FOUND" });
   await assert.rejects(recovered.repository.authorize(owner, "workspace2"), { code: "SOURCE_FORBIDDEN" });

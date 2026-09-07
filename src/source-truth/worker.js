@@ -8,6 +8,7 @@ export class SourceTruthWorker {
     Object.assign(this, { services, maxConcurrent, pollMs, onError });
     this.controller = new AbortController();
     this.services.capture.shutdownSignal = this.controller.signal;
+    if (this.services.renewal) this.services.renewal.shutdownSignal = this.controller.signal;
     this.pending = null; this.timer = null;
   }
 
@@ -42,6 +43,7 @@ export class SourceTruthWorker {
             AND NOT EXISTS (SELECT 1 FROM source_truth_entry e WHERE e.workspace_id=r.workspace_id AND e.run_id=r.id AND e.disposition IS NULL)))))
       ORDER BY r.updated_at,r.id LIMIT $2`, [capture.workerId, this.maxConcurrent]);
     await Promise.all(rows.map((run) => this.execute(run)));
+    await this.services.renewal?.recover({ limit: this.maxConcurrent, signal: this.controller.signal });
   }
 
   async execute(row) {

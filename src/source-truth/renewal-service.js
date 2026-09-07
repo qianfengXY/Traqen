@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { canonicalEncode, structureDigest } from "./identity.js";
-import { requireValue } from "./errors.js";
+import { requireValue, SourceTruthError } from "./errors.js";
+import { transaction } from "./repository.js";
 import { assertAcceptance, confirmationRecord } from "./confirmation-service.js";
 
 export class SourceRenewalService {
@@ -40,12 +41,14 @@ export class SourceRenewalService {
     return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
       const exists = (await tx.query("SELECT id FROM source_truth_receipt WHERE workspace_id=$1 AND id=$2 AND bundle_id=$3", [workspaceId, input.receiptId, input.bundleId])).rows[0];
       requireValue(exists, "SOURCE_RECEIPT_NOT_FOUND", "请指定此 Workspace 的精确包与凭据", { status: 404 });
-      const row = (await tx.query(`SELECT c.*,c.expires_at>clock_timestamp() AS currently_valid,o.id AS operation_id,o.status AS operation_status,o.result
+      const row = (await tx.query(`SELECT c.*,c.expires_at>clock_timestamp() AS currently_valid,o.id AS operation_id,o.status AS operation_status,o.result,
+        o.last_diagnostic,o.retry_after,o.recovery_blocked
         FROM source_truth_confirmation c LEFT JOIN source_truth_publication_operation o ON o.workspace_id=c.workspace_id AND o.confirmation_id=c.id
         WHERE c.workspace_id=$1 AND c.candidate_id=$2 AND c.payload->>'priorReceiptId'=$3 AND c.actor_id=$4 AND c.run_id IS NULL
         ORDER BY c.revision DESC LIMIT 1`, [workspaceId, input.bundleId, input.receiptId, actor.actorId])).rows[0];
       return row ? { confirmation: { ...confirmationRecord(row), currentlyValid: row.currently_valid },
-        operation: row.operation_id ? { id: row.operation_id, status: row.operation_status } : null, result: row.result ?? null } : null;
+        operation: row.operation_id ? { id: row.operation_id, status: row.operation_status, diagnostic: row.last_diagnostic,
+          retryAfter: row.retry_after, requiresAction: row.recovery_blocked } : null, result: row.result ?? null } : null;
     });
   }
 
@@ -59,7 +62,7 @@ export class SourceRenewalService {
       requireValue(confirmation, "SOURCE_CONFIRMATION_REQUIRED", "需要一次明确的同包续签确认");
       requireValue(confirmation.candidate_id === input.bundleId && confirmation.payload.priorReceiptId === input.receiptId,
         "SOURCE_RENEWAL_BINDING_CONFLICT", "续签必须保持原确认中的包和凭据，不能更换目标");
-      let operation = (await tx.query("SELECT * FROM source_truth_publication_operation WHERE workspace_id=$1 AND confirmation_id=$2", [workspaceId, confirmation.id])).rows[0];
+      let operation = (await tx.query("SELECT *,execution_until>clock_timestamp() AS execution_live FROM source_truth_publication_operation WHERE workspace_id=$1 AND confirmation_id=$2", [workspaceId, confirmation.id])).rows[0];
       if (!operation) {
         await assertAcceptance(tx, confirmation);
         operation = (await tx.query(`INSERT INTO source_truth_publication_operation (workspace_id,id,run_id,confirmation_id,actor_id,status)
@@ -68,16 +71,36 @@ export class SourceRenewalService {
       await tx.query(`INSERT INTO source_truth_publication_token (workspace_id,client_token,operation_id,binding) VALUES ($1,$2,$3,$4)
         ON CONFLICT DO NOTHING`, [workspaceId, input.clientToken, operation.id, JSON.stringify(binding)]);
       if (operation.status === "COMMITTED") return { result: operation.result };
+      requireValue(!operation.execution_live, "SOURCE_PUBLICATION_IN_PROGRESS", "原续签正在执行；请查询原操作结果，不要重新接受");
+      requireValue(operation.actor_id === actor.actorId, "SOURCE_FORBIDDEN", "待完成续签只能由原请求成员恢复，不能替换责任人", { status: 403 });
+      requireValue(!access.backupBarrier && access.restoreReady, "SOURCE_PUBLICATION_PAUSED", "备份水位或恢复核验期间暂缓签发");
       const bundle = await this.frozen(tx, workspaceId, confirmation.candidate_id, confirmation.payload.priorReceiptId);
+      operation = (await tx.query(`UPDATE source_truth_publication_operation SET execution_generation=execution_generation+1,
+        execution_id=$3,execution_until=clock_timestamp()+interval '60 seconds',retry_after=NULL,recovery_blocked=false,last_diagnostic=NULL
+        WHERE workspace_id=$1 AND id=$2 RETURNING *`, [workspaceId, operation.id, randomUUID()])).rows[0];
       return { bundle, confirmation, operation, scope: { workspaceId, tenantId: access.tenantId } };
     });
     if (prepared.result) return prepared.result;
-    await this.candidates.verifyEvidence(workspaceId, prepared.bundle, { scope: prepared.scope, heartbeat: () => this.repository.authorize(actor, workspaceId, true) });
+    let pendingHeartbeat, heartbeatError;
+    const heartbeat = () => {
+      if (pendingHeartbeat) return pendingHeartbeat;
+      pendingHeartbeat = this.heartbeat(actor, workspaceId, prepared.operation).finally(() => { pendingHeartbeat = null; });
+      return pendingHeartbeat;
+    };
+    const timer = setInterval(() => { void heartbeat().catch((error) => { heartbeatError = error; }); }, 10000);
+    timer.unref();
+    try {
+    await heartbeat();
+    await this.candidates.verifyEvidence(workspaceId, prepared.bundle, { scope: prepared.scope, heartbeat });
     await this.options.beforeCommit?.();
+    if (heartbeatError) throw heartbeatError;
+    requireValue(!this.shutdownSignal?.aborted, "SOURCE_WORKER_STOPPED", "执行器已停止，原续签请求保留待恢复", { status: 503 });
     const result = await this.repository.withWorkspace(actor, workspaceId, true, async (tx, access) => {
       const { confirmation, operation, bundle } = prepared;
-      const stored = (await tx.query("SELECT * FROM source_truth_publication_operation WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, operation.id])).rows[0];
+      const stored = (await tx.query("SELECT *,execution_until>clock_timestamp() AS execution_live FROM source_truth_publication_operation WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, operation.id])).rows[0];
       if (stored.status === "COMMITTED") return stored.result;
+      requireValue(stored.execution_live && stored.execution_generation === operation.execution_generation && stored.execution_id === operation.execution_id,
+        "SOURCE_STALE_WORKER", "续签已被其他执行代次接管，旧执行者不能发布");
       requireValue(!access.backupBarrier && access.restoreReady, "SOURCE_PUBLICATION_PAUSED", "备份水位或恢复核验期间暂缓签发");
       await this.frozen(tx, workspaceId, bundle.id, confirmation.payload.priorReceiptId);
       await assertAcceptance(tx, confirmation);
@@ -94,5 +117,61 @@ export class SourceRenewalService {
     });
     await this.options.afterCommit?.();
     return result;
+    } catch (error) {
+      await this.recordFailure(workspaceId, prepared.operation, error);
+      throw error;
+    } finally {
+      clearInterval(timer); await pendingHeartbeat?.catch(() => {});
+    }
+  }
+
+  async heartbeat(actor, workspaceId, operation) {
+    requireValue(!this.shutdownSignal?.aborted, "SOURCE_WORKER_STOPPED", "执行器已停止，原续签请求保留待恢复", { status: 503 });
+    return this.repository.withWorkspace(actor, workspaceId, true, async (tx) => {
+      const result = await tx.query(`UPDATE source_truth_publication_operation SET execution_until=clock_timestamp()+interval '60 seconds'
+        WHERE workspace_id=$1 AND id=$2 AND status='PREPARING' AND execution_generation=$3 AND execution_id=$4
+        AND execution_until>clock_timestamp() RETURNING id`, [workspaceId, operation.id, operation.execution_generation, operation.execution_id]);
+      requireValue(result.rows.length === 1, "SOURCE_STALE_WORKER", "续签执行权已失效，请查询原操作");
+    });
+  }
+
+  async recordFailure(workspaceId, operation, error) {
+    if (["SOURCE_STALE_WORKER", "SOURCE_PUBLICATION_IN_PROGRESS"].includes(error.code)) return;
+    const known = error instanceof SourceTruthError;
+    const retryable = !known || error.status >= 500 || error.status === 429 || error.code === "SOURCE_PUBLICATION_PAUSED";
+    const diagnostic = { code: known ? error.code : "SOURCE_RENEWAL_RETRY_REQUIRED",
+      message: known ? error.message : "续签暂未完成，原包与原凭据保留",
+      priorVersionsUnchanged: true, recovery: retryable ? "恢复服务后重试原续签，系统也会恢复已请求操作" :
+        error.code === "SOURCE_ACCEPTANCE_EXPIRED" ? "核对原限制并明确新的绝对期限" : "修复当前权限、策略或内容完整性后再操作" };
+    await transaction(this.repository.database, async (tx) => {
+      await tx.query("SELECT id FROM project WHERE id=$1 FOR UPDATE", [workspaceId]);
+      await tx.query("SELECT workspace_id FROM source_truth_workspace WHERE workspace_id=$1 FOR UPDATE", [workspaceId]);
+      const changed = await tx.query(`UPDATE source_truth_publication_operation SET execution_until=NULL,
+        retry_after=CASE WHEN $4 THEN clock_timestamp()+interval '30 seconds' ELSE NULL END,recovery_blocked=NOT $4,last_diagnostic=$5
+        WHERE workspace_id=$1 AND id=$2 AND status='PREPARING' AND execution_generation=$3 RETURNING id`,
+      [workspaceId, operation.id, operation.execution_generation, retryable, JSON.stringify(diagnostic)]);
+      if (changed.rows.length) await this.repository.audit(tx, workspaceId, null, operation.actor_id, "RENEWAL_EXECUTION_STOPPED", { operationId: operation.id, diagnostic });
+    });
+  }
+
+  async recover({ limit, signal }) {
+    if (signal.aborted) return;
+    const { rows } = await this.repository.database.query(`SELECT o.*,w.tenant_id,c.candidate_id,c.payload AS confirmation
+      FROM source_truth_publication_operation o JOIN source_truth_workspace w USING(workspace_id)
+      JOIN source_truth_confirmation c ON c.workspace_id=o.workspace_id AND c.id=o.confirmation_id
+      WHERE o.run_id IS NULL AND o.status='PREPARING' AND NOT o.recovery_blocked AND w.restore_ready AND NOT w.backup_barrier
+        AND (o.retry_after IS NULL OR o.retry_after<=clock_timestamp()) AND (o.execution_until IS NULL OR o.execution_until<=clock_timestamp())
+      ORDER BY o.created_at,o.id LIMIT $1`, [limit]);
+    await Promise.all(rows.map(async (operation) => {
+      if (signal.aborted) return;
+      try {
+        await this.issue({ actorId: operation.actor_id, tenantId: operation.tenant_id }, operation.workspace_id,
+          { bundleId: operation.candidate_id, receiptId: operation.confirmation.priorReceiptId, confirmationId: operation.confirmation_id, clientToken: `recover-${operation.id}` });
+      } catch (error) {
+        // Before claim (e.g. revoked member), persist a fenced diagnosis too.
+        // A failure after claim is already recorded at its newer generation.
+        await this.recordFailure(operation.workspace_id, operation, error);
+      }
+    }));
   }
 }
