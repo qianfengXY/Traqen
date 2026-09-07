@@ -30,6 +30,23 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /availableMcps\.length \?/);
 });
 
+test("F006 settings center makes a new global Skill explicitly verified and lets an Agent remove unavailable legacy grants", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /skillVerified/,
+    "a global Skill created in Settings needs an explicit verification state before it can be granted");
+  assert.match(source, /signature:\s*kind === "SKILL" \? "VERIFIED" : undefined/,
+    "the UI must persist the existing verified-signature contract for an explicitly verified Skill");
+  assert.match(source, /!skillVerified/,
+    "a Skill cannot be saved as grantable before the administrator verifies it");
+  assert.match(source, /unavailableGrants/,
+    "Agent Settings must retain a recovery view for grants hidden from the effective catalog");
+  assert.match(source, /GLOBAL_UNAVAILABLE[\s\S]*props\.selected!\.skills\.includes/,
+    "a selected unavailable Skill must remain in the Agent grant list so it can be unchecked");
+  assert.match(source, /onToggleGrant\("SKILL", entry\.normalizedName\)/,
+    "removing an unavailable grant must edit the same durable Agent draft state");
+});
+
 test("F006 Codex model settings require an explicit model and expose reasoning effort", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
 

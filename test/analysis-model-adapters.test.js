@@ -197,6 +197,44 @@ test("allowlisted CLI verification exercises authenticated model execution inste
   await assert.rejects(() => unauthenticated.verify(), /verification challenge/);
 });
 
+test("F006 CLI models implement the analysis and reconciliation contract used by the Workspace runner", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CLI-F006-RUNNER",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    spawnImpl: cliSpawn(({ args }) => {
+      const request = JSON.parse(args.at(-1));
+      if (request.task === "analysis") return { stdout: `${JSON.stringify({ candidateFeatures: [{ candidateKey: "orders", name: "Orders" }] })}\n` };
+      if (request.task === "reconciliation") return { stdout: `${JSON.stringify({ candidateDecisions: [{ candidateRef: "CHILD-1:0", disposition: "ACCEPT" }], relations: [], gaps: [] })}\n` };
+      throw new Error(`unexpected CLI task ${request.task}`);
+    }, calls),
+  });
+
+  const analysis = await adapter.analyze({
+    workUnit: { id: "UNIT-1" },
+    workContext: { scopeKey: "orders" },
+    deterministicCandidates: [],
+    evidence: { facts: [] },
+    context: { maxOutputTokens: 1_000 },
+  });
+  const reconciliation = await adapter.reconcile({
+    workUnit: { id: "UNIT-1" },
+    workContext: { scopeKey: "orders" },
+    candidateOptions: [{ ref: "CHILD-1:0" }],
+    contextCandidates: [],
+    scopedArtifacts: [],
+    evidence: { facts: [], sourceSlices: [] },
+    context: { maxOutputTokens: 1_000 },
+  });
+
+  assert.deepEqual(analysis, { candidateFeatures: [{ candidateKey: "orders", name: "Orders" }] });
+  assert.deepEqual(reconciliation, { candidateDecisions: [{ candidateRef: "CHILD-1:0", disposition: "ACCEPT" }], relations: [], gaps: [] });
+  assert.deepEqual(calls.map((call) => JSON.parse(call.args.at(-1)).task), ["analysis", "reconciliation"]);
+  assert.ok(calls.every((call) => call.options.shell === false));
+  assert.ok(calls.every((call) => call.args.includes("gpt-5.6-terra")));
+});
+
 test("account-bound CLI execution resolves an API-key reference only into the selected adapter environment", async () => {
   const calls = [];
   const adapter = new AllowlistedCliModelAdapter({

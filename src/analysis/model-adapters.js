@@ -232,6 +232,8 @@ export class AllowlistedCliModelAdapter {
 
   enrichWorkspaceCandidates(input, options = {}) { return this.#jsonTask("workspace-enrichment", input, options); }
   planWorkspaceAnalysis(input, options = {}) { return this.#jsonTask("workspace-plan", input, options); }
+  analyze(input, options = {}) { return this.#jsonTask("analysis", input, options); }
+  reconcile(input, options = {}) { return this.#jsonTask("reconciliation", input, options); }
 }
 
 function requiredString(value, fieldName) {
