@@ -61,6 +61,7 @@ async function migratedDatabase() {
     "0025_global_model_profile_revision_records",
     "0026_global_account_revision",
     "0027_f006_legacy_settings_receipts",
+    "0028_f001_source_truth",
   ]);
   return database;
 }
