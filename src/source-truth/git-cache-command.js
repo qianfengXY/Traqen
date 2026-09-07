@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { writeSync } from "node:fs";
 import { Socket } from "node:net";
 import { checkGitCacheCapacity, prepareGitCacheDirectory } from "./git-cache-capacity.js";
+import { preserveInterruptedGitLocks } from "./git-cache-recovery.js";
 
 const [root, maximum, minimumFree, reserve, cwd, executable, ...args] = process.argv.slice(2);
 const budget = { root, maximum, minimumFree, reserve };
@@ -28,6 +29,7 @@ function deny(error) {
 try {
   await checkGitCacheCapacity(budget, BigInt(reserve));
   await prepareGitCacheDirectory(root, cwd);
+  if (await preserveInterruptedGitLocks(cwd)) await checkGitCacheCapacity(budget, BigInt(reserve));
   const child = spawn(executable, args, { cwd, env: process.env, stdio: [0, 1, 2, 5] });
   let pending = null;
   const timer = setInterval(() => {

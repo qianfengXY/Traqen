@@ -6,7 +6,7 @@ import path from "node:path";
 import https from "node:https";
 
 const exec = promisify(execFile);
-export async function gitFixture(t, { maxOutputBytes = 1024 * 1024 } = {}) {
+export async function gitFixture(t, { maxOutputBytes = 1024 * 1024, transformResponse = null } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), "traqen-source-git-test-"));
   const work = path.join(root, "author");
   await mkdir(work);
@@ -46,8 +46,16 @@ export async function gitFixture(t, { maxOutputBytes = 1024 * 1024 } = {}) {
         else values[name] = line.slice(colon + 1).trim();
       }
       response.writeHead(status, values);
-      response.write(prefix.subarray(boundary + 4));
-      process.stdout.pipe(response);
+      // Test-only response backpressure lets real native fetches be interrupted
+      // mid-pack; it does not manufacture client-side Git lock files.
+      const body = transformResponse?.(request) ?? response;
+      if (body !== response) {
+        body.pipe(response);
+        body.on("error", () => response.destroy());
+        response.on("close", () => body.destroy());
+      }
+      body.write(prefix.subarray(boundary + 4));
+      process.stdout.pipe(body);
     };
     process.stdout.on("data", headers);
     response.on("close", () => process.kill());
