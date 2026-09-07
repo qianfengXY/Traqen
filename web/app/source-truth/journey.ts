@@ -1,3 +1,14 @@
+import type { DraftInput, FrozenVersion } from "./types.ts";
+
+export function draftFromVersion(version: Pick<FrozenVersion, "id" | "components">): DraftInput {
+  return { baselineBundleId: version.id, sources: version.components.map((component) => {
+    if (component.kind !== "GIT" && component.kind !== "DIRECTORY_UPLOAD") throw new Error("无法建立新版本：来源类型不受支持");
+    return { sourceId: component.sourceId, kind: component.kind, mode: "REUSE", componentId: component.id,
+      label: component.kind === "GIT" ? "Git 源码" : "本机目录",
+      ...(component.kind === "GIT" ? { url: component.sourceUrl ?? "", ref: component.nativeIdentity?.commit ?? "HEAD", root: component.scope?.root ?? null } : {}) };
+  }) };
+}
+
 export const sourceStations = ["添加来源", "确认范围", "来源预检", "枚举材料", "冻结清单", "采集校验", "复核缺口", "冻结包"] as const;
 export type SourceRunState = { status: string; station: number };
 export function sourceJourney(run: SourceRunState | null, draftRevision: number, confirmation: boolean, selected: number | null = null) {

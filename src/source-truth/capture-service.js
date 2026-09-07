@@ -53,13 +53,15 @@ export class SourceCaptureService {
 
   async withHeartbeat(context, action) {
     const controller = new AbortController();
+    this.shutdownSignal?.throwIfAborted();
+    const signal = this.shutdownSignal ? AbortSignal.any([controller.signal, this.shutdownSignal]) : controller.signal;
     let pending = null, failure = null;
     const timer = setInterval(() => {
       if (pending) return;
       pending = this.repository.heartbeat(context).catch((error) => { failure = error; controller.abort(); }).finally(() => { pending = null; });
     }, 10000);
     try {
-      const result = await action(controller.signal);
+      const result = await action(signal);
       if (failure) throw failure;
       return result;
     } finally { clearInterval(timer); await pending; }
@@ -69,10 +71,10 @@ export class SourceCaptureService {
     await this.repository.authorize(actor, workspaceId, true);
     const key = `${workspaceId}:${runId}`;
     if (this.advancing.has(key)) return this.advancing.get(key);
-    const current = await this.repository.getRun(actor, workspaceId, runId);
-    requireValue(current, "SOURCE_NOT_FOUND", "任务不存在", { status: 404 });
-    if (terminalRunStates.has(current.status) || ["REVIEW_REQUIRED", "PREPARING_SEAL", "FINALIZING"].includes(current.status)) return current;
     const work = (async () => {
+      const current = await this.repository.getRun(actor, workspaceId, runId);
+      requireValue(current, "SOURCE_NOT_FOUND", "任务不存在", { status: 404 });
+      if (terminalRunStates.has(current.status) || ["REVIEW_REQUIRED", "PREPARING_SEAL", "FINALIZING"].includes(current.status)) return current;
       const { context, run } = await this.context(actor, workspaceId, runId);
       try { return await this.withHeartbeat(context, (signal) => this.runner.advance(context, run, signal)); }
       catch (error) {

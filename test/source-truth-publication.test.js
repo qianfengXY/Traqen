@@ -40,6 +40,22 @@ test("B-11 concurrent finalization returns one Receipt to both callers", async (
   assert.equal((await f.repository.listBundles(reader, "workspace")).length, 1);
 });
 
+test("B-11 a duplicate whose verification loses its lease to the committed result still returns that exact operation", async (t) => {
+  const f = await fixture(t);
+  const confirmation = await f.publication.confirm(owner, f.context, { candidateId: f.candidate.id, gapSetId: f.candidate.gapSetId });
+  let enter, release, arrivals = 0;
+  const entered = new Promise((resolve) => { enter = resolve; });
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const verify = f.candidates.verifyPrepared.bind(f.candidates);
+  t.mock.method(f.candidates, "verifyPrepared", async (...args) => { if (++arrivals === 1) { enter(); await blocked; } return verify(...args); });
+  const first = f.publication.seal(owner, f.context, { confirmationId: confirmation.id, clientToken: "slower" });
+  await entered;
+  const second = await f.publication.seal(owner, f.context, { confirmationId: confirmation.id, clientToken: "faster" });
+  release();
+  assert.equal((await first).receipt.id, second.receipt.id);
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM source_truth_receipt")).rows[0].n, 1);
+});
+
 test("B-10 accepted gap stays visible in the receipt and expires by server time before seal", async (t) => {
   const f = await fixture(t, { git: true, gaps: [nonBlockingGap] });
   const serverTime = (await f.db.query("SELECT clock_timestamp() AS now")).rows[0].now;

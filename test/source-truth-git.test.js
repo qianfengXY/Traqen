@@ -32,3 +32,20 @@ test("B-05/13 a missing root and HTTPS redirects cannot become an empty successf
   await assert.rejects(git.capture(scope, { url: fixture.url, ref: "main", root: "missing" }), { code: "SOURCE_GIT_ROOT_MISSING" });
   await assert.rejects(git.capture(scope, { url: `${fixture.origin}/redirect`, ref: "main", root: null }), { code: "SOURCE_GIT_TRANSFER_FAILED" });
 });
+
+test("B-06 native Git batch uses one process and verifies each framed blob without buffering the batch", async (t) => {
+  const fixture = await gitFixture(t);
+  const git = gateway(fixture);
+  const snapshot = await git.capture(scope, { url: fixture.url, ref: "main", root: null });
+  const entries = []; for await (const entry of git.entries(snapshot)) if (entry.kind === "FILE") entries.push(entry);
+  const processCalls = t.mock.method(git.process, "stream", git.process.stream.bind(git.process));
+  const values = [];
+  // Until batch support exists, exercise the real behavior, not an import error.
+  const batches = git.readBlobs ? git.readBlobs(snapshot, entries) : (async function* () {
+    for (const entry of entries) yield { entry, content: git.readBlob(snapshot, entry) };
+  })();
+  for await (const item of batches) values.push((await collect(item.content)).toString());
+  assert.deepEqual(values, ["fixture version A\n", "throw new Error('SOURCE_MUST_NEVER_EXECUTE');\n"]);
+  assert.equal(processCalls.mock.callCount(), 1, "batch must not spawn one Git process per file");
+  assert.equal(git.process.active, 0);
+});

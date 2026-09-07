@@ -67,6 +67,7 @@ async function migratedDatabase() {
     "0031_f001_atomic_publication",
     "0032_f001_evidence_boundary_guards",
     "0033_f001_capture_inputs",
+    "0034_f001_pending_material_index",
   ]);
   return database;
 }

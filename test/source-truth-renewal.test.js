@@ -21,7 +21,16 @@ test("B-10 same-bundle renewal appends a Receipt without recapture, altering old
   const renewal = new SourceRenewalService(f.repository, f.candidates);
   const accept = await renewal.confirm(owner, "workspace", { ...oldRef, gapSetId: candidate.gapSetId, reason: "已重新核对外部材料限制", expiresAt: new Date(Date.now() + 60000).toISOString() });
   assert.ok(accept?.id);
-  const renewed = await renewal.issue(owner, "workspace", { confirmationId: accept.id, clientToken: "renew" });
+  const retryConfirmation = await renewal.confirm(owner, "workspace", { ...oldRef, gapSetId: candidate.gapSetId, reason: accept.reason, expiresAt: accept.expiresAt });
+  assert.equal(retryConfirmation.id, accept.id, "response loss must not manufacture another acceptance revision");
+  const pending = await renewal.latest(owner, "workspace", oldRef);
+  assert.equal(pending.confirmation.id, accept.id);
+  assert.equal(pending.confirmation.currentlyValid, true);
+  assert.equal(pending.operation, null);
+  assert.equal(pending.result, null);
+  assert.equal(await renewal.latest(reader, "workspace", oldRef), null, "a different member must not resume another member's confirmation by accident");
+  await assert.rejects(renewal.issue(owner, "workspace", { ...oldRef, bundleId: "f".repeat(64), confirmationId: accept.id, clientToken: "wrong-bundle" }), { code: "SOURCE_RENEWAL_BINDING_CONFLICT" });
+  const renewed = await renewal.issue(owner, "workspace", { ...oldRef, confirmationId: accept.id, clientToken: "renew" });
   assert.equal(renewed.bundle.id, original.bundle.id);
   assert.notEqual(renewed.receipt.id, original.receipt.id);
   assert.equal(renewed.receipt.status, "READY_WITH_ACCEPTED_GAPS");
@@ -30,7 +39,8 @@ test("B-10 same-bundle renewal appends a Receipt without recapture, altering old
   await assert.rejects(admission.qualify(reader, "workspace", oldRef), { code: "SOURCE_ACCEPTANCE_EXPIRED" });
   const counts = await f.db.query("SELECT (SELECT count(*) FROM source_truth_run)::text AS runs,(SELECT count(*) FROM source_truth_bundle)::text AS bundles,(SELECT count(*) FROM source_truth_receipt)::text AS receipts");
   assert.deepEqual(counts.rows[0], { runs: "1", bundles: "1", receipts: "2" });
-  const repeated = await renewal.issue(owner, "workspace", { confirmationId: accept.id, clientToken: "renew-again" });
+  const repeated = await renewal.issue(owner, "workspace", { ...oldRef, confirmationId: accept.id, clientToken: "renew-again" });
   assert.equal(repeated.receipt.id, renewed.receipt.id);
-  await assert.rejects(renewal.issue(owner, "workspace", { confirmationId: "different", clientToken: "renew-again" }), { code: "SOURCE_IDEMPOTENCY_CONFLICT" });
+  assert.equal((await renewal.latest(owner, "workspace", oldRef)).result.receipt.id, renewed.receipt.id);
+  await assert.rejects(renewal.issue(owner, "workspace", { ...oldRef, confirmationId: "different", clientToken: "renew-again" }), { code: "SOURCE_IDEMPOTENCY_CONFLICT" });
 });

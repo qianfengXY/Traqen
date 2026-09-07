@@ -24,12 +24,29 @@ const privateCandidate = (row) => row ? { id: row.id, ...row.payload, ...row.cou
 // lease, raw credential or unsealed file content is exposed here.
 export class SourceQueryService {
   constructor(repository, materials) { Object.assign(this, { repository, materials }); }
+  async bundleRecord(tx, workspaceId, row) {
+    const latest = (await tx.query(`SELECT r.payload,r.issued_at,c.expires_at FROM source_truth_receipt r JOIN source_truth_confirmation c
+      ON c.workspace_id=r.workspace_id AND c.id=r.confirmation_id WHERE r.workspace_id=$1 AND r.bundle_id=$2 ORDER BY r.issued_at DESC,r.id DESC LIMIT 1`, [workspaceId, row.id])).rows[0];
+    const components = (await tx.query(`SELECT c.id,c.payload,c.counts,s.locator FROM source_truth_bundle_component b JOIN source_truth_component c
+      ON c.workspace_id=b.workspace_id AND c.id=b.component_id LEFT JOIN source_truth_registration s
+      ON s.workspace_id=c.workspace_id AND s.source_id=c.payload->>'sourceId' WHERE b.workspace_id=$1 AND b.bundle_id=$2 ORDER BY c.payload->>'kind'`, [workspaceId, row.id])).rows;
+    return { id: row.id, ...row.payload, publishedAt: new Date(row.published_at).toISOString(),
+      components: components.map((c) => ({ id: c.id, ...c.payload, ...c.counts, sourceUrl: c.locator ?? null })), currentAdmission: "NOT_CHECKED",
+      latestReceipt: latest ? { ...latest.payload, issuedAt: new Date(latest.issued_at).toISOString(), expiresAt: latest.expires_at ? new Date(latest.expires_at).toISOString() : null } : null };
+  }
+  async bundle(actor, workspaceId, bundleId) {
+    return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
+      const row = (await tx.query("SELECT * FROM source_truth_bundle WHERE workspace_id=$1 AND id=$2", [workspaceId, bundleId])).rows[0];
+      requireValue(row, "SOURCE_NOT_FOUND", "冻结包不存在", { status: 404 });
+      return this.bundleRecord(tx, workspaceId, row);
+    });
+  }
   async run(actor, workspaceId, runId) {
     return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
       const row = (await tx.query("SELECT * FROM source_truth_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
       requireValue(row, "SOURCE_NOT_FOUND", "任务不存在", { status: 404 });
       const candidate = (await tx.query("SELECT * FROM source_truth_prepared_bundle WHERE workspace_id=$1 AND run_id=$2", [workspaceId, runId])).rows[0];
-      const confirmation = (await tx.query("SELECT * FROM source_truth_confirmation WHERE workspace_id=$1 AND run_id=$2 ORDER BY revision DESC LIMIT 1", [workspaceId, runId])).rows[0];
+      const confirmation = (await tx.query("SELECT *,expires_at IS NULL OR expires_at>clock_timestamp() AS currently_valid FROM source_truth_confirmation WHERE workspace_id=$1 AND run_id=$2 ORDER BY revision DESC LIMIT 1", [workspaceId, runId])).rows[0];
       const operation = row.publication_operation_id ? (await tx.query("SELECT id,status,result FROM source_truth_publication_operation WHERE workspace_id=$1 AND id=$2", [workspaceId, row.publication_operation_id])).rows[0] : null;
       const sources = [];
       for (const source of (await tx.query("SELECT * FROM source_truth_run_source WHERE workspace_id=$1 AND run_id=$2 ORDER BY kind", [workspaceId, runId])).rows) {
@@ -37,7 +54,7 @@ export class SourceQueryService {
         sources.push({ sourceId: source.source_id, kind: source.kind, mode: source.source.mode ?? "UPDATE", scope: source.source.scope,
           nativeIdentity: source.source.nativeIdentity, manifestId: source.manifest_id, enumerationClosed: source.enumeration_closed, summary });
       }
-      return { run: publicRun(runRecord(row)), sources, candidate: privateCandidate(candidate), confirmation: confirmation ? confirmationRecord(confirmation) : null,
+      return { run: publicRun(runRecord(row)), sources, candidate: privateCandidate(candidate), confirmation: confirmation ? { ...confirmationRecord(confirmation), currentlyValid: confirmation.currently_valid } : null,
         operation: operation ? { id: operation.id, status: operation.status } : null, result: operation?.result ?? null };
     });
   }
@@ -80,15 +97,7 @@ export class SourceQueryService {
       for (const row of rows.slice(0, limit)) {
         if (kind === "runs") items.push(publicRun(runRecord(row)));
         else if (kind === "receipts") items.push({ ...row.payload, issuedAt: new Date(row.issued_at).toISOString(), currentAdmission: "NOT_CHECKED" });
-        else {
-          const latest = (await tx.query(`SELECT r.payload,r.issued_at,c.expires_at FROM source_truth_receipt r JOIN source_truth_confirmation c
-            ON c.workspace_id=r.workspace_id AND c.id=r.confirmation_id WHERE r.workspace_id=$1 AND r.bundle_id=$2 ORDER BY r.issued_at DESC,r.id DESC LIMIT 1`, [workspaceId, row.id])).rows[0];
-          const components = (await tx.query(`SELECT c.id,c.payload,c.counts FROM source_truth_bundle_component b JOIN source_truth_component c
-            ON c.workspace_id=b.workspace_id AND c.id=b.component_id WHERE b.workspace_id=$1 AND b.bundle_id=$2 ORDER BY c.payload->>'kind'`, [workspaceId, row.id])).rows;
-          items.push({ id: row.id, ...row.payload, publishedAt: new Date(row.published_at).toISOString(),
-            components: components.map((c) => ({ id: c.id, ...c.payload, ...c.counts })), currentAdmission: "NOT_CHECKED",
-            latestReceipt: latest ? { ...latest.payload, issuedAt: new Date(latest.issued_at).toISOString(), expiresAt: latest.expires_at ? new Date(latest.expires_at).toISOString() : null } : null });
-        }
+        else items.push(await this.bundleRecord(tx, workspaceId, row));
       }
       const last = rows[limit - 1];
       return { items, nextCursor: rows.length > limit ? cursor({ kind, at: last.cursor_time, id: last.id }) : null };

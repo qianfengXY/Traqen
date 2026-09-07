@@ -5,6 +5,7 @@ import { canonicalEncode, pathBytes, manifestEntry } from "./identity.js";
 import { requireValue, SourceTruthError } from "./errors.js";
 import { resolveGitTarget, validateGitRef } from "./git-target.js";
 import { GitProcess } from "./git-process.js";
+import { verifiedGitBatch } from "./git-batch.js";
 
 const oidPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 async function directory(location) {
@@ -127,5 +128,22 @@ export class GitSourceGateway {
       native.update(chunk); received += chunk.length; yield chunk;
     }
     requireValue(received === size && native.digest("hex") === entry.expectedContent.oid, "SOURCE_GIT_INTEGRITY_FAILED", "Git 对象字节与固定引用不一致");
+  }
+
+  async *readBlobs(snapshot, inputs, { signal } = {}) {
+    requireValue(Array.isArray(inputs) && inputs.length <= 500, "SOURCE_GIT_RESOURCE_LIMIT", "Git 批次必须有界");
+    if (!inputs.length) return;
+    const entries = inputs.map((input) => manifestEntry("GIT", input));
+    let maxBytes = 0;
+    for (const entry of entries) {
+      requireValue(["FILE", "SYMLINK"].includes(entry.kind) && entry.expectedContent.objectFormat === snapshot.objectFormat,
+        "SOURCE_INVALID_INPUT", "不是当前 Git 来源的内容对象");
+      const size = Number(entry.sizeBytes);
+      requireValue(Number.isSafeInteger(size) && size <= this.maxFileBytes, "SOURCE_FILE_TOO_LARGE", "Git 文件超过平台限制");
+      maxBytes += size + 200;
+    }
+    requireValue(Number.isSafeInteger(maxBytes), "SOURCE_GIT_RESOURCE_LIMIT", "Git 批次字节预算无效");
+    const input = entries.map((entry) => `${entry.expectedContent.oid}\n`).join("");
+    yield* verifiedGitBatch(this.process.stream(["cat-file", "--batch"], { cwd: this.location(snapshot), input, signal, maxBytes }), entries, snapshot.objectFormat);
   }
 }

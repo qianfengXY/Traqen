@@ -85,14 +85,25 @@ export class SourceCaptureRunner {
       let after = null;
       do {
         const page = await this.materials.entries(local, { after, limit: 100 });
+        let gitBatch = [], batchBytes = 0;
+        const flushGit = async () => {
+          if (gitBatch.length) await this.captureGitFiles(local, source.source, gitBatch, signal);
+          gitBatch = []; batchBytes = 0;
+        };
         for (const { entry, disposition } of page.items) {
+          signal?.throwIfAborted();
           if (disposition) continue;
           if (entry.kind === "DIRECTORY") await this.materials.dispose(local, { pathBytes: entry.pathBytes, disposition: "METADATA", reasonCode: "DIRECTORY_RECORDED" });
-          else if (source.kind === "GIT") await this.captureGitFile(local, source.source, entry, signal);
+          else if (source.kind === "GIT") {
+            const size = Number(entry.sizeBytes ?? "0");
+            if (batchBytes + size > 32 * 1024 * 1024) await flushGit();
+            gitBatch.push(entry); batchBytes += size;
+          }
           else if (await this.blobs.verifyBlob({ workspaceId: context.workspaceId, tenantId: context.tenantId }, { digest: entry.expectedContent.digest, sizeBytes: entry.sizeBytes })) {
             await this.materials.dispose(local, { pathBytes: entry.pathBytes, disposition: "VERIFIED", reasonCode: "CONTENT_VERIFIED", digest: entry.expectedContent.digest, sizeBytes: entry.sizeBytes });
           }
         }
+        await flushGit();
         after = page.nextCursor;
       } while (after);
     }
@@ -102,19 +113,37 @@ export class SourceCaptureRunner {
     return this.transition(context, "CAPTURING", "RECONCILING", { ...run.progress, pendingCount: "0" });
   }
 
-  async captureGitFile(context, source, entry, signal) {
-    if (entry.kind === "GITLINK") {
+  async captureGitFiles(context, source, entries, signal) {
+    for (const entry of entries.filter((entry) => entry.kind === "GITLINK")) {
       await this.materials.dispose(context, { pathBytes: entry.pathBytes, disposition: "EXTERNAL_GAP", reasonCode: "SUBMODULE_NOT_RECURSED", gaps: [
         { ruleCode: "GIT_SUBMODULE_EXTERNAL", severity: "NON_BLOCKING", ruleVersion: "v1", affectedScope: "external-tree", externalReference: entry.expectedContent },
       ] });
-      return;
     }
-    const hash = createHash("sha256");
-    let prefix = Buffer.alloc(0);
-    for await (const chunk of this.git.readBlob(source.gitSnapshot, entry, { signal })) {
-      hash.update(chunk);
-      if (prefix.length < 8192) prefix = Buffer.concat([prefix, chunk.subarray(0, 8192 - prefix.length)]);
+    const scope = { tenantId: context.tenantId, workspaceId: context.workspaceId };
+    const pending = new Map();
+    // Pass one verifies native OIDs and computes the independent product hash.
+    // Only bounded metadata and a small LFS/link prefix survive each stream.
+    for await (const { entry, content } of this.git.readBlobs(source.gitSnapshot, entries.filter((entry) => entry.kind !== "GITLINK"), { signal })) {
+      const hash = createHash("sha256"); let prefix = Buffer.alloc(0);
+      for await (const chunk of content) {
+        hash.update(chunk);
+        if (prefix.length < 8192) prefix = Buffer.concat([prefix, chunk.subarray(0, 8192 - prefix.length)]);
+      }
+      const disposition = this.gitDisposition(entry, prefix, hash.digest("hex"));
+      if (await this.blobs.verifyBlob(scope, disposition)) await this.materials.dispose(context, disposition);
+      else pending.set(entry.pathBytes, { entry, disposition });
     }
+    // Missing bytes alone are read into encrypted CAS. Native Git is invoked
+    // twice per bounded batch, not twice for every file; no plaintext spool.
+    for await (const { entry, content } of this.git.readBlobs(source.gitSnapshot, [...pending.values()].map((item) => item.entry), { signal })) {
+      const { disposition } = pending.get(entry.pathBytes);
+      if (await this.blobs.verifyBlob(scope, disposition)) { for await (const _ of content) { /* validate native frame */ } }
+      else await this.blobs.putBlob(scope, disposition, content);
+      await this.materials.dispose(context, disposition);
+    }
+  }
+
+  gitDisposition(entry, prefix, digest) {
     if (entry.kind === "SYMLINK") {
       requireValue(BigInt(entry.sizeBytes) <= 8192n && prefix.length && prefix[0] !== 47 && !prefix.includes(92) && !prefix.some((byte) => byte < 32 || byte === 127)
         && !/^[A-Za-z]:/.test(prefix.toString("ascii")), "SOURCE_PATH_ESCAPE", "Git 链接目标不在可信相对路径边界内");
@@ -124,17 +153,15 @@ export class SourceCaptureRunner {
         requireValue(depth >= 0, "SOURCE_PATH_ESCAPE", "Git 链接越出声明来源范围；不跟随或接受绕过");
       }
     }
-    const ref = { digest: hash.digest("hex"), sizeBytes: entry.sizeBytes };
-    const scope = { tenantId: context.tenantId, workspaceId: context.workspaceId };
-    if (!await this.blobs.verifyBlob(scope, ref)) await this.blobs.putBlob(scope, ref, this.git.readBlob(source.gitSnapshot, entry, { signal }));
     const pointer = BigInt(entry.sizeBytes) <= 8192n ? /^version https:\/\/git-lfs.github.com\/spec\/v1\r?\noid sha256:([a-f0-9]{64})\r?\nsize (0|[1-9][0-9]*)\r?\n?$/.exec(prefix.toString("utf8")) : null;
     const gaps = pointer ? [{ ruleCode: "GIT_LFS_EXTERNAL", severity: "NON_BLOCKING", ruleVersion: "v1", affectedScope: "external-content",
       externalReference: { kind: "GIT_LFS", oid: pointer[1], sizeBytes: pointer[2] } }] : [];
-    await this.materials.dispose(context, { pathBytes: entry.pathBytes, disposition: "VERIFIED", reasonCode: "CONTENT_VERIFIED", ...ref, gaps });
+    return { pathBytes: entry.pathBytes, disposition: "VERIFIED", reasonCode: "CONTENT_VERIFIED", digest, sizeBytes: entry.sizeBytes, gaps };
   }
 
   async advance(context, run, signal) {
     for (let step = 0; step < 8; step++) {
+      signal?.throwIfAborted();
       if (run.status === "WAITING_FOR_CLIENT") run = await this.transition(context, run.status, run.station === 4 ? "ENUMERATING" : "CAPTURING", run.progress);
       else if (run.status === "PREFLIGHTING") run = await this.preflight(context, run, signal);
       else if (run.status === "ENUMERATING") run = await this.enumerate(context, run, signal);

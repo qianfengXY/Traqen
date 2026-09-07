@@ -31,6 +31,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
           policy: { id: policy.id, gitEnabled: Boolean(services.git), maxEntries: policy.maxEntries, maxFileBytes: policy.maxFileBytes, maxTotalBytes: policy.maxTotalBytes, maxChunkBytes: policy.maxChunkBytes, maxBatchEntries: policy.maxBatchEntries } });
       } else if (route === "draft" && action === "PUT") json(await capture.save(actor, workspaceId, await sourceBody(request)));
       else if (/^history\/(runs|bundles|receipts)$/.test(route) && action === "GET") json(await queries.history(actor, workspaceId, route.split("/")[1], page));
+      else if (/^bundles\/[a-f0-9]{64}$/.test(route) && action === "GET") json(await queries.bundle(actor, workspaceId, route.split("/")[1]));
       else if (route === "runs" && action === "POST") {
         const run = await capture.start(actor, workspaceId, await sourceBody(request));
         services.dispatch?.(workspaceId, run.id);
@@ -38,6 +39,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       } else if (route === "admission" && action === "POST") json(await admission.qualify(actor, workspaceId, await sourceBody(request)));
       else if (route === "delta" && action === "GET") json(await delta.compare(actor, workspaceId, { fromBundleId: url.searchParams.get("fromBundleId"), toBundleId: url.searchParams.get("toBundleId"), sourceId: url.searchParams.get("sourceId"), ...page }));
       else if (route === "renewal-confirmations" && action === "POST") json(await renewal.confirm(actor, workspaceId, await sourceBody(request)));
+      else if (route === "renewal-status" && action === "GET") json(await renewal.latest(actor, workspaceId, { bundleId: url.searchParams.get("bundleId"), receiptId: url.searchParams.get("receiptId") }));
       else if (route === "renewals" && action === "POST") json(await renewal.issue(actor, workspaceId, await sourceBody(request)));
       else {
         const runMatch = /^runs\/([^/]+)(?:\/(.*))?$/.exec(route);
@@ -63,7 +65,14 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
           else if (tail === "seal" && action === "POST") {
             const input = await sourceBody(request);
             const context = run.status === "SUCCEEDED" ? { workspaceId, runId, generation: run.generation } : (await capture.context(actor, workspaceId, runId)).context;
-            json(await publication.seal(actor, context, input));
+            const seal = () => publication.seal(actor, context, input);
+            try { json(run.status === "SUCCEEDED" ? await seal() : await capture.withHeartbeat(context, seal)); }
+            catch (error) {
+              // A terminal commit can race the last heartbeat. The bound
+              // publication service alone may recover that exact result.
+              if (!(error instanceof SourceTruthError) || error.code !== "SOURCE_STALE_WORKER") throw error;
+              json(await seal());
+            }
           } else {
             const sourceMatch = /^sources\/([^/]+)\/(entries|close|chunks|checkpoint|finish-file)$/.exec(tail);
             requireValue(sourceMatch, "SOURCE_ROUTE_NOT_FOUND", "来源操作不存在", { status: 404 });

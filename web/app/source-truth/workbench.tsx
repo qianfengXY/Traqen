@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SourceClientError, SourceTruthClient } from "./client.ts";
-import { sourceJourney, sourceStations } from "./journey.ts";
+import { draftFromVersion, sourceJourney, sourceStations } from "./journey.ts";
 import { SourceForm } from "./source-form.tsx";
 import { ArtifactTable, GapBrowser } from "./evidence-view.tsx";
 import { LocalEntryStore } from "./local-entry-store.ts";
@@ -43,6 +43,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
   const [versions, setVersions] = useState<Page<FrozenVersion>>({ items: [], nextCursor: null });
   const [runs, setRuns] = useState<Page<SourceRun>>({ items: [], nextCursor: null });
   const [form, setForm] = useState<DraftInput>(emptyInput);
+  const [baselineVersion, setBaselineVersion] = useState<FrozenVersion | null>(null);
   const [editing, setEditing] = useState(false), [reviewAgain, setReviewAgain] = useState(false);
   const [selectedStation, setSelectedStation] = useState<number | null>(null);
   const [error, setError] = useState<Error | null>(null), [notice, setNotice] = useState("");
@@ -74,7 +75,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
   }, [refresh, client]);
 
   const run = detail?.run ?? null;
-  const journey = sourceJourney(run, editing ? 0 : overview?.draft?.revision ?? 0, Boolean(detail?.confirmation) && !reviewAgain, selectedStation);
+  const journey = sourceJourney(run, editing ? 0 : overview?.draft?.revision ?? 0, Boolean(detail?.confirmation) && detail?.confirmation?.currentlyValid !== false && !reviewAgain, selectedStation);
   const writable = overview?.role === "MAINTAIN";
   const hasGaps = Boolean(detail?.candidate && detail.candidate.gapCount !== "0");
   const frozen = versions.items.find((version) => version.id === versionId);
@@ -110,7 +111,10 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
       else throw error;
     } finally { transferController.current = null; if (!client.signal?.aborted) setTransferring(false); await store.discard(); }
   };
-  const newDraft = () => { selectedRun.current = "NEW"; setDetail(null); setEditing(true); setSelectedStation(null); setVersionId(null); setReviewAgain(false); setConfirmationChecked(false); };
+  const newDraft = (base?: FrozenVersion) => {
+    if (base) { setForm(draftFromVersion(base)); setBaselineVersion(base); }
+    selectedRun.current = "NEW"; setDetail(null); setEditing(true); setSelectedStation(null); setVersionId(null); setReviewAgain(false); setConfirmationChecked(false);
+  };
   const confirm = () => attempt(async () => {
     if (!detail?.candidate || !confirmationChecked) return;
     const input = { candidateId: detail.candidate.id, gapSetId: detail.candidate.gapSetId, ...(hasGaps ? { reason, expiresAt: new Date(expires).toISOString() } : {}) };
@@ -143,7 +147,11 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
         const created = await client.request<SourceRun>("/runs", "POST", { draftRevision: run!.draftRevision, retryOf: run!.id });
         selectedRun.current = created.id; setSelectedStation(null); await client.request(`/runs/${created.id}/advance`, "POST", {});
       });
-      case "EDIT": case "NEW_VERSION": return newDraft();
+      case "EDIT": return newDraft();
+      case "NEW_VERSION": return void attempt(async () => {
+        if (!detail?.result) throw new Error("尚未确认原任务的冻结结果，请查询原任务。");
+        newDraft(await client.request<FrozenVersion>(`/bundles/${detail.result.bundle.id}`));
+      });
     }
   };
   const labels: Record<string, string> = { SAVE: "保存来源，确认范围", START: "确认范围并开始", RESUME_DIRECTORY: "重新选择目录并继续", CONFIRM: "确认清单与缺口", SEAL: "冻结包", QUERY_RESULT: "查询并恢复原任务", RETRY: "保留原输入，创建重试", EDIT: "编辑来源，创建新尝试", NEW_VERSION: "创建新版本" };
@@ -160,7 +168,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
       </section>
       <div className="st-grid"><section className={`st-panel st-current ${journey.tone}`}><div className="st-card-head"><div><p className="st-eyebrow">第 {journey.selected} / 8 站</p><h2>{sourceStations[journey.selected - 1]}</h2></div>{journey.preview && <span className="st-badge muted">{journey.selected < journey.current ? "历史回看" : "未来预览"} · 只读</span>}</div><p className="st-muted">{copies[journey.selected - 1]}</p>
         {journey.preview && <p className="st-callout">这是节点说明及已有记录，不改变真实进度。上一步：{sourceStations[journey.selected - 2] ?? "旅程开始"}；下一步：{sourceStations[journey.selected] ?? "包已冻结，旅程结束"}。</p>}
-        {journey.selected <= 2 ? <SourceForm input={run?.input ?? form} versions={versions.items} disabled={busy || journey.preview || journey.selected === 2 || !canEdit} gitEnabled={overview.policy.gitEnabled} onChange={(input) => { setForm(input); setEditing(true); }} onPickDirectory={() => void chooseDirectory()} directoryName={directoryName} /> : <>
+        {journey.selected <= 2 ? <SourceForm input={run?.input ?? form} versions={baselineVersion && !versions.items.some((version) => version.id === baselineVersion.id) ? [baselineVersion, ...versions.items] : versions.items} disabled={busy || journey.preview || journey.selected === 2 || !canEdit} gitEnabled={overview.policy.gitEnabled} onChange={(input) => { setForm(input); setEditing(true); }} onPickDirectory={() => void chooseDirectory()} directoryName={directoryName} /> : <>
           <div className="st-metrics"><div><small>文件</small><strong>{detail?.candidate?.fileCount ?? detail?.sources.reduce((sum, source) => sum + Number(source.summary.fileCount), 0) ?? "—"}</strong></div><div><small>目录</small><strong>{detail?.candidate?.directoryCount ?? detail?.sources.reduce((sum, source) => sum + Number(source.summary.directoryCount), 0) ?? "—"}</strong></div><div><small>预期字节</small><strong>{detail?.candidate?.knownBytes ?? run?.progress.knownBytes ?? "—"}</strong></div><div><small>已知 Gap</small><strong>{detail?.candidate?.gapCount ?? "未对账"}</strong></div></div>
           {detail?.sources.map((source) => <article className="st-source-line" key={source.sourceId}><strong>{source.kind === "GIT" ? "Git" : "目录"} · {source.mode === "REUSE" ? "沿用精确组件" : "本版更新"}</strong><dl><dt>来源</dt><dd>{source.sourceId}</dd><dt>{source.kind === "GIT" ? "精确 commit" : "目录版本身份"}</dt><dd>{source.nativeIdentity?.commit ?? (source.manifestId ? `manifest:${source.manifestId}` : "完整枚举尚未闭合")}</dd><dt>采集范围</dt><dd>{source.kind === "GIT" ? source.scope?.root ? `${source.scope.root}（不是全仓库）` : "全仓库" : "完整所选目录"}</dd><dt>待处置条目</dt><dd>{source.summary.pendingCount}</dd></dl></article>)}
           {journey.selected === 3 && <p className={`st-callout ${overview.storage.ready ? "" : "danger"}`}>主存储：{overview.storage.ready ? "可访问" : overview.storage.code ?? "未就绪"}。阻断项不能手工接受。这里不执行用户内容。</p>}
@@ -192,7 +200,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
       </section><aside className="st-side"><section className="st-panel"><h2>本次上下文</h2><dl><dt>Workspace</dt><dd>{workspaceName}</dd><dt>认证成员</dt><dd>{overview.actor.actorId} · {overview.role}</dd><dt>任务</dt><dd>{run?.id ?? "尚未启动"}</dd><dt>输入草稿</dt><dd>r{run?.draftRevision ?? overview.draft?.revision ?? 0}</dd><dt>预期清单</dt><dd>{short(detail?.candidate?.inventoryId)}</dd><dt>包</dt><dd>{detail?.result ? short(detail.result.bundle.id) : "未冻结"}</dd><dt>主存储</dt><dd>{overview.storage.ready ? "可访问" : "不可用"}</dd><dt>备份</dt><dd>{overview.backup.status === "NOT_CONFIGURED" ? "未配置 · 没有覆盖证明" : overview.backup.status}</dd></dl><p className="st-muted">主存储可访问不等于备份已覆盖；历史 READY 不等于当前可以准入。</p></section>
         <section className="st-panel"><h2>下一步</h2><p>{journey.current < 8 ? sourceStations[journey.current] : "查看冻结包、历史或新建版本"}</p><p className="st-muted">{run?.status === "WAITING_FOR_CLIENT" ? "请在本机重新授权相同目录。已验证字节不会被重复计为新覆盖。" : "节点进度来自服务端记录。看图、点击未来节点不会推进任务。"}</p><h3>平台边界</h3><p className="st-muted">最多 {overview.policy.maxEntries.toLocaleString("zh-CN")} 个条目；单文件上限 {overview.policy.maxFileBytes} 字节。超限不能靠自动排除文件变绿。</p></section>
       </aside></div>
-      <section className="st-panel st-history"><div className="st-card-head"><div><h2>版本与任务历史</h2><p className="st-muted">失败、取消与旧包仍可追溯；新任务失败不替换旧基线。</p></div>{writable && !overview.activeRun && <button className="button" disabled={busy} onClick={newDraft}>新建快照版本</button>}</div>
+      <section className="st-panel st-history"><div className="st-card-head"><div><h2>版本与任务历史</h2><p className="st-muted">失败、取消与旧包仍可追溯；新任务失败不替换旧基线。</p></div>{writable && !overview.activeRun && <button className="button" disabled={busy || !frozen} onClick={() => newDraft(frozen)}>从选中的冻结包创建新版本</button>}</div>
         <div className="st-history-columns"><div><h3>冻结包</h3>{versions.items.length ? versions.items.map((version) => <button className={`st-history-row ${versionId === version.id ? "selected" : ""}`} key={version.id} disabled={busy} onClick={() => setVersionId(versionId === version.id ? null : version.id)}><strong>{short(version.id)}</strong><span className={`st-badge ${version.latestReceipt?.status === "READY_WITH_ACCEPTED_GAPS" ? "warning" : "muted"}`}>{version.latestReceipt?.status ?? "凭据待核查"}</span><small>{new Date(version.publishedAt).toLocaleString("zh-CN")} · 文件 {version.counts.fileCount} · Gap {version.counts.gapCount}</small></button>) : <p>还没有冻结包。</p>}{versions.nextCursor && <button className="st-link" onClick={() => void attempt(async () => { historyCursor.current.bundles = versions.nextCursor; await refresh(); })}>更早的包</button>}</div>
           <div><h3>采集任务</h3>{runs.items.map((item) => <button className={`st-history-row ${run?.id === item.id ? "selected" : ""}`} key={item.id} disabled={busy} onClick={() => { selectedRun.current = item.id; setSelectedStation(null); setReviewAgain(false); setProgress(null); void attempt(refresh); }}><strong>{short(item.id)}</strong><span>{item.status} · 第 {item.station} 站</span><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small></button>)}{runs.nextCursor && <button className="st-link" onClick={() => void attempt(async () => { historyCursor.current.runs = runs.nextCursor; await refresh(); })}>更早的任务</button>}</div></div>
         <button className="st-link" disabled={busy} onClick={() => void attempt(async () => { historyCursor.current = { bundles: null, runs: null }; await refresh(); })}>返回最新历史</button>

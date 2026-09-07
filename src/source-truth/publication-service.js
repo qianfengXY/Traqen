@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { canonicalEncode, structureDigest } from "./identity.js";
-import { requireValue } from "./errors.js";
+import { requireValue, SourceTruthError } from "./errors.js";
 import { assertAcceptance, confirmCandidate } from "./confirmation-service.js";
 
 export class SourcePublicationService {
@@ -45,14 +45,29 @@ export class SourcePublicationService {
   async seal(actor, context, input) {
     const prepared = await this.begin(actor, context, input);
     if (prepared.result) return prepared.result;
-    await this.candidates.verifyPrepared(context, prepared.prepared);
+    try {
+      await this.candidates.verifyPrepared(context, prepared.prepared);
+    } catch (error) {
+      // A concurrent call may finish this exact operation while verification
+      // is waiting for its lease. Recover a committed result, never a different
+      // confirmation, cancelled task, integrity failure or unauthorized caller.
+      if (!(error instanceof SourceTruthError) || error.code !== "SOURCE_STALE_WORKER") throw error;
+      const committed = await this.repository.withWorkspace(actor, context.workspaceId, true, async (tx) => {
+        const { rows } = await tx.query(`SELECT result FROM source_truth_publication_operation
+          WHERE workspace_id=$1 AND id=$2 AND run_id=$3 AND confirmation_id=$4 AND status='COMMITTED'`,
+        [context.workspaceId, prepared.operation.id, context.runId, prepared.confirmation.id]);
+        return rows[0]?.result;
+      });
+      if (!committed) throw error;
+      return committed;
+    }
     await this.options.beforeCommit?.();
     const result = await this.repository.withWorkspace(actor, context.workspaceId, true, async (tx, access) => {
-      requireValue(!access.backupBarrier && access.restoreReady, "SOURCE_PUBLICATION_PAUSED", "备份水位或恢复核验期间暂缓发布，请稍后查询或重试");
       const { operation, confirmation, prepared: candidate } = prepared;
       // Concurrent callers may have committed while content was being verified.
       const storedOperation = (await tx.query("SELECT * FROM source_truth_publication_operation WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [context.workspaceId, operation.id])).rows[0];
       if (storedOperation.status === "COMMITTED") return storedOperation.result;
+      requireValue(!access.backupBarrier && access.restoreReady, "SOURCE_PUBLICATION_PAUSED", "备份水位或恢复核验期间暂缓发布，请稍后查询或重试");
       const row = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_valid FROM source_truth_run WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [context.workspaceId, context.runId])).rows[0];
       requireValue(row && row.generation === context.generation && row.lease_valid && row.status === "PREPARING_SEAL", "SOURCE_STALE_WORKER", "任务状态或执行权已变化，请查询最新任务");
       await this.repository.authorize({ actorId: row.actor_id, tenantId: access.tenantId }, context.workspaceId, true, tx);
