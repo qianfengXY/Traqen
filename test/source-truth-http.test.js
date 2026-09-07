@@ -81,6 +81,12 @@ test("B-01/05 HTTP directory journey streams original bytes and publishes only a
   const admitted = await f.call("/admission", "POST", reference, readerToken);
   assert.equal(admitted.status, 200);
   assert.equal(admitted.body.fileCount, "1");
+  assert.equal(admitted.body.sourceBundleSnapshotId, reference.bundleId);
+  assert.equal(admitted.body.receiptValidUntil, null);
+  assert.equal(admitted.body.confirmationId, confirmation.body.id);
+  assert.equal(admitted.body.inventoryDigest, published.body.bundle.inventoryId);
+  assert.equal(admitted.body.policyRevisionId, f.policy.id);
+  assert.equal(admitted.body.components[0].kind, "DIRECTORY_UPLOAD");
   assert.equal((await f.call(`${runPath}/result`)).body.receipt.id, reference.receiptId);
   const coverage = await f.call("/backup-coverage", "POST", reference, readerToken);
   assert.equal(coverage.status, 200);

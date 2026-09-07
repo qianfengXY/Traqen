@@ -14,6 +14,7 @@ import { capturePolicy } from "../src/source-truth/policy.js";
 import { pathBytes, manifestIdentity } from "../src/source-truth/identity.js";
 import { GitSourceGateway } from "../src/source-truth/git-gateway.js";
 import { SourcePublicationService } from "../src/source-truth/publication-service.js";
+import { SourceAdmissionService } from "../src/source-truth/admission-service.js";
 import { gitFixture } from "./support/source-truth-git-fixture.js";
 
 async function fixture(t, gitInput = null) {
@@ -111,6 +112,14 @@ test("B-01/04 combined input updates Git while reusing the exact frozen director
   assert.equal(second.bundle.components.find((component) => component.kind === "DIRECTORY_UPLOAD").id, directory.id);
   assert.equal(f.blobs.metrics.streamedBytes - beforeBytes, BigInt(Buffer.byteLength("fixture version B\n")));
   assert.equal((await f.repository.listBundles(owner, "workspace")).length, 2);
+  const admission = new SourceAdmissionService(f.repository, f.candidates);
+  const qualifications = [];
+  for (const result of [first, second]) qualifications.push(await admission.qualify(owner, "workspace", { bundleId: result.bundle.id, receiptId: result.receipt.id }));
+  assert.equal(qualifications[0].components.length, 2);
+  const originalDirectory = qualifications[0].components.find((component) => component.kind === "DIRECTORY_UPLOAD");
+  assert.deepEqual(qualifications[1].components.find((component) => component.kind === "DIRECTORY_UPLOAD"), originalDirectory);
+  assert.deepEqual(JSON.parse(Buffer.from(originalDirectory.provenance.uploadId, "base64url").toString()), { runId: run.id, sourceId: "directory" }, "reuse keeps the original upload audit session");
+  assert.equal(qualifications[1].components.find((component) => component.kind === "GIT").nativeIdentity.resolvedCommit, nextCommit);
 });
 
 test("B-08 directory close and selection proof commit together", async (t) => {
