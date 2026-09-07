@@ -1,0 +1,262 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Traqen · 信息架构",
+    "subtitle": "同一 Workspace · 稳定业务身份与版本 · 一份证据模型，多种投影",
+    "quality_profile": "showcase",
+    "visual_preset": "classic",
+    "animation": "none",
+    "views": [
+      {
+        "id": "authority",
+        "label": "观察与业务权威",
+        "focus": [
+          "version",
+          "fact",
+          "candidate",
+          "decision",
+          "claim"
+        ],
+        "note": "现有实现的观察不能自动成为规范性业务要求。"
+      },
+      {
+        "id": "verification",
+        "label": "要求与实际验证",
+        "focus": [
+          "claim",
+          "spec",
+          "execution",
+          "evidence"
+        ],
+        "note": "实际执行保留准确版本与环境；证据支撑主张，但不替代人工授权。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "version",
+      "type": "database",
+      "label": "SourceVersion 来源版本",
+      "sublabel": "不可变材料 · 来源清单与 Gap",
+      "pos": [
+        90,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "来源边界"
+    },
+    {
+      "id": "fact",
+      "type": "database",
+      "label": "Fact 技术观察",
+      "sublabel": "可复现观察 · 推导版本 · 证据引用",
+      "pos": [
+        500,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "观察 ≠ 业务要求"
+    },
+    {
+      "id": "candidate",
+      "type": "backend",
+      "label": "Candidate 语义候选",
+      "sublabel": "假设 · 范围 · 依据 · 不确定性",
+      "pos": [
+        910,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "Agent 只能提出候选"
+    },
+    {
+      "id": "spec",
+      "type": "database",
+      "label": "TestSpec 验证要求",
+      "sublabel": "已确认规则对应的验证要求",
+      "pos": [
+        90,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "测试源码 ≠ 测试规格"
+    },
+    {
+      "id": "claim",
+      "type": "database",
+      "label": "Claim 业务主张",
+      "sublabel": "意图 / 规范 / 设计 / 实现行为",
+      "pos": [
+        500,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "经批准的业务基线"
+    },
+    {
+      "id": "decision",
+      "type": "security",
+      "label": "Decision 人工决策",
+      "sublabel": "确认人 · 适用范围 · 理由 · 历史",
+      "pos": [
+        910,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "批准 ≠ 符合性证明"
+    },
+    {
+      "id": "execution",
+      "type": "backend",
+      "label": "TestExecution 实际执行",
+      "sublabel": "版本 · 环境 · 断言 · 运行上下文",
+      "pos": [
+        90,
+        550
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "测试存在 ≠ 实际执行"
+    },
+    {
+      "id": "evidence",
+      "type": "database",
+      "label": "Evidence 运行证据",
+      "sublabel": "验证结果 · 观察 · 内容引用",
+      "pos": [
+        500,
+        550
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "执行证据支撑关联主张"
+    },
+    {
+      "id": "projections",
+      "type": "frontend",
+      "label": "业务树 / API 树 / 影响视图",
+      "sublabel": "从相应事实、决策和执行投影",
+      "pos": [
+        910,
+        550
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "可重建 · 不建第二份真相"
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "version-to-fact",
+      "to": "fact",
+      "variant": "default",
+      "from": "version"
+    },
+    {
+      "id": "fact-to-candidate",
+      "to": "candidate",
+      "variant": "default",
+      "from": "fact"
+    },
+    {
+      "id": "candidate-to-decision",
+      "to": "decision",
+      "variant": "default",
+      "from": "candidate"
+    },
+    {
+      "id": "decision-to-claim",
+      "to": "claim",
+      "variant": "default",
+      "from": "decision"
+    },
+    {
+      "id": "fact-to-claim",
+      "to": "claim",
+      "variant": "default",
+      "from": "fact",
+      "label": "支撑",
+      "labelAt": [
+        645,
+        266
+      ]
+    },
+    {
+      "id": "claim-to-spec",
+      "to": "spec",
+      "variant": "default",
+      "from": "claim"
+    },
+    {
+      "id": "spec-to-execution",
+      "to": "execution",
+      "variant": "default",
+      "from": "spec"
+    },
+    {
+      "id": "execution-to-evidence",
+      "to": "evidence",
+      "variant": "default",
+      "from": "execution"
+    },
+    {
+      "id": "evidence-to-claim",
+      "to": "claim",
+      "variant": "default",
+      "from": "evidence",
+      "label": "验证"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "业务功能是稳定核心资产",
+      "items": [
+        "Feature.id 由治理分配；FeatureVersion 承载变化。",
+        "名称、路径和分类位置变化不改变业务身份；F001 等工程编号不是业务身份。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "各类信息分别表达",
+      "items": [
+        "Fact / Candidate / Decision / Claim / TestSpec / TestExecution 各有生产和发布依据。",
+        "业务树、API 树与影响视图从同一版本化模型生成。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "缺口与历史贯穿全链",
+      "items": [
+        "CoverageGap 沿相关依赖传播；修正创建新推导、决策或修订。",
+        "权威、符合性、验证、新鲜度、冲突与覆盖分别判断；无单一绿色替代全部状态。"
+      ]
+    }
+  ]
+}

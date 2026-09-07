@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Traqen · 应用架构",
+    "subtitle": "Workspace 内按证据职责划分 · 已有设计与完整愿景的待细化部分分开表达",
+    "quality_profile": "showcase",
+    "visual_preset": "classic",
+    "animation": "none",
+    "views": [
+      {
+        "id": "evidence-chain",
+        "label": "已有设计主链",
+        "focus": [
+          "source",
+          "extract",
+          "review",
+          "change",
+          "runner"
+        ],
+        "note": "确定性观察、人工权威和实际执行各自保留边界。"
+      },
+      {
+        "id": "full-vision",
+        "label": "完整愿景覆盖",
+        "focus": [
+          "definition",
+          "quality",
+          "proof"
+        ],
+        "note": "这些能力并未全部由当前 F001–F004 覆盖；详细交接与验收继续设计。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "source",
+      "type": "backend",
+      "label": "F001 来源冻结与准入",
+      "sublabel": "不可变来源包 · 清单 · Gap · Receipt",
+      "pos": [
+        90,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "来源唯一入口"
+    },
+    {
+      "id": "extract",
+      "type": "backend",
+      "label": "F002 确定性证据与 API",
+      "sublabel": "Fact · EvidenceLink · Derivation",
+      "pos": [
+        500,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "合格来源唯一直接消费者"
+    },
+    {
+      "id": "review",
+      "type": "security",
+      "label": "F003 候选与人工发布",
+      "sublabel": "Candidate → Decision → Claim",
+      "pos": [
+        910,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "业务树发布权威"
+    },
+    {
+      "id": "grants",
+      "type": "security",
+      "label": "F006 能力配置与授权",
+      "sublabel": "可用资产 ∩ Workspace ∩ Agent 授权",
+      "pos": [
+        910,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "Apply 生效 · Run 固定"
+    },
+    {
+      "id": "runner",
+      "type": "external",
+      "label": "受控 Runner / 集成 CI",
+      "sublabel": "实际执行 · 环境 · 断言 · 结果",
+      "pos": [
+        90,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "外部执行边界"
+    },
+    {
+      "id": "change",
+      "type": "backend",
+      "label": "F004 影响与复验建议",
+      "sublabel": "事实 + 主张 + 执行 + ChangeSet",
+      "pos": [
+        500,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "初期建议性"
+    },
+    {
+      "id": "definition",
+      "type": "backend",
+      "label": "业务资产与需求治理",
+      "sublabel": "新增登记 · 规则基线 · 身份演化",
+      "pos": [
+        90,
+        600
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "待细化 · F003 已覆盖部分"
+    },
+    {
+      "id": "quality",
+      "type": "backend",
+      "label": "测试设计与缺口协同",
+      "sublabel": "测试规格 · 责任处置 · 验证关闭",
+      "pos": [
+        500,
+        600
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "待细化 · F004 已覆盖部分"
+    },
+    {
+      "id": "proof",
+      "type": "frontend",
+      "label": "质量态势与交付证明",
+      "sublabel": "功能 / 版本 / 部署的证据视图",
+      "pos": [
+        910,
+        600
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "待细化 · 不代表已验收"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "完整愿景中仍需细化的能力分配",
+      "wraps": [
+        "definition",
+        "quality",
+        "proof"
+      ],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "id": "source-to-extract",
+      "to": "extract",
+      "variant": "default",
+      "from": "source",
+      "label": "合格输入"
+    },
+    {
+      "id": "extract-to-review",
+      "to": "review",
+      "variant": "default",
+      "from": "extract",
+      "label": "持久证据"
+    },
+    {
+      "id": "extract-to-change",
+      "to": "change",
+      "variant": "default",
+      "from": "extract"
+    },
+    {
+      "id": "review-to-change",
+      "to": "change",
+      "variant": "default",
+      "from": "review"
+    },
+    {
+      "id": "runner-to-change",
+      "to": "change",
+      "variant": "default",
+      "from": "runner",
+      "label": "执行证据"
+    },
+    {
+      "id": "grants-to-review",
+      "to": "review",
+      "variant": "security",
+      "from": "grants"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "唯一来源路径",
+      "items": [
+        "F001 只将 QualifiedSourceInput 交给 F002。",
+        "F003/F004 经 F002 输出继承来源依据与 Gap，不绕回仓库或上传目录。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "能力覆盖不等于模块一一对应",
+      "items": [
+        "下排是完整产品能力的待细化分配，未新增 Feature 编号或承诺完成。",
+        "跨能力交接和验收仍需对应设计；F001 冻结不自动运行分析。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "运行与输出边界",
+      "items": [
+        "F006 v1 使用白名单本机 CLI；授权不扩大来源范围。",
+        "F002 文档/配置的受控证据读取合同仍需细化。"
+      ]
+    }
+  ]
+}

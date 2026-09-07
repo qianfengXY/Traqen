@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "created": "2026-09-06",
+  "generator": {
+    "name": "tt-a1i/archify",
+    "version": "2.12",
+    "visual_preset": "classic",
+    "quality_profile": "showcase",
+    "animation": "none"
+  },
+  "canonical_document": "../../architecture/traqen-product-architecture.zh-CN.md",
+  "authorization": {
+    "thread_id": "thread_mtqkycp918zlran6",
+    "message_id": "0001788751611709-000210-8aaf4a92",
+    "proposal_message_id": "0001788749143009-000202-d0baa266"
+  },
+  "content_review": {
+    "decision": "reuse",
+    "basis": "Co-creator discussion and corrected full capability proposal; no independent peer-review verdict is claimed."
+  },
+  "diagrams": [
+    {
+      "name": "product-overview",
+      "diagram_type": "architecture",
+      "specification": {
+        "path": "product-overview.architecture.json",
+        "sha256": "12f22ef2994b428dcf4d9d84668c88103979e6402f10f9171c4d6c78923cc8d4",
+        "bytes": 5402
+      },
+      "artifact": {
+        "path": "product-overview.architecture.html",
+        "sha256": "cc9d442408921ad24aea4d51aadf8a07a17cadc5990bb78c26aa482c643956ac",
+        "bytes": 609472
+      },
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "showcase",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "visual_review": "passed",
+      "correction_rounds": 0,
+      "exports": [
+        {
+          "path": "product-overview.architecture.png",
+          "sha256": "4628140958701d397856aa872f8f4101192f7d06af1ba63fe85e9d333b517c73",
+          "bytes": 611863,
+          "method": "native Archify Download PNG",
+          "theme": "light",
+          "dimensions": [
+            4960,
+            2880
+          ]
+        },
+        {
+          "path": "product-overview.architecture.svg",
+          "sha256": "8149229855205a2ebd89cc36df3afbac833555c53f95e803e43b9dfe3a04389a",
+          "bytes": 52963,
+          "method": "native Archify Download SVG; CSS trailing spaces normalized",
+          "theme": "light",
+          "native_export_sha256": "a2fcde52243551caaa105e08fbf20f05899b315c102e31f7252b92c54101c0f3"
+        }
+      ]
+    },
+    {
+      "name": "application",
+      "diagram_type": "architecture",
+      "specification": {
+        "path": "application.architecture.json",
+        "sha256": "4c3fa7de8e36aa5d7d8ff19c4fb4f22eee6443d6d31cb71e15d9d130354db365",
+        "bytes": 5611
+      },
+      "artifact": {
+        "path": "application.architecture.html",
+        "sha256": "bb5d5b425b647304b8c701718522249dac2352d25c96e9129c119129c9b90304",
+        "bytes": 610897
+      },
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "showcase",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "visual_review": "passed",
+      "correction_rounds": 2,
+      "exports": [
+        {
+          "path": "application.architecture.png",
+          "sha256": "6946275cf4e5c44933f474811322fe76b84762db78dd46df7f7df41a053a7e2c",
+          "bytes": 705842,
+          "method": "native Archify Download PNG",
+          "theme": "light",
+          "dimensions": [
+            5072,
+            3160
+          ]
+        },
+        {
+          "path": "application.architecture.svg",
+          "sha256": "80a11a16279afc562591964aa015aaf732b2f1a5d4cca44f36311e6a04ff106b",
+          "bytes": 54484,
+          "method": "native Archify Download SVG; CSS trailing spaces normalized",
+          "theme": "light",
+          "native_export_sha256": "a1a323c6840e6e9faee7241cf5aa256d4904556a027f86c99a4472df7ac94247"
+        }
+      ]
+    },
+    {
+      "name": "information",
+      "diagram_type": "architecture",
+      "specification": {
+        "path": "information.architecture.json",
+        "sha256": "d711fcf9b4508700585c90d6ce852cb8f90c6107e3d4beb42482ee1249e5e00a",
+        "bytes": 5863
+      },
+      "artifact": {
+        "path": "information.architecture.html",
+        "sha256": "98090c1c7388ce17c3589c0685906e8e2a9778410d5a9646b76fb6fcbf56325c",
+        "bytes": 610775
+      },
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "showcase",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "visual_review": "passed",
+      "correction_rounds": 1,
+      "exports": [
+        {
+          "path": "information.architecture.png",
+          "sha256": "ddf582b1577677e3a61e94b18307cc9be81f49c644c4d95f15fd61ed06732ff1",
+          "bytes": 640713,
+          "method": "native Archify Download PNG",
+          "theme": "light",
+          "dimensions": [
+            4960,
+            2880
+          ]
+        },
+        {
+          "path": "information.architecture.svg",
+          "sha256": "e69e5b9e45b0342e87cb86a2dcd88d053b69bb9730cf544fee9a8055db99ce05",
+          "bytes": 54305,
+          "method": "native Archify Download SVG; CSS trailing spaces normalized",
+          "theme": "light",
+          "native_export_sha256": "5fd6cdfc4fa3110ac9e272a8945170967c750ad9deae23147751eba100ceadfe"
+        }
+      ]
+    },
+    {
+      "name": "technology",
+      "diagram_type": "architecture",
+      "specification": {
+        "path": "technology.architecture.json",
+        "sha256": "f5c9c30756c4b746dfce3eef55978e53f9e01c593bf604feaef9b9d5392441fa",
+        "bytes": 5861
+      },
+      "artifact": {
+        "path": "technology.architecture.html",
+        "sha256": "0813404e47206a206120973b86f442cef2aee1ab222e11d7a2176d60766c1759",
+        "bytes": 609648
+      },
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "showcase",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      },
+      "visual_review": "passed",
+      "correction_rounds": 2,
+      "exports": [
+        {
+          "path": "technology.architecture.png",
+          "sha256": "bcf6a77d858e8c7cc39e6819d88023254034ba205e5aeb093846d342937f4d0b",
+          "bytes": 649609,
+          "method": "native Archify Download PNG",
+          "theme": "light",
+          "dimensions": [
+            5400,
+            2880
+          ]
+        },
+        {
+          "path": "technology.architecture.svg",
+          "sha256": "96c7eb7ab0c4e3985d78b2db754e506f3eb8b8f4dac0fd3c5f9239846d4bdeb0",
+          "bytes": 53093,
+          "method": "native Archify Download SVG; CSS trailing spaces normalized",
+          "theme": "light",
+          "native_export_sha256": "a2b570bf0a25551a6e0377594823c00eebd90ef5457c00ba87fb8be68590febc"
+        }
+      ]
+    }
+  ],
+  "visual_checks": {
+    "surface": "isolated headless Chrome",
+    "performed": [
+      "Default READ view and light/dark rendering",
+      "Labels, cards, relationship routes and canvas bounds",
+      "Guided chapter selection and reset",
+      "Node search, focus and closure",
+      "Zoom in and reset",
+      "Native PNG and SVG exports; inspected all PNGs"
+    ]
+  },
+  "documentation_checks": {
+    "scope": "two canonical architecture documents and four derived diagrams",
+    "known_repository_failure": "test/bilingual-documentation.test.js: pre-existing ADR-0003-source-truth-boundary.zh-CN.md lacks its English backlink; lifecycle parity test passes",
+    "targeted_results": [
+      {
+        "document": "traqen-product-architecture.zh-CN.md",
+        "relative_links_and_anchors": 43,
+        "embedded_figures": 4,
+        "business_capabilities": 7,
+        "frontmatter": "pass",
+        "language_switch": "pass"
+      },
+      {
+        "document": "traqen-product-architecture.md",
+        "relative_links_and_anchors": 43,
+        "embedded_figures": 4,
+        "business_capabilities": 7,
+        "frontmatter": "pass",
+        "language_switch": "pass"
+      }
+    ],
+    "same_embedded_images": true,
+    "exact_artifact_digests": "pass"
+  },
+  "author": "砚砚/gpt-6-astra"
+}

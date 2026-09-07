@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="generator" content="archify 2.12.0">
-  <title>Traqen · 业务架构 Diagram</title>
+  <title>Traqen · 信息架构 Diagram</title>
   <script>
     // Resolve the theme before first paint so light-preference users don't
     // see a dark flash. The toolbar script below re-applies with UI state.
@@ -4496,12 +4496,12 @@
     <div class="header">
       <div class="header-row">
         <div class="pulse-dot"></div>
-        <h1>Traqen · 业务架构</h1>
+        <h1>Traqen · 信息架构</h1>
       </div>
-      <p class="subtitle">以业务功能为核心资产 · 全生命周期质量追溯 · 全产品能力框架</p>
+      <p class="subtitle">同一 Workspace · 稳定业务身份与版本 · 一份证据模型，多种投影</p>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"knowledge-baseline","label":"知识与基线","focus":["knowledge","new-work","baseline","trace"],"note":"先建立可追溯的功能资产，再持续维护经确认的业务含义。"},{"id":"quality-loop","label":"验证与处置","focus":["trace","impact","verify","gaps","delivery"],"note":"质量态势汇合追溯、实际执行和处置记录；预期业务收益仍需试点验证。"}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"authority","label":"观察与业务权威","focus":["version","fact","candidate","decision","claim"],"note":"现有实现的观察不能自动成为规范性业务要求。"},{"id":"verification","label":"要求与实际验证","focus":["claim","spec","execution","evidence"],"note":"实际执行保留准确版本与环境；证据支撑主张，但不替代人工授权。"}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -4545,8 +4545,8 @@
     <!-- Main Diagram -->
     <div class="diagram-container" data-detail-level="read">
       <svg viewBox="0 0 1240 720" role="img" aria-labelledby="archify-diagram-title archify-diagram-description" data-preset="classic" data-quality-profile="showcase">
-        <title id="archify-diagram-title">Traqen · 业务架构</title>
-        <desc id="archify-diagram-description">以业务功能为核心资产 · 全生命周期质量追溯 · 全产品能力框架</desc>
+        <title id="archify-diagram-title">Traqen · 信息架构</title>
+        <desc id="archify-diagram-description">同一 Workspace · 稳定业务身份与版本 · 一份证据模型，多种投影</desc>
         <!-- Definitions -->
         <defs>
           <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -4573,119 +4573,132 @@
 
 
         <!-- Connection paths (before components for correct z-order) -->
-        <path data-edge-from="knowledge" data-edge-to="baseline" data-edge-key="0" data-edge-id="knowledge-to-baseline" data-composition-points="380,161;404,161;404,177;476,177;476,154;500,154" d="M 380 161 L 396 161 Q 404 161 404 169 L 404 169 Q 404 177 412 177 L 468 177 Q 476 177 476 169 L 476 162 Q 476 154 484 154 L 500 154" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="new-work" data-edge-to="baseline" data-edge-key="1" data-edge-id="new-work-to-baseline" data-composition-points="380,381;440,381;440,168;500,168" d="M 380 381 L 432 381 Q 440 381 440 373 L 440 176 Q 440 168 448 168 L 500 168" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="baseline" data-edge-to="trace" data-edge-key="2" data-edge-id="baseline-to-trace" data-composition-points="790,161;814,161;814,177;886,177;886,154;910,154" d="M 790 161 L 806 161 Q 814 161 814 169 L 814 169 Q 814 177 822 177 L 878 177 Q 886 177 886 169 L 886 162 Q 886 154 894 154 L 910 154" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="trace" data-edge-to="impact" data-edge-key="3" data-edge-id="trace-to-impact" data-composition-points="910,168;850,168;850,374;790,374" d="M 910 168 L 858 168 Q 850 168 850 176 L 850 366 Q 850 374 842 374 L 790 374" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="trace" data-edge-to="verify" data-edge-key="4" data-edge-id="trace-to-verify" data-composition-points="1055,212;1055,330" d="M 1055 212 L 1055 330" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="impact" data-edge-to="verify" data-edge-key="5" data-edge-id="impact-to-verify" data-composition-points="790,388;814,388;814,404;886,404;886,381;910,381" d="M 790 388 L 806 388 Q 814 388 814 396 L 814 396 Q 814 404 822 404 L 878 404 Q 886 404 886 396 L 886 389 Q 886 381 894 381 L 910 381" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="verify" data-edge-to="gaps" data-edge-key="6" data-edge-id="verify-to-gaps" data-composition-points="1055,432;1055,550" d="M 1055 432 L 1055 550" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
-        <path data-edge-from="gaps" data-edge-to="delivery" data-edge-key="7" data-edge-id="gaps-to-delivery" data-composition-points="910,601;790,601" d="M 910 601 L 790 601" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="version" data-edge-to="fact" data-edge-key="0" data-edge-id="version-to-fact" data-composition-points="380,161;500,161" d="M 380 161 L 500 161" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="fact" data-edge-to="candidate" data-edge-key="1" data-edge-id="fact-to-candidate" data-composition-points="790,161;910,161" d="M 790 161 L 910 161" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="candidate" data-edge-to="decision" data-edge-key="2" data-edge-id="candidate-to-decision" data-composition-points="1055,212;1055,330" d="M 1055 212 L 1055 330" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="decision" data-edge-to="claim" data-edge-key="3" data-edge-id="decision-to-claim" data-composition-points="910,381;790,381" d="M 910 381 L 790 381" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="fact" data-edge-to="claim" data-edge-label="支撑" data-edge-key="4" data-edge-id="fact-to-claim" data-composition-points="645,212;645,330" d="M 645 212 L 645 330" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="claim" data-edge-to="spec" data-edge-key="5" data-edge-id="claim-to-spec" data-composition-points="500,381;380,381" d="M 500 381 L 380 381" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="spec" data-edge-to="execution" data-edge-key="6" data-edge-id="spec-to-execution" data-composition-points="235,432;235,550" d="M 235 432 L 235 550" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="execution" data-edge-to="evidence" data-edge-key="7" data-edge-id="execution-to-evidence" data-composition-points="380,601;500,601" d="M 380 601 L 500 601" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
+        <path data-edge-from="evidence" data-edge-to="claim" data-edge-label="验证" data-edge-key="8" data-edge-id="evidence-to-claim" data-composition-points="645,550;645,432" d="M 645 550 L 645 432" class="a-default" stroke-width="1.5" marker-end="url(#arrowhead)"/>
 
         <!-- Components -->
-        <g id="node-knowledge" data-node-id="knowledge" data-node-label="系统知识重建与资产化" tabindex="0" role="button" aria-label="Focus 系统知识重建与资产化, 功能 · 流程 · 规则 · 关联资产, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="功能 · 流程 · 规则 · 关联资产" data-node-tag="01 · 知识可继承" data-node-context="Architecture component">
-          <title>系统知识重建与资产化 · 功能 · 流程 · 规则 · 关联资产 · Architecture component · 01 · 知识可继承</title>
+        <g id="node-version" data-node-id="version" data-node-label="SourceVersion 来源版本" tabindex="0" role="button" aria-label="Focus SourceVersion 来源版本, 不可变材料 · 来源清单与 Gap, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="不可变材料 · 来源清单与 Gap" data-node-tag="来源边界" data-node-context="Architecture component">
+          <title>SourceVersion 来源版本 · 不可变材料 · 来源清单与 Gap · Architecture component · 来源边界</title>
           <rect x="90" y="110" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="90" y="110" width="290" height="102" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(96 116) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
-          </g>
-          <text data-detail-anchor x="235" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">系统知识重建与资产化</text>
-        <text data-detail="context" x="235" y="175" class="t-muted" font-size="9" text-anchor="middle">功能 · 流程 · 规则 · 关联资产</text>
-        <text data-detail="fine" x="235" y="204" class="t-backend" font-size="7" text-anchor="middle">01 · 知识可继承</text>
-        </g>
-
-        <g id="node-baseline" data-node-id="baseline" data-node-label="业务定义与基线治理" tabindex="0" role="button" aria-label="Focus 业务定义与基线治理, 意图 · 责任 · 身份 · 决策历史, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="意图 · 责任 · 身份 · 决策历史" data-node-tag="02 · 基线可共识" data-node-context="Architecture component">
-          <title>业务定义与基线治理 · 意图 · 责任 · 身份 · 决策历史 · Architecture component · 02 · 基线可共识</title>
-          <rect x="500" y="110" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="500" y="110" width="290" height="102" rx="6" class="c-security" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(506 116) scale(0.6875)">
-            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
-            <path d="m5.8 8 1.5 1.5 3-3"/>
-          </g>
-          <text data-detail-anchor x="645" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务定义与基线治理</text>
-        <text data-detail="context" x="645" y="175" class="t-muted" font-size="9" text-anchor="middle">意图 · 责任 · 身份 · 决策历史</text>
-        <text data-detail="fine" x="645" y="204" class="t-security" font-size="7" text-anchor="middle">02 · 基线可共识</text>
-        </g>
-
-        <g id="node-trace" data-node-id="trace" data-node-label="端到端关联与质量追溯" tabindex="0" role="button" aria-label="Focus 端到端关联与质量追溯, 需求 → 设计 → 实现 → 部署证据, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="需求 → 设计 → 实现 → 部署证据" data-node-tag="03 · 依据可查证" data-node-context="Architecture component">
-          <title>端到端关联与质量追溯 · 需求 → 设计 → 实现 → 部署证据 · Architecture component · 03 · 依据可查证</title>
-          <rect x="910" y="110" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="910" y="110" width="290" height="102" rx="6" class="c-database" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(916 116) scale(0.6875)">
+          <rect x="90" y="110" width="290" height="102" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(96 116) scale(0.6875)">
             <ellipse cx="8" cy="4" rx="5" ry="2"/>
             <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="1055" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">端到端关联与质量追溯</text>
-        <text data-detail="context" x="1055" y="175" class="t-muted" font-size="9" text-anchor="middle">需求 → 设计 → 实现 → 部署证据</text>
-        <text data-detail="fine" x="1055" y="204" class="t-database" font-size="7" text-anchor="middle">03 · 依据可查证</text>
+          <text data-detail-anchor x="235" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">SourceVersion 来源版本</text>
+        <text data-detail="context" x="235" y="175" class="t-muted" font-size="9" text-anchor="middle">不可变材料 · 来源清单与 Gap</text>
+        <text data-detail="fine" x="235" y="204" class="t-database" font-size="7" text-anchor="middle">来源边界</text>
         </g>
 
-        <g id="node-new-work" data-node-id="new-work" data-node-label="新增需求与设计登记" tabindex="0" role="button" aria-label="Focus 新增需求与设计登记, 在新工作中及时维护关联, Architecture component" aria-pressed="false" data-node-kind="external" data-node-sublabel="在新工作中及时维护关联" data-node-tag="建设路径 · 维护未来" data-node-context="Architecture component">
-          <title>新增需求与设计登记 · 在新工作中及时维护关联 · Architecture component · 建设路径 · 维护未来</title>
+        <g id="node-fact" data-node-id="fact" data-node-label="Fact 技术观察" tabindex="0" role="button" aria-label="Focus Fact 技术观察, 可复现观察 · 推导版本 · 证据引用, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="可复现观察 · 推导版本 · 证据引用" data-node-tag="观察 ≠ 业务要求" data-node-context="Architecture component">
+          <title>Fact 技术观察 · 可复现观察 · 推导版本 · 证据引用 · Architecture component · 观察 ≠ 业务要求</title>
+          <rect x="500" y="110" width="290" height="102" rx="6" class="c-mask"/>
+          <rect x="500" y="110" width="290" height="102" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(506 116) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-detail-anchor x="645" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Fact 技术观察</text>
+        <text data-detail="context" x="645" y="175" class="t-muted" font-size="9" text-anchor="middle">可复现观察 · 推导版本 · 证据引用</text>
+        <text data-detail="fine" x="645" y="204" class="t-database" font-size="7" text-anchor="middle">观察 ≠ 业务要求</text>
+        </g>
+
+        <g id="node-candidate" data-node-id="candidate" data-node-label="Candidate 语义候选" tabindex="0" role="button" aria-label="Focus Candidate 语义候选, 假设 · 范围 · 依据 · 不确定性, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="假设 · 范围 · 依据 · 不确定性" data-node-tag="Agent 只能提出候选" data-node-context="Architecture component">
+          <title>Candidate 语义候选 · 假设 · 范围 · 依据 · 不确定性 · Architecture component · Agent 只能提出候选</title>
+          <rect x="910" y="110" width="290" height="102" rx="6" class="c-mask"/>
+          <rect x="910" y="110" width="290" height="102" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(916 116) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="1055" y="159" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Candidate 语义候选</text>
+        <text data-detail="context" x="1055" y="175" class="t-muted" font-size="9" text-anchor="middle">假设 · 范围 · 依据 · 不确定性</text>
+        <text data-detail="fine" x="1055" y="204" class="t-backend" font-size="7" text-anchor="middle">Agent 只能提出候选</text>
+        </g>
+
+        <g id="node-spec" data-node-id="spec" data-node-label="TestSpec 验证要求" tabindex="0" role="button" aria-label="Focus TestSpec 验证要求, 已确认规则对应的验证要求, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="已确认规则对应的验证要求" data-node-tag="测试源码 ≠ 测试规格" data-node-context="Architecture component">
+          <title>TestSpec 验证要求 · 已确认规则对应的验证要求 · Architecture component · 测试源码 ≠ 测试规格</title>
           <rect x="90" y="330" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="90" y="330" width="290" height="102" rx="6" class="c-external" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="external" class="semantic-sigil s-external" transform="translate(96 336) scale(0.6875)">
-            <rect x="2.5" y="5" width="8.5" height="8" rx="1.5"/>
-            <path d="M8 2.5h5.5V8M13.5 2.5 7.5 8.5"/>
+          <rect x="90" y="330" width="290" height="102" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(96 336) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="235" y="379" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">新增需求与设计登记</text>
-        <text data-detail="context" x="235" y="395" class="t-muted" font-size="9" text-anchor="middle">在新工作中及时维护关联</text>
-        <text data-detail="fine" x="235" y="424" class="t-external" font-size="7" text-anchor="middle">建设路径 · 维护未来</text>
+          <text data-detail-anchor x="235" y="379" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">TestSpec 验证要求</text>
+        <text data-detail="context" x="235" y="395" class="t-muted" font-size="9" text-anchor="middle">已确认规则对应的验证要求</text>
+        <text data-detail="fine" x="235" y="424" class="t-database" font-size="7" text-anchor="middle">测试源码 ≠ 测试规格</text>
         </g>
 
-        <g id="node-impact" data-node-id="impact" data-node-label="变更影响与持续回归" tabindex="0" role="button" aria-label="Focus 变更影响与持续回归, 版本比较 · 过期识别 · 复验范围, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="版本比较 · 过期识别 · 复验范围" data-node-tag="05 · 变更有范围" data-node-context="Architecture component">
-          <title>变更影响与持续回归 · 版本比较 · 过期识别 · 复验范围 · Architecture component · 05 · 变更有范围</title>
+        <g id="node-claim" data-node-id="claim" data-node-label="Claim 业务主张" tabindex="0" role="button" aria-label="Focus Claim 业务主张, 意图 / 规范 / 设计 / 实现行为, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="意图 / 规范 / 设计 / 实现行为" data-node-tag="经批准的业务基线" data-node-context="Architecture component">
+          <title>Claim 业务主张 · 意图 / 规范 / 设计 / 实现行为 · Architecture component · 经批准的业务基线</title>
           <rect x="500" y="330" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="500" y="330" width="290" height="102" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(506 336) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          <rect x="500" y="330" width="290" height="102" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(506 336) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
           </g>
-          <text data-detail-anchor x="645" y="379" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">变更影响与持续回归</text>
-        <text data-detail="context" x="645" y="395" class="t-muted" font-size="9" text-anchor="middle">版本比较 · 过期识别 · 复验范围</text>
-        <text data-detail="fine" x="645" y="424" class="t-backend" font-size="7" text-anchor="middle">05 · 变更有范围</text>
+          <text data-detail-anchor x="645" y="379" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Claim 业务主张</text>
+        <text data-detail="context" x="645" y="395" class="t-muted" font-size="9" text-anchor="middle">意图 / 规范 / 设计 / 实现行为</text>
+        <text data-detail="fine" x="645" y="424" class="t-database" font-size="7" text-anchor="middle">经批准的业务基线</text>
         </g>
 
-        <g id="node-verify" data-node-id="verify" data-node-label="测试设计与质量验证" tabindex="0" role="button" aria-label="Focus 测试设计与质量验证, 规则 · 测试规格 · 实际执行, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="规则 · 测试规格 · 实际执行" data-node-tag="04 · 规则有验证" data-node-context="Architecture component">
-          <title>测试设计与质量验证 · 规则 · 测试规格 · 实际执行 · Architecture component · 04 · 规则有验证</title>
+        <g id="node-decision" data-node-id="decision" data-node-label="Decision 人工决策" tabindex="0" role="button" aria-label="Focus Decision 人工决策, 确认人 · 适用范围 · 理由 · 历史, Architecture component" aria-pressed="false" data-node-kind="security" data-node-sublabel="确认人 · 适用范围 · 理由 · 历史" data-node-tag="批准 ≠ 符合性证明" data-node-context="Architecture component">
+          <title>Decision 人工决策 · 确认人 · 适用范围 · 理由 · 历史 · Architecture component · 批准 ≠ 符合性证明</title>
           <rect x="910" y="330" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="910" y="330" width="290" height="102" rx="6" class="c-backend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(916 336) scale(0.6875)">
-            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          <rect x="910" y="330" width="290" height="102" rx="6" class="c-security" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="security" class="semantic-sigil s-security" transform="translate(916 336) scale(0.6875)">
+            <path d="M8 2.2 13 4v3.5c0 3.1-1.8 5.4-5 6.5-3.2-1.1-5-3.4-5-6.5V4Z"/>
+            <path d="m5.8 8 1.5 1.5 3-3"/>
           </g>
-          <text data-detail-anchor x="1055" y="379" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">测试设计与质量验证</text>
-        <text data-detail="context" x="1055" y="395" class="t-muted" font-size="9" text-anchor="middle">规则 · 测试规格 · 实际执行</text>
-        <text data-detail="fine" x="1055" y="424" class="t-backend" font-size="7" text-anchor="middle">04 · 规则有验证</text>
+          <text data-detail-anchor x="1055" y="379" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Decision 人工决策</text>
+        <text data-detail="context" x="1055" y="395" class="t-muted" font-size="9" text-anchor="middle">确认人 · 适用范围 · 理由 · 历史</text>
+        <text data-detail="fine" x="1055" y="424" class="t-security" font-size="7" text-anchor="middle">批准 ≠ 符合性证明</text>
         </g>
 
-        <g id="node-delivery" data-node-id="delivery" data-node-label="质量态势与交付证明" tabindex="0" role="button" aria-label="Focus 质量态势与交付证明, 版本质量 · 剩余风险 · 证据导出, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="版本质量 · 剩余风险 · 证据导出" data-node-tag="07 · 交付有依据" data-node-context="Architecture component">
-          <title>质量态势与交付证明 · 版本质量 · 剩余风险 · 证据导出 · Architecture component · 07 · 交付有依据</title>
+        <g id="node-execution" data-node-id="execution" data-node-label="TestExecution 实际执行" tabindex="0" role="button" aria-label="Focus TestExecution 实际执行, 版本 · 环境 · 断言 · 运行上下文, Architecture component" aria-pressed="false" data-node-kind="backend" data-node-sublabel="版本 · 环境 · 断言 · 运行上下文" data-node-tag="测试存在 ≠ 实际执行" data-node-context="Architecture component">
+          <title>TestExecution 实际执行 · 版本 · 环境 · 断言 · 运行上下文 · Architecture component · 测试存在 ≠ 实际执行</title>
+          <rect x="90" y="550" width="290" height="102" rx="6" class="c-mask"/>
+          <rect x="90" y="550" width="290" height="102" rx="6" class="c-backend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(96 556) scale(0.6875)">
+            <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
+          </g>
+          <text data-detail-anchor x="235" y="599" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">TestExecution 实际执行</text>
+        <text data-detail="context" x="235" y="615" class="t-muted" font-size="9" text-anchor="middle">版本 · 环境 · 断言 · 运行上下文</text>
+        <text data-detail="fine" x="235" y="644" class="t-backend" font-size="7" text-anchor="middle">测试存在 ≠ 实际执行</text>
+        </g>
+
+        <g id="node-evidence" data-node-id="evidence" data-node-label="Evidence 运行证据" tabindex="0" role="button" aria-label="Focus Evidence 运行证据, 验证结果 · 观察 · 内容引用, Architecture component" aria-pressed="false" data-node-kind="database" data-node-sublabel="验证结果 · 观察 · 内容引用" data-node-tag="执行证据支撑关联主张" data-node-context="Architecture component">
+          <title>Evidence 运行证据 · 验证结果 · 观察 · 内容引用 · Architecture component · 执行证据支撑关联主张</title>
           <rect x="500" y="550" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="500" y="550" width="290" height="102" rx="6" class="c-frontend" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(506 556) scale(0.6875)">
+          <rect x="500" y="550" width="290" height="102" rx="6" class="c-database" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="database" class="semantic-sigil s-database" transform="translate(506 556) scale(0.6875)">
+            <ellipse cx="8" cy="4" rx="5" ry="2"/>
+            <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4M3 8c0 1.1 2.2 2 5 2s5-.9 5-2"/>
+          </g>
+          <text data-detail-anchor x="645" y="599" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">Evidence 运行证据</text>
+        <text data-detail="context" x="645" y="615" class="t-muted" font-size="9" text-anchor="middle">验证结果 · 观察 · 内容引用</text>
+        <text data-detail="fine" x="645" y="644" class="t-database" font-size="7" text-anchor="middle">执行证据支撑关联主张</text>
+        </g>
+
+        <g id="node-projections" data-node-id="projections" data-node-label="业务树 / API 树 / 影响视图" tabindex="0" role="button" aria-label="Focus 业务树 / API 树 / 影响视图, 从相应事实、决策和执行投影, Architecture component" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="从相应事实、决策和执行投影" data-node-tag="可重建 · 不建第二份真相" data-node-context="Architecture component">
+          <title>业务树 / API 树 / 影响视图 · 从相应事实、决策和执行投影 · Architecture component · 可重建 · 不建第二份真相</title>
+          <rect x="910" y="550" width="290" height="102" rx="6" class="c-mask"/>
+          <rect x="910" y="550" width="290" height="102" rx="6" class="c-frontend" stroke-width="1.5"/>
+          <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(916 556) scale(0.6875)">
             <rect x="2" y="3" width="12" height="10" rx="2"/>
             <path d="M2 6.5h12"/>
             <circle cx="4.1" cy="4.8" r=".7" class="sigil-fill"/>
             <circle cx="6.3" cy="4.8" r=".7" class="sigil-fill"/>
           </g>
-          <text data-detail-anchor x="645" y="599" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">质量态势与交付证明</text>
-        <text data-detail="context" x="645" y="615" class="t-muted" font-size="9" text-anchor="middle">版本质量 · 剩余风险 · 证据导出</text>
-        <text data-detail="fine" x="645" y="644" class="t-frontend" font-size="7" text-anchor="middle">07 · 交付有依据</text>
-        </g>
-
-        <g id="node-gaps" data-node-id="gaps" data-node-label="质量缺口与协同处置" tabindex="0" role="button" aria-label="Focus 质量缺口与协同处置, 缺失 / 陈旧 / 冲突 / 失败, Architecture component" aria-pressed="false" data-node-kind="messagebus" data-node-sublabel="缺失 / 陈旧 / 冲突 / 失败" data-node-tag="06 · 问题可闭合" data-node-context="Architecture component">
-          <title>质量缺口与协同处置 · 缺失 / 陈旧 / 冲突 / 失败 · Architecture component · 06 · 问题可闭合</title>
-          <rect x="910" y="550" width="290" height="102" rx="6" class="c-mask"/>
-          <rect x="910" y="550" width="290" height="102" rx="6" class="c-messagebus" stroke-width="1.5"/>
-          <g aria-hidden="true" data-semantic-sigil="messagebus" class="semantic-sigil s-messagebus" transform="translate(916 556) scale(0.6875)">
-            <path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/>
-            <circle cx="5" cy="4.5" r="1" class="sigil-fill"/>
-            <circle cx="10.5" cy="8" r="1" class="sigil-fill"/>
-            <circle cx="7" cy="11.5" r="1" class="sigil-fill"/>
-          </g>
-          <text data-detail-anchor x="1055" y="599" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">质量缺口与协同处置</text>
-        <text data-detail="context" x="1055" y="615" class="t-muted" font-size="9" text-anchor="middle">缺失 / 陈旧 / 冲突 / 失败</text>
-        <text data-detail="fine" x="1055" y="644" class="t-messagebus" font-size="7" text-anchor="middle">06 · 问题可闭合</text>
+          <text data-detail-anchor x="1055" y="599" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">业务树 / API 树 / 影响视图</text>
+        <text data-detail="context" x="1055" y="615" class="t-muted" font-size="9" text-anchor="middle">从相应事实、决策和执行投影</text>
+        <text data-detail="fine" x="1055" y="644" class="t-frontend" font-size="7" text-anchor="middle">可重建 · 不建第二份真相</text>
         </g>
 
         <!-- Connection labels -->
@@ -4693,37 +4706,36 @@
 
 
 
+        <g data-detail="context" data-edge-from="fact" data-edge-to="claim" data-edge-label="支撑" data-edge-key="4" data-edge-id="fact-to-claim">
+          <rect x="630" y="256" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="645" y="266" class="t-muted" font-size="8" text-anchor="middle">支撑</text>
+        </g>
 
 
 
-
+        <g data-detail="context" data-edge-from="evidence" data-edge-to="claim" data-edge-label="验证" data-edge-key="8" data-edge-id="evidence-to-claim">
+          <rect x="630" y="530" width="30" height="14" rx="3" class="c-mask"/>
+          <text x="645" y="540" class="t-muted" font-size="8" text-anchor="middle">验证</text>
+        </g>
 
         <!-- Legend -->
         <g data-legend-bridge>
           <text x="40" y="691" class="t-primary" font-size="9" font-weight="600">Legend</text>
+          <g data-legend-kind="database">
+            <rect x="40" y="696" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
+            <text x="60" y="704" class="t-muted" font-size="8">Database</text>
+          </g>
           <g data-legend-kind="backend">
-            <rect x="40" y="696" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
-            <text x="60" y="704" class="t-muted" font-size="8">Backend</text>
+            <rect x="144" y="696" width="14" height="9" rx="2" class="c-backend" stroke-width="1"/>
+            <text x="164" y="704" class="t-muted" font-size="8">Backend</text>
           </g>
           <g data-legend-kind="security">
-            <rect x="139" y="696" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
-            <text x="159" y="704" class="t-muted" font-size="8">Security</text>
-          </g>
-          <g data-legend-kind="database">
-            <rect x="243" y="696" width="14" height="9" rx="2" class="c-database" stroke-width="1"/>
-            <text x="263" y="704" class="t-muted" font-size="8">Database</text>
-          </g>
-          <g data-legend-kind="external">
-            <rect x="347" y="696" width="14" height="9" rx="2" class="c-external" stroke-width="1"/>
-            <text x="367" y="704" class="t-muted" font-size="8">External</text>
+            <rect x="243" y="696" width="14" height="9" rx="2" class="c-security" stroke-width="1"/>
+            <text x="263" y="704" class="t-muted" font-size="8">Security</text>
           </g>
           <g data-legend-kind="frontend">
-            <rect x="451" y="696" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
-            <text x="471" y="704" class="t-muted" font-size="8">Frontend</text>
-          </g>
-          <g data-legend-kind="messagebus">
-            <rect x="555" y="696" width="14" height="9" rx="2" class="c-messagebus" stroke-width="1"/>
-            <text x="575" y="704" class="t-muted" font-size="8">Message bus</text>
+            <rect x="347" y="696" width="14" height="9" rx="2" class="c-frontend" stroke-width="1"/>
+            <text x="367" y="704" class="t-muted" font-size="8">Frontend</text>
           </g>
         </g>
       </svg>
@@ -4912,34 +4924,33 @@
       <div class="card">
         <div class="card-header">
           <div class="card-dot cyan"></div>
-          <h3>共同的业务资产</h3>
+          <h3>业务功能是稳定核心资产</h3>
         </div>
         <ul>
-          <li>&bull; 同一业务功能连接意图、设计、实现、配置、测试和部署证据。</li>
-          <li>&bull; 存量知识重建补齐过去；新增需求与设计登记维护未来。</li>
+          <li>&bull; Feature.id 由治理分配；FeatureVersion 承载变化。</li>
+          <li>&bull; 名称、路径和分类位置变化不改变业务身份；F001 等工程编号不是业务身份。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot violet"></div>
-          <h3>协作关系，不是强制流水线</h3>
+          <h3>各类信息分别表达</h3>
         </div>
         <ul>
-          <li>&bull; 图突出主要关系；追溯、执行和处置记录共同支撑质量态势。</li>
-          <li>&bull; 缺口处置回到补证、修正与复验；各能力可以按任务单独进入。</li>
+          <li>&bull; Fact / Candidate / Decision / Claim / TestSpec / TestExecution 各有生产和发布依据。</li>
+          <li>&bull; 业务树、API 树与影响视图从同一版本化模型生成。</li>
         </ul>
       </div>
 
       <div class="card">
         <div class="card-header">
           <div class="card-dot amber"></div>
-          <h3>跨角色治理与交付范围</h3>
+          <h3>缺口与历史贯穿全链</h3>
         </div>
         <ul>
-          <li>&bull; 产品/业务、架构/研发、测试/质量、交付/运维共同使用。</li>
-          <li>&bull; 权限、人工审批、版本、证据保留和审计贯穿全图。</li>
-          <li>&bull; 这是完整能力框架；现有 Feature 覆盖范围见应用架构。</li>
+          <li>&bull; CoverageGap 沿相关依赖传播；修正创建新推导、决策或修订。</li>
+          <li>&bull; 权威、符合性、验证、新鲜度、冲突与覆盖分别判断；无单一绿色替代全部状态。</li>
         </ul>
       </div>
     </div>

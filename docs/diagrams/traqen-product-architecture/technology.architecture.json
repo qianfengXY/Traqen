@@ -1,0 +1,268 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Traqen · 技术架构",
+    "subtitle": "建议部署归纳 · 模块化 Node 应用 + 有界耗时执行 · 沿用现有基础，隔离与恢复仍需验收",
+    "quality_profile": "showcase",
+    "visual_preset": "classic",
+    "animation": "none",
+    "views": [
+      {
+        "id": "interactive",
+        "label": "交互与权威记录",
+        "focus": [
+          "web",
+          "api",
+          "db",
+          "ci"
+        ],
+        "note": "应用统一处理 Workspace 权限、版本、发布与执行证据接入。"
+      },
+      {
+        "id": "execution",
+        "label": "有界执行与持久化",
+        "focus": [
+          "api",
+          "workers",
+          "db",
+          "volume",
+          "cli"
+        ],
+        "note": "耗时任务从交互请求中分离，状态和检查点留在服务端。"
+      },
+      {
+        "id": "recovery",
+        "label": "配套恢复",
+        "focus": [
+          "db",
+          "volume",
+          "backup"
+        ],
+        "note": "数据库及引用字节共同形成可恢复的版本；冻结与备份状态独立。"
+      }
+    ],
+    "viewBox": [
+      1350,
+      720
+    ]
+  },
+  "components": [
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "React / TypeScript 工作台",
+      "sublabel": "查看 · 审阅 · 操作 · 解释状态",
+      "pos": [
+        90,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "交互入口"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Node 应用服务与领域规则",
+      "sublabel": "Workspace · 版本 · 权限 · 发布合同",
+      "pos": [
+        500,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "模块化应用"
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL 权威记录",
+      "sublabel": "清单 · 任务 · 修订 · Receipt · 审计",
+      "pos": [
+        910,
+        110
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "服务端持久化"
+    },
+    {
+      "id": "ci",
+      "type": "external",
+      "label": "受控 Runner / 集成 CI",
+      "sublabel": "版本绑定的执行结果与环境",
+      "pos": [
+        90,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "执行集成"
+    },
+    {
+      "id": "workers",
+      "type": "backend",
+      "label": "持久化任务与 Worker",
+      "sublabel": "采集 · 提取 · 分析 · 检查点恢复",
+      "pos": [
+        500,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "有界并发与资源"
+    },
+    {
+      "id": "volume",
+      "type": "database",
+      "label": "专用持久化文件卷",
+      "sublabel": "来源字节 · 不可变内容 · 引用保护",
+      "pos": [
+        910,
+        330
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "首期单节点"
+    },
+    {
+      "id": "cli",
+      "type": "external",
+      "label": "获授权的本机 CLI Agent",
+      "sublabel": "固定能力配置 · 实际访问策略",
+      "pos": [
+        500,
+        550
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "白名单不是执行隔离"
+    },
+    {
+      "id": "backup",
+      "type": "database",
+      "label": "配套备份与隔离恢复",
+      "sublabel": "数据库 + 被引用字节 · 完整性校验",
+      "pos": [
+        910,
+        550
+      ],
+      "size": [
+        290,
+        102
+      ],
+      "tag": "冻结成功 ≠ 已备份"
+    }
+  ],
+  "boundaries": [],
+  "connections": [
+    {
+      "id": "web-to-api",
+      "to": "api",
+      "variant": "default",
+      "from": "web"
+    },
+    {
+      "id": "ci-to-api",
+      "to": "api",
+      "variant": "default",
+      "from": "ci",
+      "label": "执行证据"
+    },
+    {
+      "id": "api-to-db",
+      "to": "db",
+      "variant": "default",
+      "from": "api"
+    },
+    {
+      "id": "api-to-workers",
+      "to": "workers",
+      "variant": "default",
+      "from": "api"
+    },
+    {
+      "id": "workers-to-db",
+      "to": "db",
+      "variant": "default",
+      "from": "workers"
+    },
+    {
+      "id": "workers-to-volume",
+      "to": "volume",
+      "variant": "default",
+      "from": "workers"
+    },
+    {
+      "id": "workers-to-cli",
+      "to": "cli",
+      "variant": "security",
+      "from": "workers"
+    },
+    {
+      "id": "db-to-backup",
+      "to": "backup",
+      "variant": "default",
+      "from": "db",
+      "fromSide": "right",
+      "toSide": "right",
+      "via": [
+        [
+          1270,
+          161
+        ],
+        [
+          1270,
+          601
+        ]
+      ]
+    },
+    {
+      "id": "volume-to-backup",
+      "to": "backup",
+      "variant": "default",
+      "from": "volume"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "发布与恢复的一致性",
+      "items": [
+        "先持久化并保护来源字节引用，再用数据库事务发布。",
+        "文件与数据库不是同一事务；恢复必须检验配套内容与引用完整性。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "持久化与状态诚实",
+      "items": [
+        "任务、来源历史、决策、执行与审计默认 TTL=0。",
+        "任务进度、内容冻结、当前准入、备份覆盖分别表达。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "实现基础与验证边界",
+      "items": [
+        "已有领域、应用、存储、任务和 CLI 适配基础；图不证明隔离或验收完成。",
+        "验证权限、资源上限、中断恢复、磁盘满与引用完整性；无未经测量的容量承诺。"
+      ]
+    }
+  ]
+}
