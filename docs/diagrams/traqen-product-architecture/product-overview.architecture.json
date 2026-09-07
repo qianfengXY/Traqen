@@ -1,0 +1,365 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Traqen · 产品架构四视图",
+    "subtitle": "理解存量系统，让下一次变更有据可循 · 目标架构，非实现验收 · 2026-09-06",
+    "quality_profile": "showcase",
+    "visual_preset": "blueprint",
+    "animation": "none",
+    "views": [
+      {
+        "id": "business-view",
+        "label": "业务 · 为什么",
+        "focus": [
+          "business-understanding",
+          "business-change",
+          "business-validation"
+        ],
+        "note": "接管理解 → 变更判断 → 验证行动；每次验证留下下一轮可用的证据。"
+      },
+      {
+        "id": "application-view",
+        "label": "应用 · 谁负责",
+        "focus": [
+          "application-source",
+          "application-meaning",
+          "application-impact"
+        ],
+        "note": "F001 准入 F002；F003 经 F002 取证并由人工发布主张；F004 汇合证据。F006 提供固定授权。"
+      },
+      {
+        "id": "information-view",
+        "label": "信息 · 凭什么",
+        "focus": [
+          "information-observation",
+          "information-authority",
+          "information-verification"
+        ],
+        "note": "三组对象表达依赖关系；技术观察、业务权威、执行验证分别保留，不能相互代替。"
+      },
+      {
+        "id": "technology-view",
+        "label": "技术 · 怎样实现",
+        "focus": [
+          "technology-application",
+          "technology-execution",
+          "technology-persistence"
+        ],
+        "note": "建议沿用现有模块化基础与有界任务；首期单节点、持久化与配套恢复，不宣称已完整实现。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "business-understanding",
+      "type": "frontend",
+      "label": "接管与理解",
+      "sublabel": "能力、API 与证据路径",
+      "tag": "已确认目标",
+      "pos": [
+        100,
+        110
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "business-change",
+      "type": "frontend",
+      "label": "判断变更影响",
+      "sublabel": "影响范围、理由与未知项",
+      "tag": "已确认目标",
+      "pos": [
+        465,
+        110
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "business-validation",
+      "type": "frontend",
+      "label": "安排与执行验证",
+      "sublabel": "复验行动与新增证据",
+      "tag": "已确认目标",
+      "pos": [
+        830,
+        110
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "application-source",
+      "type": "backend",
+      "label": "F001 来源 / F002 证据",
+      "sublabel": "冻结准入 → 确定性提取",
+      "tag": "各自独立职责",
+      "pos": [
+        100,
+        300
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "application-meaning",
+      "type": "backend",
+      "label": "F003 业务理解",
+      "sublabel": "候选 → 人工审阅 → 业务树",
+      "tag": "F006 固定授权",
+      "pos": [
+        465,
+        300
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "application-impact",
+      "type": "backend",
+      "label": "F004 变更影响",
+      "sublabel": "比较版本、汇合执行与复验建议",
+      "tag": "仅提供建议",
+      "pos": [
+        830,
+        300
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "information-observation",
+      "type": "database",
+      "label": "来源与观察",
+      "sublabel": "SourceBundle / Fact / Gap",
+      "tag": "快照绑定",
+      "pos": [
+        100,
+        490
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "information-authority",
+      "type": "security",
+      "label": "解释与权威",
+      "sublabel": "Candidate / Decision / Claim",
+      "tag": "人工发布",
+      "pos": [
+        465,
+        490
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "information-verification",
+      "type": "database",
+      "label": "执行与证明",
+      "sublabel": "TestSpec / Execution / Evidence",
+      "tag": "上下文绑定",
+      "pos": [
+        830,
+        490
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "technology-application",
+      "type": "frontend",
+      "label": "工作台与应用",
+      "sublabel": "React / Node / 领域规则",
+      "tag": "复用现有基础",
+      "pos": [
+        100,
+        680
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "technology-execution",
+      "type": "backend",
+      "label": "受控任务执行",
+      "sublabel": "Worker / CLI / Runner",
+      "tag": "有界输入与权限",
+      "pos": [
+        465,
+        680
+      ],
+      "size": [
+        275,
+        98
+      ]
+    },
+    {
+      "id": "technology-persistence",
+      "type": "database",
+      "label": "持久化与恢复",
+      "sublabel": "PostgreSQL / 专用卷 / 配套备份",
+      "tag": "首期单节点",
+      "pos": [
+        830,
+        680
+      ],
+      "size": [
+        275,
+        98
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "业务视角 · 决策与价值",
+      "wraps": [
+        "business-understanding",
+        "business-change",
+        "business-validation"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "应用视角 · 职责与交接",
+      "wraps": [
+        "application-source",
+        "application-meaning",
+        "application-impact"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "信息视角 · 版本化证据",
+      "wraps": [
+        "information-observation",
+        "information-authority",
+        "information-verification"
+      ],
+      "pad": 28
+    },
+    {
+      "kind": "region",
+      "label": "技术视角 · 建议部署形态",
+      "wraps": [
+        "technology-application",
+        "technology-execution",
+        "technology-persistence"
+      ],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {
+      "id": "business-understanding-to-business-change",
+      "from": "business-understanding",
+      "to": "business-change",
+      "variant": "emphasis"
+    },
+    {
+      "id": "business-change-to-business-validation",
+      "from": "business-change",
+      "to": "business-validation",
+      "variant": "emphasis"
+    },
+    {
+      "id": "application-source-to-application-meaning",
+      "from": "application-source",
+      "to": "application-meaning",
+      "variant": "emphasis"
+    },
+    {
+      "id": "application-meaning-to-application-impact",
+      "from": "application-meaning",
+      "to": "application-impact",
+      "variant": "emphasis"
+    },
+    {
+      "id": "information-observation-to-information-authority",
+      "from": "information-observation",
+      "to": "information-authority",
+      "variant": "emphasis"
+    },
+    {
+      "id": "information-authority-to-information-verification",
+      "from": "information-authority",
+      "to": "information-verification",
+      "variant": "emphasis"
+    },
+    {
+      "id": "technology-application-to-technology-execution",
+      "from": "technology-application",
+      "to": "technology-execution",
+      "variant": "emphasis"
+    },
+    {
+      "id": "technology-execution-to-technology-persistence",
+      "from": "technology-execution",
+      "to": "technology-persistence",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "业务价值",
+      "items": [
+        "接手：看到业务能力、API 与依据。",
+        "变更：定位影响路径与未知区域。",
+        "验证：形成具体复验行动并积累证据。"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "应用边界",
+      "items": [
+        "F001 / F002 是两个职责；同卡仅为总览压缩。",
+        "F003 只经 F002 证据输出取证，候选需人工批准。",
+        "F006 固定能力与授权；F004 首期只给建议。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "证据与权威",
+      "items": [
+        "图中箭头表示本视角的依赖或工作次序。",
+        "确定性不代表覆盖完整；缺口全程可见。",
+        "主张获批、实现符合、测试通过分别表达。"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "实现与迭代",
+      "items": [
+        "PostgreSQL 保存权威记录，专用卷保存来源字节。",
+        "任务与历史默认持久化，配套备份后验证恢复。",
+        "本图从产品架构正文派生；详细边界以正文为准。"
+      ]
+    }
+  ]
+}
