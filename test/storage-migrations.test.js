@@ -62,6 +62,8 @@ async function migratedDatabase() {
     "0026_global_account_revision",
     "0027_f006_legacy_settings_receipts",
     "0028_f001_source_truth",
+    "0029_f001_verified_upload_checkpoints",
+    "0030_f001_prepared_evidence",
   ]);
   return database;
 }

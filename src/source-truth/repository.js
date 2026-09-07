@@ -176,7 +176,7 @@ export class SourceTruthRepository {
     const failure = !terminalRunStates.has(expectedStatus) && expectedStatus !== "FINALIZING"
       && ["FAILED_RETRYABLE", "BLOCKED", "CANCELLING"].includes(status);
     requireValue(normal || failure, "SOURCE_INVALID_TRANSITION", "该任务状态不能执行此动作");
-    return transaction(this.database, async (tx) => {
+    return this.withLease({ workspaceId, runId, generation }, async (tx) => {
       const { rows } = await tx.query(`UPDATE source_truth_run SET status=$5,station=COALESCE($6,station),
         progress=COALESCE($7::jsonb,progress),diagnostic=$8,updated_at=clock_timestamp()
         WHERE workspace_id=$1 AND id=$2 AND generation=$3 AND status=$4 AND lease_until>clock_timestamp() RETURNING *`,
@@ -191,6 +191,35 @@ export class SourceTruthRepository {
     return this.withWorkspace(actor, workspaceId, false, async (tx) => {
       const { rows } = await tx.query("SELECT id,payload,published_at FROM source_truth_bundle WHERE workspace_id=$1 ORDER BY published_at DESC,id LIMIT 50", [workspaceId]);
       return rows.map((row) => ({ id: row.id, ...row.payload, publishedAt: iso(row.published_at) }));
+    });
+  }
+
+  async cancel(actor, workspaceId, runId) {
+    return this.withWorkspace(actor, workspaceId, true, async (tx) => {
+      const current = await tx.query("SELECT * FROM source_truth_run WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, runId]);
+      const run = current.rows[0];
+      requireValue(run, "SOURCE_NOT_FOUND", "任务不存在", { status: 404 });
+      requireValue(run.status !== "FINALIZING", "SOURCE_FINALIZING", "正在原子最终化，只能查询结果，不能取消");
+      if (terminalRunStates.has(run.status)) return runRecord(run);
+      const { rows } = await tx.query(`UPDATE source_truth_run SET status='CANCELLED',generation=generation+1,
+        lease_until=NULL,updated_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2 RETURNING *`, [workspaceId, runId]);
+      await this.audit(tx, workspaceId, runId, actor.actorId, "RUN_CANCELLED", { priorStatus: run.status, retained: "draft,checkpoint,audit" });
+      return runRecord(rows[0]);
+    });
+  }
+
+  async heartbeat(context, leaseMs = 60000) {
+    requireValue(Number.isInteger(leaseMs) && leaseMs > 0 && leaseMs <= 60000, "SOURCE_INVALID_LEASE", "执行租约参数无效");
+    return this.withLease(context, async (tx) => {
+      const { rows } = await tx.query(`UPDATE source_truth_run SET lease_until=clock_timestamp()+($3::integer * interval '1 millisecond'),
+        updated_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2 RETURNING *`, [context.workspaceId, context.runId, leaseMs]);
+      return runRecord(rows[0]);
+    });
+  }
+
+  async releaseLease(context) {
+    return this.withLease(context, async (tx) => {
+      await tx.query("UPDATE source_truth_run SET lease_until=NULL,updated_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2", [context.workspaceId, context.runId]);
     });
   }
 }

@@ -54,3 +54,36 @@ test("B-11 terminal retry keeps distinct audit and input", async (t) => {
   assert.deepEqual(retry.input, run.input);
   assert.equal((await r.getRun(reader, "workspace", run.id)).status, "FAILED_RETRYABLE");
 });
+
+test("B-05 revocation fences state transitions as well as material writes", async (t) => {
+  const { repository: r } = await sourceDatabase(t);
+  await r.saveDraft(owner, "workspace", { expectedRevision: 0, input });
+  const run = await r.startRun(owner, "workspace", { draftRevision: 1, policyRevisionId: "v1" });
+  const lease = await r.claimRun("workspace", run.id, { workerId: "w", leaseMs: 60000 });
+  await r.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "owner", role: "REVOKED" }] });
+  await assert.rejects(r.transition("workspace", run.id, { generation: lease.generation, expectedStatus: "PREFLIGHTING", status: "ENUMERATING" }), { code: "SOURCE_FORBIDDEN" });
+});
+
+test("B-08 cancellation fences in-flight workers without deleting the run or saved draft", async (t) => {
+  const { repository: r } = await sourceDatabase(t);
+  await r.saveDraft(owner, "workspace", { expectedRevision: 0, input });
+  const run = await r.startRun(owner, "workspace", { draftRevision: 1, policyRevisionId: "v1" });
+  const lease = await r.claimRun("workspace", run.id, { workerId: "w", leaseMs: 60000 });
+  assert.equal((await r.cancel(owner, "workspace", run.id))?.status, "CANCELLED");
+  await assert.rejects(r.transition("workspace", run.id, { generation: lease.generation, expectedStatus: "PREFLIGHTING", status: "ENUMERATING" }), { code: "SOURCE_STALE_WORKER" });
+  assert.equal((await r.getDraft(owner, "workspace")).revision, 1);
+  assert.equal((await r.cancel(owner, "workspace", run.id)).status, "CANCELLED");
+});
+
+test("B-08 lease heartbeat preserves generation; releasing it permits a fenced takeover", async (t) => {
+  const { repository: r } = await sourceDatabase(t);
+  await r.saveDraft(owner, "workspace", { expectedRevision: 0, input });
+  const run = await r.startRun(owner, "workspace", { draftRevision: 1, policyRevisionId: "v1" });
+  const lease = await r.claimRun("workspace", run.id, { workerId: "w", leaseMs: 60000 });
+  const context = { workspaceId: "workspace", runId: run.id, generation: lease.generation };
+  assert.equal((await r.heartbeat(context))?.generation, 1);
+  await r.releaseLease(context);
+  const next = await r.claimRun("workspace", run.id, { workerId: "w2", leaseMs: 60000 });
+  assert.equal(next.generation, 2);
+  await assert.rejects(r.heartbeat(context), { code: "SOURCE_STALE_WORKER" });
+});
