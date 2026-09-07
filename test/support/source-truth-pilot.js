@@ -142,10 +142,20 @@ export async function sourceTruthPilot({ filesPerSource, postgresBin, maxTreeRss
       let cursor = null, completed = 0;
       do {
         const page = await services.materials.entries(context, { after: cursor, limit: 100 });
-        for (const { entry } of page.items) {
+        for (const { entry, disposition } of page.items) {
           if (entry.kind !== "FILE") continue;
+          if (disposition?.disposition === "VERIFIED") {
+            reusableBytes += BigInt(entry.sizeBytes); completed++; continue;
+          }
           const checkpoint = await services.upload.checkpoint(owner, context, entry.pathBytes);
           if (checkpoint.reusable) reusableBytes += BigInt(entry.sizeBytes);
+          else if (BigInt(entry.sizeBytes) <= BigInt(policy.maxChunkBytes) && checkpoint.verifiedPrefixBytes === "0") {
+            await services.capture.uploadFile(owner, "workspace", run.id, "directory", entry.pathBytes,
+              createReadStream(path.join(directory, Buffer.from(entry.pathBytes, "base64url").toString("utf8"))));
+            sentBytes += BigInt(entry.sizeBytes);
+            if (++completed % 1000 === 0) onProgress({ phase: "directory-bytes", verifiedFiles: completed, totalFiles: String(files), sentBytes: String(sentBytes) });
+            continue;
+          }
           else {
             let offset = BigInt(checkpoint.verifiedPrefixBytes);
             for await (const chunk of createReadStream(path.join(directory, Buffer.from(entry.pathBytes, "base64url").toString("utf8")), { start: Number(offset), highWaterMark: 65536 })) {

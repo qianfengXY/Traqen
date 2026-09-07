@@ -1,5 +1,5 @@
 import { directoryManifest, hashLocalFile, resolveLocalFile, scanDirectory, type DirectoryEntry, type DirectoryHandle, type LocalEntry, type SelectionPolicy, type SelectionProgress } from "./directory.ts";
-import { SourceTruthClient } from "./client.ts";
+import { SourceClientError, SourceTruthClient } from "./client.ts";
 
 export type TransferProgress = SelectionProgress | { phase: "MANIFEST" | "UPLOAD"; path: string; verifiedFiles: string; sentBytes: string; unnecessaryBytes: string };
 type EntryPage = { items: { entry: DirectoryEntry; disposition: { disposition: string } | null }[]; nextCursor: string | null };
@@ -44,6 +44,13 @@ export async function transferDirectory(client: SourceTruthClient, runId: string
         unnecessary += BigInt(entry.sizeBytes!); files++; emit(); continue;
       }
       unnecessary += BigInt(checkpoint.verifiedPrefixBytes);
+      if (file.size <= policy.maxChunkBytes && checkpoint.verifiedPrefixBytes === "0") {
+        const result = await client.request<{ completed: boolean; pathBytes: string; verifiedPrefixBytes: string; sizeBytes: string; digest: string }>(`${path}/complete-file?pathBytes=${entry.pathBytes}`, "POST", file);
+        if (!result?.completed || result.pathBytes !== entry.pathBytes || result.verifiedPrefixBytes !== entry.sizeBytes
+          || result.sizeBytes !== entry.sizeBytes || result.digest !== entry.expectedContent?.digest)
+          throw new SourceClientError("文件完成结果与冻结清单不一致，写入尚未确认；请查询原任务后继续");
+        sent += BigInt(file.size); files++; emit(); continue;
+      }
       for (let offset = Number(checkpoint.verifiedPrefixBytes); offset < file.size; offset += policy.maxChunkBytes) {
         const part = file.slice(offset, offset + policy.maxChunkBytes);
         const digest = await hashLocalFile(part, signal);

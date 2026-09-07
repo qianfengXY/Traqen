@@ -91,7 +91,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
               json(await seal());
             }
           } else {
-            const sourceMatch = /^sources\/([^/]+)\/(entries|close|chunks|checkpoint|finish-file)$/.exec(tail);
+            const sourceMatch = /^sources\/([^/]+)\/(entries|close|chunks|checkpoint|finish-file|complete-file)$/.exec(tail);
             requireValue(sourceMatch, "SOURCE_ROUTE_NOT_FOUND", "来源操作不存在", { status: 404 });
             const sourceId = decodeURIComponent(sourceMatch[1]), operation = sourceMatch[2];
             const context = { workspaceId, runId, sourceId };
@@ -100,7 +100,10 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
             else if (operation === "entries" && action === "POST") json(await capture.enumerateDirectory(actor, workspaceId, runId, sourceId, await sourceBody(request)));
             else if (operation === "close" && action === "POST") json(await capture.closeDirectory(actor, workspaceId, runId, sourceId, await sourceBody(request)));
             else if (operation === "finish-file" && action === "POST") json(await capture.finishFile(actor, workspaceId, runId, sourceId, (await sourceBody(request)).pathBytes));
-            else if (operation === "chunks" && action === "POST") {
+            else if (operation === "complete-file" && action === "POST") {
+              requireValue(request.headers["content-type"] === "application/octet-stream", "SOURCE_INVALID_CONTENT_TYPE", "完整文件必须为原始字节流", { status: 415 });
+              json(await capture.uploadFile(actor, workspaceId, runId, sourceId, url.searchParams.get("pathBytes"), request.iterator({ destroyOnReturn: false })));
+            } else if (operation === "chunks" && action === "POST") {
               requireValue(request.headers["content-type"] === "application/octet-stream", "SOURCE_INVALID_CONTENT_TYPE", "文件分片必须为原始字节流", { status: 415 });
               const input = Object.fromEntries(["pathBytes", "offset", "sizeBytes", "digest"].map((key) => [key, url.searchParams.get(key)]));
               requireValue(/^\d+$/.test(input.sizeBytes ?? "") && BigInt(input.sizeBytes) <= BigInt(policy.maxChunkBytes), "SOURCE_FILE_TOO_LARGE", "分片超过平台限制", { status: 413 });

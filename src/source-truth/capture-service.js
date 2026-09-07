@@ -160,6 +160,10 @@ export class SourceCaptureService {
     const { context } = await this.directoryContext(actor, workspaceId, runId, sourceId);
     return this.withHeartbeat(context, () => this.upload.uploadChunk(actor, context, input, stream));
   }
+  async uploadFile(actor, workspaceId, runId, sourceId, encodedPath, stream) {
+    const { context } = await this.directoryContext(actor, workspaceId, runId, sourceId);
+    return this.withHeartbeat(context, () => this.upload.uploadFile(actor, context, encodedPath, stream));
+  }
   async finishFile(actor, workspaceId, runId, sourceId, encodedPath) {
     const { context } = await this.directoryContext(actor, workspaceId, runId, sourceId);
     return this.withHeartbeat(context, () => this.upload.finishFile(actor, context, encodedPath));

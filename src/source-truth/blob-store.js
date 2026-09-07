@@ -115,7 +115,7 @@ export class SourceTruthBlobStore {
     return path.join(directory, id);
   }
 
-  async putBlob(scope, ref, stream) { return this.put(scope, "blobs", ref.digest, ref, stream); }
+  async putBlob(scope, ref, stream, { withPublication } = {}) { return this.put(scope, "blobs", ref.digest, ref, stream, withPublication); }
 
   async putChunk(scope, input, stream, { withPublication } = {}) {
     byteCount(input.offset, "offset");

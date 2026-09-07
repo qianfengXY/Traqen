@@ -84,8 +84,32 @@ export class SourceUploadService {
     // Workspace, never a tenant/global arbitrary digest existence oracle.
     const reusable = await this.blobs.verifyBlob(state.current.scope, { digest: state.current.entry.expectedContent.digest, sizeBytes: state.current.entry.sizeBytes });
     await this.repository.authorize(actor, context.workspaceId, false);
-    return { pathBytes: encodedPath, verifiedPrefixBytes: state.prefix, expectedBytes: state.current.entry.sizeBytes,
+    return { pathBytes: encodedPath, verifiedPrefixBytes: state.current.disposition?.disposition === "VERIFIED" && reusable ? state.current.entry.sizeBytes : state.prefix, expectedBytes: state.current.entry.sizeBytes,
       completed: state.current.disposition?.disposition === "VERIFIED", reusable };
+  }
+
+  // Small complete files need no durable intermediate chunk copy. An interrupted
+  // stream has no acknowledgement; an interrupted response is resolved by the
+  // existing checkpoint query. Large/partially uploaded files retain chunk resume.
+  async uploadFile(actor, context, encodedPath, stream) {
+    const check = async (tx, run) => {
+      requireValue(["CAPTURING", "WAITING_FOR_CLIENT"].includes(run.status), "SOURCE_INVALID_TRANSITION", "当前阶段不接受完整文件");
+      const current = await this.check(actor, context, encodedPath, tx);
+      requireValue(BigInt(current.entry.sizeBytes) <= BigInt(this.blobs.maxChunkBytes), "SOURCE_FILE_TOO_LARGE", "此文件须使用分片续传", { status: 413 });
+      return current;
+    };
+    const current = await this.repository.withLease(context, check);
+    const ref = { digest: current.entry.expectedContent.digest, sizeBytes: current.entry.sizeBytes };
+    await this.blobs.putBlob(current.scope, ref, stream, {
+      withPublication: (publish) => this.repository.withLease(context, async (tx, run) => {
+        const latest = await check(tx, run);
+        requireValue(canonicalEncode(latest.entry) === canonicalEncode(current.entry), "SOURCE_CONTENT_MISMATCH", "冻结文件绑定已变化");
+        const saved = await publish();
+        await this.materials.disposeInTransaction(tx, context, { pathBytes: encodedPath, disposition: "VERIFIED", reasonCode: "CONTENT_VERIFIED", ...ref });
+        return saved;
+      }),
+    });
+    return { pathBytes: encodedPath, verifiedPrefixBytes: ref.sizeBytes, ...ref, completed: true };
   }
 
   async validateChunk(actor, context, input, tx) {

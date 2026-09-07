@@ -145,6 +145,8 @@ test("browser transfer protocol closes a complete directory, sends bytes once an
   const rows = [];
   const store = { async putBatch(batch) { rows.push(...batch); }, async *ordered() { yield* rows.toSorted((a, b) => Buffer.compare(Buffer.from(a.key), Buffer.from(b.key))); } };
   const client = new SourceTruthClient(f.base.split("/v1/")[0], token, "workspace");
+  const request = client.request.bind(client), uploads = [];
+  client.request = async (...args) => { if (args[1] === "POST") uploads.push(args[0]); return request(...args); };
   const progress = [];
   const transferred = await transferDirectory(client, run.id, "docs", root, store, f.policy, (value) => progress.push(value));
   assert.equal(transferred.sentBytes, String(Buffer.byteLength("真实目录传输")));
@@ -155,5 +157,8 @@ test("browser transfer protocol closes a complete directory, sends bytes once an
   assert.equal(detail.result, null);
   assert.equal(progress.at(-1).verifiedFiles, "2");
   assert.equal(transferred.unnecessaryBytes, String(Buffer.byteLength("真实目录传输")), "same-Workspace verified content must not be sent twice");
+  assert.equal(uploads.filter((route) => route.includes("/complete-file?")).length, 1, "one small-file request, not chunk copy plus finish");
+  assert.equal(uploads.filter((route) => route.includes("/chunks?")).length, 0);
+  assert.equal(uploads.filter((route) => route.endsWith("/finish-file")).length, 1, "duplicate uses only verified content, never uploads again");
   assert.equal((await f.call("/history/runs?limit=1")).body.items[0].id, run.id);
 });
