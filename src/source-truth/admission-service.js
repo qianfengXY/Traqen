@@ -21,9 +21,18 @@ export class SourceAdmissionService {
 
   async records(actor, workspaceId, reference, tx = this.repository.database) {
     const access = await this.repository.authorize(actor, workspaceId, false, tx);
+    requireValue(access.restoreReady, "SOURCE_RESTORE_UNVERIFIED", "恢复尚未完整校验，暂不允许下游消费");
+    const row = await this.assertBinding(workspaceId, reference, tx);
+    await assertAcceptance(tx, { payload: row.confirmation, expires_at: row.expires_at });
+    return { scope: { workspaceId, tenantId: access.tenantId }, bundle: { id: reference.bundleId, payload: row.bundle.identity, counts: row.bundle.counts },
+      receipt: { ...row.receipt, issuedAt: new Date(row.issued_at).toISOString() } };
+  }
+
+  // Integrity-only internal check, not an admission endpoint. Backup/history
+  // must retain expired evidence without reauthorizing a new analysis.
+  async assertBinding(workspaceId, reference, tx = this.repository.database) {
     requireValue(reference && /^[a-f0-9]{64}$/.test(reference.bundleId) && typeof reference.receiptId === "string" && reference.receiptId.length > 0,
       "SOURCE_SEALED_REFERENCE_REQUIRED", "下游只接受冻结 Bundle 和精确 Receipt，不接受路径、ref 或上传会话", { status: 400 });
-    requireValue(access.restoreReady, "SOURCE_RESTORE_UNVERIFIED", "恢复尚未完整校验，暂不允许下游消费");
     const row = (await tx.query(`SELECT r.id,r.status,r.payload AS receipt,r.issued_at,b.payload AS bundle,c.payload AS confirmation,c.expires_at
       FROM source_truth_receipt r JOIN source_truth_bundle b ON b.workspace_id=r.workspace_id AND b.id=r.bundle_id
       JOIN source_truth_confirmation c ON c.workspace_id=r.workspace_id AND c.id=r.confirmation_id
@@ -35,9 +44,7 @@ export class SourceAdmissionService {
       && row.bundle.identity.gapSetId === row.receipt.gapSetId && row.confirmation.gapSetId === row.receipt.gapSetId
       && row.bundle.counts.gapCount === row.receipt.gapCount && row.confirmation.gapCount === row.receipt.gapCount,
     "SOURCE_RECEIPT_CORRUPT", "包、确认或凭据之间的绑定校验失败");
-    await assertAcceptance(tx, { payload: row.confirmation, expires_at: row.expires_at });
-    return { scope: { workspaceId, tenantId: access.tenantId }, bundle: { id: reference.bundleId, payload: row.bundle.identity, counts: row.bundle.counts },
-      receipt: { ...row.receipt, issuedAt: new Date(row.issued_at).toISOString() } };
+    return row;
   }
 
   async qualify(actor, workspaceId, reference) {

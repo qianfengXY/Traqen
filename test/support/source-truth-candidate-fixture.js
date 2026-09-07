@@ -8,8 +8,8 @@ import { SourceTruthBlobStore } from "../../src/source-truth/blob-store.js";
 import { SourceCandidateService } from "../../src/source-truth/candidate-service.js";
 import { pathBytes } from "../../src/source-truth/identity.js";
 
-export async function candidateFixture(t, { gaps = [], verified = true, stored = true, git = false } = {}) {
-  const { repository, db } = await sourceDatabase(t);
+export async function candidateFixture(t, { gaps = [], verified = true, stored = true, git = false, database = sourceDatabase } = {}) {
+  const { repository, db } = await database(t);
   const materials = new SourceMaterialRepository(repository);
   const blobs = await SourceTruthBlobStore.open({ root: await mkdtemp(path.join(tmpdir(), "traqen-source-candidate-test-")), keyVersion: "test", keys: { test: Buffer.alloc(32, 12) } });
   const bytes = Buffer.from("material");

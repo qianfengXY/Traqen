@@ -4,6 +4,7 @@ import { link, lstat, mkdir, open, realpath, statfs, unlink } from "node:fs/prom
 import path from "node:path";
 import { canonicalEncode, byteCount } from "./identity.js";
 import { SourceTruthError, fail, requireValue } from "./errors.js";
+import { managedStoragePath, verifyProtectedVolume } from "./volume-protection.js";
 
 const MAGIC = Buffer.from("TQSTv1\0\0");
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
@@ -11,7 +12,7 @@ const HASH = /^[a-f0-9]{64}$/;
 const MAX_HEADER = 2048;
 const BUFFER_BYTES = 64 * 1024;
 
-async function writeAll(handle, bytes) {
+export async function writeAll(handle, bytes) {
   let at = 0;
   while (at < bytes.length) {
     const { bytesWritten } = await handle.write(bytes, at, bytes.length - at);
@@ -31,14 +32,14 @@ async function readExactly(handle, length, position) {
   return buffer;
 }
 
-async function safeDirectory(directory) {
+export async function safeDirectory(directory) {
   try { await mkdir(directory, { mode: 0o700 }); } catch (error) { if (error.code !== "EEXIST") throw error; }
   const stat = await lstat(directory);
   requireValue(stat.isDirectory() && !stat.isSymbolicLink() && (stat.mode & 0o077) === 0
     && (typeof process.getuid !== "function" || stat.uid === process.getuid()), "SOURCE_STORAGE_NOT_READY", "数据目录权限或类型不安全", { status: 503 });
 }
 
-async function syncDirectory(directory) {
+export async function syncDirectory(directory) {
   const handle = await open(directory, constants.O_RDONLY);
   try { await handle.sync(); } finally { await handle.close(); }
 }
@@ -54,6 +55,9 @@ export class SourceTruthBlobStore {
     this.maxWriters = config.maxWriters ?? 4;
     this.writers = 0;
     this.metrics = { peakWriters: 0, streamedBytes: 0n };
+    this.requireProtectedVolume = config.requireProtectedVolume ?? false;
+    this.volumeProbe = config.volumeProbe;
+    this.volumeProtection = null;
   }
 
   static async open(config) {
@@ -62,12 +66,9 @@ export class SourceTruthBlobStore {
       && config.keyVersion.length > 0 && config.keyVersion.length <= 128, "SOURCE_STORAGE_NOT_READY", "缺少受保护的存储加密密钥", { status: 503 });
     requireValue(typeof config.root === "string" && path.isAbsolute(config.root) && config.root !== path.parse(config.root).root,
       "SOURCE_STORAGE_NOT_READY", "必须配置专用持久化数据卷", { status: 503 });
-    for (const forbidden of config.forbiddenRoots ?? [process.cwd()]) {
-      const rel = path.relative(path.resolve(forbidden), path.resolve(config.root));
-      requireValue(rel !== "" && (rel === ".." || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)), "SOURCE_STORAGE_NOT_READY", "来源内容不能存入项目目录", { status: 503 });
-    }
-    await safeDirectory(config.root);
-    const store = new SourceTruthBlobStore({ ...config, root: await realpath(config.root) });
+    const root = await managedStoragePath(config.root, config.forbiddenRoots);
+    await safeDirectory(root);
+    const store = new SourceTruthBlobStore({ ...config, root: await realpath(root) });
     requireValue(store.maxFileBytes >= 0 && Number.isSafeInteger(store.maxChunkBytes) && store.maxChunkBytes > 0
       && Number.isInteger(store.maxWriters) && store.maxWriters > 0 && store.maxWriters <= 64, "SOURCE_STORAGE_NOT_READY", "存储资源限制无效", { status: 503 });
     await store.ready();
@@ -76,6 +77,14 @@ export class SourceTruthBlobStore {
 
   async ready(additionalBytes = 0n) {
     await safeDirectory(this.root);
+    if (this.requireProtectedVolume) {
+      const { dev } = await lstat(this.root);
+      if (!this.volumeProtection || this.volumeProtection.device !== dev || Date.now() - this.volumeProtection.at >= 10000) {
+        this.volumeProtection = null;
+        const evidence = await verifyProtectedVolume(this.root, { probe: this.volumeProbe });
+        this.volumeProtection = { evidence, device: dev, at: Date.now() };
+      }
+    }
     const fs = await statfs(this.root, { bigint: true });
     requireValue(fs.bavail * fs.bsize >= this.minFreeBytes + additionalBytes, "SOURCE_CAPACITY_EXHAUSTED", "存储容量不足；扩容或恢复存储后重试", { status: 507 });
     return { encryption: "AES-256-GCM", keyVersion: this.keyVersion, availableBytes: String(fs.bavail * fs.bsize), maxFileBytes: String(this.maxFileBytes) };

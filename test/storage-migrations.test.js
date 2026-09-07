@@ -68,6 +68,7 @@ async function migratedDatabase() {
     "0032_f001_evidence_boundary_guards",
     "0033_f001_capture_inputs",
     "0034_f001_pending_material_index",
+    "0035_f001_paired_backup",
   ]);
   return database;
 }

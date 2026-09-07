@@ -92,3 +92,17 @@ test("B-05 authenticated blob reads release no bytes from a corrupted ciphertext
   await assert.rejects(async () => { for await (const chunk of store.readBlob(scope, ref)) released += chunk.length; }, { code: "SOURCE_CONTENT_CORRUPT" });
   assert.equal(released, 0);
 });
+
+test("B-05 a project reached through a symlinked ancestor is still a forbidden storage destination", async () => {
+  const project = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-forbidden-project-"));
+  const outside = await mkdtemp(path.join(os.tmpdir(), "traqen-f001-outside-"));
+  await symlink(project, path.join(outside, "alias"));
+  await assert.rejects(SourceTruthBlobStore.open({ root: path.join(outside, "alias", "bytes"), forbiddenRoots: [project], keyVersion: "v1", keys: { v1: key } }), { code: "SOURCE_STORAGE_NOT_READY" });
+  assert.deepEqual(await readdir(project), [], "reject before creating anything inside the forbidden repository");
+});
+
+test("B-05 protected deployment rejects unencrypted or permission-ignoring volumes despite encrypted blobs", async () => {
+  for (const [encrypted, permissionsEnforced] of [[false, true], [true, false]]) {
+    await assert.rejects(fixture({ requireProtectedVolume: true, volumeProbe: async () => ({ encrypted, permissionsEnforced, persistent: true, filesystemId: "fixture-volume", physicalStores: ["fixture-disk"] }) }), { code: "SOURCE_VOLUME_PROTECTION_REQUIRED" });
+  }
+});

@@ -9,6 +9,10 @@ export const reader = { actorId: "reader", tenantId: "tenant" };
 export async function sourceDatabase(t) {
   const db = await PGlite.create();
   t.after(() => db.close());
+  return seedSourceDatabase(db);
+}
+
+export async function seedSourceDatabase(db) {
   await applyMigrations(db, fileURLToPath(new URL("../../db/migrations/", import.meta.url)));
   await db.exec(`INSERT INTO organization (id,name) VALUES ('org','Org');
     INSERT INTO tenant (id,organization_id,name) VALUES ('tenant','org','Tenant'),('other','org','Other');
