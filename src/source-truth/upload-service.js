@@ -76,8 +76,10 @@ export class SourceUploadService {
   async checkpoint(actor, context, encodedPath) {
     const state = await this.repository.withWorkspace(actor, context.workspaceId, false, async (tx) => {
       const current = await this.check(actor, context, encodedPath, tx, false);
+      if ((await tx.query("SELECT 1 FROM source_truth_staging_release WHERE workspace_id=$1 AND run_id=$2", [context.workspaceId, context.runId])).rows.length) return { current, abandoned: true };
       return { current, prefix: await this.prefix(context, encodedPath, tx) };
     });
+    if (state.abandoned) return { pathBytes: encodedPath, verifiedPrefixBytes: "0", expectedBytes: state.current.entry.sizeBytes, completed: false, reusable: false, abandoned: true };
     // This is only a transfer hint for an already declared file in this
     // Workspace, never a tenant/global arbitrary digest existence oracle.
     const reusable = await this.blobs.verifyBlob(state.current.scope, { digest: state.current.entry.expectedContent.digest, sizeBytes: state.current.entry.sizeBytes });
@@ -109,17 +111,20 @@ export class SourceUploadService {
       return this.validateChunk(actor, context, input, tx);
     };
     const current = await this.repository.withLease(context, check);
-    // Only this verified durable chunk may become a checkpoint. If the second
-    // transaction fails, the private encrypted bytes remain retryable, not READY.
-    const saved = await this.blobs.putChunk(current.scope, { ...input, runId: context.runId, fileKey: `${context.sourceId}:${input.pathBytes}` }, stream);
-    return this.repository.withLease(context, async (tx, run) => {
-      await check(tx, run);
-      await tx.query(`INSERT INTO source_truth_upload_checkpoint
-        (workspace_id,run_id,source_id,path_bytes,offset_bytes,size_bytes,digest,chunk_id,actor_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
-      [...locator(context, input.pathBytes), input.offset, input.sizeBytes, input.digest, saved.id, actor.actorId]);
-      return { pathBytes: input.pathBytes, verifiedPrefixBytes: await this.prefix(context, input.pathBytes, tx) };
+    let checkpoint;
+    await this.blobs.putChunk(current.scope, { ...input, runId: context.runId, fileKey: `${context.sourceId}:${input.pathBytes}` }, stream, {
+      withPublication: (publish) => this.repository.withLease(context, async (tx, run) => {
+        await check(tx, run);
+        const saved = await publish();
+        await tx.query(`INSERT INTO source_truth_upload_checkpoint
+          (workspace_id,run_id,source_id,path_bytes,offset_bytes,size_bytes,digest,chunk_id,actor_id)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
+        [...locator(context, input.pathBytes), input.offset, input.sizeBytes, input.digest, saved.id, actor.actorId]);
+        checkpoint = { pathBytes: input.pathBytes, verifiedPrefixBytes: await this.prefix(context, input.pathBytes, tx) };
+        return saved;
+      }),
     });
+    return checkpoint;
   }
 
   async *verifiedChunks(scope, context, encodedPath) {

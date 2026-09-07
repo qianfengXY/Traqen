@@ -117,7 +117,7 @@ export class SourceBackupService {
           // no surviving executor. Retain its audit, release only its barrier.
           await tx.query("UPDATE source_truth_backup_attempt SET status='FAILED',finished_at=clock_timestamp(),diagnostic=$1 WHERE status='RUNNING'",
             [JSON.stringify({ code: "SOURCE_BACKUP_INTERRUPTED" })]);
-          await tx.query("INSERT INTO source_truth_backup_attempt (id,target_id,requested_by,status) VALUES ($1,$2,$3,'RUNNING')", [id, this.config.targetId, requestedBy]);
+          await tx.query("INSERT INTO source_truth_backup_attempt (id,target_id,requested_by,status,target_seal_attempted) VALUES ($1,$2,$3,'RUNNING',false)", [id, this.config.targetId, requestedBy]);
         });
         began = true;
         const ready = await this.ready();
@@ -162,6 +162,7 @@ export class SourceBackupService {
           completedAt: new Date().toISOString() };
         // Verify the copy before declaring completion, not only the source bytes.
         await this.verifyFiles(payload, directory);
+        await this.repository.database.query("UPDATE source_truth_backup_attempt SET target_seal_attempted=true WHERE id=$1", [id]);
         await writeExclusive(path.join(directory, "complete.json"), canonicalEncode({ payload, mac: mac(this.targetBlobs.keys.get(payload.keyVersion), payload) }));
         // Target proof is authority. A crash before this online mirror can be
         // recovered by verify/import, even though it is later than the DB dump.
@@ -234,14 +235,22 @@ export class SourceBackupService {
         ON CONFLICT (id) DO UPDATE SET status='COMPLETED',finished_at=EXCLUDED.finished_at`, [payload.id, payload.targetId, requestedBy, payload.completedAt]);
       await tx.query("INSERT INTO source_truth_backup_set (id,target_id,payload,completed_at) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING", [payload.id, payload.targetId, JSON.stringify(payload), payload.completedAt]);
     });
-    let batch = [];
+    let batch = [], objects = [];
     const flush = async () => {
       if (batch.length) await database.query(`INSERT INTO source_truth_backup_member (backup_id,workspace_id,bundle_id,receipt_id)
         SELECT $1,r->>'workspaceId',r->>'bundleId',r->>'receiptId' FROM jsonb_array_elements($2::jsonb) r ON CONFLICT DO NOTHING`, [payload.id, JSON.stringify(batch)]);
       batch = [];
+      if (objects.length) await database.query(`INSERT INTO source_truth_backup_object (backup_id,workspace_id,kind,object_id)
+        SELECT $1,r->'scope'->>'workspaceId',r->>'kind',r->>'id' FROM jsonb_array_elements($2::jsonb) r ON CONFLICT DO NOTHING`, [payload.id, JSON.stringify(objects)]);
+      objects = [];
     };
-    for await (const row of catalogueLines(path.join(directory, "catalogue.ndjson"))) if (row.type === "MEMBER") { batch.push(row); if (batch.length === 500) await flush(); }
+    for await (const row of catalogueLines(path.join(directory, "catalogue.ndjson"))) {
+      if (row.type === "MEMBER") batch.push(row);
+      if (row.type === "OBJECT") objects.push(row);
+      if (batch.length + objects.length >= 500) await flush();
+    }
     await flush();
+    await database.query("INSERT INTO source_truth_backup_index_complete (backup_id) VALUES ($1) ON CONFLICT DO NOTHING", [payload.id]);
   }
   async coverage(actor, workspaceId, reference) {
     await this.repository.authorize(actor, workspaceId);

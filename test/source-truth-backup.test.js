@@ -75,6 +75,8 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   assert.equal(completed.formatVersion, 1);
   assert.equal(completed.memberCount, "1");
   assert.equal(completed.checkpointCount, "1");
+  assert.equal((await f.db.query("SELECT count(*)::int n FROM source_truth_backup_object WHERE backup_id=$1 AND kind='chunks'", [completed.id])).rows[0].n, 1);
+  assert.equal((await f.db.query("SELECT count(*)::int n FROM source_truth_backup_index_complete WHERE backup_id=$1", [completed.id])).rows[0].n, 1);
   assert.equal((await services.backup.coverage(reader, "workspace", { bundleId: result.bundle.id, receiptId: result.receipt.id })).status, "COVERED");
   const externalProof = JSON.parse(await readFile(path.join(targetRoot, "sets", completed.id, "complete.json"), "utf8"));
   assert.equal(externalProof.payload.id, completed.id);
@@ -102,6 +104,13 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   await assert.rejects(recovered.repository.authorize(owner, "workspace2"), { code: "SOURCE_FORBIDDEN" });
   assert.equal((await recovered.upload.checkpoint(reader, pendingUpload.context, pendingUpload.entry.pathBytes)).verifiedPrefixBytes, "5");
   assert.equal((await recovered.repository.getRun(reader, "workspace", pendingUpload.context.runId)).progress.waitingFor, "RESTORE_RECONCILIATION");
+  await services.repository.cancel(owner, "workspace", pendingUpload.context.runId);
+  const retained = await services.staging.release(owner, "workspace", pendingUpload.context.runId, { confirmRelease: true });
+  assert.equal(retained.retainedBytes, "5", "the exact successfully backed-up prefix cannot be reclaimed");
+  assert.equal(retained.unverifiedBackupChunks, "0", "a prior preflight failure without a target seal does not manufacture unknown protection");
+  const afterAbandonment = await services.backup.create({ requestedBy: "fixture-admin" });
+  assert.equal(afterAbandonment.checkpointCount, "0", "abandoned historical acknowledgements are not advertised as live restorable prefixes");
+  await services.backup.verify(afterAbandonment.id);
   await assert.rejects(async () => { for await (const _ of targetBlobs.readChunk({ tenantId: "tenant", workspaceId: "workspace" }, pendingUpload.unacknowledged)) {} }, { code: "ENOENT" });
   await assert.rejects(services.backup.restore({ backupId: completed.id, database: destination.db, blobs: targetBlobs,
     postgres: { binDirectory: cluster.bin, connection: cluster.connection(destination.name) }, requestedBy: "fixture-admin" }), { code: "SOURCE_RESTORE_TARGET_NOT_EMPTY" });

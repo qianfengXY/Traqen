@@ -52,10 +52,13 @@ const catalogueQueries = [
       FROM source_truth_entry e JOIN source_truth_workspace w USING(workspace_id) WHERE e.disposition->>'digest' IS NOT NULL
     UNION SELECT DISTINCT c.workspace_id,w.tenant_id,'chunks',c.chunk_id,c.digest,c.size_bytes::text
       FROM source_truth_upload_checkpoint c JOIN source_truth_workspace w USING(workspace_id)
+      WHERE NOT EXISTS (SELECT 1 FROM source_truth_staging_release a WHERE a.workspace_id=c.workspace_id AND a.run_id=c.run_id)
     ) objects ORDER BY workspace_id,kind,id`,
   `SELECT jsonb_build_object('type','CHECKPOINT','workspaceId',workspace_id,'runId',run_id,'sourceId',source_id,'pathHex',encode(path_bytes,'hex'),
     'offset',offset_bytes::text,'sizeBytes',size_bytes::text,'digest',digest,'id',chunk_id) AS record
-    FROM source_truth_upload_checkpoint ORDER BY workspace_id,run_id,source_id,path_bytes,offset_bytes`,
+    FROM source_truth_upload_checkpoint c WHERE NOT EXISTS
+      (SELECT 1 FROM source_truth_staging_release a WHERE a.workspace_id=c.workspace_id AND a.run_id=c.run_id)
+    ORDER BY workspace_id,run_id,source_id,path_bytes,offset_bytes`,
   `SELECT jsonb_build_object('type','MANIFEST','workspaceId',workspace_id,'id',id,'kind',kind,'fileCount',file_count::text,'directoryCount',directory_count::text,
     'knownBytes',known_bytes::text,'shardCount',shard_count) AS record FROM source_truth_manifest ORDER BY workspace_id,id`,
   `SELECT jsonb_build_object('type','MEMBER','workspaceId',r.workspace_id,'bundleId',r.bundle_id,'receiptId',r.id,'confirmationId',r.confirmation_id,

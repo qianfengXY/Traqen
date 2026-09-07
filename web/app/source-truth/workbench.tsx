@@ -10,6 +10,7 @@ import { transferDirectory, type TransferProgress } from "./transfer.ts";
 import type { DirectoryHandle } from "./directory.ts";
 import type { Confirmation, DraftInput, FrozenVersion, Page, RunDetail, SourceOverview, SourceRun } from "./types.ts";
 import { SourceVersionView } from "./version-view.tsx";
+import { SourceStagingView } from "./staging-view.tsx";
 import "./workbench.css";
 
 const terminal = new Set(["SUCCEEDED", "BLOCKED", "FAILED_RETRYABLE", "CANCELLED"]);
@@ -190,6 +191,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
           {journey.selected === 8 && <>{detail?.result ? <div className={`st-callout ${detail.result.receipt.status === "READY_WITH_ACCEPTED_GAPS" ? "warning" : ""}`}><h3>冻结包已建立</h3><dl><dt>Bundle</dt><dd>{detail.result.bundle.id}</dd><dt>Receipt</dt><dd>{detail.result.receipt.id}</dd><dt>冻结时状态</dt><dd>{detail.result.receipt.status}</dd><dt>保留 Gap</dt><dd>{detail.result.receipt.gapCount}</dd></dl><p>当前准入与备份覆盖需分别核验。此站结束 F001，不自动启动 F002。</p></div> : <p className="st-callout warning">{detail?.confirmation ? `确认人 ${detail.confirmation.actorId} · 已记录确认。冻结提交前仍没有公开包。` : "尚未完成第 7 站确认，不能冻结包。"}</p>}{detail?.confirmation && run?.status !== "SUCCEEDED" && writable && <button className="st-link" disabled={busy} onClick={() => { setReviewAgain(true); setSelectedStation(null); }}>重新复核缺口与失效时间</button>}</>}
         </>}
         {run?.diagnostic && <div className="st-callout danger" role="alert"><strong>{run.diagnostic.message}</strong><p>{run.diagnostic.recovery}</p><small>{run.diagnostic.code} · 既有冻结包不变</small></div>}
+        {run && terminal.has(run.status) && run.status !== "SUCCEEDED" && <SourceStagingView key={run.id} client={client} runId={run.id} writable={Boolean(writable) && !journey.preview} onChanged={refresh} />}
         {journey.action === "RECONCILE_RESTORE" && <p className="st-callout warning">此任务来自已校验备份中的未完成记录，不代表最新现场或成功包。继续后只恢复原锁定输入；本机目录仍需完整重选核对，缺口接受不会自动续期，系统不会代你冻结。</p>}
         <footer className="st-actions st-sticky-actions">
           {journey.preview ? <button className="button primary" onClick={() => setSelectedStation(null)}>回到当前节点</button> : journey.action && <button className="button primary" disabled={busy || !writable || confirmDisabled || (journey.action === "SAVE" && !form.sources.length) || (journey.action === "START" && !overview.storage.ready)} onClick={primary}>{busy ? "处理中…" : labels[journey.action]}</button>}

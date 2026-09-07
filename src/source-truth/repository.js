@@ -142,6 +142,8 @@ export class SourceTruthRepository {
       if (active) return active;
       let input;
       if (retryOf) {
+        requireValue(!(await tx.query("SELECT 1 FROM source_truth_staging_release WHERE workspace_id=$1 AND run_id=$2", [workspaceId, retryOf])).rows.length,
+          "SOURCE_RETRY_ABANDONED", "已明确放弃此任务的续传材料；请编辑来源建立新尝试，不能复活原检查点");
         const prior = await tx.query("SELECT * FROM source_truth_run WHERE workspace_id=$1 AND id=$2", [workspaceId, retryOf]);
         requireValue(prior.rows[0]?.status === "FAILED_RETRYABLE", "SOURCE_RETRY_NOT_ALLOWED", "只有可重试失败才能恢复为新尝试");
         ({ input, draft_revision: draftRevision, policy_revision_id: policyRevisionId } = prior.rows[0]);

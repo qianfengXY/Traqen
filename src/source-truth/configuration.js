@@ -150,6 +150,10 @@ export async function createSourceTruthRuntime({ configuration: config, connecti
       await verifyProtectedVolume(database.data);
       await blobs.ready(); if (git) await git.ready(); checkedAt = Date.now();
     };
+    services.ensureMaintenanceReady = async () => {
+      await verifyProtectedVolume(database.data);
+      await blobs.ready(0n, { checkCapacity: false });
+    };
     await services.ensureReady();
     worker = new SourceTruthWorker(services, { maxConcurrent: config.resources.workerConcurrency ?? 2 });
     services.dispatch = () => worker.dispatch();

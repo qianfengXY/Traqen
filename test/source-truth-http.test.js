@@ -113,6 +113,22 @@ test("restored tasks require a maintainer's explicit resume and retain their ori
   assert.equal((await f.db.query("SELECT count(*)::int AS n FROM source_truth_confirmation")).rows[0].n, 0);
 });
 
+test("HTTP staging disposition requires explicit maintain authority and remains queryable after abandonment", async (t) => {
+  const f = await fixture(t);
+  await f.call("/draft", "PUT", { expectedRevision: 0, input: { sources: [{ sourceId: "docs", kind: "DIRECTORY_UPLOAD", mode: "UPDATE" }] } });
+  const run = (await f.call("/runs", "POST", { draftRevision: 1 })).body;
+  const route = `/runs/${run.id}/staging-release`;
+  assert.equal((await f.call(route)).body.abandoned, false);
+  assert.equal((await f.call(route, "POST", { confirmRelease: true })).body.error.code, "SOURCE_RUN_ACTIVE");
+  assert.equal((await f.call(`/runs/${run.id}/cancel`, "POST", {})).status, 200);
+  assert.equal((await f.call(route, "POST", {})).status, 400);
+  assert.equal((await f.call(route, "POST", { confirmRelease: true }, readerToken)).status, 403);
+  const released = await f.call(route, "POST", { confirmRelease: true });
+  assert.equal(released.status, 200); assert.equal(released.body.status, "COMPLETED");
+  assert.equal((await f.call(route, "GET", undefined, readerToken)).body.requestedBy, "owner");
+  assert.equal((await f.call(`/runs/${run.id}/view`)).body.run.abandoned, true);
+});
+
 test("browser transfer protocol closes a complete directory, sends bytes once and stops for the human at station 7", async (t) => {
   const f = await fixture(t);
   const input = { sources: [{ sourceId: "docs", kind: "DIRECTORY_UPLOAD", mode: "UPDATE", label: "目录" }], baselineBundleId: null };

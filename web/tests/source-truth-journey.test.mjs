@@ -21,6 +21,9 @@ test("blocked and unconfirmed states are not green and never offer accept or dow
   assert.equal(blocked.tone, "danger");
   assert.equal(blocked.action, "EDIT");
   assert.equal(sourceJourney({ status: "FAILED_RETRYABLE", station: 6 }, 1, false).action, "RETRY");
+  const abandoned = sourceJourney({ status: "FAILED_RETRYABLE", station: 6, abandoned: true }, 1, false);
+  assert.equal(abandoned.action, "EDIT");
+  assert.match(abandoned.label, /已放弃续传/);
   assert.equal(sourceJourney({ status: "WAITING_FOR_CLIENT", station: 6 }, 1, false).action, "RESUME_DIRECTORY");
   assert.equal(sourceJourney({ status: "WAITING_FOR_CLIENT", station: 6, progress: { waitingFor: "RESTORE_RECONCILIATION" } }, 1, false).action, "RECONCILE_RESTORE");
   assert.equal(sourceJourney({ status: "SUCCEEDED", station: 8 }, 1, true).label, "包已冻结 · 当前准入另行核验");

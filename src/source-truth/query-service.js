@@ -54,7 +54,8 @@ export class SourceQueryService {
         sources.push({ sourceId: source.source_id, kind: source.kind, mode: source.source.mode ?? "UPDATE", scope: source.source.scope,
           nativeIdentity: source.source.nativeIdentity, manifestId: source.manifest_id, enumerationClosed: source.enumeration_closed, summary });
       }
-      return { run: publicRun(runRecord(row)), sources, candidate: privateCandidate(candidate), confirmation: confirmation ? { ...confirmationRecord(confirmation), currentlyValid: confirmation.currently_valid } : null,
+      const abandoned = Boolean((await tx.query("SELECT 1 FROM source_truth_staging_release WHERE workspace_id=$1 AND run_id=$2", [workspaceId, runId])).rows.length);
+      return { run: { ...publicRun(runRecord(row)), abandoned }, sources, candidate: privateCandidate(candidate), confirmation: confirmation ? { ...confirmationRecord(confirmation), currentlyValid: confirmation.currently_valid } : null,
         operation: operation ? { id: operation.id, status: operation.status } : null, result: operation?.result ?? null };
     });
   }

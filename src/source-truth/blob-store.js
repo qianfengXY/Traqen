@@ -80,7 +80,7 @@ export class SourceTruthBlobStore {
     return store;
   }
 
-  async ready(additionalBytes = 0n) {
+  async ready(additionalBytes = 0n, { checkCapacity = true } = {}) {
     await safeDirectory(this.root);
     if (this.requireProtectedVolume) {
       const { dev } = await lstat(this.root);
@@ -91,7 +91,7 @@ export class SourceTruthBlobStore {
       }
     }
     const fs = await statfs(this.root, { bigint: true });
-    requireValue(fs.bavail * fs.bsize >= this.minFreeBytes + additionalBytes, "SOURCE_CAPACITY_EXHAUSTED", "存储容量不足；扩容或恢复存储后重试", { status: 507 });
+    requireValue(!checkCapacity || fs.bavail * fs.bsize >= this.minFreeBytes + additionalBytes, "SOURCE_CAPACITY_EXHAUSTED", "存储容量不足；扩容或恢复存储后重试", { status: 507 });
     return { encryption: "AES-256-GCM", keyVersion: this.keyVersion, availableBytes: String(fs.bavail * fs.bsize), maxFileBytes: String(this.maxFileBytes) };
   }
 
@@ -117,15 +117,16 @@ export class SourceTruthBlobStore {
 
   async putBlob(scope, ref, stream) { return this.put(scope, "blobs", ref.digest, ref, stream); }
 
-  async putChunk(scope, input, stream) {
+  async putChunk(scope, input, stream, { withPublication } = {}) {
     byteCount(input.offset, "offset");
     requireValue(typeof input.runId === "string" && typeof input.fileKey === "string", "SOURCE_INVALID_INPUT", "缺少传输定位符", { status: 400 });
     requireValue(BigInt(byteCount(input.sizeBytes)) <= BigInt(this.maxChunkBytes), "SOURCE_FILE_TOO_LARGE", "传输分片超过平台限制", { status: 413 });
     const id = sha(canonicalEncode({ runId: input.runId, fileKey: input.fileKey, offset: input.offset, digest: input.digest, sizeBytes: input.sizeBytes }));
-    return { ...(await this.put(scope, "chunks", id, input, stream)), id, offset: input.offset };
+    const guard = withPublication ? (publish) => withPublication(async () => ({ ...(await publish()), id, offset: input.offset })) : undefined;
+    return { ...(await this.put(scope, "chunks", id, input, stream, guard)), id, offset: input.offset };
   }
 
-  async put(scope, kind, id, ref, stream) {
+  async put(scope, kind, id, ref, stream, withPublication) {
     requireValue(HASH.test(ref.digest), "SOURCE_INVALID_INPUT", "SHA-256 无效", { status: 400 });
     const expectedSize = BigInt(byteCount(ref.sizeBytes));
     const reservation = expectedSize + 4096n;
@@ -176,14 +177,20 @@ export class SourceTruthBlobStore {
       await handle.sync();
       await handle.close();
       handle = null;
-      let reused = false;
-      try { await link(temporary, destination); } catch (error) {
-        if (error.code !== "EEXIST") throw error;
-        for await (const _ of this.read(scope, kind, id, ref)) { /* verify before reuse */ }
-        reused = true;
-      }
-      await syncDirectory(path.dirname(destination));
-      return { digest: ref.digest, sizeBytes: ref.sizeBytes, keyVersion: this.keyVersion, reused };
+      const publish = async () => {
+        let reused = false;
+        try { await link(temporary, destination); } catch (error) {
+          if (error.code !== "EEXIST") throw error;
+          for await (const _ of this.read(scope, kind, id, ref)) { /* verify before reuse */ }
+          reused = true;
+        }
+        await syncDirectory(path.dirname(destination));
+        return { digest: ref.digest, sizeBytes: ref.sizeBytes, keyVersion: this.keyVersion, reused };
+      };
+      // Streaming stays outside a database transaction. Publication of a chunk
+      // and its acknowledgement use the caller's current lease/reference lock,
+      // so cancellation/release cannot be followed by a late physical publish.
+      return withPublication ? await withPublication(publish) : await publish();
     } catch (error) {
       if (error instanceof SourceTruthError) throw error;
       if (["ENOSPC", "EDQUOT"].includes(error.code)) fail("SOURCE_CAPACITY_EXHAUSTED", "存储容量不足，已验证检查点仍保留", { status: 507, cause: error });
@@ -244,6 +251,24 @@ export class SourceTruthBlobStore {
   async verifyBlob(scope, ref) {
     try { for await (const _ of this.read(scope, "blobs", ref.digest, ref)) { /* streaming validation */ } return true; }
     catch (error) { if (error.code === "ENOENT") return false; throw error; }
+  }
+
+  // Internal lifecycle operation; callers must hold a committed exact release
+  // intent and the Workspace reference lock. Never accepts a path or blob kind.
+  async releaseChunk(scope, id) {
+    await this.ready(0n, { checkCapacity: false });
+    const filename = await this.location(scope, "chunks", id);
+    let stat;
+    try { stat = await lstat(filename); } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      await syncDirectory(path.dirname(filename));
+      return "ALREADY_ABSENT";
+    }
+    requireValue(stat.isFile() && !stat.isSymbolicLink() && (stat.mode & 0o077) === 0
+      && (typeof process.getuid !== "function" || stat.uid === process.getuid()), "SOURCE_STORAGE_NOT_READY", "暂存对象类型或权限异常，拒绝释放", { status: 503 });
+    await unlink(filename);
+    await syncDirectory(path.dirname(filename));
+    return "REMOVED";
   }
 
   async *readBlob(scope, ref) {

@@ -8,6 +8,7 @@ import { SourceRenewalService } from "./renewal-service.js";
 import { SourceDeltaService } from "./delta-service.js";
 import { SourceQueryService } from "./query-service.js";
 import { SourceBackupService } from "./backup-service.js";
+import { SourceStagingService } from "./staging-service.js";
 
 // Composition only. Deployment validates/provisions authorization, encrypted
 // storage, Git targets and a transaction-capable database before calling this.
@@ -17,6 +18,7 @@ export function sourceTruthServices({ repository, blobs, policy, git = null, wor
   const candidates = new SourceCandidateService(repository, materials, blobs);
   const options = { policyRevisionId: policy.id };
   return { repository, blobs, policy, git, materials, upload, candidates,
+    staging: new SourceStagingService(repository, blobs),
     backup: backup ?? (backupConfiguration ? new SourceBackupService({ repository, blobs, configuration: backupConfiguration }) : null),
     capture: new SourceCaptureService({ repository, blobs, policy, git, materials, upload, candidates, workerId }),
     publication: new SourcePublicationService(repository, candidates, options),

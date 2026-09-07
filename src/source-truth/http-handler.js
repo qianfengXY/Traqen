@@ -3,11 +3,13 @@ import { requireValue, SourceTruthError } from "./errors.js";
 import { publicRun, sourceBody, sourceBytes, sourceFailure, sourceJson } from "./http-io.js";
 import { SourceQueryService } from "./query-service.js";
 import { SourceSnapshotReader } from "./admission-service.js";
+import { SourceStagingService } from "./staging-service.js";
 
 export function createSourceTruthHttpHandler({ services, authenticate, allowedOrigins = [] }) {
   const { repository, capture, publication, admission, renewal, delta, materials, upload, blobs, policy } = services;
   const queries = services.queries ?? new SourceQueryService(repository, materials);
   const inspection = services.inspection ?? new SourceSnapshotReader(repository, services.candidates);
+  const staging = services.staging ?? new SourceStagingService(repository, blobs);
   return async (request, response, id = randomUUID()) => {
     const url = new URL(request.url, "http://localhost");
     const match = /^\/v1\/workspaces\/([^/]+)\/source-truth(?:\/(.*))?$/.exec(url.pathname);
@@ -21,7 +23,8 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       const action = request.method;
       const queryOnly = action === "GET" || (action === "POST" && ["admission", "backup-coverage"].includes(route));
       const access = await repository.authorize(actor, workspaceId, !queryOnly);
-      if (!queryOnly && !route.endsWith("/cancel")) await services.ensureReady?.();
+      if (!queryOnly && route.endsWith("/staging-release")) await services.ensureMaintenanceReady?.();
+      else if (!queryOnly && !route.endsWith("/cancel")) await services.ensureReady?.();
       const json = (result, status = 200) => sourceJson(response, status, result, id);
       const page = { limit: Number(url.searchParams.get("limit") ?? 100), cursor: url.searchParams.get("cursor") };
       if (action === "GET" && route === "") {
@@ -68,6 +71,8 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
           requireValue(run, "SOURCE_NOT_FOUND", "任务不存在", { status: 404 });
           if (tail === "" && action === "GET") json(publicRun(run));
           else if (tail === "view" && action === "GET") json(await queries.run(actor, workspaceId, runId));
+          else if (tail === "staging-release" && action === "GET") json(await staging.inspect(actor, workspaceId, runId));
+          else if (tail === "staging-release" && action === "POST") json(await staging.release(actor, workspaceId, runId, await sourceBody(request)));
           else if (tail === "gaps" && action === "GET") json(await queries.gaps(actor, workspaceId, { runId }, page));
           else if (tail === "advance" && action === "POST") { await sourceBody(request); json(publicRun(await capture.advance(actor, workspaceId, runId))); }
           else if (tail === "reconcile-restore" && action === "POST") { await sourceBody(request); const resumed = await capture.reconcileRestore(actor, workspaceId, runId); services.dispatch?.(); json(publicRun(resumed)); }
