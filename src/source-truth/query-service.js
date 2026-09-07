@@ -59,6 +59,20 @@ export class SourceQueryService {
     });
   }
 
+  async receipts(actor, workspaceId, bundleId, options) {
+    const { limit, after } = page(options);
+    requireValue(!after || (after.bundleId === bundleId && typeof after.id === "string" && after.id.length <= 128 && Number.isFinite(Date.parse(after.at))), "SOURCE_INVALID_INPUT", "凭据分页必须保持精确包绑定", { status: 400 });
+    return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
+      requireValue((await tx.query("SELECT id FROM source_truth_bundle WHERE workspace_id=$1 AND id=$2", [workspaceId, bundleId])).rows[0], "SOURCE_NOT_FOUND", "冻结包不存在", { status: 404 });
+      const { rows } = await tx.query(`SELECT payload,issued_at,issued_at::text AS cursor_time,id FROM source_truth_receipt
+        WHERE workspace_id=$1 AND bundle_id=$2 AND ($3::timestamptz IS NULL OR (issued_at,id)<($3::timestamptz,$4::text))
+        ORDER BY issued_at DESC,id DESC LIMIT $5`, [workspaceId, bundleId, after?.at ?? null, after?.id ?? null, limit + 1]);
+      const last = rows[limit - 1];
+      return { items: rows.slice(0, limit).map((row) => ({ ...row.payload, issuedAt: new Date(row.issued_at).toISOString(), currentAdmission: "NOT_CHECKED" })),
+        nextCursor: rows.length > limit ? cursor({ bundleId, at: last.cursor_time, id: last.id }) : null };
+    });
+  }
+
   async gaps(actor, workspaceId, reference, options) {
     const { limit, after } = page(options);
     requireValue(!after || (/^[a-f0-9]{64}$/.test(after.gapKey) && /^[a-f0-9]{64}$/.test(after.componentId)), "SOURCE_INVALID_INPUT", "Gap 分页定位符无效", { status: 400 });

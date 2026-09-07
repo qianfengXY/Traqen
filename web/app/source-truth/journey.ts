@@ -10,7 +10,7 @@ export function draftFromVersion(version: Pick<FrozenVersion, "id" | "components
 }
 
 export const sourceStations = ["添加来源", "确认范围", "来源预检", "枚举材料", "冻结清单", "采集校验", "复核缺口", "冻结包"] as const;
-export type SourceRunState = { status: string; station: number };
+export type SourceRunState = { status: string; station: number; progress?: { waitingFor?: string | null } };
 export function sourceJourney(run: SourceRunState | null, draftRevision: number, confirmation: boolean, selected: number | null = null) {
   const current = run ? run.status === "REVIEW_REQUIRED" && confirmation ? 8 : run.station : draftRevision ? 2 : 1;
   const index = selected ?? current;
@@ -19,7 +19,9 @@ export function sourceJourney(run: SourceRunState | null, draftRevision: number,
     BLOCKED: { tone: "danger", label: "存在阻断 · 未创建包", action: "EDIT" },
     FAILED_RETRYABLE: { tone: "danger", label: "本次失败 · 既有包不变", action: "RETRY" },
     CANCELLED: { tone: "muted", label: "任务已取消 · 检查点仍保留", action: "EDIT" },
-    WAITING_FOR_CLIENT: { tone: "warning", label: "等待本机目录 · 可续传", action: "RESUME_DIRECTORY" },
+    WAITING_FOR_CLIENT: run?.progress?.waitingFor === "RESTORE_RECONCILIATION"
+      ? { tone: "warning", label: "已恢复备份 · 等待核对恢复点", action: "RECONCILE_RESTORE" }
+      : { tone: "warning", label: "等待本机目录 · 可续传", action: "RESUME_DIRECTORY" },
     REVIEW_REQUIRED: { tone: "warning", label: confirmation ? "已确认 · 尚未冻结包" : "等待你的复核", action: confirmation ? "SEAL" : "CONFIRM" },
     PREPARING_SEAL: { tone: "info", label: "正在准备冻结 · 结果未确认", action: "QUERY_RESULT" },
     FINALIZING: { tone: "info", label: "正在原子最终化 · 仅可查询", action: "QUERY_RESULT" },

@@ -82,6 +82,10 @@ test("B-01/05 HTTP directory journey streams original bytes and publishes only a
   assert.equal(admitted.status, 200);
   assert.equal(admitted.body.fileCount, "1");
   assert.equal((await f.call(`${runPath}/result`)).body.receipt.id, reference.receiptId);
+  const coverage = await f.call("/backup-coverage", "POST", reference, readerToken);
+  assert.equal(coverage.status, 200);
+  assert.equal(coverage.body.status, "NOT_CONFIGURED");
+  assert.equal(coverage.body.receiptId, reference.receiptId);
 });
 
 test("B-05 HTTP request claims cannot impersonate a maintainer and untrusted origins have no write access", async (t) => {
@@ -90,6 +94,23 @@ test("B-05 HTTP request claims cannot impersonate a maintainer and untrusted ori
   assert.equal((await f.call("/draft", "PUT", { actorId: "owner", tenantId: "tenant", expectedRevision: 0, input: { sources: [{ sourceId: "docs", kind: "DIRECTORY_UPLOAD", mode: "UPDATE" }] } }, readerToken)).status, 403);
   const response = await fetch(f.base + "/runs", { method: "POST", headers: { origin: "https://untrusted.example.test", authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" });
   assert.equal(response.status, 403);
+});
+
+test("restored tasks require a maintainer's explicit resume and retain their original identity", async (t) => {
+  const f = await fixture(t);
+  await f.call("/draft", "PUT", { expectedRevision: 0, input: { sources: [{ sourceId: "docs", kind: "DIRECTORY_UPLOAD", mode: "UPDATE" }], baselineBundleId: null } });
+  const run = (await f.call("/runs", "POST", { draftRevision: 1 })).body;
+  await f.db.query("UPDATE source_truth_run SET status='WAITING_FOR_CLIENT',progress=$2 WHERE id=$1", [run.id, { waitingFor: "RESTORE_RECONCILIATION", restoredPriorStatus: "PREFLIGHTING" }]);
+  const route = `/runs/${run.id}/reconcile-restore`;
+  assert.equal((await f.call(route, "POST", {}, readerToken)).status, 403);
+  const resumed = await f.call(route, "POST", {});
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.body.status, "PREFLIGHTING");
+  assert.equal(resumed.body.actorId, "owner");
+  assert.equal((await f.call(route, "POST", {})).body.id, run.id, "a lost resume response must not create a new run");
+  await f.call(`/runs/${run.id}/advance`, "POST", {});
+  assert.equal((await f.call(`/runs/${run.id}`)).body.progress.waitingFor, "DIRECTORY_ENUMERATION");
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM source_truth_confirmation")).rows[0].n, 0);
 });
 
 test("browser transfer protocol closes a complete directory, sends bytes once and stops for the human at station 7", async (t) => {
@@ -102,6 +123,7 @@ test("browser transfer protocol closes a complete directory, sends bytes once an
     kind: "directory", async *entries() {
       yield ["empty", { kind: "directory", async *entries() {} }];
       yield ["doc.txt", { kind: "file", getFile: async () => new File(["真实目录传输"], "doc.txt", { lastModified: 1 }) }];
+      yield ["duplicate.txt", { kind: "file", getFile: async () => new File(["真实目录传输"], "duplicate.txt", { lastModified: 1 }) }];
     }, async getFileHandle() { return { kind: "file", getFile: async () => new File(["真实目录传输"], "doc.txt", { lastModified: 1 }) }; },
   };
   const rows = [];
@@ -115,6 +137,7 @@ test("browser transfer protocol closes a complete directory, sends bytes once an
   assert.equal(detail.candidate.directoryCount, "1");
   assert.equal(detail.confirmation, null);
   assert.equal(detail.result, null);
-  assert.equal(progress.at(-1).verifiedFiles, "1");
+  assert.equal(progress.at(-1).verifiedFiles, "2");
+  assert.equal(transferred.unnecessaryBytes, String(Buffer.byteLength("真实目录传输")), "same-Workspace verified content must not be sent twice");
   assert.equal((await f.call("/history/runs?limit=1")).body.items[0].id, run.id);
 });

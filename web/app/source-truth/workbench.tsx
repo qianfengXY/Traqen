@@ -134,6 +134,10 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
         const handle = await chooseDirectory();
         if (handle) await attempt(() => sendDirectory(run!.id, run!.input, handle));
       })();
+      case "RECONCILE_RESTORE": return void attempt(async () => {
+        await client.request(`/runs/${run!.id}/reconcile-restore`, "POST", {});
+        setSelectedStation(null); setNotice("已按原输入核对恢复点。未完成材料继续采集；清单复核和冻结仍需你明确操作。");
+      });
       case "CONFIRM": return void confirm();
       case "SEAL": return void attempt(async () => {
         await client.request(`/runs/${run!.id}/seal`, "POST", { confirmationId: detail!.confirmation!.id, clientToken: crypto.randomUUID() }); setSelectedStation(null);
@@ -154,7 +158,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
       });
     }
   };
-  const labels: Record<string, string> = { SAVE: "保存来源，确认范围", START: "确认范围并开始", RESUME_DIRECTORY: "重新选择目录并继续", CONFIRM: "确认清单与缺口", SEAL: "冻结包", QUERY_RESULT: "查询并恢复原任务", RETRY: "保留原输入，创建重试", EDIT: "编辑来源，创建新尝试", NEW_VERSION: "创建新版本" };
+  const labels: Record<string, string> = { SAVE: "保存来源，确认范围", START: "确认范围并开始", RESUME_DIRECTORY: "重新选择目录并继续", RECONCILE_RESTORE: "核对恢复点，继续原任务", CONFIRM: "确认清单与缺口", SEAL: "冻结包", QUERY_RESULT: "查询并恢复原任务", RETRY: "保留原输入，创建重试", EDIT: "编辑来源，创建新尝试", NEW_VERSION: "创建新版本" };
   const confirmDisabled = journey.action === "CONFIRM" && (!confirmationChecked || (hasGaps && (!reason.trim() || !expires || !Number.isFinite(Date.parse(expires)))));
 
   return <>
@@ -186,6 +190,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
           {journey.selected === 8 && <>{detail?.result ? <div className={`st-callout ${detail.result.receipt.status === "READY_WITH_ACCEPTED_GAPS" ? "warning" : ""}`}><h3>冻结包已建立</h3><dl><dt>Bundle</dt><dd>{detail.result.bundle.id}</dd><dt>Receipt</dt><dd>{detail.result.receipt.id}</dd><dt>冻结时状态</dt><dd>{detail.result.receipt.status}</dd><dt>保留 Gap</dt><dd>{detail.result.receipt.gapCount}</dd></dl><p>当前准入与备份覆盖需分别核验。此站结束 F001，不自动启动 F002。</p></div> : <p className="st-callout warning">{detail?.confirmation ? `确认人 ${detail.confirmation.actorId} · 已记录确认。冻结提交前仍没有公开包。` : "尚未完成第 7 站确认，不能冻结包。"}</p>}{detail?.confirmation && run?.status !== "SUCCEEDED" && writable && <button className="st-link" disabled={busy} onClick={() => { setReviewAgain(true); setSelectedStation(null); }}>重新复核缺口与失效时间</button>}</>}
         </>}
         {run?.diagnostic && <div className="st-callout danger" role="alert"><strong>{run.diagnostic.message}</strong><p>{run.diagnostic.recovery}</p><small>{run.diagnostic.code} · 既有冻结包不变</small></div>}
+        {journey.action === "RECONCILE_RESTORE" && <p className="st-callout warning">此任务来自已校验备份中的未完成记录，不代表最新现场或成功包。继续后只恢复原锁定输入；本机目录仍需完整重选核对，缺口接受不会自动续期，系统不会代你冻结。</p>}
         <footer className="st-actions st-sticky-actions">
           {journey.preview ? <button className="button primary" onClick={() => setSelectedStation(null)}>回到当前节点</button> : journey.action && <button className="button primary" disabled={busy || !writable || confirmDisabled || (journey.action === "SAVE" && !form.sources.length) || (journey.action === "START" && !overview.storage.ready)} onClick={primary}>{busy ? "处理中…" : labels[journey.action]}</button>}
           {!run && !editing && overview.draft && writable && <button className="button" disabled={busy} onClick={() => { setEditing(true); setSelectedStation(null); }}>返回编辑来源</button>}
@@ -198,7 +203,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
           }}>取消本次任务</button>}
         </footer>
       </section><aside className="st-side"><section className="st-panel"><h2>本次上下文</h2><dl><dt>Workspace</dt><dd>{workspaceName}</dd><dt>认证成员</dt><dd>{overview.actor.actorId} · {overview.role}</dd><dt>任务</dt><dd>{run?.id ?? "尚未启动"}</dd><dt>输入草稿</dt><dd>r{run?.draftRevision ?? overview.draft?.revision ?? 0}</dd><dt>预期清单</dt><dd>{short(detail?.candidate?.inventoryId)}</dd><dt>包</dt><dd>{detail?.result ? short(detail.result.bundle.id) : "未冻结"}</dd><dt>主存储</dt><dd>{overview.storage.ready ? "可访问" : "不可用"}</dd><dt>备份</dt><dd>{overview.backup.status === "NOT_CONFIGURED" ? "未配置 · 没有覆盖证明" : overview.backup.status}</dd></dl><p className="st-muted">主存储可访问不等于备份已覆盖；历史 READY 不等于当前可以准入。</p></section>
-        <section className="st-panel"><h2>下一步</h2><p>{journey.current < 8 ? sourceStations[journey.current] : "查看冻结包、历史或新建版本"}</p><p className="st-muted">{run?.status === "WAITING_FOR_CLIENT" ? "请在本机重新授权相同目录。已验证字节不会被重复计为新覆盖。" : "节点进度来自服务端记录。看图、点击未来节点不会推进任务。"}</p><h3>平台边界</h3><p className="st-muted">最多 {overview.policy.maxEntries.toLocaleString("zh-CN")} 个条目；单文件上限 {overview.policy.maxFileBytes} 字节。超限不能靠自动排除文件变绿。</p></section>
+        <section className="st-panel"><h2>下一步</h2><p>{journey.current < 8 ? sourceStations[journey.current] : "查看冻结包、历史或新建版本"}</p><p className="st-muted">{run?.progress.waitingFor === "RESTORE_RECONCILIATION" ? "先核对备份恢复点，才能恢复原任务；不会自动确认或冻结。" : run?.status === "WAITING_FOR_CLIENT" ? "请在本机重新授权相同目录。已验证字节不会被重复计为新覆盖。" : "节点进度来自服务端记录。看图、点击未来节点不会推进任务。"}</p><h3>平台边界</h3><p className="st-muted">最多 {overview.policy.maxEntries.toLocaleString("zh-CN")} 个条目；单文件上限 {overview.policy.maxFileBytes} 字节。超限不能靠自动排除文件变绿。</p></section>
       </aside></div>
       <section className="st-panel st-history"><div className="st-card-head"><div><h2>版本与任务历史</h2><p className="st-muted">失败、取消与旧包仍可追溯；新任务失败不替换旧基线。</p></div>{writable && !overview.activeRun && <button className="button" disabled={busy || !frozen} onClick={() => newDraft(frozen)}>从选中的冻结包创建新版本</button>}</div>
         <div className="st-history-columns"><div><h3>冻结包</h3>{versions.items.length ? versions.items.map((version) => <button className={`st-history-row ${versionId === version.id ? "selected" : ""}`} key={version.id} disabled={busy} onClick={() => setVersionId(versionId === version.id ? null : version.id)}><strong>{short(version.id)}</strong><span className={`st-badge ${version.latestReceipt?.status === "READY_WITH_ACCEPTED_GAPS" ? "warning" : "muted"}`}>{version.latestReceipt?.status ?? "凭据待核查"}</span><small>{new Date(version.publishedAt).toLocaleString("zh-CN")} · 文件 {version.counts.fileCount} · Gap {version.counts.gapCount}</small></button>) : <p>还没有冻结包。</p>}{versions.nextCursor && <button className="st-link" onClick={() => void attempt(async () => { historyCursor.current.bundles = versions.nextCursor; await refresh(); })}>更早的包</button>}</div>

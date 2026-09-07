@@ -22,6 +22,7 @@ test("blocked and unconfirmed states are not green and never offer accept or dow
   assert.equal(blocked.action, "EDIT");
   assert.equal(sourceJourney({ status: "FAILED_RETRYABLE", station: 6 }, 1, false).action, "RETRY");
   assert.equal(sourceJourney({ status: "WAITING_FOR_CLIENT", station: 6 }, 1, false).action, "RESUME_DIRECTORY");
+  assert.equal(sourceJourney({ status: "WAITING_FOR_CLIENT", station: 6, progress: { waitingFor: "RESTORE_RECONCILIATION" } }, 1, false).action, "RECONCILE_RESTORE");
   assert.equal(sourceJourney({ status: "SUCCEEDED", station: 8 }, 1, true).label, "包已冻结 · 当前准入另行核验");
   assert.equal(sourceJourney({ status: "PREPARING_SEAL", station: 8 }, 1, true).action, "QUERY_RESULT");
 });

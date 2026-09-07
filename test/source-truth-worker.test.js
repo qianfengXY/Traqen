@@ -10,6 +10,7 @@ import { sourceTruthServices } from "../src/source-truth/services.js";
 import { SourceTruthWorker } from "../src/source-truth/worker.js";
 import { capturePolicy } from "../src/source-truth/policy.js";
 import { manifestIdentity, pathBytes } from "../src/source-truth/identity.js";
+import { SourceTruthError } from "../src/source-truth/errors.js";
 
 async function fixture(t) {
   const cleanup = [];
@@ -67,4 +68,21 @@ test("concurrent advance requests share one in-flight execution instead of racin
   const results = await Promise.allSettled(Array.from({ length: 12 }, () => f.capture.advance(owner, "workspace", f.run.id)));
   assert.ok(results.every((result) => result.status === "fulfilled" && result.value.status === "WAITING_FOR_CLIENT"), results.map((result) => result.status === "rejected" ? result.reason.code : result.value.status).join(","));
   assert.equal((await f.repository.getRun(owner, "workspace", f.run.id)).generation, 1);
+});
+
+test("B-08 restored active tasks cannot advance through the normal endpoint before explicit reconciliation", async (t) => {
+  const f = await fixture(t);
+  await f.db.query("UPDATE source_truth_run SET status='WAITING_FOR_CLIENT',progress=$2 WHERE id=$1", [f.run.id, { waitingFor: "RESTORE_RECONCILIATION", restoredPriorStatus: "PREFLIGHTING" }]);
+  await f.worker.tick();
+  const result = await f.capture.advance(owner, "workspace", f.run.id);
+  assert.equal(result.status, "WAITING_FOR_CLIENT", "a status query cannot destroy the restorable active attempt");
+  assert.equal(result.progress.waitingFor, "RESTORE_RECONCILIATION");
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM source_truth_resolution")).rows[0].n, 0);
+});
+
+test("B-09 capacity backpressure is retryable, not an unacceptable source defect", async (t) => {
+  const f = await fixture(t);
+  t.mock.method(f.capture.runner, "advance", async () => { throw new SourceTruthError("SOURCE_GIT_BUSY", "资源暂忙", { status: 429 }); });
+  await f.worker.tick();
+  assert.equal((await f.repository.getRun(owner, "workspace", f.run.id)).status, "FAILED_RETRYABLE");
 });

@@ -23,11 +23,16 @@ export class SourceUploadService {
   }
 
   async checkpoint(actor, context, encodedPath) {
-    return this.repository.withWorkspace(actor, context.workspaceId, false, async (tx) => {
+    const state = await this.repository.withWorkspace(actor, context.workspaceId, false, async (tx) => {
       const current = await this.check(actor, context, encodedPath, tx, false);
-      return { pathBytes: encodedPath, verifiedPrefixBytes: await this.prefix(context, encodedPath, tx),
-        expectedBytes: current.entry.sizeBytes, completed: current.disposition?.disposition === "VERIFIED" };
+      return { current, prefix: await this.prefix(context, encodedPath, tx) };
     });
+    // This is only a transfer hint for an already declared file in this
+    // Workspace, never a tenant/global arbitrary digest existence oracle.
+    const reusable = await this.blobs.verifyBlob(state.current.scope, { digest: state.current.entry.expectedContent.digest, sizeBytes: state.current.entry.sizeBytes });
+    await this.repository.authorize(actor, context.workspaceId, false);
+    return { pathBytes: encodedPath, verifiedPrefixBytes: state.prefix, expectedBytes: state.current.entry.sizeBytes,
+      completed: state.current.disposition?.disposition === "VERIFIED", reusable };
   }
 
   async validateChunk(actor, context, input, tx) {

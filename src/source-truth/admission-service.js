@@ -16,17 +16,21 @@ function pageOptions({ limit = 100, cursor = null } = {}) {
 }
 const cursor = (value) => Buffer.from(canonicalEncode(value)).toString("base64url");
 
-export class SourceAdmissionService {
+// Human inspection of an immutable historical version. There is deliberately
+// no qualify method here: a readable historical Receipt is not analysis consent.
+export class SourceSnapshotReader {
   constructor(repository, candidates) { Object.assign(this, { repository, candidates }); }
 
   async records(actor, workspaceId, reference, tx = this.repository.database) {
     const access = await this.repository.authorize(actor, workspaceId, false, tx);
     requireValue(access.restoreReady, "SOURCE_RESTORE_UNVERIFIED", "恢复尚未完整校验，暂不允许下游消费");
     const row = await this.assertBinding(workspaceId, reference, tx);
-    await assertAcceptance(tx, { payload: row.confirmation, expires_at: row.expires_at });
+    await this.assertReadPurpose(tx, row);
     return { scope: { workspaceId, tenantId: access.tenantId }, bundle: { id: reference.bundleId, payload: row.bundle.identity, counts: row.bundle.counts },
       receipt: { ...row.receipt, issuedAt: new Date(row.issued_at).toISOString() } };
   }
+
+  async assertReadPurpose() { /* Historical inspection needs no new analysis consent. */ }
 
   // Integrity-only internal check, not an admission endpoint. Backup/history
   // must retain expired evidence without reauthorizing a new analysis.
@@ -45,15 +49,6 @@ export class SourceAdmissionService {
       && row.bundle.counts.gapCount === row.receipt.gapCount && row.confirmation.gapCount === row.receipt.gapCount,
     "SOURCE_RECEIPT_CORRUPT", "包、确认或凭据之间的绑定校验失败");
     return row;
-  }
-
-  async qualify(actor, workspaceId, reference) {
-    const records = await this.repository.withWorkspace(actor, workspaceId, false, (tx) => this.records(actor, workspaceId, reference, tx));
-    await this.candidates.verifyEvidence(workspaceId, records.bundle, { scope: records.scope, heartbeat: () => this.records(actor, workspaceId, reference) });
-    await this.repository.withWorkspace(actor, workspaceId, false, (tx) => this.records(actor, workspaceId, reference, tx));
-    return { workspaceId, bundleId: reference.bundleId, receiptId: reference.receiptId, receiptStatus: records.receipt.status,
-      ...records.bundle.counts, inventoryId: records.bundle.payload.inventoryId, gapSetId: records.bundle.payload.gapSetId,
-      inheritedGapSet: { id: records.bundle.payload.gapSetId, count: records.bundle.counts.gapCount, consumption: "ALL_PAGES_REQUIRED" } };
   }
 
   async inventory(actor, workspaceId, reference, options) {
@@ -101,5 +96,20 @@ export class SourceAdmissionService {
       await this.records(actor, workspaceId, reference);
       yield chunk;
     }
+  }
+}
+
+export class SourceAdmissionService extends SourceSnapshotReader {
+  async assertReadPurpose(tx, row) {
+    await assertAcceptance(tx, { payload: row.confirmation, expires_at: row.expires_at });
+  }
+
+  async qualify(actor, workspaceId, reference) {
+    const records = await this.repository.withWorkspace(actor, workspaceId, false, (tx) => this.records(actor, workspaceId, reference, tx));
+    await this.candidates.verifyEvidence(workspaceId, records.bundle, { scope: records.scope, heartbeat: () => this.records(actor, workspaceId, reference) });
+    await this.repository.withWorkspace(actor, workspaceId, false, (tx) => this.records(actor, workspaceId, reference, tx));
+    return { workspaceId, bundleId: reference.bundleId, receiptId: reference.receiptId, receiptStatus: records.receipt.status,
+      ...records.bundle.counts, inventoryId: records.bundle.payload.inventoryId, gapSetId: records.bundle.payload.gapSetId,
+      inheritedGapSet: { id: records.bundle.payload.gapSetId, count: records.bundle.counts.gapCount, consumption: "ALL_PAGES_REQUIRED" } };
   }
 }

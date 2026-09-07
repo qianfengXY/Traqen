@@ -28,6 +28,7 @@ export class SourceTruthWorker {
   }
 
   async cycle() {
+    await this.services.ensureReady?.();
     const { repository, capture } = this.services;
     const { rows } = await repository.database.query(`SELECT r.*,w.tenant_id FROM source_truth_run r JOIN source_truth_workspace w USING(workspace_id)
       WHERE NOT w.backup_barrier AND w.restore_ready
@@ -84,7 +85,7 @@ export class SourceTruthWorker {
         || (observed.status === "PREPARING_SEAL" && row.publication_operation_id !== observed.publication_operation_id)
         || (row.worker_id !== capture.workerId && row.lease_valid)) return;
       const needsDecision = code === "SOURCE_ACCEPTANCE_EXPIRED";
-      const status = needsDecision ? "REVIEW_REQUIRED" : !known || error.status >= 500 ? "FAILED_RETRYABLE" : "BLOCKED";
+      const status = needsDecision ? "REVIEW_REQUIRED" : !known || error.status >= 500 || error.status === 429 ? "FAILED_RETRYABLE" : "BLOCKED";
       const diagnostic = { code, message, priorVersionsUnchanged: true, recovery: needsDecision ? "重新核对缺口并指定新的绝对失效时间" : status === "FAILED_RETRYABLE" ? "恢复服务或存储后重试原输入" : "修复权限、来源或完整性问题后创建新尝试" };
       await tx.query(`UPDATE source_truth_run SET status=$3,station=CASE WHEN $3='REVIEW_REQUIRED' THEN 7 ELSE station END,
         generation=generation+1,lease_until=NULL,diagnostic=$4,updated_at=clock_timestamp() WHERE workspace_id=$1 AND id=$2`, [row.workspace_id, row.id, status, JSON.stringify(diagnostic)]);

@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { requireValue, SourceTruthError } from "./errors.js";
 import { publicRun, sourceBody, sourceBytes, sourceFailure, sourceJson } from "./http-io.js";
 import { SourceQueryService } from "./query-service.js";
+import { SourceSnapshotReader } from "./admission-service.js";
 
 export function createSourceTruthHttpHandler({ services, authenticate, allowedOrigins = [] }) {
   const { repository, capture, publication, admission, renewal, delta, materials, upload, blobs, policy } = services;
   const queries = services.queries ?? new SourceQueryService(repository, materials);
+  const inspection = services.inspection ?? new SourceSnapshotReader(repository, services.candidates);
   return async (request, response, id = randomUUID()) => {
     const url = new URL(request.url, "http://localhost");
     const match = /^\/v1\/workspaces\/([^/]+)\/source-truth(?:\/(.*))?$/.exec(url.pathname);
@@ -17,8 +19,9 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       requireValue(workspaceId.length > 0 && workspaceId.length <= 256 && !/[\u0000-\u001f\u007f]/.test(workspaceId), "SOURCE_INVALID_INPUT", "Workspace 定位符无效", { status: 400 });
       const route = match[2] ?? "";
       const action = request.method;
-      const queryOnly = action === "GET" || (action === "POST" && route === "admission");
+      const queryOnly = action === "GET" || (action === "POST" && ["admission", "backup-coverage"].includes(route));
       const access = await repository.authorize(actor, workspaceId, !queryOnly);
+      if (!queryOnly && !route.endsWith("/cancel")) await services.ensureReady?.();
       const json = (result, status = 200) => sourceJson(response, status, result, id);
       const page = { limit: Number(url.searchParams.get("limit") ?? 100), cursor: url.searchParams.get("cursor") };
       if (action === "GET" && route === "") {
@@ -37,19 +40,27 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
         services.dispatch?.(workspaceId, run.id);
         json(publicRun(run), 202);
       } else if (route === "admission" && action === "POST") json(await admission.qualify(actor, workspaceId, await sourceBody(request)));
+      else if (route === "backup-coverage" && action === "POST") {
+        const reference = await sourceBody(request);
+        await inspection.records(actor, workspaceId, reference);
+        json(services.backup ? await services.backup.coverage(actor, workspaceId, reference)
+          : { status: "NOT_CONFIGURED", bundleId: reference.bundleId, receiptId: reference.receiptId });
+      }
       else if (route === "delta" && action === "GET") json(await delta.compare(actor, workspaceId, { fromBundleId: url.searchParams.get("fromBundleId"), toBundleId: url.searchParams.get("toBundleId"), sourceId: url.searchParams.get("sourceId"), ...page }));
       else if (route === "renewal-confirmations" && action === "POST") json(await renewal.confirm(actor, workspaceId, await sourceBody(request)));
       else if (route === "renewal-status" && action === "GET") json(await renewal.latest(actor, workspaceId, { bundleId: url.searchParams.get("bundleId"), receiptId: url.searchParams.get("receiptId") }));
       else if (route === "renewals" && action === "POST") json(await renewal.issue(actor, workspaceId, await sourceBody(request)));
       else {
         const runMatch = /^runs\/([^/]+)(?:\/(.*))?$/.exec(route);
-        const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|gap-history)$/.exec(route);
+        const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|gap-history|inventory-history|file-history|receipts)$/.exec(route);
         if (versionMatch && action === "GET") {
           const reference = { bundleId: versionMatch[1], receiptId: url.searchParams.get("receiptId") };
           if (versionMatch[2] === "inventory") json(await admission.inventory(actor, workspaceId, reference, page));
+          else if (versionMatch[2] === "receipts") json(await queries.receipts(actor, workspaceId, reference.bundleId, page));
+          else if (versionMatch[2] === "inventory-history") json(await inspection.inventory(actor, workspaceId, reference, page));
           else if (versionMatch[2] === "gaps") json(await admission.inheritedGaps(actor, workspaceId, reference, page));
           else if (versionMatch[2] === "gap-history") json(await queries.gaps(actor, workspaceId, { bundleId: reference.bundleId }, page));
-          else await sourceBytes(response, admission.readFile(actor, workspaceId, reference, { componentId: url.searchParams.get("componentId"), pathBytes: url.searchParams.get("pathBytes") }), id);
+          else await sourceBytes(response, (versionMatch[2] === "file-history" ? inspection : admission).readFile(actor, workspaceId, reference, { componentId: url.searchParams.get("componentId"), pathBytes: url.searchParams.get("pathBytes") }), id);
         } else if (runMatch) {
           const runId = decodeURIComponent(runMatch[1]);
           const tail = runMatch[2] ?? "";
@@ -59,6 +70,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
           else if (tail === "view" && action === "GET") json(await queries.run(actor, workspaceId, runId));
           else if (tail === "gaps" && action === "GET") json(await queries.gaps(actor, workspaceId, { runId }, page));
           else if (tail === "advance" && action === "POST") { await sourceBody(request); json(publicRun(await capture.advance(actor, workspaceId, runId))); }
+          else if (tail === "reconcile-restore" && action === "POST") { await sourceBody(request); const resumed = await capture.reconcileRestore(actor, workspaceId, runId); services.dispatch?.(); json(publicRun(resumed)); }
           else if (tail === "cancel" && action === "POST") { await sourceBody(request); json(publicRun(await repository.cancel(actor, workspaceId, runId))); }
           else if (tail === "result" && action === "GET") json(await publication.result(actor, workspaceId, runId));
           else if (tail === "confirm" && action === "POST") json(await publication.confirm(actor, { workspaceId, runId }, await sourceBody(request)));

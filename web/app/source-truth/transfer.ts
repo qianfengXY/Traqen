@@ -37,8 +37,12 @@ export async function transferDirectory(client: SourceTruthClient, runId: string
       if (disposition?.disposition === "VERIFIED") { unnecessary += BigInt(entry.sizeBytes!); files++; emit(); continue; }
       const file = await resolveLocalFile(root, localPath);
       if (String(file.size) !== entry.sizeBytes) throw new Error("本机文件已变化，请重新选择目录并核对");
-      const checkpoint = await client.request<{ verifiedPrefixBytes: string; completed: boolean }>(`${path}/checkpoint?pathBytes=${entry.pathBytes}`);
+      const checkpoint = await client.request<{ verifiedPrefixBytes: string; completed: boolean; reusable: boolean }>(`${path}/checkpoint?pathBytes=${entry.pathBytes}`);
       if (checkpoint.completed) { unnecessary += BigInt(entry.sizeBytes!); files++; emit(); continue; }
+      if (checkpoint.reusable) {
+        await client.request(`${path}/finish-file`, "POST", { pathBytes: entry.pathBytes });
+        unnecessary += BigInt(entry.sizeBytes!); files++; emit(); continue;
+      }
       unnecessary += BigInt(checkpoint.verifiedPrefixBytes);
       for (let offset = Number(checkpoint.verifiedPrefixBytes); offset < file.size; offset += policy.maxChunkBytes) {
         const part = file.slice(offset, offset + policy.maxChunkBytes);

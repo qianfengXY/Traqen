@@ -23,3 +23,19 @@ test("source client never calls an HTML success page or a malformed JSON body a 
   t.mock.method(globalThis, "fetch", async () => new Response("not json", { headers: { "content-type": "application/json" } }));
   await assert.rejects(new SourceTruthClient("https://api", "token", "w").request("/runs", "POST", {}), { code: "SOURCE_NETWORK_UNCONFIRMED" });
 });
+
+test("historical raw files stream to an explicitly selected destination without loading a whole file or executing it", async (t) => {
+  const chunks = [], events = [];
+  const client = new SourceTruthClient("https://api", "token", "w");
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    assert.equal(options.redirect, "error");
+    assert.equal(options.headers.authorization, "Bearer token");
+    return new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([1, 2])); controller.enqueue(new Uint8Array([3])); controller.close(); } }), { headers: { "content-type": "application/octet-stream" } });
+  });
+  const sink = { async write(chunk) { chunks.push(...chunk); events.push("write"); }, async close() { events.push("close"); }, async abort() { events.push("abort"); } };
+  await client.download("/bundles/a/file-history", sink);
+  assert.deepEqual(chunks, [1, 2, 3]); assert.deepEqual(events, ["write", "write", "close"]);
+  t.mock.method(globalThis, "fetch", async () => Response.json({ error: { code: "SOURCE_FORBIDDEN", message: "撤权" } }, { status: 403 }));
+  await assert.rejects(client.download("/bundles/a/file-history", sink), { code: "SOURCE_FORBIDDEN" });
+  assert.equal(events.at(-1), "abort");
+});

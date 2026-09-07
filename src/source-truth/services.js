@@ -3,7 +3,7 @@ import { SourceUploadService } from "./upload-service.js";
 import { SourceCandidateService } from "./candidate-service.js";
 import { SourceCaptureService } from "./capture-service.js";
 import { SourcePublicationService } from "./publication-service.js";
-import { SourceAdmissionService } from "./admission-service.js";
+import { SourceAdmissionService, SourceSnapshotReader } from "./admission-service.js";
 import { SourceRenewalService } from "./renewal-service.js";
 import { SourceDeltaService } from "./delta-service.js";
 import { SourceQueryService } from "./query-service.js";
@@ -20,6 +20,7 @@ export function sourceTruthServices({ repository, blobs, policy, git = null, wor
     backup: backup ?? (backupConfiguration ? new SourceBackupService({ repository, blobs, configuration: backupConfiguration }) : null),
     capture: new SourceCaptureService({ repository, blobs, policy, git, materials, upload, candidates, workerId }),
     publication: new SourcePublicationService(repository, candidates, options),
+    inspection: new SourceSnapshotReader(repository, candidates),
     admission: new SourceAdmissionService(repository, candidates), renewal: new SourceRenewalService(repository, candidates, options),
     delta: new SourceDeltaService(repository), queries: new SourceQueryService(repository, materials) };
 }

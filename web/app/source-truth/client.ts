@@ -20,6 +20,33 @@ export class SourceTruthClient {
     this.signal = controller.signal;
     return controller;
   }
+  async download(route: string, destination: { write(bytes: Uint8Array): Promise<void>; close(): Promise<void>; abort(): Promise<void> }) {
+    const signal = this.signal;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      signal?.throwIfAborted();
+      const response = await fetch(this.base + route, { method: "GET", credentials: "omit", cache: "no-store", redirect: "error", signal, headers: { authorization: `Bearer ${this.token}` } });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new SourceClientError(result?.error?.message ?? "原始文件读取未完成", result?.error?.code ?? "SOURCE_HTTP_ERROR", response.status, result?.error?.requestId ?? null);
+      }
+      if (!response.body || response.headers.get("content-type")?.split(";")[0] !== "application/octet-stream") throw new SourceClientError("响应不是原始来源文件；保存已取消");
+      reader = response.body.getReader();
+      while (true) {
+        signal?.throwIfAborted();
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        await destination.write(chunk.value);
+      }
+      signal?.throwIfAborted();
+      await destination.close();
+    } catch (error) {
+      await reader?.cancel().catch(() => {});
+      await destination.abort().catch(() => {});
+      if (error instanceof SourceClientError || (error instanceof Error && error.name === "AbortError")) throw error;
+      throw new SourceClientError("文件传输中断，目标保存已取消；原快照不变。请重新读取，不把局部字节当完整文件。");
+    } finally { reader?.releaseLock(); }
+  }
   async request<T>(route = "", method = "GET", body?: object | Blob): Promise<T> {
     const signal = this.signal;
     signal?.throwIfAborted();

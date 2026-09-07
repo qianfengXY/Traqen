@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { SourceTruthClient } from "./client.ts";
 import { ArtifactTable, GapBrowser, sourcePath } from "./evidence-view.tsx";
 import type { Confirmation, FrozenVersion, Page, Receipt } from "./types.ts";
+import { BackupCoverage, ReceiptHistory } from "./receipt-history.tsx";
 
 type Difference = { pathBytes: string; change: string; before: unknown; after: unknown };
 type Delta = Page<Difference> & { comparable: boolean; reason?: string; counts: Record<string, string> | null; countUnit: string };
@@ -17,16 +18,19 @@ export function SourceVersionView({ client, version, versions, writable, onChang
   const [tab, setTab] = useState("receipt"), [from, setFrom] = useState(""), [sourceId, setSourceId] = useState(version.components[0]?.sourceId ?? "");
   const [delta, setDelta] = useState<Delta | null>(null);
   const [renewal, setRenewal] = useState<RenewalState | null>(null), [renewalChecked, setRenewalChecked] = useState(false);
+  const alive = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const request = async (work: () => Promise<void>) => {
     setBusy(true); setError("");
-    try { await work(); } catch (error) { if (!client.signal?.aborted) { setError((error as Error).message); setAdmission(null); } }
-    finally { if (!client.signal?.aborted) setBusy(false); }
+    try { await work(); } catch (error) { if (alive.current && !client.signal?.aborted) { setError((error as Error).message); setAdmission(null); } }
+    finally { if (alive.current && !client.signal?.aborted) setBusy(false); }
   };
   const compare = (cursor?: string | null) => request(async () => {
     const params = new URLSearchParams({ fromBundleId: from, toBundleId: version.id, sourceId, limit: "100", ...(cursor ? { cursor } : {}) });
     setDelta(await client.request(`/delta?${params}`));
   });
-  const issued = async (value: Receipt) => { setReceipt(value); setRenewal(null); setRenewalChecked(false); setAccepted(false); setAdmission(null); await onChanged(); };
+  const selectReceipt = (value: Receipt) => { setReceipt(value); setRenewal(null); setRenewalChecked(false); setAccepted(false); setAdmission(null); setError(""); };
+  const issued = async (value: Receipt) => { if (!alive.current || client.signal?.aborted) return; selectReceipt(value); await onChanged(); };
   const recover = () => request(async () => {
     const value = await client.request<RenewalState | null>(`/renewal-status?bundleId=${version.id}&receiptId=${encodeURIComponent(receipt!.id)}`);
     setRenewalChecked(true); setRenewal(value);
@@ -40,10 +44,12 @@ export function SourceVersionView({ client, version, versions, writable, onChang
     <div className="st-tabs" role="group" aria-label="冻结包证据视图">{[["receipt", "凭据与准入"], ["inventory", "完整材料清单"], ["gaps", "缺口记录"], ["delta", "文件级版本差异"]].map(([id, label]) => <button className={tab === id ? "selected" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
     {error && <p className="st-callout danger" role="alert">{error}</p>}
     {tab === "receipt" && <>
+      <ReceiptHistory client={client} bundleId={version.id} selected={receipt} onSelect={(value) => { if (!busy) selectReceipt(value); }} />
       <dl><dt>Bundle</dt><dd>{version.id}</dd><dt>Receipt</dt><dd>{receipt?.id ?? "缺失：不能准入"}</dd><dt>冻结/签发时状态</dt><dd><span className={`st-badge ${receipt?.status === "READY_WITH_ACCEPTED_GAPS" ? "warning" : "muted"}`}>{receipt?.status}</span></dd><dt>Gap 数量</dt><dd>{receipt?.gapCount}</dd><dt>接受失效时间</dt><dd>{receipt?.expiresAt ?? "无接受期限（无 Gap）"}</dd><dt>备份覆盖</dt><dd>须核对这一对 Bundle + Receipt 的完整备份证明，不由冻结状态推定</dd></dl>
       <p className="st-callout">历史凭据不可改写。下面只核验当前访问权限、接受期限和材料完整性，不会启动 F002。</p>
       <button className="button" disabled={busy || !receipt} onClick={() => void request(async () => setAdmission(await client.request("/admission", "POST", { bundleId: version.id, receiptId: receipt!.id })))}>核验当前准入</button>
       {admission && <p className={`st-callout ${admission.gapCount === "0" ? "" : "warning"}`}>本次核验通过；凭据 {admission.receiptId}。后续必须继承完整 Gap 集（{admission.inheritedGapSet.count} 项）。这是本次核验结果，不是永久准入许可。</p>}
+      {receipt && <BackupCoverage key={receipt.id} client={client} bundleId={version.id} receiptId={receipt.id} />}
       {receipt && receipt.gapCount !== "0" && writable && <details className="st-renewal"><summary>同包重新接受缺口并签发新凭据</summary><p>不重新采集、不改 Bundle，不覆盖旧 Receipt，也不会让旧分析自动改用新凭据。</p><GapBrowser client={client} route={`/bundles/${version.id}/gap-history`} />
         <button className="button" disabled={busy} onClick={() => void recover()}>查询本成员上次续签</button>
         {renewalChecked && !renewal && <p>没有未确认的续签结果。可明确填写新的理由与期限。</p>}
@@ -58,7 +64,7 @@ export function SourceVersionView({ client, version, versions, writable, onChang
         })}>确认并签发新 Receipt</button>
       </details>}
     </>}
-    {tab === "inventory" && (receipt ? <ArtifactTable key={receipt.id} client={client} route={`/bundles/${version.id}/inventory?receiptId=${encodeURIComponent(receipt.id)}`} /> : <p>没有可核对的 Receipt。</p>)}
+    {tab === "inventory" && (receipt ? <><p className="st-callout">历史材料查看不会获得新的分析准入；接受已过期时仍可在当前读取权限内查看。</p><ArtifactTable key={receipt.id} client={client} route={`/bundles/${version.id}/inventory-history?receiptId=${encodeURIComponent(receipt.id)}`} reference={{ bundleId: version.id, receiptId: receipt.id }} /></> : <p>没有可核对的 Receipt。</p>)}
     {tab === "gaps" && <GapBrowser client={client} route={`/bundles/${version.id}/gap-history`} />}
     {tab === "delta" && <><p>只比较两个完整版本的文件/目录新增、修改与删除，不进行变更影响推理。来源或范围不一致时不会将整个范围误标为删除。</p>
       <div className="st-actions"><label>从哪个冻结包比较<select disabled={busy} value={from} onChange={(event) => { setFrom(event.target.value); setDelta(null); }}><option value="">选择精确基线</option>{versions.filter((other) => other.id !== version.id).map((other) => <option key={other.id} value={other.id}>{other.id.slice(0, 12)} · {new Date(other.publishedAt).toLocaleString("zh-CN")}</option>)}</select></label><label>来源<select disabled={busy} value={sourceId} onChange={(event) => { setSourceId(event.target.value); setDelta(null); }}>{version.components.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.kind} · {source.sourceId}</option>)}</select></label><button className="button" disabled={busy || !from || !sourceId} onClick={() => void compare()}>比较文件级变化</button></div>
