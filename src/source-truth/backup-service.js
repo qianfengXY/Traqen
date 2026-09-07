@@ -46,6 +46,7 @@ export class SourceBackupService {
   constructor({ repository, blobs, configuration }) {
     Object.assign(this, { repository, blobs, config: configuration });
     this.targetBlobs = null;
+    this.keyVersion = blobs?.keyVersion ?? configuration.keyVersion;
     this.maximum = BigInt(configuration.maxBytes ?? "0");
   }
   async targetReady() {
@@ -56,9 +57,9 @@ export class SourceBackupService {
     const protection = await verifyProtectedVolume(this.root, { probe: this.config.volumeProbe });
     requireValue(typeof this.config.keyRecoveryOwner === "string" && this.config.keyRecoveryOwner.trim(), "SOURCE_BACKUP_KEY_RECOVERY_REQUIRED", "请登记并验证独立的密钥恢复责任与密钥材料", { status: 503 });
     const keys = this.config.recoveryKeys;
-    requireValue(keys && Buffer.isBuffer(keys[this.blobs.keyVersion]) && keys[this.blobs.keyVersion].length === 32,
+    requireValue(keys && Buffer.isBuffer(keys[this.keyVersion]) && keys[this.keyVersion].length === 32,
       "SOURCE_BACKUP_KEY_RECOVERY_REQUIRED", "备份解密密钥尚无已核验恢复副本", { status: 503 });
-    this.targetBlobs ??= await SourceTruthBlobStore.open({ root: path.join(this.root, "objects"), keyVersion: this.blobs.keyVersion, keys,
+    this.targetBlobs ??= await SourceTruthBlobStore.open({ root: path.join(this.root, "objects"), keyVersion: this.keyVersion, keys,
       maxFileBytes: String(this.maximum), requireProtectedVolume: true, volumeProbe: this.config.volumeProbe, minFreeBytes: this.config.minFreeBytes ?? "0" });
     await this.targetBlobs.ready();
     await safeDirectory(path.join(this.root, "sets"));

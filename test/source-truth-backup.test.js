@@ -13,6 +13,7 @@ import { SourceTruthBlobStore } from "../src/source-truth/blob-store.js";
 import { SourceTruthRepository } from "../src/source-truth/repository.js";
 import { SourceRenewalService } from "../src/source-truth/renewal-service.js";
 import { SourceUploadService } from "../src/source-truth/upload-service.js";
+import { SourceBackupService } from "../src/source-truth/backup-service.js";
 import { pathBytes } from "../src/source-truth/identity.js";
 
 async function unfinishedDirectory(f) {
@@ -80,7 +81,8 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   assert.equal((await services.backup.coverage(reader, "workspace", { bundleId: result.bundle.id, receiptId: renewed.receipt.id })).status, "NOT_COVERED");
   const destination = await cluster.createDatabase({ seed: false });
   const targetBlobs = await SourceTruthBlobStore.open({ root: await mkdtemp(path.join(tmpdir(), "tq-f001-restored-bytes-")), keyVersion: "test", keys: Object.fromEntries(f.blobs.keys) });
-  const restored = await services.backup.restore({ backupId: completed.id, database: destination.db, blobs: targetBlobs,
+  const offlineRecovery = new SourceBackupService({ configuration: { ...config, postgres: undefined, keyVersion: f.blobs.keyVersion } });
+  const restored = await offlineRecovery.restore({ backupId: completed.id, database: destination.db, blobs: targetBlobs,
     postgres: { binDirectory: cluster.bin, connection: cluster.connection(destination.name) }, requestedBy: "fixture-admin" });
   assert.equal(restored.backupId, completed.id);
   assert.equal((await destination.db.query("SELECT restore_ready FROM source_truth_workspace WHERE workspace_id='workspace'")).rows[0].restore_ready, true);

@@ -106,3 +106,25 @@ test("B-05 protected deployment rejects unencrypted or permission-ignoring volum
     await assert.rejects(fixture({ requireProtectedVolume: true, volumeProbe: async () => ({ encrypted, permissionsEnforced, persistent: true, filesystemId: "fixture-volume", physicalStores: ["fixture-disk"] }) }), { code: "SOURCE_VOLUME_PROTECTION_REQUIRED" });
   }
 });
+
+test("B-09 concurrent writes reserve their aggregate disk budget before receiving bytes and release it after completion", async () => {
+  const { store } = await fixture({ maxInflightBytes: "8196", maxWriters: 4 });
+  const content = Buffer.from("data"), ref = { digest: digest(content), sizeBytes: "4" };
+  let release, started;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  const entered = new Promise((resolve) => { started = resolve; });
+  const first = store.putBlob(scope, ref, (async function* () { started(); await waiting; yield content; })());
+  await entered;
+  try {
+    await assert.rejects(store.putBlob({ ...scope, workspaceId: "second" }, ref, [content]), { code: "SOURCE_STORAGE_BUSY" });
+    assert.equal(store.metrics.peakReservedBytes, 4100n);
+  } finally { release(); await first; }
+  assert.equal(store.reservedBytes, 0n);
+  await store.putBlob({ ...scope, workspaceId: "second" }, ref, [content]);
+});
+
+test("B-09 a file exceeding the entire write budget requires capacity correction, not endless busy retries", async () => {
+  const { store } = await fixture({ maxInflightBytes: "4097" });
+  await assert.rejects(store.putBlob(scope, { digest: digest("data"), sizeBytes: "4" }, [Buffer.from("data")]), { code: "SOURCE_CAPACITY_EXHAUSTED", status: 507 });
+  assert.equal(store.reservedBytes, 0n);
+});

@@ -53,8 +53,10 @@ export class SourceTruthBlobStore {
     this.maxChunkBytes = config.maxChunkBytes ?? 4 * 1024 * 1024;
     this.minFreeBytes = BigInt(config.minFreeBytes ?? "0");
     this.maxWriters = config.maxWriters ?? 4;
+    this.maxInflightBytes = BigInt(config.maxInflightBytes ?? (this.maxFileBytes + 4096n) * BigInt(this.maxWriters));
+    this.reservedBytes = 0n;
     this.writers = 0;
-    this.metrics = { peakWriters: 0, streamedBytes: 0n };
+    this.metrics = { peakWriters: 0, peakReservedBytes: 0n, streamedBytes: 0n };
     this.requireProtectedVolume = config.requireProtectedVolume ?? false;
     this.volumeProbe = config.volumeProbe;
     this.volumeProtection = null;
@@ -69,7 +71,7 @@ export class SourceTruthBlobStore {
     const root = await managedStoragePath(config.root, config.forbiddenRoots);
     await safeDirectory(root);
     const store = new SourceTruthBlobStore({ ...config, root: await realpath(root) });
-    requireValue(store.maxFileBytes >= 0 && Number.isSafeInteger(store.maxChunkBytes) && store.maxChunkBytes > 0
+    requireValue(store.maxFileBytes >= 0 && store.maxInflightBytes > 4096n && Number.isSafeInteger(store.maxChunkBytes) && store.maxChunkBytes > 0
       && Number.isInteger(store.maxWriters) && store.maxWriters > 0 && store.maxWriters <= 64, "SOURCE_STORAGE_NOT_READY", "存储资源限制无效", { status: 503 });
     await store.ready();
     return store;
@@ -123,14 +125,21 @@ export class SourceTruthBlobStore {
   async put(scope, kind, id, ref, stream) {
     requireValue(HASH.test(ref.digest), "SOURCE_INVALID_INPUT", "SHA-256 无效", { status: 400 });
     const expectedSize = BigInt(byteCount(ref.sizeBytes));
+    const reservation = expectedSize + 4096n;
     requireValue(expectedSize <= this.maxFileBytes, "SOURCE_FILE_TOO_LARGE", "文件超过平台限制，不能跳过后发布", { status: 413 });
+    requireValue(reservation <= this.maxInflightBytes, "SOURCE_CAPACITY_EXHAUSTED", "单文件所需写入预算超过部署容量限制；增加预算后重试，不能跳过文件", { status: 507 });
     requireValue(this.writers < this.maxWriters, "SOURCE_STORAGE_BUSY", "存储并发已满，请等待后重试", { status: 429 });
+    requireValue(this.reservedBytes + reservation <= this.maxInflightBytes, "SOURCE_STORAGE_BUSY", "在途写入预算已满，请等待正在写入的材料完成后重试", { status: 429 });
+    this.reservedBytes += reservation;
+    this.metrics.peakReservedBytes = this.metrics.peakReservedBytes > this.reservedBytes ? this.metrics.peakReservedBytes : this.reservedBytes;
     this.writers++;
     this.metrics.peakWriters = Math.max(this.metrics.peakWriters, this.writers);
     let handle;
     let temporary;
     try {
-      await this.ready(expectedSize + 4096n);
+      // Reserve before the first await: concurrent writes cannot all claim the
+      // same free space. Ongoing external disk use can still fail safely later.
+      await this.ready(this.reservedBytes);
       const destination = await this.location(scope, kind, id, true);
       temporary = path.join(path.dirname(destination), `.pending-${randomUUID()}`);
       handle = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
@@ -181,6 +190,7 @@ export class SourceTruthBlobStore {
       // Only this operation's incomplete encrypted output, never saved checkpoints/history.
       if (temporary) await unlink(temporary).catch(() => {});
       this.writers--;
+      this.reservedBytes -= reservation;
     }
   }
 

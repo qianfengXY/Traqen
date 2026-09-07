@@ -46,7 +46,7 @@ export class SourceTruthRepository {
   }
 
   // Deployment/admin boundary, deliberately not exposed as a user HTTP action.
-  async provision(workspaceId, { tenantId, grants }) {
+  async provision(workspaceId, { tenantId, grants, requestedBy }) {
     return transaction(this.database, async (tx) => {
       const { rows } = await tx.query("SELECT tenant_id FROM project WHERE id=$1 FOR UPDATE", [workspaceId]);
       requireValue(rows[0]?.tenant_id === tenantId, "SOURCE_FORBIDDEN", "Workspace 租户边界不匹配", { status: 403 });
@@ -54,10 +54,11 @@ export class SourceTruthRepository {
       await tx.query("SELECT workspace_id FROM source_truth_workspace WHERE workspace_id=$1 FOR UPDATE", [workspaceId]);
       for (const grant of grants) {
         requireValue(["READ", "MAINTAIN", "REVOKED"].includes(grant.role), "SOURCE_INVALID_GRANT", "成员权限无效", { status: 400 });
-        const member = await tx.query("SELECT id FROM principal WHERE id=$1 AND tenant_id=$2", [grant.actorId, tenantId]);
+        const member = await tx.query("SELECT id FROM principal WHERE id=$1 AND tenant_id=$2 AND principal_type='USER'", [grant.actorId, tenantId]);
         requireValue(member.rows.length === 1, "SOURCE_FORBIDDEN", "成员不属于此租户", { status: 403 });
         await tx.query(`INSERT INTO source_truth_access (workspace_id,actor_id,role) VALUES ($1,$2,$3)
           ON CONFLICT (workspace_id,actor_id) DO UPDATE SET role=EXCLUDED.role,revision=source_truth_access.revision+1`, [workspaceId, grant.actorId, grant.role]);
+        if (requestedBy) await this.audit(tx, workspaceId, null, requestedBy, "ADMIN_GRANT_CHANGED", { memberId: grant.actorId, role: grant.role });
       }
     });
   }

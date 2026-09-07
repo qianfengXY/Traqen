@@ -47,7 +47,7 @@ export async function readSourceTruthConfiguration(filename) {
   requireValue(exactKeys(config, ["version", "storage", "postgres", "members", "origins", "git", "resources", "backup"]) && config.version === 1
     && exactKeys(config.storage, ["root", "keyVersion", "keyFiles", "recoveryKeyFiles", "recoveryOwner", "minFreeBytes"])
     && exactKeys(config.postgres, ["binDirectory"]) && exactKeys(config.git, ["targets", "credentials"])
-    && exactKeys(config.resources, ["maxFileBytes", "maxTotalBytes", "maxEntries", "maxChunkBytes", "maxBatchEntries", "maxWriters", "maxPackBytes", "workerConcurrency", "poolConnections"]),
+    && exactKeys(config.resources, ["maxFileBytes", "maxTotalBytes", "maxEntries", "maxChunkBytes", "maxBatchEntries", "maxWriters", "maxInflightBytes", "maxPackBytes", "workerConcurrency", "poolConnections"]),
   "SOURCE_CONFIGURATION_INVALID", "来源配置版本、字段或资源边界无效；没有关闭安全检查的配置开关", { status: 503 });
   requireValue(Array.isArray(config.origins) && config.origins.length <= 32 && config.origins.every((value) => {
     try { const url = new URL(value); return url.origin === value && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))); } catch { return false; }
@@ -101,14 +101,15 @@ async function storageConfiguration(config) {
   return { root, backupRoot, forbiddenRoots, keyVersion, keys, recoveryKeys };
 }
 
-export async function createSourceTruthRuntime({ configuration: config, connectionString, ssl, host = "127.0.0.1" }) {
+export async function createSourceTruthRuntime({ configuration: config, connectionString, connection: suppliedConnection, ssl, host = "127.0.0.1" }) {
   requireValue(["127.0.0.1", "::1"].includes(host), "SOURCE_TRANSPORT_PROTECTION_REQUIRED", "来源 API 必须绑定本机并经受保护的入口提供服务，不能直接公开明文凭据通道", { status: 503 });
   const storage = await storageConfiguration(config);
   const max = config.resources.poolConnections ?? 8;
   requireValue(Number.isInteger(max) && max >= 2 && max <= 32, "SOURCE_CONFIGURATION_INVALID", "来源数据库连接池大小无效", { status: 503 });
-  const pool = new pg.Pool({ connectionString, ssl, max, connectionTimeoutMillis: 10000, application_name: "traqen-source-truth" });
+  const connectionOptions = suppliedConnection ?? { connectionString, ssl };
+  const pool = new pg.Pool({ ...connectionOptions, max, connectionTimeoutMillis: 10000, application_name: "traqen-source-truth" });
   pool.on("error", () => {}); // Requests/recovery expose bounded diagnostics, never credentials.
-  const parameters = new pg.Client({ connectionString, ssl }).connectionParameters;
+  const parameters = new pg.Client(connectionOptions).connectionParameters;
   const connection = { host: parameters.host, port: parameters.port, database: parameters.database, user: parameters.user, password: parameters.password, ssl: false };
   const postgres = new SourcePostgresArchive({ ...config.postgres, connection });
   let worker, backupTimer, backupTask = null;
@@ -123,7 +124,7 @@ export async function createSourceTruthRuntime({ configuration: config, connecti
     const policy = capturePolicy({ ...config.resources, gitTargets: config.git.targets });
     const blobs = await SourceTruthBlobStore.open({ root: path.join(storage.root, "bytes"), forbiddenRoots: storage.forbiddenRoots,
       keyVersion: storage.keyVersion, keys: storage.keys, maxFileBytes: policy.maxFileBytes, maxChunkBytes: policy.maxChunkBytes,
-      maxWriters: config.resources.maxWriters ?? 4, minFreeBytes: config.storage.minFreeBytes ?? "0", requireProtectedVolume: true });
+      maxWriters: config.resources.maxWriters ?? 4, maxInflightBytes: config.resources.maxInflightBytes, minFreeBytes: config.storage.minFreeBytes ?? "0", requireProtectedVolume: true });
     const credentials = new Map();
     for (const value of config.git.credentials ?? []) {
       requireValue(exactKeys(value, ["id", "origin", "authorizationFile"]) && /^[A-Za-z0-9_-]{1,128}$/.test(value.id) && !credentials.has(value.id)
