@@ -1,0 +1,30 @@
+INITIAL GENERATION PROMPT
+
+Generate a finished whole-page enterprise architecture diagram image. Use the supplied business architecture image ONLY as a STYLE reference, NOT content. Same landscape 3:2, crisp simplified Chinese typography, white background, navy title, horizontal L1-L5 layer bands, teal application nodes, purple persistence, gold crosscutting grants, generous readable card space. Need a substantially layered application architecture, no 3D, no fake dashboard, no technical generic icon legend. Exact numbered nodes A01-A19, no invented nodes. Title “Traqen 应用架构 · 分层详图”. Subtitle “V2 对比稿 | 职责、交接与完整愿景覆盖”. All application nodes stay inside ONE clearly labelled Workspace boundary; external integrations A18/A19 alone are outside that boundary in the bottom layer.
+L1 “交互与协作” four cards: A01 来源工作台 — 登记 / 采集 / 清单 / 恢复; A02 知识与基线工作台 — API / 业务树 / 候选审阅; A03 变更与验证工作台 — 版本比较 / 影响 / 执行; A04 质量与交付工作台 — 缺口处置 / 态势 / 证据导出. Small layer note “逻辑交互职责，不承诺新增页面；A04 完整体验待细化”.
+L2 “业务服务” EIGHT cards in TWO ROWS with generous widths:
+A05 来源管理 F001 — 冻结包 / Receipt / 当前准入
+A06 确定性提取 F002 — Fact / 证据引用 / API 结构
+A07 候选分析 F003 — 受控证据 / 语义候选 / 不确定性
+A08 审阅与基线 F003 — 人工决策 / Claim / 业务树
+A09 变更分析 F004 — ChangeSet / 影响 / 复验建议
+A10 测试与执行证据 — TestSpec / 实际执行 / 验证结果
+A11 缺口协同处置 — 责任 / 补证 / 验证关闭
+A12 质量投影与导出 — 功能版本部署 / 剩余风险
+Make A11 and A12 amber dashed-outline cards, and add small “完整流程待细化” at A10, A11, A12. Existing model foundations do not equal acceptance. The only solid labelled service path is A05 → A06 labelled “合格来源输入”, A06 → A07 labelled “持久证据”, A07 → A08 labelled “候选待审”. Draw NO shortcut A05→A07. Place a small horizontal relation strip beneath cards “A09 汇合 A06事实 + A08主张 + A10执行；初期只给建议”. Do not add arbitrary arrows among A10-A12.
+L3 “运行编排与授权” three cards: A13 能力配置 F006 — 草稿 / Apply / 固定 Run; A14 持久化任务编排 — 排队 / 检查点 / 重试恢复; A15 Workspace 治理 — 访问范围 / 版本 / 发布权限. Use a shared upward control bus labelled “授权与固定上下文”; these constrain services, never auto-run all modules.
+L4 “权威持久化” two wide cards: A16 版本化记录与关系 — 来源清单 / 事实 / 决策 / 执行 / 审计; A17 不可变内容存储 — 来源字节 / 内容摘要 / 引用保护. A16+A17 grouped caption “同一逻辑证据模型，投影可重建”.
+L5 “受控执行集成” two wide external cards: A18 本机 CLI Agent — 显式能力授权 / 固定运行输入; A19 Runner 或集成 CI — 真实执行 / 环境 / 断言与结果. Add clear local note “CLI 只经编排调用；执行结果经校验接入”.
+Layer relationships should be sparse broad connectors labelled “调用”, “编排与约束”, “持久化”, “受控集成”. Drawings must not imply that source bundle goes directly to Agents, no automatic CI gate. Footer “模块职责 ≠ 页面导航 ≠ 独立部署 | 已有基础 ≠ 完整能力已验收 | 编号对应正文释义”.
+No long body paragraphs, no absent IDs, no duplicate IDs, keep Chinese readable and diagrams precise.
+
+CORRECTION PROMPT
+
+Edit ONLY the supplied APPLICATION architecture image. Preserve its style, all five layers, all 19 nodes and all clear labels except the precise corrections below. This is semantic diagram quality repair, not a redesign.
+1) In A16, replace the erroneous subtitle “草稿清单 / 事实 / 决策 / 执行 / 审计” with EXACT “来源清单 / 事实 / 决策 / 执行 / 审计”.
+2) In A18 replace the extra gold bottom sentence with EXACT “A14 经适配器调用；仅消费 A06 持久证据”.
+3) In A19 replace the incorrect repeated CLI sentence with EXACT “环境、版本和执行结果经 A10 校验接入”.
+4) REMOVE the upward arrow from the L5 integrations layer to L4 persistence. Replace that gap's connector with a clear readable non-arrow caption “A14 调用 A18；A19 结果接入 A10”. Do not imply CLI Agents directly write databases.
+5) Change the central group caption from “Workspace（单一工作区边界）” to “L1–L4 同一 Workspace 上下文”. These are logical responsibility layers. L5 is the external controlled integration boundary.
+6) Keep the correct service path A05→A06→A07→A08 and the note “A09 汇合 A06事实 + A08主张 + A10执行；初期只给建议”. Keep A11/A12 dashed as requiring elaboration. Retain every other node and text, no duplicate IDs, no content removal. Do not introduce new arrows.
+7) Ensure subtitle, full-width captions and all node names remain legible Chinese and within bounds. Keep the existing footer.

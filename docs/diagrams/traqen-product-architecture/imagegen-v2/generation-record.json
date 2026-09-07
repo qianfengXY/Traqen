@@ -1,0 +1,287 @@
+{
+  "schema_version": 1,
+  "created": "2026-09-07",
+  "generator": "native image_gen.imagegen via image-generation skill",
+  "canonical_document": "../../../architecture/traqen-product-architecture.zh-CN.md",
+  "authorization": {
+    "thread_id": "thread_mtqkycp918zlran6",
+    "message_id": "0001788767680385-000243-77af4f52"
+  },
+  "base_commit": "998080777c0aab593f1af950db751e9004fa396a",
+  "scope": "Append layered comparison diagrams and individual node meanings; retain all original Archify artifacts; no implementation or Feature contract changes.",
+  "content_review": {
+    "decision": "reuse",
+    "basis": "Elaborates the co-created architecture under explicit user direction; independent peer approval is not claimed."
+  },
+  "diagrams": [
+    {
+      "name": "business",
+      "path": "business.png",
+      "sha256": "47eee33afc415a307f226f90097a2231c1bc5ad61677f2734bd933359c1a6ff9",
+      "bytes": 1734561,
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "prompt": "business.prompt.txt",
+      "prompt_sha256": "7bc1187d5eab4e5b6672149080994d0cfc605d697a535226fd9242898ddb85db",
+      "node_ids": [
+        "B01",
+        "B02",
+        "B03",
+        "B04",
+        "B05",
+        "B06",
+        "B07",
+        "B08",
+        "B09",
+        "B10",
+        "B11",
+        "B12",
+        "B13",
+        "B14",
+        "B15",
+        "B16",
+        "B17",
+        "B18",
+        "B19"
+      ],
+      "layers": 4,
+      "crosscutting_rail": true,
+      "correction_rounds": 1,
+      "visual_review": "passed",
+      "visual_checks": [
+        "all numbered nodes present and legible",
+        "layer membership and cross-layer relations checked against canonical explanation",
+        "no clipped labels or unrequested source-access shortcuts",
+        "final raster inspected directly; byte-identical copy archived"
+      ],
+      "source_filename": "exec-e3e360ff-f876-4597-b872-b2bcece75998.png",
+      "prompt_storage": "Generation and correction text retained with line-ending whitespace normalized."
+    },
+    {
+      "name": "application",
+      "path": "application.png",
+      "sha256": "6c2f811b9a77f9cbc17c308f7d4b54bdf75ce725b3b08215ede117250854fb88",
+      "bytes": 1631587,
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "prompt": "application.prompt.txt",
+      "prompt_sha256": "f861aa8c282e85c4c73589816f64aa371bf76debb7857f8eac2efc44444840b6",
+      "node_ids": [
+        "A01",
+        "A02",
+        "A03",
+        "A04",
+        "A05",
+        "A06",
+        "A07",
+        "A08",
+        "A09",
+        "A10",
+        "A11",
+        "A12",
+        "A13",
+        "A14",
+        "A15",
+        "A16",
+        "A17",
+        "A18",
+        "A19"
+      ],
+      "layers": 5,
+      "crosscutting_rail": false,
+      "correction_rounds": 1,
+      "visual_review": "passed",
+      "visual_checks": [
+        "all numbered nodes present and legible",
+        "layer membership and cross-layer relations checked against canonical explanation",
+        "no clipped labels or unrequested source-access shortcuts",
+        "final raster inspected directly; byte-identical copy archived"
+      ],
+      "source_filename": "exec-1bac63c4-e61a-40ca-a159-11db0d6b2027.png",
+      "style_reference": "business.png"
+    },
+    {
+      "name": "information",
+      "path": "information.png",
+      "sha256": "0c0d7882faf8c1d22b52936403828f1cb6c78fd6464935560b07368258f60211",
+      "bytes": 1651130,
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "prompt": "information.prompt.txt",
+      "prompt_sha256": "574152a7f76df27d3e54e3a186eb553b063af28f03cbf9e30abee7d87f640be1",
+      "node_ids": [
+        "I01",
+        "I02",
+        "I03",
+        "I04",
+        "I05",
+        "I06",
+        "I07",
+        "I08",
+        "I09",
+        "I10",
+        "I11",
+        "I12",
+        "I13",
+        "I14",
+        "I15",
+        "I16",
+        "I17",
+        "I18"
+      ],
+      "layers": 5,
+      "crosscutting_rail": true,
+      "correction_rounds": 0,
+      "visual_review": "passed",
+      "visual_checks": [
+        "all numbered nodes present and legible",
+        "layer membership and cross-layer relations checked against canonical explanation",
+        "no clipped labels or unrequested source-access shortcuts",
+        "final raster inspected directly; byte-identical copy archived"
+      ],
+      "source_filename": "exec-250a9592-f046-4cdf-9acf-b90175512598.png",
+      "style_reference": "business.png"
+    },
+    {
+      "name": "technology",
+      "path": "technology.png",
+      "sha256": "4146aa0d44481337eebe6d304261554316fda3fba362cc9fa23468584262f6b4",
+      "bytes": 1752742,
+      "dimensions": [
+        1536,
+        1024
+      ],
+      "prompt": "technology.prompt.txt",
+      "prompt_sha256": "37c920b5c6fce174c726113ddb9272af69dc6be0b8f5628a8d7459be37d3fc19",
+      "node_ids": [
+        "T01",
+        "T02",
+        "T03",
+        "T04",
+        "T05",
+        "T06",
+        "T07",
+        "T08",
+        "T09",
+        "T10",
+        "T11",
+        "T12",
+        "T13",
+        "T14",
+        "T15",
+        "T16",
+        "T17",
+        "T18"
+      ],
+      "layers": 5,
+      "crosscutting_rail": true,
+      "correction_rounds": 1,
+      "visual_review": "passed",
+      "visual_checks": [
+        "all numbered nodes present and legible",
+        "layer membership and cross-layer relations checked against canonical explanation",
+        "no clipped labels or unrequested source-access shortcuts",
+        "final raster inspected directly; byte-identical copy archived"
+      ],
+      "source_filename": "exec-cabd8e3b-cc18-4228-bf3f-5dcc88dbff13.png",
+      "style_reference": "business.png"
+    }
+  ],
+  "preserved_v1": [
+    {
+      "path": "../product-overview.architecture.json",
+      "sha256": "12f22ef2994b428dcf4d9d84668c88103979e6402f10f9171c4d6c78923cc8d4"
+    },
+    {
+      "path": "../product-overview.architecture.html",
+      "sha256": "cc9d442408921ad24aea4d51aadf8a07a17cadc5990bb78c26aa482c643956ac"
+    },
+    {
+      "path": "../product-overview.architecture.png",
+      "sha256": "4628140958701d397856aa872f8f4101192f7d06af1ba63fe85e9d333b517c73"
+    },
+    {
+      "path": "../product-overview.architecture.svg",
+      "sha256": "8149229855205a2ebd89cc36df3afbac833555c53f95e803e43b9dfe3a04389a"
+    },
+    {
+      "path": "../application.architecture.json",
+      "sha256": "4c3fa7de8e36aa5d7d8ff19c4fb4f22eee6443d6d31cb71e15d9d130354db365"
+    },
+    {
+      "path": "../application.architecture.html",
+      "sha256": "bb5d5b425b647304b8c701718522249dac2352d25c96e9129c119129c9b90304"
+    },
+    {
+      "path": "../application.architecture.png",
+      "sha256": "6946275cf4e5c44933f474811322fe76b84762db78dd46df7f7df41a053a7e2c"
+    },
+    {
+      "path": "../application.architecture.svg",
+      "sha256": "80a11a16279afc562591964aa015aaf732b2f1a5d4cca44f36311e6a04ff106b"
+    },
+    {
+      "path": "../information.architecture.json",
+      "sha256": "d711fcf9b4508700585c90d6ce852cb8f90c6107e3d4beb42482ee1249e5e00a"
+    },
+    {
+      "path": "../information.architecture.html",
+      "sha256": "98090c1c7388ce17c3589c0685906e8e2a9778410d5a9646b76fb6fcbf56325c"
+    },
+    {
+      "path": "../information.architecture.png",
+      "sha256": "ddf582b1577677e3a61e94b18307cc9be81f49c644c4d95f15fd61ed06732ff1"
+    },
+    {
+      "path": "../information.architecture.svg",
+      "sha256": "e69e5b9e45b0342e87cb86a2dcd88d053b69bb9730cf544fee9a8055db99ce05"
+    },
+    {
+      "path": "../technology.architecture.json",
+      "sha256": "f5c9c30756c4b746dfce3eef55978e53f9e01c593bf604feaef9b9d5392441fa"
+    },
+    {
+      "path": "../technology.architecture.html",
+      "sha256": "0813404e47206a206120973b86f442cef2aee1ab222e11d7a2176d60766c1759"
+    },
+    {
+      "path": "../technology.architecture.png",
+      "sha256": "bcf6a77d858e8c7cc39e6819d88023254034ba205e5aeb093846d342937f4d0b"
+    },
+    {
+      "path": "../technology.architecture.svg",
+      "sha256": "96c7eb7ab0c4e3985d78b2db754e506f3eb8b8f4dac0fd3c5f9239846d4bdeb0"
+    },
+    {
+      "path": "../architecture-delivery.json",
+      "sha256": "1b17373dffa176ceed8733e2bf29f78c194350beab01b81447f5d2317fa46585"
+    }
+  ],
+  "validation_note": "V2 uses content and visual checks, not Archify showcase validation. The V1 9/9 receipts remain unchanged.",
+  "author": "砚砚/gpt-6-astra",
+  "document_validation": [
+    {
+      "document": "traqen-product-architecture.zh-CN.md",
+      "local_links_and_anchors": 48,
+      "embedded_diagrams": 8,
+      "original_then_new_order": "pass",
+      "individual_node_definitions": 74,
+      "frontmatter_and_language_switch": "pass"
+    },
+    {
+      "document": "traqen-product-architecture.md",
+      "local_links_and_anchors": 48,
+      "embedded_diagrams": 8,
+      "original_then_new_order": "pass",
+      "individual_node_definitions": 74,
+      "frontmatter_and_language_switch": "pass"
+    }
+  ],
+  "known_repository_test_failure": "node --test test/bilingual-documentation.test.js: 1 pass / 1 failure; existing ADR-0003-source-truth-boundary.zh-CN.md lacks its English backlink, unchanged by this delivery."
+}

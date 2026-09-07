@@ -1,0 +1,34 @@
+INITIAL GENERATION PROMPT
+
+Create a finished enterprise architecture diagram image, high resolution landscape 3:2, ideally 3072x2048. This is page 1 of a consistent four-image Chinese Traqen architecture set. Render the WHOLE PAGE directly as one polished raster infographic. White/off-white background, deep navy headings, teal/blue main architecture, purple evidence/assets, amber governance. Precise flat design, no 3D, no decorative illustration, no fake UI, no brand logos. Typography: exceptionally clear simplified Chinese sans serif, large enough to read, exact numbered labels. Strong horizontal layer bands with visible left rail L1 L2 L3 L4, ample whitespace, subtle borders, controlled arrow corridors. Aim dense but readable architecture review sheet, not a marketing slide. All nodes have readable IDs B01 through B19 once each. Subfunctions inside nodes can be concise two lines. Do not invent nodes. Title: “Traqen 业务架构 · 分层详图” subtitle: “V2 对比稿 | 业务功能的全生命周期质量追溯”.
+Top layer L1 “业务价值” has four equal cards:
+B01 知识可继承 — 共享知识 / 减少重复调查
+B02 基线可共识 — 共同规则 / 决策可追溯
+B03 变更可治理 — 影响范围 / 复核与复验
+B04 交付可查证 — 部署证据 / 剩余风险
+L2 is the largest band “核心业务能力”. Seven cards in TWO ROWS, four then three, with meaningful hierarchy not seven disconnected feature tiles:
+B05 知识重建与资产化 — 识别功能与规则；保留来源与歧义；按功能检索
+B06 业务定义与基线治理 — 规则与责任确认；稳定身份与版本；拆分合并历史
+B07 关联与质量追溯 — 需求到部署关联；正反向追溯；断点与依据查看
+B08 测试设计与验证 — 规则驱动测试；复用测试资产；关联实际执行
+B09 变更影响与回归 — 比较版本差异；定位过期依据；推荐复核复验
+B10 质量缺口与协同处置 — 缺失陈旧冲突失败；责任与补证动作；接受或验证关闭
+B11 质量态势与交付证明 — 功能版本部署视图；覆盖与剩余风险；历史与证据导出
+Draw a compact clearly labelled main collaboration path B05 → B06 → B07 → B08, then a short feedback relationship between B09 and B08 and between B10 and B08; B11 aggregates quality records, use a shared bus label “追溯 + 验证 + 处置记录” instead of many crossed arrows. Do not imply a mandatory workflow. Put small note below capability group “各能力可独立进入；新增需求及时登记和关联”.
+L3 “管理对象” four cards:
+B12 业务功能与意图 — 功能 / 规则 / 责任
+B13 设计与实现资产 — 设计 / 代码 / API / 配置
+B14 测试与执行记录 — TestSpec / 实际执行 / 结果
+B15 部署与演化证据 — 部署上下文 / 变更 / 历史
+L4 “贯穿全图的治理” four cards:
+B16 角色与访问范围 — 业务 / 研发 / 测试 / 交付
+B17 人工审批与版本 — 明确授权 / 保留修订
+B18 缺口与风险处置 — 分类 / 责任 / 接受理由
+B19 证据保留与审计 — 持久化 / 来源 / 操作历史
+Layer-to-layer connections are FEW broad upward supporting arrows labelled “支撑”, “管理”, “约束”; show governance supporting all capabilities via a vertical side rail, not a process pipeline.
+Footer: “业务能力框架 ≠ 当前交付完成状态 | 节点编号对应正文释义 | 不代表自动合并或部署门禁”.
+Every label must be legible, no clipped text, no tiny legends, no meaningless server icons, no generic Backend/Database legend. Use the specified Chinese content; keep descriptions within their own cards.
+
+CORRECTION PROMPT
+
+Edit the supplied Traqen business architecture image, preserving the entire visual layout, all 19 numbered nodes B01-B19, clear Chinese typography and layer bands. Fix ONLY semantic connector issues: remove ALL dashed lines between the seven business-capability cards. In particular remove the unintended B11-to-B08 arrow and the long B08-to-B09 dashed line. Keep only B05→B06→B07→B08 as solid main collaboration arrows. Keep the shared record bus and its short arrows into B09/B10/B11. In the small caption immediately below that bus include two readable lines: “变更确定复验范围；处置推动补证与复验” and “各能力可独立进入；新增需求及时登记和关联”. This expresses feedback without visually implying B11 governs test execution. Change the upward arrow between L3 管理对象 and L2 核心业务能力 label from “管理” to “支撑”. Keep L4→L3 label “约束”. On the far right gold governance rail replace doubleheaded arrows with plain bracket connectors (no arrowheads); it is crosscutting scope, not bidirectional data flow. Do not alter the substantive meaning or text in any node. Keep the title, footer, all IDs, and very legible simplified Chinese. No cropping.

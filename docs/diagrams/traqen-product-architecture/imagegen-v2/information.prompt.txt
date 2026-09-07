@@ -1,0 +1,41 @@
+INITIAL GENERATION PROMPT
+
+Generate an original whole-page professional enterprise information architecture diagram. Use supplied image ONLY as a style anchor: clean white/off-white background, navy Chinese heading, horizontal colored layer bands, readable simplified Chinese sans serif, teal/purple/gold, crisp flat forms. Landscape 3:2, high resolution. Title “Traqen 信息架构 · 分层详图”. Subtitle “V2 对比稿 | 稳定业务身份、权威分离、版本化证据”. Exactly 18 uniquely numbered nodes I01–I18, all legible. Do NOT copy business nodes. Do NOT invent opaque technical icons or unused legends.
+The canvas has five horizontal bands in the main area, with a narrow RIGHT VERTICAL CROSSCUTTING RAIL for I16-I18.
+L1 “身份与业务组织”:
+I01 Workspace — 所属工作区 / 访问边界
+I02 Feature — 稳定业务身份 / 名称不作身份
+I03 FeatureVersion — 业务功能版本 / 拆分合并谱系
+Solid arrows I01→I02 labelled “归属”, I02→I03 labelled “版本”.
+L2 “来源与确定性观察”:
+I04 SourceBundle — 不可变来源包 / Manifest / Receipt
+I05 Inventory 与 CoverageGap — 材料清单 / 排除与缺失 / 当前覆盖
+I06 Fact 与 Derivation — 技术观察 / 提取器版本 / 证据引用
+Solid arrows I04→I05 labelled “清点”, I04→I06 labelled “提取” should route in separate corridor if possible; if hard, only show I04→I06 and put “清单与 Gap 随来源继承” as layer note. NO arrow indicating I05 is required transformation before Fact.
+L3 “语义候选与业务权威”:
+I07 Candidate — 语义假设 / 证据范围 / 不确定性
+I08 Decision — 确认人 / 范围 / 理由 / 审阅结果
+I09 Claim — 已批准主张 / 意图与实现行为分型
+Only solid horizontal arrows I07→I08 “审阅” and I08→I09 “批准发布”.
+L4 “验证规格与真实执行”:
+I10 TestSpec — 验证要求 / 关联规则 / 测试规格版本
+I11 TestExecution — 真实运行 / 版本与环境 / 断言结果
+I12 Evidence — 运行观察 / 内容引用 / 验证依据
+Only horizontal arrows I10→I11 “执行” and I11→I12 “产出”.
+L5 “追溯投影与持续治理”:
+I13 追溯与双树投影 — 业务树 / API 树 / 依据路径
+I14 ChangeSet 与失效 — 版本差异 / 受影响关系 / 复核范围
+I15 质量缺口与处置记录 — 缺失陈旧冲突失败 / 责任与结果
+Mark L5 “从同一模型计算或关联；不是另一份业务真相”.
+RIGHT RAIL heading “贯穿各层的上下文”, with three numbered compact cards:
+I16 运行与配置版本 — 提取器 / Agent / 固定 Run
+I17 策略与适用范围 — 权限 / 来源范围 / 规则范围
+I18 历史与审计 — 新修订 / 保留旧依据 / 操作来源
+Use plain brackets, NO arrows, from this rail spanning all five layers.
+Below the five layers, a well-designed full-width relationship strip titled “关键跨层关系” with three readable exact lines:
+“I03 绑定业务记录；I04 → I06 → I07；I06 支撑 I09”
+“I09 → I10；I12 验证 I09；I13 汇合事实、决策和执行”
+“I14 判定过期范围；I15 关联缺口、责任与处置”
+Do NOT draw extra cross-layer arrows all over the sheet. The relationship strip is deliberate and readable, not tiny footnote.
+Footer: “观察 ≠ 业务授权 ≠ 符合性 ≠ 实际验证 | 测试源码 ≠ TestSpec ≠ TestExecution | 编号对应正文释义”.
+All nodes represent logical records, not physical tables or independent databases. All words large and readable; no missing IDs or duplicate IDs. Retain distinction that only approved decisions publish Claim, actual evidence verifies but does not grant authority.
