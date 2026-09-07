@@ -1,0 +1,1 @@
+Edit this architecture diagram with ONLY ONE text replacement. In node S02, erase the corrupted Chinese label beneath S02 and write the English words 'Source Truth' clearly. Keep S02 identifier. Leave every other label, edge, box, and pixel layout unchanged. Do not put Chinese characters in the S02 label.

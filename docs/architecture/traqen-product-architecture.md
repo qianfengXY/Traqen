@@ -14,7 +14,11 @@ updated: 2026-09-07
 
 The architecture comprises **seven business capabilities, one Workspace governance boundary, one versioned evidence model, and a quality loop connecting knowledge, baselines, verification, change, and delivery.**
 
-This document remains the entry point for ongoing architecture updates. The four original diagrams are generated with [tt-a1i/archify](https://github.com/tt-a1i/archify) and embedded in their respective sections. Each retains an interactive HTML, vector export, and editable JSON source. The shared figures use Chinese labels; this English text defines the same responsibilities. Interactive versions support focus, zoom, light/dark themes, and guided views. Diagrams are derived from this document. The business and information views reuse Archify color categories for capabilities and information objects; actual deployment is defined by the technical view.
+This document remains the entry point for ongoing architecture updates.
+
+**Current reading entry:** [V3 · business, system, application, data and deployment](#architecture-v3), with nine image-generation figures and explanations of every node, interface and critical runtime mechanism. Sections 1–8 retain the original figures and text for comparison; section 9 is the current interpretation.
+
+ The four original diagrams are generated with [tt-a1i/archify](https://github.com/tt-a1i/archify) and embedded in their respective sections. Each retains an interactive HTML, vector export, and editable JSON source. The shared figures use Chinese labels; this English text defines the same responsibilities. Interactive versions support focus, zoom, light/dark themes, and guided views. Diagrams are derived from this document. The business and information views reuse Archify color categories for capabilities and information objects; actual deployment is defined by the technical view.
 
 **V1/V2 comparison:** Each original Archify diagram remains first, immediately followed by a new image-generation layered view and its numbered node glossary. V2 elaborates the existing architecture; it does not establish new permissions, deployments, Feature scope, or acceptance. Layer IDs L1–L5 are local to each view; B/A/I/T IDs identify the nodes explained below. The diagrams use shared Chinese labels, with matching English explanations.
 
@@ -381,3 +385,242 @@ The V1 diagrams use the installed Archify v2.12, type `architecture`, `classic` 
 V2 uses native image-generation and retains its prompts and [generation/verification record](../diagrams/traqen-product-architecture/imagegen-v2/generation-record.json). Its checks cover node labels, layer placement, relationships, legibility, and preserved V1 bytes. V1’s Archify 9/9 checks do not apply to V2 raster images. The earlier omission was treating a component overview as sufficient layering; this iteration adds layer purpose, node decomposition, and explicit handoffs across all four views.
 
 Continue updating this document and its derived diagrams, preserving changes and their authority in the history. New elaboration items must identify affected contracts and validation methods. Approved design, recommendations, and implementation acceptance remain separate statuses.
+
+<a id="architecture-v3"></a>
+
+## 9. V3 · Five architecture views and critical mechanisms
+
+2026-09-07: remodelled at the co-creator's request. Sections 1–8 and their V1/V2 figures remain comparison history; their layers do not establish a complete software architecture. This section describes the same product through business, system, application, data and deployment views, then expands critical components and runtime mechanisms.
+
+**Scope and status:** the product target retains all seven business capabilities. Detailed mechanisms follow confirmed designs. `Design` means a confirmed target contract; `Foundation` means a traceable existing implementation; `Open` means an unresolved design or integration boundary. None means feature acceptance. Modules describe logical ownership, not necessarily independent services. F-numbers identify delivery documents.
+
+| View | Figures and detail | Question answered |
+| --- | --- | --- |
+| Business | B1 capability decomposition; B2 role collaboration | How does the complete business operate and what does each role obtain? |
+| System | S1 boundary and collaboration | How do the environment, major responsibilities and authority boundaries form the solution? |
+| Application | A1 modules; A2 source internals; A3 publication sequence | Which software components collaborate through which contracts, including failures? |
+| Data | D1 logical relationships; D2 evolution | Which records are authoritative and how do identity, versions and trust evolve? |
+| Deployment | P1 runtime topology | Where do software and data run, and which operational conditions remain open? |
+
+The figures use Chinese labels and stable identifiers; the tables below explain the same nodes and contracts in English.
+
+### 9.1 Business architecture: capabilities and collaboration
+
+![B1 Business capability decomposition](../diagrams/traqen-product-architecture/v3/business-capabilities.png)
+
+B1 uses containment, not execution arrows. Its three outer groups organise business responsibilities; they do not introduce organisations or software modules. Legacy reconstruction and timely registration of new intent both feed continuous governance of business functions.
+
+| Node | Sub-capabilities and inspectable output | Value and responsibility |
+| --- | --- | --- |
+| B01 Knowledge reconstruction | Identify functions/rules, locate evidence and competing explanations, retrieve by function; produce scoped knowledge candidates with provenance. | Engineering/architecture and business preserve knowledge for handover. |
+| B02 Business baseline | Confirm purpose, rules, scope and ownership; maintain identity and versions; preserve human decisions. | Product/business owners maintain shared intent. Existing code is not automatically a normative requirement. |
+| B03 Quality traceability | Link intent, design, implementation, configuration, tests and deployment; navigate both directions and expose broken links. | Every role can inspect how requirements are implemented and verified. |
+| B04 Tests and verification | Organise verification requirements, design/reuse tests, associate real executions and assertions. | QA can identify verified rules and unverified scope. |
+| B05 Change and regression | Compare explicit versions, explain impact and unknowns, arrange review/reverification. | Engineering and QA reduce missed change investigations; an empty result is not proof of no impact. |
+| B06 Gap disposition | Assign responsibility for missing/stale/conflicting/failed evidence; supplement, repair or accept risk; verify closure. | Accepted risk remains visible and is not a passing verification result. |
+| B07 Quality and delivery evidence | Aggregate traceability, verification and disposition by function/version/deployment; export evidence and residual risks. | Business, delivery and operations can inspect acceptance evidence; the initial product does not approve releases automatically. |
+
+These are direct outputs and intended value. Cost, efficiency and defect improvements require real-task validation. Authorisation, human confirmation, version history and audit are cross-capability business rules, not four extra functional layers.
+
+![B2 Cross-role business collaboration](../diagrams/traqen-product-architecture/v3/business-collaboration.png)
+
+B2 is a target business responsibility flow, not an implemented automatic pipeline. The lanes represent business/product, engineering/architecture, QA and delivery/operations; the shared disposition area spans roles. Workspace policy determines actual authority. B-identifiers map back to B1; numbered references represent return steps.
+
+| Step | Input, action, result and branches |
+| --- | --- |
+| J01 Register new intent | Product registers goals/rules for J03. The complete new-intent interaction contract remains open. |
+| J02 Reconstruct existing knowledge | Engineering produces candidates and evidence from authorised materials for J03; inference is not a confirmed requirement. |
+| J03 Review and confirm baseline | Authorised approval publishes the baseline; requests for evidence return to J02; rejection retains history without publishing that candidate. |
+| J04 Associate design and implementation | Link the baseline to explicit implementation versions; expose missing or conflicting evidence. |
+| J05 Establish verification scope | Design/reuse tests from rules and implementation relationships; distinguish specifications from executions. |
+| J06 Associate real execution | Ingest results with version, runner, environment, time and assertions; missing results remain unverified. |
+| J07 Inspect gaps and risks | Missing, failed, stale or conflicting evidence enters J08; sufficiently supported items proceed to J09. |
+| J08 Disposition and review | Supplement/repair and return to the relevant activity; authorised risk acceptance may proceed to J09 with residual risk visible. Acceptance is not PASS. |
+| J09 Inspect delivery evidence | Business/delivery inspect evidence and risk for the particular version or deployment; the external release process makes its own decision. |
+| J10 Compare a new change | Select explicit comparison versions, identify impact/unknowns, return to J04 for relationship review and J05 for reverification. Preserve old baselines/results. |
+
+### 9.2 System architecture: boundaries, trust and collaboration
+
+![S1 System boundary and major collaborations](../diagrams/traqen-product-architecture/v3/system-collaboration.png)
+
+S1 uses the paired S04 reference to connect candidate analysis with the local CLI; source IDs inside nodes also express data dependencies. S1 encloses the Traqen product. Internal rectangles are responsibilities, not physical processes. Humans, Git/directory materials, CLIs and execution systems provide different kinds of authority.
+
+| Node | Responsibility, input and output |
+| --- | --- |
+| S01 Workbench and access | Accept operations, version selections and queries; carry identity/Workspace context. The browser is not an independent record authority. |
+| S02 Source truth | Capture, reconcile, confirm and freeze Git/directory inputs; provide QualifiedSourceInput to S03. F001 owns source records and admission. |
+| S03 Deterministic evidence | Produce snapshot-bound Fact, EvidenceLink, Derivation and Gap for S04/S06/S07; do not decide business ownership. |
+| S04 Candidate analysis | Use authorised CLIs over S03's persisted evidence; retain scoped candidates and uncertainty. Candidates do not directly enter the published business tree. |
+| S05 Human governance | Authorised people decide and publish approved business objects/relationships. The full direct human-intent registration contract remains open. |
+| S06 Verification and impact | Associate actual execution and compare versions using facts, claims and execution evidence; provide verification and advisory impact, not automatic merge/deploy actions. |
+| S07 Traceability and quality projections | Derive business/API/trace/impact/quality views from the same versioned records. Full gap collaboration and delivery export remain open. |
+| S08 Execution and capability control | Freeze Run inputs and applied configuration, resolve grants, coordinate execution/recovery. Configuration cannot expand source scope; paused runs do not hot-switch configuration. |
+| S09 Versioned records and content | Persist module-owned facts, candidates, decisions, execution records and source bytes. A shared store does not allow arbitrary cross-module writes. |
+
+S02→S03 is admission; S03→S04 is the evidence-access boundary; S04→S05 separates inference from human authority; execution systems→S06 separate observed execution from static analysis. Projection references never grant raw-repository access. Starting F002 is a separate explicit action after freezing F001.
+
+An external CLI may contact its provider; egress remains constrained by grants/policy. F006 v1 uses allowlisted local CLIs, not the legacy direct-model API path. Initial Runner/CI report formats and complete ingestion experience remain open.
+
+### 9.3 Application architecture: modules, components and runtime
+
+![A1 Application modules and contracts](../diagrams/traqen-product-architecture/v3/application-modules.png)
+
+A1 uses paired H1 ports for HTTP human review through I03 into M04. M03 references I02 from M02; M08 references I06 into M03. These references express contracts, not extra components.
+
+A1 allocates target logical responsibilities M01–M08; they may run within one modular application. Contracts below are logical agreements, not invented HTTP endpoints.
+
+| Module | Owned writes and external contract | Design / implementation foundation |
+| --- | --- | --- |
+| M01 Source management | Sources, capture tasks, manifest, gaps/acceptance, Bundle and Receipt; I01 qualified input. See A2. | F001 Chinese design B §8/§11; legacy source code does not prove completion of the new contract. |
+| M02 Extraction | Fact, Derivation, EvidenceLink and coverage gaps; I02 version-bound evidence reads. | F002; src/scanner/ and src/domain/facts.js. |
+| M03 Candidate analysis | Analysis runs and Candidate; provide candidates and I02 evidence references to M04. | F003; src/analysis/ and src/skills/. |
+| M04 Baseline governance | Receive I03 human review, validate actor/rules, write Decision, Feature/Claim and approved relationships. | governance.js, decision-governance.js, review.js; alignment with the new F003 workflow remains open. |
+| M05 Tests and execution | TestSpec, trusted TestExecution, Evidence and VerificationResult; I04 actual execution ingestion. | test-spec.js, execution-evidence.js, src/runner/; integration formats remain open. |
+| M06 Change and invalidation | I05 consumes baseline/target, facts, claims and execution; produce ChangeSet, impact classification and invalidation evidence. | F004; change-impact.js and invalidation.js. |
+| M07 Queries and projections | Compose read contracts into business/API/quality views; graph editing cannot bypass M04. | feature-graph.js, trace-chain.js, product-metrics.js. |
+| M08 Capabilities and execution coordination | Fixed configuration/grants, execution coordination and recovery, CLI adapter calls; no human confirmation on behalf of business owners. | F006; workspace-execution-profile.js and workspace-analysis-job-runner.js foundations. |
+
+| Contract | Input → output | Invariants and failures |
+| --- | --- | --- |
+| I01 Source admission | Workspace/Bundle/Receipt references → QualifiedSourceInput | Recheck permission, integrity and acceptance expiry; inherit complete gaps; reject path/ref/upload sessions. M02 is the only direct consumer. |
+| I02 Evidence access | Persisted extraction-result version and bounded query scope → Fact/EvidenceLink/Derivation/complete Gap set | Bind source/extractor versions; controlled document/configuration access, pagination closure and limits remain open between F002/F003. |
+| I03 Human review | Candidate, evidence scope and actor → review record / approved objects | Validate grants, versions and references; rejected or insufficient candidates remain; model consensus cannot publish. Exact concurrent-review protocol remains open. |
+| I04 Execution ingestion | Spec reference, runner/environment/snapshot/time and actual results → execution/verification | Validate provenance and outcomes; a test-file reference cannot become an execution. Missing evidence remains unverified/a gap. |
+| I05 Impact query | Explicit baseline/target and evidence revision → paths, classifications and reverification advice | Preserve CONFIRMED/POSSIBLE/UNKNOWN and coverage; empty lists do not prove safety. |
+| I06 Fixed Run context | Applied revision, explicit agent grants and inputs → fixed execution context | Effective Workspace capabilities intersect explicit agent grants. The effective set includes inherited active globals not disabled in the Workspace plus Workspace-local capabilities; global disable/delete limits inherited assets. No paused-run hot switch. |
+
+HTTP entry points authenticate, validate and call use cases; domain modules enforce invariants; storage ports control persistence and PostgreSQL adapters implement it. SourceTruthRepository retains its source ownership rather than disappearing into a generic shared Repository.
+
+![A2 Source-management internals](../diagrams/traqen-product-architecture/v3/source-components.png)
+
+| Component | Input → output and boundary |
+| --- | --- |
+| C01 GitSourceGateway | Authorised Git reference → exact commit/tree/blob; no dirty working tree or repository-controlled execution. |
+| C02 DirectoryIngestGateway | Complete enumeration and file streams → normalised paths and verified bytes; browser enumeration is not a filesystem point-in-time snapshot. |
+| C03 SourcePreflightService | Input/scope/permission/policy → capture-preflight report with reasons; passing does not mean frozen or admissible. Integrity/security blocks cannot be waived. |
+| C04 SnapshotStore | Chunks, bytes and manifests → private preparation, checkpoints and verified blobs; unpublished content is invisible downstream. |
+| C05 CoverageAssembler | Manifest plus item dispositions → Inventory, Gap and reconciliation; every item needs its terminal disposition. |
+| C06 Freeze/publication use case | Confirmed candidate plus valid acceptance → atomic Bundle/Receipt visibility and task result. This is a responsibility name, not a claimed existing class. |
+| C07 SourceTruthAdmission | Published references → current qualified input; recheck permission, integrity and expiry; only M02 consumes it. |
+| C08 ManifestDiffer | Two frozen manifests → file add/modify/delete; report scope changes separately, not business impact. |
+| C09 SourceTruthRepository | Source ownership/access boundary used by C01–C08; not a second data copy. |
+
+M08 coordinates execution/recovery; M01/SourceTruthRepository still owns source task states and checkpoints. M02 starts from I01 plus fixed extraction configuration; I02 is the downstream read contract for already-persisted evidence.
+
+C06 receives an explicit freeze action; C07 receives a separate F002 admission request. Gateways prepare materials; successful freezing never calls F002 automatically.
+
+A2 identifies C01/C02 as the verified-byte inputs to C04, C06 publication as the input read by C07, and two frozen C04 manifests as C08 inputs. P1 expands storage placement.
+
+![A3 Source publication and failure recovery sequence](../diagrams/traqen-product-architecture/v3/source-publication-sequence.png)
+
+Participants are the authorised user/workbench, publication use case, file volume, PostgreSQL and F002 admission caller. The file volume does not join a PostgreSQL transaction; committed publication records govern downstream visibility.
+
+1. Explicit freeze binds the operation, candidate revision and current holder. Repeated requests query the same operation.
+2. Validate manifest/dispositions/gaps/acceptance/integrity, durably persist required bytes, protect references, and privately prewrite preparation indexes in batches.
+3. The final transaction rechecks current permission/policy, absolute acceptance expiry, preparation revision and holder generation, then commits component references, Bundle, Receipt, lineage, operation result and successful task state.
+4. **Bytes durable, transaction failed:** retain protected private preparation for verified reuse; no consumable Receipt exists.
+5. **Transaction committed, response lost:** read the operation result and return the original bundle, not a second publication. Return current eligibility too; do not extend expiry.
+6. A separate explicit F002 start rechecks C07 and obtains I01. Revoked access, damaged bytes or expired acceptance deny new admission while retaining history.
+
+Cancellation is allowed before finalisation; after finalisation begins, query/recover rather than cancel. Request deduplication, identical content and renewal of the same Bundle are distinct identities.
+
+### 9.4 Data architecture: authoritative relationships and evolution
+
+![D1 Logical data relationships](../diagrams/traqen-product-architecture/v3/data-model.png)
+
+The paired R1 ports connect D10 Claim and D11 TestSpec through exact-version many-to-many associations. Solid edges retain their stated reference/governance/evidence meaning; the amber mapping is unresolved, not an implemented foreign key.
+
+D1 combines target concepts with existing storage mappings. Only supported cardinalities are asserted. All records remain Workspace/tenant-scoped; repetitive ownership edges are omitted for readability.
+
+| Node | Meaning, identity and relationships |
+| --- | --- |
+| D01 Workspace | Governance/reference-validation scope. Legacy project is an existing mapping, not permission to silently replace identity. |
+| D02 SourceBundle | F001 immutable source collection: 1–2 components, at most one Git and one directory. Distinct from the four-component execution SnapshotManifest. |
+| D03 Component/Manifest | Immutable Git/directory identity and complete manifest; reusable across bundles. |
+| D04 Receipt/Acceptance | A published bundle has one or more receipts; renewal appends a receipt with exact policy/gaps/acceptances. Expiry is not retention TTL. |
+| D05 Fact/Derivation | Observation with fixed source and extraction provenance/evidence links; revised derivations retain old facts. |
+| D06 Candidate | Scoped inference produced by a run, with evidence references; rejection retains it. No universal one-to-one Claim mapping is assumed. |
+| D07 Decision | Human governance of a specific candidate/claim, actor, scope and rationale; acceptance, rejection, supplementation and replacement differ. |
+| D08 Feature | Stable governed business identity, independent of name, taxonomy or source path; links to versions and claims. |
+| D09 FeatureVersion | Versioned business attributes. The existing Claim foreign key targets Feature, not FeatureVersion. |
+| D10 Claim | Version- and scope-specific assertion; Decision supplies business authority, execution evidence supplies verification. |
+| D11 TestSpec | Verification specification with versioned links to one or more Claims; the relationship is many-to-many. |
+| D12 TestExecution | Actual execution of a TestSpec version with runner/environment/time/snapshot; a spec may have zero or many executions. |
+| D13 Evidence/VerificationResult | Evidence records observations; VerificationResult evaluates the associated Claim as PASS/FAIL/INCONCLUSIVE. Sharing a visual box does not merge entities/tables. |
+| D14 SnapshotManifest | Existing source/build/deployment/runtime context. Its mapping to F001 SourceBundle remains open; no 1:1 assumption. |
+
+| Relationship | Evidence and limitation |
+| --- | --- |
+| Bundle → Component: 1..2 | F001 B, at most one of each input type; components are reusable. |
+| Published Bundle → Receipt: 1..* | Renewal keeps Bundle identity. Receipts can differ in eligibility and backup coverage. |
+| Feature → FeatureVersion / Claim: 0..* | Identity, versions and claims are persisted separately; a UI node is not necessarily one row. |
+| Claim ↔ TestSpec: many-to-many | test_spec_claim references exact spec/claim versions; publication/execution rules apply separately. |
+| TestSpec → TestExecution: 0..* | Do not create placeholder executions when none actually happened. |
+| Candidate → Decision → Claim | Typed governance, not unconditional generation or an invented universal 1:1 lifecycle. |
+
+M01 owns source records/content admission; M02 extracted facts; M03 analysis runs/candidates; M04 human governance; M05 specifications/execution/verification; M06 comparisons/invalidation; M07 only projections. PostgreSQL holds transactional records, the dedicated volume holds F001 bytes, and indexes can be rebuilt. The canonical graph is a shared logical model, not a new graph-database commitment.
+
+![D2 Independent evolution of versions, eligibility and verification](../diagrams/traqen-product-architecture/v3/data-evolution.png)
+
+| Evolution track | Changes and retention |
+| --- | --- |
+| E01 Frozen content / current admission | Bundle B remains unchanged; expired R1 denies new admission; explicit re-acceptance issues R2 and preserves R1. Renewal cannot waive security/integrity blocks. |
+| E02 Business identity / human authority | Feature F remains stable; business changes create new versions/claims and decisions. Code changes or model votes cannot silently rewrite intent. |
+| E03 Implementation / verification / freshness | New snapshots require affected mappings/verification to be reviewed; preserve old executions in their original context and create actual new executions. No inherited PASS without reverification. |
+| E04 Projections / coverage | Derive views from exact revisions; keep authority, conformance, verification, freshness, conflict and coverage separate. |
+
+History, tasks and audit default to TTL=0. Append versions; prove backup coverage for the exact Bundle/Receipt and complete referenced set. Capacity exhaustion stops new writes with recovery actions, not automatic history deletion. Incomplete recovery denies new admission.
+
+### 9.5 Deployment architecture: runtime topology and failure domains
+
+![P1 Runtime foundations and confirmed single-node source target](../diagrams/traqen-product-architecture/v3/deployment.png)
+
+Paired E1 ports connect P04 CLI egress to P10 under policy; they do not represent database access and are unrelated to the E01 evolution track in D2.
+
+P1 relates existing runtime foundations to the confirmed F001 single-node storage target; it is not evidence of a production deployment. DATABASE_URL selects the database location. Mount the dedicated volume on the node handling F001 bytes; this diagram does not decide whether PostgreSQL is local or remote. Launching a CLI does not establish operating-system file/network isolation.
+
+| Node | Existing foundation or target condition |
+| --- | --- |
+| P01 Browser | React/TypeScript workbench; query authoritative services, never access database/source volume directly. |
+| P02 Web service | Serves the workbench; vinext development uses port 3000. Production web hosting remains open. |
+| P03 Node API/application process | HTTP entry composes application/storage; production-server.js connects PostgreSQL. Worker/JobRunner classes do not prove an independent daemon. |
+| P04 CLI subprocess execution | F006 allowlisted local CLI target with bounded evidence/grants. Actual file/network/credential isolation must be implemented and verified. |
+| P05 PostgreSQL | Transactional records and recovery foundation. Deployment sets protected access; an existing production entry does not prove new F001 migrations exist. |
+| P06 Dedicated persistent volume | Confirmed F001 target: Workspace/run staging, verified blobs and reference protection; never a container temporary layer or repository directory. |
+| P07 Independent-failure-domain backup | Matching database watermark, referenced bytes and closed completion record. Configure target, schedule and key recovery; a same-disk directory is insufficient. |
+| P08 Git/directory source | Controlled read-only Git or browser-uploaded bytes, not arbitrary server access to a user's local path. |
+| P09 External execution system | Actual Runner/CI output; initial formats/network contracts remain open. Traqen does not automatically control its deployment/release. |
+| P10 CLI provider | Possible CLI egress destination, constrained by grants and policy; local CLI does not mean local-only data processing. |
+
+**Development differs from the target:** start-development.js launches Web 3000 and development API 3100 as two child processes. The development API uses memory storage, not persistent acceptance data. The production API supports PostgreSQL; existing application/worker classes do not prove the complete F001 freeze/recovery path. Traqen does not use Clowder AI ports 3003/3004 or production Redis 6399.
+
+An application-node outage interrupts interaction/capture/CLI work; recovery relies on persisted tasks, not browser survival. Database unavailability or volume corruption blocks publication/admission. Disaster recovery restores one complete successful backup set and validates references before analysis resumes. An earlier restored watermark must be visible rather than claiming later data survived.
+
+### 9.6 Cross-view traceability and open contracts
+
+| Business activity | System / application owner | Authoritative records | Deployment and validation |
+| --- | --- | --- | --- |
+| B01 Reconstruction | S02–S04 / M01–M03 | Bundle, Receipt, Fact, Candidate | P03/P04/P05/P06: admission, controlled reads, visible unknowns. |
+| B02 Baseline | S05 / M04 | Feature, Claim, Decision | P03/P05: authorisation, versions, no publication on rejection/supplementation. |
+| B03 Traceability | S03/S05/S07 / M02/M04/M07 | Typed version-bound relationships | P03/P05: evidence navigation, no independent projection truth. |
+| B04 Verification | S06 / M05 | TestSpec, TestExecution, Evidence | P09→P03/P05: no execution record without actual execution. |
+| B05 Regression | S06 / M06 | ChangeSet and invalidation/impact | P03/P05: incomplete coverage preserves UNKNOWN. |
+| B06/B07 Disposition/delivery | S05/S06/S07 / M04–M07 | Gaps, dispositions, verification, projections | Complete collaboration/export contracts remain open; accepted risk is neither PASS nor release approval. |
+
+Explicit unresolved design boundaries:
+
+- Controlled F002→F003 document/configuration evidence reads: version binding, complete pagination, limits and renewed permission checks.
+- Exact mapping/migration between F001 SourceBundle and the existing four-component SnapshotManifest; no identity conflation or presumed 1:1.
+- New F003 workflow alignment with existing governance/candidate records: roles, concurrent revisions, supplementation, rejection and replacement.
+- Complete interactions/data contracts for new-intent registration, gap ownership collaboration and deployment-specific delivery exports.
+- Real CLI isolation, production web hosting, initial execution-result formats, paired backup configuration and recovery exercises.
+
+Exposing these boundaries is part of the architecture description. This redraw does not implement them or silently make new product decisions. Confirmed constraints and proposals remain distinct for subsequent iteration at this same entry.
+
+### 9.7 Sources and expression checks
+
+Sources are the [product vision](../../README.md), [existing business capability map](#1-business-architecture-lifecycle-quality-traceability), [authoritative F001 Chinese design B](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md), [F002](../features/F002-feature-api-traceability.md), [F003](../features/F003-traceability-graph.md), [F004](../features/F004-change-impact-analysis.md), [F006](../features/F006-workspace-capability-settings.md), [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md), and implementation anchors above. F001 B overrides older source wording in Specs.
+
+Notation references: [C4 software structure](https://c4model.com/diagrams/container), [component decomposition](https://c4model.com/diagrams/component), [deployment](https://c4model.com/diagrams/deployment), and [arc42 runtime views](https://docs.arc42.org/section-6/). These explain representation; Traqen nodes/mechanisms come from project sources.
+
+Figures are generated with native image-generation. Prompts and generation records are in the adjacent v3 directory. Image, identifier and link checks validate expression; source access, atomic publication, identity/cardinality and runtime-status semantics require content checks too. Generation success or visual checks are not software acceptance.

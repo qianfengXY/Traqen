@@ -1,0 +1,1 @@
+Change exactly ONE node label: inside S02, replace 原始材料 with 来源真相. Keep the incoming arrow label 原始材料 unchanged. All other pixels/layout/text/arrows remain unchanged. S02 is the source-truth subsystem, not raw material.

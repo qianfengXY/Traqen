@@ -1,0 +1,1 @@
+Make one exact text correction in E03 实现与验证 lane: change the label above the RIGHT-HAND arrow from Snapshot S2 / 受影响映射待复核 to 新 Execution X2 / 新验证结果 from "新快照" to "实际复验". Keep the LEFT-HAND E03 arrow labelled 新快照. A new snapshot alone does not create an execution. Preserve all other text, shapes, positions and arrows exactly.
