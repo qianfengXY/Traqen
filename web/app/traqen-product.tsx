@@ -615,7 +615,7 @@ function ServerOwnedProduct() {
     try {
       const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id, input);
       const catalog = await getEffectiveCapabilities(apiBase, apiToken, workspace.id);
-      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return false;
       setCapabilityDraft(saved);
       setCapabilityDraftConflict(null);
       setEffectiveCatalog(catalog);

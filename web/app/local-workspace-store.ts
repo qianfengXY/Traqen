@@ -116,10 +116,11 @@ export async function loadLocalWorkspaceProject(projectId: string) {
     ]);
     if (!project || !storedSnapshot) return null;
     const normalized = normalizedProject(project);
-    const cachedAnalysisIsCurrent = storedSnapshot.analysis
+    if (storedSnapshot.analysis
       && storedSnapshot.scannerVersion === localWorkspaceScannerVersion
-      && storedSnapshot.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion;
-    if (cachedAnalysisIsCurrent) return { project: normalized, analysis: storedSnapshot.analysis, records: [] } satisfies LocalWorkspaceProjectSnapshot;
+      && storedSnapshot.evidencePolicyVersion === localWorkspaceEvidencePolicyVersion) {
+      return { project: normalized, analysis: storedSnapshot.analysis, records: [] } satisfies LocalWorkspaceProjectSnapshot;
+    }
     const records = storedSnapshot.records ?? await loadLocalWorkspaceProjectRecords(projectId);
     const analysis = analyzeLocalWorkspaceRecords({ workspaceName: project.name, projectId: project.id, records, now: new Date(storedSnapshot.scannedAt) });
     const migration = database.transaction(["snapshots", "snapshotRecords"], "readwrite");

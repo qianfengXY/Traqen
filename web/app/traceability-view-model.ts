@@ -280,7 +280,7 @@ export function buildFeatureDetail(
       graphRevisionId: context.graphRevisionId,
       resolver: graphResolver(context, "edge", identity(segment, "RELATION-MISSING-ID")),
     }));
-  const gaps = [
+  const gaps: Array<Record<string, unknown> & { id: string; status: EvidenceStatus }> = [
     ...records(traceability.gaps).map((gap) => ({ ...gap, id: identity(gap, `${text(gap.chainId, "CHAIN")}:${text(gap.type, "GAP")}`), status: evidenceStatus(gap.type, gap.status) })),
     ...records(traceability.claims).flatMap((claim) => records(record(claim.traceChain).conflicts)).map((conflict) => ({ ...conflict, id: identity(conflict, "CONFLICT"), status: "CONFLICTED" as EvidenceStatus })),
   ];

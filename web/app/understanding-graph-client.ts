@@ -230,7 +230,7 @@ export type ResolvedGraphEvidence = {
   };
 };
 
-function headers(apiToken: string) {
+function headers(apiToken: string): Record<string, string> {
   return apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {};
 }
 
