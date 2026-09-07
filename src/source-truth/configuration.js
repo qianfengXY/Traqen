@@ -15,6 +15,7 @@ import { capturePolicy } from "./policy.js";
 import { GitSourceGateway } from "./git-gateway.js";
 import { sourceTruthAuthenticator } from "./authentication.js";
 import { createSourceTruthHttpHandler } from "./http-handler.js";
+import { gitCacheBudget } from "./git-cache-capacity.js";
 
 const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
 const inside = (parent, child) => { const relative = path.relative(parent, child); return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative)); };
@@ -47,7 +48,7 @@ export async function readSourceTruthConfiguration(filename) {
   requireValue(exactKeys(config, ["version", "storage", "postgres", "members", "origins", "git", "resources", "backup"]) && config.version === 1
     && exactKeys(config.storage, ["root", "keyVersion", "keyFiles", "recoveryKeyFiles", "recoveryOwner", "minFreeBytes"])
     && exactKeys(config.postgres, ["binDirectory"]) && exactKeys(config.git, ["targets", "credentials"])
-    && exactKeys(config.resources, ["maxFileBytes", "maxTotalBytes", "maxEntries", "maxChunkBytes", "maxBatchEntries", "maxWriters", "maxReaders", "maxInflightBytes", "maxPackBytes", "workerConcurrency", "poolConnections"]),
+    && exactKeys(config.resources, ["maxFileBytes", "maxTotalBytes", "maxEntries", "maxChunkBytes", "maxBatchEntries", "maxWriters", "maxReaders", "maxInflightBytes", "maxPackBytes", "maxGitCacheBytes", "workerConcurrency", "poolConnections"]),
   "SOURCE_CONFIGURATION_INVALID", "来源配置版本、字段或资源边界无效；没有关闭安全检查的配置开关", { status: 503 });
   requireValue(Array.isArray(config.origins) && config.origins.length <= 32 && config.origins.every((value) => {
     try { const url = new URL(value); return url.origin === value && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))); } catch { return false; }
@@ -61,6 +62,7 @@ export async function readSourceTruthConfiguration(filename) {
   "SOURCE_CONFIGURATION_INVALID", "备份须明确选择人工触发或已配置周期，不默认设置保留删除期限", { status: 503 });
   sourceTruthAuthenticator(config.members); // Validate before opening any service.
   capturePolicy({ ...config.resources, gitTargets: config.git.targets });
+  gitCacheBudget(config.storage.root, { maxCacheBytes: config.resources.maxGitCacheBytes, maxPackBytes: config.resources.maxPackBytes, minFreeBytes: config.storage.minFreeBytes });
   return config;
 }
 
@@ -134,6 +136,7 @@ export async function createSourceTruthRuntime({ configuration: config, connecti
     }
     const git = config.git.targets.length ? new GitSourceGateway({ cacheRoot: path.join(storage.root, "git"), targets: config.git.targets,
       maxFileBytes: Number(policy.maxFileBytes), maxEntries: policy.maxEntries, maxPackBytes: config.resources.maxPackBytes,
+      maxCacheBytes: config.resources.maxGitCacheBytes, minFreeBytes: config.storage.minFreeBytes,
       requireProtectedVolume: true, forbiddenRoots: storage.forbiddenRoots,
       credentialProvider: async (id, origin) => {
         const value = credentials.get(id);

@@ -4,10 +4,24 @@ import test from "node:test";
 import { GitSourceGateway } from "../src/source-truth/git-gateway.js";
 import { displayPath } from "../src/source-truth/identity.js";
 import { gitFixture } from "./support/source-truth-git-fixture.js";
+import { readdir } from "node:fs/promises";
 
 const collect = async (stream) => { const chunks = []; for await (const chunk of stream) chunks.push(chunk); return Buffer.concat(chunks); };
 const scope = { tenantId: "tenant", workspaceId: "workspace", sourceId: "git-registration" };
 function gateway(fixture) { return new GitSourceGateway({ cacheRoot: path.join(fixture.root, "private-cache"), targets: fixture.targets, maxFileBytes: 1024 * 1024, maxPackBytes: 16 * 1024 * 1024, timeoutMs: 30000 }); }
+
+test("B-09 aggregate Git cache capacity blocks new capture without removing readable old objects", async (t) => {
+  const fixture = await gitFixture(t);
+  const original = gateway(fixture);
+  const a = await original.capture(scope, { url: fixture.url, ref: "main", root: null });
+  const rows = []; for await (const row of original.entries(a)) rows.push(row);
+  const before = await readdir(original.config.cacheRoot);
+  const limited = new GitSourceGateway({ ...original.config, maxCacheBytes: "1" });
+  await assert.rejects(limited.capture({ ...scope, sourceId: "another-registration" }, { url: fixture.url, ref: fixture.commitA, root: null }),
+    { code: "SOURCE_CAPACITY_EXHAUSTED", status: 507 });
+  assert.deepEqual(await readdir(original.config.cacheRoot), before, "denied captures do not allocate more source directories");
+  assert.equal((await collect(limited.readBlob(a, rows[0]))).toString(), "fixture version A\n", "capacity exhaustion never disables historical reads");
+});
 
 test("B-01/02/07 HTTPS capture locks commit objects and replays them after the ref moves", async (t) => {
   const fixture = await gitFixture(t);

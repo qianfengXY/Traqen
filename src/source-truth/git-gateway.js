@@ -7,6 +7,7 @@ import { resolveGitTarget, validateGitRef } from "./git-target.js";
 import { GitProcess } from "./git-process.js";
 import { verifiedGitBatch } from "./git-batch.js";
 import { managedStoragePath, verifyProtectedVolume } from "./volume-protection.js";
+import { gitCacheBudget } from "./git-cache-capacity.js";
 
 const oidPattern = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 async function directory(location) {
@@ -19,6 +20,7 @@ export class GitSourceGateway {
   constructor(configuration) {
     this.config = configuration;
     this.process = new GitProcess(configuration);
+    gitCacheBudget(configuration.cacheRoot, configuration); // Reject invalid deployment limits before any work.
     this.maxFileBytes = configuration.maxFileBytes ?? 1024 * 1024 * 1024;
     this.maxEntries = configuration.maxEntries ?? 200000;
     this.locks = new Set();
@@ -73,16 +75,14 @@ export class GitSourceGateway {
       }
       const objectFormat = wanted.length === 64 ? "sha256" : "sha1";
       const snapshot = { cacheKey, objectFormat, commit: null, tree: null, root: input.root };
-      await directory(this.config.cacheRoot);
-      await directory(path.dirname(this.location(snapshot)));
-      await directory(this.location(snapshot));
       const cwd = this.location(snapshot);
-      await this.process.run(["init", "--bare", "--template=", `--object-format=${objectFormat}`, "."], { cwd, signal });
+      const cacheBudget = gitCacheBudget(this.config.cacheRoot, this.config);
+      await this.process.run(["init", "--bare", "--template=", `--object-format=${objectFormat}`, "."], { cwd, signal, cacheBudget });
       // Re-resolve and pin for this actual connection; never rely on an earlier
       // DNS answer, redirect, host environment proxy or inherited Git config.
       ({ target, config } = await this.network(input));
       await this.process.run(["fetch", "--no-tags", "--depth=1", "--no-write-fetch-head", "--keep", target.url,
-        `${wanted}:refs/traqen/captures/${wanted}`], { cwd, config, signal, maxBytes: 65536 });
+        `${wanted}:refs/traqen/captures/${wanted}`], { cwd, config, signal, maxBytes: 65536, cacheBudget });
       const text = async (args) => (await this.process.run(args, { cwd, signal, maxBytes: 1024 })).toString("ascii").trim();
       snapshot.commit = await text(["rev-parse", "--verify", `${wanted}^{commit}`]);
       requireValue(oidPattern.test(snapshot.commit), "SOURCE_GIT_INTEGRITY_FAILED", "无法确认 Git commit 对象");

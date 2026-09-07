@@ -8,9 +8,24 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isolatedPostgres } from "./support/source-truth-postgres.js";
+import { readSourceTruthConfiguration } from "../src/source-truth/configuration.js";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const credential = "f001-isolated-production-test-token";
+
+test("B-09 private configuration accepts an explicit aggregate Git watermark and rejects malformed values", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "tq-f001-cache-configuration-"));
+  const filename = path.join(root, "source-truth.json");
+  const config = { version: 1, storage: { root: path.join(root, "private"), minFreeBytes: "1048576" },
+    postgres: {}, git: { targets: [] }, origins: [], resources: { maxGitCacheBytes: "4294967296", maxPackBytes: 16777216 },
+    members: [{ actorId: "owner", tenantId: "tenant", tokenDigest: createHash("sha256").update(credential).digest("hex") }] };
+  await writeFile(filename, JSON.stringify(config), { mode: 0o600 });
+  assert.equal((await readSourceTruthConfiguration(filename)).resources.maxGitCacheBytes, "4294967296");
+  for (const value of [0, -1, "unlimited", ["4294967296"]]) {
+    await writeFile(filename, JSON.stringify({ ...config, resources: { ...config.resources, maxGitCacheBytes: value } }));
+    await assert.rejects(readSourceTruthConfiguration(filename), { code: "SOURCE_CONFIGURATION_INVALID" });
+  }
+});
 
 async function production(t, cluster, database, configuration) {
   const uri = new URL(`postgresql://f001_test@localhost/${database.name}`);
