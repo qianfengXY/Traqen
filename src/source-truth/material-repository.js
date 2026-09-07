@@ -6,6 +6,21 @@ const values = (context) => [context.workspaceId, context.runId, context.sourceI
 const manifestRecord = (row) => ({ id: row.id, kind: row.kind, fileCount: String(row.file_count), directoryCount: String(row.directory_count), knownBytes: String(row.known_bytes), shardCount: row.shard_count });
 const sha = (value) => createHash("sha256").update(canonicalEncode(value)).digest("hex");
 
+function validatedDisposition(source, row, input) {
+  requireValue(row, "SOURCE_NOT_FOUND", "文件不在冻结清单中", { status: 404 });
+  const disposition = { disposition: input.disposition, reasonCode: input.reasonCode, digest: input.digest ?? null, sizeBytes: input.sizeBytes ?? null, gaps: input.gaps ?? [] };
+  const metadataOnly = ["DIRECTORY", "GITLINK"].includes(row.entry.kind);
+  requireValue(source.kind !== "DIRECTORY_UPLOAD" || (row.entry.kind === "DIRECTORY" ? input.disposition === "METADATA" : input.disposition === "VERIFIED"), "SOURCE_DIRECTORY_INCOMPLETE", "上传目录中的已选文件不能被跳过或接受为缺失");
+  requireValue(["VERIFIED", "METADATA", "EXTERNAL_GAP"].includes(input.disposition), "SOURCE_INVALID_INPUT", "条目处置无效", { status: 400 });
+  requireValue(typeof input.reasonCode === "string" && input.reasonCode.length > 0, "SOURCE_INVALID_INPUT", "处置必须有规则原因", { status: 400 });
+  if (!metadataOnly) {
+    requireValue(/^[a-f0-9]{64}$/.test(input.digest ?? "") && input.sizeBytes === row.entry.sizeBytes
+      && (source.kind !== "DIRECTORY_UPLOAD" || input.digest === row.entry.expectedContent.digest), "SOURCE_CONTENT_MISMATCH", "内容证据与冻结清单不一致");
+  }
+  requireValue(!row.disposition || canonicalEncode(row.disposition) === canonicalEncode(disposition), "SOURCE_CONTENT_MISMATCH", "终态处置不可改写");
+  return disposition;
+}
+
 export class SourceMaterialRepository {
   constructor(repository, { maxEntries = 200000, maxBatchEntries = 500 } = {}) {
     this.repository = repository;
@@ -160,24 +175,40 @@ export class SourceMaterialRepository {
     return this.repository.withLease(context, (tx) => this.disposeInTransaction(tx, context, input));
   }
 
+  // Capture workers only; not an endpoint for client-claimed verification.
+  // File bytes have already passed the same native/CAS checks as single writes.
+  // Recheck current authority and frozen membership once per bounded atomic batch.
+  async disposeBatch(context, inputs) {
+    requireValue(Array.isArray(inputs) && inputs.length > 0 && inputs.length <= this.maxBatchEntries, "SOURCE_INVALID_INPUT", "处置批次为空或超过限制", { status: 400 });
+    inputs = JSON.parse(canonicalEncode(inputs));
+    const paths = new Set();
+    for (const input of inputs) {
+      decodePathBytes(input.pathBytes);
+      requireValue(!paths.has(input.pathBytes), "SOURCE_DUPLICATE_PATH", "处置批次含重复路径，不能合并或忽略", { status: 409 });
+      paths.add(input.pathBytes);
+    }
+    return this.repository.withLease(context, async (tx) => {
+      const source = await this.source(context, tx);
+      requireValue(source.manifest_id, "SOURCE_ENUMERATION_INCOMPLETE", "先冻结完整清单再校验内容");
+      const { rows } = await tx.query(`SELECT e.entry,e.disposition FROM source_truth_entry e
+        JOIN jsonb_array_elements($4::jsonb) r ON e.path_bytes=decode(translate(r->>'pathBytes','-_','+/') || repeat('=',(4-length(r->>'pathBytes')%4)%4),'base64')
+        WHERE e.workspace_id=$1 AND e.run_id=$2 AND e.source_id=$3 ORDER BY e.path_bytes FOR UPDATE OF e`, [...values(context), JSON.stringify(inputs)]);
+      const found = new Map(rows.map((row) => [row.entry.pathBytes, row]));
+      const records = inputs.map((input) => ({ pathBytes: input.pathBytes, disposition: validatedDisposition(source, found.get(input.pathBytes), input) }));
+      await tx.query(`UPDATE source_truth_entry e SET disposition=r->'disposition' FROM jsonb_array_elements($4::jsonb) r
+        WHERE e.workspace_id=$1 AND e.run_id=$2 AND e.source_id=$3 AND e.disposition IS NULL
+          AND e.path_bytes=decode(translate(r->>'pathBytes','-_','+/') || repeat('=',(4-length(r->>'pathBytes')%4)%4),'base64')`, [...values(context), JSON.stringify(records)]);
+      return records.map((record) => record.disposition);
+    });
+  }
+
   // Internal only: caller must already hold this run's current withLease guard.
   // Allows a durable byte publication and its disposition to share one fence.
   async disposeInTransaction(tx, context, input) {
     const source = await this.source(context, tx);
     requireValue(source.manifest_id, "SOURCE_ENUMERATION_INCOMPLETE", "先冻结完整清单再校验内容");
     const { rows } = await tx.query("SELECT entry,disposition FROM source_truth_entry WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3 AND path_bytes=$4 FOR UPDATE", [...values(context), decodePathBytes(input.pathBytes)]);
-    const row = rows[0];
-    requireValue(row, "SOURCE_NOT_FOUND", "文件不在冻结清单中", { status: 404 });
-    const disposition = { disposition: input.disposition, reasonCode: input.reasonCode, digest: input.digest ?? null, sizeBytes: input.sizeBytes ?? null, gaps: input.gaps ?? [] };
-    const metadataOnly = ["DIRECTORY", "GITLINK"].includes(row.entry.kind);
-    requireValue(source.kind !== "DIRECTORY_UPLOAD" || (row.entry.kind === "DIRECTORY" ? input.disposition === "METADATA" : input.disposition === "VERIFIED"), "SOURCE_DIRECTORY_INCOMPLETE", "上传目录中的已选文件不能被跳过或接受为缺失");
-    requireValue(["VERIFIED", "METADATA", "EXTERNAL_GAP"].includes(input.disposition), "SOURCE_INVALID_INPUT", "条目处置无效", { status: 400 });
-    requireValue(typeof input.reasonCode === "string" && input.reasonCode.length > 0, "SOURCE_INVALID_INPUT", "处置必须有规则原因", { status: 400 });
-    if (!metadataOnly) {
-      requireValue(/^[a-f0-9]{64}$/.test(input.digest ?? "") && input.sizeBytes === row.entry.sizeBytes
-        && (source.kind !== "DIRECTORY_UPLOAD" || input.digest === row.entry.expectedContent.digest), "SOURCE_CONTENT_MISMATCH", "内容证据与冻结清单不一致");
-    }
-    requireValue(!row.disposition || canonicalEncode(row.disposition) === canonicalEncode(disposition), "SOURCE_CONTENT_MISMATCH", "终态处置不可改写");
+    const disposition = validatedDisposition(source, rows[0], input);
     await tx.query("UPDATE source_truth_entry SET disposition=$5 WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3 AND path_bytes=$4 AND disposition IS NULL", [...values(context), decodePathBytes(input.pathBytes), JSON.stringify(disposition)]);
     return disposition;
   }

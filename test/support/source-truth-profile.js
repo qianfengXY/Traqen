@@ -5,6 +5,8 @@ import { SourceCaptureService } from "../../src/source-truth/capture-service.js"
 import { SourceUploadService } from "../../src/source-truth/upload-service.js";
 import { SourceTruthRepository } from "../../src/source-truth/repository.js";
 import { SourceTruthBlobStore } from "../../src/source-truth/blob-store.js";
+import { SourceCaptureRunner } from "../../src/source-truth/capture-runner.js";
+import { SourceMaterialRepository } from "../../src/source-truth/material-repository.js";
 
 // Bounded diagnostic only: normal production services and an isolated fixture.
 // Nested timings overlap. No SQL parameters, source text or credentials logged.
@@ -28,6 +30,10 @@ function wrap(prototype, method, top = false) {
 }
 for (const method of ["uploadChunk", "finishFile", "uploadFile"]) wrap(SourceCaptureService.prototype, method, true);
 wrap(SourceUploadService.prototype, "checkpoint", true);
+wrap(SourceCaptureRunner.prototype, "capture", true);
+wrap(SourceCaptureRunner.prototype, "captureGitFiles");
+wrap(SourceMaterialRepository.prototype, "dispose");
+wrap(SourceMaterialRepository.prototype, "disposeBatch");
 for (const method of ["context", "directoryContext"]) wrap(SourceCaptureService.prototype, method);
 for (const method of ["authorize", "heartbeat", "getRun", "withLease", "withWorkspace"]) wrap(SourceTruthRepository.prototype, method);
 for (const method of ["putBlob", "putChunk", "verifyBlob", "ready"]) wrap(SourceTruthBlobStore.prototype, method);

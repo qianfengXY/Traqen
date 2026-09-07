@@ -41,6 +41,7 @@ test("B-05 incomplete enumeration, duplicate paths and unverified directory entr
   const { m, context } = await materialFixture(t);
   assert.equal((await m.appendEntries(context, [entry("a")]))?.discoveredCount, "1");
   await assert.rejects(m.freezeManifest(context), { code: "SOURCE_ENUMERATION_INCOMPLETE" });
+  await assert.rejects(m.disposeBatch(context, [{ pathBytes: pathBytes("a"), disposition: "VERIFIED", digest: emptyDigest, sizeBytes: "0", reasonCode: "CONTENT_VERIFIED" }]), { code: "SOURCE_ENUMERATION_INCOMPLETE" });
   await assert.rejects(m.appendEntries(context, [entry("a")]), { code: "SOURCE_DUPLICATE_PATH" });
   await assert.rejects(m.closeEnumeration(context, { fileCount: "2", directoryCount: "0" }), { code: "SOURCE_ENUMERATION_INCOMPLETE" });
   await m.closeEnumeration(context, { fileCount: "1", directoryCount: "0" });
@@ -87,4 +88,58 @@ test("B-05 directory membership includes every parent directory instead of silen
   const { m, context } = await materialFixture(t);
   await m.appendEntries(context, [entry("docs/a")]);
   await assert.rejects(m.closeEnumeration(context, { fileCount: "1", directoryCount: "0" }), { code: "SOURCE_ENUMERATION_INCOMPLETE" });
+});
+
+const verified = (name) => ({ pathBytes: pathBytes(name), disposition: "VERIFIED", digest: emptyDigest, sizeBytes: "0", reasonCode: "CONTENT_VERIFIED" });
+async function batchFixture(t) {
+  const f = await materialFixture(t);
+  await f.m.appendEntries(f.context, [entry("a"), entry("b"), entry("订单")]);
+  await f.m.closeEnumeration(f.context, { fileCount: "3", directoryCount: "0" });
+  await f.m.freezeManifest(f.context);
+  return f;
+}
+
+test("B-09 bounded disposition batches are idempotent and invalid members cannot partially commit", async (t) => {
+  const { m, context } = await batchFixture(t);
+  for (const [inputs, code] of [
+    [[], "SOURCE_INVALID_INPUT"],
+    [Array.from({ length: 501 }, () => verified("a")), "SOURCE_INVALID_INPUT"],
+    [[verified("a"), verified("a")], "SOURCE_DUPLICATE_PATH"],
+    [[verified("a"), verified("absent")], "SOURCE_NOT_FOUND"],
+    [[verified("a"), { ...verified("b"), digest: "f".repeat(64) }], "SOURCE_CONTENT_MISMATCH"],
+    [[verified("a"), { ...verified("b"), disposition: "EXTERNAL_GAP" }], "SOURCE_DIRECTORY_INCOMPLETE"],
+  ]) {
+    await assert.rejects(m.disposeBatch(context, inputs), { code });
+    assert.equal((await m.summary(context)).pendingCount, "3");
+  }
+  const batch = [verified("订单"), verified("a")];
+  const first = await m.disposeBatch(context, batch);
+  assert.deepEqual(await m.disposeBatch(context, batch), first);
+  assert.equal((await m.summary(context)).pendingCount, "1");
+  await assert.rejects(m.disposeBatch(context, [verified("b"), { ...verified("a"), reasonCode: "ALTERED" }]), { code: "SOURCE_CONTENT_MISMATCH" });
+  assert.equal((await m.summary(context)).pendingCount, "1");
+});
+
+test("B-05 a database write failure rolls the entire disposition batch back", async (t) => {
+  const { m, context, db } = await batchFixture(t);
+  await db.exec(`CREATE FUNCTION reject_test_disposition() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+    IF NEW.path_bytes=decode('62','hex') THEN RAISE EXCEPTION 'injected disposition failure'; END IF; RETURN NEW; END; $$;
+    CREATE TRIGGER fail_test_disposition BEFORE UPDATE ON source_truth_entry FOR EACH ROW EXECUTE FUNCTION reject_test_disposition();`);
+  await assert.rejects(m.disposeBatch(context, [verified("a"), verified("b")]), /injected disposition failure/);
+  assert.equal((await m.summary(context)).pendingCount, "3");
+  await db.exec("DROP TRIGGER fail_test_disposition ON source_truth_entry");
+  await m.disposeBatch(context, [verified("a"), verified("b")]);
+  assert.equal((await m.summary(context)).pendingCount, "1");
+});
+
+test("B-05 disposition batches cannot bypass current authority, tenant isolation or worker fencing", async (t) => {
+  const { m, context, repository } = await batchFixture(t);
+  await assert.rejects(m.disposeBatch({ ...context, workspaceId: "workspace2" }, [verified("a")]), { code: "SOURCE_STALE_WORKER" });
+  await assert.rejects(m.disposeBatch({ ...context, generation: context.generation + 1 }, [verified("a")]), { code: "SOURCE_STALE_WORKER" });
+  await repository.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "owner", role: "REVOKED" }] });
+  await assert.rejects(m.disposeBatch(context, [verified("a")]), { code: "SOURCE_FORBIDDEN" });
+  await repository.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "owner", role: "MAINTAIN" }] });
+  await repository.cancel(owner, "workspace", context.runId);
+  await assert.rejects(m.disposeBatch(context, [verified("a")]), { code: "SOURCE_STALE_WORKER" });
+  assert.equal((await m.summary(context)).pendingCount, "3");
 });

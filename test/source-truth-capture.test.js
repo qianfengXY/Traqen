@@ -126,3 +126,27 @@ test("B-08 directory close and selection proof commit together", async (t) => {
   const source = (await f.db.query("SELECT enumeration_closed FROM source_truth_run_source WHERE workspace_id='workspace' AND run_id=$1", [run.id])).rows[0];
   assert.equal(source.enumeration_closed, false);
 });
+
+test("B-09 reused directory bytes are all verified but dispositions commit in bounded batches", async (t) => {
+  const f = await fixture(t);
+  await f.capture.save(owner, "workspace", { expectedRevision: 0, input });
+  const run = await f.capture.start(owner, "workspace", { draftRevision: 1 });
+  await f.capture.advance(owner, "workspace", run.id);
+  const rows = Array.from({ length: 205 }, (_, i) => ({ pathBytes: pathBytes(`file-${i}`), kind: "FILE", sizeBytes: "0",
+    expectedContent: { algorithm: "sha256", digest: hash(Buffer.alloc(0)) }, gitMode: null }));
+  await f.capture.enumerateDirectory(owner, "workspace", run.id, "directory", { batchId: "0", entries: rows });
+  await f.capture.closeDirectory(owner, "workspace", run.id, "directory", { fileCount: "205", directoryCount: "0", manifestId: manifestIdentity("DIRECTORY_UPLOAD", rows).id });
+  await f.blobs.putBlob({ tenantId: "tenant", workspaceId: "workspace" }, { digest: rows[0].expectedContent.digest, sizeBytes: "0" }, []);
+  let leases = 0, verified = 0, measuring = false;
+  const lease = f.repository.withLease.bind(f.repository), verify = f.blobs.verifyBlob.bind(f.blobs);
+  const capture = f.capture.runner.capture.bind(f.capture.runner);
+  f.capture.runner.capture = async (...args) => { measuring = true; try { return await capture(...args); } finally { measuring = false; } };
+  f.repository.withLease = (...args) => { if (measuring) leases++; return lease(...args); };
+  f.blobs.verifyBlob = (...args) => { verified++; return verify(...args); };
+  const review = await f.capture.advance(owner, "workspace", run.id);
+  assert.equal(review.status, "REVIEW_REQUIRED");
+  assert.ok(verified >= rows.length, "CAS reuse must still verify every file");
+  assert.ok(leases <= 4, `expected three disposition batches and one transition, observed ${leases}`);
+  assert.equal((await f.materials.summary({ workspaceId: "workspace", runId: run.id, sourceId: "directory" })).pendingCount, "0");
+  assert.deepEqual(await f.repository.listBundles(owner, "workspace"), [], "batching never seals a candidate");
+});

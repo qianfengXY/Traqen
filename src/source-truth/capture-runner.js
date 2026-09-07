@@ -85,8 +85,9 @@ export class SourceCaptureRunner {
       const local = { ...context, sourceId: source.source_id };
       let after = null;
       do {
-        const page = await this.materials.entries(local, { after, limit: 100 });
+        const page = await this.materials.entries(local, { after, limit: Math.min(100, this.materials.maxBatchEntries) });
         let gitBatch = [], batchBytes = 0;
+        const dispositions = [];
         const flushGit = async () => {
           if (gitBatch.length) await this.captureGitFiles(local, source.source, gitBatch, signal);
           gitBatch = []; batchBytes = 0;
@@ -94,17 +95,19 @@ export class SourceCaptureRunner {
         for (const { entry, disposition } of page.items) {
           signal?.throwIfAborted();
           if (disposition) continue;
-          if (entry.kind === "DIRECTORY") await this.materials.dispose(local, { pathBytes: entry.pathBytes, disposition: "METADATA", reasonCode: "DIRECTORY_RECORDED" });
+          if (entry.kind === "DIRECTORY") dispositions.push({ pathBytes: entry.pathBytes, disposition: "METADATA", reasonCode: "DIRECTORY_RECORDED" });
           else if (source.kind === "GIT") {
             const size = Number(entry.sizeBytes ?? "0");
             if (batchBytes + size > 32 * 1024 * 1024) await flushGit();
             gitBatch.push(entry); batchBytes += size;
           }
           else if (await this.blobs.verifyBlob({ workspaceId: context.workspaceId, tenantId: context.tenantId }, { digest: entry.expectedContent.digest, sizeBytes: entry.sizeBytes })) {
-            await this.materials.dispose(local, { pathBytes: entry.pathBytes, disposition: "VERIFIED", reasonCode: "CONTENT_VERIFIED", digest: entry.expectedContent.digest, sizeBytes: entry.sizeBytes });
+            dispositions.push({ pathBytes: entry.pathBytes, disposition: "VERIFIED", reasonCode: "CONTENT_VERIFIED", digest: entry.expectedContent.digest, sizeBytes: entry.sizeBytes });
           }
         }
         await flushGit();
+        signal?.throwIfAborted();
+        if (dispositions.length) await this.materials.disposeBatch(local, dispositions);
         after = page.nextCursor;
       } while (after);
     }
@@ -115,8 +118,9 @@ export class SourceCaptureRunner {
   }
 
   async captureGitFiles(context, source, entries, signal) {
+    const dispositions = [];
     for (const entry of entries.filter((entry) => entry.kind === "GITLINK")) {
-      await this.materials.dispose(context, { pathBytes: entry.pathBytes, disposition: "EXTERNAL_GAP", reasonCode: "SUBMODULE_NOT_RECURSED", gaps: [
+      dispositions.push({ pathBytes: entry.pathBytes, disposition: "EXTERNAL_GAP", reasonCode: "SUBMODULE_NOT_RECURSED", gaps: [
         { ruleCode: "GIT_SUBMODULE_EXTERNAL", severity: "NON_BLOCKING", ruleVersion: "v1", affectedScope: "external-tree", externalReference: entry.expectedContent },
       ] });
     }
@@ -131,7 +135,7 @@ export class SourceCaptureRunner {
         if (prefix.length < 8192) prefix = Buffer.concat([prefix, chunk.subarray(0, 8192 - prefix.length)]);
       }
       const disposition = this.gitDisposition(entry, prefix, hash.digest("hex"));
-      if (await this.blobs.verifyBlob(scope, disposition)) await this.materials.dispose(context, disposition);
+      if (await this.blobs.verifyBlob(scope, disposition)) dispositions.push(disposition);
       else pending.set(entry.pathBytes, { entry, disposition });
     }
     // Missing bytes alone are read into encrypted CAS. Native Git is invoked
@@ -140,8 +144,10 @@ export class SourceCaptureRunner {
       const { disposition } = pending.get(entry.pathBytes);
       if (await this.blobs.verifyBlob(scope, disposition)) { for await (const _ of content) { /* validate native frame */ } }
       else await this.blobs.putBlob(scope, disposition, content);
-      await this.materials.dispose(context, disposition);
+      dispositions.push(disposition);
     }
+    signal?.throwIfAborted();
+    if (dispositions.length) await this.materials.disposeBatch(context, dispositions);
   }
 
   gitDisposition(entry, prefix, digest) {

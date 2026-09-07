@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { verifiedGitBatch } from "../src/source-truth/git-batch.js";
 import { pathBytes } from "../src/source-truth/identity.js";
+import { SourceCaptureRunner } from "../src/source-truth/capture-runner.js";
 
 function frame(bytes, objectFormat = "sha1", name = "file") {
   const oid = createHash(objectFormat).update(`blob ${bytes.length}\0`).update(bytes).digest("hex");
@@ -35,4 +36,28 @@ test("batch cannot advance an unread object and closes the native stream on earl
   assert.equal((await batch.next()).done, false);
   await assert.rejects(batch.next(), { code: "SOURCE_GIT_BATCH_NOT_CONSUMED" });
   assert.equal(closed, true);
+});
+
+test("capture commits no batch metadata if a later native frame is corrupt or cancellation wins", async () => {
+  for (const mode of ["corrupt", "cancel", "complete"]) {
+    const a = frame(Buffer.from("first"), "sha1", "a"), b = frame(Buffer.from("second"), "sha1", "b");
+    const wire = Buffer.concat([a.wire, b.wire]);
+    if (mode === "corrupt") wire[wire.length - 3] ^= 1;
+    const controller = new AbortController(), writes = []; let checks = 0;
+    const runner = new SourceCaptureRunner({
+      git: { readBlobs: (_, entries) => verifiedGitBatch(chunks(entries.length ? wire : Buffer.alloc(0)), entries, "sha1") },
+      blobs: { verifyBlob: async () => { if (++checks === 2 && mode === "cancel") controller.abort(); return true; } },
+      materials: { disposeBatch: async (_, dispositions) => { writes.push(dispositions); } },
+    });
+    const capture = runner.captureGitFiles({ workspaceId: "workspace", tenantId: "tenant" }, { gitSnapshot: {} }, [a.entry, b.entry], controller.signal);
+    if (mode === "complete") {
+      await capture;
+      assert.equal(checks, 2);
+      assert.equal(writes.length, 1);
+      assert.deepEqual(writes[0].map((d) => d.pathBytes), [a.entry.pathBytes, b.entry.pathBytes]);
+    } else {
+      await assert.rejects(capture, mode === "corrupt" ? { code: "SOURCE_GIT_INTEGRITY_FAILED" } : { name: "AbortError" });
+      assert.deepEqual(writes, [], "no partial verified batch, even when earlier CAS bytes were reusable");
+    }
+  }
 });
