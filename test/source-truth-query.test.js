@@ -1,0 +1,35 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { candidateFixture } from "./support/source-truth-candidate-fixture.js";
+import { owner, reader } from "./support/source-truth-database.js";
+import { SourceQueryService } from "../src/source-truth/query-service.js";
+import { SourcePublicationService } from "../src/source-truth/publication-service.js";
+
+test("private review view is readable but has no public receipt; history and Gap pages retain exact evidence", async (t) => {
+  const f = await candidateFixture(t, { git: true, gaps: [{ ruleCode: "GIT_LFS_EXTERNAL", severity: "NON_BLOCKING", ruleVersion: "v1", affectedScope: "external-content", externalReference: { oid: "c".repeat(64) } }] });
+  const candidate = await f.candidates.prepare(f.context);
+  await f.advance("RECONCILING", "REVIEW_REQUIRED");
+  const query = new SourceQueryService(f.repository, f.materials);
+  const detail = await query.run(reader, "workspace", f.context.runId);
+  assert.equal(detail.run.status, "REVIEW_REQUIRED");
+  assert.equal(detail.candidate.id, candidate.id);
+  assert.equal(detail.result, null);
+  assert.equal(detail.sources[0].summary.fileCount, "1");
+  assert.equal(JSON.stringify(detail).includes("gitSnapshot"), false);
+  assert.equal(Object.hasOwn(detail.run, "generation"), false);
+  assert.equal((await query.history(reader, "workspace", "runs", { limit: 1 })).items.length, 1);
+  const gaps = await query.gaps(reader, "workspace", { runId: f.context.runId }, { limit: 1 });
+  assert.equal(gaps.total, "1");
+  assert.equal(gaps.items[0].ruleCode, "GIT_LFS_EXTERNAL");
+  assert.equal(gaps.nextCursor, null);
+  const publication = new SourcePublicationService(f.repository, f.candidates);
+  const confirmation = await publication.confirm(owner, f.context, { candidateId: candidate.id, gapSetId: candidate.gapSetId, reason: "明确接受外部内容缺口", expiresAt: new Date(Date.now() + 3600000).toISOString() });
+  const result = await publication.seal(owner, f.context, { confirmationId: confirmation.id, clientToken: "publish" });
+  const frozen = await query.history(reader, "workspace", "bundles", { limit: 1 });
+  assert.equal(frozen.items[0].id, result.bundle.id);
+  assert.equal(frozen.items[0].latestReceipt.status, "READY_WITH_ACCEPTED_GAPS");
+  assert.equal(frozen.items[0].currentAdmission, "NOT_CHECKED");
+  assert.equal((await query.gaps(reader, "workspace", { bundleId: result.bundle.id })).items[0].gapKey, gaps.items[0].gapKey);
+  await assert.rejects(query.run(reader, "other-workspace", f.context.runId), { code: "SOURCE_FORBIDDEN" });
+  await assert.rejects(query.history(reader, "workspace", "bundles", { cursor: "invalid" }), { code: "SOURCE_INVALID_INPUT" });
+});

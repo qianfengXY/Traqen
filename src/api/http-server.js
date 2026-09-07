@@ -260,6 +260,7 @@ export function createTraceabilityHttpHandler({
   maxBodyBytes = 1024 * 1024,
   corsAllowedOrigins = [],
   apiBearerToken = null,
+  sourceTruthHandler = null,
 }) {
   if (!application) throw new TypeError("application is required");
   if (apiBearerToken !== null && (typeof apiBearerToken !== "string" || apiBearerToken === "")) {
@@ -282,6 +283,13 @@ export function createTraceabilityHttpHandler({
       if (request.method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, { status: "ok" }, id);
         return;
+      }
+
+      // Source Truth has its own server-bound member credential and Workspace
+      // ACL. The legacy shared API token/body actor must not impersonate it.
+      if (/^\/v1\/workspaces\/[^/]+\/source-truth(?:\/|$)/.test(url.pathname)) {
+        if (!sourceTruthHandler) throw new HttpError(503, "SOURCE_TRUTH_NOT_CONFIGURED", "来源快照持久化服务尚未安全配置");
+        if (await sourceTruthHandler(request, response, id)) return;
       }
 
       if (apiBearerToken !== null) {

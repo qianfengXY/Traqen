@@ -178,5 +178,5 @@ export class SourceMaterialRepository {
     });
   }
 
-  async summary(context) { return this.count(context); }
+  async summary(context, tx = this.db) { return this.count(context, tx); }
 }
