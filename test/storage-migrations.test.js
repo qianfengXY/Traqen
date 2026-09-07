@@ -69,6 +69,8 @@ async function migratedDatabase() {
     "0033_f001_capture_inputs",
     "0034_f001_pending_material_index",
     "0035_f001_paired_backup",
+    "0036_f001_renewal_execution",
+    "0037_f001_staging_disposition",
   ]);
   return database;
 }
