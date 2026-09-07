@@ -1,4 +1,4 @@
-import { decodePathBytes, byteCount } from "./identity.js";
+import { decodePathBytes, byteCount, canonicalEncode } from "./identity.js";
 import { requireValue } from "./errors.js";
 
 const locator = (context, encodedPath) => [context.workspaceId, context.runId, context.sourceId, decodePathBytes(encodedPath)];
@@ -20,6 +20,57 @@ export class SourceUploadService {
     const { rows } = await tx.query(`SELECT COALESCE(sum(size_bytes),0)::text AS bytes FROM source_truth_upload_checkpoint
       WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3 AND path_bytes=$4`, locator(context, encodedPath));
     return rows[0].bytes;
+  }
+
+  async reuseRetryPrefix(context) {
+    const previous = await this.repository.withLease(context, async (tx, run) => {
+      if (!run.retryOf) return null;
+      const source = await this.materials.source(context, tx);
+      if (source.kind !== "DIRECTORY_UPLOAD" || source.source.mode === "REUSE") return null;
+      const prior = (await tx.query(`SELECT s.*,r.policy_revision_id,r.status FROM source_truth_run_source s JOIN source_truth_run r
+        ON r.workspace_id=s.workspace_id AND r.id=s.run_id WHERE s.workspace_id=$1 AND s.run_id=$2 AND s.source_id=$3`,
+      [context.workspaceId, run.retryOf, context.sourceId])).rows[0];
+      if (!prior?.manifest_id) return null;
+      requireValue(prior.status === "FAILED_RETRYABLE" && prior.policy_revision_id === run.policyRevisionId && prior.kind === source.kind
+        && canonicalEncode(prior.source.scope) === canonicalEncode(source.source.scope), "SOURCE_RETRY_NOT_ALLOWED", "重试检查点的来源、范围或策略不匹配");
+      requireValue(prior.manifest_id === source.manifest_id, "SOURCE_DIRECTORY_CHANGED", "重选目录与原失败尝试的冻结清单不同；请建立新候选，不能替换原输入续传");
+      return { runId: run.retryOf, manifestId: prior.manifest_id };
+    });
+    if (!previous) return;
+    const scope = { workspaceId: context.workspaceId, tenantId: context.tenantId };
+    let afterPath = null, afterOffset = "0", currentPath = null, expectedOffset = 0n;
+    while (true) {
+      const { rows } = await this.repository.database.query(`SELECT * FROM source_truth_upload_checkpoint
+        WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3 AND ($4::bytea IS NULL OR (path_bytes,offset_bytes)>($4::bytea,$5::numeric))
+        ORDER BY path_bytes,offset_bytes LIMIT 100`, [context.workspaceId, previous.runId, context.sourceId, afterPath, afterOffset]);
+      if (!rows.length) return;
+      for (const row of rows) {
+        const encoded = Buffer.from(row.path_bytes).toString("base64url");
+        if (currentPath !== encoded) { currentPath = encoded; expectedOffset = 0n; }
+        requireValue(BigInt(row.offset_bytes) === expectedOffset, "SOURCE_UPLOAD_INCOMPLETE", "原检查点前缀不连续，不能推定已上传");
+        for await (const _ of this.blobs.readChunk(scope, checkpointRef(row))) { /* revalidate immutable bytes before taking a reference */ }
+        expectedOffset += BigInt(row.size_bytes);
+      }
+      await this.repository.withLease(context, async (tx, run) => {
+        requireValue(run.retryOf === previous.runId && (await this.materials.source(context, tx)).manifest_id === previous.manifestId,
+          "SOURCE_RETRY_NOT_ALLOWED", "原输入绑定已不同，停止复用");
+        let reused = 0, bytes = 0n;
+        for (const row of rows) {
+          const encoded = Buffer.from(row.path_bytes).toString("base64url");
+          // An already restored/copied prefix is idempotent. If a client has
+          // valid differently framed chunks, do not overwrite or create holes.
+          if (await this.prefix(context, encoded, tx) !== String(row.offset_bytes)) continue;
+          await tx.query(`INSERT INTO source_truth_upload_checkpoint
+            (workspace_id,run_id,source_id,path_bytes,offset_bytes,size_bytes,digest,chunk_id,actor_id,verified_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [...locator(context, encoded), String(row.offset_bytes), String(row.size_bytes), row.digest, row.chunk_id, row.actor_id, row.verified_at]);
+          reused++; bytes += BigInt(row.size_bytes);
+        }
+        if (reused) await this.repository.audit(tx, context.workspaceId, context.runId, run.actorId, "UPLOAD_PREFIX_REUSED",
+          { retryOf: previous.runId, sourceId: context.sourceId, manifestId: previous.manifestId, chunkCount: String(reused), verifiedBytes: String(bytes) });
+      });
+      afterPath = rows.at(-1).path_bytes; afterOffset = String(rows.at(-1).offset_bytes);
+    }
   }
 
   async checkpoint(actor, context, encodedPath) {

@@ -70,6 +70,7 @@ export class SourceCaptureRunner {
     for (const source of sources) {
       const local = { ...context, sourceId: source.source_id };
       const manifest = await this.materials.freezeManifest(local);
+      await this.upload.reuseRetryPrefix(local);
       entries += BigInt(manifest.fileCount) + BigInt(manifest.directoryCount); bytes += BigInt(manifest.knownBytes);
     }
     requireValue(entries <= BigInt(this.policy.maxEntries) && bytes <= BigInt(this.policy.maxTotalBytes), "SOURCE_CAPACITY_EXHAUSTED", "组合来源超过平台文件/字节预算，不能降低覆盖后继续", { status: 507 });

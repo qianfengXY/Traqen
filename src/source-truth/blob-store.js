@@ -53,10 +53,12 @@ export class SourceTruthBlobStore {
     this.maxChunkBytes = config.maxChunkBytes ?? 4 * 1024 * 1024;
     this.minFreeBytes = BigInt(config.minFreeBytes ?? "0");
     this.maxWriters = config.maxWriters ?? 4;
+    this.maxReaders = config.maxReaders ?? 16;
+    this.readers = 0;
     this.maxInflightBytes = BigInt(config.maxInflightBytes ?? (this.maxFileBytes + 4096n) * BigInt(this.maxWriters));
     this.reservedBytes = 0n;
     this.writers = 0;
-    this.metrics = { peakWriters: 0, peakReservedBytes: 0n, streamedBytes: 0n };
+    this.metrics = { peakWriters: 0, peakReaders: 0, peakReservedBytes: 0n, streamedBytes: 0n };
     this.requireProtectedVolume = config.requireProtectedVolume ?? false;
     this.volumeProbe = config.volumeProbe;
     this.volumeProtection = null;
@@ -72,7 +74,8 @@ export class SourceTruthBlobStore {
     await safeDirectory(root);
     const store = new SourceTruthBlobStore({ ...config, root: await realpath(root) });
     requireValue(store.maxFileBytes >= 0 && store.maxInflightBytes > 4096n && Number.isSafeInteger(store.maxChunkBytes) && store.maxChunkBytes > 0
-      && Number.isInteger(store.maxWriters) && store.maxWriters > 0 && store.maxWriters <= 64, "SOURCE_STORAGE_NOT_READY", "存储资源限制无效", { status: 503 });
+      && Number.isInteger(store.maxWriters) && store.maxWriters > 0 && store.maxWriters <= 64
+      && Number.isInteger(store.maxReaders) && store.maxReaders > 0 && store.maxReaders <= 128, "SOURCE_STORAGE_NOT_READY", "存储资源限制无效", { status: 503 });
     await store.ready();
     return store;
   }
@@ -195,6 +198,9 @@ export class SourceTruthBlobStore {
   }
 
   async *read(scope, kind, id, ref) {
+    requireValue(this.readers < this.maxReaders, "SOURCE_STORAGE_BUSY", "内容读取并发已满，请等待后重试", { status: 429 });
+    this.readers++;
+    this.metrics.peakReaders = Math.max(this.metrics.peakReaders, this.readers);
     let handle;
     try {
       const location = await this.location(scope, kind, id);
@@ -232,7 +238,7 @@ export class SourceTruthBlobStore {
     } catch (error) {
       if (error instanceof SourceTruthError || error.code === "ENOENT") throw error;
       fail("SOURCE_CONTENT_CORRUPT", "已存内容无法解密或校验，请恢复后重试", { cause: error });
-    } finally { await handle?.close(); }
+    } finally { try { await handle?.close(); } finally { this.readers--; } }
   }
 
   async verifyBlob(scope, ref) {

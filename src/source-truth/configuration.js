@@ -47,7 +47,7 @@ export async function readSourceTruthConfiguration(filename) {
   requireValue(exactKeys(config, ["version", "storage", "postgres", "members", "origins", "git", "resources", "backup"]) && config.version === 1
     && exactKeys(config.storage, ["root", "keyVersion", "keyFiles", "recoveryKeyFiles", "recoveryOwner", "minFreeBytes"])
     && exactKeys(config.postgres, ["binDirectory"]) && exactKeys(config.git, ["targets", "credentials"])
-    && exactKeys(config.resources, ["maxFileBytes", "maxTotalBytes", "maxEntries", "maxChunkBytes", "maxBatchEntries", "maxWriters", "maxInflightBytes", "maxPackBytes", "workerConcurrency", "poolConnections"]),
+    && exactKeys(config.resources, ["maxFileBytes", "maxTotalBytes", "maxEntries", "maxChunkBytes", "maxBatchEntries", "maxWriters", "maxReaders", "maxInflightBytes", "maxPackBytes", "workerConcurrency", "poolConnections"]),
   "SOURCE_CONFIGURATION_INVALID", "来源配置版本、字段或资源边界无效；没有关闭安全检查的配置开关", { status: 503 });
   requireValue(Array.isArray(config.origins) && config.origins.length <= 32 && config.origins.every((value) => {
     try { const url = new URL(value); return url.origin === value && (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))); } catch { return false; }
@@ -124,7 +124,8 @@ export async function createSourceTruthRuntime({ configuration: config, connecti
     const policy = capturePolicy({ ...config.resources, gitTargets: config.git.targets });
     const blobs = await SourceTruthBlobStore.open({ root: path.join(storage.root, "bytes"), forbiddenRoots: storage.forbiddenRoots,
       keyVersion: storage.keyVersion, keys: storage.keys, maxFileBytes: policy.maxFileBytes, maxChunkBytes: policy.maxChunkBytes,
-      maxWriters: config.resources.maxWriters ?? 4, maxInflightBytes: config.resources.maxInflightBytes, minFreeBytes: config.storage.minFreeBytes ?? "0", requireProtectedVolume: true });
+      maxWriters: config.resources.maxWriters ?? 4, maxReaders: config.resources.maxReaders, maxInflightBytes: config.resources.maxInflightBytes,
+      minFreeBytes: config.storage.minFreeBytes ?? "0", requireProtectedVolume: true });
     const credentials = new Map();
     for (const value of config.git.credentials ?? []) {
       requireValue(exactKeys(value, ["id", "origin", "authorizationFile"]) && /^[A-Za-z0-9_-]{1,128}$/.test(value.id) && !credentials.has(value.id)

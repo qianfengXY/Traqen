@@ -128,3 +128,19 @@ test("B-09 a file exceeding the entire write budget requires capacity correction
   await assert.rejects(store.putBlob(scope, { digest: digest("data"), sizeBytes: "4" }, [Buffer.from("data")]), { code: "SOURCE_CAPACITY_EXHAUSTED", status: 507 });
   assert.equal(store.reservedBytes, 0n);
 });
+
+test("B-06 concurrent raw reads are bounded and close their descriptors when the consumer stops", async () => {
+  const { store } = await fixture({ maxReaders: 2 });
+  const content = Buffer.from("data"), ref = { digest: digest(content), sizeBytes: "4" };
+  await store.putBlob(scope, ref, [content]);
+  const first = store.readBlob(scope, ref), second = store.readBlob(scope, ref);
+  try {
+    assert.deepEqual((await first.next()).value, content);
+    assert.deepEqual((await second.next()).value, content);
+    const third = store.readBlob(scope, ref);
+    await assert.rejects(third.next(), { code: "SOURCE_STORAGE_BUSY", status: 429 });
+    assert.equal(store.metrics.peakReaders, 2);
+  } finally { await first.return(); await second.return(); }
+  assert.equal(store.readers, 0);
+  assert.equal(await store.verifyBlob(scope, ref), true);
+});
