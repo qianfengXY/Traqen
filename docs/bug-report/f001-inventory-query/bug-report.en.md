@@ -66,3 +66,11 @@ The unmodified report is archived as [browser-96ae098.json](browser-96ae098.json
 All seven journeys passed: directory capture with refresh/lost-response recovery; a new directory version; pinned Git; combined input preserving two independent components and one Gap; same-bundle renewal preserving the old Receipt; read-only queries without write privileges; and blocked roots without publication or acceptance bypass. The matrix also verifies no automatic downstream analysis. Every earlier failed run remains retained.
 
 Native directory selection and 100k browser scale remain unverified (both report flags are false), as does disaster-recovery deployment acceptance. The general Workspace data warning in screenshots still lacks request/response root-cause evidence and is not closed. Current-topology 100k regression, those browser boundaries, independent review and merge acceptance remain parent responsibilities.
+
+### Current-topology 100k regression at 39d6247
+
+The isolated service pilot at exact commit `39d624725fa1d4ff1474b01266078bedf2c17928` exited 0 within the original 3600-second limit, with managed duration 2201 seconds. All 283 JSON log records were read and checked against the artifact report: five completed phases, zero sampling errors. The [complete report](pilot-100k-39d6247.json) preserves its original fields.
+
+Git 50,000 plus directory 50,000 files produced three distinct frozen bundles. Git B reuses D1; D2 fully re-enumerates but transmits only 36 additional bytes. After sources go offline and database/storage reopen, the first and third versions still replay through complete pagination. One-second process-tree samples peak at 428,654,592 RSS bytes and 541 descriptors, below the unchanged 1 GiB / 1024 budgets. These are sampled assertions, not OS hard quotas. The 216,626 ms offline reopen/replay phase is not a deployment RTO.
+
+Original log: parent directory `/private/tmp/`, child `traqen-f001-current-100k.SnDvXX/pilot.log`. Isolated artifacts/report: parent `/tmp/`, child `tq-f001-pilot-luguCt/`. The older bcb21ac 100k pass and both timeouts remain retained. This adds no runtime changes, repeats no existing repository gate, and does not substitute a service pilot for native-picker, 100k browser or disaster-recovery deployment acceptance.

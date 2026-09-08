@@ -1,0 +1,65 @@
+{
+  "status": "PASSED",
+  "scope": "REAL_POSTGRES_HTTPS_GIT_DIRECTORY_SERVICE_PILOT",
+  "browserVerified": false,
+  "disasterDeploymentVerified": false,
+  "environment": {
+    "node": "v25.6.0",
+    "platform": "darwin",
+    "release": "25.6.0"
+  },
+  "filesPerSource": 50000,
+  "totalFiles": 100000,
+  "phases": [
+    {
+      "name": "generate-files",
+      "milliseconds": 80845
+    },
+    {
+      "name": "capture-and-freeze-A-D1",
+      "milliseconds": 1588569
+    },
+    {
+      "name": "Git-B-reuses-D1",
+      "milliseconds": 154683
+    },
+    {
+      "name": "directory-D2-full-enumeration-incremental-bytes",
+      "milliseconds": 157579
+    },
+    {
+      "name": "source-offline-database-and-storage-reopen",
+      "milliseconds": 216626
+    }
+  ],
+  "initialDirectoryTransferredBytes": "2883540",
+  "initialStorageWrittenBytes": "5497106",
+  "totalDirectoryTransferredBytes": "2883576",
+  "directoryReusedBytes": "3143414",
+  "directoryEnumerationHashedBytes": "6026990",
+  "resources": {
+    "sampleCount": 2205,
+    "peakObservedNodeRssBytes": 276103168,
+    "peakObservedProcessTreeRssBytes": 428654592,
+    "peakObservedProcessTreeFileDescriptors": 541,
+    "samplingErrors": 0,
+    "exitedDuringSample": 213,
+    "intervalMs": 1000
+  },
+  "resourceCounters": {
+    "peakWriters": 1,
+    "peakReaders": 1,
+    "peakReservedBytes": "1052672",
+    "streamedBytes": "5497160",
+    "nativeGitPeakProcesses": 1
+  },
+  "budgets": {
+    "maxTreeRssBytes": 1073741824,
+    "maxTreeFileDescriptors": 1024
+  },
+  "bundleIds": [
+    "be15695e00830de24ec09f4dbde7daee6306a9fd4e3fc5a3f43cf72faba61026",
+    "b31723f1d01529355f7444fa111b80c4472bff7ab8cfc9b93aaefbadf1294add",
+    "37d1734b353bbdbc1f58b1b40d9433424bb696e044fddb5ddf3e67f48cedf664"
+  ]
+}
