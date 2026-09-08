@@ -74,3 +74,23 @@ created: 2026-09-08
 Git 50,000 + 目录 50,000 文件生成三个独立冻结包；Git 更新沿用 D1，D2 完整重新枚举且只新增传输 36 字节；原来源离线、数据库和存储重开后，首版与第三版仍完整分页重放。进程树每秒采样的 RSS 峰值为 428,654,592 字节、文件描述符 541，低于原 1 GiB / 1024 预算；这是采样断言，不是 OS 硬配额。离线重开/重放阶段耗时 216,626 毫秒，不应解释为部署 RTO。
 
 原日志保留在父目录 `/private/tmp/`、子目录 `traqen-f001-current-100k.SnDvXX/pilot.log`；隔离材料及报告在父目录 `/tmp/`、子目录 `tq-f001-pilot-luguCt/`。旧 bcb21ac 十万文件通过及两次超时均保留。本次不修改运行时代码，不重复已有整仓门禁，不将服务试点等同于原生 picker、十万文件浏览器或灾难恢复部署验收。
+
+### Workspace 通用提示的实际请求根因
+
+在 `572c72b5728e30835934a2986af89f1b7cd5cd7d` 新建同一 `browserFixture`，使用隔离 PostgreSQL/HTTPS Git 和合成成员，以 GET 逐一核验 `refreshWorkspaceReads` 的七条请求；诊断进程 PID 69713、API 3197，完成后正常关闭本次服务与数据库，未连接生产或旧预览进程。诊断命令 exit 0 表示完成取证，不表示下面的 400 已修复。
+
+| 请求（Workspace 为 directory） | 实际结果 |
+| --- | --- |
+| `/v1/projects/directory/graph/current` | 404 `CURRENT_GRAPH_NOT_FOUND`；客户端明确转为 null，不产生 rejection。 |
+| `/v1/projects/directory/graph/revisions` | 200，空 revisions。 |
+| `/v1/projects/directory/workspace-analysis-jobs` | 400 `INVALID_REQUEST`，`Legacy understanding runtime is not configured`；requestId `e8275351-2b27-48ec-8d13-c4fc7f875fd7`。 |
+| `/v1/workspaces/directory/review-queue` | 200，空 items。 |
+| `/v1/workspaces/directory/capability-draft` | 200，draft 为 null。 |
+| `/v1/workspaces/directory/capabilities/effective` | 200，空目录和零计数。 |
+| `/v1/workspaces/directory/execution-profile-revisions` | 200，空 profiles。 |
+
+调用链是 `traqen-product.tsx:refreshWorkspaceReads` 汇总 Promise rejection → `server-understanding-client.ts:listServerWorkspaceUnderstandingJobs` → HTTP jobs GET → `TraceabilityApplication.listWorkspaceUnderstandingJobs` 的未配置检查。`browserFixture` 仅传 CORS 配置；`application-bootstrap.js` 要求 `SOURCE_SNAPSHOT_ROOT` 和非空 `TRAQEN_ALLOWED_WORKSPACE_ROOTS` 才创建旧分析运行时。因此已定位为本次 F001 隔离夹具缺少旧分析运行时，而非来源 Bundle/Receipt 读取损坏；不能据此推定真实已配置部署也失败。
+
+保留错误及原截图，不吞错、不伪造空成功响应、不自动启动分析，也不为消除提示扩大 F001 到分析功能。该接入事实已以 FYI 同步 F002 thread，消息 `0001788855692674-000149-ce2c3d2a`，不转移实现责任。这里只关闭“警告原因未知”，不宣称完整应用集成或部署验收通过。
+
+原生 picker 与十万文件浏览器验收仍未完成：电脑控制工具拒绝使用尚未获准的 Google Chrome for Testing，已向 operator 请求该应用权限，未改用其他控制通道绕过。现有 OPFS 和服务试点报告不能替代这两项证据。

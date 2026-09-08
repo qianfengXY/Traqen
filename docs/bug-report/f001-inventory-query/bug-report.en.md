@@ -74,3 +74,23 @@ The isolated service pilot at exact commit `39d624725fa1d4ff1474b01266078bedf2c1
 Git 50,000 plus directory 50,000 files produced three distinct frozen bundles. Git B reuses D1; D2 fully re-enumerates but transmits only 36 additional bytes. After sources go offline and database/storage reopen, the first and third versions still replay through complete pagination. One-second process-tree samples peak at 428,654,592 RSS bytes and 541 descriptors, below the unchanged 1 GiB / 1024 budgets. These are sampled assertions, not OS hard quotas. The 216,626 ms offline reopen/replay phase is not a deployment RTO.
 
 Original log: parent directory `/private/tmp/`, child `traqen-f001-current-100k.SnDvXX/pilot.log`. Isolated artifacts/report: parent `/tmp/`, child `tq-f001-pilot-luguCt/`. The older bcb21ac 100k pass and both timeouts remain retained. This adds no runtime changes, repeats no existing repository gate, and does not substitute a service pilot for native-picker, 100k browser or disaster-recovery deployment acceptance.
+
+### Request-level cause of the general Workspace warning
+
+At `572c72b5728e30835934a2986af89f1b7cd5cd7d`, a fresh instance of the same `browserFixture` used isolated PostgreSQL/HTTPS Git and a synthetic member to GET all seven requests made by `refreshWorkspaceReads`. Diagnostic PID 69713, API port 3197; its own server and database were shut down normally afterward. Neither production nor the older preview process was used. Diagnostic exit 0 means evidence collection completed, not that the following 400 was fixed.
+
+| Request (Workspace directory) | Observed result |
+| --- | --- |
+| `/v1/projects/directory/graph/current` | 404 `CURRENT_GRAPH_NOT_FOUND`; the client explicitly converts this to null, without rejection. |
+| `/v1/projects/directory/graph/revisions` | 200, empty revisions. |
+| `/v1/projects/directory/workspace-analysis-jobs` | 400 `INVALID_REQUEST`, `Legacy understanding runtime is not configured`; requestId `e8275351-2b27-48ec-8d13-c4fc7f875fd7`. |
+| `/v1/workspaces/directory/review-queue` | 200, empty items. |
+| `/v1/workspaces/directory/capability-draft` | 200, null draft. |
+| `/v1/workspaces/directory/capabilities/effective` | 200, empty catalog and zero counts. |
+| `/v1/workspaces/directory/execution-profile-revisions` | 200, empty profiles. |
+
+The call chain is rejection aggregation in `traqen-product.tsx:refreshWorkspaceReads` → `server-understanding-client.ts:listServerWorkspaceUnderstandingJobs` → HTTP jobs GET → the unconfigured-runtime check in `TraceabilityApplication.listWorkspaceUnderstandingJobs`. `browserFixture` supplies only CORS configuration; `application-bootstrap.js` requires both `SOURCE_SNAPSHOT_ROOT` and nonempty `TRAQEN_ALLOWED_WORKSPACE_ROOTS` to create the legacy analysis runtime. This identifies missing legacy analysis configuration in this isolated F001 fixture, not corrupted source Bundle/Receipt reads; it does not establish failure in an actually configured deployment.
+
+The error and original screenshots remain. No error suppression, fabricated empty success, automatic analysis start or expansion of F001 into analysis was added. The integration fact was sent as FYI to the F002 thread, message `0001788855692674-000149-ce2c3d2a`, without transferring implementation responsibility. Only the unknown cause is resolved; full application integration and deployment acceptance are not declared passed.
+
+Native-picker and 100k browser acceptance remain incomplete: computer control denied access to Google Chrome for Testing because the app was not approved. Permission has been requested from the operator; no alternate control channel was used to bypass the denial. Existing OPFS and service-pilot reports cannot substitute for these two checks.
