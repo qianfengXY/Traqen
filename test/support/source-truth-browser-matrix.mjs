@@ -163,7 +163,14 @@ try {
   await page.getByRole("button", { name: "选择本机目录", exact: true }).click();
   await start(); await review(true); const combined = await seal("combined");
   assert.equal(combined.components.length, 2); assert.equal(combined.latestReceipt.status, "READY_WITH_ACCEPTED_GAPS");
-  assert.equal(await page.locator(".st-heading .st-badge").getAttribute("class").then((value) => value.includes("warning")), true);
+  // Completion describes the run; the immutable Receipt describes accepted gaps.
+  const frozenResult = page.locator(".st-current .st-callout").filter({ has: page.getByRole("heading", { name: "冻结包已建立", exact: true }) });
+  assert.equal(await frozenResult.count(), 1);
+  assert.match(await frozenResult.getAttribute("class"), /\bwarning\b/);
+  assert.equal(await frozenResult.getByText("READY_WITH_ACCEPTED_GAPS", { exact: true }).count(), 1);
+  assert.equal(await frozenResult.locator("dd").last().innerText(), combined.latestReceipt.gapCount);
+  assert.notEqual(combined.latestReceipt.gapCount, "0");
+  assert.equal(await page.locator(".st-heading .st-badge").innerText(), "包已冻结 · 当前准入另行核验");
   await page.screenshot({ path: path.join(evidenceDirectory, "combined-frozen-gaps.png"), fullPage: true });
   await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
   await page.getByRole("button", { name: "完整材料清单", exact: true }).click();
@@ -195,6 +202,8 @@ try {
   const newReceipt = (await renewalResponse.json()).receipt;
   assert.notEqual(newReceipt.id, combined.latestReceipt.id); assert.equal(newReceipt.bundleId, combined.id);
   assert.equal(newReceipt.gapSetId, combined.latestReceipt.gapSetId);
+  assert.equal(newReceipt.gapCount, combined.latestReceipt.gapCount);
+  assert.equal(newReceipt.status, "READY_WITH_ACCEPTED_GAPS");
   const receiptHistory = await f.read("combined", `/bundles/${combined.id}/receipts?limit=20`);
   assert.equal(receiptHistory.items.length, 2);
   assert.deepEqual(receiptHistory.items.find((receipt) => receipt.id === combined.latestReceipt.id), oldReceiptHistory.items[0]);
