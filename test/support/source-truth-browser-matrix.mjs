@@ -11,6 +11,7 @@ const [modulePath, executablePath, evidenceDirectory] = process.argv.slice(2);
 assert.ok(modulePath && executablePath && path.isAbsolute(evidenceDirectory), "expected Playwright module, Chromium executable and absolute evidence directory");
 await mkdir(evidenceDirectory, { recursive: true, mode: 0o700 });
 const cleanups = [], results = [], issues = [];
+let diagnosticPage;
 const report = { status: "RUNNING", platform: platform(), release: release(), nativePickerVerified: false, scale100kBrowserVerified: false, results, issues };
 const save = () => writeFile(path.join(evidenceDirectory, "report.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
 try {
@@ -19,6 +20,7 @@ try {
   const browser = await chromium.launch({ executablePath, headless: true });
   cleanups.push(() => browser.close()); report.browser = browser.version(); report.fixtureRoot = f.root;
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  diagnosticPage = page;
   // Force the unconfigured diagnostic state without contacting another local service.
   await page.route("http://127.0.0.1:3100/**", (route) => route.abort());
   const mutations = [], pageErrors = [];
@@ -121,13 +123,26 @@ try {
   assert.ok((await inventoryView.locator("tbody").innerText()).includes("file-104.txt"));
   await inventoryView.getByRole("button", { name: "清除筛选", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 106 项 · 本页 100 项", { exact: true }).waitFor();
-  await inventoryView.getByLabel("处置筛选", { exact: true }).selectOption("METADATA");
+  await inventoryView.getByRole("combobox", { name: "处置筛选", exact: true }).selectOption("METADATA");
   await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 1 项 · 本页 1 项", { exact: true }).waitFor();
   assert.ok((await inventoryView.locator("tbody").innerText()).includes("empty"));
   assert.equal(mutations.length, beforeSearch, "search and clearing filters are reads only");
   await page.screenshot({ path: path.join(evidenceDirectory, "directory-inventory-filter.png"), fullPage: true });
   results.push({ case: "directory", run: paused.id, bundle: d1.id, files: 105, emptyDirectories: 1, refreshResumedSameRun: true, responseLossRecoveredOneReceipt: lost, inventoryPages: [100, 6], mobileCurrentVisible: true });
+  await save();
+
+  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(1);
+  assert.equal(await page.getByRole("combobox", { name: "版本基线", exact: true }).inputValue(), d1.id);
+  await page.getByRole("combobox", { name: "本版处理", exact: true }).selectOption("UPDATE");
+  await picker("directory-v1", 105, 2);
+  await page.getByRole("button", { name: /^(选择本机目录|重新选择目录)$/ }).click();
+  await start(); await review(); const d2 = await seal("directory");
+  assert.notEqual(d2.id, d1.id); assert.equal(d2.counts.fileCount, "105");
+  assert.equal((await f.read("directory", "/history/bundles?limit=50")).items.length, 2);
+  const prior = await f.read("directory", `/bundles/${d1.id}`);
+  assert.deepEqual(prior, d1, "new directory capture must not rewrite its selected historical baseline");
+  results.push({ case: "directory-new-version", from: d1.id, to: d2.id, fullFiles: 105, priorUnchanged: true }); await save();
 
   await connect("git"); await station(1);
   await page.getByRole("checkbox", { name: "Git 仓库", exact: true }).check();
@@ -137,6 +152,7 @@ try {
   assert.equal(g1.components.length, 1); assert.equal(g1.components[0].kind, "GIT");
   assert.equal(g1.components[0].nativeIdentity.commit, f.source.commitA);
   results.push({ case: "git", bundle: g1.id, commit: f.source.commitA, status: g1.latestReceipt.status });
+  await save();
 
   await connect("combined"); await station(1);
   await page.getByRole("checkbox", { name: "Git 仓库", exact: true }).check();
@@ -155,13 +171,51 @@ try {
   await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 2 项 · 本页 2 项", { exact: true }).waitFor();
   for (const component of combined.components) {
-    await inventoryView.getByLabel("组件筛选", { exact: true }).selectOption(component.id);
+    await inventoryView.getByRole("combobox", { name: "组件筛选", exact: true }).selectOption(component.id);
     await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
     await inventoryView.getByText("当前筛选匹配 1 项 · 本页 1 项", { exact: true }).waitFor();
     assert.ok((await inventoryView.locator("tbody").innerText()).includes(component.kind));
   }
   await page.screenshot({ path: path.join(evidenceDirectory, "combined-inventory-components.png"), fullPage: true });
   results.push({ case: "combined", bundle: combined.id, status: combined.latestReceipt.status, gapCount: combined.latestReceipt.gapCount, independentComponents: 2 });
+  await save();
+
+  await page.getByRole("button", { name: "凭据与准入", exact: true }).click();
+  const oldReceiptHistory = await f.read("combined", `/bundles/${combined.id}/receipts?limit=20`);
+  assert.equal(oldReceiptHistory.items.length, 1);
+  await page.locator(".st-renewal summary").click();
+  const renewalButton = page.getByRole("button", { name: "确认并签发新 Receipt", exact: true });
+  assert.equal(await renewalButton.isDisabled(), true);
+  await page.getByLabel("重新接受的理由", { exact: true }).fill("同包保留全部缺口，浏览器显式重新接受");
+  const expiry = new Date(Date.now() + 7200000);
+  await page.getByLabel("新的绝对失效时间（浏览器本地时间）", { exact: true }).fill(new Date(expiry.getTime() - expiry.getTimezoneOffset() * 60000).toISOString().slice(0, 16));
+  await page.getByRole("checkbox", { name: /^我重新接受该包完整的/ }).check();
+  const issued = page.waitForResponse((response) => response.url().endsWith("/renewals") && response.request().method() === "POST");
+  await renewalButton.click(); const renewalResponse = await issued; assert.equal(renewalResponse.status(), 200);
+  const newReceipt = (await renewalResponse.json()).receipt;
+  assert.notEqual(newReceipt.id, combined.latestReceipt.id); assert.equal(newReceipt.bundleId, combined.id);
+  assert.equal(newReceipt.gapSetId, combined.latestReceipt.gapSetId);
+  const receiptHistory = await f.read("combined", `/bundles/${combined.id}/receipts?limit=20`);
+  assert.equal(receiptHistory.items.length, 2);
+  assert.deepEqual(receiptHistory.items.find((receipt) => receipt.id === combined.latestReceipt.id), oldReceiptHistory.items[0]);
+  assert.equal((await f.read("combined", "/history/bundles?limit=50")).items.length, 1);
+  results.push({ case: "same-bundle-renewal", bundle: combined.id, oldReceipt: combined.latestReceipt.id, newReceipt: newReceipt.id, oldReceiptUnchanged: true }); await save();
+
+  await page.locator(".st-auth summary").click();
+  await page.getByLabel("成员访问令牌（仅本页内存）", { exact: true }).fill(f.readerToken);
+  const beforeReader = mutations.length;
+  await page.getByRole("button", { name: "验证并连接", exact: true }).click();
+  await page.getByText("当前成员为只读权限，可查看历史与证据，不能创建任务、上传、确认或冻结。", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "创建新版本", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).count(), 0);
+  await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
+  assert.equal(await page.locator(".st-renewal").count(), 0);
+  await page.getByRole("button", { name: "完整材料清单", exact: true }).click();
+  await inventoryView.getByLabel("路径搜索", { exact: true }).fill("README.md");
+  await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
+  await inventoryView.getByText("当前筛选匹配 2 项 · 本页 2 项", { exact: true }).waitFor();
+  assert.equal(mutations.length, beforeReader);
+  results.push({ case: "read-only", canSearchHistory: true, noMutation: true, cannotRenewOrCreate: true }); await save();
 
   await connect("blocked"); await station(1);
   await page.getByRole("checkbox", { name: "Git 仓库", exact: true }).check();
@@ -182,6 +236,12 @@ try {
   if (issues.length) process.exitCode = 1;
 } catch (error) {
   report.status = "FAILED"; report.failure = { message: error.message, stack: error.stack };
+  if (diagnosticPage && !diagnosticPage.isClosed()) {
+    try {
+      report.page = { url: diagnosticPage.url(), accessibility: await diagnosticPage.locator("body").ariaSnapshot() };
+      await diagnosticPage.screenshot({ path: path.join(evidenceDirectory, "failure.png"), fullPage: true });
+    } catch (diagnosticError) { report.diagnosticError = diagnosticError.message; }
+  }
   await save(); console.error(JSON.stringify(report)); process.exitCode = 1;
 } finally {
   for (const cleanup of cleanups.reverse()) await cleanup();
