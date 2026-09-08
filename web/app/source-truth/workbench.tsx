@@ -196,7 +196,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
           {[4, 5, 6].includes(journey.selected) && <>
             {journey.selected === 4 && <p className="st-callout warning">目录需完整枚举、逐文件读取哈希。关页或授权中断时保留原任务；不能把尚未读到的文件计为删除。</p>}
             {progress && <div className="st-callout" role="status"><strong>{progress.phase === "LOCAL_SCAN" ? "本机完整核对" : progress.phase === "MANIFEST" ? "提交预期清单" : "服务端已验证接收"}</strong><p>{progress.path}</p><p>{progress.phase === "LOCAL_SCAN" ? `文件 ${progress.fileCount} · 目录 ${progress.directoryCount} · 读取 ${progress.readBytes} 字节` : `已完成文件 ${progress.verifiedFiles} · 本次传输 ${progress.sentBytes} 字节 · 无需重复 ${progress.unnecessaryBytes} 字节`}</p></div>}
-            {detail?.sources.map((source) => <ArtifactTable key={`${run!.id}:${source.sourceId}`} client={client} route={`/runs/${run!.id}/sources/${source.sourceId}/entries`} live={!terminal.has(run!.status)} />)}
+            {detail?.sources.map((source) => <ArtifactTable key={`${run!.id}:${source.sourceId}`} client={client} route={`/runs/${run!.id}/sources/${source.sourceId}/entries`} label={`${source.kind} · ${source.sourceId}`} live={!terminal.has(run!.status)} />)}
           </>}
           {journey.selected === 7 && detail?.candidate && <>
             <GapBrowser key={detail.candidate.id} client={client} route={`/runs/${run!.id}/gaps`} />

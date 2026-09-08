@@ -27,6 +27,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       else if (!queryOnly && !route.endsWith("/cancel")) await services.ensureReady?.();
       const json = (result, status = 200) => sourceJson(response, status, result, id);
       const page = { limit: Number(url.searchParams.get("limit") ?? 100), cursor: url.searchParams.get("cursor") };
+      const inventoryPage = { ...page, query: url.searchParams.get("query"), disposition: url.searchParams.get("disposition"), componentId: url.searchParams.get("componentId") };
       if (action === "GET" && route === "") {
         const draft = await repository.getDraft(actor, workspaceId);
         const active = await repository.withWorkspace(actor, workspaceId, false, (tx) => repository.activeRun(tx, workspaceId));
@@ -58,9 +59,9 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
         const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|gap-history|inventory-history|file-history|receipts)$/.exec(route);
         if (versionMatch && action === "GET") {
           const reference = { bundleId: versionMatch[1], receiptId: url.searchParams.get("receiptId") };
-          if (versionMatch[2] === "inventory") json(await admission.inventory(actor, workspaceId, reference, page));
+          if (versionMatch[2] === "inventory") json(await admission.inventory(actor, workspaceId, reference, inventoryPage));
           else if (versionMatch[2] === "receipts") json(await queries.receipts(actor, workspaceId, reference.bundleId, page));
-          else if (versionMatch[2] === "inventory-history") json(await inspection.inventory(actor, workspaceId, reference, page));
+          else if (versionMatch[2] === "inventory-history") json(await inspection.inventory(actor, workspaceId, reference, inventoryPage));
           else if (versionMatch[2] === "gaps") json(await admission.inheritedGaps(actor, workspaceId, reference, page));
           else if (versionMatch[2] === "gap-history") json(await queries.gaps(actor, workspaceId, { bundleId: reference.bundleId }, page));
           else await sourceBytes(response, (versionMatch[2] === "file-history" ? inspection : admission).readFile(actor, workspaceId, reference, { componentId: url.searchParams.get("componentId"), pathBytes: url.searchParams.get("pathBytes") }), id);
@@ -95,7 +96,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
             requireValue(sourceMatch, "SOURCE_ROUTE_NOT_FOUND", "来源操作不存在", { status: 404 });
             const sourceId = decodeURIComponent(sourceMatch[1]), operation = sourceMatch[2];
             const context = { workspaceId, runId, sourceId };
-            if (operation === "entries" && action === "GET") json(await repository.withWorkspace(actor, workspaceId, false, (tx) => materials.entries(context, { after: page.cursor, limit: page.limit }, tx)));
+            if (operation === "entries" && action === "GET") json(await queries.inventory(actor, workspaceId, runId, sourceId, inventoryPage));
             else if (operation === "checkpoint" && action === "GET") json(await upload.checkpoint(actor, context, url.searchParams.get("pathBytes")));
             else if (operation === "entries" && action === "POST") json(await capture.enumerateDirectory(actor, workspaceId, runId, sourceId, await sourceBody(request)));
             else if (operation === "close" && action === "POST") json(await capture.closeDirectory(actor, workspaceId, runId, sourceId, await sourceBody(request)));

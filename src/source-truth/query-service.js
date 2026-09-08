@@ -2,6 +2,7 @@ import { requireValue, fail } from "./errors.js";
 import { runRecord } from "./repository.js";
 import { publicRun } from "./http-io.js";
 import { confirmationRecord } from "./confirmation-service.js";
+import { inventoryOptions, inventoryResult } from "./inventory-query.js";
 
 function page(input = {}) {
   const limit = input.limit ?? 100;
@@ -24,6 +25,19 @@ const privateCandidate = (row) => row ? { id: row.id, ...row.payload, ...row.cou
 // lease, raw credential or unsealed file content is exposed here.
 export class SourceQueryService {
   constructor(repository, materials) { Object.assign(this, { repository, materials }); }
+  async inventory(actor, workspaceId, runId, sourceId, options) {
+    const selected = inventoryOptions(options, { workspaceId, runId, sourceId });
+    return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
+      const context = await this.materials.readContext({ workspaceId, runId, sourceId }, tx);
+      const from = `FROM source_truth_entry WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3
+        AND position($4::bytea IN path_bytes)>0 AND ($5::text IS NULL OR COALESCE(disposition->>'disposition','PENDING')=$5)`;
+      const parameters = [workspaceId, context.runId, context.sourceId, selected.queryBytes, selected.disposition];
+      const count = (await tx.query(`SELECT count(*)::text AS n ${from}`, parameters)).rows[0].n;
+      const { rows } = await tx.query(`SELECT entry,disposition ${from} AND ($6::bytea IS NULL OR path_bytes>$6)
+        ORDER BY path_bytes LIMIT $7`, [...parameters, selected.after?.path ?? null, selected.limit + 1]);
+      return inventoryResult(rows, selected, count);
+    });
+  }
   async bundleRecord(tx, workspaceId, row) {
     const latest = (await tx.query(`SELECT r.payload,r.issued_at,c.expires_at FROM source_truth_receipt r JOIN source_truth_confirmation c
       ON c.workspace_id=r.workspace_id AND c.id=r.confirmation_id WHERE r.workspace_id=$1 AND r.bundle_id=$2 ORDER BY r.issued_at DESC,r.id DESC LIMIT 1`, [workspaceId, row.id])).rows[0];

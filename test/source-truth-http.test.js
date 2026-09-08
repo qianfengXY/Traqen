@@ -64,6 +64,10 @@ test("B-01/05 HTTP directory journey streams original bytes and publishes only a
   const content = Buffer.from("HTTP 原始材料\r\n");
   const entry = { pathBytes: pathBytes("readme.txt"), kind: "FILE", sizeBytes: String(content.length), expectedContent: { algorithm: "sha256", digest: hash(content) }, gitMode: null };
   assert.equal((await f.call(`${runPath}/sources/docs/entries`, "POST", { batchId: "0", entries: [entry] })).status, 200);
+  const pending = await f.call(`${runPath}/sources/docs/entries?query=readme&disposition=PENDING`, "GET", undefined, readerToken);
+  assert.equal(pending.status, 200); assert.equal(pending.body.matchedCount, "1");
+  assert.equal((await f.call(`${runPath}/sources/docs/entries?query=absent`)).body.matchedCount, "0");
+  assert.equal((await f.call(`${runPath}/sources/docs/entries?disposition=INVALID`)).status, 400);
   assert.equal((await f.call(`${runPath}/sources/docs/close`, "POST", { fileCount: "1", directoryCount: "0", manifestId: manifestIdentity("DIRECTORY_UPLOAD", [entry]).id })).status, 200);
   await f.call(`${runPath}/advance`, "POST", {});
   const query = new URLSearchParams({ pathBytes: entry.pathBytes, offset: "0", sizeBytes: entry.sizeBytes, digest: hash(content) });
@@ -87,6 +91,15 @@ test("B-01/05 HTTP directory journey streams original bytes and publishes only a
   assert.equal(admitted.body.inventoryDigest, published.body.bundle.inventoryId);
   assert.equal(admitted.body.policyRevisionId, f.policy.id);
   assert.equal(admitted.body.components[0].kind, "DIRECTORY_UPLOAD");
+  for (const mode of ["inventory", "inventory-history"]) {
+    const base = `/bundles/${reference.bundleId}/${mode}?receiptId=${reference.receiptId}`;
+    const inventory = await f.call(`${base}&query=readme&disposition=VERIFIED&componentId=${admitted.body.components[0].componentSnapshotId}`, "GET", undefined, readerToken);
+    assert.equal(inventory.status, 200); assert.equal(inventory.body.matchedCount, "1");
+    assert.equal((await f.call(`${base}&query=absent`)).body.matchedCount, "0");
+    assert.equal((await f.call(`${base}&query=%25`)).body.matchedCount, "0", "percent is literal, not a SQL wildcard");
+    assert.equal((await f.call(`${base}&disposition=PENDING`)).body.matchedCount, "0");
+    assert.equal((await f.call(`${base}&componentId=invalid`)).status, 400);
+  }
   assert.equal((await f.call(`${runPath}/result`)).body.receipt.id, reference.receiptId);
   const coverage = await f.call("/backup-coverage", "POST", reference, readerToken);
   assert.equal(coverage.status, 200);

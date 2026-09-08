@@ -1,6 +1,7 @@
 import { canonicalEncode, decodePathBytes, structureDigest } from "./identity.js";
 import { requireValue, fail } from "./errors.js";
 import { assertAcceptance } from "./confirmation-service.js";
+import { inventoryOptions, inventoryResult } from "./inventory-query.js";
 
 function pageOptions({ limit = 100, cursor = null } = {}) {
   requireValue(Number.isInteger(limit) && limit > 0 && limit <= 1000, "SOURCE_INVALID_INPUT", "分页大小必须为 1～1000", { status: 400 });
@@ -58,17 +59,22 @@ export class SourceSnapshotReader {
   }
 
   async inventory(actor, workspaceId, reference, options) {
-    const { limit, after } = pageOptions(options);
+    const selected = inventoryOptions(options, { workspaceId, bundleId: reference?.bundleId ?? null, receiptId: reference?.receiptId ?? null });
+    const { limit, after, queryBytes, disposition, componentId } = selected;
     return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
       await this.records(actor, workspaceId, reference, tx);
-      const { rows } = await tx.query(`SELECT c.id AS component_id,e.entry,e.disposition FROM source_truth_bundle_component b
+      const from = `FROM source_truth_bundle_component b
         JOIN source_truth_component c ON c.workspace_id=b.workspace_id AND c.id=b.component_id
         JOIN source_truth_entry e ON e.workspace_id=c.workspace_id AND e.run_id=c.run_id AND e.source_id=c.source_id
-        WHERE b.workspace_id=$1 AND b.bundle_id=$2 AND ($3::text IS NULL OR c.id>$3 OR (c.id=$3 AND e.path_bytes>$4))
-        ORDER BY c.id,e.path_bytes LIMIT $5`, [workspaceId, reference.bundleId, after?.componentId ?? null, after ? decodePathBytes(after.pathBytes) : null, limit + 1]);
-      const items = rows.slice(0, limit).map((row) => ({ componentId: row.component_id, entry: row.entry, disposition: row.disposition }));
-      const last = items.at(-1);
-      return { items, nextCursor: rows.length > limit ? cursor({ componentId: last.componentId, pathBytes: last.entry.pathBytes }) : null };
+        WHERE b.workspace_id=$1 AND b.bundle_id=$2 AND position($3::bytea IN e.path_bytes)>0
+        AND ($4::text IS NULL OR COALESCE(e.disposition->>'disposition','PENDING')=$4)
+        AND ($5::text IS NULL OR c.id=$5)`;
+      const parameters = [workspaceId, reference.bundleId, queryBytes, disposition, componentId];
+      const count = (await tx.query(`SELECT count(*)::text AS n ${from}`, parameters)).rows[0].n;
+      const { rows } = await tx.query(`SELECT c.id AS component_id,e.entry,e.disposition ${from}
+        AND ($6::text IS NULL OR c.id>$6 OR (c.id=$6 AND e.path_bytes>$7))
+        ORDER BY c.id,e.path_bytes LIMIT $8`, [...parameters, after?.componentId ?? null, after?.path ?? null, limit + 1]);
+      return inventoryResult(rows, selected, count);
     });
   }
 
