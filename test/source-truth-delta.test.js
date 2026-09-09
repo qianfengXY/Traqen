@@ -18,8 +18,8 @@ test("B-03 file-level delta uses complete manifests for additions, changes and d
   };
   const first = await seal(f.context);
   let revision = 1;
-  const next = async (files) => {
-    const source = { sourceId: "registration", kind: "DIRECTORY_UPLOAD", scope: { kind: "UPLOADED_DIRECTORY" } };
+  const next = async (files, sourceId = "registration") => {
+    const source = { sourceId, kind: "DIRECTORY_UPLOAD", scope: { kind: "UPLOADED_DIRECTORY" } };
     await f.repository.saveDraft(owner, "workspace", { expectedRevision: revision++, input: { sources: [source] } });
     const run = await f.repository.startRun(owner, "workspace", { draftRevision: revision, policyRevisionId: "policy-v1" });
     const lease = await f.repository.claimRun("workspace", run.id, { workerId: "w", leaseMs: 60000 });
@@ -54,5 +54,14 @@ test("B-03 file-level delta uses complete manifests for additions, changes and d
   assert.deepEqual(removed.counts, { added: "0", modified: "0", deleted: "1", unchanged: "1" });
   assert.equal(removed.items[0].change, "DELETED");
   assert.equal(removed.items[0].after, null);
+  const fourth = await next([["c", "new registration"]], "another-directory");
+  for (const [sourceId, reason] of [["registration", "SOURCE_REMOVED"], ["another-directory", "SOURCE_ADDED"]]) {
+    const sourceChange = await delta.compare(reader, "workspace", { fromBundleId: third.bundle.id, toBundleId: fourth.bundle.id, sourceId });
+    assert.equal(sourceChange.comparable, false);
+    assert.equal(sourceChange.reason, reason);
+    assert.equal(sourceChange.counts, null, "component removal/addition is not a file deletion/addition count");
+    assert.deepEqual(sourceChange.items, []);
+    assert.equal(sourceChange.nextCursor, null);
+  }
   await assert.rejects(delta.compare(reader, "workspace2", input), { code: "SOURCE_FORBIDDEN" });
 });

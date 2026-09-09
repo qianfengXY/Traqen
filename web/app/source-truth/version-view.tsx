@@ -5,6 +5,7 @@ import { SourceTruthClient } from "./client.ts";
 import { ArtifactTable, GapBrowser, sourcePath } from "./evidence-view.tsx";
 import type { Confirmation, FrozenVersion, Page, Receipt } from "./types.ts";
 import { BackupCoverage, ReceiptHistory } from "./receipt-history.tsx";
+import { deltaSources, selectedDeltaSource } from "./delta.ts";
 
 type Difference = { pathBytes: string; change: string; before: unknown; after: unknown };
 type Delta = Page<Difference> & { comparable: boolean; reason?: string; counts: Record<string, string> | null; countUnit: string };
@@ -18,6 +19,9 @@ export function SourceVersionView({ client, version, versions, writable, onChang
   const [receipt, setReceipt] = useState<Receipt | null>(version.latestReceipt);
   const [tab, setTab] = useState("receipt"), [from, setFrom] = useState(""), [sourceId, setSourceId] = useState(version.components[0]?.sourceId ?? "");
   const [delta, setDelta] = useState<Delta | null>(null);
+  const baseline = versions.find((other) => other.id === from);
+  const comparisonSources = deltaSources(version, baseline);
+  const selectedSourceId = selectedDeltaSource(comparisonSources, sourceId);
   const [renewal, setRenewal] = useState<RenewalState | null>(null), [renewalChecked, setRenewalChecked] = useState(false);
   const alive = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -27,7 +31,8 @@ export function SourceVersionView({ client, version, versions, writable, onChang
     finally { if (alive.current && !client.signal?.aborted) setBusy(false); }
   };
   const compare = (cursor?: string | null) => request(async () => {
-    const params = new URLSearchParams({ fromBundleId: from, toBundleId: version.id, sourceId, limit: "100", ...(cursor ? { cursor } : {}) });
+    if (!baseline || !selectedSourceId) return;
+    const params = new URLSearchParams({ fromBundleId: from, toBundleId: version.id, sourceId: selectedSourceId, limit: "100", ...(cursor ? { cursor } : {}) });
     const value = await client.request<Delta>(`/delta?${params}`);
     if (alive.current && !client.signal?.aborted) setDelta(value);
   });
@@ -73,7 +78,14 @@ export function SourceVersionView({ client, version, versions, writable, onChang
     {tab === "inventory" && (receipt ? <><p className="st-callout">历史材料查看不会获得新的分析准入；接受已过期时仍可在当前读取权限内查看。</p><ArtifactTable key={receipt.id} client={client} route={`/bundles/${version.id}/inventory-history?receiptId=${encodeURIComponent(receipt.id)}`} reference={{ bundleId: version.id, receiptId: receipt.id }} components={version.components} /></> : <p>没有可核对的 Receipt。</p>)}
     {tab === "gaps" && <GapBrowser client={client} route={`/bundles/${version.id}/gap-history`} />}
     {tab === "delta" && <><p>只比较两个完整版本的文件/目录新增、修改与删除，不进行变更影响推理。来源或范围不一致时不会将整个范围误标为删除。</p>
-      <div className="st-actions"><label>从哪个冻结包比较<select disabled={busy} value={from} onChange={(event) => { setFrom(event.target.value); setDelta(null); }}><option value="">选择精确基线</option>{versions.filter((other) => other.id !== version.id).map((other) => <option key={other.id} value={other.id}>{other.id.slice(0, 12)} · {new Date(other.publishedAt).toLocaleString("zh-CN")}</option>)}</select></label><label>来源<select disabled={busy} value={sourceId} onChange={(event) => { setSourceId(event.target.value); setDelta(null); }}>{version.components.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.kind} · {source.sourceId}</option>)}</select></label><button className="button" disabled={busy || !from || !sourceId} onClick={() => void compare()}>比较文件级变化</button></div>
+      <div className="st-actions"><label>从哪个冻结包比较<select disabled={busy} value={from} onChange={(event) => {
+        const nextFrom = event.target.value;
+        setFrom(nextFrom);
+        setSourceId(selectedDeltaSource(deltaSources(version, versions.find((other) => other.id === nextFrom)), selectedSourceId));
+        setDelta(null);
+      }}><option value="">选择精确基线</option>{versions.filter((other) => other.id !== version.id).map((other) => <option key={other.id} value={other.id}>{other.id.slice(0, 12)} · {new Date(other.publishedAt).toLocaleString("zh-CN")}</option>)}</select></label>
+        <label>来源<select disabled={busy} value={selectedSourceId} onChange={(event) => { setSourceId(event.target.value); setDelta(null); }}>{comparisonSources.map((source) => <option key={source.sourceId} value={source.sourceId}>{source.kind} · {source.sourceId}{baseline && (!version.components.some((item) => item.sourceId === source.sourceId) ? " · 来源已移除（仅基线）" : !baseline.components.some((item) => item.sourceId === source.sourceId) ? " · 来源新增（仅目标）" : "")}</option>)}</select></label>
+        <button className="button" disabled={busy || !baseline || !selectedSourceId} onClick={() => void compare()}>比较文件级变化</button></div>
       {delta && (!delta.comparable ? <p className="st-callout warning">无法逐项对比：{delta.reason}。请确认两个版本的来源登记及范围；这里不声明文件删除。</p> : <><p>{Object.entries(delta.counts ?? {}).map(([key, count]) => `${key} ${count}`).join(" · ")}（文件与目录条目）</p><div className="st-table-scroll"><table><thead><tr><th>路径</th><th>变化</th></tr></thead><tbody>{delta.items.map((item) => <tr key={item.pathBytes}><td>{sourcePath(item.pathBytes)}</td><td>{item.change}</td></tr>)}</tbody></table></div>{delta.nextCursor && <button className="button" disabled={busy} onClick={() => void compare(delta.nextCursor)}>下一页差异</button>}</>)}
     </>}
   </section>;
