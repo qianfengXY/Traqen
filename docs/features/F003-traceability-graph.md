@@ -5,7 +5,7 @@ feature_ids: [F003]
 topics: [agent-analysis, semantic-candidates, human-review, business-function-tree, provenance]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-08-29
+updated: 2026-09-09
 description: Produce traceable semantic candidates and a human-approved business-function tree over deterministic workspace evidence.
 description_source: human
 description_author: co-creator
@@ -17,6 +17,14 @@ description_updated_at: 2026-08-29T03:18:18Z
 **Status:** Spec
 **Owner:** TBD
 **Depends on:** F001, F002, F006
+
+## Current functional design — V1.0
+
+The operator finalized the [F003 Functional Panorama Design V1.0](../../feature-discussions/2026-09-09-F003-traceability-graph-design/README.md) on 2026-09-09 and explicitly authorized writing it into the design documentation. That document contains the unchanged final image, eight functional groups, five routing outcomes, feedback loops, and finalization provenance.
+
+**The remainder of this page is the historical 2026-08-29 spec, not the current V1.0 functional contract.** Its requirement that every candidate receive human approval before appearing in the business tree is superseded by automatic admission in Agent-analysis state plus exception-based human review. Automatic admission is not human confirmation. V1.0 section 8 identifies unsettled source-access and governance interfaces; this documentation update does not change other Features or ADRs, advance the feature lifecycle, or claim implementation acceptance.
+
+## Historical spec — 2026-08-29
 
 ## Why
 

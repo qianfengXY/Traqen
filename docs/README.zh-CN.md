@@ -20,7 +20,7 @@
 |---|---|---|
 | F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | 产品架构 |
 | F002 | [确定性证据与 API 结构](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | 产品架构 |
-| F003 | [Agent 候选与审阅后的业务功能树](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | 产品架构 |
+| F003 | [当前设计入口与历史 Spec](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | [功能全景 V1.0](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md) · [English](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.md) |
 | F004 | [变更影响分析](features/F004-change-impact-analysis.zh-CN.md) · [English](features/F004-change-impact-analysis.md) | 产品架构 |
 | F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [能力解析图](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
