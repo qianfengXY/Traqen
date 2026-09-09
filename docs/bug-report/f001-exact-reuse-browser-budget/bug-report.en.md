@@ -9,6 +9,36 @@ created: 2026-09-09
 
 # Cross-policy exact component reuse and browser capacity diagnosis
 
+## f55ddf9 native categories: residual bytes do not identify surviving objects
+
+The live task store marks 搬砖工 / gpt-5.6-terra's task `0001788953562561-000085-cee318d6` done. Return `0001788954104918-000096-4ad5d064` is diagnostic delivery, not formal review or APPROVE. The managed command checked exact HEAD `f55ddf963920be06ffc2e73bccc3cd5442c2372e` before one 50k native-category run: 212s / exit 0. The [original report](memory-f55ddf9-native.json) is archived byte-for-byte, SHA-256 `fb15846b9169e334a895693a649a8118485e38d5d81fd03cb58b4d91f68c6866`; all six scanner / diagnostic source hashes match that HEAD. The [derived evidence](memory-f55ddf9-providers.json) preserves all four raw trace hashes and byte counts, per-PID providers and large allocation buckets. Hashes match the originals; each window reports no data loss and exactly one malloc dump per present browser / renderer.
+
+This is an empty page with the real OPFS scanner, without the workbench, API or PG: 50,000 files / 102 directories, 3,087,392 bytes, 50,102 rows and manifest `516fddfe191fb89759f2a2e6bb3319fa4d174678038eb34bfedb4cdcf2bb32b6` match. Both getFile calls, streaming hashes, 500-row IDB write / read batches and manifest traversal remain. `acceptanceGate=false`, no forced GC; 213 error-free resource samples with peak 991,526,912 bytes / FD 115 are not acceptance. The separate tracing service consumes 77,529,088 bytes RSS after scan and 81,543,168 after closure. Diagnostics change the runtime, and RSS is observed before the allocator dump rather than simultaneously.
+
+| Browser PID 35338, same field (bytes except count row) | After fixture | After scan | 5s after page closure |
+| --- | ---: | ---: | ---: |
+| OS RSS | 178192384 | 397901824 | 450592768 |
+| malloc/partitions/allocator allocated_size | 151743936 | 207024928 | 207658288 |
+| Same allocator allocated_objects_count | 1061283 | 1498660 | 959182 |
+| Same allocator virtual_committed_size | 163446784 | 252903424 | 249593856 |
+| Same allocator wasted | 11702848 | 45878496 | 41935568 |
+| leveldatabase size | 1525592 | 11745013 | 1458647 |
+| shared_memory size | 2064384 | 18661376 | 4538368 |
+
+Expanding the original providers and buckets adds three important limits:
+
+- After scan, `site_storage/indexed_db` reports 10,219,421 bytes; this category is absent after closure. Every observed blob_storage blob_count is zero. This does not exclude all IDB / File API related native costs, but the reported IDB / Blob categories alone cannot explain about 207.7 MB of allocated space.
+- Allocator object count after closure is **below the post-fixture count**, not continually increasing. Similar allocated byte totals before and after closure do not prove the same objects remain referenced. The 80-byte bucket reports allocated_objects_size 48,645,040 → 72,778,640 → 49,087,840. Large 71,319,552-byte (68.015625 MiB) blocks increase from one after fixture / scan to two after closure. `directMap_N` labels change between dumps; they are not stable addresses or object identities. The traces do not provide native allocation stacks for these blocks.
+- Renderer PID 35345 RSS increases from 108,134,400 to 259,424,256 bytes, then disappears with the process, including its prior baseline. Browser residual bytes, allocator capacity and renderer exit do not independently establish a product leak, nor justify forced GC or page closure as a product fix.
+
+Capsule: (1) original b44 / 75e5 full-path RSS excess remains; (2) evidence adds the complete report, four raw trace hashes and derived buckets; (3) the hypothesis narrows to browser large allocations plus small-object buckets, with the owner unknown; aggregate residual is not identity of surviving scan objects; (4) first establish a capability that can identify allocation stacks or mappings for these blocks before choosing another bounded experiment; (5) stop repeated 50k collection at this archive, not rerunning the same categories when capability is missing; (6) no product changes, weaker scan completeness, expanded 1-GiB / 1024-FD / 3600s budgets or process exclusions to manufacture green; (7) no UX changes; (8) product RED → GREEN requires a proven resource owner and reproducible behavior, followed by the original natural-reclamation complete gate.
+
+Current target / feature HEAD is f55ddf9; old tsbuildinfo is preserved. API 3197 has no listener, and diagnostic Node 35336 / browser 35338 / renderer 35345 have exited. Web 3188 LISTEN PID 16962 started Mon Sep 7 07:00:29 2026, with cwd in this feature's web checkout. Its start precedes the target commit; hot-reloading process age does not establish stale code, and no new API startup log exists to cite. Original pilot / PG remain unopened and unchanged; no new scale / backend run, production operation or CUA. Current invocation-bound A2A handled was applied, without attempting to sign Terra's managed-hold carrier. Parent remains doing / workflow v12; intermittent Git 503 cause, Node / PG attribution and overall F001 delivery remain unfinished.
+
+### Empty-page observer control (no scan)
+
+To test whether repeated observation unconditionally creates the large blocks, a separate temporary Chromium / about:blank blocked all page requests and called the existing native observer ten times. No file APIs, OPFS generation, scanner, API / PG or forced GC were used. The [archived command output](memory-f55ddf9-empty-control.json) records ten loss-free windows and eleven error-free resource samples. Browser PID 45312 RSS increased from 116,801,536 to 135,708,672 bytes between first and last windows; allocator allocated_size increased from 5,174,320 to 5,747,856 bytes, and the 80-byte bucket from 429,840 to 487,200 bytes. No allocator directMap block appeared in any window. This control did not reproduce the 71,319,552-byte blocks or approximately one million objects, so observation count alone does not explain them. It does not exclude an interaction between instrumentation and extensive file operations, identify a product function owner, or provide scale acceptance. The browser was closed in finally.
+
 ## 97dda60 teardown verification and native-category capability probes
 
 The live task store now marks 搬砖工 / gpt-5.6-terra's diagnostic subtask done; return message `0001788952344367-000079-79ffcb2c` is not a formal review or APPROVE. The [original report](memory-97dda60-teardown.json) is archived byte-for-byte, SHA-256 `101ce588a5ad91b0e30d2742efb1a2b12f341384e697196f0d6c7d9c44da3775`. Its managed command checked exact HEAD `97dda60d0c33c00a6529a10d790b951a712da83f` before running: 207s, exit 0, 207 error-free samples, `acceptanceGate=false`, no forced GC, API or database.

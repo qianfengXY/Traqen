@@ -9,6 +9,36 @@ created: 2026-09-09
 
 # 跨策略沿用组件与浏览器规模预算诊断
 
+## f55ddf9 原生分类取证：残余字节不等于相同对象留存
+
+搬砖工 / gpt-5.6-terra 的任务 `0001788953562561-000085-cee318d6` 已在实时 task store 为 done；回传 `0001788954104918-000096-4ad5d064` 是诊断交付，不是正式 review / APPROVE。托管命令核对 exact HEAD `f55ddf963920be06ffc2e73bccc3cd5442c2372e` 后执行一次 50k 原生分类诊断，212s / exit 0。[原报告](memory-f55ddf9-native.json) 逐字节归档，SHA-256 `fb15846b9169e334a895693a649a8118485e38d5d81fd03cb58b4d91f68c6866`；6 项 scanner / diagnostic 源哈希均与该 HEAD 匹配。四个原 trace 的 SHA、字节数、逐 PID 分类及大块分配记录见[派生证据](memory-f55ddf9-providers.json)，均核对原件，无丢样且每个在场 browser / renderer 各一份 malloc dump。
+
+这是空页面 / 真实 OPFS 扫描器，不含工作台、API 或 PG；50,000 文件 / 102 目录、3,087,392 bytes、50,102 行及 manifest `516fddfe191fb89759f2a2e6bb3319fa4d174678038eb34bfedb4cdcf2bb32b6` 均匹配。两次 getFile、流式哈希、500 条 IDB 写入 / 读取批和清单遍历保留。`acceptanceGate=false`、无强制 GC；213 次资源采样无错误，峰值 991,526,912 bytes / FD 115 不是验收通过。扫描时另有 tracing service RSS 77,529,088 bytes，关页后 81,543,168 bytes；诊断改变运行时，且 RSS 观察先于 allocator dump，不能混为同步值。
+
+| browser PID 35338，同一字段（bytes，count 行除外） | fixture 后 | scan 后 | 关页 5s 后 |
+| --- | ---: | ---: | ---: |
+| OS RSS | 178192384 | 397901824 | 450592768 |
+| malloc/partitions/allocator allocated_size | 151743936 | 207024928 | 207658288 |
+| 同 allocator allocated_objects_count | 1061283 | 1498660 | 959182 |
+| 同 allocator virtual_committed_size | 163446784 | 252903424 | 249593856 |
+| 同 allocator wasted | 11702848 | 45878496 | 41935568 |
+| leveldatabase size | 1525592 | 11745013 | 1458647 |
+| shared_memory size | 2064384 | 18661376 | 4538368 |
+
+展开原始 provider / bucket 后有三个新的限制：
+
+- scan 后 `site_storage/indexed_db` 为 10,219,421 bytes，关页后该分类不在 dump 中；各观察点 blob_storage 的 blob_count 均为 0。这不能排除一切 IDB / File API 关联 native 开销，但不能仅用这里的 IDB / Blob 分类解释约 207.7 MB allocator 已分配量。
+- 关页后的 allocator 对象数 **低于 fixture 后**，并非对象数持续增长；字节总量接近 scan 后不证明相同对象仍被引用。80-byte bucket 的 allocated_objects_size 为 48,645,040 → 72,778,640 → 49,087,840。大块分配中，71,319,552-byte（68.015625 MiB）块的数量从 fixture / scan 后各一块变为关页后两块。`directMap_N` 标签在各 dump 中变化，不能将编号当稳定地址或同一对象身份；原 trace 没有这些分配的 native 调用栈。
+- renderer PID 35345 的 108,134,400 → 259,424,256 bytes RSS 在关页后整体消失，包含原有基线。browser 字节残余、allocator 容量或 renderer 退出均不能单独证明产品泄漏，也不能据此选择强制 GC / 关闭页面作为产品修复。
+
+本轮诊断胶囊：① 原 b44 / 75e5 全链路 RSS 超额不变；② 新增完整原报告、4 份原 trace 哈希和派生 bucket 证据；③ 假设收敛为 browser 大块分配与小对象桶共同贡献，具体所有者未知，不能把总量残余等同于相同扫描对象留存；④ 下一步必须先确认可取得这些大块分配的调用栈或映射来源，再决定是否值得新的有界实验；⑤ 本次到归档即停止重复 50k，能力不足不重跑相同分类采集；⑥ 不改产品、不降低扫描完整性、不放宽 1 GiB / 1024 FD / 3600s、不排除诊断或浏览器进程制造绿灯；⑦ 用户交互不变；⑧ 只有资源所有者和可复现行为已证实才做产品 RED → GREEN，最终仍是原自然回收完整 gate。
+
+当前 target / feature HEAD 为 f55ddf9，旧 tsbuildinfo 保留；API 3197 无 LISTEN，诊断 Node 35336 / browser 35338 / renderer 35345 已退出。Web 3188 LISTEN PID 16962、启动 Mon Sep 7 07:00:29 2026、cwd 为本 feature 的 web；其启动早于目标提交，不据热加载进程年龄推断代码过时，没有新增 API 启动日志可引用。原 pilot / PG 不重开不改，未跑新规模或后端测试，未触碰生产或 CUA。本次 A2A 已以 invocation-bound handled 收口（applied），不代签 Terra 的 managed-hold carrier；父仍 doing / workflow v12，Git 间歇 503 原因、Node / PG 归因和 F001 整体交付仍未完成。
+
+### 空页面观察器对照（不跑扫描）
+
+为检验“大块分配是否由重复取证无条件产生”，另开临时 Chromium / about:blank，阻断全部页面请求，连续调用现有 native observer 10 次；没有任何文件 API、OPFS 生成、扫描、API / PG 或强制 GC。[命令输出归档](memory-f55ddf9-empty-control.json) 中 10 窗均无丢样，11 次资源采样无错误。browser PID 45312 从首窗到末窗 RSS 为 116,801,536 → 135,708,672 bytes；allocator allocated_size 为 5,174,320 → 5,747,856 bytes，80-byte bucket 为 429,840 → 487,200 bytes，全部窗口均没有 allocator directMap 块。故此次对照未复现 71,319,552-byte 大块或约百万对象，不能把它们归咎于观察器调用次数本身；也不能排除取证与大量文件操作的交互。该对照不是规模验收，也没有识别产品函数所有者。浏览器在 finally 关闭。
+
 ## 97dda60 teardown 核验与原生分类能力预检
 
 搬砖工 / gpt-5.6-terra 的诊断子任务已在实时 task store 标记 done，回传消息 `0001788952344367-000079-79ffcb2c`；不是正式 review 或 APPROVE。[原报告](memory-97dda60-teardown.json) 逐字节归档，SHA-256 `101ce588a5ad91b0e30d2742efb1a2b12f341384e697196f0d6c7d9c44da3775`。托管命令预先核对 exact HEAD `97dda60d0c33c00a6529a10d790b951a712da83f`，207s / exit 0，207 次采样无错误，`acceptanceGate=false`，没有强制 GC、API 或数据库。
