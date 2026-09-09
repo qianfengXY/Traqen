@@ -9,6 +9,27 @@ created: 2026-09-09
 
 # 跨策略沿用组件与浏览器规模预算诊断
 
+## 97dda60 teardown 核验与原生分类能力预检
+
+搬砖工 / gpt-5.6-terra 的诊断子任务已在实时 task store 标记 done，回传消息 `0001788952344367-000079-79ffcb2c`；不是正式 review 或 APPROVE。[原报告](memory-97dda60-teardown.json) 逐字节归档，SHA-256 `101ce588a5ad91b0e30d2742efb1a2b12f341384e697196f0d6c7d9c44da3775`。托管命令预先核对 exact HEAD `97dda60d0c33c00a6529a10d790b951a712da83f`，207s / exit 0，207 次采样无错误，`acceptanceGate=false`，没有强制 GC、API 或数据库。
+
+| 进程 | 扫描前 RSS | 扫描后 RSS | 关页 5s 后 RSS | 扫描增量 | 关页后相对扫描前残余 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| browser，PID 22424 | 202555392 | 372277248 | 354107392 | 169721856 | 151552000 |
+| renderer，PID 22427 | 251805696 | 367607808 | 0（已退出） | 115802112 | -251805696 |
+
+单位为 bytes：browser 残余是 **144.53 MiB / 151.552 MB**，不是 151.6 MiB。总 Chromium 回收 388,808,704 bytes 超过扫描增量 290,455,552，是因为关闭 renderer 同时移除了 251,805,696 bytes 原有基线。原报告自动 `HYPOTHESIS_SUPPORTED_PAGE_RENDERER_SCOPED` 标签保留原样，但不能作为根因结论。只能确认两个进程都有贡献，尚不能证明 React、IDB、OPFS 或某个 native 分配器泄漏。
+
+该实验打开了 3188 开发页面并屏蔽非该 origin 请求，不是 cb8 的空页面；页面初始化与 fixture 准备存在时间重叠。50,000 文件 / 102 目录、两次 getFile、流式哈希、500 条 IDB 批、50,102 条遍历保留，但 fixture 为 3,013,514 bytes、manifest `219cea08b139412474fea7e57b0946d4cddfeb73118abcdbbd57a03376640582`，不等于 b44 的 D3。其树 RSS 峰值 948,731,904 / FD 109 不能替换完整工作台含 Node / PG 的失败门禁。
+
+父侧小型能力预检（当前 Chromium 151.0.7922.34、独立临时 profile）得到：browser 会话 `Memory.startSampling` 不存在；renderer 启动采样后，64 个 64 KiB 保留缓冲及 20 个 OPFS 文件操作仍返回 0 样本，browser 前后也为 0；这是未取得证据，不是零分配。`vmmap -summary` 能读 VM 分类，但明确警告无法检查 PartitionAlloc zone，不能用其 malloc 表解释该分配器占用。没有更改启动 flags、重新安装浏览器或提升权限。
+
+替代证据入口是短时 Memory-infra trace。2 MiB trace 的真实预检报告 `dataLossOccurred=true`，不消费为完整归因；独立的 16 MiB 诊断 trace 返回 false，并同时覆盖 browser / renderer 的 malloc 对象与分配器分类。这个容量只属于新增诊断缓冲，**不修改验收的 1 GiB RSS / 1024 FD 预算**。当前 exporter 的 trace dump id 为 `0x0`、request GUID 为 `0x1`；原值均保存，只声明单个 trace window 内每 PID 的单份 dump，不伪称 GUID 一致。计数是分配器分类，不是调用栈；父子节点有重叠，不相加成 RSS。请求显式 `deterministic=false`，不使用会强制 GC 的 deterministic 选项，见 [CDP Tracing API](https://chromedevtools.github.io/devtools-protocol/tot/Tracing/#method-requestMemoryDump)。
+
+诊断胶囊续项：① 现象仍是 b44 / 75e5 完整链路 RSS 超额；② 证据新增上述 teardown 与小型探针；③ 当前假设是 browser 扫描关联残余可由存活分配或分配器驻留空间解释，尚未证实；④ 在 cb8 的隔离空页面复用原扫描、哈希、IDB，记录生成前 / 生成后 / 扫描后 / 关页后各角色 RSS 和分类计数，保留完整原 trace；⑤ 一次 50k 定向观察最多 20 分钟，缺角色、丢样或多份歧义 dump 就失败，不盲目重跑；⑥ trace 本身影响运行时，`acceptanceGate=false`，无强制 GC、不删扫描步骤、不换预算或排除进程；⑦ 不修改用户交互；⑧ 只有确认产品资源所有者后才修产品，再运行原自然回收完整 gate。
+
+诊断器保护先 2 RED（新能力不存在，324ms），后 4/4 GREEN（350ms，含旧观察器两项）。20 文件真实 OPFS 冒烟 exit 0：20 文件 / 3 目录 / 23 行 / 1,049,252 bytes，四个 trace window 均不丢样，前三个有 browser / renderer、关页后仅 browser；`explicitGcDiagnostic=false`、0 资源采样错误。相关观察器与文档 6/6、601ms，语法通过。没有产品代码改动或新的验收绿灯，原 pilot / PG 不重开不改。父 A2A invocation-bound handled 已 applied；父仍 doing / workflow v12，未 push / merge。
+
 ## 75e5d44 完整链路分配观察：仍未定位 RSS 根因
 
 exact HEAD `75e5d441425c35c96d784c941ad3adbbc5c880fc` 的一次完整链路诊断耗时 696s、exit 1，仍在脚本第 209 行的原 1 GiB RSS 断言失败。[原报告](memory-75e5d44-failed.json) SHA-256 为 `3cff2ee0a3d7479cd2785a59708aa127339509d594d8493c71a41b8a37089b8a`；`acceptanceGate=false`、`allocationSamplingDiagnostic=true`、`explicitGcDiagnostic=false`。这不是新的验收运行，也不是 b44 失败的替代证据。

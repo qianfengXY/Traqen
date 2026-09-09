@@ -1,6 +1,7 @@
 // Diagnostic, never an acceptance gate. Uses an ephemeral browser/profile and
-// loopback-only module server, no API/database/user directory. Explicit GC is a
-// labeled experimental intervention, not a way to pass the unchanged RSS gate.
+// loopback-only module server, no API/database/user directory. Default mode uses
+// labeled diagnostic GC; --native-diagnostic uses allocator dumps and teardown,
+// without forced GC. Neither mode can pass or replace the unchanged RSS gate.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
@@ -10,15 +11,22 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import ts from "../../web/node_modules/typescript/lib/typescript.js";
 import { measurements } from "./source-truth-pilot.js";
+import { captureNativeMemory } from "./source-truth-browser-memory-observer.js";
 
-const [modulePath, executablePath, evidenceDirectory, countArgument] = process.argv.slice(2);
+const [modulePath, executablePath, evidenceDirectory, countArgument, mode] = process.argv.slice(2);
+assert.ok(mode === undefined || mode === "--native-diagnostic");
+const nativeDiagnostic = mode === "--native-diagnostic";
 assert.ok([modulePath, executablePath, evidenceDirectory].every((value) => value && path.isAbsolute(value)));
 const count = Number(countArgument);
 assert.ok(Number.isSafeInteger(count) && count >= 10 && count <= 50000);
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const modules = new Map([["/", "<!doctype html><title>F001 isolated memory diagnosis</title>"]]);
-const report = { status: "RUNNING", acceptanceGate: false, explicitGcDiagnostic: true,
-  platform: platform(), release: release(), files: count, sources: {}, stages: [] };
+const report = { status: "RUNNING", acceptanceGate: false, explicitGcDiagnostic: !nativeDiagnostic,
+  nativeAllocatorDiagnostic: nativeDiagnostic,
+  platform: platform(), release: release(), files: count, sources: {}, diagnosticSources: {}, stages: [] };
+for (const name of ["source-truth-browser-memory.mjs", "source-truth-browser-memory-observer.js", "source-truth-pilot.js"]) {
+  report.diagnosticSources[name] = createHash("sha256").update(await readFile(new URL(name, import.meta.url))).digest("hex");
+}
 for (const name of ["directory", "stream-hash", "local-entry-store"]) {
   const source = await readFile(path.join(root, "web/app/source-truth", `${name}.ts`), "utf8");
   report.sources[name] = createHash("sha256").update(source).digest("hex");
@@ -47,8 +55,16 @@ const pulse = setInterval(() => console.log(JSON.stringify({ phase, state: "RUNN
 const record = async (name) => {
   await measured.sample();
   const stage = { name, at: new Date().toISOString(), treeRssBytes: measured.result.latestProcessTreeRssBytes,
-    processes: measured.result.latestRssProcesses, heap: await cdp.send("Runtime.getHeapUsage"),
-    dom: await cdp.send("Memory.getDOMCounters"), browserProcesses: (await browserCdp.send("SystemInfo.getProcessInfo")).processInfo };
+    processes: measured.result.latestRssProcesses, heap: page ? await cdp.send("Runtime.getHeapUsage") : null,
+    dom: page ? await cdp.send("Memory.getDOMCounters") : null, browserProcesses: (await browserCdp.send("SystemInfo.getProcessInfo")).processInfo };
+  if (nativeDiagnostic) {
+    const { traceEvents, ...allocation } = await captureNativeMemory(browserCdp, { requireRenderer: Boolean(page) });
+    const serialized = `${JSON.stringify({ traceEvents })}\n`;
+    const traceFile = `native-${name}.json`;
+    await writeFile(path.join(evidenceDirectory, traceFile), serialized, { mode: 0o600 });
+    stage.nativeAllocation = { ...allocation, observedAt: new Date().toISOString(), traceFile,
+      traceSha256: createHash("sha256").update(serialized).digest("hex") };
+  }
   report.stages.push(stage); await save(); console.log(JSON.stringify(stage));
 };
 const scan = async () => {
@@ -97,13 +113,22 @@ try {
   }, count);
   await record("after-fixture-natural");
   phase = "scan-natural"; report.first = await scan(); await record("after-scan-natural");
-  phase = "diagnostic-gc";
-  await cdp.send("HeapProfiler.collectGarbage");
-  await record("after-explicit-gc-diagnostic-only");
-  phase = "rescan"; report.second = await scan(); await record("after-rescan-natural");
-  assert.deepEqual(report.second, report.first);
-  await cdp.send("HeapProfiler.collectGarbage");
-  await record("after-second-explicit-gc-diagnostic-only");
+  if (nativeDiagnostic) {
+    phase = "page-teardown";
+    await page.close(); page = null;
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    await record("after-page-teardown-5s");
+    // Per-role baseline and residual counters are evidence, not an automatic
+    // total-reclamation verdict: closing a renderer also removes its baseline.
+  } else {
+    phase = "diagnostic-gc";
+    await cdp.send("HeapProfiler.collectGarbage");
+    await record("after-explicit-gc-diagnostic-only");
+    phase = "rescan"; report.second = await scan(); await record("after-rescan-natural");
+    assert.deepEqual(report.second, report.first);
+    await cdp.send("HeapProfiler.collectGarbage");
+    await record("after-second-explicit-gc-diagnostic-only");
+  }
   await measured.stop(); report.resources = measured.result;
   assert.equal(report.resources.samplingErrors, 0);
   report.status = "OBSERVED_NOT_ACCEPTANCE"; await save();

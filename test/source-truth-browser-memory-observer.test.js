@@ -1,6 +1,59 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { EventEmitter } from "node:events";
+import * as memoryObserver from "./support/source-truth-browser-memory-observer.js";
 import { observeBrowserMemory } from "./support/source-truth-browser-memory-observer.js";
+
+function nativeSession({ lost = false, missing = false, failure = false } = {}) {
+  const session = new EventEmitter(); session.calls = [];
+  session.send = async (command, parameters) => {
+    session.calls.push({ command, parameters });
+    if (command === "SystemInfo.getProcessInfo") return { processInfo: [{ type: "browser", id: 7 }, { type: "renderer", id: 8 }] };
+    if (command === "Tracing.requestMemoryDump") {
+      if (failure) throw new Error("native dump failed");
+      return { success: true, dumpGuid: "0x1" };
+    }
+    if (command === "Tracing.end") {
+      for (const pid of missing ? [7] : [7, 8]) session.emit("Tracing.dataCollected", { value: [{ ph: "v", pid, id: "0x0", args: { dumps: { allocators: {
+        "malloc": { attrs: { size: { type: "scalar", units: "bytes", value: "200" } } },
+        "malloc/allocated_objects": { attrs: { size: { type: "scalar", units: "bytes", value: "100" },
+          object_count: { type: "scalar", units: "objects", value: "a" } } },
+        "leveldatabase": { attrs: { name: { type: "string", units: "", value: "/private/user-file" } } },
+      } } } }] });
+      session.emit("Tracing.tracingComplete", { dataLossOccurred: lost });
+    }
+    return {};
+  };
+  return session;
+}
+
+test("native memory trace keeps per-PID allocator counters separate from RSS and parent/child totals", async () => {
+  const session = nativeSession();
+  assert.equal(typeof memoryObserver.captureNativeMemory, "function");
+  const result = await memoryObserver.captureNativeMemory(session);
+  assert.equal(result.acceptanceGate, false); assert.equal(result.explicitGcDiagnostic, false);
+  assert.equal(result.requestDumpGuid, "0x1");
+  assert.deepEqual(result.processes.map(p => [p.pid, p.role, p.traceDumpId]), [[7, "browser", "0x0"], [8, "renderer", "0x0"]]);
+  assert.deepEqual(result.processes[0].allocators["malloc/allocated_objects"], {
+    size: { units: "bytes", value: "256" }, object_count: { units: "objects", value: "10" },
+  });
+  assert.equal(result.processes[0].allocators.malloc.size.value, "512");
+  assert.equal(JSON.stringify(result.processes).includes("/private/user-file"), false);
+  assert.ok(result.traceEvents.length); // Preserve raw evidence separately; never present it as a stack profile.
+  assert.deepEqual(session.calls.find(c => c.command === "Tracing.requestMemoryDump").parameters, { deterministic: false, levelOfDetail: "detailed" });
+  assert.deepEqual(session.calls.find(c => c.command === "Tracing.start").parameters.traceConfig.memoryDumpConfig, { triggers: [] });
+  assert.equal(session.eventNames().length, 0);
+});
+
+test("native memory trace rejects dropped evidence or missing process coverage and cleans listeners on errors", async () => {
+  assert.equal(typeof memoryObserver.captureNativeMemory, "function");
+  for (const [options, error] of [[{ lost: true }, /data loss/], [{ missing: true }, /missing.*renderer/], [{ failure: true }, /native dump failed/]]) {
+    const session = nativeSession(options);
+    await assert.rejects(memoryObserver.captureNativeMemory(session), error);
+    assert.equal(session.eventNames().length, 0);
+    assert.equal(session.calls.filter(c => c.command === "Tracing.end").length, 1);
+  }
+});
 
 test("browser allocation diagnosis preserves heap and raw call stacks without collecting garbage", async () => {
   const calls = [];
