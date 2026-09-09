@@ -9,9 +9,12 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { browserHistoryFixture } from "./source-truth-browser-history-fixture.js";
 import { measurements } from "./source-truth-pilot.js";
+import { observeBrowserMemory } from "./source-truth-browser-memory-observer.js";
 
-const [modulePath, executablePath, evidenceDirectory, pilotRoot, clusterRoot, binaries] = process.argv.slice(2);
+const [modulePath, executablePath, evidenceDirectory, pilotRoot, clusterRoot, binaries, diagnosticArgument] = process.argv.slice(2);
 assert.ok([modulePath, executablePath, evidenceDirectory, pilotRoot, clusterRoot, binaries].every((v) => v && path.isAbsolute(v)));
+assert.ok(diagnosticArgument === undefined || diagnosticArgument === "--heap-diagnostic");
+const heapDiagnostic = diagnosticArgument === "--heap-diagnostic";
 const bundleIds = ["be15695e00830de24ec09f4dbde7daee6306a9fd4e3fc5a3f43cf72faba61026", "b31723f1d01529355f7444fa111b80c4472bff7ab8cfc9b93aaefbadf1294add", "37d1734b353bbdbc1f58b1b40d9433424bb696e044fddb5ddf3e67f48cedf664"];
 const changedText = "browser changed document v3\n", expectedSent = Buffer.byteLength(changedText);
 const changedPath = Buffer.from("materials/g0000/f000003.txt").toString("base64url");
@@ -19,11 +22,23 @@ const cleanups = [], phases = [], pageErrors = [], issues = [], measured = measu
 const network = { manifestBatches: 0, maxBatchEntries: 0, enumeratedFiles: 0, enumeratedDirectories: 0, completeFileRequests: 0,
   chunkRequests: 0, sentBytes: 0, runCreates: 0, confirmations: 0, seals: 0, otherWrites: [] };
 const report = { status: "RUNNING", scope: "BROWSER_OPFS_50K_FULL_ENUMERATION_INCREMENTAL_CAPTURE_WITH_REUSED_50K_GIT", platform: platform(), release: release(),
+  acceptanceGate: !heapDiagnostic, allocationSamplingDiagnostic: heapDiagnostic, explicitGcDiagnostic: false,
   nativePickerVerified: false, initialFullUploadVerified: false, disasterDeploymentVerified: false, priorBundleIds: bundleIds,
   totalFiles: 100000, phases, network, budgets: { maxTreeRssBytes: 1073741824, maxTreeFileDescriptors: 1024 } };
 await mkdir(evidenceDirectory, { recursive: true, mode: 0o700 });
 const save = () => writeFile(path.join(evidenceDirectory, "report.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
-let page, activePhase = "initialization";
+let page, memoryObserver, activePhase = "initialization";
+const recordMemory = async (name) => {
+  if (!memoryObserver) return;
+  const { allocationProfile, ...memory } = await memoryObserver.snapshot();
+  const allocationProfileFile = `heap-${name}.json`;
+  await writeFile(path.join(evidenceDirectory, allocationProfileFile), `${JSON.stringify(allocationProfile)}\n`, { mode: 0o600 });
+  await measured.sample();
+  report.memoryObservations ??= [];
+  report.memoryObservations.push({ name, at: new Date().toISOString(), ...memory, allocationProfileFile,
+    treeRssBytes: measured.result.latestProcessTreeRssBytes, processes: measured.result.latestRssProcesses });
+  await save();
+};
 const pulse = setInterval(() => console.log(JSON.stringify({ phase: activePhase, state: "RUNNING", network, resources: measured.result })), 10000);
 pulse.unref();
 const stage = async (name, work) => {
@@ -39,6 +54,7 @@ const stage = async (name, work) => {
   phases.push({ name, milliseconds: Math.round(performance.now() - start),
     resourcesAtEnd: { treeRssBytes: measured.result.latestProcessTreeRssBytes,
       processes: measured.result.latestRssProcesses, browserState } });
+  await recordMemory(name);
   await save(); console.log(JSON.stringify({ phase: name, state: "FINISHED", ...phases.at(-1) })); return value;
 };
 try {
@@ -56,6 +72,19 @@ try {
   const browser = await chromium.launch({ executablePath, headless: true });
   cleanups.push(() => browser.close()); report.browser = browser.version();
   page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  if (heapDiagnostic) {
+    memoryObserver = await observeBrowserMemory(await page.context().newCDPSession(page), await browser.newBrowserCDPSession());
+    cleanups.push(async () => {
+      // Diagnostic failure must not prevent closing our browser and copied PG.
+      try { await memoryObserver.stop(); }
+      catch (error) {
+        report.memoryDiagnosticError = error.message;
+        if (report.status !== "FAILED") report.status = "ERROR";
+        process.exitCode = 1; await save();
+      }
+    });
+    await recordMemory("browser-start");
+  }
   page.on("pageerror", (error) => pageErrors.push(error.message));
   await page.route("http://127.0.0.1:3100/**", (route) => route.abort());
   await page.route(`${f.apiBase}/**`, (route) => {
@@ -105,6 +134,7 @@ try {
   const directoryCard = page.locator(".st-source-card").filter({ has: page.getByRole("checkbox", { name: "上传目录", exact: true }) });
   assert.equal(await gitCard.getByRole("combobox", { name: "本版处理", exact: true }).inputValue(), "REUSE");
   await directoryCard.getByRole("combobox", { name: "本版处理", exact: true }).selectOption("UPDATE");
+  await recordMemory("workbench-ready");
   await page.exposeFunction("f001FixtureProgress", (value) => console.log(JSON.stringify({ phase: "generate-opfs-directory", ...value })));
   report.localFixture = await stage("generate-opfs-directory", () => page.evaluate(async ({ changedText }) => {
     const root = await (await navigator.storage.getDirectory()).getDirectoryHandle("f001-scale-directory-v3", { create: true });
@@ -178,13 +208,15 @@ try {
   assert.equal(measured.result.samplingErrors, 0); assert.ok(measured.result.sampleCount > 0);
   assert.ok(measured.result.peakObservedProcessTreeRssBytes <= report.budgets.maxTreeRssBytes, "sampled process tree RSS exceeds the unchanged 1GiB budget");
   assert.ok(measured.result.peakObservedProcessTreeFileDescriptors <= report.budgets.maxTreeFileDescriptors, "sampled descriptors exceed the unchanged 1024 budget");
-  report.status = "PASSED"; report.fullBrowserEnumerationVerified = true; report.incrementalBrowserCaptureVerified = true;
+  report.status = heapDiagnostic ? "OBSERVED_NOT_ACCEPTANCE" : "PASSED";
+  report.fullBrowserEnumerationVerified = true; report.incrementalBrowserCaptureVerified = true;
   report.priorHistoryUnchanged = true; report.noAutomaticAnalysis = true; report.isolatedCopyUsed = true; report.sourceFixturesReopenedInPlace = false;
   report.changedContentSha256 = createHash("sha256").update(changedText).digest("hex");
   await save(); console.log(JSON.stringify(report));
 } catch (error) {
   report.status = "FAILED"; report.failure = { phase: activePhase, message: error.message, stack: error.stack }; report.issues = issues; report.pageErrors = pageErrors;
   report.resources = measured.result;
+  try { await recordMemory("failure"); } catch (diagnostic) { report.memoryDiagnosticError = diagnostic.message; }
   if (page && !page.isClosed()) try { report.page = await page.locator("body").ariaSnapshot(); await page.screenshot({ path: path.join(evidenceDirectory, "failure.png"), fullPage: true }); }
   catch (diagnostic) { report.diagnosticError = diagnostic.message; }
   await save(); console.error(JSON.stringify(report)); process.exitCode = 1;

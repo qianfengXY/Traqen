@@ -78,3 +78,24 @@ exact HEAD `b44d3ca6097c225d4261b6c91e236b739dc7b51d`：三并发整仓后端 56
 诊断入口 `test/support/source-truth-browser-memory.mjs` 在新的临时 browser context 和 loopback 随机端口运行，拒绝外部网络。它编译并记录原产品 `directory` / `stream-hash` / `local-entry-store` 源码摘要；不加载工作台或数据库，不模拟 File API，也不作为完整应用预算比较。20 文件冒烟 exit 0：3 目录、1,049,252 字节、23 行，两次完整扫描得到同一个 `f2df25f292d7d96392682effb9605c991354a8b98c7706b1d3539eb6d639480a`，0 采样错误。诊断报告明确 `OBSERVED_NOT_ACCEPTANCE` / `explicitGcDiagnostic=true`；其 SHA-256 为 `e4ac6ac23f1db912c555c44a5d724647309c8a3cc007999195cde05423777de7`。精确 JS / embedder heap 来自当前 Playwright CDP 类型定义中的 `Runtime.getHeapUsage`，不再用粗粒度 `performance.memory` 推论。
 
 定向自检：资源分项回归 1/1、0 skip（961ms）；双语文档 2/2；新脚本语法及 diff 检查通过。仅测试诊断及归档改动，生产行为 / 数据 / 鉴权 / 契约 / 架构边界均未变，无不可逆操作、无 UI 改稿，无 `.pen` 或根目录媒体增量；项目没有 Clowder 专用 hotfix/fallback/tips checker，不虚报运行。原失败报告归档哈希 `f4b606d83feb3098cdae6f5ca3d1f224b0c512496147c5a0e4f3a550ebcead3c` 与临时原件逐字节一致。原 managed wake `0001788947915564-000056-f584532f` 已由 invocation-bound handled 收口；父任务仍 doing。50k 诊断待托管运行，不是新的验收绿灯。
+## cb8bccb 独立扫描观察：不是验收
+
+50k 诊断 exit 0、281s，原始 [memory-cb8bccb-observed.json](memory-cb8bccb-observed.json) 标记 `OBSERVED_NOT_ACCEPTANCE`、`acceptanceGate=false`、`explicitGcDiagnostic=true`。两遍都是 50,000 文件 / 102 目录 / 50,102 行 / 3,087,392 字节，清单同为 `516fddfe191fb89759f2a2e6bb3319fa4d174678038eb34bfedb4cdcf2bb32b6`。283 次采样无错误，观测峰值 840,695,808 字节 / 105 FD。这个页面没有完整工作台或数据库，而且经过显式 GC；任何低值都不能替代 b44 的 FAILED 或 1 GiB 门禁。
+
+| 阶段 | 树 RSS | Chromium RSS | JS used / total | embedder / backing |
+| --- | ---: | ---: | ---: | ---: |
+| 生成前 | 487456768 | 274055168 | 1666724 / 2686976 | 1386752 / 12933 |
+| 生成后，自然 | 612646912 | 378585088 | 5008692 / 21299200 | 2976440 / 42137 |
+| 首遍扫描后，自然 | 727842816 | 603537408 | 14250188 / 58785792 | 1388896 / 888016 |
+| 首次 GC，仅诊断 | 680165376 | 554549248 | 1331240 / 2162688 | 322360 / 12992 |
+| 再扫描后，自然 | 798818304 | 678313984 | 21506004 / 54591488 | 2303168 / 2708679 |
+| 再次 GC，仅诊断 | 744849408 | 624132096 | 1321436 / 2162688 | 334480 / 12983 |
+
+单位均为字节。两次 GC 后 JS / embedder / backing 均回落，事件监听器从 34 / 64 回到 15；不支持“扫描器可达 JS 保留完整 50k 文件集合”的假设。Chromium 主进程在两次 GC 后仍为 344,457,216 / 385,761,280，renderer 为 171,606,016 / 199,278,592；这还不能区分原生资源延迟释放、分配器高水位与泄漏。
+
+本轮诊断胶囊更新：现象与 b44 失败、预算不变；证据增加上述原报告和完整 33 行日志（SHA-256 `d7a6b512858e8b29ddfef6100ca51b36f94b9c01688e83ffbee9a2898f44900c`）。当前假设缩小为完整工作台运行时 / 进度与轮询 / File API 原生资源的额外占用，尚无已证实根因。客户端请求、只读 observer 与工作台源码未显示无界历史数组。下一次只在原完整采集链路补准确 heap、进程角色和存活分配调用栈，测浏览器启动、页面启动、生成、采集和冻结边界；分配采样运行必须标为诊断，不得返回验收 PASS。最多 3600s，失败记录和原 pilot / PG 不改；若仍无资源所有者证据，进一步缩小变量而不是改产品或放宽预算。用户交互不变；验收仍要求原自然回收完整门禁。当前 managed wake `0001788949046335-000061-f79d4c13` 已 handled / applied，父任务继续 doing。
+### 当前诊断工具自检
+
+两条新回归先因完整浏览器分配观察器不存在 RED（2 fail，349ms），实现后 GREEN（2/2，345ms）；静态导入整理后复验。真实 Chromium 151.0.7922.34 隔离空页面冒烟 exit 0，取得 52 个分配样本、JS used 3,822,964 / total 7,815,168、完整四类浏览器进程；不调用 GC。完整捕获新增可选 `--heap-diagnostic`，浏览器启动 / 工作台就绪 / 生成 / 采集 / 冻结分别保存准确堆和原始采样 profile；采样值不是精确可达对象图或 RSS，不能据某个分配函数直接断定泄漏。该模式 `acceptanceGate=false`，即便预算通过也只能是 `OBSERVED_NOT_ACCEPTANCE`；失败仍保留 FAILED。原非诊断运行的完整枚举、精确沿用、旧历史、Delta、1 GiB / 1024 FD 断言都不变。
+
+测试诊断工具 2/2、文档 2/2（合计 4/4、348ms）；原进程采样回归 1/1（916ms）、语法和 diff 通过。原 cb8 报告与归档 SHA-256 同为 `9625f7dff590dbcbc1a9cdbbcf105d0a40ca3b20cf0723ecd17c6bd42f13a0b7`。五轴风险仅测试诊断 / 原报告归档，无生产行为、数据迁移、权限、契约、不可逆及设计修改；无新增架构边界、无 `.pen` 或根目录媒体；项目没有 Clowder 专用 checker。既有完整浏览器预算失败仍开放，不声明 F001 完成或正式 review，通过后才会提交独立审阅。未 push / merge。
