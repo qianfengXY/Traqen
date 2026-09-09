@@ -1,0 +1,1489 @@
+{
+  "status": "FAILED",
+  "scope": "BROWSER_OPFS_50K_FULL_ENUMERATION_INCREMENTAL_CAPTURE_WITH_REUSED_50K_GIT",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "acceptanceGate": false,
+  "allocationSamplingDiagnostic": true,
+  "explicitGcDiagnostic": false,
+  "nativePickerVerified": false,
+  "initialFullUploadVerified": false,
+  "disasterDeploymentVerified": false,
+  "priorBundleIds": [
+    "be15695e00830de24ec09f4dbde7daee6306a9fd4e3fc5a3f43cf72faba61026",
+    "b31723f1d01529355f7444fa111b80c4472bff7ab8cfc9b93aaefbadf1294add",
+    "37d1734b353bbdbc1f58b1b40d9433424bb696e044fddb5ddf3e67f48cedf664"
+  ],
+  "totalFiles": 100000,
+  "phases": [
+    {
+      "name": "clone-owned-cold-fixture",
+      "milliseconds": 114649,
+      "resourcesAtEnd": {
+        "treeRssBytes": 200327168,
+        "processes": [
+          {
+            "pid": 11808,
+            "ppid": 11804,
+            "rssBytes": 143720448,
+            "executable": "node"
+          },
+          {
+            "pid": 12238,
+            "ppid": 11808,
+            "rssBytes": 10289152,
+            "executable": "postgres"
+          },
+          {
+            "pid": 12239,
+            "ppid": 12238,
+            "rssBytes": 3096576,
+            "executable": "postgres: checkpointer "
+          },
+          {
+            "pid": 12240,
+            "ppid": 12238,
+            "rssBytes": 3063808,
+            "executable": "postgres: background writer "
+          },
+          {
+            "pid": 12243,
+            "ppid": 12238,
+            "rssBytes": 3031040,
+            "executable": "postgres: walwriter "
+          },
+          {
+            "pid": 12244,
+            "ppid": 12238,
+            "rssBytes": 4816896,
+            "executable": "postgres: autovacuum launcher "
+          },
+          {
+            "pid": 12245,
+            "ppid": 12238,
+            "rssBytes": 4456448,
+            "executable": "postgres: logical replication launcher "
+          },
+          {
+            "pid": 12248,
+            "ppid": 12238,
+            "rssBytes": 8634368,
+            "executable": "postgres: f001_test postgres [local] idle"
+          },
+          {
+            "pid": 12249,
+            "ppid": 12238,
+            "rssBytes": 10043392,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 12250,
+            "ppid": 12238,
+            "rssBytes": 9175040,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          }
+        ],
+        "browserState": null
+      }
+    },
+    {
+      "name": "generate-opfs-directory",
+      "milliseconds": 97208,
+      "resourcesAtEnd": {
+        "treeRssBytes": 875954176,
+        "processes": [
+          {
+            "pid": 11808,
+            "ppid": 11804,
+            "rssBytes": 188743680,
+            "executable": "node"
+          },
+          {
+            "pid": 12238,
+            "ppid": 11808,
+            "rssBytes": 3833856,
+            "executable": "postgres"
+          },
+          {
+            "pid": 12239,
+            "ppid": 12238,
+            "rssBytes": 753664,
+            "executable": "postgres: checkpointer "
+          },
+          {
+            "pid": 12240,
+            "ppid": 12238,
+            "rssBytes": 1638400,
+            "executable": "postgres: background writer "
+          },
+          {
+            "pid": 12243,
+            "ppid": 12238,
+            "rssBytes": 1245184,
+            "executable": "postgres: walwriter "
+          },
+          {
+            "pid": 12244,
+            "ppid": 12238,
+            "rssBytes": 2686976,
+            "executable": "postgres: autovacuum launcher "
+          },
+          {
+            "pid": 12245,
+            "ppid": 12238,
+            "rssBytes": 770048,
+            "executable": "postgres: logical replication launcher "
+          },
+          {
+            "pid": 12249,
+            "ppid": 12238,
+            "rssBytes": 8437760,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 12255,
+            "ppid": 11808,
+            "rssBytes": 225853440,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12258,
+            "ppid": 12255,
+            "rssBytes": 68206592,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12259,
+            "ppid": 12255,
+            "rssBytes": 55885824,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12260,
+            "ppid": 12255,
+            "rssBytes": 297451520,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12271,
+            "ppid": 12238,
+            "rssBytes": 11059200,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 12272,
+            "ppid": 12238,
+            "rssBytes": 9388032,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          }
+        ],
+        "browserState": {
+          "domNodes": 302,
+          "coarseJsHeapBytes": 24500000
+        }
+      }
+    },
+    {
+      "name": "browser-full-enumeration-and-incremental-capture",
+      "milliseconds": 369999,
+      "resourcesAtEnd": {
+        "treeRssBytes": 1326006272,
+        "processes": [
+          {
+            "pid": 11808,
+            "ppid": 11804,
+            "rssBytes": 321961984,
+            "executable": "node"
+          },
+          {
+            "pid": 12238,
+            "ppid": 11808,
+            "rssBytes": 4030464,
+            "executable": "postgres"
+          },
+          {
+            "pid": 12239,
+            "ppid": 12238,
+            "rssBytes": 3342336,
+            "executable": "postgres: checkpointer "
+          },
+          {
+            "pid": 12240,
+            "ppid": 12238,
+            "rssBytes": 18268160,
+            "executable": "postgres: background writer "
+          },
+          {
+            "pid": 12243,
+            "ppid": 12238,
+            "rssBytes": 1900544,
+            "executable": "postgres: walwriter "
+          },
+          {
+            "pid": 12244,
+            "ppid": 12238,
+            "rssBytes": 3063808,
+            "executable": "postgres: autovacuum launcher "
+          },
+          {
+            "pid": 12245,
+            "ppid": 12238,
+            "rssBytes": 1146880,
+            "executable": "postgres: logical replication launcher "
+          },
+          {
+            "pid": 12255,
+            "ppid": 11808,
+            "rssBytes": 314998784,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12258,
+            "ppid": 12255,
+            "rssBytes": 51724288,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12259,
+            "ppid": 12255,
+            "rssBytes": 33308672,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12260,
+            "ppid": 12255,
+            "rssBytes": 432242688,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 13380,
+            "ppid": 12238,
+            "rssBytes": 34111488,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 13694,
+            "ppid": 12238,
+            "rssBytes": 19087360,
+            "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+          },
+          {
+            "pid": 13787,
+            "ppid": 12238,
+            "rssBytes": 29638656,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 14098,
+            "ppid": 12238,
+            "rssBytes": 29507584,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 14466,
+            "ppid": 12238,
+            "rssBytes": 27672576,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          }
+        ],
+        "browserState": {
+          "domNodes": 307,
+          "coarseJsHeapBytes": 24500000
+        }
+      }
+    },
+    {
+      "name": "explicit-confirm-and-freeze",
+      "milliseconds": 101644,
+      "resourcesAtEnd": {
+        "treeRssBytes": 1285947392,
+        "processes": [
+          {
+            "pid": 11808,
+            "ppid": 11804,
+            "rssBytes": 330940416,
+            "executable": "node"
+          },
+          {
+            "pid": 12238,
+            "ppid": 11808,
+            "rssBytes": 4063232,
+            "executable": "postgres"
+          },
+          {
+            "pid": 12239,
+            "ppid": 12238,
+            "rssBytes": 3293184,
+            "executable": "postgres: checkpointer "
+          },
+          {
+            "pid": 12240,
+            "ppid": 12238,
+            "rssBytes": 18808832,
+            "executable": "postgres: background writer "
+          },
+          {
+            "pid": 12243,
+            "ppid": 12238,
+            "rssBytes": 1949696,
+            "executable": "postgres: walwriter "
+          },
+          {
+            "pid": 12244,
+            "ppid": 12238,
+            "rssBytes": 3129344,
+            "executable": "postgres: autovacuum launcher "
+          },
+          {
+            "pid": 12245,
+            "ppid": 12238,
+            "rssBytes": 2293760,
+            "executable": "postgres: logical replication launcher "
+          },
+          {
+            "pid": 12255,
+            "ppid": 11808,
+            "rssBytes": 319176704,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12258,
+            "ppid": 12255,
+            "rssBytes": 50872320,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12259,
+            "ppid": 12255,
+            "rssBytes": 33439744,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 12260,
+            "ppid": 12255,
+            "rssBytes": 378535936,
+            "executable": "chrome-headless-shell"
+          },
+          {
+            "pid": 13380,
+            "ppid": 12238,
+            "rssBytes": 33947648,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 13694,
+            "ppid": 12238,
+            "rssBytes": 18956288,
+            "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+          },
+          {
+            "pid": 14735,
+            "ppid": 12238,
+            "rssBytes": 28721152,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 14881,
+            "ppid": 12238,
+            "rssBytes": 28753920,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          },
+          {
+            "pid": 14969,
+            "ppid": 12238,
+            "rssBytes": 29065216,
+            "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+          }
+        ],
+        "browserState": {
+          "domNodes": 315,
+          "coarseJsHeapBytes": 24500000
+        }
+      }
+    }
+  ],
+  "network": {
+    "manifestBatches": 101,
+    "maxBatchEntries": 500,
+    "enumeratedFiles": 50000,
+    "enumeratedDirectories": 102,
+    "completeFileRequests": 1,
+    "chunkRequests": 0,
+    "sentBytes": 28,
+    "runCreates": 1,
+    "confirmations": 1,
+    "seals": 1,
+    "otherWrites": []
+  },
+  "budgets": {
+    "maxTreeRssBytes": 1073741824,
+    "maxTreeFileDescriptors": 1024
+  },
+  "fixtureRoot": "/private/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-history-ui-2jp6QC",
+  "sourceReportHash": "d5ddb665968675099fef9d96afd35f1fbd1ceefbaa7e828daba8936a82ab8a67",
+  "browser": "151.0.7922.34",
+  "memoryObservations": [
+    {
+      "name": "browser-start",
+      "at": "2026-09-09T10:35:38.392Z",
+      "acceptanceGate": false,
+      "explicitGcDiagnostic": false,
+      "heap": {
+        "usedSize": 531956,
+        "totalSize": 1048576,
+        "embedderHeapUsedSize": 1386752,
+        "backingStorageSize": 0
+      },
+      "dom": {
+        "documents": 2,
+        "nodes": 8,
+        "jsEventListeners": 0
+      },
+      "allocationMeasurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+      "samplingIntervalBytes": 65536,
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 12255,
+          "cpuTime": 0.326768
+        },
+        {
+          "type": "renderer",
+          "id": 12260,
+          "cpuTime": 0.093107
+        },
+        {
+          "type": "GPU",
+          "id": 12258,
+          "cpuTime": 0.137262
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 12259,
+          "cpuTime": 0.056611
+        }
+      ],
+      "allocationProfileFile": "heap-browser-start.json",
+      "treeRssBytes": 549765120,
+      "processes": [
+        {
+          "pid": 11808,
+          "ppid": 11804,
+          "rssBytes": 237666304,
+          "executable": "node"
+        },
+        {
+          "pid": 12238,
+          "ppid": 11808,
+          "rssBytes": 10289152,
+          "executable": "postgres"
+        },
+        {
+          "pid": 12239,
+          "ppid": 12238,
+          "rssBytes": 3096576,
+          "executable": "postgres: checkpointer "
+        },
+        {
+          "pid": 12240,
+          "ppid": 12238,
+          "rssBytes": 3194880,
+          "executable": "postgres: background writer "
+        },
+        {
+          "pid": 12243,
+          "ppid": 12238,
+          "rssBytes": 3031040,
+          "executable": "postgres: walwriter "
+        },
+        {
+          "pid": 12244,
+          "ppid": 12238,
+          "rssBytes": 4816896,
+          "executable": "postgres: autovacuum launcher "
+        },
+        {
+          "pid": 12245,
+          "ppid": 12238,
+          "rssBytes": 4456448,
+          "executable": "postgres: logical replication launcher "
+        },
+        {
+          "pid": 12248,
+          "ppid": 12238,
+          "rssBytes": 8634368,
+          "executable": "postgres: f001_test postgres [local] idle"
+        },
+        {
+          "pid": 12249,
+          "ppid": 12238,
+          "rssBytes": 10043392,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12250,
+          "ppid": 12238,
+          "rssBytes": 12189696,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12255,
+          "ppid": 11808,
+          "rssBytes": 82313216,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12258,
+          "ppid": 12255,
+          "rssBytes": 56279040,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12259,
+          "ppid": 12255,
+          "rssBytes": 38436864,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12260,
+          "ppid": 12255,
+          "rssBytes": 75317248,
+          "executable": "chrome-headless-shell"
+        }
+      ]
+    },
+    {
+      "name": "workbench-ready",
+      "at": "2026-09-09T10:35:42.387Z",
+      "acceptanceGate": false,
+      "explicitGcDiagnostic": false,
+      "heap": {
+        "usedSize": 13815508,
+        "totalSize": 16859136,
+        "embedderHeapUsedSize": 6992968,
+        "backingStorageSize": 6382986
+      },
+      "dom": {
+        "documents": 2,
+        "nodes": 1112,
+        "jsEventListeners": 452
+      },
+      "allocationMeasurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+      "samplingIntervalBytes": 65536,
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 12255,
+          "cpuTime": 0.704098
+        },
+        {
+          "type": "renderer",
+          "id": 12260,
+          "cpuTime": 1.587877
+        },
+        {
+          "type": "GPU",
+          "id": 12258,
+          "cpuTime": 0.395102
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 12259,
+          "cpuTime": 0.228072
+        }
+      ],
+      "allocationProfileFile": "heap-workbench-ready.json",
+      "treeRssBytes": 836861952,
+      "processes": [
+        {
+          "pid": 11808,
+          "ppid": 11804,
+          "rssBytes": 248184832,
+          "executable": "node"
+        },
+        {
+          "pid": 12238,
+          "ppid": 11808,
+          "rssBytes": 10289152,
+          "executable": "postgres"
+        },
+        {
+          "pid": 12239,
+          "ppid": 12238,
+          "rssBytes": 3096576,
+          "executable": "postgres: checkpointer "
+        },
+        {
+          "pid": 12240,
+          "ppid": 12238,
+          "rssBytes": 3194880,
+          "executable": "postgres: background writer "
+        },
+        {
+          "pid": 12243,
+          "ppid": 12238,
+          "rssBytes": 3031040,
+          "executable": "postgres: walwriter "
+        },
+        {
+          "pid": 12244,
+          "ppid": 12238,
+          "rssBytes": 4816896,
+          "executable": "postgres: autovacuum launcher "
+        },
+        {
+          "pid": 12245,
+          "ppid": 12238,
+          "rssBytes": 4456448,
+          "executable": "postgres: logical replication launcher "
+        },
+        {
+          "pid": 12248,
+          "ppid": 12238,
+          "rssBytes": 8634368,
+          "executable": "postgres: f001_test postgres [local] idle"
+        },
+        {
+          "pid": 12249,
+          "ppid": 12238,
+          "rssBytes": 12124160,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12250,
+          "ppid": 12238,
+          "rssBytes": 12353536,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12255,
+          "ppid": 11808,
+          "rssBytes": 95076352,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12258,
+          "ppid": 12255,
+          "rssBytes": 83935232,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12259,
+          "ppid": 12255,
+          "rssBytes": 55590912,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12260,
+          "ppid": 12255,
+          "rssBytes": 265748480,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12271,
+          "ppid": 12238,
+          "rssBytes": 14237696,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12272,
+          "ppid": 12238,
+          "rssBytes": 12091392,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        }
+      ]
+    },
+    {
+      "name": "generate-opfs-directory",
+      "at": "2026-09-09T10:37:19.874Z",
+      "acceptanceGate": false,
+      "explicitGcDiagnostic": false,
+      "heap": {
+        "usedSize": 17310976,
+        "totalSize": 34160640,
+        "embedderHeapUsedSize": 6408536,
+        "backingStorageSize": 6398739
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 723,
+        "jsEventListeners": 239
+      },
+      "allocationMeasurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+      "samplingIntervalBytes": 65536,
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 12255,
+          "cpuTime": 142.040421
+        },
+        {
+          "type": "renderer",
+          "id": 12260,
+          "cpuTime": 26.49844
+        },
+        {
+          "type": "GPU",
+          "id": 12258,
+          "cpuTime": 0.410046
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 12259,
+          "cpuTime": 0.477199
+        }
+      ],
+      "allocationProfileFile": "heap-generate-opfs-directory.json",
+      "treeRssBytes": 876347392,
+      "processes": [
+        {
+          "pid": 11808,
+          "ppid": 11804,
+          "rssBytes": 189005824,
+          "executable": "node"
+        },
+        {
+          "pid": 12238,
+          "ppid": 11808,
+          "rssBytes": 3833856,
+          "executable": "postgres"
+        },
+        {
+          "pid": 12239,
+          "ppid": 12238,
+          "rssBytes": 753664,
+          "executable": "postgres: checkpointer "
+        },
+        {
+          "pid": 12240,
+          "ppid": 12238,
+          "rssBytes": 1638400,
+          "executable": "postgres: background writer "
+        },
+        {
+          "pid": 12243,
+          "ppid": 12238,
+          "rssBytes": 1245184,
+          "executable": "postgres: walwriter "
+        },
+        {
+          "pid": 12244,
+          "ppid": 12238,
+          "rssBytes": 2686976,
+          "executable": "postgres: autovacuum launcher "
+        },
+        {
+          "pid": 12245,
+          "ppid": 12238,
+          "rssBytes": 770048,
+          "executable": "postgres: logical replication launcher "
+        },
+        {
+          "pid": 12249,
+          "ppid": 12238,
+          "rssBytes": 8437760,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12255,
+          "ppid": 11808,
+          "rssBytes": 225951744,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12258,
+          "ppid": 12255,
+          "rssBytes": 68206592,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12259,
+          "ppid": 12255,
+          "rssBytes": 55885824,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12260,
+          "ppid": 12255,
+          "rssBytes": 297484288,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12271,
+          "ppid": 12238,
+          "rssBytes": 11059200,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 12272,
+          "ppid": 12238,
+          "rssBytes": 9388032,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        }
+      ]
+    },
+    {
+      "name": "browser-full-enumeration-and-incremental-capture",
+      "at": "2026-09-09T10:43:30.364Z",
+      "acceptanceGate": false,
+      "explicitGcDiagnostic": false,
+      "heap": {
+        "usedSize": 37171620,
+        "totalSize": 80297984,
+        "embedderHeapUsedSize": 7816616,
+        "backingStorageSize": 6461358
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 3258,
+        "jsEventListeners": 333
+      },
+      "allocationMeasurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+      "samplingIntervalBytes": 65536,
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 12255,
+          "cpuTime": 267.310583
+        },
+        {
+          "type": "renderer",
+          "id": 12260,
+          "cpuTime": 176.332167
+        },
+        {
+          "type": "GPU",
+          "id": 12258,
+          "cpuTime": 1.870614
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 12259,
+          "cpuTime": 3.22064
+        }
+      ],
+      "allocationProfileFile": "heap-browser-full-enumeration-and-incremental-capture.json",
+      "treeRssBytes": 1324269568,
+      "processes": [
+        {
+          "pid": 11808,
+          "ppid": 11804,
+          "rssBytes": 321978368,
+          "executable": "node"
+        },
+        {
+          "pid": 12238,
+          "ppid": 11808,
+          "rssBytes": 4030464,
+          "executable": "postgres"
+        },
+        {
+          "pid": 12239,
+          "ppid": 12238,
+          "rssBytes": 3342336,
+          "executable": "postgres: checkpointer "
+        },
+        {
+          "pid": 12240,
+          "ppid": 12238,
+          "rssBytes": 18268160,
+          "executable": "postgres: background writer "
+        },
+        {
+          "pid": 12243,
+          "ppid": 12238,
+          "rssBytes": 1900544,
+          "executable": "postgres: walwriter "
+        },
+        {
+          "pid": 12244,
+          "ppid": 12238,
+          "rssBytes": 3063808,
+          "executable": "postgres: autovacuum launcher "
+        },
+        {
+          "pid": 12245,
+          "ppid": 12238,
+          "rssBytes": 1146880,
+          "executable": "postgres: logical replication launcher "
+        },
+        {
+          "pid": 12255,
+          "ppid": 11808,
+          "rssBytes": 315768832,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12258,
+          "ppid": 12255,
+          "rssBytes": 53411840,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12259,
+          "ppid": 12255,
+          "rssBytes": 33308672,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12260,
+          "ppid": 12255,
+          "rssBytes": 428032000,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 13380,
+          "ppid": 12238,
+          "rssBytes": 34111488,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 13694,
+          "ppid": 12238,
+          "rssBytes": 19087360,
+          "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+        },
+        {
+          "pid": 13787,
+          "ppid": 12238,
+          "rssBytes": 29638656,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 14098,
+          "ppid": 12238,
+          "rssBytes": 29507584,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 14466,
+          "ppid": 12238,
+          "rssBytes": 27672576,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        }
+      ]
+    },
+    {
+      "name": "explicit-confirm-and-freeze",
+      "at": "2026-09-09T10:45:13.274Z",
+      "acceptanceGate": false,
+      "explicitGcDiagnostic": false,
+      "heap": {
+        "usedSize": 16014628,
+        "totalSize": 18694144,
+        "embedderHeapUsedSize": 5971384,
+        "backingStorageSize": 6642428
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 697,
+        "jsEventListeners": 634
+      },
+      "allocationMeasurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+      "samplingIntervalBytes": 65536,
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 12255,
+          "cpuTime": 268.654344
+        },
+        {
+          "type": "renderer",
+          "id": 12260,
+          "cpuTime": 178.696409
+        },
+        {
+          "type": "GPU",
+          "id": 12258,
+          "cpuTime": 2.017041
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 12259,
+          "cpuTime": 3.634992
+        }
+      ],
+      "allocationProfileFile": "heap-explicit-confirm-and-freeze.json",
+      "treeRssBytes": 1286619136,
+      "processes": [
+        {
+          "pid": 11808,
+          "ppid": 11804,
+          "rssBytes": 330940416,
+          "executable": "node"
+        },
+        {
+          "pid": 12238,
+          "ppid": 11808,
+          "rssBytes": 4063232,
+          "executable": "postgres"
+        },
+        {
+          "pid": 12239,
+          "ppid": 12238,
+          "rssBytes": 3293184,
+          "executable": "postgres: checkpointer "
+        },
+        {
+          "pid": 12240,
+          "ppid": 12238,
+          "rssBytes": 18808832,
+          "executable": "postgres: background writer "
+        },
+        {
+          "pid": 12243,
+          "ppid": 12238,
+          "rssBytes": 1949696,
+          "executable": "postgres: walwriter "
+        },
+        {
+          "pid": 12244,
+          "ppid": 12238,
+          "rssBytes": 3129344,
+          "executable": "postgres: autovacuum launcher "
+        },
+        {
+          "pid": 12245,
+          "ppid": 12238,
+          "rssBytes": 2293760,
+          "executable": "postgres: logical replication launcher "
+        },
+        {
+          "pid": 12255,
+          "ppid": 11808,
+          "rssBytes": 319291392,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12258,
+          "ppid": 12255,
+          "rssBytes": 50872320,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12259,
+          "ppid": 12255,
+          "rssBytes": 33439744,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12260,
+          "ppid": 12255,
+          "rssBytes": 379092992,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 13380,
+          "ppid": 12238,
+          "rssBytes": 33947648,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 13694,
+          "ppid": 12238,
+          "rssBytes": 18956288,
+          "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+        },
+        {
+          "pid": 14735,
+          "ppid": 12238,
+          "rssBytes": 28721152,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 14881,
+          "ppid": 12238,
+          "rssBytes": 28753920,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 14969,
+          "ppid": 12238,
+          "rssBytes": 29065216,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        }
+      ]
+    },
+    {
+      "name": "failure",
+      "at": "2026-09-09T10:45:15.752Z",
+      "acceptanceGate": false,
+      "explicitGcDiagnostic": false,
+      "heap": {
+        "usedSize": 12984028,
+        "totalSize": 19480576,
+        "embedderHeapUsedSize": 4749968,
+        "backingStorageSize": 6359836
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 883,
+        "jsEventListeners": 291
+      },
+      "allocationMeasurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+      "samplingIntervalBytes": 65536,
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 12255,
+          "cpuTime": 268.79878
+        },
+        {
+          "type": "renderer",
+          "id": 12260,
+          "cpuTime": 178.981546
+        },
+        {
+          "type": "GPU",
+          "id": 12258,
+          "cpuTime": 2.080643
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 12259,
+          "cpuTime": 3.646575
+        }
+      ],
+      "allocationProfileFile": "heap-failure.json",
+      "treeRssBytes": 1313718272,
+      "processes": [
+        {
+          "pid": 11808,
+          "ppid": 11804,
+          "rssBytes": 331513856,
+          "executable": "node"
+        },
+        {
+          "pid": 12238,
+          "ppid": 11808,
+          "rssBytes": 4063232,
+          "executable": "postgres"
+        },
+        {
+          "pid": 12239,
+          "ppid": 12238,
+          "rssBytes": 3293184,
+          "executable": "postgres: checkpointer "
+        },
+        {
+          "pid": 12240,
+          "ppid": 12238,
+          "rssBytes": 18808832,
+          "executable": "postgres: background writer "
+        },
+        {
+          "pid": 12243,
+          "ppid": 12238,
+          "rssBytes": 1949696,
+          "executable": "postgres: walwriter "
+        },
+        {
+          "pid": 12244,
+          "ppid": 12238,
+          "rssBytes": 3129344,
+          "executable": "postgres: autovacuum launcher "
+        },
+        {
+          "pid": 12245,
+          "ppid": 12238,
+          "rssBytes": 2293760,
+          "executable": "postgres: logical replication launcher "
+        },
+        {
+          "pid": 12255,
+          "ppid": 11808,
+          "rssBytes": 319586304,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12258,
+          "ppid": 12255,
+          "rssBytes": 65683456,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12259,
+          "ppid": 12255,
+          "rssBytes": 33439744,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 12260,
+          "ppid": 12255,
+          "rssBytes": 387645440,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 13380,
+          "ppid": 12238,
+          "rssBytes": 33947648,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 13694,
+          "ppid": 12238,
+          "rssBytes": 18956288,
+          "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+        },
+        {
+          "pid": 14735,
+          "ppid": 12238,
+          "rssBytes": 28721152,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 14881,
+          "ppid": 12238,
+          "rssBytes": 28753920,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        },
+        {
+          "pid": 14969,
+          "ppid": 12238,
+          "rssBytes": 31932416,
+          "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+        }
+      ]
+    }
+  ],
+  "localFixture": {
+    "fileCount": 50000,
+    "directoryCount": 102,
+    "knownBytes": 3013484,
+    "picker": "OPFS_TEST_HANDLE_NOT_NATIVE_PICKER"
+  },
+  "closedManifest": {
+    "fileCount": "50000",
+    "directoryCount": "102",
+    "knownBytes": "3013484",
+    "manifestId": "c2d66552454575da28a78a385d34df0dd7e6804840bc1d8482d3f6f7a5d9938c"
+  },
+  "runId": "3b2c0b97-137a-4086-a7a0-3aea88553e0a",
+  "bundleId": "85d64a43970caa29a3f134cc7dded2327864a606a8939534803a1966a31c48f7",
+  "resources": {
+    "sampleCount": 700,
+    "peakObservedNodeRssBytes": 403095552,
+    "peakObservedProcessTreeRssBytes": 1481310208,
+    "peakObservedProcessTreeFileDescriptors": 729,
+    "samplingErrors": 0,
+    "exitedDuringSample": 78,
+    "intervalMs": 1000,
+    "peakRssProcesses": [
+      {
+        "pid": 11808,
+        "ppid": 11804,
+        "rssBytes": 397688832,
+        "executable": "node"
+      },
+      {
+        "pid": 12238,
+        "ppid": 11808,
+        "rssBytes": 4063232,
+        "executable": "postgres"
+      },
+      {
+        "pid": 12239,
+        "ppid": 12238,
+        "rssBytes": 3211264,
+        "executable": "postgres: checkpointer "
+      },
+      {
+        "pid": 12240,
+        "ppid": 12238,
+        "rssBytes": 19988480,
+        "executable": "postgres: background writer "
+      },
+      {
+        "pid": 12243,
+        "ppid": 12238,
+        "rssBytes": 1933312,
+        "executable": "postgres: walwriter "
+      },
+      {
+        "pid": 12244,
+        "ppid": 12238,
+        "rssBytes": 3096576,
+        "executable": "postgres: autovacuum launcher "
+      },
+      {
+        "pid": 12245,
+        "ppid": 12238,
+        "rssBytes": 2293760,
+        "executable": "postgres: logical replication launcher "
+      },
+      {
+        "pid": 12255,
+        "ppid": 11808,
+        "rssBytes": 361709568,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12258,
+        "ppid": 12255,
+        "rssBytes": 50855936,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12259,
+        "ppid": 12255,
+        "rssBytes": 33308672,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12260,
+        "ppid": 12255,
+        "rssBytes": 432603136,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12272,
+        "ppid": 12238,
+        "rssBytes": 33456128,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 13291,
+        "ppid": 12238,
+        "rssBytes": 34766848,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 13380,
+        "ppid": 12238,
+        "rssBytes": 33931264,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 13694,
+        "ppid": 12238,
+        "rssBytes": 14893056,
+        "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+      },
+      {
+        "pid": 13787,
+        "ppid": 12238,
+        "rssBytes": 29540352,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 13894,
+        "ppid": 12238,
+        "rssBytes": 12107776,
+        "executable": "(postgres)"
+      },
+      {
+        "pid": 13895,
+        "ppid": 12238,
+        "rssBytes": 11862016,
+        "executable": "(postgres)"
+      }
+    ],
+    "latestRssProcesses": [
+      {
+        "pid": 11808,
+        "ppid": 11804,
+        "rssBytes": 331513856,
+        "executable": "node"
+      },
+      {
+        "pid": 12238,
+        "ppid": 11808,
+        "rssBytes": 4063232,
+        "executable": "postgres"
+      },
+      {
+        "pid": 12239,
+        "ppid": 12238,
+        "rssBytes": 3293184,
+        "executable": "postgres: checkpointer "
+      },
+      {
+        "pid": 12240,
+        "ppid": 12238,
+        "rssBytes": 18808832,
+        "executable": "postgres: background writer "
+      },
+      {
+        "pid": 12243,
+        "ppid": 12238,
+        "rssBytes": 1949696,
+        "executable": "postgres: walwriter "
+      },
+      {
+        "pid": 12244,
+        "ppid": 12238,
+        "rssBytes": 3129344,
+        "executable": "postgres: autovacuum launcher "
+      },
+      {
+        "pid": 12245,
+        "ppid": 12238,
+        "rssBytes": 2293760,
+        "executable": "postgres: logical replication launcher "
+      },
+      {
+        "pid": 12255,
+        "ppid": 11808,
+        "rssBytes": 319586304,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12258,
+        "ppid": 12255,
+        "rssBytes": 65683456,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12259,
+        "ppid": 12255,
+        "rssBytes": 33439744,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 12260,
+        "ppid": 12255,
+        "rssBytes": 387645440,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 13380,
+        "ppid": 12238,
+        "rssBytes": 33947648,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 13694,
+        "ppid": 12238,
+        "rssBytes": 18956288,
+        "executable": "postgres: autovacuum worker f001_f80d8c4345f34012b5c5f50636875f9f"
+      },
+      {
+        "pid": 14735,
+        "ppid": 12238,
+        "rssBytes": 28721152,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 14881,
+        "ppid": 12238,
+        "rssBytes": 28753920,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      },
+      {
+        "pid": 14969,
+        "ppid": 12238,
+        "rssBytes": 31932416,
+        "executable": "postgres: f001_test f001_f80d8c4345f34012b5c5f50636875f9f [local] idle"
+      }
+    ],
+    "latestProcessTreeRssBytes": 1313718272
+  },
+  "failure": {
+    "phase": "explicit-confirm-and-freeze",
+    "message": "sampled process tree RSS exceeds the unchanged 1GiB budget",
+    "stack": "AssertionError [ERR_ASSERTION]: sampled process tree RSS exceeds the unchanged 1GiB budget\n    at file:///Volumes/WorkSSD/projects/Traqen-worktrees/f001-source-truth/test/support/source-truth-browser-capture.mjs:209:10\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "issues": [],
+  "pageErrors": [],
+  "page": "- main:\n  - complementary:\n    - text: T Traqen\n    - paragraph: Workspace\n    - button \"↻\"\n    - button \"＋\"\n    - strong: Workspace\n    - text: 等待首次发布\n    - button \"Other ACTIVE\":\n      - strong: Other\n      - text: ACTIVE\n    - button \"Workspace ACTIVE\":\n      - strong: Workspace\n      - text: ACTIVE\n    - navigation \"overview\":\n      - paragraph: 工作台\n      - button \"⌂ 工作台概览\"\n    - navigation \"understanding\":\n      - paragraph: 理解\n      - button \"◎ Workspace 分析\"\n      - button \"◇ 功能 / API\"\n      - button \"⌘ 理解图谱\"\n    - navigation \"governance\":\n      - paragraph: 治理\n      - button \"✓ 声明审核\"\n      - button \"↗ 变更影响\"\n    - navigation \"configuration\":\n      - paragraph: 配置\n      - button \"⚙ 设置中心\"\n    - text: Published Head — Review Queue 0 Impact Actions 0 权威边界 实线为 Published；虚线为 Candidate。历史版本只读。\n  - text: Workspace / Workspace 分析 未发布\n  - button \"Connection Health · 正常\"\n  - combobox \"全局主题配色\":\n    - option \"Enterprise\" [selected]\n    - option \"Apple\"\n    - option \"Warm\"\n    - option \"Fresh\"\n    - option \"Minimal\"\n  - button \"中文\"\n  - button \"English\"\n  - text: ◉ WEB-OPERATOR\n  - alert:\n    - text: \"! 部分 Workspace 数据暂时不可用，请检查连接诊断。\"\n    - button \"×\"\n  - region \"来源快照工作台\":\n    - group: 来源快照成员身份\n    - paragraph: SOURCE TRUTH · F001\n    - heading \"来源快照\" [level=1]\n    - paragraph: 在 Workspace 中，将 Git 与本机目录建立为可复现、可追溯的冻结包。\n    - text: 包已冻结 · 当前准入另行核验\n    - region \"八站来源快照旅程\":\n      - heading \"快照旅程\" [level=2]\n      - paragraph: 一个工作台，八个节点。实线表示已完成；点击节点只回看或预览，不跳过验证。\n      - button \"回到当前 · 第 8 站\"\n      - list:\n        - listitem:\n          - button \"第 1 站 添加来源（只读预览）\":\n            - text: ✓\n            - strong: 添加来源\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 2 站 确认范围（只读预览）\":\n            - text: ✓\n            - strong: 确认范围\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 3 站 来源预检（只读预览）\":\n            - text: ✓\n            - strong: 来源预检\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 4 站 枚举材料（只读预览）\":\n            - text: ✓\n            - strong: 枚举材料\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 5 站 冻结清单（只读预览）\":\n            - text: ✓\n            - strong: 冻结清单\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 6 站 采集校验（只读预览）\":\n            - text: ✓\n            - strong: 采集校验\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 7 站 复核缺口（只读预览）\":\n            - text: ✓\n            - strong: 复核缺口\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 8 站 冻结包（当前）\":\n            - text: \"8\"\n            - strong: 冻结包\n            - text: 当前节点\n    - paragraph: 第 8 / 8 站\n    - heading \"冻结包\" [level=2]\n    - paragraph: 准备私有材料后原子冻结包与 Receipt；提交前没有半包，冻结后不改写历史。\n    - text: 文件\n    - strong: \"100000\"\n    - text: 目录\n    - strong: \"204\"\n    - text: 预期字节\n    - strong: \"5756998\"\n    - text: 已知 Gap\n    - strong: \"0\"\n    - article:\n      - strong: 目录 · 本版更新\n      - term: 来源\n      - definition: directory\n      - term: 目录版本身份\n      - definition: manifest:c2d66552454575da28a78a385d34df0dd7e6804840bc1d8482d3f6f7a5d9938c\n      - term: 采集范围\n      - definition: 完整所选目录\n      - term: 待处置条目\n      - definition: \"0\"\n    - article:\n      - strong: Git · 沿用精确组件\n      - term: 来源\n      - definition: git\n      - term: 精确 commit\n      - definition: 6e0603d037fd39baf4dd32c4e1a90eadecd1856d\n      - term: 采集范围\n      - definition: 全仓库\n      - term: 待处置条目\n      - definition: \"0\"\n    - heading \"冻结包已建立\" [level=3]\n    - term: Bundle\n    - definition: 85d64a43970caa29a3f134cc7dded2327864a606a8939534803a1966a31c48f7\n    - term: Receipt\n    - definition: cd3e9980-a870-46f8-ac8f-8c16f24f9c91\n    - term: 冻结时状态\n    - definition: READY\n    - term: 保留 Gap\n    - definition: \"0\"\n    - paragraph: 当前准入与备份覆盖需分别核验。此站结束 F001，不自动启动 F002。\n    - button \"创建新版本\"\n    - complementary:\n      - heading \"本次上下文\" [level=2]\n      - term: Workspace\n      - definition: Workspace\n      - term: 认证成员\n      - definition: owner · MAINTAIN\n      - term: 任务\n      - definition: 3b2c0b97-137a-4086-a7a0-3aea88553e0a\n      - term: 输入草稿\n      - definition: r4\n      - term: 预期清单\n      - definition: 8765b3d2b7ca…\n      - term: 包\n      - definition: 85d64a43970c…\n      - term: 主存储\n      - definition: 可访问\n      - term: 备份\n      - definition: 未配置 · 没有覆盖证明\n      - paragraph: 主存储可访问不等于备份已覆盖；历史 READY 不等于当前可以准入。\n      - heading \"下一步\" [level=2]\n      - paragraph: 查看冻结包、历史或新建版本\n      - paragraph: 节点进度来自服务端记录。看图、点击未来节点不会推进任务。\n      - heading \"平台边界\" [level=3]\n      - paragraph: 最多 200,000 个条目；单文件上限 1073741824 字节。超限不能靠自动排除文件变绿。\n    - heading \"版本与任务历史\" [level=2]\n    - paragraph: 失败、取消与旧包仍可追溯；新任务失败不替换旧基线。\n    - button \"从选中的冻结包创建新版本\"\n    - heading \"冻结包\" [level=3]\n    - button \"85d64a43970c… READY 2026/9/9 03:45:12 · 文件 100000 · Gap 0\":\n      - strong: 85d64a43970c…\n      - text: READY 2026/9/9 03:45:12 · 文件 100000 · Gap 0\n    - button \"37d1734b353b… READY 2026/9/8 01:06:47 · 文件 100000 · Gap 0\":\n      - strong: 37d1734b353b…\n      - text: READY 2026/9/8 01:06:47 · 文件 100000 · Gap 0\n    - button \"b31723f1d015… READY 2026/9/8 01:04:10 · 文件 100000 · Gap 0\":\n      - strong: b31723f1d015…\n      - text: READY 2026/9/8 01:04:10 · 文件 100000 · Gap 0\n    - button \"be15695e0083… READY 2026/9/8 01:01:35 · 文件 100000 · Gap 0\":\n      - strong: be15695e0083…\n      - text: READY 2026/9/8 01:01:35 · 文件 100000 · Gap 0\n    - heading \"采集任务\" [level=3]\n    - button \"3b2c0b97-137… SUCCEEDED · 第 8 站 2026/9/9 03:37:21\":\n      - strong: 3b2c0b97-137…\n      - text: SUCCEEDED · 第 8 站 2026/9/9 03:37:21\n    - button \"d0316322-971… SUCCEEDED · 第 8 站 2026/9/8 01:04:10\":\n      - strong: d0316322-971…\n      - text: SUCCEEDED · 第 8 站 2026/9/8 01:04:10\n    - button \"fb41d2a6-a91… SUCCEEDED · 第 8 站 2026/9/8 01:01:37\":\n      - strong: fb41d2a6-a91…\n      - text: SUCCEEDED · 第 8 站 2026/9/8 01:01:37\n    - button \"1157d94f-600… SUCCEEDED · 第 8 站 2026/9/8 00:35:07\":\n      - strong: 1157d94f-600…\n      - text: SUCCEEDED · 第 8 站 2026/9/8 00:35:07\n    - button \"返回最新历史\"\n    - heading \"冻结包 85d64a43970c…\" [level=3]\n    - group \"冻结包证据视图\":\n      - button \"凭据与准入\"\n      - button \"完整材料清单\"\n      - button \"缺口记录\"\n      - button \"文件级版本差异\"\n    - paragraph: 只比较两个完整版本的文件/目录新增、修改与删除，不进行变更影响推理。来源或范围不一致时不会将整个范围误标为删除。\n    - text: 从哪个冻结包比较\n    - combobox \"从哪个冻结包比较\":\n      - option \"选择精确基线\"\n      - option \"37d1734b353b · 2026/9/8 01:06:47\" [selected]\n      - option \"b31723f1d015 · 2026/9/8 01:04:10\"\n      - option \"be15695e0083 · 2026/9/8 01:01:35\"\n    - text: 来源\n    - combobox \"来源\":\n      - option \"DIRECTORY_UPLOAD · directory\" [selected]\n      - option \"GIT · git\"\n    - button \"比较文件级变化\"\n    - paragraph: added 0 · modified 1 · deleted 0 · unchanged 50101（文件与目录条目）\n    - table:\n      - rowgroup:\n        - row \"路径 变化\":\n          - columnheader \"路径\"\n          - columnheader \"变化\"\n      - rowgroup:\n        - row \"materials/g0000/f000003.txt MODIFIED\":\n          - cell \"materials/g0000/f000003.txt\"\n          - cell \"MODIFIED\""
+}

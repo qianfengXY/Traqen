@@ -9,6 +9,31 @@ created: 2026-09-09
 
 # Cross-policy exact component reuse and browser capacity diagnosis
 
+## 75e5d44 full-path allocation observation: RSS cause remains unknown
+
+One full-path diagnostic at exact HEAD `75e5d441425c35c96d784c941ad3adbbc5c880fc` took 696s and exited 1 at the unchanged 1 GiB RSS assertion, script line 209. The [original report](memory-75e5d44-failed.json) has SHA-256 `3cff2ee0a3d7479cd2785a59708aa127339509d594d8493c71a41b8a37089b8a`, `acceptanceGate=false`, `allocationSamplingDiagnostic=true`, and `explicitGcDiagnostic=false`. It is neither a new acceptance run nor a replacement for b44's failure.
+
+Execution order, original report and the inspected review / delta screenshots agree: 101 batches of at most 500 entries, full enumeration of 50,000 files / 102 directories, one uploaded file of 28 bytes, and one creation, explicit confirmation and seal each. The new bundle remains `85d64a43970caa29a3f134cc7dded2327864a606a8939534803a1966a31c48f7`. Exact Git component deep equality, three unchanged old bundles and database history, and a single MODIFIED Delta for `materials/g0000/f000003.txt` passed before the RSS assertion. No out-of-scope writes, F001 HTTP errors or page exceptions occurred. Peak FDs were 729, but the FD assertion follows RSS and did not execute.
+
+| Observation | Tree RSS | Chromium browser / renderer RSS | JS used / total | Embedder / backing |
+| --- | ---: | ---: | ---: | ---: |
+| Browser start | 549765120 | 82313216 / 75317248 | 531956 / 1048576 | 1386752 / 0 |
+| Workbench ready | 836861952 | 95076352 / 265748480 | 13815508 / 16859136 | 6992968 / 6382986 |
+| OPFS generation end | 876347392 | 225951744 / 297484288 | 17310976 / 34160640 | 6408536 / 6398739 |
+| Full enumeration and incremental capture end | 1324269568 | 315768832 / 428032000 | 37171620 / 80297984 | 7816616 / 6461358 |
+| Explicit confirmation and freeze end | 1286619136 | 319291392 / 379092992 | 16014628 / 18694144 | 5971384 / 6642428 |
+| Failure observation | 1313718272 | 319586304 / 387645440 | 12984028 / 19480576 | 4749968 / 6359836 |
+
+Units are bytes; browser / renderer exclude the GPU / network processes separately listed in the report. Across 700 error-free samples, peak tree RSS was 1,481,310,208 bytes: Chromium 878,477,312, Node 397,688,832 and PG 205,144,064 (including transient `(postgres)` names). JS figures are stage observations, not whole-run peaks. DOM counts were 8 → 1112 → 723 → 3258 → 697 → 883, with non-monotonic listener counts too; neither proves the absence of leaks.
+
+All six original allocation profiles were traversed. The [derived summary](memory-75e5d44-allocations.json) preserves original SHA-256 hashes, sample counts and allocation-location groups. Nonempty profiles contain only 66–80 samples, with estimated live allocation totals of 4,829,640–5,930,884 bytes, dominated by V8 API, React development runtime and anonymous calls. At capture end, `transfer.ts` has only one approximately 64 KiB sample. No JS allocation group proportional to all files was observed, but sparse coverage cannot rule out transient large allocations or native retention. Allocation stacks are not retaining paths and do not measure Chromium native heaps. Profiling may itself affect reclamation, so lower RSS than b44 is not evidence of an improvement.
+
+Capsule continuation: (1) the full business path still exceeds RSS; (2) evidence comprises the original report, six profiles, the complete 88-line JSON log and two screenshots; log SHA-256 `bcca57f25358d256cb041a112ddc5ffedb2b9c69202e5bcb6ae53e8bd01ec5f2`; (3) no attributable root cause yet: workbench startup, OPFS generation, enumeration and server work all increase RSS, and current JS evidence cannot explain the excess; (4) next, ask a non-author peer to examine the same raw evidence and accounting, then select one controlled experiment separating native allocation, allocator high-water marks and development-runtime costs, without repeating full-path sampling; (5) bound one diagnostic round to 20 minutes and return hypotheses/open questions if no new evidence emerges; (6) preserve full enumeration, hashing, both getFile change checks and IDB backpressure; no forced-GC acceptance, browser/preparation exclusions or relaxed budgets; (7) no UX change yet; (8) only after establishing ownership, perform behavioral RED → GREEN and rerun the original natural-reclamation full gate. The intermittent Git 503 cause also remains unproven.
+
+This round archives evidence only, changing neither product nor observer. API 3197 and diagnostic PID 11808 / Chromium 12255 / PG 12238 have exited. Web 3188 LISTEN PID 16962 started Mon Sep 7 07:00:29 2026, with cwd in this feature's web checkout. Target and worktree HEAD are 75e5d44, committed 2026-09-09 03:31:47 -07:00; PROCESS_AFTER_TARGET=no does not establish stale code in a hot-reloading dev server. No separate API startup log is available; LOG_EVIDENCE is not invented. Original pilot / PG remain unopened and unchanged; no backend rerun, CUA or production operation. Current wake `0001788950717036-000067-44ad64d3` received applied invocation-bound handled disposition. Parent remains doing, workflow v12 unchanged. F001 is unfinished; no push or merge.
+
+Archive checks: bilingual documentation 2/2, zero skips, exit 0 (426ms); the byte-for-byte report SHA-256, all six original profile hashes, stage/peak process RSS sums and each allocation-group sum agree; `git diff --check` passed. No behavior changed, so the TDD risk entry does not call for an artificial duplicate RED. Neither the green backend suite nor the failed scale gate was rerun. Archiving and diagnostic discussion are not independent formal review and publish no Issue.
+
 ## cb8bccb isolated scanner observation: not acceptance
 
 The 50k diagnostic exited 0 in 281s. Original [memory-cb8bccb-observed.json](memory-cb8bccb-observed.json): `OBSERVED_NOT_ACCEPTANCE`, `acceptanceGate=false`, `explicitGcDiagnostic=true`. Both scans returned 50,000 files / 102 directories / 50,102 rows / 3,087,392 bytes with manifest `516fddfe191fb89759f2a2e6bb3319fa4d174678038eb34bfedb4cdcf2bb32b6`. There were 283 error-free samples, a sampled peak of 840,695,808 bytes and 105 FDs. This page has neither the full workbench nor PostgreSQL and includes explicit GC. None of its low values replaces b44's FAILED result or the 1 GiB gate.
