@@ -2,6 +2,7 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, opendir, statfs } from "node:fs/promises";
 import path from "node:path";
 import { requireValue, SourceTruthError } from "./errors.js";
+import { gitCacheDiagnostic } from "./git-cache-diagnostic.js";
 
 const capacity = () => new SourceTruthError("SOURCE_CAPACITY_EXHAUSTED", "Git 缓存容量不足；扩容或恢复存储后重试，已有材料保留", { status: 507 });
 
@@ -38,26 +39,45 @@ export async function openGitCacheLock(root) {
 export async function checkGitCacheCapacity(budget, reservation = 0n) {
   const maximum = BigInt(budget.maximum), minimumFree = BigInt(budget.minimumFree);
   let accounted = 0n, entries = 0;
+  let operation = "SCAN_BOUND", entryKind = "ROOT";
   const visit = async (location, depth) => {
+    const name = path.basename(location);
+    const kind = depth === 0 ? "ROOT" : name.endsWith(".lock") ? "LOCK" : name.startsWith("tmp_pack_") ? "PACK_TEMP"
+      : name.endsWith(".pack") ? "PACK" : name.endsWith(".idx") ? "INDEX" : "OTHER";
+    entryKind = kind; operation = "SCAN_BOUND";
     requireValue(depth <= 16 && ++entries <= 100000, "SOURCE_STORAGE_NOT_READY", "Git 缓存计量超过有界扫描范围，请检查存储", { status: 503 });
+    operation = "ENTRY_STAT";
     const stat = await lstat(location, { bigint: true });
+    operation = "ENTRY_TYPE";
     requireValue(!stat.isSymbolicLink() && (stat.isFile() || stat.isDirectory()), "SOURCE_STORAGE_NOT_READY", "Git 缓存包含不可安全计量的条目", { status: 503 });
     // Conservative accounting for sparse/compressed files, not a dedup claim.
     accounted += stat.size > stat.blocks * 512n ? stat.size : stat.blocks * 512n;
+    operation = "ENTRY_CAPACITY";
     if (accounted + reservation > maximum) throw capacity();
     if (stat.isDirectory()) {
+      operation = "DIRECTORY_OPEN";
       const directory = await opendir(location, { bufferSize: 32 });
-      for await (const entry of directory) await visit(path.join(location, entry.name), depth + 1);
+      operation = "DIRECTORY_READ";
+      for await (const entry of directory) {
+        await visit(path.join(location, entry.name), depth + 1);
+        operation = "DIRECTORY_READ"; entryKind = kind;
+      }
     }
   };
   try {
     await visit(budget.root, 0);
+    operation = "FILESYSTEM_STAT"; entryKind = "ROOT";
     const filesystem = await statfs(budget.root, { bigint: true });
+    operation = "FILESYSTEM_CAPACITY";
     if (filesystem.bavail * filesystem.bsize < minimumFree + reservation) throw capacity();
     return accounted;
   } catch (error) {
-    if (error instanceof SourceTruthError) throw error;
-    throw new SourceTruthError("SOURCE_STORAGE_NOT_READY", "无法完整核验 Git 缓存容量，请恢复存储后重试", { status: 503, cause: error });
+    const cause = gitCacheDiagnostic({ operation, entryKind, errno: error.code });
+    if (error instanceof SourceTruthError) {
+      error.cause = cause;
+      throw error;
+    }
+    throw new SourceTruthError("SOURCE_STORAGE_NOT_READY", "无法完整核验 Git 缓存容量，请恢复存储后重试", { status: 503, cause });
   }
 }
 

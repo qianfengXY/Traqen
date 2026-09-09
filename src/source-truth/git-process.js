@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SourceTruthError, requireValue } from "./errors.js";
 import { openGitCacheLock } from "./git-cache-capacity.js";
+import { decodeGitCacheFailure, MAX_GIT_CACHE_CONTROL_BYTES } from "./git-cache-diagnostic.js";
 
 const cacheCommand = fileURLToPath(new URL("./git-cache-command.js", import.meta.url));
 
@@ -60,11 +61,11 @@ export class GitProcess {
       if (cacheBudget) {
         let control = "";
         child.stdio[4].on("data", (chunk) => {
-          control += chunk.toString("ascii");
-          if (control.length > 32 || control.includes("\n")) {
-            budgetFailure = control === "CAPACITY\n"
-              ? new SourceTruthError("SOURCE_CAPACITY_EXHAUSTED", "Git 缓存容量不足；扩容或恢复存储后重试，已有材料保留", { status: 507 })
-              : new SourceTruthError("SOURCE_STORAGE_NOT_READY", "Git 缓存容量无法完整核验，请恢复存储后重试", { status: 503 });
+          if (budgetFailure) return;
+          const oversized = control.length + chunk.length > MAX_GIT_CACHE_CONTROL_BYTES;
+          control = oversized ? "" : control + chunk.toString("ascii");
+          if (oversized || control.includes("\n")) {
+            budgetFailure = decodeGitCacheFailure(control);
             stop();
           }
         });

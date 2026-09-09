@@ -9,6 +9,7 @@ import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { GitProcess } from "../src/source-truth/git-process.js";
 import { checkGitCacheCapacity, gitCacheBudget } from "../src/source-truth/git-cache-capacity.js";
+import { decodeGitCacheFailure, encodeGitCacheFailure } from "../src/source-truth/git-cache-diagnostic.js";
 
 const writer = fileURLToPath(new URL("./support/source-truth-git-cache-writer.js", import.meta.url));
 const ownerScript = fileURLToPath(new URL("./support/source-truth-git-cache-owner.js", import.meta.url));
@@ -102,6 +103,52 @@ test("B-09 cache budgets reject malformed or unbounded deployment values", () =>
   for (const value of [0, -1, 1.1, NaN, Infinity, "", "001", "1e9", null, ["1000"], Number.MAX_SAFE_INTEGER + 1, "99999999999999999"]) {
     assert.throws(() => gitCacheBudget("/unused", { maxCacheBytes: value }), { code: "SOURCE_CONFIGURATION_INVALID" });
   }
+});
+
+test("B-09 private supervisor diagnostics identify unsafe entries without exposing their names", async () => {
+  const f = await fixture();
+  await symlink("/fixture-secret-do-not-expose", path.join(f.root, "private-name-do-not-expose"));
+  await assert.rejects(f.process.run([writer, "ok"], f.options), (error) => {
+    assert.equal(error.code, "SOURCE_STORAGE_NOT_READY");
+    assert.equal(error.status, 503);
+    assert.equal(error.details, null);
+    assert.deepEqual(error.cause, { phase: "ADMISSION", operation: "ENTRY_TYPE", errno: null, entryKind: "OTHER" });
+    assert.doesNotMatch(JSON.stringify(error), /do-not-expose/);
+    return true;
+  });
+  assert.equal(f.process.active, 0);
+});
+
+test("B-09 missing cache roots retain only a safe filesystem diagnosis and remain rejected", async () => {
+  const f = await fixture();
+  await assert.rejects(checkGitCacheCapacity({ ...f.budget, root: path.join(f.root, "private-name-do-not-expose") }), (error) => {
+    assert.equal(error.code, "SOURCE_STORAGE_NOT_READY");
+    assert.deepEqual(error.cause, { phase: "UNKNOWN", operation: "ENTRY_STAT", errno: "ENOENT", entryKind: "ROOT" });
+    assert.doesNotMatch(JSON.stringify(error), /do-not-expose/);
+    return true;
+  });
+});
+
+test("B-09 supervisor control diagnostics never forward unknown values or malformed frames", () => {
+  const secret = "fixture-secret-do-not-expose";
+  const encoded = encodeGitCacheFailure({ code: secret, cause: {
+    operation: secret, errno: secret, entryKind: secret, path: secret, message: secret,
+  } }, secret);
+  assert.doesNotMatch(encoded, /do-not-expose/);
+  for (const control of [encoded, "STORAGE\n", secret, "{\n", "x".repeat(513), "null\n",
+    JSON.stringify({ kind: secret, diagnostic: { phase: secret, operation: secret, errno: secret, entryKind: secret } }) + "\n"]) {
+    const error = decodeGitCacheFailure(control);
+    assert.equal(error.code, "SOURCE_STORAGE_NOT_READY");
+    assert.equal(error.status, 503);
+    assert.equal(error.details, null);
+    assert.deepEqual(error.cause, { phase: "UNKNOWN", operation: "UNKNOWN", errno: null, entryKind: "OTHER" });
+    assert.doesNotMatch(JSON.stringify(error), /do-not-expose/);
+  }
+  const exhausted = decodeGitCacheFailure(encodeGitCacheFailure({ code: "SOURCE_CAPACITY_EXHAUSTED",
+    cause: { operation: "FILESYSTEM_CAPACITY", entryKind: "ROOT" } }, "FINAL"));
+  assert.equal(exhausted.code, "SOURCE_CAPACITY_EXHAUSTED");
+  assert.equal(exhausted.status, 507);
+  assert.deepEqual(exhausted.cause, { phase: "FINAL", operation: "FILESYSTEM_CAPACITY", entryKind: "ROOT", errno: null });
 });
 
 test("B-09 unsafe cache entries and lock paths fail closed without exposing local or source text", async () => {
