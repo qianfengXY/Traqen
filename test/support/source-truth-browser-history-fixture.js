@@ -25,7 +25,8 @@ async function regularTree(root) {
   if (stat.isDirectory()) for (const name of await readdir(root)) await regularTree(path.join(root, name));
 }
 
-export async function browserHistoryFixture(t, { pilotRoot, clusterRoot, binaries, expectedBundleIds, expectedFiles }) {
+export async function browserHistoryFixture(t, { pilotRoot, clusterRoot, binaries, expectedBundleIds, expectedFiles, access = "READ" }) {
+  assert.ok(["READ", "MAINTAIN"].includes(access), "copied fixture access must be explicit");
   const pilot = await realpath(pilotRoot), original = await realpath(clusterRoot), bin = await realpath(binaries);
   assert.match(path.basename(pilot), /^tq-f001-pilot-[A-Za-z0-9]+$/);
   assert.match(path.basename(original), /^tq-f001-pg-[A-Za-z0-9]+$/);
@@ -81,8 +82,8 @@ export async function browserHistoryFixture(t, { pilotRoot, clusterRoot, binarie
   const repository = new SourceTruthRepository(db);
   const blobs = await SourceTruthBlobStore.open({ root: bytes, keyVersion: "pilot", keys: { pilot: Buffer.alloc(32, 31) } });
   const services = sourceTruthServices({ repository, blobs, policy: capturePolicy() }); // No live Git source and no background worker.
-  const token = "f001-history-read-only-fixture-token";
-  const authenticate = sourceTruthAuthenticator([{ tokenDigest: createHash("sha256").update(token).digest("hex"), actorId: "reader", tenantId: "tenant" }]);
+  const token = access === "READ" ? "f001-history-read-only-fixture-token" : "f001-copied-capture-fixture-token";
+  const authenticate = sourceTruthAuthenticator([{ tokenDigest: createHash("sha256").update(token).digest("hex"), actorId: access === "READ" ? "reader" : "owner", tenantId: "tenant" }]);
   const origins = ["http://127.0.0.1:3188", "http://localhost:3188"];
   const configured = createConfiguredApplication({ store: new PostgresTraceabilityStore(db), env: { CORS_ALLOWED_ORIGINS: origins.join(",") } });
   await configured.ready;
@@ -96,5 +97,6 @@ export async function browserHistoryFixture(t, { pilotRoot, clusterRoot, binarie
     assert.equal(response.status, 200); return response.json();
   };
   return { root, sourceReportHash: createHash("sha256").update(sourceText).digest("hex"), apiBase, token, read,
+    async assertPriorHistoryUnchanged() { assert.deepEqual((await db.query("SELECT id,payload FROM source_truth_bundle WHERE workspace_id='workspace' AND id=ANY($1::text[]) ORDER BY published_at,id", [expectedBundleIds])).rows, frozen); },
     async assertHistoryUnchanged() { assert.deepEqual((await db.query("SELECT id,payload FROM source_truth_bundle WHERE workspace_id='workspace' ORDER BY published_at,id")).rows, frozen); } };
 }

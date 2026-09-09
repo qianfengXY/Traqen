@@ -41,7 +41,7 @@ async function* walk(root, relative = "") {
   }
 }
 
-function measurements() {
+export function measurements() {
   const result = { sampleCount: 0, peakObservedNodeRssBytes: 0, peakObservedProcessTreeRssBytes: 0,
     peakObservedProcessTreeFileDescriptors: 0, samplingErrors: 0, exitedDuringSample: 0, intervalMs: 1000 };
   let pending, stopped = false;
