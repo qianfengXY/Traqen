@@ -49,6 +49,23 @@ export class SourceCandidateService {
     const payload = { workspaceId: context.workspaceId, sourceId: context.sourceId, kind: source.kind,
       nativeIdentity: source.kind === "GIT" ? source.source.nativeIdentity : { manifestId },
       scope: source.source.scope, manifestId, coverageId, policyRevisionId: run.policyRevisionId };
+    if (source.source.mode === "REUSE") {
+      // REUSE references frozen evidence, including its original capture policy.
+      // The new bundle has today's policy; it must not relabel an old component.
+      return this.repository.withLease(context, async (tx) => {
+        const original = (await tx.query(`SELECT c.* FROM source_truth_bundle_component b
+          JOIN source_truth_component c ON c.workspace_id=b.workspace_id AND c.id=b.component_id
+          WHERE b.workspace_id=$1 AND b.bundle_id=$2 AND c.id=$3`,
+        [context.workspaceId, run.input.baselineBundleId, source.source.componentId])).rows[0];
+        requireValue(original && original.source_id === context.sourceId && original.payload.kind === source.kind,
+          "SOURCE_BASELINE_MISMATCH", "沿用组件必须属于选定基线及同一个来源登记");
+        requireValue(structureDigest("component", original.payload) === original.id
+          && canonicalEncode({ ...payload, policyRevisionId: original.payload.policyRevisionId }) === canonicalEncode(original.payload)
+          && ["fileCount", "directoryCount", "knownBytes"].every((key) => counts[key] === original.counts[key]),
+        "SOURCE_MANIFEST_CORRUPT", "沿用组件身份、清单或处置证据损坏");
+        return { id: original.id, ...original.payload, ...original.counts };
+      });
+    }
     const id = structureDigest("component", payload);
     const existing = await this.repository.database.query("SELECT * FROM source_truth_component WHERE workspace_id=$1 AND id=$2", [context.workspaceId, id]);
     if (existing.rows[0]) return { id, ...existing.rows[0].payload, ...existing.rows[0].counts };

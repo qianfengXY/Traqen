@@ -43,19 +43,30 @@ async function* walk(root, relative = "") {
 
 export function measurements() {
   const result = { sampleCount: 0, peakObservedNodeRssBytes: 0, peakObservedProcessTreeRssBytes: 0,
-    peakObservedProcessTreeFileDescriptors: 0, samplingErrors: 0, exitedDuringSample: 0, intervalMs: 1000 };
+    peakObservedProcessTreeFileDescriptors: 0, samplingErrors: 0, exitedDuringSample: 0, intervalMs: 1000,
+    peakRssProcesses: [], latestRssProcesses: [], latestProcessTreeRssBytes: 0 };
   let pending, stopped = false;
   const sample = () => {
     if (pending) return pending;
     pending = (async () => {
       result.peakObservedNodeRssBytes = Math.max(result.peakObservedNodeRssBytes, process.memoryUsage().rss);
-      const listing = exec("/bin/ps", ["-axo", "pid=,ppid=,rss="], { maxBuffer: 1024 * 1024 });
+      const listing = exec("/bin/ps", ["-axo", "pid=,ppid=,rss=,comm="], { maxBuffer: 1024 * 1024 });
       const output = (await listing).stdout;
-      const processes = output.trim().split("\n").map((line) => line.trim().split(/\s+/).map(Number));
+      const processes = output.trim().split("\n").map((line) => {
+        const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
+        assert.ok(match, "process RSS attribution must parse completely");
+        return { pid: Number(match[1]), ppid: Number(match[2]), rssBytes: Number(match[3]) * 1024,
+          executable: path.basename(match[4]) }; // No arguments or environment values.
+      });
       const owned = new Set([process.pid]);
-      for (let size = -1; size !== owned.size;) { size = owned.size; for (const [pid, ppid] of processes) if (owned.has(ppid)) owned.add(pid); }
+      for (let size = -1; size !== owned.size;) { size = owned.size; for (const { pid, ppid } of processes) if (owned.has(ppid)) owned.add(pid); }
       owned.delete(listing.child.pid); // The sampler's ps child has already exited.
-      result.peakObservedProcessTreeRssBytes = Math.max(result.peakObservedProcessTreeRssBytes, processes.reduce((sum, [pid, , rss]) => sum + (owned.has(pid) ? rss * 1024 : 0), 0));
+      result.latestRssProcesses = processes.filter(({ pid }) => owned.has(pid));
+      result.latestProcessTreeRssBytes = result.latestRssProcesses.reduce((sum, row) => sum + row.rssBytes, 0);
+      if (result.latestProcessTreeRssBytes >= result.peakObservedProcessTreeRssBytes) {
+        result.peakObservedProcessTreeRssBytes = result.latestProcessTreeRssBytes;
+        result.peakRssProcesses = result.latestRssProcesses;
+      }
       let files;
       try { files = await exec("/usr/sbin/lsof", ["-a", "-p", [...owned].join(","), "-Ff"], { maxBuffer: 1024 * 1024 }); }
       catch (error) {

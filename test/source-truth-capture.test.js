@@ -136,6 +136,66 @@ test("B-08 directory close and selection proof commit together", async (t) => {
   assert.equal(source.enumeration_closed, false);
 });
 
+test("B-01/04 cross-policy REUSE keeps both exact components and upload provenance but verifies their bytes", async (t) => {
+  const source = await gitFixture(t), f = await fixture(t, source);
+  await f.capture.save(owner, "workspace", { expectedRevision: 0, input: { ...input, sources: [
+    { sourceId: "git", kind: "GIT", mode: "UPDATE", url: source.url, ref: "main", root: null }, ...input.sources] } });
+  const run = await f.capture.start(owner, "workspace", { draftRevision: 1 });
+  await f.capture.advance(owner, "workspace", run.id);
+  const bytes = Buffer.from("original directory material");
+  const entry = { pathBytes: pathBytes("original.txt"), kind: "FILE", sizeBytes: String(bytes.length),
+    expectedContent: { algorithm: "sha256", digest: hash(bytes) }, gitMode: null };
+  await f.capture.enumerateDirectory(owner, "workspace", run.id, "directory", { batchId: "0", entries: [entry] });
+  await f.capture.closeDirectory(owner, "workspace", run.id, "directory", { fileCount: "1", directoryCount: "0", manifestId: manifestIdentity("DIRECTORY_UPLOAD", [entry]).id });
+  await f.blobs.putBlob({ tenantId: "tenant", workspaceId: "workspace" }, { digest: hash(bytes), sizeBytes: entry.sizeBytes }, [bytes]);
+  const publication = new SourcePublicationService(f.repository, f.candidates);
+  const publish = async (review, clientToken) => {
+    assert.equal(review.status, "REVIEW_REQUIRED");
+    const context = { workspaceId: "workspace", runId: review.id, generation: review.generation }, candidate = review.progress.candidate;
+    const confirmation = await publication.confirm(owner, context, { candidateId: candidate.id, gapSetId: candidate.gapSetId });
+    return publication.seal(owner, context, { confirmationId: confirmation.id, clientToken });
+  };
+  const first = await publish(await f.capture.advance(owner, "workspace", run.id), "old-policy");
+  const originalRows = (await f.db.query("SELECT * FROM source_truth_component ORDER BY id")).rows;
+  const policy = capturePolicy(); // No live Git target: REUSE must work from frozen evidence.
+  assert.notEqual(policy.id, f.policy.id);
+  const capture = new SourceCaptureService({ repository: f.repository, materials: f.materials, blobs: f.blobs,
+    upload: f.upload, candidates: f.candidates, policy, git: null });
+  const reuseInput = { baselineBundleId: first.bundle.id, sources: first.bundle.components.map((component) => ({
+    sourceId: component.sourceId, kind: component.kind, mode: "REUSE", componentId: component.id })) };
+  await capture.save(owner, "workspace", { expectedRevision: 1, input: reuseInput });
+  const next = await capture.start(owner, "workspace", { draftRevision: 2 });
+  const beforeBytes = f.blobs.metrics.streamedBytes;
+  const second = await publish(await capture.advance(owner, "workspace", next.id), "new-policy");
+  assert.deepEqual(second.bundle.components, first.bundle.components, "REUSE does not relabel a component with the current policy");
+  assert.equal(second.bundle.policyRevisionId, policy.id, "the new bundle still uses the current platform policy");
+  assert.notEqual(second.bundle.id, first.bundle.id);
+  assert.equal(f.blobs.metrics.streamedBytes, beforeBytes);
+  assert.deepEqual((await f.db.query("SELECT * FROM source_truth_component ORDER BY id")).rows, originalRows, "no copied or rewritten component rows");
+  const admission = new SourceAdmissionService(f.repository, f.candidates);
+  const qualified = await admission.qualify(owner, "workspace", { bundleId: second.bundle.id, receiptId: second.receipt.id });
+  const directory = qualified.components.find((component) => component.kind === "DIRECTORY_UPLOAD");
+  assert.deepEqual(JSON.parse(Buffer.from(directory.provenance.uploadId, "base64url").toString()), { runId: run.id, sourceId: "directory" });
+  const original = originalRows[0];
+  await assert.rejects(f.db.query("UPDATE source_truth_component SET payload=$2 WHERE id=$1", [original.id,
+    JSON.stringify({ ...original.payload, policyRevisionId: policy.id })]), /append-only/, "the original policy cannot be rewritten");
+  await capture.save(owner, "workspace", { expectedRevision: 2, input: { ...reuseInput, baselineBundleId: second.bundle.id } });
+  const damaged = await capture.start(owner, "workspace", { draftRevision: 3 });
+  const verify = f.blobs.verifyBlob.bind(f.blobs);
+  f.blobs.verifyBlob = (scope, content) => content.digest === hash(bytes) ? Promise.resolve(false) : verify(scope, content);
+  const blocked = await capture.advance(owner, "workspace", damaged.id);
+  assert.equal(blocked.status, "BLOCKED");
+  assert.equal(blocked.diagnostic.code, "SOURCE_CONTENT_MISSING", "exact reuse still revalidates content");
+  assert.equal((await f.repository.listBundles(owner, "workspace")).length, 2);
+  f.blobs.verifyBlob = verify;
+  const restricted = new SourceCaptureService({ repository: f.repository, materials: f.materials, blobs: f.blobs,
+    upload: f.upload, candidates: f.candidates, policy: capturePolicy({ maxEntries: 1 }), git: null });
+  await restricted.save(owner, "workspace", { expectedRevision: 3, input: reuseInput });
+  const overBudget = await restricted.start(owner, "workspace", { draftRevision: 4 });
+  assert.equal((await restricted.advance(owner, "workspace", overBudget.id)).diagnostic.code, "SOURCE_CAPACITY_EXHAUSTED", "reuse cannot bypass the current bundle capacity policy");
+  assert.equal((await f.repository.listBundles(owner, "workspace")).length, 2);
+});
+
 test("B-09 reused directory bytes are all verified but dispositions commit in bounded batches", async (t) => {
   const f = await fixture(t);
   await f.capture.save(owner, "workspace", { expectedRevision: 0, input });

@@ -28,7 +28,17 @@ const pulse = setInterval(() => console.log(JSON.stringify({ phase: activePhase,
 pulse.unref();
 const stage = async (name, work) => {
   activePhase = name; console.log(JSON.stringify({ phase: name, state: "STARTED" })); const start = performance.now();
-  const value = await work(); phases.push({ name, milliseconds: Math.round(performance.now() - start) });
+  const value = await work();
+  await measured.sample();
+  const browserState = page && !page.isClosed() ? await page.evaluate(() => ({
+    domNodes: document.querySelectorAll("*").length,
+    // Chromium's exposed heap figure may be coarsened; this is attribution,
+    // not an exact peak or an alternative to the unchanged process-tree budget.
+    coarseJsHeapBytes: performance.memory?.usedJSHeapSize ?? null,
+  })) : null;
+  phases.push({ name, milliseconds: Math.round(performance.now() - start),
+    resourcesAtEnd: { treeRssBytes: measured.result.latestProcessTreeRssBytes,
+      processes: measured.result.latestRssProcesses, browserState } });
   await save(); console.log(JSON.stringify({ phase: name, state: "FINISHED", ...phases.at(-1) })); return value;
 };
 try {

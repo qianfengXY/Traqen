@@ -137,8 +137,10 @@ export class SourceAdmissionService extends SourceSnapshotReader {
         const row = (await tx.query("SELECT run_id,source_id,payload FROM source_truth_component WHERE workspace_id=$1 AND id=$2", [workspaceId, component.id])).rows[0];
         requireValue(row && structureDigest("component", row.payload) === component.id
           && row.payload.kind === component.kind && row.payload.sourceId === component.sourceId
-          && row.payload.policyRevisionId === current.bundle.payload.policyRevisionId,
-        "SOURCE_MANIFEST_CORRUPT", "组件来源、策略或身份与冻结包不符");
+          && row.payload.workspaceId === workspaceId && row.source_id === component.sourceId,
+        "SOURCE_MANIFEST_CORRUPT", "组件来源或身份与冻结包不符");
+        // The component digest binds its original policy. An exact reused
+        // component need not share the newer bundle/receipt policy revision.
         const { kind, nativeIdentity, scope, manifestId } = row.payload;
         components.push({ componentSnapshotId: component.id, kind, manifestId,
           ...(kind === "GIT" ? {

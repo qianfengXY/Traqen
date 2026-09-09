@@ -3,7 +3,23 @@ import test from "node:test";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gitFixture } from "./support/source-truth-git-fixture.js";
-import { sourceTruthPilot } from "./support/source-truth-pilot.js";
+import { measurements, sourceTruthPilot } from "./support/source-truth-pilot.js";
+
+test("resource samples retain exact process attribution for the observed RSS peak", async () => {
+  const measured = measurements();
+  try { await measured.sample(); } finally { await measured.stop(); }
+  assert.equal(measured.result.samplingErrors, 0);
+  const rows = measured.result.peakRssProcesses;
+  assert.ok(Array.isArray(rows) && rows.some((row) => row.pid === process.pid));
+  assert.equal(new Set(rows.map((row) => row.pid)).size, rows.length);
+  assert.equal(rows.reduce((total, row) => total + row.rssBytes, 0), measured.result.peakObservedProcessTreeRssBytes);
+  for (const row of rows) {
+    assert.ok(Number.isInteger(row.rssBytes) && row.rssBytes >= 0);
+    assert.equal(typeof row.executable, "string");
+    assert.ok(row.executable.length > 0);
+    assert.ok(row.pid === process.pid || rows.some((parent) => parent.pid === row.ppid));
+  }
+});
 
 test("scale pilot Git fixture commits do not buffer a per-file change summary", async (t) => {
   const fixture = await gitFixture(t, { maxOutputBytes: 1024 });
