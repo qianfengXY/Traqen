@@ -1,0 +1,53 @@
+{
+  "status": "PASSED",
+  "scope": "RETAINED_39d6247_100K_READ_ONLY_BROWSER_HISTORY",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "browserCaptureVerified": false,
+  "disasterDeploymentVerified": false,
+  "totalFilesPerVersion": 100000,
+  "bundleIds": [
+    "be15695e00830de24ec09f4dbde7daee6306a9fd4e3fc5a3f43cf72faba61026",
+    "b31723f1d01529355f7444fa111b80c4472bff7ab8cfc9b93aaefbadf1294add",
+    "37d1734b353bbdbc1f58b1b40d9433424bb696e044fddb5ddf3e67f48cedf664"
+  ],
+  "measurements": [
+    {
+      "name": "100k-version-1-page-and-tail-search",
+      "milliseconds": 2143,
+      "domNodes": 360,
+      "renderedRows": 1,
+      "browserHeapBytes": 24500000
+    },
+    {
+      "name": "100k-version-2-page-and-tail-search",
+      "milliseconds": 2604,
+      "domNodes": 360,
+      "renderedRows": 1,
+      "browserHeapBytes": 24500000
+    },
+    {
+      "name": "100k-version-3-page-and-tail-search",
+      "milliseconds": 3258,
+      "domNodes": 360,
+      "renderedRows": 1,
+      "browserHeapBytes": 24500000
+    },
+    {
+      "name": "100k-complete-version-delta",
+      "milliseconds": 1197,
+      "domNodes": 343,
+      "renderedRows": 3,
+      "browserHeapBytes": 24500000
+    }
+  ],
+  "fixtureRoot": "/private/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-history-ui-NlBxh7",
+  "sourceReportHash": "d5ddb665968675099fef9d96afd35f1fbd1ceefbaa7e828daba8936a82ab8a67",
+  "browser": "151.0.7922.34",
+  "noMutation": true,
+  "isolatedCopyUsed": true,
+  "sourceFixturesReopenedInPlace": false,
+  "inventoryRequestCount": 17,
+  "historyAfterReloadVerified": true
+}
