@@ -9,6 +9,25 @@ created: 2026-09-09
 
 # Cross-policy exact component reuse and browser capacity diagnosis
 
+## a649c05 storage-context control: switching environments is not a supported fix
+
+One isolated control at exact HEAD `a649c0502be50480424d63264327b7032c80b2ba` exited 0 in 31s. The same Chromium `151.0.7922.34`, revision `782af9cb30a53f54487e5d2e44738645a8ec457c`, performed identical real OPFS generation and product scanning in a fresh off-the-record context and a fresh disk profile. Both arms returned 2,000 files / 6 directories / 1,127,392 bytes / 2,006 rows and manifest `c38b9081c93881205e172966f9aadb6d4020770a10b4590f7f670f989c6757fd`. Both getFile calls, full hashing, 500-row IDB batches and manifest traversal were preserved. Blank page, random loopback, no API / PG or forced GC; `acceptanceGate=false`.
+
+The [derived evidence](memory-a649-storage-control.json) retains original report SHA-256 `e51e1d421a900cb6a042ba007225bb889e39e53f33aceaaed6d859605bdb3e1e`, diagnostic-script and three product-source hashes, and hashes and byte counts for all six traces. Original artifacts were checked individually: equal counts and manifests, six loss-free windows, and exactly one malloc dump for each of twelve browser / renderer role observations. Both resource samplers had zero errors. This file is a derived summary, not a byte-for-byte copy of the original report.
+
+| Browser process field (bytes) | Off-the-record: baseline → fixture → scan | Disk profile: baseline → fixture → scan |
+| --- | ---: | ---: |
+| OS RSS | 85016576 → 146702336 → 190758912 | 83935232 → 154566656 → 205307904 |
+| Allocator allocated_size | 5434896 → 12658544 → 17841568 | 5007632 → 31372480 → 30758352 |
+| Allocator virtual_committed_size | 13025280 → 24150016 → 43040768 | 12206080 → 52690944 → 63275008 |
+| 80-byte bucket allocated_objects_size | 454000 → 2418640 → 3445440 | 454080 → 4740080 → 3432880 |
+
+The off-the-record arm has a 2,244,608-byte block after fixture generation and a 4,472,832-byte block after scanning, plus a 1,064,960-byte block. The disk arm has a 17,842,176-byte block at both observations. **Both storage contexts produce large allocations**, but this control did not reproduce the original 71,319,552-byte block; its absence cannot be extrapolated to 50k. Post-scan disk-arm RSS and allocated bytes are higher, so this result does not support switching to a disk context as a memory reduction. One sequential control does not establish that disk mode is generally worse. Browser PIDs differ; the same Node process has different baselines, so whole-tree differences are not a causal storage-mode effect. RSS precedes native dumps, hierarchical allocator counters cannot be added together, and dump-local labels are not object identities.
+
+Terra's read-only return `0001789004893601-000121-8eb35860` also checked Playwright 1.61.1: `page.close()` closes the `_ownedContext` created by `browser.newPage()`. The earlier teardown therefore cannot be explained as merely closing a page while leaving that context open. This does not identify the native allocator owner and is not formal review / APPROVE. This control has no new teardown observation; it does not verify context-ID disappearance or completed resource release.
+
+Disposition: no acceptance-browser switch, product change or repeat of the same 50k collection. Original b44 / 75e5 FAILED results and 1-GiB / 1024-FD / 3600s budgets remain. The next useful evidence must distinguish a specific allocation owner or lifetime rather than repeat aggregate measurements; a product correction still requires reproducible RED first. Current managed wake received applied invocation-bound handled disposition; parent remains doing. Original pilot / PG were not reopened or modified, with no CUA / production operation, push or merge. Intermittent Git 503, Node / PG attribution and complete F001 delivery remain unresolved.
+
 ## f55ddf9 native categories: residual bytes do not identify surviving objects
 
 The live task store marks 搬砖工 / gpt-5.6-terra's task `0001788953562561-000085-cee318d6` done. Return `0001788954104918-000096-4ad5d064` is diagnostic delivery, not formal review or APPROVE. The managed command checked exact HEAD `f55ddf963920be06ffc2e73bccc3cd5442c2372e` before one 50k native-category run: 212s / exit 0. The [original report](memory-f55ddf9-native.json) is archived byte-for-byte, SHA-256 `fb15846b9169e334a895693a649a8118485e38d5d81fd03cb58b4d91f68c6866`; all six scanner / diagnostic source hashes match that HEAD. The [derived evidence](memory-f55ddf9-providers.json) preserves all four raw trace hashes and byte counts, per-PID providers and large allocation buckets. Hashes match the originals; each window reports no data loss and exactly one malloc dump per present browser / renderer.

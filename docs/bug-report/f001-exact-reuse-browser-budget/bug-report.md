@@ -9,6 +9,25 @@ created: 2026-09-09
 
 # 跨策略沿用组件与浏览器规模预算诊断
 
+## a649c05 存储上下文对照：不支持切换环境作为修复
+
+exact HEAD `a649c0502be50480424d63264327b7032c80b2ba` 的一次隔离对照 exit 0 / 31s：同一 Chromium `151.0.7922.34`、revision `782af9cb30a53f54487e5d2e44738645a8ec457c`，分别用新的隐私 context 和新的磁盘 profile 执行相同真实 OPFS 生成及产品扫描。每组均为 2,000 文件 / 6 目录 / 1,127,392 bytes / 2,006 行，manifest 同为 `c38b9081c93881205e172966f9aadb6d4020770a10b4590f7f670f989c6757fd`。两次 getFile、完整哈希、500 条 IDB 批及清单遍历未删减。空页面、随机 loopback、无 API / PG、无强制 GC，`acceptanceGate=false`。
+
+[派生证据](memory-a649-storage-control.json) 保留原报告 SHA-256 `e51e1d421a900cb6a042ba007225bb889e39e53f33aceaaed6d859605bdb3e1e`、诊断脚本及三份产品源哈希、六份 trace 的哈希与字节数。原件逐一核对：两组计数和清单相等、六窗无丢样、十二个 browser / renderer 角色各只有一个 malloc dump；两组资源采样均无错误。该文件是派生摘要，不是原报告的逐字节副本。
+
+| browser 进程字段（bytes） | 隐私 context：基线 → fixture → scan | 磁盘 profile：基线 → fixture → scan |
+| --- | ---: | ---: |
+| OS RSS | 85016576 → 146702336 → 190758912 | 83935232 → 154566656 → 205307904 |
+| allocator allocated_size | 5434896 → 12658544 → 17841568 | 5007632 → 31372480 → 30758352 |
+| allocator virtual_committed_size | 13025280 → 24150016 → 43040768 | 12206080 → 52690944 → 63275008 |
+| 80-byte bucket allocated_objects_size | 454000 → 2418640 → 3445440 | 454080 → 4740080 → 3432880 |
+
+隐私组 fixture / scan 后的大块分别有 2,244,608 / 4,472,832 bytes，另有 1,064,960-byte 块；磁盘组两个观察点均有 17,842,176-byte 块。**两种存储上下文都出现大块分配**，但本轮未复现原 71,319,552-byte 块，不能把这个阴性结果外推到 50k。磁盘组 scan 后 RSS 和 allocator 已分配量均更高，故本次结果不支持“改成磁盘 context 就降低内存”的假设；单次顺序对照也不能证明磁盘模式普遍更差。两组 browser PID 不同，Node 进程相同且基线不同，不能将整棵树的差值当作存储模式的因果效应。RSS 先于 native dump，父子 allocator 计数不相加，dump-local 标签不是对象身份。
+
+搬砖工只读回传 `0001789004893601-000121-8eb35860` 另核对 Playwright 1.61.1：`browser.newPage()` 创建的 `_ownedContext` 会随 `page.close()` 关闭；因此旧 teardown 不能解释成“页面关闭但该 context 仍保留”。它仍未证明具体 native 分配者，也不是正式 review / APPROVE。本轮没有新的 teardown 观测，不能声称已验证 context ID 消失或释放完成。
+
+处置：不切换验收浏览器环境、不改产品、不重复同类 50k；原 b44 / 75e5 FAILED 和 1 GiB / 1024 FD / 3600s 预算保留。下一条有效证据必须区分具体分配所有者或生命周期，而不是再取一份相同的总量；产品修复仍须先建立可复现 RED。当前 managed wake 已 invocation-bound handled / applied，父任务仍 doing。原 pilot / PG 未重开或修改，没有 CUA / 生产操作、push / merge；Git 间歇 503、Node / PG 归因及 F001 完成交付仍未解决。
+
 ## f55ddf9 原生分类取证：残余字节不等于相同对象留存
 
 搬砖工 / gpt-5.6-terra 的任务 `0001788953562561-000085-cee318d6` 已在实时 task store 为 done；回传 `0001788954104918-000096-4ad5d064` 是诊断交付，不是正式 review / APPROVE。托管命令核对 exact HEAD `f55ddf963920be06ffc2e73bccc3cd5442c2372e` 后执行一次 50k 原生分类诊断，212s / exit 0。[原报告](memory-f55ddf9-native.json) 逐字节归档，SHA-256 `fb15846b9169e334a895693a649a8118485e38d5d81fd03cb58b4d91f68c6866`；6 项 scanner / diagnostic 源哈希均与该 HEAD 匹配。四个原 trace 的 SHA、字节数、逐 PID 分类及大块分配记录见[派生证据](memory-f55ddf9-providers.json)，均核对原件，无丢样且每个在场 browser / renderer 各一份 malloc dump。
