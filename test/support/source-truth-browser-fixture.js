@@ -14,11 +14,13 @@ import { createSourceTruthHttpHandler } from "../../src/source-truth/http-handle
 import { createConfiguredApplication } from "../../src/api/application-bootstrap.js";
 import { createTraceabilityHttpServer } from "../../src/api/http-server.js";
 import { PostgresTraceabilityStore } from "../../src/storage/index.js";
+import { SourceTruthError } from "../../src/source-truth/errors.js";
 
 export async function browserFixture(t) {
   const cluster = await isolatedPostgres(t);
   const { db, repository } = await cluster.createDatabase();
-  const names = { directory: "Browser Directory", git: "Browser Git", combined: "Browser Combined", blocked: "Browser Blocked" };
+  const names = { directory: "Browser Directory", git: "Browser Git", combined: "Browser Combined", blocked: "Browser Blocked",
+    changed: "Browser Changed Directory", expiry: "Browser Expired Acceptance" };
   for (const [id, name] of Object.entries(names)) {
     await db.query("INSERT INTO project (id,tenant_id,name) VALUES ($1,'tenant',$2)", [id, name]);
     await repository.provision(id, { tenantId: "tenant", grants: [{ actorId: "owner", role: "MAINTAIN" }, { actorId: "reader", role: "READ" }] });
@@ -32,6 +34,17 @@ export async function browserFixture(t) {
   const policy = capturePolicy({ gitTargets: source.targets });
   const blobs = await SourceTruthBlobStore.open({ root: path.join(root, "bytes"), keyVersion: "fixture", keys: { fixture: Buffer.alloc(32, 29) } });
   const git = new GitSourceGateway({ cacheRoot: path.join(root, "git"), targets: source.targets });
+  // One explicitly armed transport fault, scoped to this fixture's gateway.
+  // The real runner must persist the failure; no run/confirmation rows are patched.
+  let failWorkspace = null;
+  const capture = git.capture.bind(git);
+  git.capture = async (context, ...args) => {
+    if (context.workspaceId === failWorkspace) {
+      failWorkspace = null;
+      throw new SourceTruthError("SOURCE_GIT_UNAVAILABLE", "隔离测试：Git 连接暂时不可用", { status: 503 });
+    }
+    return capture(context, ...args);
+  };
   const services = sourceTruthServices({ repository, blobs, policy, git });
   const token = "f001-browser-isolated-fixture-token", readerToken = "f001-browser-isolated-reader-token";
   const authenticate = sourceTruthAuthenticator([[token, "owner"], [readerToken, "reader"]].map(([value, actorId]) => ({ tokenDigest: createHash("sha256").update(value).digest("hex"), actorId, tenantId: "tenant" })));
@@ -48,5 +61,6 @@ export async function browserFixture(t) {
     if (!response.ok) throw new Error(`Fixture evidence read failed: ${response.status}`);
     return response.json();
   };
-  return { root, names, source, gapCommit, token, readerToken, apiBase, read };
+  return { root, names, source, gapCommit, token, readerToken, apiBase, read,
+    failNextGitCapture: (workspace) => { if (!names[workspace]) throw new Error("Unknown fixture Workspace"); failWorkspace = workspace; } };
 }

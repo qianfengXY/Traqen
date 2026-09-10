@@ -1,0 +1,109 @@
+{
+  "status": "PASSED",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "scale100kBrowserVerified": false,
+  "results": [
+    {
+      "case": "directory",
+      "run": "8b028c3d-b5ed-474a-ab5a-8ec6504c7689",
+      "bundle": "bbddfb254c35e5fe317d33f7e87c259b622beb64a08e01a4f6bf4e84894fa881",
+      "files": 105,
+      "emptyDirectories": 1,
+      "refreshResumedSameRun": true,
+      "responseLossRecoveredOneReceipt": true,
+      "inventoryPages": [
+        100,
+        6
+      ],
+      "mobileCurrentVisible": true
+    },
+    {
+      "case": "directory-new-version",
+      "from": "bbddfb254c35e5fe317d33f7e87c259b622beb64a08e01a4f6bf4e84894fa881",
+      "to": "0d02bedef0d0a98cea1ec212f047b2e6326f8db2c0a5691af5462cb2f39d6685",
+      "fullFiles": 105,
+      "priorUnchanged": true
+    },
+    {
+      "case": "git",
+      "bundle": "d4fd2145bdd13c24db10fd0a23f2fe09458b3449dbcd122b4712568d2e4b82b6",
+      "commit": "0f1b70c1a9234c0fc5013ae8cc45329b98c229a3",
+      "status": "READY"
+    },
+    {
+      "case": "combined",
+      "bundle": "6890f86ce1d1eb525672ee626038eb715960d05617b47cc90d39993a9b59d6fe",
+      "status": "READY_WITH_ACCEPTED_GAPS",
+      "gapCount": "1",
+      "independentComponents": 2
+    },
+    {
+      "case": "same-bundle-renewal",
+      "bundle": "6890f86ce1d1eb525672ee626038eb715960d05617b47cc90d39993a9b59d6fe",
+      "oldReceipt": "ff1689a6-7c37-4860-b8cc-08fae31b9747",
+      "newReceipt": "d114fef0-40b0-4fb2-99c3-13d2f0d25718",
+      "oldReceiptUnchanged": true
+    },
+    {
+      "case": "read-only",
+      "canSearchHistory": true,
+      "noMutation": true,
+      "cannotRenewOrCreate": true
+    },
+    {
+      "case": "source-component-delta",
+      "from": "6890f86ce1d1eb525672ee626038eb715960d05617b47cc90d39993a9b59d6fe",
+      "to": "7e6ff888077b202af9812cc14217758e75605e67669a005cbf61eb9347b435f7",
+      "removedSource": "b0ff8f59-f1a7-4562-abcc-a1c610ba0a76",
+      "removalAndReverseAdditionVisible": true,
+      "noFileDeletionClaim": true,
+      "invalidBaselineSelectionCleared": true,
+      "noMutation": true
+    },
+    {
+      "case": "blocked-root",
+      "bundles": 0,
+      "receipts": 0,
+      "noAcceptBypass": true
+    },
+    {
+      "case": "cancel-before-freeze",
+      "run": "99e7945e-3b72-49af-a47f-22287595f742",
+      "dismissNoMutation": true,
+      "terminalAuditRetained": true,
+      "baselineUnchanged": true,
+      "editingRestartsAtOne": true
+    },
+    {
+      "case": "transient-failure-retry",
+      "failure": "9f34d0ff-d1b0-4984-b306-87c65a0e8f27",
+      "retry": "ebaf2e8f-56f1-4417-8dc3-7370f0db822f",
+      "sameLockedInput": true,
+      "failedAttemptRetained": true,
+      "recoveredStatus": "SUCCEEDED"
+    },
+    {
+      "case": "changed-directory-reselection",
+      "run": "0b3503a1-b32a-4290-ba77-aeebf0fda5f9",
+      "changedBytesRejectedBeforeWrite": true,
+      "manifestUnchanged": true,
+      "originalBytesResumeSameRun": true,
+      "files": 2
+    },
+    {
+      "case": "acceptance-expires-before-seal",
+      "run": "dc091846-121d-4893-b8f8-2d002381e357",
+      "expiredConfirmation": "dcd58596-1d9a-406f-8004-bf51d39eae6b",
+      "serverRejected": "SOURCE_ACCEPTANCE_EXPIRED",
+      "noPublicationAtExpiry": true,
+      "sameCandidateWithoutRecapture": true,
+      "explicitNewConfirmation": true
+    }
+  ],
+  "issues": [],
+  "browser": "151.0.7922.34",
+  "fixtureRoot": "/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-browser-matrix-Spcu0C",
+  "noAutomaticAnalysis": true
+}

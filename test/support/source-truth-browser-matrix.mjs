@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { platform, release } from "node:os";
 import { browserFixture } from "./source-truth-browser-fixture.js";
+import { recoveryJourneys } from "./source-truth-browser-recovery.mjs";
 
 const [modulePath, executablePath, evidenceDirectory] = process.argv.slice(2);
 assert.ok(modulePath && executablePath && path.isAbsolute(evidenceDirectory), "expected Playwright module, Chromium executable and absolute evidence directory");
@@ -59,7 +60,9 @@ try {
     await station(7);
     assert.equal(await page.getByRole("button", { name: "确认清单与缺口", exact: true }).isDisabled(), true);
     if (gaps) {
-      await page.getByLabel("接受全部非阻断缺口的理由", { exact: true }).fill("浏览器试点明确接受未取得的 LFS 外部正文");
+      // After a remount, textarea child text contains the prior value. Match
+      // its accessible name, not the implicit label's value-bearing full text.
+      await page.getByRole("textbox", { name: "接受全部非阻断缺口的理由", exact: true }).fill("浏览器试点明确接受未取得的 LFS 外部正文");
       const date = new Date(Date.now() + 3600000);
       const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
       await page.locator('.st-current input[type="datetime-local"]').fill(local);
@@ -281,6 +284,8 @@ try {
   assert.equal(await page.getByRole("button", { name: "冻结包", exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "确认清单与缺口", exact: true }).count(), 0);
   results.push({ case: "blocked-root", bundles: 0, receipts: 0, noAcceptBypass: true });
+  await recoveryJourneys({ f, page, station, connect, picker, start, review, seal, mutations, evidenceDirectory,
+    directoryBaseline: d2, gitBaseline: g1, record: async (result) => { results.push(result); await save(); } });
   assert.equal(mutations.some(({ url }) => /analysis-jobs|understanding-runs/.test(url)), false);
   assert.deepEqual(pageErrors, []);
   report.status = issues.length ? "GAPS_FOUND" : "PASSED"; report.noAutomaticAnalysis = true;
