@@ -1,0 +1,893 @@
+{
+  "kind": "DERIVED_CARDINALITY_CONTEXT_DISPOSAL_NOT_ACCEPTANCE",
+  "head": "5de50f659a29a8eaa725945e1c02f24565554ad0",
+  "status": "OBSERVED_NOT_ACCEPTANCE",
+  "acceptanceGate": false,
+  "explicitGcDiagnostic": false,
+  "source": {
+    "parentPath": "/private/tmp/traqen-f001-cardinality-control.kw9V4y/",
+    "childPath": "report.json",
+    "sha256": "da6656fc3d2b72cf6ac9afff1b84943487108f4cce755d188be780533beb5969",
+    "bytes": 107640
+  },
+  "controlSha256": "e57a144f7896c61362962d0e48cf6ddc4938d573ce84441a8cd1cc76098720ef",
+  "diagnosticSources": {
+    "source-truth-browser-memory-observer.js": "e248fc937599159abdc0ad29fed34b6a76e73946cc6001e69694ac81cf9367a8",
+    "source-truth-pilot.js": "f76cf369ef2fd19175cf228142254c6fae85a53d8eb81ac452c740769c747c59"
+  },
+  "capsule": {
+    "symptom": "Original complete browser capture exceeds 1GiB; browser native owner remains unknown.",
+    "evidence": "2k storage-mode control reproduces browser 80-byte bucket growth and large blocks in both modes; switching to disk is unsupported.",
+    "hypothesis": "Distinct-path metadata versus per-operation resources can be separated by fixed write cycles and varying only path reuse.",
+    "strategy": "Fresh browser/context in each arm. 2000 getFileHandle/createWritable/write(empty)/close cycles; reuse one path or use 2000 unique paths. Measure before/after and after verified context disposal plus 5s.",
+    "timeout": "At most 600 seconds for both arms; no automatic rerun or 50k escalation.",
+    "warning": "Different cardinality also changes internal create/update work. A single sequential contrast is not a statistical estimate or native type/stack proof. Do not equate allocation labels across dumps. If neither arm reproduces material growth, attribution remains inconclusive.",
+    "userInteraction": "None; no product scanner, IndexedDB, API, PostgreSQL, workbench, CUA, native picker or original fixtures.",
+    "acceptance": "OBSERVED_NOT_ACCEPTANCE only. Original FAILED evidence and 1GiB/1024FD/3600s budgets remain unchanged."
+  },
+  "arms": [
+    {
+      "mode": "same-path",
+      "browser": {
+        "protocolVersion": "1.3",
+        "product": "HeadlessChrome/151.0.7922.34",
+        "revision": "@782af9cb30a53f54487e5d2e44738645a8ec457c",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "jsVersion": "15.1.206.8"
+      },
+      "fixture": {
+        "writeCycles": 2000,
+        "payloadBytes": 0,
+        "fileCount": 1
+      },
+      "contextId": "199BEC1700969A0C0635BDFA179C88B6",
+      "afterCloseContexts": {
+        "browserContextIds": [],
+        "defaultBrowserContextId": "2E047E76CAB376F3352DA822B3BC9AE9"
+      },
+      "sampleCount": 13,
+      "samplingErrors": 0,
+      "stages": [
+        {
+          "name": "before-fixture",
+          "at": "2026-09-10T02:05:37.116Z",
+          "treeRssBytes": 422150144,
+          "contexts": {
+            "browserContextIds": [
+              "199BEC1700969A0C0635BDFA179C88B6"
+            ],
+            "defaultBrowserContextId": "2E047E76CAB376F3352DA822B3BC9AE9"
+          },
+          "roles": [
+            {
+              "type": "browser",
+              "pid": 92663,
+              "rssBytes": 85049344
+            },
+            {
+              "type": "renderer",
+              "pid": 92666,
+              "rssBytes": 75546624
+            },
+            {
+              "type": "GPU",
+              "pid": 92664,
+              "rssBytes": 55640064
+            },
+            {
+              "type": "network.mojom.NetworkService",
+              "pid": 92665,
+              "rssBytes": 43466752
+            },
+            {
+              "type": "tracing.mojom.TracingService",
+              "pid": 92671,
+              "rssBytes": null
+            }
+          ],
+          "heap": {
+            "usedSize": 938428,
+            "totalSize": 1572864,
+            "embedderHeapUsedSize": 1386752,
+            "backingStorageSize": 0
+          },
+          "storage": {
+            "usage": 0,
+            "quota": 1125320607,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 0
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "trace": "same-path-before-fixture.json",
+          "traceSha256": "7043bf5265dfdccaf125937e5681a734d3e03761e87b687e8bd2a969f5bb20b5",
+          "traceBytes": 1142309,
+          "dataLossOccurred": false,
+          "allocators": [
+            {
+              "role": "browser",
+              "pid": 92663,
+              "allocator": {
+                "allocated_objects_count": "37709",
+                "allocated_objects_size": "5407488",
+                "allocated_size": "5407488",
+                "brp_quarantined_count": "18",
+                "brp_quarantined_size": "1312",
+                "decommittable_size": "999424",
+                "discardable_size": "327680",
+                "effective_size": "2508179",
+                "fragmentation": "58",
+                "intended_leak_size": "0",
+                "max_allocated_size": "5755040",
+                "max_committed_size": "13090816",
+                "size": "8108528",
+                "syscall_count": "168",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "13090816",
+                "virtual_size": "16777216",
+                "wasted": "7683328"
+              },
+              "bucket80": {
+                "active_slot_spans": "2",
+                "allocated_objects_size": "459200",
+                "decommittable_size": "196608",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "207788",
+                "empty_slot_spans": "3",
+                "full_slot_spans": "6",
+                "size": "671744",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            },
+            {
+              "role": "renderer",
+              "pid": 92666,
+              "allocator": {
+                "allocated_objects_count": "31412",
+                "allocated_objects_size": "5799296",
+                "allocated_size": "5933616",
+                "brp_quarantined_count": "0",
+                "brp_quarantined_size": "0",
+                "decommittable_size": "360448",
+                "discardable_size": "344064",
+                "effective_size": "2172716",
+                "fragmentation": "36",
+                "intended_leak_size": "0",
+                "max_allocated_size": "5933616",
+                "max_committed_size": "9175040",
+                "size": "7712704",
+                "syscall_count": "107",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "9175040",
+                "virtual_size": "10485760",
+                "wasted": "3375744"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "546000",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "156927",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "8",
+                "size": "557056",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-fixture",
+          "at": "2026-09-10T02:05:40.872Z",
+          "treeRssBytes": 672530432,
+          "contexts": {
+            "browserContextIds": [
+              "199BEC1700969A0C0635BDFA179C88B6"
+            ],
+            "defaultBrowserContextId": "2E047E76CAB376F3352DA822B3BC9AE9"
+          },
+          "roles": [
+            {
+              "type": "browser",
+              "pid": 92663,
+              "rssBytes": 153714688
+            },
+            {
+              "type": "renderer",
+              "pid": 92666,
+              "rssBytes": 129826816
+            },
+            {
+              "type": "GPU",
+              "pid": 92664,
+              "rssBytes": 71319552
+            },
+            {
+              "type": "network.mojom.NetworkService",
+              "pid": 92665,
+              "rssBytes": 59244544
+            },
+            {
+              "type": "tracing.mojom.TracingService",
+              "pid": 92671,
+              "rssBytes": 91078656
+            }
+          ],
+          "heap": {
+            "usedSize": 4439688,
+            "totalSize": 8388608,
+            "embedderHeapUsedSize": 7098504,
+            "backingStorageSize": 27
+          },
+          "storage": {
+            "usage": 328,
+            "quota": 1125320607,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 328
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "trace": "same-path-after-fixture.json",
+          "traceSha256": "c040a42313177fdeacd9ed495d7f0569aa1381fd312b57804ad13532b16550e1",
+          "traceBytes": 1439484,
+          "dataLossOccurred": false,
+          "allocators": [
+            {
+              "role": "browser",
+              "pid": 92663,
+              "allocator": {
+                "allocated_objects_count": "134266",
+                "allocated_objects_size": "20020160",
+                "allocated_size": "20036528",
+                "brp_quarantined_count": "18",
+                "brp_quarantined_size": "1312",
+                "decommittable_size": "1818624",
+                "discardable_size": "851968",
+                "effective_size": "4911033",
+                "fragmentation": "30",
+                "intended_leak_size": "0",
+                "max_allocated_size": "25714336",
+                "max_committed_size": "33112064",
+                "size": "24896368",
+                "syscall_count": "1204",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "28639232",
+                "virtual_size": "73400320",
+                "wasted": "8619072"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "2263600",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "449237",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "34",
+                "size": "2277376",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "dumpLocalLabel": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "1130496",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "223002",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "1130496",
+                  "slot_size": "1130496",
+                  "total_slot_span_size": "1130496"
+                }
+              ]
+            },
+            {
+              "role": "renderer",
+              "pid": 92666,
+              "allocator": {
+                "allocated_objects_count": "97991",
+                "allocated_objects_size": "17484024",
+                "allocated_size": "17630624",
+                "brp_quarantined_count": "0",
+                "brp_quarantined_size": "0",
+                "decommittable_size": "409600",
+                "discardable_size": "344064",
+                "effective_size": "3394080",
+                "fragmentation": "16",
+                "intended_leak_size": "0",
+                "max_allocated_size": "17783152",
+                "max_committed_size": "22069248",
+                "size": "20546192",
+                "syscall_count": "460",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "20955136",
+                "virtual_size": "35651584",
+                "wasted": "3471112"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "1121600",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "186750",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "17",
+                "size": "1130496",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-context-disposal-5s",
+          "at": "2026-09-10T02:05:46.218Z",
+          "treeRssBytes": 564625408,
+          "contexts": {
+            "browserContextIds": [],
+            "defaultBrowserContextId": "2E047E76CAB376F3352DA822B3BC9AE9"
+          },
+          "roles": [
+            {
+              "type": "browser",
+              "pid": 92663,
+              "rssBytes": 162267136
+            },
+            {
+              "type": "GPU",
+              "pid": 92664,
+              "rssBytes": 68648960
+            },
+            {
+              "type": "network.mojom.NetworkService",
+              "pid": 92665,
+              "rssBytes": 60850176
+            },
+            {
+              "type": "tracing.mojom.TracingService",
+              "pid": 92671,
+              "rssBytes": 88473600
+            }
+          ],
+          "trace": "same-path-after-context-disposal-5s.json",
+          "traceSha256": "6ac1386fcf3fb0aa447ebee62ad0d8bed8adfd12cdb39cbf0886e5b34c86e803",
+          "traceBytes": 403792,
+          "dataLossOccurred": false,
+          "allocators": [
+            {
+              "role": "browser",
+              "pid": 92663,
+              "allocator": {
+                "allocated_objects_count": "60148",
+                "allocated_objects_size": "7743056",
+                "allocated_size": "7743056",
+                "brp_quarantined_count": "5",
+                "brp_quarantined_size": "448",
+                "decommittable_size": "2048000",
+                "discardable_size": "1392640",
+                "effective_size": "11460976",
+                "fragmentation": "65",
+                "intended_leak_size": "0",
+                "max_allocated_size": "42510352",
+                "max_committed_size": "51593216",
+                "size": "19921616",
+                "syscall_count": "2222",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "22429696",
+                "virtual_size": "92274688",
+                "wasted": "14686640"
+              },
+              "bucket80": {
+                "active_slot_spans": "35",
+                "allocated_objects_size": "1733600",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "26",
+                "discardable_size": "0",
+                "effective_size": "1376166",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "2",
+                "size": "2392064",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "dumpLocalLabel": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "1130496",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "650380",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "1130496",
+                  "slot_size": "1130496",
+                  "total_slot_span_size": "1130496"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "distinct-paths",
+      "browser": {
+        "protocolVersion": "1.3",
+        "product": "HeadlessChrome/151.0.7922.34",
+        "revision": "@782af9cb30a53f54487e5d2e44738645a8ec457c",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "jsVersion": "15.1.206.8"
+      },
+      "fixture": {
+        "writeCycles": 2000,
+        "payloadBytes": 0,
+        "fileCount": 2000
+      },
+      "contextId": "503A2047D3D19AE8B5069D96FF62FFA8",
+      "afterCloseContexts": {
+        "browserContextIds": [],
+        "defaultBrowserContextId": "A94579147A45C77B0FABDD855B076E7E"
+      },
+      "sampleCount": 12,
+      "samplingErrors": 0,
+      "stages": [
+        {
+          "name": "before-fixture",
+          "at": "2026-09-10T02:05:47.131Z",
+          "treeRssBytes": 452034560,
+          "contexts": {
+            "browserContextIds": [
+              "503A2047D3D19AE8B5069D96FF62FFA8"
+            ],
+            "defaultBrowserContextId": "A94579147A45C77B0FABDD855B076E7E"
+          },
+          "roles": [
+            {
+              "type": "browser",
+              "pid": 92709,
+              "rssBytes": 85262336
+            },
+            {
+              "type": "renderer",
+              "pid": 92712,
+              "rssBytes": 75431936
+            },
+            {
+              "type": "GPU",
+              "pid": 92710,
+              "rssBytes": 55590912
+            },
+            {
+              "type": "network.mojom.NetworkService",
+              "pid": 92711,
+              "rssBytes": 43483136
+            },
+            {
+              "type": "tracing.mojom.TracingService",
+              "pid": 92716,
+              "rssBytes": null
+            }
+          ],
+          "heap": {
+            "usedSize": 938428,
+            "totalSize": 1572864,
+            "embedderHeapUsedSize": 1386752,
+            "backingStorageSize": 0
+          },
+          "storage": {
+            "usage": 0,
+            "quota": 1109950377,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 0
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "trace": "distinct-paths-before-fixture.json",
+          "traceSha256": "65c9d3cf7f82e40a35c8b7a2b50e138a7306c26fddf754e4b6b6ffaf445d9824",
+          "traceBytes": 1142556,
+          "dataLossOccurred": false,
+          "allocators": [
+            {
+              "role": "browser",
+              "pid": 92709,
+              "allocator": {
+                "allocated_objects_count": "38280",
+                "allocated_objects_size": "5490576",
+                "allocated_size": "5490576",
+                "brp_quarantined_count": "16",
+                "brp_quarantined_size": "1184",
+                "decommittable_size": "1261568",
+                "discardable_size": "311296",
+                "effective_size": "2982706",
+                "fragmentation": "59",
+                "intended_leak_size": "0",
+                "max_allocated_size": "5848880",
+                "max_committed_size": "13680640",
+                "size": "8737440",
+                "syscall_count": "143",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "13680640",
+                "virtual_size": "16777216",
+                "wasted": "8190064"
+              },
+              "bucket80": {
+                "active_slot_spans": "5",
+                "allocated_objects_size": "459280",
+                "decommittable_size": "65536",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "234908",
+                "empty_slot_spans": "1",
+                "full_slot_spans": "5",
+                "size": "688128",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            },
+            {
+              "role": "renderer",
+              "pid": 92712,
+              "allocator": {
+                "allocated_objects_count": "31209",
+                "allocated_objects_size": "5852768",
+                "allocated_size": "5987088",
+                "brp_quarantined_count": "0",
+                "brp_quarantined_size": "0",
+                "decommittable_size": "360448",
+                "discardable_size": "344064",
+                "effective_size": "2276477",
+                "fragmentation": "35",
+                "intended_leak_size": "0",
+                "max_allocated_size": "5987088",
+                "max_committed_size": "9109504",
+                "size": "7874544",
+                "syscall_count": "106",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "9109504",
+                "virtual_size": "10485760",
+                "wasted": "3256736"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "543440",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "161043",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "8",
+                "size": "557056",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-fixture",
+          "at": "2026-09-10T02:05:50.311Z",
+          "treeRssBytes": 680083456,
+          "contexts": {
+            "browserContextIds": [
+              "503A2047D3D19AE8B5069D96FF62FFA8"
+            ],
+            "defaultBrowserContextId": "A94579147A45C77B0FABDD855B076E7E"
+          },
+          "roles": [
+            {
+              "type": "browser",
+              "pid": 92709,
+              "rssBytes": 153845760
+            },
+            {
+              "type": "renderer",
+              "pid": 92712,
+              "rssBytes": 131170304
+            },
+            {
+              "type": "GPU",
+              "pid": 92710,
+              "rssBytes": 66715648
+            },
+            {
+              "type": "network.mojom.NetworkService",
+              "pid": 92711,
+              "rssBytes": 54509568
+            },
+            {
+              "type": "tracing.mojom.TracingService",
+              "pid": 92716,
+              "rssBytes": 83902464
+            }
+          ],
+          "heap": {
+            "usedSize": 5083900,
+            "totalSize": 8650752,
+            "embedderHeapUsedSize": 7587152,
+            "backingStorageSize": 22016
+          },
+          "storage": {
+            "usage": 336160,
+            "quota": 1109950377,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 336160
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "trace": "distinct-paths-after-fixture.json",
+          "traceSha256": "1f8d38045e07196b438496ca1b116cafdc17b4011ee8f6acea1e2422c9e712cc",
+          "traceBytes": 1447158,
+          "dataLossOccurred": false,
+          "allocators": [
+            {
+              "role": "browser",
+              "pid": 92709,
+              "allocator": {
+                "allocated_objects_count": "209571",
+                "allocated_objects_size": "32800360",
+                "allocated_size": "32833104",
+                "brp_quarantined_count": "16",
+                "brp_quarantined_size": "1184",
+                "decommittable_size": "2555904",
+                "discardable_size": "819200",
+                "effective_size": "5884785",
+                "fragmentation": "23",
+                "intended_leak_size": "0",
+                "max_allocated_size": "33269232",
+                "max_committed_size": "42663936",
+                "size": "38574960",
+                "syscall_count": "1353",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "42663936",
+                "virtual_size": "83886080",
+                "wasted": "9863576"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "3080800",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "472400",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "47",
+                "size": "3096576",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "dumpLocalLabel": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "2244608",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "342428",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "2244608",
+                  "slot_size": "2244608",
+                  "total_slot_span_size": "2244608"
+                }
+              ]
+            },
+            {
+              "role": "renderer",
+              "pid": 92712,
+              "allocator": {
+                "allocated_objects_count": "150080",
+                "allocated_objects_size": "25694952",
+                "allocated_size": "25853840",
+                "brp_quarantined_count": "0",
+                "brp_quarantined_size": "0",
+                "decommittable_size": "638976",
+                "discardable_size": "409600",
+                "effective_size": "3910380",
+                "fragmentation": "12",
+                "intended_leak_size": "0",
+                "max_allocated_size": "26048528",
+                "max_committed_size": "29278208",
+                "size": "29253792",
+                "syscall_count": "588",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "29278208",
+                "virtual_size": "44040192",
+                "wasted": "3583256"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "1603280",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "214627",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "24",
+                "size": "1605632",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-context-disposal-5s",
+          "at": "2026-09-10T02:05:55.706Z",
+          "treeRssBytes": 584843264,
+          "contexts": {
+            "browserContextIds": [],
+            "defaultBrowserContextId": "A94579147A45C77B0FABDD855B076E7E"
+          },
+          "roles": [
+            {
+              "type": "browser",
+              "pid": 92709,
+              "rssBytes": 169705472
+            },
+            {
+              "type": "GPU",
+              "pid": 92710,
+              "rssBytes": 68665344
+            },
+            {
+              "type": "network.mojom.NetworkService",
+              "pid": 92711,
+              "rssBytes": 60882944
+            },
+            {
+              "type": "tracing.mojom.TracingService",
+              "pid": 92716,
+              "rssBytes": 88621056
+            }
+          ],
+          "trace": "distinct-paths-after-context-disposal-5s.json",
+          "traceSha256": "bd9067b4b0e574191dbdc7d4e1aa47c729d4affeaaf3d792d1c877e20adec66a",
+          "traceBytes": 401545,
+          "dataLossOccurred": false,
+          "allocators": [
+            {
+              "role": "browser",
+              "pid": 92709,
+              "allocator": {
+                "allocated_objects_count": "67090",
+                "allocated_objects_size": "9421168",
+                "allocated_size": "9421168",
+                "brp_quarantined_count": "5",
+                "brp_quarantined_size": "448",
+                "decommittable_size": "3047424",
+                "discardable_size": "1343488",
+                "effective_size": "16033931",
+                "fragmentation": "66",
+                "intended_leak_size": "0",
+                "max_allocated_size": "55341760",
+                "max_committed_size": "63225856",
+                "size": "26240608",
+                "syscall_count": "2480",
+                "syscall_total_time_ms": "0",
+                "virtual_committed_size": "28393472",
+                "virtual_size": "100663296",
+                "wasted": "18972304"
+              },
+              "bucket80": {
+                "active_slot_spans": "45",
+                "allocated_objects_size": "2062720",
+                "decommittable_size": "65536",
+                "decommitted_slot_spans": "27",
+                "discardable_size": "0",
+                "effective_size": "1922154",
+                "empty_slot_spans": "1",
+                "full_slot_spans": "2",
+                "size": "3145728",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "dumpLocalLabel": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "2244608",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "1371537",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "2244608",
+                  "slot_size": "2244608",
+                  "total_slot_span_size": "2244608"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "One sequential contrast, not a statistical estimate; create/update work and final enumeration cardinality differ.",
+    "No scanner, IndexedDB, API, PostgreSQL or workbench; the result cannot replace the complete browser gate.",
+    "Tracing changes runtime, RSS precedes allocator dumps, and role information is collected afterward.",
+    "Allocator hierarchy cannot be added to RSS. Direct-map labels and equal sizes do not identify surviving objects.",
+    "The original 71319552-byte block was not reproduced; do not extrapolate the small control to 50000 files.",
+    "Context-ID disappearance and renderer exit do not establish that all native asynchronous release has completed."
+  ],
+  "conclusion": "Growth and residual above baseline are observed even with a single empty file and 2000 write cycles. Many distinct live files, payload bytes and the product scanner are not necessary for this small-control observation. This does not identify a native allocation owner or prove a product leak; original b44/75e5 budget failures remain."
+}

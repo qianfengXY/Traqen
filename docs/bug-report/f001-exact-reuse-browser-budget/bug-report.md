@@ -9,6 +9,24 @@ created: 2026-09-09
 
 # 跨策略沿用组件与浏览器规模预算诊断
 
+## 5de50f6 路径基数与 context 关闭对照：尚未定位资源所有者
+
+exact HEAD `5de50f659a29a8eaa725945e1c02f24565554ad0`，一次隔离实验 exit 0 / 22s。两组均执行 2,000 次 `getFileHandle → createWritable → write(empty) → close`，仅改变路径复用：实际文件数为 1 / 2,000，内容均为零字节。没有产品扫描器、IDB、工作台、API / PG 或强制 GC，`acceptanceGate=false`。这次比较也包含内部创建 / 更新操作和最终目录遍历基数的差异，不是文件数量对 RSS 的精确因果估计。
+
+[派生证据](memory-5de50f6-cardinality-control.json) 记录原报告 SHA-256 `da6656fc3d2b72cf6ac9afff1b84943487108f4cce755d188be780533beb5969`、脚本与两份诊断源哈希、六份 trace 的 SHA / 字节数及角色分项；不是原件副本。逐项核验均匹配：六窗无丢样，十个在场 browser / renderer 角色各一份 malloc dump，资源采样 13 / 12 次且零错误。两组 `await context.close()` 后立即及 5 秒后的 `Target.getBrowserContexts` 都不再含原 context ID，renderer 同时退出，browser 保留。
+
+| browser 字段（bytes） | 单路径：基线 → 写入后 → 关闭 5s | 不同路径：基线 → 写入后 → 关闭 5s |
+| --- | ---: | ---: |
+| OS RSS | 85049344 → 153714688 → 162267136 | 85262336 → 153845760 → 169705472 |
+| allocator allocated_size | 5407488 → 20036528 → 7743056 | 5490576 → 32833104 → 9421168 |
+| allocator virtual_committed_size | 13090816 → 28639232 → 22429696 | 13680640 → 42663936 → 28393472 |
+| 80-byte bucket allocated_objects_size | 459200 → 2263600 → 1733600 | 459280 → 3080800 → 2062720 |
+| directMap 大小（非对象身份） | 无 → 1130496 → 1130496 | 无 → 2244608 → 2244608 |
+
+单个空文件反复写入也出现增长和关闭后的残余，所以“大量不同的存活文件”不是本次现象的必要条件。关闭后 allocated_size 明显下降，但 RSS 继续上升；这不能证明泄漏、同一对象留存、释放已经全部完成，或将残余归到仍存活的 context。没有分配类型 / native 栈；原 71,319,552-byte 大块也未复现，不能外推到 50k。RSS 早于 allocator dump，取证自身另有 tracing service，父子计数不可相加。
+
+本轮到证据归档为止，不再增加同类总量实验，不把不充分归因转成产品补丁。下一次内存实验必须先具备能区分具体所有者 / 生命周期的新证据能力。TDD / debugging 约束下，本轮没有产品逻辑改动，也不宣称资源 RED → GREEN。原 b44 / 75e5 FAILED、1 GiB / 1024 FD / 3600s 门禁和原 pilot / PG 均不变；Git 间歇 503、Node / PG 归因及完整 F001 交付仍未解决。父任务保持 doing；本节不是正式 review / APPROVE，没有 push / merge。
+
 ## a649c05 存储上下文对照：不支持切换环境作为修复
 
 exact HEAD `a649c0502be50480424d63264327b7032c80b2ba` 的一次隔离对照 exit 0 / 31s：同一 Chromium `151.0.7922.34`、revision `782af9cb30a53f54487e5d2e44738645a8ec457c`，分别用新的隐私 context 和新的磁盘 profile 执行相同真实 OPFS 生成及产品扫描。每组均为 2,000 文件 / 6 目录 / 1,127,392 bytes / 2,006 行，manifest 同为 `c38b9081c93881205e172966f9aadb6d4020770a10b4590f7f670f989c6757fd`。两次 getFile、完整哈希、500 条 IDB 批及清单遍历未删减。空页面、随机 loopback、无 API / PG、无强制 GC，`acceptanceGate=false`。

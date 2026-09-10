@@ -9,6 +9,24 @@ created: 2026-09-09
 
 # Cross-policy exact component reuse and browser capacity diagnosis
 
+## 5de50f6 path-cardinality and context-disposal control: resource owner still unknown
+
+One isolated experiment at exact HEAD `5de50f659a29a8eaa725945e1c02f24565554ad0` exited 0 in 22s. Each arm executed 2,000 `getFileHandle → createWritable → write(empty) → close` cycles, varying path reuse: actual file counts were 1 / 2,000, with zero payload bytes. No product scanner, IDB, workbench, API / PG or forced GC; `acceptanceGate=false`. Internal creation / update work and final enumeration cardinality also differ, so this is not a precise causal estimate of file count on RSS.
+
+The [derived evidence](memory-5de50f6-cardinality-control.json) records original report SHA-256 `da6656fc3d2b72cf6ac9afff1b84943487108f4cce755d188be780533beb5969`, script and two diagnostic-source hashes, all six trace hashes / byte counts and role details; it is not an original-artifact copy. Individual checks matched: six loss-free windows, one malloc dump for each of ten present browser / renderer observations, and 13 / 12 resource samples with zero errors. Immediately after `await context.close()` and again after five seconds, `Target.getBrowserContexts` no longer contained the original context IDs; renderers exited while browsers remained.
+
+| Browser field (bytes) | Same path: baseline → after writes → closed 5s | Distinct paths: baseline → after writes → closed 5s |
+| --- | ---: | ---: |
+| OS RSS | 85049344 → 153714688 → 162267136 | 85262336 → 153845760 → 169705472 |
+| Allocator allocated_size | 5407488 → 20036528 → 7743056 | 5490576 → 32833104 → 9421168 |
+| Allocator virtual_committed_size | 13090816 → 28639232 → 22429696 | 13680640 → 42663936 → 28393472 |
+| 80-byte bucket allocated_objects_size | 459200 → 2263600 → 1733600 | 459280 → 3080800 → 2062720 |
+| Direct-map sizes (not object identity) | None → 1130496 → 1130496 | None → 2244608 → 2244608 |
+
+Repeated writes to a single empty file also produce growth and post-disposal residual, so many distinct live files are not necessary for this observation. After closure, allocated_size drops substantially while RSS rises. This does not establish a leak, identity of surviving objects, completed asynchronous release, or attribution to a still-live context. No allocation types / native stacks are available, and the original 71,319,552-byte block was not reproduced; do not extrapolate to 50k. RSS precedes allocator dumps, instrumentation adds a tracing service, and hierarchical counters cannot be summed.
+
+This round ends with evidence archival, without another aggregate-only experiment or an unsupported product patch. A subsequent memory experiment first needs a new capability that distinguishes a specific owner / lifetime. Under TDD / debugging constraints, there is no product-logic change or resource RED → GREEN claim. Original b44 / 75e5 FAILED results, 1-GiB / 1024-FD / 3600s budgets and original pilot / PG remain unchanged. Intermittent Git 503, Node / PG attribution and complete F001 delivery remain unresolved. Parent stays doing; this is not formal review / APPROVE, and nothing is pushed or merged.
+
 ## a649c05 storage-context control: switching environments is not a supported fix
 
 One isolated control at exact HEAD `a649c0502be50480424d63264327b7032c80b2ba` exited 0 in 31s. The same Chromium `151.0.7922.34`, revision `782af9cb30a53f54487e5d2e44738645a8ec457c`, performed identical real OPFS generation and product scanning in a fresh off-the-record context and a fresh disk profile. Both arms returned 2,000 files / 6 directories / 1,127,392 bytes / 2,006 rows and manifest `c38b9081c93881205e172966f9aadb6d4020770a10b4590f7f670f989c6757fd`. Both getFile calls, full hashing, 500-row IDB batches and manifest traversal were preserved. Blank page, random loopback, no API / PG or forced GC; `acceptanceGate=false`.
