@@ -52,3 +52,7 @@ created: 2026-09-10
 四张新增截图已逐张核对。GREEN 证据父路径 `/private/tmp/`；子路径 `traqen-f001-recovery-green.7T4Z9K/`。截图文件依次为 `cancelled-preserves-baseline.png`、`retry-retains-original-attempt.png`、`changed-reselection-rejected.png`、`expired-acceptance-returns-review.png`。未将运行截图混入设计资产。
 
 仍未证明：原生系统目录选择器、100k 浏览器规模、部署与备份验收；原规模 FAILED 保留。截图中的全局“部分 Workspace 数据暂时不可用”提示仍需独立查证，不能用本次业务断言全绿掩盖。此提交不改设计、期限、预算、生产数据或产品逻辑；不是独立 review、APPROVE 或整个功能验收。
+
+### 全局提示查证补记
+
+提交 1dd9e29 后逐路 GET 的[隔离报告](shell-read-diagnostic.json)（SHA-256 `2212c16ca9047ab72b374789c185220fbea762cba81703251e14f3c445bce56a`）与[此前已记录的原因](../f001-inventory-query/bug-report.md#workspace-通用提示的实际请求根因)一致：仅旧分析 jobs 返回 400 `Legacy understanding runtime is not configured`；无已发布图的 404 被客户端正确转为 null，其余六路（含来源概览）200。不是新的来源数据损坏；不吞错、伪造 jobs 空列表或为消除提示启动分析。已有 F002 FYI 保持，不重复交接。当前运行只关闭原因未知，不证明完整应用部署就绪。
