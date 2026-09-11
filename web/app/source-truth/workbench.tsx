@@ -13,6 +13,7 @@ import { SourceVersionView } from "./version-view.tsx";
 import { SourceStagingView } from "./staging-view.tsx";
 import { observeSourceReads } from "./observe.ts";
 import { revealSourceStation } from "./rail.ts";
+import { isConfirmedEmptyGitSource } from "./empty-git.ts";
 import "./workbench.css";
 
 const terminal = new Set(["SUCCEEDED", "BLOCKED", "FAILED_RETRYABLE", "CANCELLED"]);
@@ -191,7 +192,9 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
         {journey.preview && <p className="st-callout">这是节点说明及已有记录，不改变真实进度。上一步：{sourceStations[journey.selected - 2] ?? "旅程开始"}；下一步：{sourceStations[journey.selected] ?? "包已冻结，旅程结束"}。</p>}
         {journey.selected <= 2 ? <SourceForm input={run?.input ?? form} versions={baselineVersion && !versions.items.some((version) => version.id === baselineVersion.id) ? [baselineVersion, ...versions.items] : versions.items} disabled={busy || journey.preview || journey.selected === 2 || !canEdit} gitEnabled={overview.policy.gitEnabled} onChange={(input) => { setForm(input); setEditing(true); }} onPickDirectory={() => void chooseDirectory()} directoryName={directoryName} /> : <>
           <div className="st-metrics"><div><small>文件</small><strong>{detail?.candidate?.fileCount ?? detail?.sources.reduce((sum, source) => sum + Number(source.summary.fileCount), 0) ?? "—"}</strong></div><div><small>目录</small><strong>{detail?.candidate?.directoryCount ?? detail?.sources.reduce((sum, source) => sum + Number(source.summary.directoryCount), 0) ?? "—"}</strong></div><div><small>预期字节</small><strong>{detail?.candidate?.knownBytes ?? run?.progress.knownBytes ?? "—"}</strong></div><div><small>已知 Gap</small><strong>{detail?.candidate?.gapCount ?? "未对账"}</strong></div></div>
-          {detail?.sources.map((source) => <article className="st-source-line" key={source.sourceId}><strong>{source.kind === "GIT" ? "Git" : "目录"} · {source.mode === "REUSE" ? "沿用精确组件" : "本版更新"}</strong><dl><dt>来源</dt><dd>{source.sourceId}</dd><dt>{source.kind === "GIT" ? "精确 commit" : "目录版本身份"}</dt><dd>{source.nativeIdentity?.commit ?? (source.manifestId ? `manifest:${source.manifestId}` : "完整枚举尚未闭合")}</dd><dt>采集范围</dt><dd>{source.kind === "GIT" ? source.scope?.root ? `${source.scope.root}（不是全仓库）` : "全仓库" : "完整所选目录"}</dd><dt>待处置条目</dt><dd>{source.summary.pendingCount}</dd></dl></article>)}
+          {detail?.sources.map((source) => <article className="st-source-line" key={source.sourceId}><strong>{source.kind === "GIT" ? "Git" : "目录"} · {source.mode === "REUSE" ? "沿用精确组件" : "本版更新"}</strong><dl><dt>来源</dt><dd>{source.sourceId}</dd><dt>{source.kind === "GIT" ? "精确 commit" : "目录版本身份"}</dt><dd>{source.nativeIdentity?.commit ?? (source.manifestId ? `manifest:${source.manifestId}` : "完整枚举尚未闭合")}</dd><dt>采集范围</dt><dd>{source.kind === "GIT" ? source.scope?.root ? `${source.scope.root}（不是全仓库）` : "全仓库" : "完整所选目录"}</dd><dt>待处置条目</dt><dd>{source.summary.pendingCount}</dd></dl>
+            {isConfirmedEmptyGitSource(source, detail) && <><p><strong>已确认空 Git 版本，0 个文件</strong></p><dl><dt>空 manifest 摘要</dt><dd>{source.manifestId}</dd></dl><p className="st-muted">此组件的完整清单已确认为空；空清单不跳过第 7 站人工确认，冻结后当前准入另行核验。</p></>}
+          </article>)}
           {journey.selected === 3 && <p className={`st-callout ${overview.storage.ready ? "" : "danger"}`}>主存储：{overview.storage.ready ? "可访问" : overview.storage.code ?? "未就绪"}。阻断项不能手工接受。这里不执行用户内容。</p>}
           {[4, 5, 6].includes(journey.selected) && <>
             {journey.selected === 4 && <p className="st-callout warning">目录需完整枚举、逐文件读取哈希。关页或授权中断时保留原任务；不能把尚未读到的文件计为删除。</p>}

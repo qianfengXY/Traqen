@@ -1,0 +1,74 @@
+{
+  "status": "PASSED",
+  "scope": "B13_SMALL_FIXTURES_NOT_SCALE_ACCEPTANCE",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "scale100kBrowserVerified": false,
+  "results": [
+    {
+      "case": "git-full-deletion",
+      "from": "d2cb580cc7d52a664b0425ade292424e403270fcf6292202c65d102dec19b743",
+      "to": "b6a6ab491f7aaa21350769bcc02017c6e2a5d9f1bb2ac438a20de730f3260516",
+      "commit": "03d711078442145169aaae99c1001d36c11ca73e",
+      "fileCount": "0",
+      "directoryCount": "0",
+      "deletedEntries": 3,
+      "deltaPages": 3,
+      "originalUnchanged": true,
+      "explicitEmptyNoticeAtReviewSealAndHistory": true
+    },
+    {
+      "case": "empty-git-first-version",
+      "bundle": "bbaf64741de42d96d464eea945c9b89fecef1c95bffd3493f0053a5ece288d68",
+      "commit": "03d711078442145169aaae99c1001d36c11ca73e",
+      "emptyInventory": true,
+      "admissionVerified": true,
+      "explicitEmptyNoticeAtReviewSealAndHistory": true
+    },
+    {
+      "case": "empty-directory-first-rejected",
+      "run": "93b33f3a-e171-4acd-a3cb-a528d1e3a86f",
+      "bundles": 0,
+      "receipts": 0,
+      "manifestClosed": false
+    },
+    {
+      "case": "empty-directory-replacement-rejected",
+      "run": "433d70df-e495-42e7-9218-0736afbd34bd",
+      "baseline": "2934987af2d47702d32e543daaba412c915df7cf656cb43a3d55de76a4a4c60a",
+      "baselineUnchanged": true,
+      "zeroByteFilePreviouslyAccepted": true,
+      "noEmptyVersion": true
+    }
+  ],
+  "fixtureRoot": "/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-browser-matrix-Xslioa",
+  "sources": [
+    {
+      "path": "test/support/source-truth-browser-empty.mjs",
+      "sha256": "367e501c8b16b30994ae7c9b0e4a56bfb414e80d853d88a7e0dda320b01c4888"
+    },
+    {
+      "path": "test/support/source-truth-browser-fixture.js",
+      "sha256": "2d8708e0411a2053f595e1fbba52db38099327200f8d72aaf4c0d583e332fa56"
+    },
+    {
+      "path": "web/app/source-truth/empty-git.ts",
+      "sha256": "7d1f9fbb8a8a2a7176460d9f8b37776a9b68ae2aeec318721fbd8dd9135bdfe4"
+    },
+    {
+      "path": "web/app/source-truth/types.ts",
+      "sha256": "78707917c8f852d8e4c66bdebb6b1c7c572d9962968e4f06c28c8ae976480992"
+    },
+    {
+      "path": "web/app/source-truth/workbench.tsx",
+      "sha256": "7bec669d232b2c0db8b9d9976ea1dfa7536c7421421b8224e5944ac97a72b181"
+    },
+    {
+      "path": "web/app/source-truth/version-view.tsx",
+      "sha256": "508132aa8ef1e7c161ac99f720d0f987dae7d8f8a759978660164b67107eaa9b"
+    }
+  ],
+  "browser": "151.0.7922.34",
+  "noAutomaticAnalysis": true
+}

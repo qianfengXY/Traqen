@@ -1,0 +1,56 @@
+{
+  "status": "PASSED",
+  "scope": "B13_SMALL_FIXTURES_NOT_SCALE_ACCEPTANCE",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "scale100kBrowserVerified": false,
+  "results": [
+    {
+      "case": "git-full-deletion",
+      "from": "ff3dc4cad243a9391a1dc8d14666937183dba9b9fc332af80366b6ba4e69566c",
+      "to": "f6972674bc490d550b33f6ccf9baf36baf27ea8b6f854dde549cc87be5fd8503",
+      "commit": "da606397f3f16bcb3e66a7d345c6faa17123eff7",
+      "fileCount": "0",
+      "directoryCount": "0",
+      "deletedEntries": 3,
+      "deltaPages": 3,
+      "originalUnchanged": true
+    },
+    {
+      "case": "empty-git-first-version",
+      "bundle": "ede95c27ed809a503d9b9b600a786f9c71ec2016598e62e6357455ea01cc328e",
+      "commit": "da606397f3f16bcb3e66a7d345c6faa17123eff7",
+      "emptyInventory": true,
+      "admissionVerified": true
+    },
+    {
+      "case": "empty-directory-first-rejected",
+      "run": "c4b2d5c6-c62c-4f15-baf9-2feeb40def9e",
+      "bundles": 0,
+      "receipts": 0,
+      "manifestClosed": false
+    },
+    {
+      "case": "empty-directory-replacement-rejected",
+      "run": "61597e89-e4ba-4e70-a5ad-eeb3d3b0cd65",
+      "baseline": "9656dea136821a4fe297a38ecde18bfeb00f683e31aa17df2bedfa635e740fd7",
+      "baselineUnchanged": true,
+      "zeroByteFilePreviouslyAccepted": true,
+      "noEmptyVersion": true
+    }
+  ],
+  "fixtureRoot": "/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-browser-matrix-cbgaEt",
+  "sources": [
+    {
+      "path": "test/support/source-truth-browser-empty.mjs",
+      "sha256": "07d7ecf6759b61856a6887534ffd9f9ff1a5b44a0e5a6efd3640ec1bd81fa058"
+    },
+    {
+      "path": "test/support/source-truth-browser-fixture.js",
+      "sha256": "2d8708e0411a2053f595e1fbba52db38099327200f8d72aaf4c0d583e332fa56"
+    }
+  ],
+  "browser": "151.0.7922.34",
+  "noAutomaticAnalysis": true
+}

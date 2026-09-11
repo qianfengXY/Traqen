@@ -6,6 +6,7 @@ import { ArtifactTable, GapBrowser, sourcePath } from "./evidence-view.tsx";
 import type { Confirmation, FrozenVersion, Page, Receipt } from "./types.ts";
 import { BackupCoverage, ReceiptHistory } from "./receipt-history.tsx";
 import { deltaSources, selectedDeltaSource } from "./delta.ts";
+import { isEmptyGitComponent } from "./empty-git.ts";
 
 type Difference = { pathBytes: string; change: string; before: unknown; after: unknown };
 type Delta = Page<Difference> & { comparable: boolean; reason?: string; counts: Record<string, string> | null; countUnit: string };
@@ -49,6 +50,13 @@ export function SourceVersionView({ client, version, versions, writable, onChang
     await issued(result.receipt);
   };
   return <section className="st-version-view"><h3>冻结包 {version.id.slice(0, 12)}…</h3>
+    {version.components.filter(isEmptyGitComponent).map((component) => <article className="st-source-line" key={component.id}>
+      <strong>已确认空 Git 版本，0 个文件</strong>
+      <dl><dt>来源</dt><dd>{component.sourceId}</dd><dt>精确 commit</dt><dd>{component.nativeIdentity?.commit}</dd>
+        <dt>采集范围</dt><dd>{component.scope?.root ? `${component.scope.root}（不是全仓库）` : "全仓库"}</dd>
+        <dt>空 manifest 摘要</dt><dd>{component.manifestId}</dd></dl>
+      <p className="st-muted">此组件的完整清单已确认为空；历史冻结不代表当前可以准入。</p>
+    </article>)}
     <div className="st-tabs" role="group" aria-label="冻结包证据视图">{[["receipt", "凭据与准入"], ["inventory", "完整材料清单"], ["gaps", "缺口记录"], ["delta", "文件级版本差异"]].map(([id, label]) => <button className={tab === id ? "selected" : ""} key={id} onClick={() => setTab(id)}>{label}</button>)}</div>
     {error && <p className="st-callout danger" role="alert">{error}</p>}
     {tab === "receipt" && <>
