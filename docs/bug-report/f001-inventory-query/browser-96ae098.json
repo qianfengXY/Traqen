@@ -1,0 +1,66 @@
+{
+  "status": "PASSED",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "scale100kBrowserVerified": false,
+  "results": [
+    {
+      "case": "directory",
+      "run": "fa9149d6-9da4-4923-a6cb-660651e564c9",
+      "bundle": "d2ab4cf6358b9c76f3864c93d782a7175d45dfdb400d2053060fe6df0a27d116",
+      "files": 105,
+      "emptyDirectories": 1,
+      "refreshResumedSameRun": true,
+      "responseLossRecoveredOneReceipt": true,
+      "inventoryPages": [
+        100,
+        6
+      ],
+      "mobileCurrentVisible": true
+    },
+    {
+      "case": "directory-new-version",
+      "from": "d2ab4cf6358b9c76f3864c93d782a7175d45dfdb400d2053060fe6df0a27d116",
+      "to": "e4b11296605aaf7b8f00f7a7d6939f0aa41d9100807298c380996e440ceb6b69",
+      "fullFiles": 105,
+      "priorUnchanged": true
+    },
+    {
+      "case": "git",
+      "bundle": "aaee0c69335473c2253e3ce01894397b0289c1e1f92b3b66357ee5e68ca3b619",
+      "commit": "fdadeaf04c505d994fcc9b4e30b923883afe3dad",
+      "status": "READY"
+    },
+    {
+      "case": "combined",
+      "bundle": "443942661cea89e1da3466dd7e8cd2f97ade8bd6ac21a9ac48ba871cb5be09fc",
+      "status": "READY_WITH_ACCEPTED_GAPS",
+      "gapCount": "1",
+      "independentComponents": 2
+    },
+    {
+      "case": "same-bundle-renewal",
+      "bundle": "443942661cea89e1da3466dd7e8cd2f97ade8bd6ac21a9ac48ba871cb5be09fc",
+      "oldReceipt": "52398e5f-4e92-4115-ae87-3f05372e01e7",
+      "newReceipt": "344f84c8-3652-4d63-b4b6-3aa91d4409fd",
+      "oldReceiptUnchanged": true
+    },
+    {
+      "case": "read-only",
+      "canSearchHistory": true,
+      "noMutation": true,
+      "cannotRenewOrCreate": true
+    },
+    {
+      "case": "blocked-root",
+      "bundles": 0,
+      "receipts": 0,
+      "noAcceptBypass": true
+    }
+  ],
+  "issues": [],
+  "browser": "151.0.7922.34",
+  "fixtureRoot": "/tmp/tq-f001-browser-matrix-GZCBEp",
+  "noAutomaticAnalysis": true
+}

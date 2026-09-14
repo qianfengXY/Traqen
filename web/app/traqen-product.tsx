@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
-import { createDefaultChildSlots, needsStartConfirmation } from "./capability-roster";
+import { SourceTruthWorkbench } from "./source-truth/workbench";
+import { createDefaultChildSlots } from "./capability-roster";
 import { F006SettingsCenter } from "./f006-settings-center";
 import {
   CapabilitySettings,
@@ -14,7 +15,6 @@ import {
   ImpactWorkspace,
   ReviewWorkspace,
   WorkspaceOverview,
-  AnalysisCommandCenter,
   type GraphArtifact,
   type T,
 } from "./product-surfaces";
@@ -24,7 +24,6 @@ import {
   getConnectionHealth,
   getEffectiveCapabilities,
   getWorkspaceCapabilityDraft,
-  listWorkspaceExecutionProfiles,
   loadWorkspaceCapabilitySettings,
   getWorkspaceReviewQueue,
   listGlobalCliModels,
@@ -58,13 +57,9 @@ import {
 } from "./product-foundation-client";
 import { hasUnsavedCapabilityDraftChanges, type SecurityBoundaryDraft } from "./capability-settings-state";
 import {
-  controlServerWorkspaceUnderstanding,
   getServerWorkspaceUnderstanding,
   listServerWorkspaceUnderstandingJobs,
-  registerServerWorkspaceSource,
-  ServerUnderstandingApiError,
   startHistoricalRevisionReanalysis,
-  startServerWorkspaceUnderstanding,
   type ServerUnderstandingJob,
 } from "./server-understanding-client";
 import { ThemeProvider } from "./theme-context";
@@ -98,17 +93,9 @@ type CapabilityDraftConflict = {
   current: WorkspaceCapabilityDraft | null;
   currentCatalog: EffectiveCapabilityCatalog;
 };
-type StartConfirmation = {
-  workspaceId: string;
-  sourceRegistrationId: string;
-  requestedMode: "AUTO" | "FULL";
-  profile: ExecutionProfile;
-};
 
 const DEFAULT_API_BASE = process.env.NEXT_PUBLIC_TRAQEN_API_BASE ?? "http://127.0.0.1:3100";
-const DEFAULT_SOURCE_ROOT = process.env.NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT ?? "";
 const WEB_OPERATOR = "WEB-OPERATOR";
-const confirmedProfileStorageKey = (workspaceId: string) => `traqen:f006:confirmed-profile:${WEB_OPERATOR}:${workspaceId}`;
 const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
   dataBoundary: "WORKSPACE",
   budgetLimit: "100",
@@ -168,11 +155,8 @@ function ServerOwnedProduct() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceName, setWorkspaceName] = useState("");
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
-  const [sourceRoot, setSourceRoot] = useState(DEFAULT_SOURCE_ROOT);
-  const [sourceRegistrationId, setSourceRegistrationId] = useState("");
   const [profileRevisionId, setProfileRevisionId] = useState("");
   const [job, setJob] = useState<ServerUnderstandingJob | null>(null);
-  const [jobs, setJobs] = useState<ServerUnderstandingJob[]>([]);
   const [current, setCurrent] = useState<CurrentUnderstandingGraph | null>(null);
   const [artifact, setArtifact] = useState<GraphArtifact | null>(null);
   const [displayRevision, setDisplayRevision] = useState<GraphRevision | null>(null);
@@ -212,7 +196,6 @@ function ServerOwnedProduct() {
   const [mainSkillNames, setMainSkillNames] = useState<string[]>([]);
   const [mainMcpNames, setMainMcpNames] = useState<string[]>([]);
   const [childSlots, setChildSlots] = useState<ChildCapabilityRole[]>(() => createDefaultChildSlots());
-  const [startConfirmation, setStartConfirmation] = useState<StartConfirmation | null>(null);
   const [message, setMessage] = useState("");
   const [messageKind, setMessageKind] = useState<"info" | "error">("info");
   const [working, setWorking] = useState(false);
@@ -221,7 +204,6 @@ function ServerOwnedProduct() {
   const graphRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const revisionRequestRef = useRef(0);
-  const lastConfirmedExecutionProfileIdRef = useRef<string | null>(null);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
   const resolveEvidence = useCallback((resolver: string) =>
     resolveGraphEvidence(apiBase, apiToken, resolver), [apiBase, apiToken]);
@@ -257,11 +239,7 @@ function ServerOwnedProduct() {
         ?? availableJobs.find(({ status }) => status === "PAUSED")
         ?? availableJobs[0]
         ?? null;
-      setJobs(availableJobs);
       setJob(recoverable);
-      if (recoverable) {
-        setSourceRegistrationId(recoverable.sourceRegistrationId);
-      }
     }
     if (reviewResult.status === "fulfilled") setReviewItems(reviewResult.value);
     if (capabilitySettingsResult.status === "fulfilled") {
@@ -315,7 +293,6 @@ function ServerOwnedProduct() {
     setActiveWorkspace(workspace);
     setView("overview");
     setJob(null);
-    setJobs([]);
     setCurrent(null);
     setArtifact(null);
     setDisplayRevision(null);
@@ -337,7 +314,6 @@ function ServerOwnedProduct() {
     setImpact(null);
     setCapabilityDraft(null);
     setCapabilityDraftConflict(null);
-    setStartConfirmation(null);
     setCapabilitySettingsReady(false);
     setImportedKeys([]);
     setDisabledKeys([]);
@@ -353,8 +329,6 @@ function ServerOwnedProduct() {
     setMainSkillNames([]);
     setMainMcpNames([]);
     setChildSlots(createDefaultChildSlots());
-    setSourceRoot(DEFAULT_SOURCE_ROOT);
-    setSourceRegistrationId("");
     setProfileRevisionId("");
     setMessage("");
     void refreshWorkspaceReads(workspace, nextContext);
@@ -410,7 +384,6 @@ function ServerOwnedProduct() {
       void getServerWorkspaceUnderstanding(apiBase, apiToken, activeWorkspace.id, job.id).then((next) => {
         if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
         setJob(next);
-        setJobs((existing) => existing.map((item) => item.id === next.id ? next : item));
         if (next.status === "COMPLETED") void refreshWorkspaceReads(activeWorkspace, requestContext);
       }).catch((error) => notify(messageOf(error, t("任务轮询失败", "Job polling failed")), "error"));
     }, 1500);
@@ -535,98 +508,6 @@ function ServerOwnedProduct() {
     finally { setWorking(false); }
   }
 
-  async function registerSource() {
-    if (!activeWorkspace || !sourceRoot.trim()) return;
-    setWorking(true);
-    try {
-      const registration = await registerServerWorkspaceSource(apiBase, apiToken, activeWorkspace.id, sourceRoot.trim());
-      setSourceRegistrationId(registration.id);
-      notify(t("授权源码已注册。", "Authorized source registered."));
-    } catch (error) { notify(messageOf(error, t("源码注册失败", "Source registration failed")), "error"); }
-    finally { setWorking(false); }
-  }
-
-  function openStartConfirmation() {
-    if (!activeWorkspace || !sourceRegistrationId || !executionProfile) return;
-    const confirmation = {
-      workspaceId: activeWorkspace.id,
-      sourceRegistrationId,
-      requestedMode: jobs.length === 0 ? "FULL" : "AUTO",
-      profile: structuredClone(executionProfile),
-    };
-    const persistedConfirmation = typeof window === "undefined" ? null : window.localStorage.getItem(confirmedProfileStorageKey(confirmation.workspaceId));
-    const lastConfirmed = lastConfirmedExecutionProfileIdRef.current ?? persistedConfirmation;
-    if (!needsStartConfirmation(lastConfirmed, confirmation.profile.id)) {
-      void startUnderstanding(confirmation);
-      return;
-    }
-    setStartConfirmation(confirmation);
-  }
-
-  async function startUnderstanding(confirmation: StartConfirmation) {
-    if (!activeWorkspace || activeWorkspace.id !== confirmation.workspaceId) return;
-    const requestContext = { ...contextRef.current };
-    setWorking(true);
-    try {
-      const started = await startServerWorkspaceUnderstanding(apiBase, apiToken, confirmation.workspaceId, {
-        sourceRegistrationId: confirmation.sourceRegistrationId,
-        requestedMode: confirmation.requestedMode,
-        expectedWorkspaceExecutionProfileRevisionId: confirmation.profile.id,
-      });
-      lastConfirmedExecutionProfileIdRef.current = confirmation.profile.id;
-      window.localStorage.setItem(confirmedProfileStorageKey(confirmation.workspaceId), confirmation.profile.id);
-      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
-      setJob(started);
-      setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
-      setStartConfirmation(null);
-      notify(t("服务端任务已启动；关闭浏览器不会停止分析。", "Server job started; closing the browser will not stop analysis."));
-    } catch (error) {
-      if (
-        error instanceof ServerUnderstandingApiError
-        && error.status === 409
-        && error.code === "PERSISTENCE_CONFLICT"
-        && error.details?.head === "WORKSPACE_EXECUTION_PROFILE"
-        && !staleWorkspaceResponse(requestContext, contextRef.current)
-      ) {
-        await refreshWorkspaceReads(activeWorkspace, requestContext);
-        if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
-          const currentProfile = (await listWorkspaceExecutionProfiles(apiBase, apiToken, activeWorkspace.id).catch(() => []))[0] ?? null;
-          if (!currentProfile) {
-            setStartConfirmation((existing) => existing?.workspaceId === activeWorkspace.id ? null : existing);
-            notify(
-              t("Active Profile 已不可用；确认已关闭，请刷新后重新启动。", "The Active Profile is no longer available. The confirmation was closed; refresh and start again."),
-              "error",
-            );
-            return;
-          }
-          setStartConfirmation((existing) => existing && existing.workspaceId === activeWorkspace.id
-            ? { ...existing, profile: structuredClone(currentProfile) }
-            : existing);
-          notify(
-            t("Active Profile 已变更；确认信息已刷新，请检查后重试。", "The Active Profile changed. The confirmation was refreshed; review it and try again."),
-            "error",
-          );
-        }
-      } else if (!staleWorkspaceResponse(requestContext, contextRef.current)) {
-        notify(messageOf(error, t("启动失败", "Start failed")), "error");
-      }
-    }
-    finally { setWorking(false); }
-  }
-
-  async function controlUnderstanding(action: "pause" | "resume" | "cancel") {
-    if (!activeWorkspace || !job) return;
-    const requestContext = { ...contextRef.current };
-    setWorking(true);
-    try {
-      const next = await controlServerWorkspaceUnderstanding(apiBase, apiToken, activeWorkspace.id, job.id, action);
-      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
-      setJob(next);
-      setJobs((existing) => existing.map((item) => item.id === next.id ? next : item));
-      notify(t("任务状态已更新。", "Job state updated."));
-    } catch (error) { notify(messageOf(error, t("任务控制失败", "Job control failed")), "error"); }
-    finally { setWorking(false); }
-  }
 
   async function selectRevision(revisionId: string) {
     if (!activeWorkspace) return;
@@ -678,7 +559,6 @@ function ServerOwnedProduct() {
       );
       if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
       setJob(started);
-      setJobs((existing) => [started, ...existing.filter(({ id }) => id !== started.id)]);
       setView("workspace");
       notify(t("已从原不可变 Snapshot 启动历史重分析；完成后会生成不移动当前 Head 的新历史 Revision。", "Historical reanalysis started from the original immutable Snapshot. Completion creates a new historical Revision without moving the current Head."));
     } catch (error) {
@@ -735,7 +615,7 @@ function ServerOwnedProduct() {
     try {
       const saved = await saveWorkspaceCapabilityDraft(apiBase, apiToken, workspace.id, input);
       const catalog = await getEffectiveCapabilities(apiBase, apiToken, workspace.id);
-      if (staleWorkspaceResponse(requestContext, contextRef.current)) return;
+      if (staleWorkspaceResponse(requestContext, contextRef.current)) return false;
       setCapabilityDraft(saved);
       setCapabilityDraftConflict(null);
       setEffectiveCatalog(catalog);
@@ -1041,7 +921,7 @@ function ServerOwnedProduct() {
     }
     const workspace = activeWorkspace;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
-    if (view === "workspace") return <AnalysisCommandCenter t={t} job={job} jobs={jobs} agentSlots={executionProfile?.childSlots ?? childSlots} sourceRoot={sourceRoot} setSourceRoot={setSourceRoot} sourceRegistrationId={sourceRegistrationId} profileRevisionId={profileRevisionId} working={working} onRegisterSource={() => void registerSource()} onOpenCapabilitySettings={() => { setSettingsScope("workspace"); setView("settings"); }} onPrepareStart={openStartConfirmation} onControl={(action) => void controlUnderstanding(action)} onSelectJob={(selected) => { setJob(selected); setSourceRegistrationId(selected.sourceRegistrationId); }} />;
+    if (view === "workspace") return <SourceTruthWorkbench key={workspace.id} apiBase={apiBase} apiToken={apiToken} workspaceId={workspace.id} workspaceName={workspace.name} />;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
@@ -1064,7 +944,6 @@ function ServerOwnedProduct() {
       {renderView()}
     </div>
     {diagnosticsOpen && <div className="drawer-backdrop" onMouseDown={() => setDiagnosticsOpen(false)}><aside className="diagnostic-drawer" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Deployment diagnostics</p><h2>{t("部署诊断", "Deployment diagnostics")}</h2></div><button onClick={() => setDiagnosticsOpen(false)}>×</button></header><p>{t("这些信息用于部署与故障诊断，不属于产品主导航。", "These settings are deployment diagnostics and are not primary product navigation.")}</p><label>{t("API 地址", "API base")}<input value={apiBase} onChange={(event) => setApiBase(event.currentTarget.value)} /></label><label>{t("API token（仅当前页面内存）", "API token (page memory only)")}<input type="password" value={apiToken} onChange={(event) => setApiToken(event.currentTarget.value)} autoComplete="off" /></label><dl><dt>Connection Health</dt><dd>{health}</dd><dt>Workspace ID</dt><dd>{activeWorkspace?.id ?? "—"}</dd><dt>GraphRevision ID</dt><dd>{displayRevision?.id ?? "—"}</dd></dl><button className="button primary" disabled={health === "checking"} onClick={() => void reconnect(false)}>{t("重新连接并刷新", "Reconnect and refresh")}</button></aside></div>}
-    {startConfirmation && activeWorkspace && <div className="modal-backdrop"><section className="confirmation-modal" role="dialog" aria-modal="true" aria-labelledby="start-confirmation-title"><p className="eyebrow">Explicit command</p><h2 id="start-confirmation-title">{t("确认启动 Workspace 分析", "Confirm Workspace analysis start")}</h2><p>{t("以下输入将被固定到服务端任务。启动后仍可暂停、恢复或取消。", "The following inputs will be pinned to the server job. You may pause, resume, or cancel after start.")}</p><dl><dt>Workspace</dt><dd>{activeWorkspace.name}</dd><dt>SourceRegistration</dt><dd>{startConfirmation.sourceRegistrationId}</dd><dt>Snapshot</dt><dd>{job?.snapshotManifestId ?? t("服务端启动时创建", "Created by server at start")}</dd><dt>Profile Revision</dt><dd>{startConfirmation.profile.id}</dd><dt>{t("Main 模型", "Main model")}</dt><dd>{startConfirmation.profile.mainAgentSlot.modelProfileId}</dd><dt>{t("Child 模型", "Child models")}</dt><dd>{startConfirmation.profile.childAgentSlots.map((slot) => `${slot.displayName}: ${slot.modelProfileId}`).join(" · ")}</dd><dt>{t("能力数量", "Capability count")}</dt><dd>{startConfirmation.profile.entries.filter((entry) => entry.kind === "SKILL" || entry.kind === "MCP").length}</dd><dt>Agent roster</dt><dd>Main + {startConfirmation.profile.childSlots.length} Child slots</dd><dt>{t("数据边界", "Data boundary")}</dt><dd>WORKSPACE</dd><dt>{t("模式", "Mode")}</dt><dd>{startConfirmation.requestedMode === "FULL" ? "FULL" : "AUTO (FULL / INCREMENTAL)"}</dd></dl><div className="modal-actions"><button className="button" onClick={() => setStartConfirmation(null)}>{t("返回", "Back")}</button><button className="button primary" disabled={working} onClick={() => void startUnderstanding(startConfirmation)}>{t("确认并启动", "Confirm and start")}</button></div></section></div>}
   </main>;
 }
 

@@ -1,0 +1,254 @@
+{
+  "diagnosticHead": "75e5d441425c35c96d784c941ad3adbbc5c880fc",
+  "acceptanceGate": false,
+  "derivedFromReportSha256": "3cff2ee0a3d7479cd2785a59708aa127339509d594d8493c71a41b8a37089b8a",
+  "measurement": "SAMPLED_ALLOCATION_ESTIMATE_NOT_RETAINING_PATH_OR_RSS",
+  "peak": {
+    "node": 397688832,
+    "postgres": 205144064,
+    "chromium": 878477312
+  },
+  "stages": [
+    {
+      "name": "browser-start",
+      "treeRssBytes": 549765120,
+      "rss": {
+        "node": 237666304,
+        "postgres": 59752448,
+        "chromium": 252346368
+      },
+      "heap": {
+        "usedSize": 531956,
+        "totalSize": 1048576,
+        "embedderHeapUsedSize": 1386752,
+        "backingStorageSize": 0
+      },
+      "dom": {
+        "documents": 2,
+        "nodes": 8,
+        "jsEventListeners": 0
+      },
+      "profileFile": "heap-browser-start.json",
+      "profileSha256": "92f383305409dc81110c8c9e3b51eaa231375225eac39d25042c2a735d171120",
+      "sampleCount": 0,
+      "estimatedSampledAllocationBytes": 0,
+      "allocationGroups": {}
+    },
+    {
+      "name": "workbench-ready",
+      "treeRssBytes": 836861952,
+      "rss": {
+        "node": 248184832,
+        "postgres": 88326144,
+        "chromium": 500350976
+      },
+      "heap": {
+        "usedSize": 13815508,
+        "totalSize": 16859136,
+        "embedderHeapUsedSize": 6992968,
+        "backingStorageSize": 6382986
+      },
+      "dom": {
+        "documents": 2,
+        "nodes": 1112,
+        "jsEventListeners": 452
+      },
+      "profileFile": "heap-workbench-ready.json",
+      "profileSha256": "a7b89703b58d259e30a20bf38586e604fdf4f17c4a411d81dc22f41c0eabd956",
+      "sampleCount": 66,
+      "estimatedSampledAllocationBytes": 4829640,
+      "allocationGroups": {
+        "(V8 API)": 1402784,
+        "node_modules/.vite/deps/react_jsx-dev-runtime.js": 1250296,
+        "node_modules/.vite/deps/react-dom_client.js": 731380,
+        "(BYTECODE_COMPILER)": 525056,
+        "anonymous": 262240,
+        "(PARSER)": 133120,
+        "replace": 65664,
+        "listener": 65600,
+        "next": 65600,
+        "elementText": 65600,
+        "node_modules/.vite/deps/react-server-dom-webpack_client__browser.js": 65600,
+        "app/source-truth/source-form.tsx": 65580,
+        "node_modules/.vite/deps/react-dom.js": 65576,
+        "bind": 65544
+      }
+    },
+    {
+      "name": "generate-opfs-directory",
+      "treeRssBytes": 876347392,
+      "rss": {
+        "node": 189005824,
+        "postgres": 39813120,
+        "chromium": 647528448
+      },
+      "heap": {
+        "usedSize": 17310976,
+        "totalSize": 34160640,
+        "embedderHeapUsedSize": 6408536,
+        "backingStorageSize": 6398739
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 723,
+        "jsEventListeners": 239
+      },
+      "profileFile": "heap-generate-opfs-directory.json",
+      "profileSha256": "d6aeb1e8ded44877b34b9ed8293b9a8538394b5a9c65f51e6e3ea7202aec20a0",
+      "sampleCount": 67,
+      "estimatedSampledAllocationBytes": 5065716,
+      "allocationGroups": {
+        "(V8 API)": 1402784,
+        "node_modules/.vite/deps/react_jsx-dev-runtime.js": 1251820,
+        "node_modules/.vite/deps/react-dom_client.js": 665824,
+        "(BYTECODE_COMPILER)": 525056,
+        "anonymous": 393328,
+        "(PARSER)": 133120,
+        "(IDLE_EXTERNAL)": 98028,
+        "app/source-truth/workbench.tsx": 70992,
+        "replace": 65664,
+        "listener": 65600,
+        "next": 65600,
+        "elementText": 65600,
+        "node_modules/.vite/deps/react-server-dom-webpack_client__browser.js": 65600,
+        "app/source-truth/source-form.tsx": 65580,
+        "node_modules/.vite/deps/react-dom.js": 65576,
+        "bind": 65544
+      }
+    },
+    {
+      "name": "browser-full-enumeration-and-incremental-capture",
+      "treeRssBytes": 1324269568,
+      "rss": {
+        "node": 321978368,
+        "postgres": 171769856,
+        "chromium": 830521344
+      },
+      "heap": {
+        "usedSize": 37171620,
+        "totalSize": 80297984,
+        "embedderHeapUsedSize": 7816616,
+        "backingStorageSize": 6461358
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 3258,
+        "jsEventListeners": 333
+      },
+      "profileFile": "heap-browser-full-enumeration-and-incremental-capture.json",
+      "profileSha256": "93892d2fa5b0c9f74374b6c086c76a912998a81a7a8b03964abe22e8ad1f43dd",
+      "sampleCount": 76,
+      "estimatedSampledAllocationBytes": 5675448,
+      "allocationGroups": {
+        "(V8 API)": 1599328,
+        "node_modules/.vite/deps/react_jsx-dev-runtime.js": 1448144,
+        "node_modules/.vite/deps/react-dom_client.js": 665728,
+        "anonymous": 601808,
+        "(BYTECODE_COMPILER)": 328092,
+        "next": 139456,
+        "(PARSER)": 133120,
+        "(IDLE_EXTERNAL)": 98028,
+        "app/source-truth/workbench.tsx": 70992,
+        "hasOwnProperty": 66048,
+        "replace": 65664,
+        "listener": 65600,
+        "elementText": 65600,
+        "node_modules/.vite/deps/react-server-dom-webpack_client__browser.js": 65600,
+        "node_modules/.vite/deps/react-dom.js": 65576,
+        "app/source-truth/transfer.ts": 65568,
+        "app/source-truth/inventory.ts": 65552,
+        "bind": 65544
+      }
+    },
+    {
+      "name": "explicit-confirm-and-freeze",
+      "treeRssBytes": 1286619136,
+      "rss": {
+        "node": 330940416,
+        "postgres": 172982272,
+        "chromium": 782696448
+      },
+      "heap": {
+        "usedSize": 16014628,
+        "totalSize": 18694144,
+        "embedderHeapUsedSize": 5971384,
+        "backingStorageSize": 6642428
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 697,
+        "jsEventListeners": 634
+      },
+      "profileFile": "heap-explicit-confirm-and-freeze.json",
+      "profileSha256": "bb195d50f217c395d3372c9c57ebe8a69702d46d3b561407ab4c8a42ecbfc5be",
+      "sampleCount": 76,
+      "estimatedSampledAllocationBytes": 5671280,
+      "allocationGroups": {
+        "(V8 API)": 1533772,
+        "node_modules/.vite/deps/react_jsx-dev-runtime.js": 1517148,
+        "anonymous": 668048,
+        "node_modules/.vite/deps/react-dom_client.js": 665728,
+        "(BYTECODE_COMPILER)": 328092,
+        "(PARSER)": 133120,
+        "(IDLE_EXTERNAL)": 98028,
+        "app/source-truth/workbench.tsx": 70992,
+        "hasOwnProperty": 66048,
+        "replace": 65664,
+        "listener": 65600,
+        "next": 65600,
+        "elementText": 65600,
+        "node_modules/.vite/deps/react-server-dom-webpack_client__browser.js": 65600,
+        "node_modules/.vite/deps/react-dom.js": 65576,
+        "app/source-truth/transfer.ts": 65568,
+        "app/source-truth/inventory.ts": 65552,
+        "bind": 65544
+      }
+    },
+    {
+      "name": "failure",
+      "treeRssBytes": 1313718272,
+      "rss": {
+        "node": 331513856,
+        "postgres": 175849472,
+        "chromium": 806354944
+      },
+      "heap": {
+        "usedSize": 12984028,
+        "totalSize": 19480576,
+        "embedderHeapUsedSize": 4749968,
+        "backingStorageSize": 6359836
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 883,
+        "jsEventListeners": 291
+      },
+      "profileFile": "heap-failure.json",
+      "profileSha256": "f3cc6d3099cbb773c1f1eb3e000d05bcc95d63a000932109c54053a23e03080d",
+      "sampleCount": 80,
+      "estimatedSampledAllocationBytes": 5930884,
+      "allocationGroups": {
+        "node_modules/.vite/deps/react_jsx-dev-runtime.js": 1645640,
+        "(V8 API)": 1533772,
+        "anonymous": 668048,
+        "node_modules/.vite/deps/react-dom_client.js": 665728,
+        "(BYTECODE_COMPILER)": 328092,
+        "(PARSER)": 133120,
+        "(IDLE_EXTERNAL)": 98028,
+        "app/source-truth/workbench.tsx": 70992,
+        "hasOwnProperty": 66048,
+        "replace": 65664,
+        "listener": 65600,
+        "next": 65600,
+        "elementText": 65600,
+        "node_modules/.vite/deps/react-server-dom-webpack_client__browser.js": 65600,
+        "node_modules/.vite/deps/react-dom.js": 65576,
+        "app/source-truth/transfer.ts": 65568,
+        "query": 65560,
+        "map": 65552,
+        "app/source-truth/inventory.ts": 65552,
+        "bind": 65544
+      }
+    }
+  ]
+}

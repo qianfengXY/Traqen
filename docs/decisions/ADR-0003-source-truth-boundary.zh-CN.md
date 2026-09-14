@@ -1,3 +1,5 @@
+> 语言：**简体中文（当前权威）** · [English — 历史参考](ADR-0003-source-truth-boundary.md)
+
 ---
 feature_ids: [F001, F002, F003, F004]
 related_features: [F006]

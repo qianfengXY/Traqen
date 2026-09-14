@@ -1,3 +1,5 @@
+> 语言：**简体中文（当前权威）** · [English — 历史参考](README.md)
+
 ---
 feature_ids: [F001]
 related_features: [F002, F003, F004, F006]

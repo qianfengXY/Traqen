@@ -1,3 +1,5 @@
+> 语言：**简体中文（当前权威）** · [English — 历史参考](F001-legacy-system-understanding.md)
+
 ---
 feature_ids: [F001]
 topics: [workspace, source-truth, source-snapshot, source-bundle, directory-upload, incremental, artifact-inventory, coverage-gap, provenance, git]

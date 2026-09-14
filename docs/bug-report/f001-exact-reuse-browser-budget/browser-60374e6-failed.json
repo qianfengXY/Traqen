@@ -1,0 +1,84 @@
+{
+  "status": "FAILED",
+  "scope": "BROWSER_OPFS_50K_FULL_ENUMERATION_INCREMENTAL_CAPTURE_WITH_REUSED_50K_GIT",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "initialFullUploadVerified": false,
+  "disasterDeploymentVerified": false,
+  "priorBundleIds": [
+    "be15695e00830de24ec09f4dbde7daee6306a9fd4e3fc5a3f43cf72faba61026",
+    "b31723f1d01529355f7444fa111b80c4472bff7ab8cfc9b93aaefbadf1294add",
+    "37d1734b353bbdbc1f58b1b40d9433424bb696e044fddb5ddf3e67f48cedf664"
+  ],
+  "totalFiles": 100000,
+  "phases": [
+    {
+      "name": "clone-owned-cold-fixture",
+      "milliseconds": 110098
+    },
+    {
+      "name": "generate-opfs-directory",
+      "milliseconds": 104167
+    },
+    {
+      "name": "browser-full-enumeration-and-incremental-capture",
+      "milliseconds": 348187
+    },
+    {
+      "name": "explicit-confirm-and-freeze",
+      "milliseconds": 89348
+    }
+  ],
+  "network": {
+    "manifestBatches": 101,
+    "maxBatchEntries": 500,
+    "enumeratedFiles": 50000,
+    "enumeratedDirectories": 102,
+    "completeFileRequests": 1,
+    "chunkRequests": 0,
+    "sentBytes": 28,
+    "runCreates": 1,
+    "confirmations": 1,
+    "seals": 1,
+    "otherWrites": []
+  },
+  "budgets": {
+    "maxTreeRssBytes": 1073741824,
+    "maxTreeFileDescriptors": 1024
+  },
+  "fixtureRoot": "/private/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-history-ui-ERVQdS",
+  "sourceReportHash": "d5ddb665968675099fef9d96afd35f1fbd1ceefbaa7e828daba8936a82ab8a67",
+  "browser": "151.0.7922.34",
+  "localFixture": {
+    "fileCount": 50000,
+    "directoryCount": 102,
+    "knownBytes": 3013484,
+    "picker": "OPFS_TEST_HANDLE_NOT_NATIVE_PICKER"
+  },
+  "closedManifest": {
+    "fileCount": "50000",
+    "directoryCount": "102",
+    "knownBytes": "3013484",
+    "manifestId": "c2d66552454575da28a78a385d34df0dd7e6804840bc1d8482d3f6f7a5d9938c"
+  },
+  "runId": "50c50a74-ae29-444c-9eb7-99fd1556ddaa",
+  "bundleId": "2c1e599fbc766d2dbe83d500b7d32b2eae77a9ddcda6928263d73b19f460aa01",
+  "failure": {
+    "phase": "explicit-confirm-and-freeze",
+    "message": "Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  {\n    coverageId: '6605d53ab05051167de3c6c8ba3606ff3b15520cbca0f06667282a1ff515a548',\n    directoryCount: '102',\n    fileCount: '50000',\n    gapCount: '0',\n+   id: 'c7d43d37f66bddd5db7ba130c70225f6dd783767d264b50b04bd96e69fa1d729',\n-   id: 'ff6371d0b6574a4d39acdcd2704ca1c88a0cce0375656159dfb42c7500789c3e',\n    kind: 'GIT',\n    knownBytes: '2743514',\n    manifestId: 'e0793265a970667dde94ec3320a9505402c743b6d8a6e72034dc6badbec4883e',\n    nativeIdentity: {\n      commit: '6e0603d037fd39baf4dd32c4e1a90eadecd1856d',\n...\n    },\n+   policyRevisionId: '8c0d009047725f0987c63a4a523828c1f653b2852667ae0024da6455a9981aad',\n-   policyRevisionId: '4730c03ecd515d6d34d9cb9f333d214704593574ca3a4d00bd78656f87d8e291',\n    scope: {\n      kind: 'GIT_TREE',\n      root: null\n    },\n    sourceId: 'git',\n",
+    "stack": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n+ actual - expected\n... Skipped lines\n\n  {\n    coverageId: '6605d53ab05051167de3c6c8ba3606ff3b15520cbca0f06667282a1ff515a548',\n    directoryCount: '102',\n    fileCount: '50000',\n    gapCount: '0',\n+   id: 'c7d43d37f66bddd5db7ba130c70225f6dd783767d264b50b04bd96e69fa1d729',\n-   id: 'ff6371d0b6574a4d39acdcd2704ca1c88a0cce0375656159dfb42c7500789c3e',\n    kind: 'GIT',\n    knownBytes: '2743514',\n    manifestId: 'e0793265a970667dde94ec3320a9505402c743b6d8a6e72034dc6badbec4883e',\n    nativeIdentity: {\n      commit: '6e0603d037fd39baf4dd32c4e1a90eadecd1856d',\n...\n    },\n+   policyRevisionId: '8c0d009047725f0987c63a4a523828c1f653b2852667ae0024da6455a9981aad',\n-   policyRevisionId: '4730c03ecd515d6d34d9cb9f333d214704593574ca3a4d00bd78656f87d8e291',\n    scope: {\n      kind: 'GIT_TREE',\n      root: null\n    },\n    sourceId: 'git',\n\n    at file:///Volumes/WorkSSD/projects/Traqen-worktrees/f001-source-truth/test/support/source-truth-browser-capture.mjs:151:10\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)"
+  },
+  "issues": [],
+  "pageErrors": [],
+  "resources": {
+    "sampleCount": 658,
+    "peakObservedNodeRssBytes": 295075840,
+    "peakObservedProcessTreeRssBytes": 1612595200,
+    "peakObservedProcessTreeFileDescriptors": 1023,
+    "samplingErrors": 0,
+    "exitedDuringSample": 55,
+    "intervalMs": 1000
+  },
+  "page": "- main:\n  - complementary:\n    - text: T Traqen\n    - paragraph: Workspace\n    - button \"↻\"\n    - button \"＋\"\n    - strong: Workspace\n    - text: 等待首次发布\n    - button \"Other ACTIVE\":\n      - strong: Other\n      - text: ACTIVE\n    - button \"Workspace ACTIVE\":\n      - strong: Workspace\n      - text: ACTIVE\n    - navigation \"overview\":\n      - paragraph: 工作台\n      - button \"⌂ 工作台概览\"\n    - navigation \"understanding\":\n      - paragraph: 理解\n      - button \"◎ Workspace 分析\"\n      - button \"◇ 功能 / API\"\n      - button \"⌘ 理解图谱\"\n    - navigation \"governance\":\n      - paragraph: 治理\n      - button \"✓ 声明审核\"\n      - button \"↗ 变更影响\"\n    - navigation \"configuration\":\n      - paragraph: 配置\n      - button \"⚙ 设置中心\"\n    - text: Published Head — Review Queue 0 Impact Actions 0 权威边界 实线为 Published；虚线为 Candidate。历史版本只读。\n  - text: Workspace / Workspace 分析 未发布\n  - button \"Connection Health · 正常\"\n  - combobox \"全局主题配色\":\n    - option \"Enterprise\" [selected]\n    - option \"Apple\"\n    - option \"Warm\"\n    - option \"Fresh\"\n    - option \"Minimal\"\n  - button \"中文\"\n  - button \"English\"\n  - text: ◉ WEB-OPERATOR\n  - alert:\n    - text: \"! 部分 Workspace 数据暂时不可用，请检查连接诊断。\"\n    - button \"×\"\n  - region \"来源快照工作台\":\n    - group: 来源快照成员身份\n    - paragraph: SOURCE TRUTH · F001\n    - heading \"来源快照\" [level=1]\n    - paragraph: 在 Workspace 中，将 Git 与本机目录建立为可复现、可追溯的冻结包。\n    - text: 包已冻结 · 当前准入另行核验\n    - region \"八站来源快照旅程\":\n      - heading \"快照旅程\" [level=2]\n      - paragraph: 一个工作台，八个节点。实线表示已完成；点击节点只回看或预览，不跳过验证。\n      - button \"回到当前 · 第 8 站\"\n      - list:\n        - listitem:\n          - button \"第 1 站 添加来源（只读预览）\":\n            - text: ✓\n            - strong: 添加来源\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 2 站 确认范围（只读预览）\":\n            - text: ✓\n            - strong: 确认范围\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 3 站 来源预检（只读预览）\":\n            - text: ✓\n            - strong: 来源预检\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 4 站 枚举材料（只读预览）\":\n            - text: ✓\n            - strong: 枚举材料\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 5 站 冻结清单（只读预览）\":\n            - text: ✓\n            - strong: 冻结清单\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 6 站 采集校验（只读预览）\":\n            - text: ✓\n            - strong: 采集校验\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 7 站 复核缺口（只读预览）\":\n            - text: ✓\n            - strong: 复核缺口\n            - text: 已完成 · 可回看\n        - listitem:\n          - button \"第 8 站 冻结包（当前）\":\n            - text: \"8\"\n            - strong: 冻结包\n            - text: 当前节点\n    - paragraph: 第 8 / 8 站\n    - heading \"冻结包\" [level=2]\n    - paragraph: 准备私有材料后原子冻结包与 Receipt；提交前没有半包，冻结后不改写历史。\n    - text: 文件\n    - strong: \"100000\"\n    - text: 目录\n    - strong: \"204\"\n    - text: 预期字节\n    - strong: \"5756998\"\n    - text: 已知 Gap\n    - strong: \"0\"\n    - article:\n      - strong: 目录 · 本版更新\n      - term: 来源\n      - definition: directory\n      - term: 目录版本身份\n      - definition: manifest:c2d66552454575da28a78a385d34df0dd7e6804840bc1d8482d3f6f7a5d9938c\n      - term: 采集范围\n      - definition: 完整所选目录\n      - term: 待处置条目\n      - definition: \"0\"\n    - article:\n      - strong: Git · 沿用精确组件\n      - term: 来源\n      - definition: git\n      - term: 精确 commit\n      - definition: 6e0603d037fd39baf4dd32c4e1a90eadecd1856d\n      - term: 采集范围\n      - definition: 全仓库\n      - term: 待处置条目\n      - definition: \"0\"\n    - heading \"冻结包已建立\" [level=3]\n    - term: Bundle\n    - definition: 2c1e599fbc766d2dbe83d500b7d32b2eae77a9ddcda6928263d73b19f460aa01\n    - term: Receipt\n    - definition: c37fcada-2715-4954-91d5-d25dba4380a6\n    - term: 冻结时状态\n    - definition: READY\n    - term: 保留 Gap\n    - definition: \"0\"\n    - paragraph: 当前准入与备份覆盖需分别核验。此站结束 F001，不自动启动 F002。\n    - button \"创建新版本\"\n    - complementary:\n      - heading \"本次上下文\" [level=2]\n      - term: Workspace\n      - definition: Workspace\n      - term: 认证成员\n      - definition: owner · MAINTAIN\n      - term: 任务\n      - definition: 50c50a74-ae29-444c-9eb7-99fd1556ddaa\n      - term: 输入草稿\n      - definition: r4\n      - term: 预期清单\n      - definition: 06349199c583…\n      - term: 包\n      - definition: 2c1e599fbc76…\n      - term: 主存储\n      - definition: 可访问\n      - term: 备份\n      - definition: 未配置 · 没有覆盖证明\n      - paragraph: 主存储可访问不等于备份已覆盖；历史 READY 不等于当前可以准入。\n      - heading \"下一步\" [level=2]\n      - paragraph: 查看冻结包、历史或新建版本\n      - paragraph: 节点进度来自服务端记录。看图、点击未来节点不会推进任务。\n      - heading \"平台边界\" [level=3]\n      - paragraph: 最多 200,000 个条目；单文件上限 1073741824 字节。超限不能靠自动排除文件变绿。\n    - heading \"版本与任务历史\" [level=2]\n    - paragraph: 失败、取消与旧包仍可追溯；新任务失败不替换旧基线。\n    - button \"从选中的冻结包创建新版本\" [disabled]\n    - heading \"冻结包\" [level=3]\n    - button \"2c1e599fbc76… READY 2026/9/9 01:23:51 · 文件 100000 · Gap 0\":\n      - strong: 2c1e599fbc76…\n      - text: READY 2026/9/9 01:23:51 · 文件 100000 · Gap 0\n    - button \"37d1734b353b… READY 2026/9/8 01:06:47 · 文件 100000 · Gap 0\":\n      - strong: 37d1734b353b…\n      - text: READY 2026/9/8 01:06:47 · 文件 100000 · Gap 0\n    - button \"b31723f1d015… READY 2026/9/8 01:04:10 · 文件 100000 · Gap 0\":\n      - strong: b31723f1d015…\n      - text: READY 2026/9/8 01:04:10 · 文件 100000 · Gap 0\n    - button \"be15695e0083… READY 2026/9/8 01:01:35 · 文件 100000 · Gap 0\":\n      - strong: be15695e0083…\n      - text: READY 2026/9/8 01:01:35 · 文件 100000 · Gap 0\n    - heading \"采集任务\" [level=3]\n    - button \"50c50a74-ae2… SUCCEEDED · 第 8 站 2026/9/9 01:16:34\":\n      - strong: 50c50a74-ae2…\n      - text: SUCCEEDED · 第 8 站 2026/9/9 01:16:34\n    - button \"d0316322-971… SUCCEEDED · 第 8 站 2026/9/8 01:04:10\":\n      - strong: d0316322-971…\n      - text: SUCCEEDED · 第 8 站 2026/9/8 01:04:10\n    - button \"fb41d2a6-a91… SUCCEEDED · 第 8 站 2026/9/8 01:01:37\":\n      - strong: fb41d2a6-a91…\n      - text: SUCCEEDED · 第 8 站 2026/9/8 01:01:37\n    - button \"1157d94f-600… SUCCEEDED · 第 8 站 2026/9/8 00:35:07\":\n      - strong: 1157d94f-600…\n      - text: SUCCEEDED · 第 8 站 2026/9/8 00:35:07\n    - button \"返回最新历史\""
+}

@@ -82,7 +82,7 @@ export type LocalWorkspaceFileRecord = {
   lastModified: number;
   contentFingerprint?: string;
   supported: boolean;
-  candidates: Array<Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">>;
+  candidates: RawCandidate[];
   configuration: { path: string; key: string; value: string } | null;
   test: ({ path: string; title: string; code: string } & { keys: string[] }) | null;
 };
@@ -388,7 +388,7 @@ function discoverJavaCandidates(file: LocalWorkspaceInputFile) {
 }
 
 function discoverSourceCandidates(file: LocalWorkspaceInputFile) {
-  const candidates: Array<Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">> = [];
+  const candidates: RawCandidate[] = [];
   const routePattern = /\b(?:app|router|server)\s*\.\s*(get|post|put|patch|delete|options|head)\s*\(\s*["'`]([^"'`]+)["'`](?:\s*,\s*([A-Za-z_$][\w$]*))?/gi;
   for (const match of file.content.matchAll(routePattern)) {
     const method = match[1].toUpperCase();
@@ -510,7 +510,7 @@ function discoverOpenApiCandidates(file: LocalWorkspaceInputFile) {
   if (!document || typeof document !== "object" || Array.isArray(document)) return [];
   const paths = (document as { paths?: Record<string, Record<string, unknown>> }).paths;
   if (!paths || typeof paths !== "object") return [];
-  const result: Array<Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">> = [];
+  const result: RawCandidate[] = [];
   for (const [route, operations] of Object.entries(paths)) {
     for (const [method, operationValue] of Object.entries(operations ?? {})) {
       if (!["get", "post", "put", "patch", "delete", "options", "head"].includes(method.toLowerCase())) continue;
@@ -864,7 +864,7 @@ function mergeAgentBusinessCandidates(features: LocalCandidate[]): LocalCandidat
     groups.set(identity, [...(groups.get(identity) ?? []), feature]);
   }
   const confidenceRank = { LOW: 1, MEDIUM: 2, HIGH: 3 } as const;
-  return [...groups.entries()].map(([identity, items]) => {
+  return [...groups.entries()].map<LocalCandidate>(([identity, items]) => {
     const primary = items[0];
     const classifications = items.map((item) => item.modelClassification).filter((value): value is LocalModelClassification => Boolean(value));
     const confidence = classifications.reduce<LocalModelClassification["confidence"]>((lowest, classification) =>
@@ -982,7 +982,7 @@ export function analyzeLocalWorkspaceRecords(input: { workspaceName: string; pro
   if (!projectId) throw new TypeError("Project ID is required");
   if (input.records.length === 0) throw new TypeError("Select a source directory first");
   const snapshotManifestId = localWorkspaceSnapshotManifestId(projectId, input.records);
-  const rawCandidates = new Map<string, Omit<LocalCandidate, "configurations" | "testAssets" | "dimensions" | "gaps">>();
+  const rawCandidates = new Map<string, RawCandidate>();
   const testIndex = new Map<string, RelatedTest[]>();
   for (const record of input.records) {
     for (const candidate of record.candidates) {

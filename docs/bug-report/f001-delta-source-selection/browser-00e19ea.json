@@ -1,0 +1,76 @@
+{
+  "status": "PASSED",
+  "platform": "darwin",
+  "release": "25.6.0",
+  "nativePickerVerified": false,
+  "scale100kBrowserVerified": false,
+  "results": [
+    {
+      "case": "directory",
+      "run": "1e9ef8ba-5858-4c7c-8c1f-020ca8d60374",
+      "bundle": "9dd2f7b1a7f830f39aa78a924cd79e0bfcee6f215d9085bd22d40d5834fd4e80",
+      "files": 105,
+      "emptyDirectories": 1,
+      "refreshResumedSameRun": true,
+      "responseLossRecoveredOneReceipt": true,
+      "inventoryPages": [
+        100,
+        6
+      ],
+      "mobileCurrentVisible": true
+    },
+    {
+      "case": "directory-new-version",
+      "from": "9dd2f7b1a7f830f39aa78a924cd79e0bfcee6f215d9085bd22d40d5834fd4e80",
+      "to": "c8e250fe2e4a47feca178138ac4fae1738a464b456d68fc76639d546ecf2a893",
+      "fullFiles": 105,
+      "priorUnchanged": true
+    },
+    {
+      "case": "git",
+      "bundle": "84b519224aa1399ab5929da09e2d918cdce2c2874a95b5a37f9760150f8c071d",
+      "commit": "64e44486704ce65eafcc98723a88dde03644b191",
+      "status": "READY"
+    },
+    {
+      "case": "combined",
+      "bundle": "fcf182e11d8f02c2f988a69e354cbab8fa8aaf3ab6ffa331df6fdc00290f3960",
+      "status": "READY_WITH_ACCEPTED_GAPS",
+      "gapCount": "1",
+      "independentComponents": 2
+    },
+    {
+      "case": "same-bundle-renewal",
+      "bundle": "fcf182e11d8f02c2f988a69e354cbab8fa8aaf3ab6ffa331df6fdc00290f3960",
+      "oldReceipt": "c286ff86-4030-4687-b807-b147d4e94ee0",
+      "newReceipt": "8652b187-0832-431c-8f14-0ec7b7c9ceb2",
+      "oldReceiptUnchanged": true
+    },
+    {
+      "case": "read-only",
+      "canSearchHistory": true,
+      "noMutation": true,
+      "cannotRenewOrCreate": true
+    },
+    {
+      "case": "source-component-delta",
+      "from": "fcf182e11d8f02c2f988a69e354cbab8fa8aaf3ab6ffa331df6fdc00290f3960",
+      "to": "af7bd75f02d5e414b7623564eb9d63fa3c5432ed3cb6ec5a6e9c359f3126d01d",
+      "removedSource": "bfe50e0c-56e9-4549-a0bc-de879e02d4cb",
+      "removalAndReverseAdditionVisible": true,
+      "noFileDeletionClaim": true,
+      "invalidBaselineSelectionCleared": true,
+      "noMutation": true
+    },
+    {
+      "case": "blocked-root",
+      "bundles": 0,
+      "receipts": 0,
+      "noAcceptBypass": true
+    }
+  ],
+  "issues": [],
+  "browser": "151.0.7922.34",
+  "fixtureRoot": "/var/folders/v_/tfrh9s297v1gbxkxt1_dqtmc0000gn/T/tq-f001-browser-matrix-ibNORi",
+  "noAutomaticAnalysis": true
+}

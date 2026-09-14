@@ -61,6 +61,16 @@ async function migratedDatabase() {
     "0025_global_model_profile_revision_records",
     "0026_global_account_revision",
     "0027_f006_legacy_settings_receipts",
+    "0028_f001_source_truth",
+    "0029_f001_verified_upload_checkpoints",
+    "0030_f001_prepared_evidence",
+    "0031_f001_atomic_publication",
+    "0032_f001_evidence_boundary_guards",
+    "0033_f001_capture_inputs",
+    "0034_f001_pending_material_index",
+    "0035_f001_paired_backup",
+    "0036_f001_renewal_execution",
+    "0037_f001_staging_disposition",
   ]);
   return database;
 }

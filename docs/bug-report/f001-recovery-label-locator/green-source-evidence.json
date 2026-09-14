@@ -1,0 +1,19 @@
+{
+  "baseHead": "9c05518aee28c22b1d05bc0e33d0863c847c8a7f",
+  "scope": "UNCOMMITTED_TEST_ONLY_DELTA_NO_PRODUCT_CHANGE",
+  "priorFailureSha256": "5a4dbeed1f6de5765e3d00b596b1a0afffa005caf93b7c17252f571a665fe129",
+  "sources": [
+    {
+      "path": "test/support/source-truth-browser-fixture.js",
+      "sha256": "2d8708e0411a2053f595e1fbba52db38099327200f8d72aaf4c0d583e332fa56"
+    },
+    {
+      "path": "test/support/source-truth-browser-matrix.mjs",
+      "sha256": "056596fa5e1a51c0c1666ef3747ace7adeaea92c8829f8be61f67dd9396e2d0d"
+    },
+    {
+      "path": "test/support/source-truth-browser-recovery.mjs",
+      "sha256": "88d6b7dcfffee79ce51843c1036d674e0d3c09ced85e98f3381251bdf8764c2c"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "scope": "ISOLATED_READ_ONLY_SHELL_DIAGNOSTIC",
+  "head": "1dd9e292e297972409c9afd4f7c0dcd138998447",
+  "results": [
+    {
+      "route": "/v1/projects/directory/graph/current",
+      "status": 404,
+      "error": {
+        "code": "CURRENT_GRAPH_NOT_FOUND",
+        "message": "No published GraphRevision was found",
+        "requestId": "e28b9f2d-23ef-4e24-b700-2468ebd87986"
+      },
+      "keys": [
+        "error"
+      ]
+    },
+    {
+      "route": "/v1/projects/directory/graph/revisions",
+      "status": 200,
+      "error": null,
+      "keys": [
+        "revisions"
+      ]
+    },
+    {
+      "route": "/v1/projects/directory/workspace-analysis-jobs",
+      "status": 400,
+      "error": {
+        "code": "INVALID_REQUEST",
+        "message": "Legacy understanding runtime is not configured",
+        "requestId": "195c9df6-1359-4ded-a1af-d411b8a55d9b"
+      },
+      "keys": [
+        "error"
+      ]
+    },
+    {
+      "route": "/v1/workspaces/directory/review-queue",
+      "status": 200,
+      "error": null,
+      "keys": [
+        "items"
+      ]
+    },
+    {
+      "route": "/v1/workspaces/directory/capability-draft",
+      "status": 200,
+      "error": null,
+      "keys": [
+        "draft"
+      ]
+    },
+    {
+      "route": "/v1/workspaces/directory/capabilities/effective",
+      "status": 200,
+      "error": null,
+      "keys": [
+        "entries",
+        "effective",
+        "summary"
+      ]
+    },
+    {
+      "route": "/v1/workspaces/directory/execution-profile-revisions",
+      "status": 200,
+      "error": null,
+      "keys": [
+        "profiles"
+      ]
+    },
+    {
+      "route": "/v1/workspaces/directory/source-truth",
+      "status": 200,
+      "error": null,
+      "keys": [
+        "actor",
+        "role",
+        "draft",
+        "activeRun",
+        "versions",
+        "storage",
+        "backup",
+        "policy"
+      ]
+    }
+  ]
+}

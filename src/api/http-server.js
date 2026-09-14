@@ -260,18 +260,22 @@ export function createTraceabilityHttpHandler({
   maxBodyBytes = 1024 * 1024,
   corsAllowedOrigins = [],
   apiBearerToken = null,
+  sourceTruthHandler = null,
+  sourceTruthAllowedOrigins = [],
 }) {
   if (!application) throw new TypeError("application is required");
   if (apiBearerToken !== null && (typeof apiBearerToken !== "string" || apiBearerToken === "")) {
     throw new TypeError("apiBearerToken must be null or a non-empty string");
   }
   const allowedOrigins = normalizeCorsOrigins(corsAllowedOrigins);
+  const sourceOrigins = normalizeCorsOrigins(sourceTruthAllowedOrigins);
 
   return async function traceabilityHttpHandler(request, response) {
     const id = requestId(request);
-    applyCors(request, response, allowedOrigins);
     try {
       const url = new URL(request.url, "http://localhost");
+      const sourceRequest = /^\/v1\/workspaces\/[^/]+\/source-truth(?:\/|$)/.test(url.pathname);
+      applyCors(request, response, sourceRequest ? sourceOrigins : allowedOrigins);
 
       if (request.method === "OPTIONS") {
         response.writeHead(204, { "cache-control": "no-store", "x-request-id": id });
@@ -282,6 +286,13 @@ export function createTraceabilityHttpHandler({
       if (request.method === "GET" && url.pathname === "/health") {
         sendJson(response, 200, { status: "ok" }, id);
         return;
+      }
+
+      // Source Truth has its own server-bound member credential and Workspace
+      // ACL. The legacy shared API token/body actor must not impersonate it.
+      if (sourceRequest) {
+        if (!sourceTruthHandler) throw new HttpError(503, "SOURCE_TRUTH_NOT_CONFIGURED", "来源快照持久化服务尚未安全配置");
+        if (await sourceTruthHandler(request, response, id)) return;
       }
 
       if (apiBearerToken !== null) {

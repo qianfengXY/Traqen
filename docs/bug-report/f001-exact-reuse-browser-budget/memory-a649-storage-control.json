@@ -1,0 +1,749 @@
+{
+  "kind": "DERIVED_STORAGE_CONTEXT_CONTROL_NOT_ACCEPTANCE",
+  "head": "a649c0502be50480424d63264327b7032c80b2ba",
+  "acceptanceGate": false,
+  "explicitGcDiagnostic": false,
+  "status": "OBSERVED_NOT_ACCEPTANCE",
+  "count": 2000,
+  "source": {
+    "parentPath": "/private/tmp/traqen-f001-storage-control.9Fficv/",
+    "childPath": "report.json",
+    "sha256": "e51e1d421a900cb6a042ba007225bb889e39e53f33aceaaed6d859605bdb3e1e",
+    "bytes": 125965
+  },
+  "controlSha256": "367181e94c15e11db8a6de4226deffb85486a8fe24cb4bceaa10af1670c8bdf7",
+  "productSources": {
+    "directory": "58f96f9ce1b86e199e555bdab6c293eb5d1319779709e1ded8ca8878212c4cbd",
+    "stream-hash": "d2590fa2bd261fd3ea8c9bb501b8c00372ede4b3c1d38b584f6109cf48e54100",
+    "local-entry-store": "5743af2dda6c150f2f3db609b6a05f243e866abb4fb26548fb2c130813602943"
+  },
+  "hypothesis": "Temporary off-the-record OPFS backing contributes to browser allocator residual; a fresh disk-backed context should reduce the same fixture/scan allocator increment.",
+  "limitations": [
+    "Diagnostic traces alter runtime; no RSS acceptance claim.",
+    "Two sequential arms, not a statistical estimate.",
+    "A context effect cannot by itself identify individual large blocks or prove a product leak.",
+    "No context-teardown observation in this control.",
+    "The original 71319552-byte direct map was not reproduced; do not extrapolate its absence to 50000 files.",
+    "RSS precedes allocator sampling; hierarchical allocation counters cannot be added to RSS.",
+    "directMap labels are dump-local, not allocation identity."
+  ],
+  "conclusion": "This single small control does not support switching to a disk-backed context as a memory fix; no product resource owner is established.",
+  "arms": [
+    {
+      "mode": "off-the-record",
+      "browser": {
+        "protocolVersion": "1.3",
+        "product": "HeadlessChrome/151.0.7922.34",
+        "revision": "@782af9cb30a53f54487e5d2e44738645a8ec457c",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "jsVersion": "15.1.206.8"
+      },
+      "contexts": {
+        "browserContextIds": [
+          "D343631922CF287351D5E492AF626CE4"
+        ],
+        "defaultBrowserContextId": "456AF4A5DBC6C6EF9E2DBAE515B653BA"
+      },
+      "fixture": {
+        "knownBytes": 1127392
+      },
+      "scan": {
+        "fileCount": "2000",
+        "directoryCount": "6",
+        "knownBytes": "1127392",
+        "rows": 2006,
+        "manifestId": "c38b9081c93881205e172966f9aadb6d4020770a10b4590f7f670f989c6757fd"
+      },
+      "resources": {
+        "sampleCount": 15,
+        "samplingErrors": 0,
+        "peakObservedProcessTreeRssBytes": 761724928,
+        "peakObservedProcessTreeFileDescriptors": 113
+      },
+      "stages": [
+        {
+          "name": "before-fixture",
+          "trace": "off-the-record-before-fixture.json",
+          "traceSha256": "002a27c070ef6c71c3cb94e5be4c73ca30206c9ca8c3d9eff5e65f9b50ffb62c",
+          "traceBytes": 1142545,
+          "dataLossOccurred": false,
+          "treeRssBytes": 457228288,
+          "heap": {
+            "usedSize": 938428,
+            "totalSize": 1572864,
+            "embedderHeapUsedSize": 1386752,
+            "backingStorageSize": 0
+          },
+          "storage": {
+            "usage": 0,
+            "quota": 899296193,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 0
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "roles": [
+            {
+              "role": "browser",
+              "pid": 79878,
+              "rssBytes": 85016576,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x1",
+              "allocator": {
+                "allocated_size": "5434896",
+                "allocated_objects_count": "37690",
+                "virtual_committed_size": "13025280",
+                "wasted": "7590384"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "454000",
+                "decommittable_size": "196608",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "205654",
+                "empty_slot_spans": "3",
+                "full_slot_spans": "6",
+                "size": "655360",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            },
+            {
+              "role": "renderer",
+              "pid": 79881,
+              "rssBytes": 73220096,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x1",
+              "allocator": {
+                "allocated_size": "5935360",
+                "allocated_objects_count": "31387",
+                "virtual_committed_size": "9175040",
+                "wasted": "3374000"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "540880",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "158346",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "8",
+                "size": "557056",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-fixture",
+          "trace": "off-the-record-after-fixture.json",
+          "traceSha256": "7ac92e7481235b6da6fe3dd4ae4605b58cea8eb93ebb8b1250be40e513529a54",
+          "traceBytes": 1149144,
+          "dataLossOccurred": false,
+          "treeRssBytes": 680476672,
+          "heap": {
+            "usedSize": 701080,
+            "totalSize": 7602176,
+            "embedderHeapUsedSize": 451848,
+            "backingStorageSize": 1127448
+          },
+          "storage": {
+            "usage": 1464518,
+            "quota": 899296193,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 1464518
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "roles": [
+            {
+              "role": "browser",
+              "pid": 79878,
+              "rssBytes": 146702336,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x2",
+              "allocator": {
+                "allocated_size": "12658544",
+                "allocated_objects_count": "82446",
+                "virtual_committed_size": "24150016",
+                "wasted": "11507840"
+              },
+              "bucket80": {
+                "active_slot_spans": "42",
+                "allocated_objects_size": "2418640",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "1136548",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "3",
+                "size": "2899968",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "label": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "2244608",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "879701",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "2244608",
+                  "slot_size": "2244608",
+                  "total_slot_span_size": "2244608"
+                },
+                {
+                  "label": "directMap_2",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "1064960",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "417376",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "1064960",
+                  "slot_size": "1064960",
+                  "total_slot_span_size": "1064960"
+                }
+              ]
+            },
+            {
+              "role": "renderer",
+              "pid": 79881,
+              "rssBytes": 124485632,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x2",
+              "allocator": {
+                "allocated_size": "9070704",
+                "allocated_objects_count": "33543",
+                "virtual_committed_size": "16187392",
+                "wasted": "7246920"
+              },
+              "bucket80": {
+                "active_slot_spans": "3",
+                "allocated_objects_size": "555920",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "1",
+                "discardable_size": "0",
+                "effective_size": "325785",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "8",
+                "size": "704512",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-scan",
+          "trace": "off-the-record-after-scan.json",
+          "traceSha256": "679390ac98de1a50f011f58157bdbf36038dc87208ac9d6000a7a0cd57155c7f",
+          "traceBytes": 1278877,
+          "dataLossOccurred": false,
+          "treeRssBytes": 639221760,
+          "heap": {
+            "usedSize": 4819696,
+            "totalSize": 12582912,
+            "embedderHeapUsedSize": 1253560,
+            "backingStorageSize": 817002
+          },
+          "storage": {
+            "usage": 1813348,
+            "quota": 899296193,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 1464518
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 348830
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "roles": [
+            {
+              "role": "browser",
+              "pid": 79878,
+              "rssBytes": 190758912,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x3",
+              "allocator": {
+                "allocated_size": "17841568",
+                "allocated_objects_count": "103916",
+                "virtual_committed_size": "43040768",
+                "wasted": "25281104"
+              },
+              "bucket80": {
+                "active_slot_spans": "80",
+                "allocated_objects_size": "3445440",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "3002282",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "5",
+                "size": "5521408",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "label": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "4472832",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "2432115",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "4472832",
+                  "slot_size": "4472832",
+                  "total_slot_span_size": "4472832"
+                },
+                {
+                  "label": "directMap_2",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "1064960",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "579075",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "1064960",
+                  "slot_size": "1064960",
+                  "total_slot_span_size": "1064960"
+                }
+              ]
+            },
+            {
+              "role": "renderer",
+              "pid": 79881,
+              "rssBytes": 163102720,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x3",
+              "allocator": {
+                "allocated_size": "14976384",
+                "allocated_objects_count": "64876",
+                "virtual_committed_size": "26050560",
+                "wasted": "11221608"
+              },
+              "bucket80": {
+                "active_slot_spans": "3",
+                "allocated_objects_size": "628640",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "2",
+                "discardable_size": "0",
+                "effective_size": "356871",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "9",
+                "size": "786432",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "fresh-disk-profile",
+      "browser": {
+        "protocolVersion": "1.3",
+        "product": "HeadlessChrome/151.0.7922.34",
+        "revision": "@782af9cb30a53f54487e5d2e44738645a8ec457c",
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.7922.34 Safari/537.36",
+        "jsVersion": "15.1.206.8"
+      },
+      "contexts": {
+        "browserContextIds": [],
+        "defaultBrowserContextId": "34C3CDA988EA990715BB78262A0FF39F"
+      },
+      "fixture": {
+        "knownBytes": 1127392
+      },
+      "scan": {
+        "fileCount": "2000",
+        "directoryCount": "6",
+        "knownBytes": "1127392",
+        "rows": 2006,
+        "manifestId": "c38b9081c93881205e172966f9aadb6d4020770a10b4590f7f670f989c6757fd"
+      },
+      "profileDisk": {
+        "files": 2077,
+        "bytes": 4879363
+      },
+      "resources": {
+        "sampleCount": 16,
+        "samplingErrors": 0,
+        "peakObservedProcessTreeRssBytes": 741228544,
+        "peakObservedProcessTreeFileDescriptors": 154
+      },
+      "stages": [
+        {
+          "name": "before-fixture",
+          "trace": "fresh-disk-profile-before-fixture.json",
+          "traceSha256": "bf8aabd0aa6bb901066232260cd07bf97706d5094222ee86b1634d8e289c48b5",
+          "traceBytes": 1136245,
+          "dataLossOccurred": false,
+          "treeRssBytes": 377634816,
+          "heap": {
+            "usedSize": 938428,
+            "totalSize": 1572864,
+            "embedderHeapUsedSize": 518896,
+            "backingStorageSize": 0
+          },
+          "storage": {
+            "usage": 0,
+            "quota": 147064317542,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 0
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "roles": [
+            {
+              "role": "browser",
+              "pid": 79953,
+              "rssBytes": 83935232,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x1",
+              "allocator": {
+                "allocated_size": "5007632",
+                "allocated_objects_count": "35896",
+                "virtual_committed_size": "12206080",
+                "wasted": "7198448"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "454080",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "4",
+                "discardable_size": "0",
+                "effective_size": "135784",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "6",
+                "size": "458752",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            },
+            {
+              "role": "renderer",
+              "pid": 79956,
+              "rssBytes": 73777152,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x1",
+              "allocator": {
+                "allocated_size": "5982720",
+                "allocated_objects_count": "31186",
+                "virtual_committed_size": "9109504",
+                "wasted": "3261104"
+              },
+              "bucket80": {
+                "active_slot_spans": "1",
+                "allocated_objects_size": "540880",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "159760",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "8",
+                "size": "557056",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-fixture",
+          "trace": "fresh-disk-profile-after-fixture.json",
+          "traceSha256": "bfe891a6fb379ffd4caedda602441267881563c78411f790fbe5784e4f679af1",
+          "traceBytes": 1191081,
+          "dataLossOccurred": false,
+          "treeRssBytes": 595181568,
+          "heap": {
+            "usedSize": 1287684,
+            "totalSize": 7602176,
+            "embedderHeapUsedSize": 1004304,
+            "backingStorageSize": 4456
+          },
+          "storage": {
+            "usage": 1464518,
+            "quota": 147064317542,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 1464518
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 0
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "roles": [
+            {
+              "role": "browser",
+              "pid": 79953,
+              "rssBytes": 154566656,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x2",
+              "allocator": {
+                "allocated_size": "31372480",
+                "allocated_objects_count": "123393",
+                "virtual_committed_size": "52690944",
+                "wasted": "21334832"
+              },
+              "bucket80": {
+                "active_slot_spans": "127",
+                "allocated_objects_size": "4740080",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "4209421",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "51",
+                "size": "11632640",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "label": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "17842176",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "6456422",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "17842176",
+                  "slot_size": "17842176",
+                  "total_slot_span_size": "17842176"
+                }
+              ]
+            },
+            {
+              "role": "renderer",
+              "pid": 79956,
+              "rssBytes": 110690304,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x2",
+              "allocator": {
+                "allocated_size": "9552336",
+                "allocated_objects_count": "38109",
+                "virtual_committed_size": "17334272",
+                "wasted": "7912168"
+              },
+              "bucket80": {
+                "active_slot_spans": "2",
+                "allocated_objects_size": "601200",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "1",
+                "discardable_size": "0",
+                "effective_size": "315981",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "9",
+                "size": "688128",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        },
+        {
+          "name": "after-scan",
+          "trace": "fresh-disk-profile-after-scan.json",
+          "traceSha256": "9451b05d3c0275b76469f579bf3a022c84bc3ffe525721f684764187a2e2a380",
+          "traceBytes": 1270196,
+          "dataLossOccurred": false,
+          "treeRssBytes": 717799424,
+          "heap": {
+            "usedSize": 4750320,
+            "totalSize": 12845056,
+            "embedderHeapUsedSize": 1010912,
+            "backingStorageSize": 1341290
+          },
+          "storage": {
+            "usage": 1915535,
+            "quota": 147064317542,
+            "overrideActive": false,
+            "usageBreakdown": [
+              {
+                "storageType": "file_systems",
+                "usage": 1464518
+              },
+              {
+                "storageType": "indexeddb",
+                "usage": 451017
+              },
+              {
+                "storageType": "cache_storage",
+                "usage": 0
+              },
+              {
+                "storageType": "service_workers",
+                "usage": 0
+              }
+            ]
+          },
+          "roles": [
+            {
+              "role": "browser",
+              "pid": 79953,
+              "rssBytes": 205307904,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x3",
+              "allocator": {
+                "allocated_size": "30758352",
+                "allocated_objects_count": "97668",
+                "virtual_committed_size": "63275008",
+                "wasted": "32598560"
+              },
+              "bucket80": {
+                "active_slot_spans": "176",
+                "allocated_objects_size": "3432880",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "5559407",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "2",
+                "size": "11632640",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": [
+                {
+                  "label": "directMap_1",
+                  "active_slot_spans": "0",
+                  "allocated_objects_size": "17842176",
+                  "decommittable_size": "0",
+                  "decommitted_slot_spans": "0",
+                  "discardable_size": "0",
+                  "effective_size": "8527035",
+                  "empty_slot_spans": "0",
+                  "full_slot_spans": "1",
+                  "size": "17842176",
+                  "slot_size": "17842176",
+                  "total_slot_span_size": "17842176"
+                }
+              ]
+            },
+            {
+              "role": "renderer",
+              "pid": 79956,
+              "rssBytes": 156909568,
+              "traceDumpId": "0x0",
+              "requestDumpGuid": "0x3",
+              "allocator": {
+                "allocated_size": "15256560",
+                "allocated_objects_count": "64700",
+                "virtual_committed_size": "26345472",
+                "wasted": "11203584"
+              },
+              "bucket80": {
+                "active_slot_spans": "6",
+                "allocated_objects_size": "632080",
+                "decommittable_size": "0",
+                "decommitted_slot_spans": "0",
+                "discardable_size": "0",
+                "effective_size": "406589",
+                "empty_slot_spans": "0",
+                "full_slot_spans": "8",
+                "size": "884736",
+                "slot_size": "80",
+                "total_slot_span_size": "65536"
+              },
+              "directMaps": []
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

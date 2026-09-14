@@ -1,0 +1,373 @@
+{
+  "status": "OBSERVED_NOT_ACCEPTANCE",
+  "scope": "50K_OPFS_FULL_SCAN_PAGE_TEARDOWN_ATTRIBUTION",
+  "acceptanceGate": false,
+  "explicitGcDiagnostic": false,
+  "allocationSamplingDiagnostic": false,
+  "files": 50000,
+  "hypothesis": "Close only the page after full scan; retain same browser.",
+  "criterion": "reclaim >=80% scan increment with renderer gone supports page/renderer scope; reclaim <20% with renderer gone rejects it.",
+  "stages": [
+    {
+      "name": "before-fixture",
+      "treeRssBytes": 458752000,
+      "processes": [
+        {
+          "pid": 22422,
+          "ppid": 22416,
+          "rssBytes": 161579008,
+          "executable": "node"
+        },
+        {
+          "pid": 22424,
+          "ppid": 22422,
+          "rssBytes": 85737472,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22425,
+          "ppid": 22424,
+          "rssBytes": 55738368,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22426,
+          "ppid": 22424,
+          "rssBytes": 46301184,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22427,
+          "ppid": 22424,
+          "rssBytes": 109395968,
+          "executable": "chrome-headless-shell"
+        }
+      ],
+      "processRss": {
+        "node": 161579008,
+        "chromium": 297172992
+      },
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 22424,
+          "cpuTime": 0.569869
+        },
+        {
+          "type": "renderer",
+          "id": 22427,
+          "cpuTime": 0.5811
+        },
+        {
+          "type": "GPU",
+          "id": 22425,
+          "cpuTime": 0.258256
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 22426,
+          "cpuTime": 0.180658
+        }
+      ],
+      "heap": {
+        "usedSize": 2102448,
+        "totalSize": 2801664,
+        "embedderHeapUsedSize": 2668968,
+        "backingStorageSize": 1079005
+      },
+      "dom": {
+        "documents": 3,
+        "nodes": 269,
+        "jsEventListeners": 4
+      }
+    },
+    {
+      "name": "after-fixture-natural",
+      "treeRssBytes": 648708096,
+      "processes": [
+        {
+          "pid": 22422,
+          "ppid": 22416,
+          "rssBytes": 124092416,
+          "executable": "node"
+        },
+        {
+          "pid": 22424,
+          "ppid": 22422,
+          "rssBytes": 202555392,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22425,
+          "ppid": 22424,
+          "rssBytes": 37060608,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22426,
+          "ppid": 22424,
+          "rssBytes": 33193984,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22427,
+          "ppid": 22424,
+          "rssBytes": 251805696,
+          "executable": "chrome-headless-shell"
+        }
+      ],
+      "processRss": {
+        "node": 124092416,
+        "chromium": 524615680
+      },
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 22424,
+          "cpuTime": 166.854962
+        },
+        {
+          "type": "renderer",
+          "id": 22427,
+          "cpuTime": 28.052077
+        },
+        {
+          "type": "GPU",
+          "id": 22425,
+          "cpuTime": 0.283647
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 22426,
+          "cpuTime": 0.276159
+        }
+      ],
+      "heap": {
+        "usedSize": 13958244,
+        "totalSize": 28262400,
+        "embedderHeapUsedSize": 5770800,
+        "backingStorageSize": 6383829
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 347,
+        "jsEventListeners": 164
+      }
+    },
+    {
+      "name": "after-scan-natural",
+      "treeRssBytes": 948731904,
+      "processes": [
+        {
+          "pid": 22422,
+          "ppid": 22416,
+          "rssBytes": 133660672,
+          "executable": "node"
+        },
+        {
+          "pid": 22424,
+          "ppid": 22422,
+          "rssBytes": 372277248,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22425,
+          "ppid": 22424,
+          "rssBytes": 41517056,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22426,
+          "ppid": 22424,
+          "rssBytes": 33669120,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22427,
+          "ppid": 22424,
+          "rssBytes": 367607808,
+          "executable": "chrome-headless-shell"
+        }
+      ],
+      "processRss": {
+        "node": 133660672,
+        "chromium": 815071232
+      },
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 22424,
+          "cpuTime": 278.516168
+        },
+        {
+          "type": "renderer",
+          "id": 22427,
+          "cpuTime": 67.498641
+        },
+        {
+          "type": "GPU",
+          "id": 22425,
+          "cpuTime": 0.297223
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 22426,
+          "cpuTime": 0.279308
+        }
+      ],
+      "heap": {
+        "usedSize": 7895392,
+        "totalSize": 65224704,
+        "embedderHeapUsedSize": 1959768,
+        "backingStorageSize": 9396466
+      },
+      "dom": {
+        "documents": 1,
+        "nodes": 347,
+        "jsEventListeners": 167
+      }
+    },
+    {
+      "name": "after-page-teardown-5s",
+      "treeRssBytes": 560693248,
+      "processes": [
+        {
+          "pid": 22422,
+          "ppid": 22416,
+          "rssBytes": 134430720,
+          "executable": "node"
+        },
+        {
+          "pid": 22424,
+          "ppid": 22422,
+          "rssBytes": 354107392,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22425,
+          "ppid": 22424,
+          "rssBytes": 36290560,
+          "executable": "chrome-headless-shell"
+        },
+        {
+          "pid": 22426,
+          "ppid": 22424,
+          "rssBytes": 35864576,
+          "executable": "chrome-headless-shell"
+        }
+      ],
+      "processRss": {
+        "node": 134430720,
+        "chromium": 426262528
+      },
+      "browserProcesses": [
+        {
+          "type": "browser",
+          "id": 22424,
+          "cpuTime": 281.247272
+        },
+        {
+          "type": "GPU",
+          "id": 22425,
+          "cpuTime": 0.307695
+        },
+        {
+          "type": "network.mojom.NetworkService",
+          "id": 22426,
+          "cpuTime": 0.288452
+        }
+      ]
+    }
+  ],
+  "fixture": {
+    "knownBytes": 3013514
+  },
+  "scan": {
+    "fileCount": "50000",
+    "directoryCount": "102",
+    "knownBytes": "3013514",
+    "rows": 50102,
+    "manifestId": "219cea08b139412474fea7e57b0946d4cddfeb73118abcdbbd57a03376640582"
+  },
+  "result": {
+    "chromiumFixture": 524615680,
+    "chromiumScan": 815071232,
+    "chromiumTeardown": 426262528,
+    "increment": 290455552,
+    "reclaimed": 388808704,
+    "reclaimedFraction": 1.3386168772563176,
+    "rendererBeforeClose": [
+      22427
+    ],
+    "rendererAfterClose": []
+  },
+  "conclusion": "HYPOTHESIS_SUPPORTED_PAGE_RENDERER_SCOPED",
+  "resources": {
+    "sampleCount": 207,
+    "peakObservedNodeRssBytes": 194019328,
+    "peakObservedProcessTreeRssBytes": 948731904,
+    "peakObservedProcessTreeFileDescriptors": 109,
+    "samplingErrors": 0,
+    "exitedDuringSample": 0,
+    "intervalMs": 1000,
+    "peakRssProcesses": [
+      {
+        "pid": 22422,
+        "ppid": 22416,
+        "rssBytes": 133660672,
+        "executable": "node"
+      },
+      {
+        "pid": 22424,
+        "ppid": 22422,
+        "rssBytes": 372277248,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 22425,
+        "ppid": 22424,
+        "rssBytes": 41517056,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 22426,
+        "ppid": 22424,
+        "rssBytes": 33669120,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 22427,
+        "ppid": 22424,
+        "rssBytes": 367607808,
+        "executable": "chrome-headless-shell"
+      }
+    ],
+    "latestRssProcesses": [
+      {
+        "pid": 22422,
+        "ppid": 22416,
+        "rssBytes": 134447104,
+        "executable": "node"
+      },
+      {
+        "pid": 22424,
+        "ppid": 22422,
+        "rssBytes": 354107392,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 22425,
+        "ppid": 22424,
+        "rssBytes": 36339712,
+        "executable": "chrome-headless-shell"
+      },
+      {
+        "pid": 22426,
+        "ppid": 22424,
+        "rssBytes": 35864576,
+        "executable": "chrome-headless-shell"
+      }
+    ],
+    "latestProcessTreeRssBytes": 560758784
+  }
+}
