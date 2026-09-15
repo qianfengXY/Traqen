@@ -113,7 +113,7 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 | 既有 Candidate/Decision/Claim 与发布接口。 | 图中的状态和决定范围是功能要求；字段、接口、角色授权和并发修订协议尚未由本图定稿，不声称已有实现满足它们。 |
 | 自动收录的具体证据判据与质量验收值。 | 按关系类型核查、补证有上限、用人工参考案例复核已明确；具体规则版本、预算值及可测量验收指标仍需细化，不在本次落盘时补造。 |
 
-相关文档：[F003 Spec 历史正文与当前入口](../../docs/features/F003-traceability-graph.zh-CN.md)、[F001 当前中文设计](../2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)、[F002](../../docs/features/F002-feature-api-traceability.zh-CN.md)、[F006](../../docs/features/F006-workspace-capability-settings.zh-CN.md)、[F004](../../docs/features/F004-change-impact-analysis.zh-CN.md)、[ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md)、[产品架构](../../docs/architecture/traqen-product-architecture.zh-CN.md)。
+相关文档：[F003 Spec 历史正文与当前入口](../../features/F003-traceability-graph.zh-CN.md)、[F001 当前中文设计](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)、[F002](../../features/F002-feature-api-traceability.zh-CN.md)、[F006](../../features/F006-workspace-capability-settings.zh-CN.md)、[F004](../../features/F004-change-impact-analysis.zh-CN.md)、[ADR-0003](../../decisions/ADR-0003-source-truth-boundary.zh-CN.md)、[产品架构](../../architecture/traqen-product-architecture.zh-CN.md)。
 
 ## 9. 版本与验收追溯
 

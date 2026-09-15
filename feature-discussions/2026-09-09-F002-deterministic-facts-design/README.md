@@ -46,7 +46,7 @@ v4 preserves six capabilities, twenty-four subfunctions, five output parts, and 
 - An amber dashed connector links the unresolved-interface note to F001, explicitly labeled as an undecided interface rather than approved direct access. It is not an approved physical read path.
 - The “read originals / find counterexamples” step carries a matching “接口待定” (interface undecided) badge; the note that current ADR-0003 admission boundaries remain effective is preserved.
 
-The image's “参照 F003 全景 V1.0” label records the reference baseline when v4's content was drawn, not F003's latest version. [Current F003 design](../2026-09-09-F003-traceability-graph-design/README.md) has advanced to V2.0. The style-only request preserves existing image text; V2.0 is the visual reference, not authority to modify F003 or close cross-feature alignment items.
+The image's “参照 F003 全景 V1.0” label records the reference baseline when v4's content was drawn, not F003's latest version. [Current F003 design](../../docs/design/F003-traceability-graph/README.md) has advanced to V2.0. The style-only request preserves existing image text; V2.0 is the visual reference, not authority to modify F003 or close cross-feature alignment items.
 
 ### 3.2 Historical diagrams (no longer the primary diagram)
 
@@ -153,7 +153,7 @@ The retained direction is **baseline inventory + F003-question-driven evidence e
 | Still uncertain / unsupported | Return detected limitations and gaps, without inventing certainty. |
 | Unauthorized / version mismatch | Reject with a reason; do not expand access or mix versions. |
 
-F003 is an important application-validation channel, not the sole evaluator of F002. [Current F003 functional design](../2026-09-09-F003-traceability-graph-design/README.md) uses automatic admission in Agent-analysis state plus exception-based human review. This draft does not restore the historical all-candidates-must-be-approved rule.
+F003 is an important application-validation channel, not the sole evaluator of F002. [Current F003 functional design](../../docs/design/F003-traceability-graph/README.md) uses automatic admission in Agent-analysis state plus exception-based human review. This draft does not restore the historical all-candidates-must-be-approved rule.
 
 ## 7. Fact semantics and quality boundaries
 
@@ -234,4 +234,4 @@ Each generation is archived byte-for-byte from its original output; this update 
 | `assets/f002-functional-panorama-v4.zh-CN.png` | `exec-fd0c1b84-1fbb-484a-b71d-5e90387ad7e1.png` | `8689609c2c1782f8353842aad48822f4e9708c43d3b5546b3b72d18efd164f9f` |
 | `assets/f002-functional-panorama-v4-f003-style.zh-CN.png` | `exec-27631479-1acc-4a6d-b131-c3a490c7fb7e.png` | `ea72b7d8850adb60328588ed4f88a86e6b029867b241246f30be404e03a4e976` |
 
-Related documents: [existing F002 spec](../../docs/features/F002-feature-api-traceability.md), [current F003 functional design](../2026-09-09-F003-traceability-graph-design/README.md), [current source-boundary ADR](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md). This archive does not automatically synchronize or change their status.
+Related documents: [existing F002 spec](../../docs/features/F002-feature-api-traceability.md), [current F003 functional design](../../docs/design/F003-traceability-graph/README.md), [current source-boundary ADR](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md). This archive does not automatically synchronize or change their status.

@@ -1,5 +1,15 @@
 > 语言：**简体中文** · [English](F001-review-fixes-validation-2026-07-30.md)
 
+---
+feature_ids: [F001]
+topics: [validation, implementation-history]
+doc_kind: validation-evidence
+created: 2026-07-30
+status: historical
+superseded_by:
+  - ../../../features/F001-legacy-system-understanding.zh-CN.md
+---
+
 # F001 Review 修复验证 — 2026-07-30
 
 ## 范围

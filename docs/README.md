@@ -9,6 +9,7 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 - [Feature roadmap](ROADMAP.md) · [简体中文](ROADMAP.zh-CN.md)
 - [Product architecture](architecture/traqen-product-architecture.md) · [简体中文](architecture/traqen-product-architecture.zh-CN.md)
 - [System requirements: legacy-system understanding and canonical quality traceability](architecture/traqen-system-requirements.md) · [简体中文](architecture/traqen-system-requirements.zh-CN.md)
+- [Published design baseline](design/README.md) · [简体中文](design/README.zh-CN.md)
 - [ADR-0001: canonical traceability ontology](decisions/ADR-0001-canonical-traceability-ontology.md) · [简体中文](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)
 - [ADR-0002: Workspace aggregate and execution isolation](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md) · [简体中文](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)
 - [Branch Review Publication Policy](policies/branch-review-publication-policy.md) · [简体中文](policies/branch-review-publication-policy.zh-CN.md)
@@ -18,9 +19,9 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 
 | ID | Active Feature document | Supporting design |
 |---|---|---|
-| F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | product architecture |
+| F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | [approved Design B](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md) |
 | F002 | [Deterministic Evidence & API Structure](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
-| F003 | [Current design entry and historical spec](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | [Functional Panorama V2.0](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.md) · [中文](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md) |
+| F003 | [Current design entry and historical spec](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | [Functional Panorama V2.0](design/F003-traceability-graph/README.md) · [中文](design/F003-traceability-graph/README.zh-CN.md) |
 | F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
 | F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
@@ -34,7 +35,7 @@ The F001–F004 redesign does not treat older visual explorations as active spec
 
 ## Baseline policy
 
-The roadmap, active `Fxxx` documents, product architecture, and ADRs form one design baseline. Superseded material is either removed or explicitly unlinked and marked historical; Git history remains the recovery record.
+The roadmap, active `Fxxx` documents, product architecture, ADRs, and the published-design index form one design baseline. Superseded material is moved to [archive](archive/README.md), declares its replacement, and is excluded from this navigation; Git history remains the recovery record.
 
 ## Bilingual documentation policy
 

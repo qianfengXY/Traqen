@@ -87,8 +87,8 @@ test("documentation and README files have linked bilingual counterparts", async 
 
 test("F001 lifecycle translations share the complete orchestration phase contract", async () => {
   const lifecyclePaths = [
-    "docs/features/workspace-scan-and-analysis-lifecycle.md",
-    "docs/features/workspace-scan-and-analysis-lifecycle.zh-CN.md",
+    "docs/archive/lifecycle/workspace-scan-and-analysis-lifecycle.md",
+    "docs/archive/lifecycle/workspace-scan-and-analysis-lifecycle.zh-CN.md",
   ];
   const documents = await Promise.all(
     lifecyclePaths.map((file) => readFile(path.join(root, file), "utf8")),

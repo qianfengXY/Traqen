@@ -14,12 +14,15 @@ doc_kind: feature-design
 created: 2026-07-29
 updated: 2026-08-29
 status: superseded
+superseded_by:
+  - ../../features/F001-legacy-system-understanding.zh-CN.md
+  - ../../architecture/traqen-product-architecture.zh-CN.md
 priority: P0
 ---
 
 # 历史参考：Workspace 扫描与 Analysis Agent 生命周期
 
-> **仅作历史参考。** 本设计已被[活动 F001 规格](F001-legacy-system-understanding.zh-CN.md)和[产品架构](../architecture/traqen-product-architecture.zh-CN.md)中的 F001–F004 证据优先重构替代。保留它仅为实现历史兼容；它不是活动合同。
+> **仅作历史参考。** 本设计已被[活动 F001 规格](../../features/F001-legacy-system-understanding.zh-CN.md)和[产品架构](../../architecture/traqen-product-architecture.zh-CN.md)中的 F001–F004 证据优先重构替代。保留它仅为实现历史兼容；它不是活动合同。
 
 ## 1. 需求定义
 
@@ -139,10 +142,10 @@ Agent 的任务全集是完整、不可变的 `SourceSnapshot`，不是扫描器
 
 Scanner Facts 是并行产生、可选的增强输入。某个 Symbol、Endpoint 或关系 Fact 缺失，不能让对应源码 Artifact 从 Agent 计划中消失。因此，“分析所有文件”指所有 Artifact 在许多有界 WorkUnit 中得到完整、可审核的处置；绝不表示把整个仓库塞进一个 Prompt。
 
-[Workspace 分析交互工作流](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
+[Workspace 分析交互工作流](../../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
 展开确定性分区、同批次子 Agent 分发、Workspace 专属能力路由、
 有界源码读取、层级汇总、主 Agent 对账与显式隔离/Gap 路径。对应的
-[Archify JSON 源](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
+[Archify JSON 源](../../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
 是下述算法的可复现视觉投影。
 
 #### 3.3.1 Inventory 分区如何产生
@@ -924,5 +927,4 @@ UI 规则：
 6. **兼容迁移与删除旧路径**：迁移 subscription，删除 browser execution/checkpoint authority。
 7. **真实验收**：大仓扫描、多次刷新、断网、人工暂停/恢复、API 重启和视觉证据。
 
-实现统一按单一活动计划推进：
-[`feature-specs/2026-07-31-traqen-product-foundation.md`](../../feature-specs/2026-07-31-traqen-product-foundation.md)。
+当时的实施由一份已不再保留在当前路径的计划推进；当前替代是 [F001 Source Truth 实施计划](../../../feature-specs/2026-09-06-f001-source-truth-implementation.md)。

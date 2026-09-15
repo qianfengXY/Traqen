@@ -1,5 +1,15 @@
 > 语言：**简体中文** · [English](F001-legacy-system-understanding-validation-2026-07-29.md)
 
+---
+feature_ids: [F001]
+topics: [validation, implementation-history]
+doc_kind: validation-evidence
+created: 2026-07-29
+status: historical
+superseded_by:
+  - ../../../features/F001-legacy-system-understanding.zh-CN.md
+---
+
 # F001 存量系统理解实施验证
 
 **状态：** 已实现

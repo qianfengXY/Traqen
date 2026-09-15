@@ -46,7 +46,7 @@ v4 保留六组 24 项子功能、五部分出口及双向取证回路，落实�
 - 黄色待对齐框与顶部 F001 之间增加虚线，明确标注“读取接口待定，非已定直连”。虚线不是已经批准的物理读取路径。
 - “查原文／找反例”步骤增加同色“接口待定”角标，保留“现行 ADR-0003 准入边界仍有效”。
 
-图内“参照 F003 全景 V1.0”记录 v4 内容绘制时的参考基线，不宣称它是 F003 当前最新版本；[F003 当前设计](../2026-09-09-F003-traceability-graph-design/README.zh-CN.md) 已演进至 V2.0。本次按“仅换风格”要求保留图中文字；V2.0 是本次的视觉参考，不借此修改 F003 或关闭跨功能待对齐项。
+图内“参照 F003 全景 V1.0”记录 v4 内容绘制时的参考基线，不宣称它是 F003 当前最新版本；[F003 当前设计](../../docs/design/F003-traceability-graph/README.zh-CN.md) 已演进至 V2.0。本次按“仅换风格”要求保留图中文字；V2.0 是本次的视觉参考，不借此修改 F003 或关闭跨功能待对齐项。
 
 ### 3.2 历史图稿（不再作为当前主图）
 
@@ -153,7 +153,7 @@ API 树、关系图、对象列表和证据面板都从这份数据产品投影�
 | 仍不确定／不支持 | 返回已发现限制与 Gap，不伪造确定结论。 |
 | 越权／版本不符 | 拒绝并说明原因，不扩大授权或混用版本。 |
 
-F003 是重要的应用验证渠道，但不是 F002 唯一的验收者。[F003 当前功能设计](../2026-09-09-F003-traceability-graph-design/README.zh-CN.md) 采用“自动收录 Agent 分析态 + 例外人工审核”；本稿不恢复旧版“所有候选都必须先人工批准”的规定。
+F003 是重要的应用验证渠道，但不是 F002 唯一的验收者。[F003 当前功能设计](../../docs/design/F003-traceability-graph/README.zh-CN.md) 采用“自动收录 Agent 分析态 + 例外人工审核”；本稿不恢复旧版“所有候选都必须先人工批准”的规定。
 
 ## 7. 事实成立与质量边界
 
@@ -234,4 +234,4 @@ F003 是重要的应用验证渠道，但不是 F002 唯一的验收者。[F003 
 | `assets/f002-functional-panorama-v4.zh-CN.png` | `exec-fd0c1b84-1fbb-484a-b71d-5e90387ad7e1.png` | `8689609c2c1782f8353842aad48822f4e9708c43d3b5546b3b72d18efd164f9f` |
 | `assets/f002-functional-panorama-v4-f003-style.zh-CN.png` | `exec-27631479-1acc-4a6d-b131-c3a490c7fb7e.png` | `ea72b7d8850adb60328588ed4f88a86e6b029867b241246f30be404e03a4e976` |
 
-相关入口：[现有 F002 Spec](../../docs/features/F002-feature-api-traceability.zh-CN.md)、[F003 当前功能设计](../2026-09-09-F003-traceability-graph-design/README.zh-CN.md)、[来源边界 ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md)。这些文档不因本次讨论归档自动同步或变更状态。
+相关入口：[现有 F002 Spec](../../docs/features/F002-feature-api-traceability.zh-CN.md)、[F003 当前功能设计](../../docs/design/F003-traceability-graph/README.zh-CN.md)、[来源边界 ADR-0003](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md)。这些文档不因本次讨论归档自动同步或变更状态。

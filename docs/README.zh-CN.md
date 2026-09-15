@@ -9,6 +9,7 @@
 - [Feature 路线图](ROADMAP.zh-CN.md) · [English](ROADMAP.md)
 - [产品架构](architecture/traqen-product-architecture.zh-CN.md) · [English](architecture/traqen-product-architecture.md)
 - [系统需求：存量系统理解与统一质量追溯](architecture/traqen-system-requirements.zh-CN.md) · [English](architecture/traqen-system-requirements.md)
+- [已发布设计基线](design/README.zh-CN.md) · [English](design/README.md)
 - [ADR-0001：统一追溯本体](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md) · [English](decisions/ADR-0001-canonical-traceability-ontology.md)
 - [ADR-0002：Workspace 聚合与执行隔离](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md) · [English](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md)
 - [代码分支 Review 发布政策](policies/branch-review-publication-policy.zh-CN.md) · [English](policies/branch-review-publication-policy.md)
@@ -18,9 +19,9 @@
 
 | ID | 活动 Feature 文档 | 支撑设计 |
 |---|---|---|
-| F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | 产品架构 |
+| F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | [已确认的 Design B](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) |
 | F002 | [确定性证据与 API 结构](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | 产品架构 |
-| F003 | [当前设计入口与历史 Spec](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | [功能全景 V2.0](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md) · [English](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.md) |
+| F003 | [当前设计入口与历史 Spec](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | [功能全景 V2.0](design/F003-traceability-graph/README.zh-CN.md) · [English](design/F003-traceability-graph/README.md) |
 | F004 | [变更影响分析](features/F004-change-impact-analysis.zh-CN.md) · [English](features/F004-change-impact-analysis.md) | 产品架构 |
 | F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [能力解析图](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
@@ -34,7 +35,7 @@ F001–F004 重构不会把旧的可视化探索当作活动规格；只有参�
 
 ## 基线规则
 
-路线图、活动 `Fxxx` 文档、产品架构和 ADR 构成唯一设计基线。被替代材料要么移除，要么明确取消链接并标为历史；Git 历史仍是可恢复记录。
+路线图、活动 `Fxxx` 文档、产品架构、ADR 和已发布设计索引共同构成唯一设计基线。被替代材料移入[归档](archive/README.zh-CN.md)，声明替代它的文档，并排除在本导航之外；Git 历史仍是可恢复记录。
 
 ## 双语文档策略
 
