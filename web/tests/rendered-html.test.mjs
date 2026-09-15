@@ -143,8 +143,8 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(surfaces, /Use newer server Draft/);
   assert.match(saveCapabilityDraftSource, /Promise\.all\(\[\s*getWorkspaceCapabilityDraft[\s\S]*getEffectiveCapabilities/,
     "a Draft conflict must capture the newer head with its refreshed effective catalog");
-  assert.match(product, /async function retryCapabilityDraft\(acknowledgedEdited: number\)[\s\S]*structuredClone\(conflict\.local\)[\s\S]*expectedVersion: conflict\.current\.revision[\s\S]*return saved \? acknowledgedEdited : null/,
-    "retry must use the retained Draft snapshot rebased only to the newer server revision and acknowledge only a successful recovery");
+  assert.match(product, /async function retryCapabilityDraft\(\): Promise<number \| null>[\s\S]*structuredClone\(conflict\.local\)[\s\S]*expectedVersion: conflict\.current\.revision[\s\S]*editRevision: conflict\.localEditedRevision[\s\S]*return saved \? conflict\.localEditedRevision : null/,
+    "retry must use the retained Draft snapshot rebased only to the newer server revision and acknowledge only the editor revision it actually persisted");
   assert.match(product, /setEffectiveCatalog\(conflict\.currentCatalog\)/,
     "adopting the newer Draft must also adopt the catalog shown during comparison");
   assert.match(surfaces, /const editingDisabled = working \|\| !recoveryReady \|\| Boolean\(draftConflict\)/,

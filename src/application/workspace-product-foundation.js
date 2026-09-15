@@ -465,9 +465,12 @@ export class WorkspaceProductFoundation {
     return Object.freeze({ draft, catalog, validation: validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective, securityPolicy: draft.securityPolicy }) });
   }
 
-  async activateCapabilityDraft(workspaceId, modelProfiles) {
-    const result = await this.validateCapabilityDraft(workspaceId, modelProfiles);
+  async activateCapabilityDraft(workspaceId, modelProfiles, validatedSnapshot = null) {
+    const result = validatedSnapshot ?? await this.validateCapabilityDraft(workspaceId, modelProfiles);
     if (!result) return null;
+    if (result.draft.workspaceId !== workspaceId) {
+      throw new TypeError("Capability Draft snapshot belongs to a different Workspace");
+    }
     const policyRevisions = await Promise.all([
       ['DEPENDENCY', result.draft.dependencyPolicyRevisionId],
       ['CONVENTION', result.draft.conventionRevisionId],

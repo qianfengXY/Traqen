@@ -22,7 +22,8 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.doesNotMatch(source, /accessToken|refreshToken|beginOAuthLogin/, "the UI must not create an OAuth token or login flow");
   assert.match(source, /Apply configuration/);
   assert.match(source, /setTimeout\(\(\) => \{\s*autosaveInFlight\.current = true/);
-  assert.match(source, /onAutoSave\(\)\.then\(\(saved\)/);
+  assert.match(source, /onAutoSave\(editRevision\)\.then\(\(saved\)/,
+    "the save owner must receive the exact edit revision represented by its payload");
   assert.match(source, /Retry save/);
   assert.match(source, /Cannot re-enable here/);
   assert.match(source, /actualUnavailable/);
@@ -84,10 +85,21 @@ test("F006 settings stops autosave after a failed conflict and requires an expli
     "a stale draft conflict remains an explicit recovery state rather than an autosave loop");
   assert.match(source, /function acknowledgeRecoveredDraft\(acknowledgedEdited: number \| null\)/,
     "both conflict-recovery actions must explicitly acknowledge the child edit revision that is now durable");
-  assert.match(source, /void props\.onRetryDraftConflict\(edited\)\.then\(acknowledgeRecoveredDraft\)/,
-    "retrying the local draft must acknowledge exactly the recovered snapshot");
+  assert.match(source, /void props\.onRetryDraftConflict\(\)\.then\(acknowledgeRecoveredDraft\)/,
+    "retrying the local draft must acknowledge the frozen snapshot actually written, not a later editor revision");
   assert.match(source, /void props\.onUseCurrentDraft\(edited\)\.then\(acknowledgeRecoveredDraft\)/,
     "adopting the server draft must clear the error state and re-enable Apply without an extra autosave");
+});
+
+test("F006 retry recovery tracks the edit revision that its conflict payload actually persisted", async () => {
+  const source = await readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /localEditedRevision: number \| null/,
+    "a conflict must retain the editor revision that produced its frozen local payload");
+  assert.match(source, /function autoSaveCapabilities\(editRevision: number\)[\s\S]*editRevision/,
+    "automatic saves must provide their payload's edit revision to conflict recovery");
+  assert.match(source, /async function retryCapabilityDraft\(\): Promise<number \| null>[\s\S]*return saved \? conflict\.localEditedRevision : null/,
+    "Retry must acknowledge only the edit revision contained in the persisted conflict snapshot");
 });
 
 test("F006 conflict recovery acknowledges both recovered drafts, re-enables Apply, and preserves later edits", async () => {
@@ -150,7 +162,7 @@ test("F006 conflict recovery acknowledges both recovered drafts, re-enables Appl
       setMainModel: (model) => { props.mainModel = model; },
       onAutoSave: async () => {
         saves += 1;
-        if (saves === 1) {
+        if (saves === 1 || saves === 3) {
           props.draftConflict = true;
           return false;
         }
@@ -162,10 +174,10 @@ test("F006 conflict recovery acknowledges both recovered drafts, re-enables Appl
         props.mainModel = "SERVER-MODEL";
         return editedRevision;
       },
-      onRetryDraftConflict: async (editedRevision) => {
+      onRetryDraftConflict: async () => {
         props.draftConflict = false;
         props.draft = { revision: 3 };
-        return editedRevision;
+        return 1;
       },
       onApply: () => {}, onSaveLocalCapability: () => {}, onDeleteLocalCapability: () => {},
       onSaveAccount: async () => true, onRecheckAccount: async () => {}, onSaveModel: async () => true,
@@ -201,22 +213,57 @@ test("F006 conflict recovery acknowledges both recovered drafts, re-enables Appl
     assert.equal(saves, 1, "the failed save must happen once");
     assert.equal(timers.size, 0, "a conflict must not schedule a background retry");
 
+    if (recoveryLabel === "Retry my draft") {
+      nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-3");
+      render();
+      assert.equal(timers.size, 0, "edits made while resolving a conflict must wait for explicit recovery");
+    }
+
     button(tree, recoveryLabel).props.onClick();
     await settle();
     tree = render();
     assert.equal(props.draftConflict, false, `${recoveryLabel} clears the conflict`);
-    assert.equal(button(tree, "Apply configuration").props.disabled, false, `${recoveryLabel} makes the recovered draft applyable`);
     assert.equal(Boolean(button(tree, "Retry save")), false, `${recoveryLabel} clears the failed autosave state`);
-    assert.equal(timers.size, 0, `${recoveryLabel} does not re-arm stale autosave work`);
+    if (recoveryLabel === "Retry my draft") {
+      assert.equal(button(tree, "Apply configuration").props.disabled, true,
+        "Retry must leave a later, unpersisted edit dirty instead of falsely unlocking Apply");
+      assert.equal(timers.size, 1,
+        "Retry must schedule exactly one fresh save for the later edit without reviving the old retry loop");
+      flushTimers();
+      await settle();
+      tree = render();
+      assert.equal(saves, 2, "the later edit must get its own one-time autosave after Retry persists the frozen snapshot");
+      assert.equal(button(tree, "Apply configuration").props.disabled, false,
+        "Apply unlocks only after the later edit itself is durable");
+    } else {
+      assert.equal(button(tree, "Apply configuration").props.disabled, false, `${recoveryLabel} makes the recovered draft applyable`);
+      assert.equal(timers.size, 0, `${recoveryLabel} does not re-arm stale autosave work`);
 
-    nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-3");
+      nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-3");
+      render();
+      assert.equal(timers.size, 1, "a later edit remains saveable after recovery");
+      flushTimers();
+      await settle();
+      tree = render();
+      assert.equal(saves, 2, "a later edit performs one fresh autosave");
+      assert.equal(button(tree, "Apply configuration").props.disabled, false, "the later saved edit stays applyable");
+    }
+
+    nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-4");
     render();
-    assert.equal(timers.size, 1, "a later edit remains saveable after recovery");
     flushTimers();
     await settle();
     tree = render();
-    assert.equal(saves, 2, "a later edit performs one fresh autosave");
-    assert.equal(button(tree, "Apply configuration").props.disabled, false, "the later saved edit stays applyable");
+    assert.equal(saves, 3, "a later, independent conflict must issue exactly one save");
+    assert.equal(props.draftConflict, true, "a repeated conflict remains explicit instead of silently retrying");
+    assert.equal(timers.size, 0, "a repeated conflict must not create a retry storm");
+    button(tree, "Use server draft").props.onClick();
+    await settle();
+    tree = render();
+    assert.equal(props.draftConflict, false, "Use server draft resolves a repeated conflict");
+    assert.equal(button(tree, "Apply configuration").props.disabled, false,
+      "adopting the exact server state may immediately restore Apply");
+    assert.equal(timers.size, 0, "adopting the server state must not enqueue stale local writes");
   }
 
   await exercise("Use server draft");

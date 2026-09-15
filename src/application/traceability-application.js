@@ -785,18 +785,23 @@ export class TraceabilityApplication {
     return errors;
   }
 
-  async #validateF006WorkspaceCapabilityDraft(workspaceId) {
-    const result = await this.#workspaceFoundation.validateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
+  async #f006WorkspaceCapabilityValidation(workspaceId) {
+    const modelProfiles = await this.#f006ModelProfiles();
+    const result = await this.#workspaceFoundation.validateCapabilityDraft(workspaceId, modelProfiles);
     if (!result) return null;
     const mappingErrors = this.#workspaceSkillMappingErrors(result.draft, result.catalog);
-    if (mappingErrors.length === 0) return result;
-    return Object.freeze({
-      ...result,
-      validation: Object.freeze({
-        valid: false,
-        errors: Object.freeze([...result.validation.errors, ...mappingErrors]),
-      }),
+    const validation = mappingErrors.length === 0 ? result.validation : Object.freeze({
+      valid: false,
+      errors: Object.freeze([...result.validation.errors, ...mappingErrors]),
     });
+    return Object.freeze({
+      modelProfiles,
+      result: Object.freeze({ ...result, validation }),
+    });
+  }
+
+  async #validateF006WorkspaceCapabilityDraft(workspaceId) {
+    return (await this.#f006WorkspaceCapabilityValidation(workspaceId))?.result ?? null;
   }
 
   async saveGlobalCapability(input) {
@@ -1129,13 +1134,13 @@ export class TraceabilityApplication {
   }
 
   async activateWorkspaceCapabilityDraft(workspaceId) {
-    const draft = await this.#workspaceFoundation.getCapabilityDraft(workspaceId);
-    if (draft) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(draft));
-    const validation = await this.#validateF006WorkspaceCapabilityDraft(workspaceId);
-    if (validation && !validation.validation.valid) {
-      throw new TypeError(`Workspace capability draft is invalid: ${validation.validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
+    const validationSnapshot = await this.#f006WorkspaceCapabilityValidation(workspaceId);
+    const snapshot = validationSnapshot?.result ?? null;
+    if (snapshot) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(snapshot.draft));
+    if (snapshot && !snapshot.validation.valid) {
+      throw new TypeError(`Workspace capability draft is invalid: ${snapshot.validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
     }
-    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
+    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, validationSnapshot?.modelProfiles ?? await this.#f006ModelProfiles(), snapshot);
   }
 
   async saveWorkspaceCapabilityConfig(workspaceId, input) {

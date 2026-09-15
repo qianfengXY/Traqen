@@ -5,6 +5,7 @@ import { PassThrough } from "node:stream";
 import test from "node:test";
 
 import { TraceabilityApplication } from "../src/application/traceability-application.js";
+import { WorkspaceProductFoundation } from "../src/application/workspace-product-foundation.js";
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { AnalysisModelConnectionError, AnalysisModelRegistry } from "../src/analysis/index.js";
 import {
@@ -645,6 +646,78 @@ test("F006 keeps hydrated unmounted Skills readable but blocks validation, Apply
     /no longer backed by a mounted executor/i,
   );
   assert.equal(starts.length, 0, "an unmapped historical Skill must not reach the runtime");
+});
+
+test("F006 Apply activates the exact Skill-mapping snapshot it validated", async () => {
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    workspaceSkillCatalog: [{ id: "mounted-reference", version: "1.0.0" }],
+    workspaceSkillResolver: () => ({ id: "mounted-reference" }),
+  });
+  await application.createProject({
+    organization: { id: "ORG-APPLY-SNAPSHOT", name: "Org" },
+    tenant: { id: "TENANT-APPLY-SNAPSHOT", name: "Tenant" },
+    project: { id: "W-APPLY-SNAPSHOT", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-APPLY-SNAPSHOT", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", expectedVersion: 0,
+  });
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-APPLY-SNAPSHOT", displayName: "Model", accountId: "ACCOUNT-APPLY-SNAPSHOT",
+    cliAdapter: "CODEX", model: "gpt-5.6-terra",
+  });
+  await application.verifyGlobalModelProfile("MODEL-APPLY-SNAPSHOT");
+  const historicalUnmappedSkill = createCapabilityTemplateRevision({
+    kind: "SKILL", logicalName: "historical-unmapped", revision: 1,
+    manifest: { adapterId: "not-mounted", version: "99.0.0", signature: "VERIFIED" },
+  }, fixedClock);
+  await store.appendCapabilityTemplateRevision(historicalUnmappedSkill);
+  const validatedDraft = await application.saveWorkspaceCapabilityDraft("W-APPLY-SNAPSHOT", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-APPLY-SNAPSHOT", skillNames: [] },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-APPLY-SNAPSHOT", skillNames: [], independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+
+  const originalActivate = WorkspaceProductFoundation.prototype.activateCapabilityDraft;
+  let injectedConcurrentSave = false;
+  WorkspaceProductFoundation.prototype.activateCapabilityDraft = async function (...args) {
+    if (!injectedConcurrentSave) {
+      injectedConcurrentSave = true;
+      await application.saveWorkspaceCapabilityDraft("W-APPLY-SNAPSHOT", {
+        expectedVersion: validatedDraft.revision,
+        mainAgentSlot: { modelProfileId: "MODEL-APPLY-SNAPSHOT", skillNames: ["historical-unmapped"] },
+        childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-APPLY-SNAPSHOT", skillNames: ["historical-unmapped"], independenceGroup: "I1" }],
+        projectCapabilityRevisionIds: [],
+        disabledKeys: [],
+      });
+    }
+    return originalActivate.call(this, ...args);
+  };
+  try {
+    const active = await application.activateWorkspaceCapabilityDraft("W-APPLY-SNAPSHOT");
+    assert.equal(injectedConcurrentSave, true, "the test must save a newer invalid draft between validation and activation");
+    assert.equal(active.draftRevisionId, validatedDraft.id,
+      "Apply must activate the exact draft whose Skill mappings passed validation");
+    assert.deepEqual(active.mainAgentSlot.skillGrants, [],
+      "Apply must not pin a grant that appeared only in the concurrent, unvalidated Draft");
+  } finally {
+    WorkspaceProductFoundation.prototype.activateCapabilityDraft = originalActivate;
+  }
+  const newerValidation = await application.validateWorkspaceCapabilityDraft("W-APPLY-SNAPSHOT");
+  assert.equal(Object.hasOwn(newerValidation, "modelProfiles"), false,
+    "the public validation result must not serialize the internal model snapshot used by Apply");
+  assert.equal(newerValidation.validation.valid, false,
+    "the concurrently saved Draft remains visible and independently rejected");
+  assert.ok(newerValidation.validation.errors.some(({ code }) => code === "SKILL_EXECUTOR_UNAVAILABLE"));
 });
 
 test("F006 account HTTP contract never performs or stores OAuth login material", async (t) => {
