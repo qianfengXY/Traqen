@@ -5,7 +5,7 @@ feature_ids: [F003]
 topics: [agent-analysis, semantic-candidates, human-review, business-function-tree, provenance]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-09-09
+updated: 2026-09-15
 description: 在确定性工作空间证据之上产出可追溯的语义候选和经人工批准的业务功能树。
 description_source: human
 description_author: co-creator
@@ -18,11 +18,11 @@ description_updated_at: 2026-08-29T03:18:18Z
 **负责人：** TBD
 **依赖：** F001、F002、F006
 
-## 当前功能设计 — V1.0
+## 当前功能设计 — V2.0
 
-co-creator 已于 2026-09-09 确认 [F003 功能全景设计 V1.0](../../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md)，并明确授权写入设计文档。该文档包含未经重绘的定稿原图、八组功能、五档分流、回流路径和定稿追溯。
+co-creator 已于 2026-09-15 授权以已验收的 [F003 功能全景设计 V2.0](../../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md) 替换之前的设计主图。该文档引用同一份已验收 HTML/PNG，保留八组功能、五档分流、回流路径、版本校验值及验收追溯；V1.0 降为历史记录。
 
-**本页下文为 2026-08-29 历史 Spec，不是当前 V1.0 功能合同。** 其中“所有候选先经人工批准才能进入业务树”的要求，已由“自动收录 Agent 分析态 + 例外人工审核”替代；自动收录不等于人工确认。来源读取与治理接口的未定项见 V1.0 第 8 节；本次文档写入不改变其他 Feature 或 ADR，不推进功能生命周期，也不声称实现已验收。
+**本页下文为 2026-08-29 历史 Spec，不是当前 V2.0 功能合同。** 其中“所有候选先经人工批准才能进入业务树”的要求，已由“自动收录 Agent 分析态 + 例外人工审核”替代；自动收录不等于人工确认。来源读取与治理接口的未定项见 V2.0 第 8 节；本次文档写入不改变其他 Feature 或 ADR，不推进功能生命周期，也不声称实现已验收。
 
 ## 历史 Spec — 2026-08-29
 

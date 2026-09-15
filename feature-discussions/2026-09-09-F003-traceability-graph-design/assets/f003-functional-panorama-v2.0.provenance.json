@@ -1,0 +1,91 @@
+{
+  "feature_ids": ["F003"],
+  "doc_kind": "diagram-provenance",
+  "version": "2.0",
+  "recorded_at": "2026-09-15",
+  "thread_id": "thread_mtgypu3cay1bysab",
+  "status": "current-functional-design-baseline",
+  "scope": "Functional panorama only; no feature implementation or lifecycle acceptance.",
+  "maintained_source": {
+    "path": "f003-functional-panorama-v2.0.zh-CN.html",
+    "sha256": "56dae9d67570295ea232135ed76291b2b858fd6f85f06e8a9f4557325b96a2d8",
+    "format": "self-contained HTML and inline SVG",
+    "author_cat_id": "cat-od9z8br7",
+    "author_model": "claude-opus-5"
+  },
+  "rendered_artifact": {
+    "path": "f003-functional-panorama-v2.0.zh-CN.png",
+    "sha256": "ba2c5e746b02772e95ec8024088c7804a697a3ca69323f6a6fb997f308215018",
+    "width": 2896,
+    "height": 2924,
+    "css_viewport": {"width": 1448, "height": 1462},
+    "device_scale_factor": 2,
+    "render_instructions": "HTML header comment; this documentation update does not rerender or modify the accepted pair.",
+    "reproducibility_scope": "Author and independent reviewer reported byte equality in their tested environment; not a guarantee across browser, font, or OS versions."
+  },
+  "structural_reference": {
+    "path": "f003-functional-panorama-v1.3-candidate.zh-CN.png",
+    "sha256": "92db9c60a49a10de902e71e061c5f39ebb7718b1b20712eb1028a805edd45ab7",
+    "status": "historical-candidate-with-known-text-defects"
+  },
+  "superseded_baseline": {
+    "path": "f003-functional-panorama-v1.0.zh-CN.png",
+    "sha256": "380002bce7bded27588afcae8c1a3f86e1c620e0f7bdd57bd56f7a3cc344a28b",
+    "original_artifact": "exec-e651da11-3710-4f73-9ecc-d276d6645dbe.png",
+    "confirmation_message_id": "0001788935356126-000087-3385a3f2",
+    "write_authorization_message_id": "0001788937652971-000112-fea57317",
+    "preserved_unchanged": true
+  },
+  "authorization": {
+    "html_remake_message_id": "0001789443495478-000034-934cc8b0",
+    "delivery_message_id": "0001789443497700-000062-33969791",
+    "baseline_replacement_message_id": "0001789455231575-000268-ec300784",
+    "baseline_replacement_quote": "请你将这版落到设计文档里，替换之前的。",
+    "baseline_replacement_at": "2026-09-15T06:53:51.575Z"
+  },
+  "independent_acceptance": {
+    "reviewer_cat_id": "kimi",
+    "reviewer_model": "Kimi 3",
+    "message_id": "0001789444862182-000071-33780f79",
+    "verdict": "passed",
+    "reported_checks": {
+      "terminology_checks_passed": 27,
+      "drift_word_checks_passed": 7,
+      "layout_and_connections": "passed",
+      "rerendered_png_sha256": "ba2c5e746b02772e95ec8024088c7804a697a3ca69323f6a6fb997f308215018"
+    },
+    "reuse_basis": "Accepted HTML and PNG hashes match the current files; no diagram edits in this documentation update."
+  },
+  "documentation_update": {
+    "author_cat_id": "cat-idwxwjba",
+    "author_model": "gpt-6-astra",
+    "changes": [
+      "Replace the bilingual design primary image with V2.0 and link its source, PNG, checksum, and provenance.",
+      "Align diagram-reading notes with destination labels and the query-direction legend; retain existing functional constraints.",
+      "Update bilingual F003 entry points and documentation index labels without changing the historical spec body or feature lifecycle.",
+      "Preserve V1.0 and the V1.3 structural reference as historical artifacts."
+    ],
+    "embedded_candidate_badge": "Preserved as original accepted-artifact text; current baseline status is established by the operator replacement authorization and the design document.",
+    "html_hash_resolution": "Use the on-disk 56dae9d6...a2d8 hash, not the author's earlier 8357bf20...27fc0 report.",
+    "equivalent_wording": "冲突编组 in the diagram and 编组冲突 in the Chinese design both denote grouping conflicts.",
+    "fresh_validation": {
+      "documents_checked": 6,
+      "local_links_checked": 92,
+      "changed_bilingual_pairs": "3 passed",
+      "primary_image_references": "V2.0 only in both design pages",
+      "artifact_hashes": "4 passed, including historical V1.0 and V1.3",
+      "png_dimensions": "2896 x 2924 verified from PNG header",
+      "historical_spec_bodies": "byte-identical to pre-update HEAD",
+      "visible_html_regressions": "required terminology present; seven drift terms absent",
+      "diff_check": "passed",
+      "repository_bilingual_test": {
+        "command": "node --test test/bilingual-documentation.test.js",
+        "result": "1 passed, 1 failed",
+        "failure": "docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md begins with frontmatter rather than the first-line reciprocal language link required by the test.",
+        "baseline_verification": "Failing ADR is byte-identical to pre-update HEAD and was not modified; scoped checks for all three changed bilingual pairs passed."
+      }
+    },
+    "new_browser_acceptance_claimed": false,
+    "other_features_or_adrs_changed": false
+  }
+}

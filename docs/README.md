@@ -20,7 +20,7 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 |---|---|---|
 | F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | product architecture |
 | F002 | [Deterministic Evidence & API Structure](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
-| F003 | [Current design entry and historical spec](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | [Functional Panorama V1.0](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.md) · [中文](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md) |
+| F003 | [Current design entry and historical spec](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | [Functional Panorama V2.0](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.md) · [中文](../feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md) |
 | F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
 | F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
