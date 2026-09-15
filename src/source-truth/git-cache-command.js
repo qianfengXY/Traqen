@@ -39,7 +39,7 @@ try {
   phase = "RUNTIME";
   const timer = setInterval(() => {
     if (pending || failed) return;
-    pending = checkGitCacheCapacity(budget).catch(deny).finally(() => { pending = null; });
+    pending = checkGitCacheCapacity(budget, 0n, { duringWrite: true }).catch(deny).finally(() => { pending = null; });
   }, 100);
   const code = await new Promise((resolve) => {
     child.once("error", () => resolve(125));

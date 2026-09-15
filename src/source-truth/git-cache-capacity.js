@@ -36,18 +36,24 @@ export async function openGitCacheLock(root) {
   }
 }
 
-export async function checkGitCacheCapacity(budget, reservation = 0n) {
+export async function checkGitCacheCapacity(budget, reservation = 0n, { duringWrite = false } = {}) {
   const maximum = BigInt(budget.maximum), minimumFree = BigInt(budget.minimumFree);
   let accounted = 0n, entries = 0;
   let operation = "SCAN_BOUND", entryKind = "ROOT";
-  const visit = async (location, depth) => {
+  let vanishedFile = false;
+  const visit = async (location, depth, enumeratedFile = false) => {
     const name = path.basename(location);
     const kind = depth === 0 ? "ROOT" : name.endsWith(".lock") ? "LOCK" : name.startsWith("tmp_pack_") ? "PACK_TEMP"
       : name.endsWith(".pack") ? "PACK" : name.endsWith(".idx") ? "INDEX" : "OTHER";
     entryKind = kind; operation = "SCAN_BOUND";
     requireValue(depth <= 16 && ++entries <= 100000, "SOURCE_STORAGE_NOT_READY", "Git 缓存计量超过有界扫描范围，请检查存储", { status: 503 });
     operation = "ENTRY_STAT";
-    const stat = await lstat(location, { bigint: true });
+    let stat;
+    try { stat = await lstat(location, { bigint: true }); }
+    catch (error) {
+      vanishedFile = enumeratedFile && error.code === "ENOENT";
+      throw error;
+    }
     operation = "ENTRY_TYPE";
     requireValue(!stat.isSymbolicLink() && (stat.isFile() || stat.isDirectory()), "SOURCE_STORAGE_NOT_READY", "Git 缓存包含不可安全计量的条目", { status: 503 });
     // Conservative accounting for sparse/compressed files, not a dedup claim.
@@ -59,25 +65,35 @@ export async function checkGitCacheCapacity(budget, reservation = 0n) {
       const directory = await opendir(location, { bufferSize: 32 });
       operation = "DIRECTORY_READ";
       for await (const entry of directory) {
-        await visit(path.join(location, entry.name), depth + 1);
+        await visit(path.join(location, entry.name), depth + 1, entry.isFile());
         operation = "DIRECTORY_READ"; entryKind = kind;
       }
     }
   };
-  try {
-    await visit(budget.root, 0);
-    operation = "FILESYSTEM_STAT"; entryKind = "ROOT";
-    const filesystem = await statfs(budget.root, { bigint: true });
-    operation = "FILESYSTEM_CAPACITY";
-    if (filesystem.bavail * filesystem.bsize < minimumFree + reservation) throw capacity();
-    return accounted;
-  } catch (error) {
-    const cause = gitCacheDiagnostic({ operation, entryKind, errno: error.code });
-    if (error instanceof SourceTruthError) {
-      error.cause = cause;
-      throw error;
+  for (let attempt = 0; ; attempt++) {
+    accounted = 0n; vanishedFile = false;
+    try {
+      await visit(budget.root, 0);
+      operation = "FILESYSTEM_STAT"; entryKind = "ROOT";
+      const filesystem = await statfs(budget.root, { bigint: true });
+      operation = "FILESYSTEM_CAPACITY";
+      if (filesystem.bavail * filesystem.bsize < minimumFree + reservation) throw capacity();
+      return accounted;
+    } catch (error) {
+      // Native Git finalizes pack/lock files while this monitor enumerates them.
+      // A stale regular-file dirent is not a complete capacity observation:
+      // discard its partial sum and restart from the root, never skip the file.
+      // Only the lock-owning runtime supervisor opts in. Admission/final remain
+      // strict. Work across all attempts shares the original entry/depth bound;
+      // persistent churn, missing roots/directories and every other fault deny.
+      if (duringWrite === true && vanishedFile && attempt < 2) continue;
+      const cause = gitCacheDiagnostic({ operation, entryKind, errno: error.code });
+      if (error instanceof SourceTruthError) {
+        error.cause = cause;
+        throw error;
+      }
+      throw new SourceTruthError("SOURCE_STORAGE_NOT_READY", "无法完整核验 Git 缓存容量，请恢复存储后重试", { status: 503, cause });
     }
-    throw new SourceTruthError("SOURCE_STORAGE_NOT_READY", "无法完整核验 Git 缓存容量，请恢复存储后重试", { status: 503, cause });
   }
 }
 
