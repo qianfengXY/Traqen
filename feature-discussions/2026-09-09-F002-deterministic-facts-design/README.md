@@ -6,18 +6,18 @@ related_features: [F001, F003, F004]
 topics: [deterministic-facts, evidence, controlled-material-view, coverage, functional-design]
 doc_kind: feature-discussion
 created: 2026-09-09
-updated: 2026-09-09
-version: "discussion-2026-09-09"
+updated: 2026-09-15
+version: "functional-panorama-v4"
 status: discussion-draft
 ---
 
-# F002 Deterministic Facts: Functions and Diagram Discussion Draft
+# F002 Deterministic Facts: Functional Design (Panorama v4)
 
 ## 1. Status of this edition
 
-This edition records the existing F002 functions, two diagrams, and discussion through the operator's write request at 07:35 UTC on 2026-09-09. **It is a discussion draft, not a finalized feature, interface contract, or implementation authorization.**
+Originally archived under the 2026-09-09 authorization, this page now adopts **functional panorama v4 as its current diagram baseline**, following Kimi's image check and the operator's request at 07:06 UTC on 2026-09-15 to put this edition into the design document. Functional descriptions and the evidence-feedback loop are synchronized. **Diagram adoption does not finalize interface contracts, establish F002 implementation, or authorize implementation; the document remains a discussion draft.**
 
-The original images are preserved. This archival change does not modify canonical F002/F003 specs, ADRs, lifecycle, code, or other features. The pictures predate the latest discussion: section 3 records the qualifications and section 9 preserves unresolved interfaces rather than silently deciding them.
+The checked v4 image is embedded unchanged, without another redraw; v1–v3 and the v3/v4 generation records remain available. This update does not modify canonical F002/F003 specs, ADRs, lifecycle, code, or other features. Original-material access remains an open item in section 9; adopting v4 does not select direct access or short-lived handles.
 
 ## 2. Goal, input, and output
 
@@ -30,21 +30,33 @@ The original images are preserved. This archival change does not modify canonica
 
 Determinism means replay under fixed conditions; it does not establish correctness or completeness. F002 owns its technical records and rules, not business interpretation or actual execution verification.
 
-## 3. Existing diagrams and later qualifications
+## 3. Current functional panorama and historical diagrams
 
-### 3.1 Original functional overview
+### 3.1 Current diagram: functional panorama v4
 
-![F002 overview: frozen materials, six capabilities, fact dataset, and example identifiers](assets/f002-functional-overview-v1.zh-CN.png)
+![F002 panorama v4: six capabilities and twenty-four subfunctions, controlled material views, F003-led investigation, bidirectional evidence requests, and an unresolved access interface](assets/f002-functional-panorama-v4.zh-CN.png)
 
-[Open original overview](assets/f002-functional-overview-v1.zh-CN.png). The API, code, configuration, document, and test nodes are examples, not the complete type vocabulary or an implementation claim.
+[Open the v4 image](assets/f002-functional-panorama-v4.zh-CN.png) · [v4 prompt, provenance, and verification record](assets/f002-functional-panorama-v4.prompt.md). Both language pages embed the same Chinese image; illustrated identifiers are examples, not actual product records.
 
-### 3.2 Original second-level diagram
+v4 preserves six capabilities, twenty-four subfunctions, five output parts, and the bidirectional evidence loop while applying three visual corrections:
 
-![F002 second-level discussion diagram v2: six capabilities and twenty-four subfunctions](assets/f002-functional-breakdown-v2.zh-CN.png)
+- The main heading is “F002 · 确定性处理” (deterministic processing). Independent verification remains a quality constraint and a condition of confirmed corrections, not a seventh capability.
+- An amber dashed connector links the unresolved-interface note to F001, explicitly labeled as an undecided interface rather than approved direct access. It is not an approved physical read path.
+- The “read originals / find counterexamples” step carries a matching “接口待定” (interface undecided) badge; the note that current ADR-0003 admission boundaries remain effective is preserved.
 
-[Open original second-level diagram](assets/f002-functional-breakdown-v2.zh-CN.png). Numbers 01–06 identify functions, not facts. Both language pages embed the same Chinese original; it has not been redrawn as a new edition.
+The image's “参照 F003 全景 V1.0” label records its reference baseline at drawing time, not F003's latest version. [Current F003 design](../2026-09-09-F003-traceability-graph-design/README.md) has advanced to V2.0. This update retains the checked image's original label without modifying F003 or closing cross-feature alignment items.
 
-### 3.3 Qualifications from the subsequent discussion
+### 3.2 Historical diagrams (no longer the primary diagram)
+
+| Version | Image and record | Archival purpose |
+|---|---|---|
+| v1 | [Original overview](assets/f002-functional-overview-v1.zh-CN.png) | Early object/fact examples; some wording was subsequently corrected. |
+| v2 | [Original second-level diagram](assets/f002-functional-breakdown-v2.zh-CN.png) | Early expansion into six capabilities and twenty-four subfunctions; 01–06 identify functions, not facts. |
+| v3 | [Functional panorama](assets/f002-functional-panorama-v3.zh-CN.png) · [Generation record](assets/f002-functional-panorama-v3.prompt.md) | Introduces material views, F003's primary/reference distinction, and the bidirectional loop; v4 refines the heading and unresolved-interface cues. |
+
+### 3.3 Historical wording corrections and continuing boundaries
+
+This table explains old diagram wording; it does not reinstate corrected assertions as v4 rules.
 
 | Wording or possible interpretation | Current qualification |
 |---|---|
@@ -59,7 +71,7 @@ AI-assisted illustration is separate from product fact extraction. These images 
 
 ## 4. Six capabilities and twenty-four subfunctions
 
-This is a functional description, not an implementation checklist. Object, fact, evidence, gap, and version views expose the dataset; an API directory/tree is one projection.
+The table matches v4's six capabilities and twenty-four subfunctions; it is not an implementation checklist. Object, fact, evidence, gap, and version views expose the dataset; an API directory/tree is one projection. Independent correctness validation spans extraction, relationships, and delivery as described in section 7, rather than forming a seventh capability.
 
 | Capability | Subfunction | Visible behavior | Direct value |
 |---|---|---|---|
@@ -125,7 +137,20 @@ API trees, relationship graphs, lists, and evidence panels project the same data
 
 The retained direction is **baseline inventory + F003-question-driven evidence extraction + independent correctness validation**. Neither full extraction before investigation nor registering only what an Agent happens to ask is required.
 
-F003 is an important application-validation channel, not the sole evaluator of F002. [Current F003 V1.0](../2026-09-09-F003-traceability-graph-design/README.md) uses automatic admission in Agent-analysis state plus exception-based human review. This draft does not restore the historical all-candidates-must-be-approved rule.
+### Directed evidence requests / suspected-omission feedback (v4 loop)
+
+**Request: F003 → F002.** Supply an evidence question or suspected omission with material positions, bound to Workspace, source version, and scope, with bounded budget and stopping conditions. Agent suspicion is an input to investigate, not an instruction to overwrite facts.
+
+**Response: F002 → F003.** Return the result, supporting basis, and applicable version/scope, distinguishing four outcomes:
+
+| Outcome | Response and constraint |
+|---|---|
+| Existing support | Return existing facts and evidence. |
+| Confirmed additional extraction / correction | Publish a new version after independent verification; retain old versions and references. |
+| Still uncertain / unsupported | Return detected limitations and gaps, without inventing certainty. |
+| Unauthorized / version mismatch | Reject with a reason; do not expand access or mix versions. |
+
+F003 is an important application-validation channel, not the sole evaluator of F002. [Current F003 functional design](../2026-09-09-F003-traceability-graph-design/README.md) uses automatic admission in Agent-analysis state plus exception-based human review. This draft does not restore the historical all-candidates-must-be-approved rule.
 
 ## 7. Fact semantics and quality boundaries
 
@@ -186,14 +211,21 @@ A next discussion can refine the output contract, validate it with both represen
 | Kimi's second-level diagram check | `0001788920209120-000047-1fde06b9`; a peer image check, not operator finalization. |
 | Opus's suggestions | `0001788937824683-000117-596bec20` |
 | CodeX's qualifications | `0001788938391946-000126-0d7c374c`: support contract-first, material views, and real scenarios; reject F003-only evaluation and exclusively demand-triggered extraction. |
-| Write authorization | `0001788939317249-000000-39316dac`: record one edition of existing F002 functions and diagrams according to the discussion. |
-| Current F003 reference | Local commit `e3716b6` and its separately recorded operator confirmations, not the historical F003 body. |
+| Initial archival authorization | `0001788939317249-000000-39316dac`: record one edition of existing F002 functions and diagrams according to the discussion. |
+| Evidence-loop decision | `0001789004687536-000113-c9b9f8c7`: add directed evidence requests / suspected-omission feedback from F003 to F002 and a return path. |
+| v3 redraw and visual suggestions | Redraw authorization `0001789005669469-000128-c60201b3`; Opus's three visual suggestions `0001789008610746-000150-a4270c5a`. |
+| v4 edit authorization | `0001789442627373-000010-7aa2f5de`: the operator requested image changes where the author agreed with the review, or an explanation of disagreement. |
+| Independent v4 image check | Kimi, `0001789455416701-000276-ad9634c8`, 06:56 UTC on 2026-09-15: all three corrections implemented and the image check passed; not code or interface-contract acceptance. |
+| Authorization for this design update | `0001789455996764-000287-b731c634`, 07:06 UTC on 2026-09-15: put this edition into the design document. |
+| F003 reference versions | The image references V1.0 at `e3716b6`; current F003 design adopted V2.0 at `7cd6a75`. Preserve the historical image reference without treating version advancement as interface alignment. |
 
-Original images are archived byte-for-byte, without regeneration or overwrite:
+Each generation is archived byte-for-byte from its original output; this update does not regenerate or overwrite images. The v3/v4 prompts and provenance records accompany their images:
 
 | File | Original generated filename | SHA-256 |
 |---|---|---|
 | `assets/f002-functional-overview-v1.zh-CN.png` | `exec-987b13fb-117f-493f-a15a-3fedd42cdbe9.png` | `7f78483b8f323bb544aca85f107da3fa1ead8a9f8b5392b56907e04d130a6e44` |
 | `assets/f002-functional-breakdown-v2.zh-CN.png` | `exec-d946d2ab-61cc-44d9-8cb9-95da91de28ae.png` | `3d45e9c451e75ed7222d3b951f5bac164959f38484e432a575992f4ddb652ff1` |
+| `assets/f002-functional-panorama-v3.zh-CN.png` | `exec-f46dc369-a3fa-4f0d-a627-9cd787399b2f.png` | `b67bd964325768e6ef8162a3b8fef95aff173c80c5688089b8d46ef37a2d651a` |
+| `assets/f002-functional-panorama-v4.zh-CN.png` | `exec-fd0c1b84-1fbb-484a-b71d-5e90387ad7e1.png` | `8689609c2c1782f8353842aad48822f4e9708c43d3b5546b3b72d18efd164f9f` |
 
 Related documents: [existing F002 spec](../../docs/features/F002-feature-api-traceability.md), [current F003 functional design](../2026-09-09-F003-traceability-graph-design/README.md), [current source-boundary ADR](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md). This archive does not automatically synchronize or change their status.
