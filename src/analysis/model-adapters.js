@@ -20,6 +20,52 @@ const CLI_OAUTH_STATUS_COMMANDS = Object.freeze({
   CLAUDE: { executable: "claude", args: ["auth", "status"] },
 });
 
+const WORKSPACE_ANALYSIS_OUTPUT_CONTRACTS = Object.freeze({
+  analysis: Object.freeze({
+    candidateFeatures: [{
+      candidateKey: "stable semantic key",
+      mode: "BUSINESS or API",
+      name: "readable name",
+      description: "evidence-bounded explanation",
+      confidence: "LOW, MEDIUM, or HIGH",
+      evidenceFactIds: ["Fact ids from this input only"],
+      stableEvidenceNodeIds: ["stable node ids from this input only"],
+      design: {},
+      uncertainties: [],
+    }],
+  }),
+  reconciliation: Object.freeze({
+    candidateDecisions: [{
+      candidateRef: "exact supplied ref",
+      disposition: "ACCEPT | REJECT | CONFLICT | MERGE | ALTERNATIVE",
+      rationale: "evidence-bounded reason",
+      relatedCandidateRefs: ["optional supplied refs; only supplied sibling refs; never self"],
+      mergedProposal: {
+        name: "required for MERGE",
+        statement: "one reconciled semantic claim",
+        subjectKey: "optional supplied scoped path",
+        confidence: "LOW | MEDIUM | HIGH",
+      },
+    }],
+    relations: [{
+      sourceCandidateRef: "optional supplied ref",
+      sourceArtifactId: "optional supplied Artifact id",
+      predicate: "semantic relationship",
+      targetCandidateRef: "optional supplied ref",
+      targetArtifactId: "optional supplied Artifact id",
+      evidenceFactIds: ["supplied Fact ids"],
+      sourceSliceIds: ["supplied SourceSlice ids"],
+    }],
+    gaps: [{ code: "bounded gap code", message: "explanation" }],
+    rules: [
+      "Return candidateDecisions, relations, and gaps arrays.",
+      "Decide every supplied candidateRef exactly once.",
+      "MERGE decisions require one or more relatedCandidateRefs; every member must be MERGE and share the same mergedProposal.",
+      "mergedProposal is forbidden for non-MERGE decisions.",
+    ],
+  }),
+});
+
 const CLI_TASK_OUTPUT_CONTRACTS = Object.freeze({
   "connection-verification": Object.freeze({
     challenge: "copy the supplied challenge exactly",
@@ -31,14 +77,8 @@ const CLI_TASK_OUTPUT_CONTRACTS = Object.freeze({
   "workspace-plan": Object.freeze({
     assignments: "array of bounded workspace analysis assignments",
   }),
-  analysis: Object.freeze({
-    candidateFeatures: "array of candidate feature objects; return [] when no candidate is supported",
-  }),
-  reconciliation: Object.freeze({
-    candidateDecisions: "array of decisions keyed by candidateRef",
-    gaps: "array of unresolved gap objects",
-    relations: "array of candidate relation objects",
-  }),
+  analysis: WORKSPACE_ANALYSIS_OUTPUT_CONTRACTS.analysis,
+  reconciliation: WORKSPACE_ANALYSIS_OUTPUT_CONTRACTS.reconciliation,
 });
 
 export function supportsCliOAuthStatusProbe(cliAdapter) {
@@ -991,19 +1031,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
                 workContext: input.workContext,
                 deterministicCandidates: input.deterministicCandidates,
                 evidence: input.evidence,
-                outputContract: {
-                  candidateFeatures: [{
-                    candidateKey: "stable semantic key",
-                    mode: "BUSINESS or API",
-                    name: "readable name",
-                    description: "evidence-bounded explanation",
-                    confidence: "LOW, MEDIUM, or HIGH",
-                    evidenceFactIds: ["Fact ids from this input only"],
-                    stableEvidenceNodeIds: ["stable node ids from this input only"],
-                    design: {},
-                    uncertainties: [],
-                  }],
-                },
+                outputContract: WORKSPACE_ANALYSIS_OUTPUT_CONTRACTS.analysis,
               }),
             },
           ],
@@ -1034,25 +1062,7 @@ export class OpenAICompatibleAnalysisModelAdapter {
             contextCandidates: input.contextCandidates,
             scopedArtifacts: input.scopedArtifacts,
             evidence: input.evidence,
-            outputContract: {
-              candidateDecisions: [{
-                candidateRef: "exact supplied ref",
-                disposition: "ACCEPT | REJECT | CONFLICT | MERGE | ALTERNATIVE",
-                rationale: "evidence-bounded reason",
-                relatedCandidateRefs: ["optional supplied refs"],
-                mergedProposal: { name: "required for MERGE", statement: "one reconciled semantic claim", subjectKey: "optional supplied scoped path", confidence: "LOW" },
-              }],
-              relations: [{
-                sourceCandidateRef: "optional supplied ref",
-                sourceArtifactId: "optional supplied Artifact id",
-                predicate: "semantic relationship",
-                targetCandidateRef: "optional supplied ref",
-                targetArtifactId: "optional supplied Artifact id",
-                evidenceFactIds: ["supplied Fact ids"],
-                sourceSliceIds: ["supplied SourceSlice ids"],
-              }],
-              gaps: [{ code: "bounded gap code", message: "explanation" }],
-            },
+            outputContract: WORKSPACE_ANALYSIS_OUTPUT_CONTRACTS.reconciliation,
           }),
         },
       ],

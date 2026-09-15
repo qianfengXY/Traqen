@@ -235,12 +235,47 @@ test("F006 CLI models implement the analysis and reconciliation contract used by
   const requests = calls.map(({ args }) => JSON.parse(args.at(-1)));
   assert.deepEqual(requests.map(({ task }) => task), ["analysis", "reconciliation"]);
   assert.deepEqual(requests[0].outputContract, {
-    candidateFeatures: "array of candidate feature objects; return [] when no candidate is supported",
+    candidateFeatures: [{
+      candidateKey: "stable semantic key",
+      mode: "BUSINESS or API",
+      name: "readable name",
+      description: "evidence-bounded explanation",
+      confidence: "LOW, MEDIUM, or HIGH",
+      evidenceFactIds: ["Fact ids from this input only"],
+      stableEvidenceNodeIds: ["stable node ids from this input only"],
+      design: {},
+      uncertainties: [],
+    }],
   });
   assert.deepEqual(requests[1].outputContract, {
-    candidateDecisions: "array of decisions keyed by candidateRef",
-    gaps: "array of unresolved gap objects",
-    relations: "array of candidate relation objects",
+    candidateDecisions: [{
+      candidateRef: "exact supplied ref",
+      disposition: "ACCEPT | REJECT | CONFLICT | MERGE | ALTERNATIVE",
+      rationale: "evidence-bounded reason",
+      relatedCandidateRefs: ["optional supplied refs; only supplied sibling refs; never self"],
+      mergedProposal: {
+        name: "required for MERGE",
+        statement: "one reconciled semantic claim",
+        subjectKey: "optional supplied scoped path",
+        confidence: "LOW | MEDIUM | HIGH",
+      },
+    }],
+    relations: [{
+      sourceCandidateRef: "optional supplied ref",
+      sourceArtifactId: "optional supplied Artifact id",
+      predicate: "semantic relationship",
+      targetCandidateRef: "optional supplied ref",
+      targetArtifactId: "optional supplied Artifact id",
+      evidenceFactIds: ["supplied Fact ids"],
+      sourceSliceIds: ["supplied SourceSlice ids"],
+    }],
+    gaps: [{ code: "bounded gap code", message: "explanation" }],
+    rules: [
+      "Return candidateDecisions, relations, and gaps arrays.",
+      "Decide every supplied candidateRef exactly once.",
+      "MERGE decisions require one or more relatedCandidateRefs; every member must be MERGE and share the same mergedProposal.",
+      "mergedProposal is forbidden for non-MERGE decisions.",
+    ],
   });
 
   assert.deepEqual(analysis, { candidateFeatures: [{ candidateKey: "orders", name: "Orders" }] });

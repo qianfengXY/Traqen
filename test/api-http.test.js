@@ -8,6 +8,7 @@ import { TraceabilityApplication } from "../src/application/traceability-applica
 import { createTraceabilityHttpServer } from "../src/api/http-server.js";
 import { AnalysisModelConnectionError, AnalysisModelRegistry } from "../src/analysis/index.js";
 import {
+  createCapabilityTemplateRevision,
   createExecutionEvidenceBundle,
   createFactBundle,
   signExecutionEvidenceBundle,
@@ -525,6 +526,13 @@ test("F006 exposes only mounted Skill executors and signs their capability mappi
   assert.equal(forged.response.status, 400);
   assert.equal(forged.body.error.code, "INVALID_REQUEST");
 
+  const forgedLegacy = await postJson(`${baseUrl}/v1/capability-templates`, {
+    kind: "SKILL", logicalName: "forged-legacy", revision: 1,
+    manifest: { adapterId: "not-mounted", version: "99.0.0", signature: "VERIFIED" },
+  });
+  assert.equal(forgedLegacy.response.status, 400,
+    "the legacy HTTP writer must not create a new F006 Skill outside the mounted executor catalog");
+
   const created = await postJson(`${baseUrl}/v1/global-capabilities`, {
     kind: "SKILL", normalizedName: "workspace-review", expectedVersion: 0,
     manifest: { adapterId: "specone-reference", version: "1.0.0", signature: "FORGED" },
@@ -548,6 +556,95 @@ test("F006 exposes only mounted Skill executors and signs their capability mappi
   assert.deepEqual(local.body.manifest, {
     adapterId: "specone-reference", version: "1.0.0", signature: "VERIFIED",
   });
+});
+
+test("F006 keeps hydrated unmounted Skills readable but blocks validation, Apply, and new Runs", async () => {
+  const starts = [];
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    workspaceSkillCatalog: [{ id: "mounted-reference", version: "1.0.0" }],
+    workspaceSkillResolver: () => ({ id: "mounted-reference" }),
+    legacyUnderstandingRuntime: {
+      async start(input) {
+        starts.push(input);
+        return { id: "JOB-SHOULD-NOT-START" };
+      },
+    },
+  });
+  await application.createProject({
+    organization: { id: "ORG-HYDRATED-SKILL", name: "Org" },
+    tenant: { id: "TENANT-HYDRATED-SKILL", name: "Tenant" },
+    project: { id: "W-HYDRATED-SKILL", name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-HYDRATED-SKILL", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", expectedVersion: 0,
+  });
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-HYDRATED-SKILL", displayName: "Model", accountId: "ACCOUNT-HYDRATED-SKILL",
+    cliAdapter: "CODEX", model: "gpt-5.6-terra",
+  });
+  await application.verifyGlobalModelProfile("MODEL-HYDRATED-SKILL");
+  const model = await application.getGlobalModelProfile("MODEL-HYDRATED-SKILL");
+
+  const historicalUnmappedSkill = createCapabilityTemplateRevision({
+    kind: "SKILL", logicalName: "historical-unmapped", revision: 1,
+    manifest: { adapterId: "not-mounted", version: "99.0.0", signature: "VERIFIED" },
+  }, fixedClock);
+  await store.appendCapabilityTemplateRevision(historicalUnmappedSkill);
+  assert.equal((await application.listGlobalCapabilities()).find(({ normalizedName }) => normalizedName === "historical-unmapped")?.id, historicalUnmappedSkill.id,
+    "historical records remain readable for recovery");
+
+  await application.saveWorkspaceCapabilityDraft("W-HYDRATED-SKILL", {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-HYDRATED-SKILL", skillNames: ["historical-unmapped"] },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-HYDRATED-SKILL", skillNames: ["historical-unmapped"], independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  });
+  const validation = await application.validateWorkspaceCapabilityDraft("W-HYDRATED-SKILL");
+  assert.equal(validation.validation.valid, false);
+  assert.ok(validation.validation.errors.some(({ code }) => code === "SKILL_EXECUTOR_UNAVAILABLE"));
+  await assert.rejects(
+    () => application.activateWorkspaceCapabilityDraft("W-HYDRATED-SKILL"),
+    /SKILL_EXECUTOR_UNAVAILABLE/,
+  );
+
+  const retainedProfile = {
+    id: "EXECUTION-HYDRATED-UNMOUNTED-SKILL",
+    workspaceId: "W-HYDRATED-SKILL",
+    mainAgentSlot: {
+      id: "MAIN", modelProfileId: "MODEL-HYDRATED-SKILL", modelProfileRevisionId: model.id,
+      skillGrants: [{ kind: "SKILL", normalizedName: "historical-unmapped" }],
+    },
+    childAgentSlots: [{
+      id: "CHILD-1", modelProfileId: "MODEL-HYDRATED-SKILL", modelProfileRevisionId: model.id,
+      skillGrants: [{ kind: "SKILL", normalizedName: "historical-unmapped" }],
+    }],
+    entries: [{
+      kind: "SKILL", logicalName: "historical-unmapped",
+      manifest: historicalUnmappedSkill.manifest,
+    }],
+  };
+  await store.appendUnderstandingRecordWithCas("W-HYDRATED-SKILL", "WORKSPACE_EXECUTION_PROFILE", retainedProfile, {
+    headKey: "WORKSPACE_EXECUTION_PROFILE",
+    expectedVersion: 0,
+  });
+  await assert.rejects(
+    () => application.startWorkspaceUnderstandingJob("W-HYDRATED-SKILL", {
+      sourceRegistrationId: "SOURCE-HYDRATED-SKILL",
+      requestedMode: "FULL",
+      expectedWorkspaceExecutionProfileRevisionId: retainedProfile.id,
+    }),
+    /no longer backed by a mounted executor/i,
+  );
+  assert.equal(starts.length, 0, "an unmapped historical Skill must not reach the runtime");
 });
 
 test("F006 account HTTP contract never performs or stores OAuth login material", async (t) => {

@@ -52,8 +52,8 @@ type Props = {
   recoveryReady: boolean;
   onAutoSave: () => Promise<boolean>;
   onApply: () => void;
-  onRetryDraftConflict: () => void;
-  onUseCurrentDraft: () => void;
+  onRetryDraftConflict: (editedRevision: number) => Promise<number | null>;
+  onUseCurrentDraft: (editedRevision: number) => Promise<number | null>;
   onSaveLocalCapability: (input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown> }) => void;
   onDeleteLocalCapability: (kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) => void;
   onSaveAccount: (input: Record<string, unknown>) => Promise<boolean>;
@@ -175,6 +175,12 @@ export function F006SettingsCenter(props: Props) {
   function markEdited() {
     setEdited((value) => value + 1);
     setAutosaveStatus("IDLE");
+  }
+
+  function acknowledgeRecoveredDraft(acknowledgedEdited: number | null) {
+    if (acknowledgedEdited === null) return;
+    setSavedEdited((current) => Math.max(current, acknowledgedEdited));
+    setAutosaveStatus("SAVED");
   }
 
   function changeSelectedModel(model: string) {
@@ -325,7 +331,7 @@ export function F006SettingsCenter(props: Props) {
 
   return <section className="f006-settings-center">
     <header className="f006-heading f006-heading-row"><div><p className="eyebrow">Workspace scope · {props.workspace.name}</p><h1>{props.t("项目设置", "Workspace settings")}</h1><p>{props.t("草稿会自动保存；只有“应用配置”才会创建下一次运行使用的不可变版本。", "Edits are saved as a draft automatically. Apply creates the immutable version used by the next run.")}</p></div><button className="button ghost" onClick={() => props.setScope("chooser")}>{props.t("切换范围", "Change scope")}</button></header>
-    {props.draftConflict && <div className="f006-draft-conflict" role="alert"><div><b>{props.t("草稿已在其他位置更新", "The draft changed elsewhere")}</b><span>{props.t("本地编辑仍被保留。先选择重试自己的版本，或采用服务器的新版本。", "Your edits are retained. Retry your version or adopt the newer server draft.")}</span></div><div><button className="button" disabled={props.working} onClick={props.onRetryDraftConflict}>{props.t("重试我的草稿", "Retry my draft")}</button><button className="button" disabled={props.working} onClick={props.onUseCurrentDraft}>{props.t("采用服务器草稿", "Use server draft")}</button></div></div>}
+    {props.draftConflict && <div className="f006-draft-conflict" role="alert"><div><b>{props.t("草稿已在其他位置更新", "The draft changed elsewhere")}</b><span>{props.t("本地编辑仍被保留。先选择重试自己的版本，或采用服务器的新版本。", "Your edits are retained. Retry your version or adopt the newer server draft.")}</span></div><div><button className="button" disabled={props.working} onClick={() => { void props.onRetryDraftConflict(edited).then(acknowledgeRecoveredDraft); }}>{props.t("重试我的草稿", "Retry my draft")}</button><button className="button" disabled={props.working} onClick={() => { void props.onUseCurrentDraft(edited).then(acknowledgeRecoveredDraft); }}>{props.t("采用服务器草稿", "Use server draft")}</button></div></div>}
     <div className={`f006-readiness ${readiness.tone}`}><div><b>{readiness.title}</b><span>{readiness.detail}</span></div><div className="f006-readiness-actions"><small>{autosaveStatus === "SAVING" ? props.t("正在保存草稿", "Saving draft") : autosaveStatus === "SAVED" ? props.t("草稿已保存", "Draft saved") : props.draft ? `${props.t("草稿版本", "Draft")} r${props.draft.revision}` : props.t("新草稿", "New draft")}</small>{autosaveStatus === "ERROR" && <button className="button" disabled={props.working} onClick={() => { setAutosaveStatus("IDLE"); setAutosaveAttempt((value) => value + 1); }}>{props.t("重试保存", "Retry save")}</button>}<button className="button primary" disabled={props.working || !props.recoveryReady || readiness.tone === "danger" || props.draftConflict || edited !== savedEdited} onClick={props.onApply}>{props.t("应用配置", "Apply configuration")}</button></div></div>
     <div className="f006-tabs" role="tablist"><button className={workspacePage === "agents" ? "active" : ""} onClick={() => setWorkspacePage("agents")}>{props.t("Agent 设置", "Agent settings")}</button><button className={workspacePage === "capabilities" ? "active" : ""} onClick={() => setWorkspacePage("capabilities")}>{props.t("能力管理", "Capabilities")}</button></div>
     {workspacePage === "agents" && <AgentSettings {...props} selected={selected} selectedAgentId={selectedAgentId} setSelectedAgentId={setSelectedAgentId} agentDrawerOpen={agentDrawerOpen} setAgentDrawerOpen={setAgentDrawerOpen} availableModels={availableModels} effectiveCapabilities={effectiveCapabilities} unavailableCapabilities={unavailableCapabilities} onModelChange={changeSelectedModel} onToggleGrant={toggleGrant} onAddChild={() => { props.setChildSlots(addChildSlot(props.childSlots, { model: "", skillNames: [], mcpNames: [] })); markEdited(); }} onRemoveChild={(id) => { props.setChildSlots(removeChildSlot(props.childSlots, id)); if (selectedAgentId === id) setSelectedAgentId("MAIN"); markEdited(); }} />}

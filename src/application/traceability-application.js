@@ -708,7 +708,7 @@ export class TraceabilityApplication {
   }
 
   async registerCapabilityTemplate(input) {
-    return this.#workspaceFoundation.registerCapabilityTemplate(input);
+    return this.#workspaceFoundation.registerCapabilityTemplate(this.#normalizeWorkspaceSkillCapability(input));
   }
 
   async listCapabilityTemplates() {
@@ -753,6 +753,50 @@ export class TraceabilityApplication {
         signature: "VERIFIED",
       },
     };
+  }
+
+  #isMountedWorkspaceSkill(manifest) {
+    if (this.#workspaceSkillCatalog.size === 0) return true;
+    const adapterId = typeof manifest?.adapterId === "string" ? manifest.adapterId.trim() : "";
+    const version = typeof manifest?.version === "string" ? manifest.version.trim() : "";
+    const mounted = this.#workspaceSkillCatalog.get(`${adapterId}\u0000${version}`);
+    return Boolean(mounted && this.#workspaceSkillResolver?.(mounted.id, mounted.version));
+  }
+
+  #workspaceSkillMappingErrors(draft, catalog) {
+    if (this.#workspaceSkillCatalog.size === 0) return [];
+    const entries = catalog?.effective ?? catalog?.entries ?? [];
+    const byKey = new Map(entries.map((entry) => [`${entry.kind}\u0000${entry.normalizedName}`, entry]));
+    const slots = [draft?.mainAgentSlot, ...(draft?.childAgentSlots ?? [])].filter((slot) => slot?.enabled);
+    const errors = [];
+    for (const slot of slots) {
+      for (const grant of slot.skillGrants ?? []) {
+        const capability = byKey.get(`SKILL\u0000${grant.normalizedName}`);
+        if (capability && !this.#isMountedWorkspaceSkill(capability.manifest)) {
+          errors.push({
+            field: `agentSlots.${slot.id}.skillGrants`,
+            code: "SKILL_EXECUTOR_UNAVAILABLE",
+            capabilityKey: grant,
+            message: `SKILL ${grant.normalizedName} must select a currently mounted executor`,
+          });
+        }
+      }
+    }
+    return errors;
+  }
+
+  async #validateF006WorkspaceCapabilityDraft(workspaceId) {
+    const result = await this.#workspaceFoundation.validateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
+    if (!result) return null;
+    const mappingErrors = this.#workspaceSkillMappingErrors(result.draft, result.catalog);
+    if (mappingErrors.length === 0) return result;
+    return Object.freeze({
+      ...result,
+      validation: Object.freeze({
+        valid: false,
+        errors: Object.freeze([...result.validation.errors, ...mappingErrors]),
+      }),
+    });
   }
 
   async saveGlobalCapability(input) {
@@ -1081,12 +1125,16 @@ export class TraceabilityApplication {
   }
 
   async validateWorkspaceCapabilityDraft(workspaceId) {
-    return this.#workspaceFoundation.validateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
+    return this.#validateF006WorkspaceCapabilityDraft(workspaceId);
   }
 
   async activateWorkspaceCapabilityDraft(workspaceId) {
     const draft = await this.#workspaceFoundation.getCapabilityDraft(workspaceId);
     if (draft) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(draft));
+    const validation = await this.#validateF006WorkspaceCapabilityDraft(workspaceId);
+    if (validation && !validation.validation.valid) {
+      throw new TypeError(`Workspace capability draft is invalid: ${validation.validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
+    }
     return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, await this.#f006ModelProfiles());
   }
 
@@ -1109,6 +1157,16 @@ export class TraceabilityApplication {
     // F006 Agent-slot contract. They are retained for historical recovery,
     // but never take the F006 model-profile path.
     if (agentSlots.length === 0) return;
+    const selectedSkillNames = new Set(agentSlots.flatMap((slot) => (slot.skillGrants ?? []).map(({ normalizedName }) => normalizedName)));
+    const selectedSkillEntries = new Map((profile.entries ?? [])
+      .filter((entry) => entry.kind === "SKILL" && selectedSkillNames.has(entry.logicalName))
+      .map((entry) => [entry.logicalName, entry]));
+    for (const skillName of selectedSkillNames) {
+      const skill = selectedSkillEntries.get(skillName);
+      if (!skill || !this.#isMountedWorkspaceSkill(skill.manifest)) {
+        throw new TypeError(`Active Workspace profile Skill ${skillName} is no longer backed by a mounted executor for a new Run`);
+      }
+    }
     const modelsByRevisionId = new Map((await this.#f006ModelProfileRevisions()).map((model) => [model.id, model]));
     const modelRevisionIds = new Set();
     for (const slot of agentSlots) {

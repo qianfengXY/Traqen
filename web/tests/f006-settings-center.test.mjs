@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
+import vm from "node:vm";
+
+const require = createRequire(import.meta.url);
+const ts = require("../node_modules/typescript");
 
 test("F006 settings center keeps global availability, Workspace grants, and external OAuth separate", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
@@ -77,6 +82,145 @@ test("F006 settings stops autosave after a failed conflict and requires an expli
     "Retry save must explicitly re-arm autosave instead of an unrelated rerender retrying forever");
   assert.match(source, /draftConflict/,
     "a stale draft conflict remains an explicit recovery state rather than an autosave loop");
+  assert.match(source, /function acknowledgeRecoveredDraft\(acknowledgedEdited: number \| null\)/,
+    "both conflict-recovery actions must explicitly acknowledge the child edit revision that is now durable");
+  assert.match(source, /void props\.onRetryDraftConflict\(edited\)\.then\(acknowledgeRecoveredDraft\)/,
+    "retrying the local draft must acknowledge exactly the recovered snapshot");
+  assert.match(source, /void props\.onUseCurrentDraft\(edited\)\.then\(acknowledgeRecoveredDraft\)/,
+    "adopting the server draft must clear the error state and re-enable Apply without an extra autosave");
+});
+
+test("F006 conflict recovery acknowledges both recovered drafts, re-enables Apply, and preserves later edits", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+
+  async function exercise(recoveryLabel) {
+    const slots = [];
+    const effects = [];
+    const timers = new Map();
+    let cursor = 0;
+    let timerId = 0;
+    let saves = 0;
+    const hooks = {
+      useState(initial) {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], (value) => { slots[index] = typeof value === "function" ? value(slots[index]) : value; }];
+      },
+      useRef(initial) {
+        const index = cursor++;
+        return slots[index] ?? (slots[index] = { current: initial });
+      },
+      useMemo(factory) { cursor++; return factory(); },
+      useEffect(callback, dependencies) {
+        const index = cursor++;
+        const previous = slots[index];
+        if (!previous || dependencies.some((value, dependencyIndex) => !Object.is(value, previous.dependencies[dependencyIndex]))) {
+          previous?.cleanup?.();
+          slots[index] = { dependencies };
+          effects.push(() => { slots[index].cleanup = callback(); });
+        }
+      },
+    };
+    const jsx = (type, props, key) => ({ type, props, key });
+    const module = { exports: {} };
+    vm.runInNewContext(compiled, {
+      module,
+      exports: module.exports,
+      require: (name) => name === "react" ? hooks : name === "react/jsx-runtime" ? { jsx, jsxs: jsx } : {},
+      window: {
+        setTimeout: (callback) => { timers.set(++timerId, callback); return timerId; },
+        clearTimeout: (id) => timers.delete(id),
+      },
+      crypto: { randomUUID: () => "fixture" },
+    });
+    const props = {
+      t: (_zh, english) => english,
+      scope: "workspace",
+      workspace: { id: "WORKSPACE-1", name: "Workspace" },
+      accounts: [], models: [], capabilities: [], executableSkills: [],
+      catalog: { entries: [], effective: [] },
+      draft: { revision: 1 },
+      draftConflict: false,
+      mainModel: "MODEL-1", mainSkillNames: [], mainMcpNames: [],
+      childSlots: [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [] }],
+      disabledKeys: [], working: false, recoveryReady: true, profile: null,
+      setMainModel: (model) => { props.mainModel = model; },
+      onAutoSave: async () => {
+        saves += 1;
+        if (saves === 1) {
+          props.draftConflict = true;
+          return false;
+        }
+        return true;
+      },
+      onUseCurrentDraft: async (editedRevision) => {
+        props.draftConflict = false;
+        props.draft = { revision: 2 };
+        props.mainModel = "SERVER-MODEL";
+        return editedRevision;
+      },
+      onRetryDraftConflict: async (editedRevision) => {
+        props.draftConflict = false;
+        props.draft = { revision: 3 };
+        return editedRevision;
+      },
+      onApply: () => {}, onSaveLocalCapability: () => {}, onDeleteLocalCapability: () => {},
+      onSaveAccount: async () => true, onRecheckAccount: async () => {}, onSaveModel: async () => true,
+      onVerifyModel: async () => {}, onCreatePinnedReplacement: () => {}, onLifecycle: () => {},
+      setScope: () => {}, setMainSkillNames: () => {}, setMainMcpNames: () => {}, setChildSlots: () => {}, setDisabledKeys: () => {},
+    };
+    function render() {
+      cursor = 0;
+      const tree = module.exports.F006SettingsCenter(props);
+      while (effects.length) effects.shift()();
+      return tree;
+    }
+    function nodes(tree) {
+      if (!tree || typeof tree !== "object") return [];
+      if (Array.isArray(tree)) return tree.flatMap(nodes);
+      return [tree, ...nodes(tree.props?.children)];
+    }
+    const button = (tree, label) => nodes(tree).find((node) => node.type === "button" && node.props.children === label);
+    const flushTimers = () => {
+      for (const [id, callback] of [...timers]) {
+        timers.delete(id);
+        callback();
+      }
+    };
+    const settle = async () => { for (let index = 0; index < 6; index += 1) await Promise.resolve(); };
+
+    let tree = render();
+    nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-2");
+    render();
+    flushTimers();
+    await settle();
+    tree = render();
+    assert.equal(saves, 1, "the failed save must happen once");
+    assert.equal(timers.size, 0, "a conflict must not schedule a background retry");
+
+    button(tree, recoveryLabel).props.onClick();
+    await settle();
+    tree = render();
+    assert.equal(props.draftConflict, false, `${recoveryLabel} clears the conflict`);
+    assert.equal(button(tree, "Apply configuration").props.disabled, false, `${recoveryLabel} makes the recovered draft applyable`);
+    assert.equal(Boolean(button(tree, "Retry save")), false, `${recoveryLabel} clears the failed autosave state`);
+    assert.equal(timers.size, 0, `${recoveryLabel} does not re-arm stale autosave work`);
+
+    nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-3");
+    render();
+    assert.equal(timers.size, 1, "a later edit remains saveable after recovery");
+    flushTimers();
+    await settle();
+    tree = render();
+    assert.equal(saves, 2, "a later edit performs one fresh autosave");
+    assert.equal(button(tree, "Apply configuration").props.disabled, false, "the later saved edit stays applyable");
+  }
+
+  await exercise("Use server draft");
+  await exercise("Retry my draft");
 });
 
 test("F006 API-key account form advertises and validates the server-supported environment reference", async () => {
