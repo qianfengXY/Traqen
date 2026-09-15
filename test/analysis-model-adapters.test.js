@@ -56,7 +56,11 @@ test("allowlisted CLI models pass untrusted prompts as one argv value without a 
   assert.deepEqual(await adapter.planWorkspaceAnalysis(input), {});
   assert.equal(calls[0].executable, "codex");
   assert.equal(calls[0].options.shell, false);
-  assert.equal(calls[0].args.at(-1), JSON.stringify({ task: "workspace-plan", input }));
+  assert.deepEqual(JSON.parse(calls[0].args.at(-1)), {
+    task: "workspace-plan",
+    input,
+    outputContract: { assignments: "array of bounded workspace analysis assignments" },
+  });
   assert.equal(calls[0].args.filter((value) => value.includes("touch")).length, 1);
 });
 
@@ -226,6 +230,17 @@ test("F006 CLI models implement the analysis and reconciliation contract used by
     scopedArtifacts: [],
     evidence: { facts: [], sourceSlices: [] },
     context: { maxOutputTokens: 1_000 },
+  });
+
+  const requests = calls.map(({ args }) => JSON.parse(args.at(-1)));
+  assert.deepEqual(requests.map(({ task }) => task), ["analysis", "reconciliation"]);
+  assert.deepEqual(requests[0].outputContract, {
+    candidateFeatures: "array of candidate feature objects; return [] when no candidate is supported",
+  });
+  assert.deepEqual(requests[1].outputContract, {
+    candidateDecisions: "array of decisions keyed by candidateRef",
+    gaps: "array of unresolved gap objects",
+    relations: "array of candidate relation objects",
   });
 
   assert.deepEqual(analysis, { candidateFeatures: [{ candidateKey: "orders", name: "Orders" }] });

@@ -82,6 +82,14 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.ok(otherCliCreateSchema.required.includes("model"));
   assert.equal(Object.hasOwn(otherCliCreateSchema.properties, "reasoningEffort"), false);
   assert.equal(contract.paths["/v1/global-cli-models/{modelId}/verify"].post.operationId, "verifyGlobalCliModel");
+  const executableSkillsPath = contract.paths["/v1/workspace-executable-skills"];
+  assert.equal(executableSkillsPath.get.operationId, "listWorkspaceExecutableSkills");
+  const executableSkillsSchema = executableSkillsPath.get.responses["200"].content["application/json"].schema;
+  assert.deepEqual(executableSkillsSchema.required, ["skills"]);
+  assert.deepEqual(
+    executableSkillsSchema.properties.skills.items.required,
+    ["id", "version", "displayName"],
+  );
   const globalCapabilitiesPath = contract.paths["/v1/global-capabilities"];
   assert.equal(globalCapabilitiesPath.get.operationId, "listGlobalCapabilities");
   assert.equal(globalCapabilitiesPath.post.operationId, "saveGlobalCapability");

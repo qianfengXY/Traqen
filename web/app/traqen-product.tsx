@@ -30,6 +30,7 @@ import {
   listGlobalCapabilityTemplates,
   listGlobalAccounts,
   listGlobalCapabilities,
+  listWorkspaceExecutableSkills,
   createGlobalCliModel,
   getGlobalCapabilityImpact,
   recheckGlobalAccount,
@@ -54,6 +55,7 @@ import {
   type GlobalCapabilityImpact,
   type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityDraftSaveInput,
+  type WorkspaceExecutableSkill,
 } from "./product-foundation-client";
 import { hasUnsavedCapabilityDraftChanges, type SecurityBoundaryDraft } from "./capability-settings-state";
 import {
@@ -178,6 +180,7 @@ function ServerOwnedProduct() {
   const [globalCapabilityTemplates, setGlobalCapabilityTemplates] = useState<GlobalCapabilityTemplate[]>([]);
   const [globalAccounts, setGlobalAccounts] = useState<GlobalAccount[]>([]);
   const [globalCapabilities, setGlobalCapabilities] = useState<GlobalCapability[]>([]);
+  const [executableSkills, setExecutableSkills] = useState<WorkspaceExecutableSkill[]>([]);
   const [settingsScope, setSettingsScope] = useState<SettingsScope>("chooser");
   const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { globalAvailableCount: 0, workspaceDisabledCount: 0, workspaceLocalCount: 0, globalUnavailableCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
@@ -339,13 +342,14 @@ function ServerOwnedProduct() {
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities] = await Promise.all([
+      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities, availableExecutableSkills] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
         listGlobalCliModels(apiBase, apiToken),
         listGlobalCapabilityTemplates(apiBase, apiToken),
         listGlobalAccounts(apiBase, apiToken),
         listGlobalCapabilities(apiBase, apiToken),
+        listWorkspaceExecutableSkills(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
@@ -354,6 +358,7 @@ function ServerOwnedProduct() {
       setGlobalCapabilityTemplates(availableTemplates);
       setGlobalAccounts(availableAccounts);
       setGlobalCapabilities(availableCapabilities);
+      setExecutableSkills(availableExecutableSkills);
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
       if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
@@ -735,14 +740,16 @@ function ServerOwnedProduct() {
   }
 
   async function refreshGlobalSettingsAssets() {
-    const [accounts, models, capabilities] = await Promise.all([
+    const [accounts, models, capabilities, skills] = await Promise.all([
       listGlobalAccounts(apiBase, apiToken),
       listGlobalCliModels(apiBase, apiToken),
       listGlobalCapabilities(apiBase, apiToken),
+      listWorkspaceExecutableSkills(apiBase, apiToken),
     ]);
     setGlobalAccounts(accounts);
     setGlobalModels(models);
     setGlobalCapabilities(capabilities);
+    setExecutableSkills(skills);
   }
 
   async function saveGlobalAccountFromSettings(input: Record<string, unknown>) {
@@ -885,6 +892,7 @@ function ServerOwnedProduct() {
       accounts={globalAccounts}
       models={globalModels}
       capabilities={globalCapabilities}
+      executableSkills={executableSkills}
       catalog={effectiveCatalog}
       draft={capabilityDraft}
       draftConflict={Boolean(capabilityDraftConflict)}

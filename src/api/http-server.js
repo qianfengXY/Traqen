@@ -421,6 +421,10 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, { capabilities: await application.listGlobalCapabilities() }, id);
         return;
       }
+      if (request.method === "GET" && url.pathname === "/v1/workspace-executable-skills") {
+        sendJson(response, 200, { skills: application.listWorkspaceExecutableSkills() }, id);
+        return;
+      }
       if (request.method === "POST" && url.pathname === "/v1/global-capabilities") {
         requireJson(request);
         sendJson(response, 201, await application.saveGlobalCapability(await readJson(request, maxBodyBytes)), id);

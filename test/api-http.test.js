@@ -97,6 +97,8 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    workspaceSkillCatalog,
+    workspaceSkillResolver,
     oauthStatusProbe,
     secretReferenceResolver,
     setup,
@@ -120,6 +122,8 @@ async function startServer(t, options = {}) {
     productMetricsPolicyResolver,
     analysisAgent,
     analysisModelRegistry,
+    workspaceSkillCatalog,
+    workspaceSkillResolver,
     oauthStatusProbe,
     secretReferenceResolver,
   });
@@ -493,6 +497,57 @@ test("F006 global capability HTTP contract is server-authoritative about lifecyc
   });
   assert.equal(deactivated.status, 200);
   assert.equal((await deactivated.json()).lifecycle, "INACTIVE");
+});
+
+test("F006 exposes only mounted Skill executors and signs their capability mapping server-side", async (t) => {
+  const mountedSkills = new Map([["specone-reference\u00001.0.0", { id: "specone-reference" }]]);
+  const baseUrl = await startServer(t, {
+    workspaceSkillCatalog: [{ id: "specone-reference", version: "1.0.0", displayName: "Specone" }],
+    workspaceSkillResolver: (id, version) => mountedSkills.get(`${id}\u0000${version}`) ?? null,
+    setup: ({ application }) => application.createProject({
+      organization: { id: "ORG-MOUNTED-SKILL", name: "Mounted skills" },
+      tenant: { id: "TENANT-MOUNTED-SKILL", name: "Mounted skills" },
+      project: { id: "W-MOUNTED-SKILL", name: "Mounted skills" },
+      principals: [],
+      actorId: "TEST",
+    }),
+  });
+
+  const listed = await fetch(`${baseUrl}/v1/workspace-executable-skills`);
+  assert.equal(listed.status, 200);
+  assert.deepEqual(await listed.json(), {
+    skills: [{ id: "specone-reference", version: "1.0.0", displayName: "Specone" }],
+  });
+
+  const forged = await postJson(`${baseUrl}/v1/global-capabilities`, {
+    kind: "SKILL", normalizedName: "forged", expectedVersion: 0, manifest: { signature: "VERIFIED" },
+  });
+  assert.equal(forged.response.status, 400);
+  assert.equal(forged.body.error.code, "INVALID_REQUEST");
+
+  const created = await postJson(`${baseUrl}/v1/global-capabilities`, {
+    kind: "SKILL", normalizedName: "workspace-review", expectedVersion: 0,
+    manifest: { adapterId: "specone-reference", version: "1.0.0", signature: "FORGED" },
+  });
+  assert.equal(created.response.status, 201);
+  assert.deepEqual(created.body.manifest, {
+    adapterId: "specone-reference", version: "1.0.0", signature: "VERIFIED",
+  });
+
+  const forgedLocal = await postJson(`${baseUrl}/v1/workspaces/W-MOUNTED-SKILL/project-capabilities`, {
+    kind: "SKILL", normalizedName: "forged-local", expectedVersion: 0, manifest: { signature: "VERIFIED" },
+  });
+  assert.equal(forgedLocal.response.status, 400);
+  assert.equal(forgedLocal.body.error.code, "INVALID_REQUEST");
+
+  const local = await postJson(`${baseUrl}/v1/workspaces/W-MOUNTED-SKILL/project-capabilities`, {
+    kind: "SKILL", normalizedName: "local-review", expectedVersion: 0,
+    manifest: { adapterId: "specone-reference", version: "1.0.0", signature: "FORGED" },
+  });
+  assert.equal(local.response.status, 201);
+  assert.deepEqual(local.body.manifest, {
+    adapterId: "specone-reference", version: "1.0.0", signature: "VERIFIED",
+  });
 });
 
 test("F006 account HTTP contract never performs or stores OAuth login material", async (t) => {

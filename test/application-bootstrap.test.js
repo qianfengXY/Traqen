@@ -81,3 +81,36 @@ test("configured production bootstrap hydrates Store-owned model revisions befor
     "bootstrap-recovery",
   );
 });
+
+test("F006 only saves Skills that map to an executable mounted by the configured runtime", async () => {
+  const configured = createConfiguredApplication({
+    store: new MemoryTraceabilityStore(),
+    env: {},
+  });
+  await configured.ready;
+
+  assert.deepEqual(
+    configured.application.listWorkspaceExecutableSkills().map(({ id, version }) => ({ id, version })),
+    [
+      { id: "specone-reference", version: "1.0.0" },
+      { id: "gsd-reference", version: "1.0.0" },
+    ],
+  );
+  await assert.rejects(
+    () => configured.application.saveGlobalCapability({
+      kind: "SKILL", normalizedName: "unmapped", expectedVersion: 0,
+      manifest: { signature: "VERIFIED" },
+    }),
+    /must select a mounted executor/,
+  );
+
+  const saved = await configured.application.saveGlobalCapability({
+    kind: "SKILL", normalizedName: "workspace-review", expectedVersion: 0,
+    manifest: { adapterId: "specone-reference", version: "1.0.0", signature: "FORGED" },
+  });
+  assert.deepEqual(saved.manifest, {
+    adapterId: "specone-reference",
+    signature: "VERIFIED",
+    version: "1.0.0",
+  });
+});

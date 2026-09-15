@@ -566,6 +566,8 @@ export class TraceabilityApplication {
   #legacyUnderstandingRuntime;
   #sourceSliceWorkerCredentialService;
   #workspaceFoundation;
+  #workspaceSkillCatalog = new Map();
+  #workspaceSkillResolver;
   #secretReferenceResolver;
   #reverseJobControllers = new Map();
   #analysisControllers = new Map();
@@ -591,6 +593,8 @@ export class TraceabilityApplication {
     legacyUnderstandingRuntime = null,
     sourceSliceWorkerCredentialService = null,
     workspaceFoundation = null,
+    workspaceSkillCatalog = [],
+    workspaceSkillResolver = null,
     oauthStatusProbe = null,
     secretReferenceResolver = resolveEnvironmentSecretReference,
   }) {
@@ -613,6 +617,10 @@ export class TraceabilityApplication {
     }
     if (typeof productMetricsPolicyResolver !== "function") {
       throw new TypeError("productMetricsPolicyResolver must be a function");
+    }
+    if (!Array.isArray(workspaceSkillCatalog)) throw new TypeError("workspaceSkillCatalog must be an array");
+    if (workspaceSkillResolver !== null && typeof workspaceSkillResolver !== "function") {
+      throw new TypeError("workspaceSkillResolver must be a function or null");
     }
     if (typeof secretReferenceResolver !== "function") throw new TypeError("secretReferenceResolver must be a function");
     this.#store = store;
@@ -639,6 +647,21 @@ export class TraceabilityApplication {
       clock,
       ...(oauthStatusProbe ? { oauthStatusProbe } : {}),
     });
+    for (const entry of workspaceSkillCatalog) {
+      const id = requireId(entry?.id, "workspace Skill id").trim();
+      const version = requireId(entry?.version, "workspace Skill version").trim();
+      const key = `${id}\u0000${version}`;
+      if (this.#workspaceSkillCatalog.has(key)) throw new TypeError(`workspaceSkillCatalog contains duplicate ${id}@${version}`);
+      this.#workspaceSkillCatalog.set(key, Object.freeze({
+        id,
+        version,
+        displayName: typeof entry?.displayName === "string" && entry.displayName.trim() ? entry.displayName.trim() : id,
+      }));
+    }
+    if (this.#workspaceSkillCatalog.size > 0 && !workspaceSkillResolver) {
+      throw new TypeError("workspaceSkillCatalog requires a workspaceSkillResolver");
+    }
+    this.#workspaceSkillResolver = workspaceSkillResolver;
     this.#secretReferenceResolver = secretReferenceResolver;
     this.#analysisModelRegistry?.setCliEnvironmentResolver?.((context) => this.#resolveF006CliEnvironment(context));
   }
@@ -708,8 +731,32 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.recheckGlobalAccount(accountId);
   }
 
+  listWorkspaceExecutableSkills() {
+    return Object.freeze([...this.#workspaceSkillCatalog.values()]);
+  }
+
+  #normalizeWorkspaceSkillCapability(input) {
+    if (String(input?.kind ?? "").toUpperCase() !== "SKILL" || this.#workspaceSkillCatalog.size === 0) return input;
+    const manifest = input?.manifest;
+    const adapterId = typeof manifest?.adapterId === "string" ? manifest.adapterId.trim() : "";
+    const version = typeof manifest?.version === "string" ? manifest.version.trim() : "";
+    const mounted = this.#workspaceSkillCatalog.get(`${adapterId}\u0000${version}`);
+    if (!mounted || !this.#workspaceSkillResolver?.(mounted.id, mounted.version)) {
+      throw new TypeError("Skill must select a mounted executor");
+    }
+    return {
+      ...input,
+      manifest: {
+        ...manifest,
+        adapterId: mounted.id,
+        version: mounted.version,
+        signature: "VERIFIED",
+      },
+    };
+  }
+
   async saveGlobalCapability(input) {
-    return this.#workspaceFoundation.saveGlobalCapability(input);
+    return this.#workspaceFoundation.saveGlobalCapability(this.#normalizeWorkspaceSkillCapability(input));
   }
 
   async previewGlobalCapabilityImpact(kind, normalizedName) {
@@ -1013,7 +1060,7 @@ export class TraceabilityApplication {
   }
 
   async saveWorkspaceProjectCapability(workspaceId, input) {
-    return this.#workspaceFoundation.saveProjectCapability(workspaceId, input);
+    return this.#workspaceFoundation.saveProjectCapability(workspaceId, this.#normalizeWorkspaceSkillCapability(input));
   }
 
   async deleteWorkspaceProjectCapability(workspaceId, kind, normalizedName, expectedVersion) {

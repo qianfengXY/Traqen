@@ -30,13 +30,17 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /availableMcps\.length \?/);
 });
 
-test("F006 settings center makes a new global Skill explicitly verified and lets an Agent remove unavailable legacy grants", async () => {
+test("F006 settings center binds a new global Skill to a mounted executor and lets an Agent remove unavailable legacy grants", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
 
   assert.match(source, /skillVerified/,
     "a global Skill created in Settings needs an explicit verification state before it can be granted");
-  assert.match(source, /signature:\s*kind === "SKILL" \? "VERIFIED" : undefined/,
-    "the UI must persist the existing verified-signature contract for an explicitly verified Skill");
+  assert.match(source, /selectedGlobalSkill/,
+    "the UI must require a selected mounted executor before a global Skill can be saved");
+  assert.match(source, /adapterId: selectedGlobalSkill!\.id, version: selectedGlobalSkill!\.version/,
+    "the UI must submit the exact selected executor identity rather than inventing a signature");
+  assert.doesNotMatch(source, /signature:\s*kind === "SKILL" \? "VERIFIED" : undefined/,
+    "the client must not self-attest a Skill as VERIFIED");
   assert.match(source, /!skillVerified/,
     "a Skill cannot be saved as grantable before the administrator verifies it");
   assert.match(source, /unavailableGrants/,
@@ -47,15 +51,19 @@ test("F006 settings center makes a new global Skill explicitly verified and lets
     "removing an unavailable grant must edit the same durable Agent draft state");
 });
 
-test("F006 settings keeps creation-only guards separate from lifecycle controls and makes local Skills grantable", async () => {
+test("F006 settings keeps creation-only guards separate from lifecycle controls and maps local Skills to executors", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /manifest:\s*\{\s*description:[\s\S]*signature: localKind === "SKILL" \? "VERIFIED" : undefined/,
-    "a Workspace-local Skill must satisfy the same verified-signature contract before it can be granted and applied");
+  assert.match(source, /selectedLocalSkill/,
+    "a Workspace-local Skill must select an executor before it can be granted and applied");
+  assert.match(source, /adapterId: selectedLocalSkill!\.id, version: selectedLocalSkill!\.version/,
+    "a Workspace-local Skill must submit the exact selected executor mapping");
+  assert.match(source, /handwritten signature is not accepted/,
+    "the recovery UI must explain that the server seals the executor mapping");
   assert.doesNotMatch(source, /<GlobalCapabilities \{\.\.\.props\} working=\{props\.working \|\| \(globalPage === "skills" && !skillVerified\)\}/,
     "the new-Skill verification checkbox must not disable lifecycle recovery controls for existing global capabilities");
-  assert.match(source, /createDisabled=\{props\.working \|\| \(globalPage === "skills" && !skillVerified\)\}/,
-    "only creation is disabled until a new Skill has an executable identity");
+  assert.match(source, /createDisabled=\{props\.working \|\| \(globalPage === "skills" && \(!skillVerified \|\| !selectedGlobalSkill\)\)\}/,
+    "only creation is disabled until a new Skill has both confirmation and an executable identity");
   assert.match(source, /disabled=\{props\.working\} onClick=\{\(\) => props\.onLifecycle/,
     "an existing global capability remains deactivatable while the new-Skill checkbox is clear");
 });

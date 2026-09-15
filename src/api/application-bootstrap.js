@@ -83,6 +83,11 @@ export function createConfiguredApplication({
   const installedSkills = new Map(
     referenceSkills.map(({ adapter }) => [`${adapter.id}\u0000${adapter.version}`, adapter]),
   );
+  const workspaceSkillCatalog = referenceSkills.map(({ manifest, adapter }) => Object.freeze({
+    id: adapter.id,
+    version: adapter.version,
+    displayName: manifest.metadata.name,
+  }));
   const sourceSliceBroker = env.SOURCE_SNAPSHOT_ROOT
     ? createLocalSourceSnapshotBroker({ store, snapshotRoot: env.SOURCE_SNAPSHOT_ROOT })
     : null;
@@ -346,6 +351,8 @@ export function createConfiguredApplication({
         ? skillPublisherSharedSecret
         : null,
     installedSkillResolver: (skillId, version) => installedSkills.get(`${skillId}\u0000${version}`) ?? null,
+    workspaceSkillCatalog,
+    workspaceSkillResolver: (skillId, version) => analysisSkills.get(`${skillId}\u0000${version}`) ?? null,
     skillPolicyResolver: () => ({
       allowedSkillIds: referenceSkills.map(({ adapter }) => adapter.id),
       allowedPublishers: ["TRAQEN"],

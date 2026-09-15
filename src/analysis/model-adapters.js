@@ -20,6 +20,27 @@ const CLI_OAUTH_STATUS_COMMANDS = Object.freeze({
   CLAUDE: { executable: "claude", args: ["auth", "status"] },
 });
 
+const CLI_TASK_OUTPUT_CONTRACTS = Object.freeze({
+  "connection-verification": Object.freeze({
+    challenge: "copy the supplied challenge exactly",
+    ready: "boolean true only when the configured model can answer",
+  }),
+  "workspace-enrichment": Object.freeze({
+    candidateFeatures: "array of candidate feature objects; return [] when no candidate is supported",
+  }),
+  "workspace-plan": Object.freeze({
+    assignments: "array of bounded workspace analysis assignments",
+  }),
+  analysis: Object.freeze({
+    candidateFeatures: "array of candidate feature objects; return [] when no candidate is supported",
+  }),
+  reconciliation: Object.freeze({
+    candidateDecisions: "array of decisions keyed by candidateRef",
+    gaps: "array of unresolved gap objects",
+    relations: "array of candidate relation objects",
+  }),
+});
+
 export function supportsCliOAuthStatusProbe(cliAdapter) {
   return Object.hasOwn(CLI_OAUTH_STATUS_COMMANDS, String(cliAdapter ?? "").trim().toUpperCase());
 }
@@ -225,7 +246,11 @@ export class AllowlistedCliModelAdapter {
   }
 
   async #jsonTask(task, input, options = {}) {
-    const prompt = JSON.stringify({ task, input });
+    const prompt = JSON.stringify({
+      task,
+      input,
+      outputContract: CLI_TASK_OUTPUT_CONTRACTS[task] ?? { result: "a JSON object matching the task input contract" },
+    });
     const raw = await this.#run(CLI_MODEL_ADAPTERS[this.cliAdapter].args(prompt, this.model, this.reasoningEffort), { signal: options.signal ?? null });
     return decodeCliJsonOutput(this.cliAdapter, raw);
   }
