@@ -7,17 +7,17 @@ topics: [deterministic-facts, evidence, controlled-material-view, coverage, func
 doc_kind: feature-discussion
 created: 2026-09-09
 updated: 2026-09-15
-version: "functional-panorama-v4"
+version: "functional-panorama-v4-f003-style"
 status: discussion-draft
 ---
 
-# F002 Deterministic Facts: Functional Design (Panorama v4)
+# F002 Deterministic Facts: Functional Design (Panorama v4 · F003 Style)
 
 ## 1. Status of this edition
 
-Originally archived under the 2026-09-09 authorization, this page now adopts **functional panorama v4 as its current diagram baseline**, following Kimi's image check and the operator's request at 07:06 UTC on 2026-09-15 to put this edition into the design document. Functional descriptions and the evidence-feedback loop are synchronized. **Diagram adoption does not finalize interface contracts, establish F002 implementation, or authorize implementation; the document remains a discussion draft.**
+The content baseline remains panorama v4, checked by Kimi and incorporated under the operator's 07:06 UTC authorization on 2026-09-15. Following the subsequent style-only request and the 07:53 UTC request to view it inside the document, **the F003-style edition of v4 is now the current displayed image**. Functions, connection logic, and unresolved items remain unchanged; only visual styling differs. **Diagram adoption does not finalize interface contracts, establish F002 implementation, or authorize implementation; the document remains a discussion draft.**
 
-The checked v4 image is embedded unchanged, without another redraw; v1–v3 and the v3/v4 generation records remain available. This update does not modify canonical F002/F003 specs, ADRs, lifecycle, code, or other features. Original-material access remains an open item in section 9; adopting v4 does not select direct access or short-lived handles.
+This update embeds the existing style edition without regenerating it; original v1–v4 images and generation records remain available. Kimi's independent check covered original v4; the style edition has a separate generation and author visual-check record, not a new independent acceptance verdict. This update does not modify canonical F002/F003 specs, ADRs, lifecycle, code, or other features. Original-material access remains an open item in section 9; restyling does not select direct access or short-lived handles.
 
 ## 2. Goal, input, and output
 
@@ -32,11 +32,13 @@ Determinism means replay under fixed conditions; it does not establish correctne
 
 ## 3. Current functional panorama and historical diagrams
 
-### 3.1 Current diagram: functional panorama v4
+### 3.1 Current diagram: functional panorama v4 · F003 style
 
-![F002 panorama v4: six capabilities and twenty-four subfunctions, controlled material views, F003-led investigation, bidirectional evidence requests, and an unresolved access interface](assets/f002-functional-panorama-v4.zh-CN.png)
+![F002 panorama v4 in F003 style: six capabilities and twenty-four subfunctions, controlled material views, F003-led investigation, bidirectional evidence requests, and an unresolved access interface](assets/f002-functional-panorama-v4-f003-style.zh-CN.png)
 
-[Open the v4 image](assets/f002-functional-panorama-v4.zh-CN.png) · [v4 prompt, provenance, and verification record](assets/f002-functional-panorama-v4.prompt.md). Both language pages embed the same Chinese image; illustrated identifiers are examples, not actual product records.
+[Open the current style edition](assets/f002-functional-panorama-v4-f003-style.zh-CN.png) · [Style prompts, provenance, and verification record](assets/f002-functional-panorama-v4-f003-style.prompt.md) · [Compare original v4](assets/f002-functional-panorama-v4.zh-CN.png). Both language pages embed the same Chinese image; illustrated identifiers are examples, not actual product records.
+
+The visual reference is F003's current V2.0 image: light-gray background, white rounded cards, charcoal text, and blue accents. It contributes style only, not F003 functions or workflow. Violet requests, blue responses, teal reference output, and the amber unresolved-interface dashed line retain their distinct meanings.
 
 v4 preserves six capabilities, twenty-four subfunctions, five output parts, and the bidirectional evidence loop while applying three visual corrections:
 
@@ -44,7 +46,7 @@ v4 preserves six capabilities, twenty-four subfunctions, five output parts, and 
 - An amber dashed connector links the unresolved-interface note to F001, explicitly labeled as an undecided interface rather than approved direct access. It is not an approved physical read path.
 - The “read originals / find counterexamples” step carries a matching “接口待定” (interface undecided) badge; the note that current ADR-0003 admission boundaries remain effective is preserved.
 
-The image's “参照 F003 全景 V1.0” label records its reference baseline at drawing time, not F003's latest version. [Current F003 design](../2026-09-09-F003-traceability-graph-design/README.md) has advanced to V2.0. This update retains the checked image's original label without modifying F003 or closing cross-feature alignment items.
+The image's “参照 F003 全景 V1.0” label records the reference baseline when v4's content was drawn, not F003's latest version. [Current F003 design](../2026-09-09-F003-traceability-graph-design/README.md) has advanced to V2.0. The style-only request preserves existing image text; V2.0 is the visual reference, not authority to modify F003 or close cross-feature alignment items.
 
 ### 3.2 Historical diagrams (no longer the primary diagram)
 
@@ -53,6 +55,7 @@ The image's “参照 F003 全景 V1.0” label records its reference baseline a
 | v1 | [Original overview](assets/f002-functional-overview-v1.zh-CN.png) | Early object/fact examples; some wording was subsequently corrected. |
 | v2 | [Original second-level diagram](assets/f002-functional-breakdown-v2.zh-CN.png) | Early expansion into six capabilities and twenty-four subfunctions; 01–06 identify functions, not facts. |
 | v3 | [Functional panorama](assets/f002-functional-panorama-v3.zh-CN.png) · [Generation record](assets/f002-functional-panorama-v3.prompt.md) | Introduces material views, F003's primary/reference distinction, and the bidirectional loop; v4 refines the heading and unresolved-interface cues. |
+| Original v4 | [Original functional panorama](assets/f002-functional-panorama-v4.zh-CN.png) · [Generation record](assets/f002-functional-panorama-v4.prompt.md) | Kimi-checked content baseline, retained for comparison with the visually restyled edition. |
 
 ### 3.3 Historical wording corrections and continuing boundaries
 
@@ -216,10 +219,12 @@ A next discussion can refine the output contract, validate it with both represen
 | v3 redraw and visual suggestions | Redraw authorization `0001789005669469-000128-c60201b3`; Opus's three visual suggestions `0001789008610746-000150-a4270c5a`. |
 | v4 edit authorization | `0001789442627373-000010-7aa2f5de`: the operator requested image changes where the author agreed with the review, or an explanation of disagreement. |
 | Independent v4 image check | Kimi, `0001789455416701-000276-ad9634c8`, 06:56 UTC on 2026-09-15: all three corrections implemented and the image check passed; not code or interface-contract acceptance. |
-| Authorization for this design update | `0001789455996764-000287-b731c634`, 07:06 UTC on 2026-09-15: put this edition into the design document. |
+| Original v4 design-update authorization | `0001789455996764-000287-b731c634`, 07:06 UTC on 2026-09-15: put this edition into the design document. |
+| Style-only authorization | `0001789456971433-000308-709a079d`, 07:22 UTC on 2026-09-15: preserve existing content and connection logic while matching the F003 diagram's style. |
+| Style-edition embedding authorization | `0001789458792213-000336-9a7994b2`, 07:53 UTC on 2026-09-15: put it into the document for the operator to view there. |
 | F003 reference versions | The image references V1.0 at `e3716b6`; current F003 design adopted V2.0 at `7cd6a75`. Preserve the historical image reference without treating version advancement as interface alignment. |
 
-Each generation is archived byte-for-byte from its original output; this update does not regenerate or overwrite images. The v3/v4 prompts and provenance records accompany their images:
+Each generation is archived byte-for-byte from its original output; this update changes document references without regenerating or overwriting images. The v3/v4 and style-edition prompts and provenance records accompany their images:
 
 | File | Original generated filename | SHA-256 |
 |---|---|---|
@@ -227,5 +232,6 @@ Each generation is archived byte-for-byte from its original output; this update 
 | `assets/f002-functional-breakdown-v2.zh-CN.png` | `exec-d946d2ab-61cc-44d9-8cb9-95da91de28ae.png` | `3d45e9c451e75ed7222d3b951f5bac164959f38484e432a575992f4ddb652ff1` |
 | `assets/f002-functional-panorama-v3.zh-CN.png` | `exec-f46dc369-a3fa-4f0d-a627-9cd787399b2f.png` | `b67bd964325768e6ef8162a3b8fef95aff173c80c5688089b8d46ef37a2d651a` |
 | `assets/f002-functional-panorama-v4.zh-CN.png` | `exec-fd0c1b84-1fbb-484a-b71d-5e90387ad7e1.png` | `8689609c2c1782f8353842aad48822f4e9708c43d3b5546b3b72d18efd164f9f` |
+| `assets/f002-functional-panorama-v4-f003-style.zh-CN.png` | `exec-27631479-1acc-4a6d-b131-c3a490c7fb7e.png` | `ea72b7d8850adb60328588ed4f88a86e6b029867b241246f30be404e03a4e976` |
 
 Related documents: [existing F002 spec](../../docs/features/F002-feature-api-traceability.md), [current F003 functional design](../2026-09-09-F003-traceability-graph-design/README.md), [current source-boundary ADR](../../docs/decisions/ADR-0003-source-truth-boundary.zh-CN.md). This archive does not automatically synchronize or change their status.
