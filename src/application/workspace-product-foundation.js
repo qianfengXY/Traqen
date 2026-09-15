@@ -36,6 +36,8 @@ function workspaceCapabilityDraftConflict(expectedVersion, currentVersion, cause
   return error;
 }
 
+const SELF_VALIDATE_CAPABILITY_DRAFT = Symbol("SELF_VALIDATE_CAPABILITY_DRAFT");
+
 export class WorkspaceProductFoundation {
   constructor({ store, clock = () => new Date(), oauthStatusProbe = probeCliOAuthStatus }) {
     if (!store) throw new TypeError("store is required");
@@ -465,8 +467,13 @@ export class WorkspaceProductFoundation {
     return Object.freeze({ draft, catalog, validation: validateWorkspaceCapabilityDraft({ draft, modelProfiles, effectiveCatalog: catalog.effective, securityPolicy: draft.securityPolicy }) });
   }
 
-  async activateCapabilityDraft(workspaceId, modelProfiles, validatedSnapshot = null) {
-    const result = validatedSnapshot ?? await this.validateCapabilityDraft(workspaceId, modelProfiles);
+  async activateCapabilityDraft(workspaceId, modelProfiles, validatedSnapshot = SELF_VALIDATE_CAPABILITY_DRAFT) {
+    if (validatedSnapshot === null) {
+      throw new TypeError("validatedSnapshot must be explicit or omitted for Foundation self-validation");
+    }
+    const result = validatedSnapshot === SELF_VALIDATE_CAPABILITY_DRAFT
+      ? await this.validateCapabilityDraft(workspaceId, modelProfiles)
+      : validatedSnapshot;
     if (!result) return null;
     if (result.draft.workspaceId !== workspaceId) {
       throw new TypeError("Capability Draft snapshot belongs to a different Workspace");

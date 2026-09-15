@@ -648,6 +648,76 @@ test("F006 keeps hydrated unmounted Skills readable but blocks validation, Apply
   assert.equal(starts.length, 0, "an unmapped historical Skill must not reach the runtime");
 });
 
+test("F006 Apply rejects an absent Draft instead of activating a concurrently first-saved unmounted Skill", async (t) => {
+  const store = new MemoryTraceabilityStore();
+  const application = new TraceabilityApplication({
+    store,
+    clock: fixedClock,
+    analysisModelRegistry: f006CliRegistry(),
+    secretReferenceResolver: async () => "test-api-key",
+    workspaceSkillCatalog: [{ id: "mounted-reference", version: "1.0.0" }],
+    workspaceSkillResolver: () => ({ id: "mounted-reference" }),
+  });
+  const workspaceId = "W-APPLY-NO-DRAFT";
+  await application.createProject({
+    organization: { id: "ORG-APPLY-NO-DRAFT", name: "Org" },
+    tenant: { id: "TENANT-APPLY-NO-DRAFT", name: "Tenant" },
+    project: { id: workspaceId, name: "Workspace" },
+    principals: [],
+    actorId: "OWNER",
+  });
+  await application.saveGlobalAccount({
+    accountId: "ACCOUNT-APPLY-NO-DRAFT", displayName: "Account", authMethod: "API_KEY",
+    secretRefId: "vault://test-account", expectedVersion: 0,
+  });
+  await application.configureGlobalCliModel({
+    profileId: "MODEL-APPLY-NO-DRAFT", displayName: "Model", accountId: "ACCOUNT-APPLY-NO-DRAFT",
+    cliAdapter: "CODEX", model: "gpt-5.6-terra",
+  });
+  await application.verifyGlobalModelProfile("MODEL-APPLY-NO-DRAFT");
+  await store.appendCapabilityTemplateRevision(createCapabilityTemplateRevision({
+    kind: "SKILL", logicalName: "historical-unmapped", revision: 1,
+    manifest: { adapterId: "not-mounted", version: "99.0.0", signature: "VERIFIED" },
+  }, fixedClock));
+  const invalidDraft = {
+    expectedVersion: 0,
+    mainAgentSlot: { modelProfileId: "MODEL-APPLY-NO-DRAFT", skillNames: ["historical-unmapped"] },
+    childAgentSlots: [{ id: "CHILD-1", modelProfileId: "MODEL-APPLY-NO-DRAFT", skillNames: ["historical-unmapped"], independenceGroup: "I1" }],
+    projectCapabilityRevisionIds: [],
+    disabledKeys: [],
+  };
+  const baseUrl = await startStubServer(t, application);
+
+  const missing = await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" });
+  assert.equal(missing.status, 404, "an absent Draft must be rejected before the Foundation activation path");
+  assert.equal((await store.getUnderstandingHead(workspaceId, "WORKSPACE_EXECUTION_PROFILE")).recordId, null);
+
+  const originalValidate = WorkspaceProductFoundation.prototype.validateCapabilityDraft;
+  let concurrentFirstSave = false;
+  WorkspaceProductFoundation.prototype.validateCapabilityDraft = async function (...args) {
+    const result = await originalValidate.call(this, ...args);
+    if (!concurrentFirstSave && result === null) {
+      concurrentFirstSave = true;
+      await application.saveWorkspaceCapabilityDraft(workspaceId, invalidDraft);
+    }
+    return result;
+  };
+  try {
+    const raced = await fetch(`${baseUrl}/v1/workspaces/${workspaceId}/capability-draft/activate`, { method: "POST" });
+    assert.equal(concurrentFirstSave, true, "the first Draft must be saved after Application observes NO_DRAFT");
+    assert.equal(raced.status, 404,
+      "the Apply that observed NO_DRAFT must not downgrade into Foundation self-validation after a concurrent first save");
+    assert.equal((await store.getUnderstandingHead(workspaceId, "WORKSPACE_EXECUTION_PROFILE")).recordId, null,
+      "an absent-Draft Apply must never append an Active Profile");
+  } finally {
+    WorkspaceProductFoundation.prototype.validateCapabilityDraft = originalValidate;
+  }
+
+  const validation = await application.validateWorkspaceCapabilityDraft(workspaceId);
+  assert.equal(validation.validation.valid, false, "the concurrent first Draft remains available for a later, fully validated Apply");
+  assert.ok(validation.validation.errors.some(({ code }) => code === "SKILL_EXECUTOR_UNAVAILABLE"));
+});
+
 test("F006 Apply activates the exact Skill-mapping snapshot it validated", async () => {
   const store = new MemoryTraceabilityStore();
   const application = new TraceabilityApplication({

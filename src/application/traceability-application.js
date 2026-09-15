@@ -1135,12 +1135,13 @@ export class TraceabilityApplication {
 
   async activateWorkspaceCapabilityDraft(workspaceId) {
     const validationSnapshot = await this.#f006WorkspaceCapabilityValidation(workspaceId);
-    const snapshot = validationSnapshot?.result ?? null;
-    if (snapshot) this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(snapshot.draft));
-    if (snapshot && !snapshot.validation.valid) {
+    if (!validationSnapshot) return null;
+    const { modelProfiles, result: snapshot } = validationSnapshot;
+    this.#analysisModelRegistry?.assertProfilesUnlocked(modelIdsFromDraftInput(snapshot.draft));
+    if (!snapshot.validation.valid) {
       throw new TypeError(`Workspace capability draft is invalid: ${snapshot.validation.errors.map(({ field, code }) => `${field}:${code}`).join(", ")}`);
     }
-    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, validationSnapshot?.modelProfiles ?? await this.#f006ModelProfiles(), snapshot);
+    return this.#workspaceFoundation.activateCapabilityDraft(workspaceId, modelProfiles, snapshot);
   }
 
   async saveWorkspaceCapabilityConfig(workspaceId, input) {

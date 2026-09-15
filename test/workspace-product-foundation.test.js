@@ -324,6 +324,11 @@ test("F006 service persists invalid drafts, enforces CAS, and restores project c
     securityPolicy: validSecurityPolicy,
   });
   assert.equal(valid.revision, 2);
+  await assert.rejects(
+    () => service.activateCapabilityDraft("W1", modelProfiles, null),
+    /validatedSnapshot must be explicit/,
+    "an explicit null snapshot must not silently downgrade into a fresh Foundation read",
+  );
   const profile = await service.activateCapabilityDraft("W1", modelProfiles);
   assert.equal(profile.draftRevisionId, valid.id);
   assert.equal(profile.childAgentSlots.length, 2);
