@@ -1,4 +1,4 @@
-> Language: **English** · [简体中文](README.zh-CN.md)
+> 语言：**简体中文（规范文本）** · [English（可选参考）](README.en.md)
 
 ---
 feature_ids: [F001, F006]
@@ -8,14 +8,14 @@ created: 2026-09-15
 status: historical
 ---
 
-# Documentation Archive
+# 文档归档
 
-This directory contains superseded designs and historical validation evidence. It is deliberately excluded from the active truth map.
+本目录存放已被替代的设计和历史验证证据，刻意不参与活动真相源导航。
 
-| Material | Why archived | Current replacement |
+| 材料 | 归档原因 | 当前替代 |
 |---|---|---|
-| [Workspace scan and analysis lifecycle](lifecycle/workspace-scan-and-analysis-lifecycle.md) | Superseded lifecycle architecture retained for implementation history. | [F001](../features/F001-legacy-system-understanding.md) and [product architecture](../architecture/traqen-product-architecture.md) |
-| [F001 implementation validation, 2026-07-29](validation/f001/F001-legacy-system-understanding-validation-2026-07-29.md) | Historical delivery evidence, not a claim about the current implementation. | [F001](../features/F001-legacy-system-understanding.md) |
-| [F001 review-fix validation, 2026-07-30](validation/f001/F001-review-fixes-validation-2026-07-30.md) | Historical delivery evidence, not a claim about the current implementation. | [F001](../features/F001-legacy-system-understanding.md) |
+| [Workspace 扫描与分析生命周期](lifecycle/workspace-scan-and-analysis-lifecycle.zh-CN.md) | 已被替代的生命周期架构，因实施历史而保留。 | [F001](../features/F001-legacy-system-understanding.zh-CN.md)与[产品架构](../architecture/traqen-product-architecture.zh-CN.md) |
+| [F001 实施验证，2026-07-29](validation/f001/F001-legacy-system-understanding-validation-2026-07-29.zh-CN.md) | 历史交付证据，不代表当前实现的声明。 | [F001](../features/F001-legacy-system-understanding.zh-CN.md) |
+| [F001 Review 修复验证，2026-07-30](validation/f001/F001-review-fixes-validation-2026-07-30.zh-CN.md) | 历史交付证据，不代表当前实现的声明。 | [F001](../features/F001-legacy-system-understanding.zh-CN.md) |
 
-New archive entries must be bilingual, declare `superseded_by`, and have their incoming active-navigation links removed in the same change.
+新增归档条目使用中文、声明 `superseded_by`，并在同一变更中移除其活动导航入链；英文译文可选且不要求同步维护。

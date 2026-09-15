@@ -1,4 +1,4 @@
-> Language: **English** · [简体中文](TEMPLATE.zh-CN.md)
+> 语言：**简体中文（规范模板）** · [English（可选参考）](TEMPLATE.en.md)
 
 ---
 feature_ids: [Fxxx]
@@ -6,67 +6,67 @@ related_features: []
 topics: []
 doc_kind: spec
 created: YYYY-MM-DD
-description: "Stable identity statement; do not put status or implementation detail here."
+description: "稳定的功能身份说明；不要在此填写状态或实现细节。"
 description_source: human
 description_author: cat-id
 description_updated_at: YYYY-MM-DDTHH:mm:ssZ
 ---
 
-# Fxxx: Feature Name
+# Fxxx：功能名称
 
-> **Status**: spec | **Owner**: TBD | **Priority**: P1
+> **状态**：spec | **负责人**：TBD | **优先级**：P1
 
-## Why
+## 为什么
 
-State the user or operator value, not an implementation action.
+说明用户或 operator 的价值，而非实现动作。
 
 ## Current State / 现状基线
 
-Record reproducible evidence from code, documents, commits, tests, or the current user journey.
+记录来自代码、文档、提交、测试或当前用户旅程的可复现证据。
 
-## What
+## 做什么
 
-### Phase A: Discovery and design
+### 阶段 A：发现与设计
 
-Describe the durable outcome.
+描述持久的最终成果。
 
-## User Journey
+## 用户旅程
 
-### Primary Journey
+### 主要旅程
 
-- **Scope unit**: workspace
-- **Actor**: operator
-- **Entry**: describe the real entry surface
-- **Flow**: describe the user-visible journey in order
-- **Success evidence**: exact screenshot, test, or manual path
-- **Non-goals**: state explicit exclusions
+- **范围单位**：workspace
+- **参与者**：operator
+- **入口**：描述实际入口界面
+- **流程**：按顺序描述用户可见的旅程
+- **成功证据**：精确截图、测试或手工路径
+- **非目标**：明确排除项
 
-## Acceptance Criteria
+## 验收标准
 
-### Phase A
+### 阶段 A
 
-- [ ] AC-A1: Observable, independently verifiable condition.
+- [ ] AC-A1：可观察、可独立验证的条件。
 
 ## 需求点 Checklist
 
 | ID | 需求点（operator experience/转述） | AC 编号 | 验证方式 | 状态 |
 |----|-----------------------------------|---------|----------|------|
-| R1 | “...” | AC-A1 | test / screenshot / manual | [ ] |
+| R1 | “...” | AC-A1 | 测试 / 截图 / 手工 | [ ] |
 
-## Dependencies
+## 依赖
 
-- **Evolved from**: none
-- **Blocked by**: none
-- **Related**: none
+- **演变自**：无
+- **被阻塞于**：无
+- **相关**：无
 
-## Risk
+## 风险
 
 | 风险 | 缓解 |
 |------|------|
-| Scope drift | Keep Why, User Journey, and AC traceable to operator requirements |
+| 范围漂移 | 保持动机、用户旅程和验收标准可追溯至 operator 的需求 |
 
-## Open Questions
+## 待决问题
 
 | # | 问题 | 状态 |
 |---|------|------|
-| OQ-1 | Value decision requiring operator input, if any | ⬜ 未定 |
+| OQ-1 | 如有，需要 operator 决策的价值问题 | ⬜ 未定 |

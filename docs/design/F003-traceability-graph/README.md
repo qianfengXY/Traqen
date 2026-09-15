@@ -1,4 +1,4 @@
-> Language: **English** · [简体中文](README.zh-CN.md)
+> 语言：**简体中文（规范文本）** · [English（可选参考）](README.en.md)
 
 ---
 feature_ids: [F003]
@@ -11,133 +11,133 @@ version: "2.0"
 status: functional-panorama-final
 ---
 
-# F003 Functional Panorama Design V2.0
+# F003 功能全景设计 V2.0
 
-## 1. Finalized scope
+## 1. 定稿范围
 
-This document replaces the V1.0 primary image with the accepted **F003 Functional Panorama V2.0 (HTML edition)** as the current baseline for further functional elaboration. The eight functional groups, five routing outcomes, and governance boundaries are unchanged. Diagram acceptance does not mean F003 is implemented, all technical interfaces are settled, or the feature has passed acceptance.
+本页以已验收的《F003 功能全景图 V2.0（HTML 重制版）》替换 V1.0 主引用，作为后续功能细化的当前基线。八组功能、五档分流和治理边界不变；图稿验收不代表 F003 已实现、技术接口已全部确定或功能已验收。
 
-- **Artifact:** Xianxian's self-contained HTML with inline SVG and its PNG render preserve the V1.3 structure while correcting raster-text drift.
-- **Independent acceptance:** on 2026-09-15 at 04:01 UTC, Kimi passed terminology, connection, layout, and same-environment rendering-reproduction checks.
-- **Replacement and write authorization:** on 2026-09-15 at 06:53 UTC, the operator requested that this edition be placed in the design documentation, replacing the previous edition.
-- **Version rule:** this update adopts the accepted V2.0 HTML/PNG unchanged, without text edits or rerendering. V1.0 and candidate images remain historical rather than current primary images.
+- **图稿：** 宪宪制作的自包含 HTML + 内联 SVG 及对应 PNG，保留 V1.3 的结构，修正栅格图的文字漂移。
+- **独立验收：** 2026-09-15 04:01 UTC，Kimi 完成术语、连接关系、版式及同环境渲染复现核查，结论通过。
+- **替换与写入授权：** 2026-09-15 06:53 UTC，co-creator 要求“请你将这版落到设计文档里，替换之前的。”
+- **版本规则：** 本次原样纳入已验收的 V2.0 HTML/PNG，不改图内文字或重渲染；V1.0 及候选图保留为历史，不再作为当前主图。
 
-## 2. Functional panorama
+## 2. 功能全景图
 
-![F003 Functional Panorama V2.0: F001 primary materials, F002 reference results, Main and Child Agent investigation, five routing outcomes, exception-based human review, and a traceable graph](assets/f003-functional-panorama-v2.0.zh-CN.png)
+![F003 功能全景图 V2.0：F001 主分析材料、F002 参考、主子 Agent 调查、五档分流、例外人工审核与可追溯图谱](assets/f003-functional-panorama-v2.0.zh-CN.png)
 
-[Open the V2.0 diagram source](assets/f003-functional-panorama-v2.0.zh-CN.html) · [Open the V2.0 high-resolution image](assets/f003-functional-panorama-v2.0.zh-CN.png) · [SHA-256 manifest](assets/f003-functional-panorama-v2.0.sha256) · [Provenance and acceptance record](assets/f003-functional-panorama-v2.0.provenance.json)
+[打开 V2.0 图稿源码](assets/f003-functional-panorama-v2.0.zh-CN.html) · [打开 V2.0 高清图](assets/f003-functional-panorama-v2.0.zh-CN.png) · [SHA-256 校验清单](assets/f003-functional-panorama-v2.0.sha256) · [来源与验收记录](assets/f003-functional-panorama-v2.0.provenance.json)
 
-HTML is the maintenance source for this diagram's text and layout. The PNG is a 2896 × 2924 render (1448 × 1462 CSS pixels at 2×). The image retains its original “V2.0 candidate · awaiting confirmation” badge from acceptance; the replacement authorization recorded here establishes its current design-baseline status without altering the accepted artifact merely to change a badge. Both language editions use the same Chinese diagram.
+HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物（1448 × 1462 CSS 像素，2×）。图中保留验收时的“V2.0 候选 · 待确认”原始标识；本页记录的替换授权确定其当前设计基线身份，避免为改状态标签而改变已验收产物。中英文文档引用同一份中文图稿。
 
-This edition corrects two occurrences of “覆盖版本” to “覆盖账本”, “参议” to “争议”, and the malformed “语义” text. It preserves the task/evidence loop for every Child Agent and provenance, state, evidence, and applicability on nodes and edges. “版本混用”, “不按模型投票”, and F006's fixed-context note align with existing constraints in this document rather than adding functionality.
+本轮修正“覆盖版本”为“覆盖账本”（两处）、“参议”为“争议”、变形的“语义”文字；保留每个子 Agent 收任务并返证据的闭环，以及节点和边的“来源、状态、依据与适用范围”。“版本混用”“不按模型投票”和 F006 固定上下文说明均与本页既有功能约束对齐，不新增功能。
 
-## 3. Goal, inputs, and outputs
+## 3. 目标、输入与输出
 
-### Goal
+### 目标
 
-A Main Agent and one or more Child Agents investigate scattered documentation, code, configuration, data structures, and test materials in a legacy system to organize traceable relationships between business functions, rules, and engineering assets. F001 source materials are the primary analysis input. F002 technical facts, relationships, and extraction gaps support reference and verification; neither their quality nor exhaustive coverage is assumed without validation.
+通过主 Agent 与一个或多个子 Agent，调查存量系统中零散的文档、代码、配置、数据结构和测试材料，整理业务功能、规则与工程资产之间的可追溯关系。F001 源材料是主分析材料，F002 的技术事实、关系和提取缺口用于参考与核查；不能把 F002 的结果质量或覆盖完整性当作未经验证的前提。
 
-### Input conditions
+### 输入条件
 
-| Input | Conditions and purpose |
+| 输入 | 条件与用途 |
 |---|---|
-| Sealed F001 materials | Pin the source version, preserve original-text access, and inherit the inventory and known gaps. Blocking permission, identity, integrity, or version checks cannot be bypassed. |
-| F002 reference results | Verify alignment with this source version and retain facts, relationships, and extraction gaps. Not extracted does not mean not analyzable; do not mix reference results from another version. |
-| F006 execution configuration | Bind the active Main/Child models, tool permissions, and configuration version. Running and resumed work retains its fixed context without hot-swapping authority. |
-| Investigation focus | The user declares the questions for this run. Uninvestigated or unassociated materials remain in the coverage ledger. |
+| F001 封存材料 | 固定来源版本，原文可回查，继承材料清单和已知缺口；权限、身份、完整性及版本预检中的阻断项不可跳过。 |
+| F002 参考结果 | 核对与本次来源版本的对应关系，保留事实、关系和提取缺口；未提取不等于不可分析，不混用其他版本的参考结果。 |
+| F006 执行配置 | 绑定已生效的主子模型、工具权限和配置版本；运行与恢复保持固定上下文，不热切换授权。 |
+| 调查重点 | 用户声明本轮重点问题；未调查或尚未关联的材料仍留在覆盖账本中。 |
 
-“Reading F001 materials” means controlled investigation of sealed, authorized material, not bypassing admission to read a live repository, an original upload directory, or an unaccounted source. The specific access interface remains an alignment item in section 8.
+“读取 F001 材料”表示对已封存、获授权材料的受控调查，不表示绕过准入后直接读取实时仓库、上传原目录或其他未记账来源。具体读取接口见第 8 节的待对齐项。
 
-### Output conditions
+### 输出条件
 
-- Provide business, implementation, and coverage views over one graph, with function-to-material and material-to-function navigation.
-- Retain provenance, applicability, evidence references, analysis state, and uncertainty for conclusions and relationships; original text remains traceable.
-- Distinguish automatically admitted Agent analysis from human confirmation; do not hide disputes, missing evidence, or unassociated materials.
-- Preserve runs, tasks, human decisions, and graph versions. A finished run does not imply complete understanding of the project.
-- Supply structured relationships and evidence to F004; the presence of a test file does not substitute for execution evidence.
+- 形成同一图谱的业务视图、实现视图和覆盖视图，可从功能反查材料，也可从材料反查功能。
+- 每项结论和关系保留来源、适用范围、证据引用、分析状态及不确定性；原文可回查。
+- 自动收录的 Agent 分析与人工确认明确区分；争议、缺证据和未归属材料不被隐藏。
+- 保留运行、任务、人工决定和图谱版本记录；运行结束不等于完整理解工程。
+- 向 F004 提供结构化关系与依据，不以测试文件存在代替实际测试执行证据。
 
-## 4. Eight functional groups
+## 4. 八组功能
 
-| No. | Function | User actions | System behavior and outputs |
+| 编号 | 功能 | 用户操作 | 系统行为与产物 |
 |---|---|---|---|
-| 01 | Analysis preparation | Select a source version, declare investigation focus, and start. | Bind the F006 execution configuration; check permissions, integrity, and versions; expose blockers or gaps and recovery actions. |
-| 02 | Materials and coverage | Search categories, read originals, and inspect investigated, uninvestigated, restricted, or unassociated materials. | Inherit the inventory and record analysis coverage and reasons. Materials are retained; having read them does not mean fully understanding them. |
-| 03 | Main/Child Agent investigation | Inspect investigation tasks and progress. | The Main Agent plans, delegates, and rereads evidence. There is at least one Child Agent; each receives tasks and returns evidence, reading original materials, following relationships, examining conditions, and finding counterexamples across materials. |
-| 04 | Candidate generation and reconciliation | Expand propositions, support, and disputes. | Candidates contain a concrete proposition, evidence, scope, and uncertainty. Deduplicate, organize hierarchy and many-to-many relationships, group conflicts, preserve sources, and recheck after reconciliation. |
-| 05 | Evidence checking and routing | Inspect why a result was admitted or remains unresolved. | Check references, permissions, versions, and semantic support. Route by relationship type, not model votes or self-reported scores; supplementation and retries are bounded. |
-| 06 | Human review and feedback | Confirm, narrow scope, correct, reject, supplement, or defer questions grouped by function. | One question per card, acting only on selected propositions or relationships. Record decisions; apply checked decisions to the graph and return evidence or answers to investigation. New files enter through a new F001 version. |
-| 07 | Graph browsing and traceability | Switch business, implementation, and coverage views; search, filter, expand, and navigate both ways. | Show business functions/rules linked to documents, APIs/code, configuration/data, and test assets. Nodes and edges retain provenance, state, evidence, and applicability; structured relationships feed F004. |
-| 08 | Run and version maintenance | Pause, resume, cancel, retry locally, select new versions, and inspect differences. | Persist tasks, isolate late results, automatically recheck affected areas, and preserve history. Check errors and omissions against human reference cases. |
+| 01 | 分析准备 | 选择来源版本、声明调查重点并启动。 | 绑定 F006 执行配置；检查权限、完整性和版本，给出阻断或缺口及处理入口。 |
+| 02 | 材料与覆盖 | 分类检索、读取原文，查看已查、未查、受限和未归属材料。 | 继承材料清单，记录分析覆盖和原因；材料不丢失，读过不等于理解完整。 |
+| 03 | 主子 Agent 调查 | 查看调查任务与进度。 | 主 Agent 规划、分派、回读核查；子 Agent 至少一个，每个子 Agent 接收任务并返回证据，跨材料读原文、追关系、查条件、找反例。 |
+| 04 | 候选生成与归并 | 展开候选命题、依据和争议。 | 候选包含具体命题、证据、范围和不确定性；去重、整理层级与多对多关系、编组冲突；保留来源，归并后再核查。 |
+| 05 | 证据核查与分流 | 查看收录或待查的原因。 | 检查引用、权限、版本和语义支持；按关系类型分流，不按模型投票或自报分数裁定；补证和重试有上限。 |
+| 06 | 人工审核与回流 | 在按功能分组的问题卡中确认、限定范围、修正、否决、补充或暂缓。 | 一问题一卡，只处理选定命题或关系；记录决定；已校验决定落实到图谱，补证或回答返回调查。新增文件经 F001 新版本进入。 |
+| 07 | 图谱浏览与追溯 | 切换业务、实现、覆盖视图；搜索、筛选、展开关联和双向反查。 | 展示业务功能/规则与文档、API/代码、配置/数据、测试资产的联系；节点和边保留来源、状态、依据与适用范围；结构化关系供 F004 消费。 |
+| 08 | 运行与版本维护 | 暂停、恢复、取消、局部重试；选择新版本并查看差异。 | 任务持久化、晚到结果隔离；自动核查受影响区域，保留历史；以人工参考案例检查错误与遗漏。 |
 
-## 5. Five routing outcomes
+## 5. 五档分流
 
-| Evidence-check result | Handling | Destination and constraints |
+| 证据核查结果 | 处理 | 去向与约束 |
 |---|---|---|
-| Sufficient support, explicit conditions, no unresolved conflict | Automatic admission | Enter the graph in **Agent analysis** state, without claiming human confirmation. |
-| Key evidence is missing | Automatic supplementation | Return to investigation in 03 within budget and stopping conditions. Raise a human question if uncertainty persists; never loop indefinitely. |
-| Rules or ownership are ambiguous | Human review | Enter 06 with a concrete question, relevant original passages, investigated scope, and competing interpretations. |
-| No reliable explanation yet | Retain materials for investigation | Keep materials in coverage or unassociated views; do not force them into candidate conclusions or established business branches. |
-| Invalid references, unauthorized access, or mixed versions | Isolate; retry after repair | Exclude from the effective graph. Repair permissions or run conditions first; persistent failure becomes a run error, not a business question about whether an invalid reference is valid. |
+| 支撑充分、条件明确、无未决冲突 | 自动收录 | 进入图谱，保持 **Agent 分析态**，不伪装成人工确认。 |
+| 关键证据不足 | 自动补证 | 返回 03 调查；在预算和停止条件内补证，仍不确定则提出人工问题，不无限循环。 |
+| 规则或归属有歧义 | 人工审核 | 进入 06，给出具体问题、相关原文、已调查范围和不同解释。 |
+| 尚无可靠解释 | 保留材料、待调查 | 留在覆盖账本或未归属区，不强行包装成候选结论或成立的业务分支。 |
+| 无效引用、越权或版本混用 | 隔离、修复后重试 | 不进入有效图谱；先修复权限或运行条件，持续失败展示运行异常，不交给业务人员判断坏引用是否有效。 |
 
-A candidate is a specific, verifiable proposition, not an arbitrary prose summary or the only destination for material. Source materials, open questions, gaps, and invalid outputs each receive an explicit disposition; failing to produce a candidate does not make them disappear.
+候选是可核查的具体命题，不是任意自然语言摘要，也不是材料的唯一归宿。原始材料、待解问题、缺口和无效输出各有处置；它们不会因未形成候选而消失。
 
-## 6. Main activity and feedback loops
+## 6. 主活动与回路
 
-1. **Prepare inputs:** select a fixed source and investigation focus, bind F006 configuration, and complete preflight in 01. Investigation cannot start while blocking conditions remain.
-2. **Inventory and investigate:** 02 establishes the coverage ledger; Main/Child Agents in 03 investigate across materials and produce candidates and evidence.
-3. **Reconcile and check:** 04 organizes duplicates, hierarchy, overlap, and conflict, then enters 05. Reconciled results cannot bypass checking to enter the graph.
-4. **Route results:** automatic admission goes directly to 07, supplementation returns to 03, and human questions enter 06. Pending materials and invalid outputs are retained or isolated respectively.
-5. **Apply human decisions:** checked decisions in 06 apply to selected propositions or relationships in 07; supplementary evidence and answers return to 03. Human explanations do not erase contradictory code evidence.
-6. **Maintain traceability:** 07 exposes the current graph and gaps; 08 manages recovery, updates, differences, and quality checks. A new version first triggers automatic checking of affected areas; remaining ambiguity goes to people. Old confirmations do not automatically extend to new evidence.
+1. **准备输入：** 选择固定来源与调查重点，绑定 F006 配置，完成 01 预检；阻断项修复前不启动调查。
+2. **清点与调查：** 02 建立覆盖账本，03 主子 Agent 跨材料调查，形成候选和证据。
+3. **归并与核查：** 04 整理重复、层级、重叠和冲突，之后进入 05；不得绕过归并后的核查直接入图。
+4. **按结果分流：** 自动收录直接进入 07；自动补证返回 03；人工问题进入 06；待调查材料和无效输出分别保留或隔离。
+5. **落实人工决定：** 06 中经过校验的决定落实到 07 的选定命题或关系；补证及回答回到 03。人的解释不能抹掉与其不一致的代码证据。
+6. **持续追溯：** 07 展示当前图谱及缺口；08 管理任务恢复、版本更新、差异和质量复核。新版本先自动核查相关区域，仍有歧义再交人工，旧确认不自动扩展到新证据。
 
-The two graph-entry paths, **05 automatic admission → 07** and **06 checked human decisions → 07**, use solid arrows. The investigation loops, **05 supplementation → 03** and **06 evidence/answers → 03**, use destination labels `[03]`. Other numbered labels identify destinations, not necessarily automatic transitions: `[02]` retention is a valid resting state, `[08]` supports conditional recovery after isolation, and 08 is cross-cutting support rather than a final sequential step. Dashed arrows in 07's query-direction legend describe two-way navigation; semantic relationships retain their direction.
+图上的两条入图通路分别是“05 自动收录 → 07”与“06 人工决定校验后落实 → 07”，用实线箭头表达；两条调查回路“05 自动补证 → 03”与“06 补证/回答 → 03”用目标编号 `[03]` 表达。其他编号表示处理归宿，不必然表示自动执行跳转；`[02]` 保留待查是合法停留态，`[08]` 隔离后按条件恢复，08 是横向支撑而非末尾顺序步骤。07 中“查询方向”虚线是图例：查询可双向，语义关系仍保留方向。
 
-## 7. Presentation and governance boundaries
+## 7. 展示与治理边界
 
-- The business tree defaults to admitted Agent-analysis functions and human-confirmed functions, with textual state labels and a human-confirmed-only filter. Pending or disputed results remain inspectable but are not established branches; invalid outputs stay outside the effective graph.
-- Human approval applies to a proposition or relationship, not an entire subgraph. Function grouping organizes questions without expanding approval scope.
-- Check semantic support by relationship type. Model agreement, copied sources, and model confidence cannot substitute for evidence.
-- Added or changed source files require a new F001 version. Human decisions are recorded separately and cannot bypass source admission.
-- Test files do not mean tests passed. Without execution evidence, show “No linked execution record / Not yet verified” rather than inventing a test execution. Configuration defaults are not actual effective environment values.
-- F004 preserves provenance, state, and uncertainty when consuming relationships and evidence. This panorama adds no automatic merge or deployment blocking.
+- 业务树默认显示已自动收录的功能和人工确认的功能，带文字状态，并提供“仅人工确认”筛选；待查或争议可查看，但不是已成立分支，无效输出不进入有效图谱。
+- 人工批准落实到命题或关系，不是一键批准整张子图；功能分组用于组织问题，不扩大批准范围。
+- 按关系类型核查语义支撑；模型一致、相互复制的材料或模型置信度不能替代证据。
+- 补充或修改源文件必须走 F001 新版本；人的决定单独留痕，不能作为绕过来源准入的通道。
+- 测试文件不等于测试通过；没有执行记录时展示“未关联执行记录/尚未验证”，不虚构执行记录。配置默认值不等于实际环境生效值。
+- F004 消费关系与依据时保留来源、状态和不确定性；本图不新增自动阻止合并或部署的功能。
 
-## 8. Relationship to older documents and unsettled interfaces
+## 8. 与旧文档的关系及未定接口
 
-This edition confirms the F003 functional panorama; it does not imply that other Features, architecture diagrams, or ADRs have automatically been synchronized.
+本版确认的是 F003 的功能全景，不将其他 Feature、架构图或 ADR 视为已自动完成同步。
 
-| Difference | Treatment in this edition |
+| 差异 | 本版处理 |
 |---|---|
-| The 2026-08-29 F003 spec requires human approval for every candidate before entering the business tree. | That functional description is superseded by automatic admission in Agent-analysis state plus exception-based human review. The older spec body is marked historical. Automatic admission does not grant human-baseline publication authority. |
-| ADR-0003 and the product architecture make F002 the sole direct source-bundle consumer. | This edition establishes F001 material as primary analysis input and F002 as reference, but does not choose direct access versus a controlled evidence service. The access entry point, complete inventory/excerpt handoff, permission revalidation, and version binding need joint alignment. Nothing authorizes bypassing F001 sealing or admission. |
-| Existing Candidate/Decision/Claim and publication interfaces | Diagram states and decision scope are functional requirements. Fields, interfaces, role permissions, and concurrent-revision protocols are not finalized by the image, and existing implementation is not claimed to satisfy them. |
-| Exact automatic-admission evidence rules and quality acceptance values | Relationship-specific checking, bounded supplementation, and human reference cases are established. Rule versions, budget values, and measurable acceptance criteria need elaboration; this documentation pass does not invent them. |
+| 2026-08-29 F003 Spec 要求所有候选先人工批准才能进入业务树。 | 该功能描述已被本版“自动收录 Agent 分析态 + 例外人工审核”替代；旧 Spec 正文标为历史参考。自动收录不等于人工基线发布权。 |
+| ADR-0003 与产品架构规定 F002 是来源包唯一直接消费者。 | 本版明确 F001 原材料主分析、F002 参考，但不决定直接读取还是经受控证据服务读取。读取入口、完整清单/片段交接、权限复验与版本绑定需联合对齐；不授权绕过 F001 封存与准入边界。 |
+| 既有 Candidate/Decision/Claim 与发布接口。 | 图中的状态和决定范围是功能要求；字段、接口、角色授权和并发修订协议尚未由本图定稿，不声称已有实现满足它们。 |
+| 自动收录的具体证据判据与质量验收值。 | 按关系类型核查、补证有上限、用人工参考案例复核已明确；具体规则版本、预算值及可测量验收指标仍需细化，不在本次落盘时补造。 |
 
-Related documents: [F003 historical spec body and current entry point](../../features/F003-traceability-graph.md), [current F001 Chinese design](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md), [F002](../../features/F002-feature-api-traceability.md), [F006](../../features/F006-workspace-capability-settings.md), [F004](../../features/F004-change-impact-analysis.md), [ADR-0003](../../decisions/ADR-0003-source-truth-boundary.md), and [product architecture](../../architecture/traqen-product-architecture.md).
+相关文档：[F003 Spec 历史正文与当前入口](../../features/F003-traceability-graph.zh-CN.md)、[F001 当前中文设计](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)、[F002](../../features/F002-feature-api-traceability.zh-CN.md)、[F006](../../features/F006-workspace-capability-settings.zh-CN.md)、[F004](../../features/F004-change-impact-analysis.zh-CN.md)、[ADR-0003](../../decisions/ADR-0003-source-truth-boundary.zh-CN.md)、[产品架构](../../architecture/traqen-product-architecture.zh-CN.md)。
 
-## 9. Version and acceptance provenance
+## 9. 版本与验收追溯
 
-### Current V2.0
+### 当前 V2.0
 
-| Item | Evidence |
+| 项目 | 证据 |
 |---|---|
-| Discussion thread | `thread_mtgypu3cay1bysab` |
-| HTML remake and asset-write authorization | `0001789443495478-000034-934cc8b0` |
-| Xianxian's delivery | `0001789443497700-000062-33969791`: HTML/PNG, text corrections, and documentation-alignment items. |
-| Kimi's independent acceptance | `0001789444862182-000071-33780f79`: 27 terminology checks, 7 drift-word regressions, layout and connections passed; the PNG rerendered in that environment matched the archived hash. |
-| Operator replacement and write authorization | `0001789455231575-000268-ec300784` |
-| Diagram HTML SHA-256 | `56dae9d67570295ea232135ed76291b2b858fd6f85f06e8a9f4557325b96a2d8` |
-| Rendered PNG SHA-256 | `ba2c5e746b02772e95ec8024088c7804a697a3ca69323f6a6fb997f308215018` |
-| Hash resolution | Use the current on-disk HTML hash, independently consistent with Kimi's value, rather than the author's earlier `8357bf20…27fc0` report. |
-| Equivalent wording | Diagram “冲突编组” and Chinese section 4 “编组冲突” both mean grouping conflicts. Preserve their wording; this is not a new routing rule. |
+| 讨论线程 | `thread_mtgypu3cay1bysab` |
+| HTML 重制及 assets 写入授权 | `0001789443495478-000034-934cc8b0` |
+| 宪宪交付 | `0001789443497700-000062-33969791`：HTML/PNG、文字修正、文档对齐项。 |
+| Kimi 独立验收 | `0001789444862182-000071-33780f79`：27 项术语、7 项漂移词回归、版式与连接关系通过；在其环境重渲染 PNG 与归档值一致。 |
+| co-creator 替换与写入授权 | `0001789455231575-000268-ec300784` |
+| 图稿 HTML SHA-256 | `56dae9d67570295ea232135ed76291b2b858fd6f85f06e8a9f4557325b96a2d8` |
+| 渲染 PNG SHA-256 | `ba2c5e746b02772e95ec8024088c7804a697a3ca69323f6a6fb997f308215018` |
+| 校验值取舍 | 以本次磁盘实算并与 Kimi 核对一致的 HTML 值为准；不沿用作者初报的 `8357bf20…27fc0`。 |
+| 等价措辞 | 图上“冲突编组”与第 4 节“编组冲突”语义等价，保留各自表述；不是新的分流规则。 |
 
-This documentation update reuses that independent diagram acceptance and freshly verifies artifact hashes and documentation links; it does not claim a new browser acceptance run. Author and independent-review records establish byte equality in the tested environment, not across different browser, font, or operating-system versions.
+本次文档更新复用上述独立图稿验收，并重新核对产物校验值与文档链接；不声称本次重新执行了浏览器验收。相同环境中的字节一致性已有作者与独立验收记录，不承诺跨浏览器、字体或操作系统版本仍逐字节一致。
 
-### Historical versions (not current primary images)
+### 历史版本（不作为当前主图）
 
-| Version | Record |
+| 版本 | 记录 |
 |---|---|
-| [V1.0 first final edition](assets/f003-functional-panorama-v1.0.zh-CN.png) | Superseded by V2.0. Earlier confirmation `0001788935356126-000087-3385a3f2`, write authorization `0001788937652971-000112-fea57317`, and Kimi's polished-image check `0001788923474475-000083-4ca85833`. Original artifact `exec-e651da11-3710-4f73-9ecc-d276d6645dbe.png`; SHA-256 `380002bce7bded27588afcae8c1a3f86e1c620e0f7bdd57bd56f7a3cc344a28b`. |
-| [V1.3 raster candidate](assets/f003-functional-panorama-v1.3-candidate.zh-CN.png) | Structural reference for V2.0, retaining known text defects as historical evidence, not effective wording. SHA-256 `92db9c60a49a10de902e71e061c5f39ebb7718b1b20712eb1028a805edd45ab7`. |
+| [V1.0 第一版终稿](assets/f003-functional-panorama-v1.0.zh-CN.png) | 现已由 V2.0 替代；旧确认 `0001788935356126-000087-3385a3f2`、旧写入授权 `0001788937652971-000112-fea57317`、Kimi 精修复核 `0001788923474475-000083-4ca85833`。原始产物 `exec-e651da11-3710-4f73-9ecc-d276d6645dbe.png`；SHA-256 `380002bce7bded27588afcae8c1a3f86e1c620e0f7bdd57bd56f7a3cc344a28b`。 |
+| [V1.3 栅格候选](assets/f003-functional-panorama-v1.3-candidate.zh-CN.png) | V2.0 的结构参考，保留已知文字缺陷作为历史证据，不作为有效文案；SHA-256 `92db9c60a49a10de902e71e061c5f39ebb7718b1b20712eb1028a805edd45ab7`。 |
 
-This text-dense diagram requires exact wording: maintain HTML text and deliver the rendered PNG. Verification covers all text and every connection's source, destination, and meaning, not only the previous round's fixes. This record concerns diagrams and design documentation, not code review, Feature completion, or deployment acceptance.
+文字密集、要求逐字准确的本图由 HTML 文本维护、PNG 渲染交付；核查覆盖完整文字及每条连接的起点、终点与语义，不仅检查上一轮修订项。此记录属于图稿与设计写入，不是代码 Review、Feature 完成或部署验收记录。

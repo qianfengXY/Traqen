@@ -265,36 +265,6 @@ const testCases: TestCaseDefinition[] = [
     cleanupProtocol: null,
     requiredCapabilities: ["NODE_TEST_RUNNER", "GRAPH_PROJECTION"],
   },
-  {
-    id: "TC-TRAQEN-BILINGUAL-DOC-005",
-    version: 1,
-    title: "功能设计文档保持中英文成对",
-    scenario: "文档一致性",
-    priority: "P1",
-    operationLevel: "READ_ONLY",
-    automationStatus: "READY",
-    objective: "证明 Traqen Workspace 的 Markdown 设计文档同时存在英文与简体中文版本，并且语言切换链接可被自动发现。",
-    preconditions: ["文档位于 docs/ 或仓库 README 边界", "文件名遵守 .zh-CN.md 配对约定"],
-    testData: ["docs/features/F002-feature-api-traceability.md", "docs/features/F002-feature-api-traceability.zh-CN.md"],
-    steps: [
-      {
-        id: "discover-document-pairs",
-        executor: "CONTRACT",
-        action: "扫描需要双语维护的 Markdown 文件",
-        expected: "每个源文件都有对应语言版本",
-      },
-      {
-        id: "verify-language-switch",
-        executor: "CONTRACT",
-        action: "检查文档首行语言切换链接",
-        expected: "两个版本互相链接且目标存在",
-      },
-    ],
-    assertions: ["英文文档存在", "简体中文文档存在", "语言切换位于文档开头", "链接目标可访问"],
-    fixtureProtocol: null,
-    cleanupProtocol: null,
-    requiredCapabilities: ["NODE_TEST_RUNNER", "FILESYSTEM_READ"],
-  },
 ];
 
 export const currentTraqenArtifacts: TraceDetailArtifacts = {
@@ -462,12 +432,12 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
   ],
   testDesign: {
     strategy: {
-      objective: "从完整链、缺口透明性、Snapshot/部署新鲜度、图谱路径和双语文档一致性五个场景验证功能追溯，证明平台不会把未知、失败或历史结果伪装成当前可信。",
+      objective: "从完整链、缺口透明性、Snapshot/部署新鲜度和图谱路径四个场景验证功能追溯，证明平台不会把未知、失败或历史结果伪装成当前可信。",
       riskFocus: ["代码或 Agent 越权创建业务事实", "旧部署 PASS 被误认为当前 PASS", "缺失层被综合分数掩盖", "图谱过滤丢失来源或关系", "敏感配置明文泄露"],
       levels: ["领域规则测试", "图谱投影与路径测试", "HTTP/Schema 契约测试", "产品 Web 构建与详情投影", "生产运行边界验证"],
       dataStrategy: "优先使用 Traqen 仓库内真实设计、源码和 Node 测试；场景 Fixture 只构造不可变领域对象，不模拟外部业务。",
       environmentStrategy: "DEV 执行全部领域与 Web 测试；SIT/UAT 绑定真实 Snapshot 和部署验证 API；PROD 只接受已批准、签名且符合权限策略的执行与 Evidence。",
-      exitCriteria: ["全部 P0 用例 PASS", "阻断级 TraceGap 为 0", "当前部署 Execution 与 Evidence 均匹配", "历史失败仍可审计", "中英文设计文档同步"],
+      exitCriteria: ["全部 P0 用例 PASS", "阻断级 TraceGap 为 0", "当前部署 Execution 与 Evidence 均匹配", "历史失败仍可审计"],
     },
     cases: testCases,
     agentContract: {
@@ -557,8 +527,8 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
     {
       id: "RESULT-BILINGUAL-DOC-HISTORICAL-005",
       executionId: "EXEC-BILINGUAL-DOC-20260716-005A",
-      testCaseId: "TC-TRAQEN-BILINGUAL-DOC-005",
-      scenario: "文档一致性",
+      testCaseId: "RETIRED-TC-TRAQEN-BILINGUAL-DOC-005",
+      scenario: "历史双语文档一致性",
       status: "FAIL",
       applicability: "HISTORICAL",
       startedAt: "2026-07-16 19:16:02 CST",
@@ -574,12 +544,12 @@ export const currentTraqenArtifacts: TraceDetailArtifacts = {
       evidenceIds: ["EVIDENCE-BILINGUAL-DOC-FAIL-005"],
     },
     {
-      id: "RESULT-BILINGUAL-DOC-005",
+      id: "RESULT-BILINGUAL-DOC-HISTORICAL-PASS-005",
       executionId: "EXEC-BILINGUAL-DOC-20260716-005B",
-      testCaseId: "TC-TRAQEN-BILINGUAL-DOC-005",
-      scenario: "文档一致性",
+      testCaseId: "RETIRED-TC-TRAQEN-BILINGUAL-DOC-005",
+      scenario: "历史双语文档一致性",
       status: "PASS",
-      applicability: "CURRENT",
+      applicability: "HISTORICAL",
       startedAt: "2026-07-16 19:17:08 CST",
       durationMs: 17,
       environment: "DEV",
