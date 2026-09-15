@@ -47,6 +47,41 @@ test("F006 settings center makes a new global Skill explicitly verified and lets
     "removing an unavailable grant must edit the same durable Agent draft state");
 });
 
+test("F006 settings keeps creation-only guards separate from lifecycle controls and makes local Skills grantable", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /manifest:\s*\{\s*description:[\s\S]*signature: localKind === "SKILL" \? "VERIFIED" : undefined/,
+    "a Workspace-local Skill must satisfy the same verified-signature contract before it can be granted and applied");
+  assert.doesNotMatch(source, /<GlobalCapabilities \{\.\.\.props\} working=\{props\.working \|\| \(globalPage === "skills" && !skillVerified\)\}/,
+    "the new-Skill verification checkbox must not disable lifecycle recovery controls for existing global capabilities");
+  assert.match(source, /createDisabled=\{props\.working \|\| \(globalPage === "skills" && !skillVerified\)\}/,
+    "only creation is disabled until a new Skill has an executable identity");
+  assert.match(source, /disabled=\{props\.working\} onClick=\{\(\) => props\.onLifecycle/,
+    "an existing global capability remains deactivatable while the new-Skill checkbox is clear");
+});
+
+test("F006 settings stops autosave after a failed conflict and requires an explicit retry", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /if \(!edited \|\| edited === savedEdited \|\| !recoveryReady \|\| working \|\| autosaveStatus === "ERROR" \|\| props\.draftConflict \|\| autosaveInFlight\.current\) return/,
+    "a failed autosave must become a terminal state until the operator chooses to retry");
+  assert.match(source, /setAutosaveStatus\("IDLE"\)[\s\S]*setAutosaveAttempt/,
+    "Retry save must explicitly re-arm autosave instead of an unrelated rerender retrying forever");
+  assert.match(source, /draftConflict/,
+    "a stale draft conflict remains an explicit recovery state rather than an autosave loop");
+});
+
+test("F006 API-key account form advertises and validates the server-supported environment reference", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /env:\/\/OPENAI_API_KEY/,
+    "the API-key account form must show the reference scheme the default server resolver can actually resolve");
+  assert.match(source, /environment variable reference/,
+    "the UI must explain that a secret value is not entered or stored here");
+  assert.match(source, /isEnvironmentSecretReference/,
+    "the form must reject an unsupported provider reference before a silent server-side configuration failure");
+});
+
 test("F006 Codex model settings require an explicit model and expose reasoning effort", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
 

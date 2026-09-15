@@ -48,6 +48,7 @@ export function createConfiguredApplication({
   env = process.env,
   workspaceMcpExecutor = null,
   developmentUnderstanding = null,
+  analysisModelRegistry: injectedAnalysisModelRegistry = null,
 }) {
   if (!store) throw new TypeError("store is required");
   const runnerId = env.RUNNER_ID ?? null;
@@ -71,7 +72,7 @@ export function createConfiguredApplication({
   const referenceSkills = createReferenceSkillSet();
   const analysisModels = configuredAnalysisModels(env.ANALYSIS_MODEL_PROFILES_JSON, env);
   const analysisModelStorePath = env.ANALYSIS_MODEL_STORE_PATH ?? (env === process.env ? defaultAnalysisModelProfileStorePath() : null);
-  const analysisModelRegistry = new AnalysisModelRegistry({
+  const analysisModelRegistry = injectedAnalysisModelRegistry ?? new AnalysisModelRegistry({
     adapters: analysisModels,
     profileStore: analysisModelStorePath ? new EncryptedAnalysisModelProfileStore({ filePath: analysisModelStorePath }) : null,
   });

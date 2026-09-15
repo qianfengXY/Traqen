@@ -92,6 +92,19 @@ test("isolated development bootstrap completes source registration and the first
   assert.ok(referenceVariant.required.every((field) => Object.hasOwn(measurements[0], field)));
 });
 
+test("F006 configured CLI producers require an explicitly injected test registry", async (t) => {
+  const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-f006-cli-bootstrap-"));
+  const sourceRoot = path.join(temporary, "source");
+  await mkdir(sourceRoot);
+  await writeFile(path.join(sourceRoot, "entry.js"), "export const fixture = true;\n");
+  t.after(() => rm(temporary, { recursive: true, force: true }));
+
+  await assert.rejects(
+    () => createIsolatedDevelopmentApplication({ sourceRoot, useConfiguredModelProducers: true }),
+    /require an injected analysis model registry/,
+  );
+});
+
 test("environment variables cannot enable local reference publication in the production bootstrap", async (t) => {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "traqen-production-isolation-"));
   t.after(() => rm(temporary, { recursive: true, force: true }));
