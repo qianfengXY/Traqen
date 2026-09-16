@@ -137,10 +137,10 @@ test("F006 conflict recovery acknowledges both recovered drafts, re-enables Appl
       },
     };
     const jsx = (type, props, key) => ({ type, props, key });
-    const module = { exports: {} };
+    const sandboxModule = { exports: {} };
     vm.runInNewContext(compiled, {
-      module,
-      exports: module.exports,
+      module: sandboxModule,
+      exports: sandboxModule.exports,
       require: (name) => name === "react" ? hooks : name === "react/jsx-runtime" ? { jsx, jsxs: jsx } : {},
       window: {
         setTimeout: (callback) => { timers.set(++timerId, callback); return timerId; },
@@ -186,7 +186,7 @@ test("F006 conflict recovery acknowledges both recovered drafts, re-enables Appl
     };
     function render() {
       cursor = 0;
-      const tree = module.exports.F006SettingsCenter(props);
+      const tree = sandboxModule.exports.F006SettingsCenter(props);
       while (effects.length) effects.shift()();
       return tree;
     }
