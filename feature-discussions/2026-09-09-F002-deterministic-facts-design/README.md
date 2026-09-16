@@ -6,12 +6,15 @@ related_features: [F001, F003, F004]
 topics: [deterministic-facts, evidence, controlled-material-view, coverage, functional-design]
 doc_kind: feature-discussion
 created: 2026-09-09
-updated: 2026-09-15
+updated: 2026-09-16
 version: "functional-panorama-v4-f003-style"
-status: discussion-draft
+status: superseded-discussion
+superseded_by: ../../docs/design/F002-deterministic-facts/README.md
 ---
 
 # F002 Deterministic Facts: Functional Design (Panorama v4 · F003 Style)
+
+> **Historical discussion provenance, not the current normative design.** The operator authorized final-baseline publication on 2026-09-16 at 03:40 UTC; see [F002 Functional Design Baseline V1.0 (normative Chinese)](../../docs/design/F002-deterministic-facts/README.md). Kimi checked the style image against the functional text on 2026-09-15 at 08:22 UTC, message `0001789460522847-000368-40c193ad`. The original discussion wording below and all images/generation records are retained. Publication does not settle the open technical interfaces.
 
 ## 1. Status of this edition
 

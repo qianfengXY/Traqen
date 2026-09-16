@@ -15,7 +15,7 @@ status: active
 | Feature | 已发布基线 | 边界 |
 |---|---|---|
 | F001 | [工作空间与源码真相入口](../features/F001-legacy-system-understanding.zh-CN.md)与[已确认的 Design B](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) | 在 co-creator 的 F001 未提交材料被单独保全前，Design B 保留在工作设计路径。它是详细权威；本索引不授权移动或丢弃这些 WIP。 |
-| F002 | [确定性证据与 API 结构](../features/F002-feature-api-traceability.zh-CN.md) | v4 全景图仍是讨论稿：图是内容基线，但源码访问、Schema 与验收合同尚未定稿。 |
+| F002 | [确定性事实层：功能设计 V1.0](F002-deterministic-facts/README.md)与[Feature 入口](../features/F002-feature-api-traceability.zh-CN.md) | 六组 24 项功能、五部分出口和双向取证回路已定稿，采用 v4 风格版图；具体读取接口、Schema、首期能力、存储与量化验收值仍待确定，不代表实现完成。 |
 | F003 | [功能全景 V2.0](F003-traceability-graph/README.md)与[Feature 入口](../features/F003-traceability-graph.zh-CN.md) | 八组功能和五档分流已发布；访问接口、字段合同和量化验收值仍待确定。 |
 | F004 | [变更影响分析](../features/F004-change-impact-analysis.zh-CN.md) | 尚未有已确认的替代设计。 |
 | F006 | [Workspace 能力配置](../features/F006-workspace-capability-settings.zh-CN.md) | Feature 文档仍是验收合同；讨论记录是决策来源，不是竞争 Spec。 |

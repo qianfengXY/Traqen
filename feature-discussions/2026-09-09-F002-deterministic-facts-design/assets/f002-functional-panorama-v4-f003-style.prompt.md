@@ -12,7 +12,7 @@ status: document-embedded
 
 - 图片：[F002 v4 风格对齐版](f002-functional-panorama-v4-f003-style.zh-CN.png)。
 - 当前已纳入设计文档的内容基线：[F002 v4 原图](f002-functional-panorama-v4.zh-CN.png)，保留不覆盖。
-- 风格来源：[F003 当前 V2.0 主图](../../2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v2.0.zh-CN.png)，只取视觉样式，不导入 F003 的八组功能或流程。
+- 风格来源：[F003 V2.0 主图](../../../docs/design/F003-traceability-graph/assets/f003-functional-panorama-v2.0.zh-CN.png)，只取视觉样式，不导入 F003 的八组功能或流程；此处随正式设计目录迁移修正链接，生成时的图片与提示词不变。
 - 线程：`thread_mtgygk6ew4qqmz7b`。
 - 授权消息：`0001789456971433-000308-709a079d`，2026-09-15 07:22 UTC。
 - co-creator 原话：“这个图能否像F003文档里面的把风格保持一致？图片上的内容、线条都保持现有的逻辑，仅仅把风格换成F003的图，我觉得F003的好看一些”。

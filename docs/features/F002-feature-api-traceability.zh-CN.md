@@ -5,7 +5,8 @@ feature_ids: [F002]
 topics: [deterministic-analysis, evidence-facts, api-tree, traceability, gaps]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-08-30
+updated: 2026-09-16
+current_design: ../design/F002-deterministic-facts/README.md
 description: 从版本化工作空间快照中提取可复现的源码事实和有证据支撑的 API 结构树。
 description_source: human
 description_author: co-creator
@@ -17,6 +18,16 @@ description_updated_at: 2026-08-30T06:44:00Z
 **状态：** Spec
 **负责人：** TBD
 **依赖：** F001
+
+## 当前功能设计 — V1.0
+
+co-creator 于 2026-09-16 03:40 UTC 明确要求将本次设计发布为定稿基线。当前规范文本为 [F002 确定性事实层：功能设计基线 V1.0](../design/F002-deterministic-facts/README.md)，采用已核对的全景 v4 · F003 风格版。
+
+本基线确认六组 24 项子功能、五部分逻辑交付物、受控材料视图、编号原则、F003 定向取证／疑似漏提及返回回路、事实成立与质量边界。API 树是投影之一，不再将 F002 的功能范围等同于 API 扫描。
+
+**下文为 2026-08-30 历史 Spec，不是当前功能合同。** 具体读取接口、Schema、首期提取能力、存储与量化验收值仍见定稿文档第 9 节；本次不修改 ADR，不宣告实现完成，不勾选历史验收项，Feature 状态仍为 `Spec`。
+
+## 历史 Spec — 2026-08-30
 
 ## 为什么
 

@@ -5,7 +5,8 @@ feature_ids: [F002]
 topics: [deterministic-analysis, evidence-facts, api-tree, traceability, gaps]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-08-30
+updated: 2026-09-16
+current_design: ../design/F002-deterministic-facts/README.md
 description: Derive reproducible source facts and an evidence-backed API-structure tree from a versioned workspace snapshot.
 description_source: human
 description_author: co-creator
@@ -17,6 +18,16 @@ description_updated_at: 2026-08-30T06:44:00Z
 **Status:** Spec
 **Owner:** TBD
 **Depends on:** F001
+
+## Current functional design — V1.0
+
+The operator authorized final-baseline publication on 2026-09-16 at 03:40 UTC. The normative design is [F002 Deterministic Facts: Functional Design Baseline V1.0 (Chinese)](../design/F002-deterministic-facts/README.md), using the checked F003-style panorama v4.
+
+The baseline confirms six groups / 24 subfunctions, five logical deliverables, controlled material views, identity principles, the bidirectional F003 evidence-request / suspected-omission loop, and evidence-quality boundaries. An API tree is one projection, not the entire F002 product.
+
+**The following 2026-08-30 spec is historical, not the current functional contract.** Access interfaces, schemas, initial extraction capabilities, storage, and quantitative acceptance values remain open in section 9 of the baseline. No ADR is changed, implementation is not declared complete, historical acceptance boxes remain unchecked, and Feature status remains `Spec`.
+
+## Historical spec — 2026-08-30
 
 ## Why
 
