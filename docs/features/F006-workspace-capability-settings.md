@@ -15,8 +15,14 @@ description_updated_at: 2026-08-28T14:53:00Z
 
 # F006: Workspace Capability Settings
 
-> **Status:** spec · **Priority:** P2 · **Owner:** TBD
+> **Status:** in-progress · **Priority:** P2 · **Owner:** TBD
 > **Product truth:** this document supersedes the earlier F006 specification and its template/override model.
+
+## Timeline
+
+| Date | Event |
+|---|---|
+| 2026-09-16 | PR #34 merged the F006 implementation; final post-merge isolation acceptance remains in progress. |
 
 ## 1. Purpose
 
