@@ -20,11 +20,12 @@ publication_request: 0001789530224292-000425-1446a766
 
 ## Reading entry and screen designs
 
-The operator's 2026-09-16 03:43 UTC request authorizes placing the existing proposal in documentation for reading. This edition embeds the existing screenshots and preserves the proposal's review status. Publication is not design acceptance or implementation authorization; no screens were regenerated for this packaging change.
+The operator's 2026-09-16 03:43 UTC request authorizes placing the existing proposal in documentation for reading. This edition embeds the screenshots and preserves the proposal's review status. Publication is not design acceptance or implementation authorization. The 2026-09-16 update captures the fully expanded mobile drawer, adds the dark form-error state, and restores the standalone charter page without changing the design proposal.
 
-Read the sixteen screenshots, then the sixteen charter sections. Both language editions use the same Chinese UI images and fixture prototype.
+Read the seventeen screenshots, then the sixteen charter sections. Both language editions use the same Chinese UI images and fixture prototype.
 
 - [Offline interactive prototype, including the complete Chinese charter](assets/Traqen-F005-review.html)
+- [Standalone charter reader](assets/charter.html)
 - [Full-size screen gallery](assets/gallery.html)
 - [Editable Pencil core boards](assets/F005-layout-navigation-v2.pen)
 - [Original prototype verification record](assets/verification.json)
@@ -76,6 +77,14 @@ Read the sixteen screenshots, then the sixteen charter sections. Both language e
 ![Form validation — existing rendered fixture design](assets/previews/08-form-error.png)
 
 [Open original size](assets/previews/08-form-error.png)
+
+### Form validation · dark
+
+Invalid input and the source name remain visible, with a clear error message and focused field in the dark theme.
+
+![Form validation in dark theme — retained source name and invalid address with an identified error](assets/previews/17-form-error-dark.png)
+
+[Open original size](assets/previews/17-form-error-dark.png)
 
 ### Proposition confirmation
 
@@ -458,7 +467,7 @@ Required journeys:
 
 ## 14 · Deliverables and explicit limits
 
-This documentation package retains the offline prototype, sixteen screens, Pencil boards, and original verification under assets/. The complete charter is in these Markdown pages and inside the offline prototype. The six destinations plus component showcase use the same visual foundation.
+This documentation package retains the offline prototype, seventeen screens, Pencil boards, and original verification under assets/. The complete charter is in these Markdown pages, the standalone reader, and inside the offline prototype. The six destinations plus component showcase use the same visual foundation.
 
 | Area | Delivered proposal | Remaining product implementation |
 |---|---|---|
