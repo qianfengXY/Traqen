@@ -27,6 +27,12 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 
 F001–F004 are the active legacy-system-understanding design baseline. F006 retains its separate implementation track. Historical working artifacts may remain unlinked for compatibility or audit, but cannot compete with this table, the roadmap, or the active architecture documents.
 
+## Designs awaiting review
+
+- [F005 · Experience and Frontend Design Charter (16 screens, interactive prototype, and component specifications)](design-reviews/F005/README.en.md) · [简体中文](design-reviews/F005/README.md)
+
+This entry makes the complete proposal available for reading. It remains awaiting review and does not change the active design baseline above.
+
 ## Visual design
 
 - [Workspace capability resolution — Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)

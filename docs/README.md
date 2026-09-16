@@ -27,6 +27,12 @@
 
 F001–F004 是当前存量系统理解的设计基线。F006 保留其独立实施轨道。历史工作产物可因兼容性或审计目的而保留为未链接文档，但不得与本表、路线图或活动架构文档竞争真相源。
 
+## 待评审设计
+
+- [F005 · 整体体验与前端设计总纲（含 16 张效果图、交互样稿与组件规范）](design-reviews/F005/README.md)
+
+此入口供阅读完整提案；方案仍待评审，不改变上方活动设计基线。
+
 ## 可视化设计
 
 - [Workspace 能力解析——Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)

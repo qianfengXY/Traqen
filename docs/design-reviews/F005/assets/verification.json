@@ -1,0 +1,180 @@
+{
+  "date": "2026-09-15T08:29:10.230Z",
+  "browser": "isolated Google Chrome via Playwright",
+  "data": "fixture data only",
+  "checks": [
+    {
+      "name": "invalid source preserves entered name and focuses error",
+      "pass": true
+    },
+    {
+      "name": "unique valid source persists after refresh",
+      "pass": true
+    },
+    {
+      "name": "source filter has recoverable zero state",
+      "pass": true
+    },
+    {
+      "name": "draft details never borrow frozen r8 identity",
+      "pass": true
+    },
+    {
+      "name": "source recovery retains known progress",
+      "pass": true
+    },
+    {
+      "name": "command search, empty result and keyboard selection",
+      "pass": true
+    },
+    {
+      "name": "edge carries specific test asset limitation",
+      "pass": true
+    },
+    {
+      "name": "graph zoom, filtered list and selection share state",
+      "pass": true
+    },
+    {
+      "name": "review draft text survives modal dismissal and reload",
+      "pass": true
+    },
+    {
+      "name": "single proposition decision changes only refund and keeps note",
+      "pass": true
+    },
+    {
+      "name": "configuration save and apply are distinct",
+      "pass": true
+    },
+    {
+      "name": "unrelated technical object does not reuse false heading",
+      "pass": true
+    },
+    {
+      "name": "browser page errors in visual run",
+      "pass": true,
+      "details": []
+    },
+    {
+      "name": "charter readable with 16 sections",
+      "pass": true
+    },
+    {
+      "name": "35 viewport/page combinations without whole-page overflow",
+      "pass": true,
+      "details": []
+    },
+    {
+      "name": "representative text and input contrast pairs",
+      "pass": true
+    },
+    {
+      "name": "offline file opens 16-section charter and graph without a server",
+      "pass": true,
+      "evidence": "isolated Chrome file:// navigation; charter dialogOpen=true; sections=16; selected=取消订单; page errors=[]"
+    }
+  ],
+  "scope": "Independent design proposal; this is author verification of a fixture prototype, not independent code review or production acceptance",
+  "contrast": {
+    "method": "WCAG relative luminance calculation",
+    "pairs": [
+      {
+        "label": "light primary text",
+        "fg": "#1d1d1f",
+        "bg": "#f5f5f7",
+        "ratio": 15.46,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "light secondary",
+        "fg": "#626570",
+        "bg": "#f5f5f7",
+        "ratio": 5.34,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "light metadata",
+        "fg": "#6b6f7b",
+        "bg": "#f5f5f7",
+        "ratio": 4.61,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "light link",
+        "fg": "#0066cc",
+        "bg": "#f5f5f7",
+        "ratio": 5.11,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "confirmed",
+        "fg": "#28714b",
+        "bg": "#edf6ef",
+        "ratio": 5.35,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "attention",
+        "fg": "#945c05",
+        "bg": "#fff5e4",
+        "ratio": 5.12,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "analysis",
+        "fg": "#7054ad",
+        "bg": "#f1edfa",
+        "ratio": 5.12,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "dark primary",
+        "fg": "#f2f3f6",
+        "bg": "#222329",
+        "ratio": 14.12,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "dark secondary",
+        "fg": "#b3b7c3",
+        "bg": "#222329",
+        "ratio": 7.82,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "dark metadata",
+        "fg": "#9a9eab",
+        "bg": "#222329",
+        "ratio": 5.86,
+        "minimum": 4.5,
+        "pass": true
+      },
+      {
+        "label": "light input boundary",
+        "fg": "#898f9b",
+        "bg": "#ffffff",
+        "ratio": 3.25,
+        "minimum": 3,
+        "pass": true
+      },
+      {
+        "label": "dark input boundary",
+        "fg": "#72788a",
+        "bg": "#222329",
+        "ratio": 3.56,
+        "minimum": 3,
+        "pass": true
+      }
+    ]
+  }
+}
