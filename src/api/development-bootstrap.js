@@ -170,14 +170,21 @@ export async function createIsolatedDevelopmentApplication({
   snapshotRoot = null,
   store = new MemoryTraceabilityStore(),
   env = {},
+  analysisModelRegistry = null,
+  useConfiguredModelProducers = false,
 } = {}) {
   if (typeof sourceRoot !== "string" || sourceRoot.trim() === "") {
     throw new TypeError("sourceRoot is required for isolated development");
   }
+  if (useConfiguredModelProducers && !analysisModelRegistry) {
+    throw new TypeError("configured CLI producers require an injected analysis model registry");
+  }
   const isolatedSnapshotRoot = snapshotRoot ?? await mkdtemp(path.join(os.tmpdir(), "traqen-development-snapshots-"));
   const developmentUnderstanding = {
-    childProducer: developmentChildProducer,
-    mainProducer: developmentMainProducer,
+    ...(useConfiguredModelProducers ? {} : {
+      childProducer: developmentChildProducer,
+      mainProducer: developmentMainProducer,
+    }),
     equivalenceResolver: developmentEquivalenceResolver,
     reviewedEvaluationResolver: developmentReviewedEvaluationResolver,
     implementationAuthorId: "TRAQEN-LOCAL-DEVELOPMENT-RUNTIME",
@@ -197,6 +204,7 @@ export async function createIsolatedDevelopmentApplication({
       DATA_CLASSIFICATION: "LOCAL_DEVELOPMENT_REFERENCE_ONLY",
     },
     developmentUnderstanding,
+    analysisModelRegistry,
   });
   await configured.ready;
   await configured.application.registerCapabilityTemplate({

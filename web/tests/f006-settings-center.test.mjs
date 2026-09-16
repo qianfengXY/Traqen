@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import test from "node:test";
+import vm from "node:vm";
+
+const require = createRequire(import.meta.url);
+const ts = require("../node_modules/typescript");
 
 test("F006 settings center keeps global availability, Workspace grants, and external OAuth separate", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
@@ -17,7 +22,8 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.doesNotMatch(source, /accessToken|refreshToken|beginOAuthLogin/, "the UI must not create an OAuth token or login flow");
   assert.match(source, /Apply configuration/);
   assert.match(source, /setTimeout\(\(\) => \{\s*autosaveInFlight\.current = true/);
-  assert.match(source, /onAutoSave\(\)\.then\(\(saved\)/);
+  assert.match(source, /onAutoSave\(editRevision\)\.then\(\(saved\)/,
+    "the save owner must receive the exact edit revision represented by its payload");
   assert.match(source, /Retry save/);
   assert.match(source, /Cannot re-enable here/);
   assert.match(source, /actualUnavailable/);
@@ -28,6 +34,251 @@ test("F006 settings center keeps global availability, Workspace grants, and exte
   assert.match(source, /agentDrawerOpen/);
   assert.match(source, /availableSkills\.length \?/);
   assert.match(source, /availableMcps\.length \?/);
+});
+
+test("F006 settings center binds a new global Skill to a mounted executor and lets an Agent remove unavailable legacy grants", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /skillVerified/,
+    "a global Skill created in Settings needs an explicit verification state before it can be granted");
+  assert.match(source, /selectedGlobalSkill/,
+    "the UI must require a selected mounted executor before a global Skill can be saved");
+  assert.match(source, /adapterId: selectedGlobalSkill!\.id, version: selectedGlobalSkill!\.version/,
+    "the UI must submit the exact selected executor identity rather than inventing a signature");
+  assert.doesNotMatch(source, /signature:\s*kind === "SKILL" \? "VERIFIED" : undefined/,
+    "the client must not self-attest a Skill as VERIFIED");
+  assert.match(source, /!skillVerified/,
+    "a Skill cannot be saved as grantable before the administrator verifies it");
+  assert.match(source, /unavailableGrants/,
+    "Agent Settings must retain a recovery view for grants hidden from the effective catalog");
+  assert.match(source, /GLOBAL_UNAVAILABLE[\s\S]*props\.selected!\.skills\.includes/,
+    "a selected unavailable Skill must remain in the Agent grant list so it can be unchecked");
+  assert.match(source, /onToggleGrant\("SKILL", entry\.normalizedName\)/,
+    "removing an unavailable grant must edit the same durable Agent draft state");
+});
+
+test("F006 settings keeps creation-only guards separate from lifecycle controls and maps local Skills to executors", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /selectedLocalSkill/,
+    "a Workspace-local Skill must select an executor before it can be granted and applied");
+  assert.match(source, /adapterId: selectedLocalSkill!\.id, version: selectedLocalSkill!\.version/,
+    "a Workspace-local Skill must submit the exact selected executor mapping");
+  assert.match(source, /handwritten signature is not accepted/,
+    "the recovery UI must explain that the server seals the executor mapping");
+  assert.doesNotMatch(source, /<GlobalCapabilities \{\.\.\.props\} working=\{props\.working \|\| \(globalPage === "skills" && !skillVerified\)\}/,
+    "the new-Skill verification checkbox must not disable lifecycle recovery controls for existing global capabilities");
+  assert.match(source, /createDisabled=\{props\.working \|\| \(globalPage === "skills" && \(!skillVerified \|\| !selectedGlobalSkill\)\)\}/,
+    "only creation is disabled until a new Skill has both confirmation and an executable identity");
+  assert.match(source, /disabled=\{props\.working\} onClick=\{\(\) => props\.onLifecycle/,
+    "an existing global capability remains deactivatable while the new-Skill checkbox is clear");
+});
+
+test("F006 settings stops autosave after a failed conflict and requires an explicit retry", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /if \(!edited \|\| edited === savedEdited \|\| !recoveryReady \|\| working \|\| autosaveStatus === "ERROR" \|\| props\.draftConflict \|\| autosaveInFlight\.current\) return/,
+    "a failed autosave must become a terminal state until the operator chooses to retry");
+  assert.match(source, /setAutosaveStatus\("IDLE"\)[\s\S]*setAutosaveAttempt/,
+    "Retry save must explicitly re-arm autosave instead of an unrelated rerender retrying forever");
+  assert.match(source, /draftConflict/,
+    "a stale draft conflict remains an explicit recovery state rather than an autosave loop");
+  assert.match(source, /function acknowledgeRecoveredDraft\(acknowledgedEdited: number \| null\)/,
+    "both conflict-recovery actions must explicitly acknowledge the child edit revision that is now durable");
+  assert.match(source, /void props\.onRetryDraftConflict\(\)\.then\(acknowledgeRecoveredDraft\)/,
+    "retrying the local draft must acknowledge the frozen snapshot actually written, not a later editor revision");
+  assert.match(source, /void props\.onUseCurrentDraft\(edited\)\.then\(acknowledgeRecoveredDraft\)/,
+    "adopting the server draft must clear the error state and re-enable Apply without an extra autosave");
+});
+
+test("F006 retry recovery tracks the edit revision that its conflict payload actually persisted", async () => {
+  const source = await readFile(new URL("../app/traqen-product.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /localEditedRevision: number \| null/,
+    "a conflict must retain the editor revision that produced its frozen local payload");
+  assert.match(source, /function autoSaveCapabilities\(editRevision: number\)[\s\S]*editRevision/,
+    "automatic saves must provide their payload's edit revision to conflict recovery");
+  assert.match(source, /async function retryCapabilityDraft\(\): Promise<number \| null>[\s\S]*return saved \? conflict\.localEditedRevision : null/,
+    "Retry must acknowledge only the edit revision contained in the persisted conflict snapshot");
+});
+
+test("F006 conflict recovery acknowledges both recovered drafts, re-enables Apply, and preserves later edits", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText;
+
+  async function exercise(recoveryLabel) {
+    const slots = [];
+    const effects = [];
+    const timers = new Map();
+    let cursor = 0;
+    let timerId = 0;
+    let saves = 0;
+    const hooks = {
+      useState(initial) {
+        const index = cursor++;
+        if (!(index in slots)) slots[index] = initial;
+        return [slots[index], (value) => { slots[index] = typeof value === "function" ? value(slots[index]) : value; }];
+      },
+      useRef(initial) {
+        const index = cursor++;
+        return slots[index] ?? (slots[index] = { current: initial });
+      },
+      useMemo(factory) { cursor++; return factory(); },
+      useEffect(callback, dependencies) {
+        const index = cursor++;
+        const previous = slots[index];
+        if (!previous || dependencies.some((value, dependencyIndex) => !Object.is(value, previous.dependencies[dependencyIndex]))) {
+          previous?.cleanup?.();
+          slots[index] = { dependencies };
+          effects.push(() => { slots[index].cleanup = callback(); });
+        }
+      },
+    };
+    const jsx = (type, props, key) => ({ type, props, key });
+    const sandboxModule = { exports: {} };
+    vm.runInNewContext(compiled, {
+      module: sandboxModule,
+      exports: sandboxModule.exports,
+      require: (name) => name === "react" ? hooks : name === "react/jsx-runtime" ? { jsx, jsxs: jsx } : {},
+      window: {
+        setTimeout: (callback) => { timers.set(++timerId, callback); return timerId; },
+        clearTimeout: (id) => timers.delete(id),
+      },
+      crypto: { randomUUID: () => "fixture" },
+    });
+    const props = {
+      t: (_zh, english) => english,
+      scope: "workspace",
+      workspace: { id: "WORKSPACE-1", name: "Workspace" },
+      accounts: [], models: [], capabilities: [], executableSkills: [],
+      catalog: { entries: [], effective: [] },
+      draft: { revision: 1 },
+      draftConflict: false,
+      mainModel: "MODEL-1", mainSkillNames: [], mainMcpNames: [],
+      childSlots: [{ id: "CHILD-1", model: "MODEL-1", skillNames: [], mcpNames: [] }],
+      disabledKeys: [], working: false, recoveryReady: true, profile: null,
+      setMainModel: (model) => { props.mainModel = model; },
+      onAutoSave: async () => {
+        saves += 1;
+        if (saves === 1 || saves === 3) {
+          props.draftConflict = true;
+          return false;
+        }
+        return true;
+      },
+      onUseCurrentDraft: async (editedRevision) => {
+        props.draftConflict = false;
+        props.draft = { revision: 2 };
+        props.mainModel = "SERVER-MODEL";
+        return editedRevision;
+      },
+      onRetryDraftConflict: async () => {
+        props.draftConflict = false;
+        props.draft = { revision: 3 };
+        return 1;
+      },
+      onApply: () => {}, onSaveLocalCapability: () => {}, onDeleteLocalCapability: () => {},
+      onSaveAccount: async () => true, onRecheckAccount: async () => {}, onSaveModel: async () => true,
+      onVerifyModel: async () => {}, onCreatePinnedReplacement: () => {}, onLifecycle: () => {},
+      setScope: () => {}, setMainSkillNames: () => {}, setMainMcpNames: () => {}, setChildSlots: () => {}, setDisabledKeys: () => {},
+    };
+    function render() {
+      cursor = 0;
+      const tree = sandboxModule.exports.F006SettingsCenter(props);
+      while (effects.length) effects.shift()();
+      return tree;
+    }
+    function nodes(tree) {
+      if (!tree || typeof tree !== "object") return [];
+      if (Array.isArray(tree)) return tree.flatMap(nodes);
+      return [tree, ...nodes(tree.props?.children)];
+    }
+    const button = (tree, label) => nodes(tree).find((node) => node.type === "button" && node.props.children === label);
+    const flushTimers = () => {
+      for (const [id, callback] of [...timers]) {
+        timers.delete(id);
+        callback();
+      }
+    };
+    const settle = async () => { for (let index = 0; index < 6; index += 1) await Promise.resolve(); };
+
+    let tree = render();
+    nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-2");
+    render();
+    flushTimers();
+    await settle();
+    tree = render();
+    assert.equal(saves, 1, "the failed save must happen once");
+    assert.equal(timers.size, 0, "a conflict must not schedule a background retry");
+
+    if (recoveryLabel === "Retry my draft") {
+      nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-3");
+      render();
+      assert.equal(timers.size, 0, "edits made while resolving a conflict must wait for explicit recovery");
+    }
+
+    button(tree, recoveryLabel).props.onClick();
+    await settle();
+    tree = render();
+    assert.equal(props.draftConflict, false, `${recoveryLabel} clears the conflict`);
+    assert.equal(Boolean(button(tree, "Retry save")), false, `${recoveryLabel} clears the failed autosave state`);
+    if (recoveryLabel === "Retry my draft") {
+      assert.equal(button(tree, "Apply configuration").props.disabled, true,
+        "Retry must leave a later, unpersisted edit dirty instead of falsely unlocking Apply");
+      assert.equal(timers.size, 1,
+        "Retry must schedule exactly one fresh save for the later edit without reviving the old retry loop");
+      flushTimers();
+      await settle();
+      tree = render();
+      assert.equal(saves, 2, "the later edit must get its own one-time autosave after Retry persists the frozen snapshot");
+      assert.equal(button(tree, "Apply configuration").props.disabled, false,
+        "Apply unlocks only after the later edit itself is durable");
+    } else {
+      assert.equal(button(tree, "Apply configuration").props.disabled, false, `${recoveryLabel} makes the recovered draft applyable`);
+      assert.equal(timers.size, 0, `${recoveryLabel} does not re-arm stale autosave work`);
+
+      nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-3");
+      render();
+      assert.equal(timers.size, 1, "a later edit remains saveable after recovery");
+      flushTimers();
+      await settle();
+      tree = render();
+      assert.equal(saves, 2, "a later edit performs one fresh autosave");
+      assert.equal(button(tree, "Apply configuration").props.disabled, false, "the later saved edit stays applyable");
+    }
+
+    nodes(tree).find((node) => node.type?.name === "AgentSettings").props.onModelChange("MODEL-4");
+    render();
+    flushTimers();
+    await settle();
+    tree = render();
+    assert.equal(saves, 3, "a later, independent conflict must issue exactly one save");
+    assert.equal(props.draftConflict, true, "a repeated conflict remains explicit instead of silently retrying");
+    assert.equal(timers.size, 0, "a repeated conflict must not create a retry storm");
+    button(tree, "Use server draft").props.onClick();
+    await settle();
+    tree = render();
+    assert.equal(props.draftConflict, false, "Use server draft resolves a repeated conflict");
+    assert.equal(button(tree, "Apply configuration").props.disabled, false,
+      "adopting the exact server state may immediately restore Apply");
+    assert.equal(timers.size, 0, "adopting the server state must not enqueue stale local writes");
+  }
+
+  await exercise("Use server draft");
+  await exercise("Retry my draft");
+});
+
+test("F006 API-key account form advertises and validates the server-supported environment reference", async () => {
+  const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /env:\/\/OPENAI_API_KEY/,
+    "the API-key account form must show the reference scheme the default server resolver can actually resolve");
+  assert.match(source, /environment variable reference/,
+    "the UI must explain that a secret value is not entered or stored here");
+  assert.match(source, /isEnvironmentSecretReference/,
+    "the form must reject an unsupported provider reference before a silent server-side configuration failure");
 });
 
 test("F006 Codex model settings require an explicit model and expose reasoning effort", async () => {

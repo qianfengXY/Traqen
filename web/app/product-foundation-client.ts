@@ -86,6 +86,12 @@ export type GlobalCapabilityImpact = {
   impacts: Array<{ workspaceId: string; workspaceName?: string; grantedSlotIds: string[] }>;
 };
 
+export type WorkspaceExecutableSkill = {
+  id: string;
+  version: string;
+  displayName: string;
+};
+
 export type AgentSlotDraft = {
   id: string;
   role: "MAIN" | "CHILD";
@@ -247,6 +253,11 @@ export async function recheckGlobalAccount(apiBase: string, apiToken: string, ac
 export async function listGlobalCapabilities(apiBase: string, apiToken: string) {
   const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, { method: "GET", headers: headers(apiToken) });
   return (await parseJson<{ capabilities: GlobalCapability[] }>(response)).capabilities;
+}
+
+export async function listWorkspaceExecutableSkills(apiBase: string, apiToken: string) {
+  const response = await fetch(`${base(apiBase)}/v1/workspace-executable-skills`, { method: "GET", headers: headers(apiToken) });
+  return (await parseJson<{ skills: WorkspaceExecutableSkill[] }>(response)).skills;
 }
 
 export async function saveGlobalCapability(apiBase: string, apiToken: string, input: Record<string, unknown>) {

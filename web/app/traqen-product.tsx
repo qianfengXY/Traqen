@@ -30,6 +30,7 @@ import {
   listGlobalCapabilityTemplates,
   listGlobalAccounts,
   listGlobalCapabilities,
+  listWorkspaceExecutableSkills,
   createGlobalCliModel,
   getGlobalCapabilityImpact,
   recheckGlobalAccount,
@@ -54,6 +55,7 @@ import {
   type GlobalCapabilityImpact,
   type WorkspaceCapabilityDraft,
   type WorkspaceCapabilityDraftSaveInput,
+  type WorkspaceExecutableSkill,
 } from "./product-foundation-client";
 import { hasUnsavedCapabilityDraftChanges, type SecurityBoundaryDraft } from "./capability-settings-state";
 import {
@@ -90,6 +92,7 @@ type Health = "checking" | "healthy" | "unavailable";
 type CapabilityDraftConflict = {
   head: "WORKSPACE_CAPABILITY_DRAFT";
   local: WorkspaceCapabilityDraftSaveInput;
+  localEditedRevision: number | null;
   current: WorkspaceCapabilityDraft | null;
   currentCatalog: EffectiveCapabilityCatalog;
 };
@@ -178,6 +181,7 @@ function ServerOwnedProduct() {
   const [globalCapabilityTemplates, setGlobalCapabilityTemplates] = useState<GlobalCapabilityTemplate[]>([]);
   const [globalAccounts, setGlobalAccounts] = useState<GlobalAccount[]>([]);
   const [globalCapabilities, setGlobalCapabilities] = useState<GlobalCapability[]>([]);
+  const [executableSkills, setExecutableSkills] = useState<WorkspaceExecutableSkill[]>([]);
   const [settingsScope, setSettingsScope] = useState<SettingsScope>("chooser");
   const [effectiveCatalog, setEffectiveCatalog] = useState<EffectiveCapabilityCatalog>({ entries: [], effective: [], summary: { globalAvailableCount: 0, workspaceDisabledCount: 0, workspaceLocalCount: 0, globalUnavailableCount: 0, effectiveCount: 0 } });
   const [capabilityDraft, setCapabilityDraft] = useState<WorkspaceCapabilityDraft | null>(null);
@@ -339,13 +343,14 @@ function ServerOwnedProduct() {
     setTraceabilityLoading(false);
     setHealth("checking");
     try {
-      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities] = await Promise.all([
+      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities, availableExecutableSkills] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
         getConnectionHealth(apiBase),
         listGlobalCliModels(apiBase, apiToken),
         listGlobalCapabilityTemplates(apiBase, apiToken),
         listGlobalAccounts(apiBase, apiToken),
         listGlobalCapabilities(apiBase, apiToken),
+        listWorkspaceExecutableSkills(apiBase, apiToken),
       ]);
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
@@ -354,6 +359,7 @@ function ServerOwnedProduct() {
       setGlobalCapabilityTemplates(availableTemplates);
       setGlobalAccounts(availableAccounts);
       setGlobalCapabilities(availableCapabilities);
+      setExecutableSkills(availableExecutableSkills);
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
       if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
@@ -607,7 +613,7 @@ function ServerOwnedProduct() {
     };
   }
 
-  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput, { quiet = false } = {}) {
+  async function saveCapabilityDraft(input: WorkspaceCapabilityDraftSaveInput, { quiet = false, editRevision = null }: { quiet?: boolean; editRevision?: number | null } = {}) {
     if (!activeWorkspace || !capabilitySettingsReady) return false;
     const workspace = activeWorkspace;
     const requestContext = { ...contextRef.current };
@@ -637,6 +643,7 @@ function ServerOwnedProduct() {
           setCapabilityDraftConflict({
             head: "WORKSPACE_CAPABILITY_DRAFT",
             local: structuredClone(input),
+            localEditedRevision: editRevision,
             current: current ? structuredClone(current) : null,
             currentCatalog: structuredClone(currentCatalog),
           });
@@ -657,28 +664,29 @@ function ServerOwnedProduct() {
     await saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0));
   }
 
-  function autoSaveCapabilities() {
-    return saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0), { quiet: true });
+  function autoSaveCapabilities(editRevision: number) {
+    return saveCapabilityDraft(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0), { quiet: true, editRevision });
   }
 
-  async function retryCapabilityDraft() {
+  async function retryCapabilityDraft(): Promise<number | null> {
     const conflict = capabilityDraftConflict;
     if (!conflict?.current) {
       notify(t("新的 Workspace Draft 已不可用；请刷新后重试。", "The newer Workspace Draft is unavailable; refresh and try again."), "error");
-      return;
+      return null;
     }
-    await saveCapabilityDraft({
+    const saved = await saveCapabilityDraft({
       ...structuredClone(conflict.local),
       expectedVersion: conflict.current.revision,
-    });
+    }, { editRevision: conflict.localEditedRevision });
+    return saved ? conflict.localEditedRevision : null;
   }
 
-  function useCurrentCapabilityDraft() {
+  async function adoptCurrentCapabilityDraft(acknowledgedEdited: number): Promise<number | null> {
     const conflict = capabilityDraftConflict;
     const current = conflict?.current;
     if (!current) {
       notify(t("新的 Workspace Draft 已不可用；请刷新后重试。", "The newer Workspace Draft is unavailable; refresh and try again."), "error");
-      return;
+      return null;
     }
     const main = current.mainAgentSlot;
     setCapabilityDraft(current);
@@ -702,6 +710,7 @@ function ServerOwnedProduct() {
     setEffectiveCatalog(conflict.currentCatalog);
     setCapabilityDraftConflict(null);
     notify(t("已采用新的 Workspace Draft。", "The newer Workspace Draft is now in the editor."));
+    return acknowledgedEdited;
   }
 
   async function upsertProjectCapability(input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown> }) {
@@ -735,14 +744,16 @@ function ServerOwnedProduct() {
   }
 
   async function refreshGlobalSettingsAssets() {
-    const [accounts, models, capabilities] = await Promise.all([
+    const [accounts, models, capabilities, skills] = await Promise.all([
       listGlobalAccounts(apiBase, apiToken),
       listGlobalCliModels(apiBase, apiToken),
       listGlobalCapabilities(apiBase, apiToken),
+      listWorkspaceExecutableSkills(apiBase, apiToken),
     ]);
     setGlobalAccounts(accounts);
     setGlobalModels(models);
     setGlobalCapabilities(capabilities);
+    setExecutableSkills(skills);
   }
 
   async function saveGlobalAccountFromSettings(input: Record<string, unknown>) {
@@ -885,6 +896,7 @@ function ServerOwnedProduct() {
       accounts={globalAccounts}
       models={globalModels}
       capabilities={globalCapabilities}
+      executableSkills={executableSkills}
       catalog={effectiveCatalog}
       draft={capabilityDraft}
       draftConflict={Boolean(capabilityDraftConflict)}
@@ -903,8 +915,8 @@ function ServerOwnedProduct() {
       recoveryReady={capabilitySettingsReady}
       onAutoSave={autoSaveCapabilities}
       onApply={() => void resolveCapabilities(currentCapabilityDraftInput(capabilityDraft?.revision ?? 0))}
-      onRetryDraftConflict={() => void retryCapabilityDraft()}
-      onUseCurrentDraft={useCurrentCapabilityDraft}
+      onRetryDraftConflict={retryCapabilityDraft}
+      onUseCurrentDraft={adoptCurrentCapabilityDraft}
       onSaveLocalCapability={(input) => void upsertProjectCapability(input)}
       onDeleteLocalCapability={(kind, name, version) => void removeProjectCapability(kind, name, version)}
       onSaveAccount={saveGlobalAccountFromSettings}
@@ -926,7 +938,7 @@ function ServerOwnedProduct() {
     if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
-    return <CapabilitySettings t={t} models={globalModels} globalTemplates={globalCapabilityTemplates} catalog={effectiveCatalog} draft={capabilityDraft} draftInput={currentCapabilityDraftInput(capabilityDraft?.revision ?? 0)} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} importedKeys={importedKeys} setImportedKeys={setImportedKeys} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={useCurrentCapabilityDraft} onResolve={(input) => void resolveCapabilities(input)} />;
+    return <CapabilitySettings t={t} models={globalModels} globalTemplates={globalCapabilityTemplates} catalog={effectiveCatalog} draft={capabilityDraft} draftInput={currentCapabilityDraftInput(capabilityDraft?.revision ?? 0)} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} importedKeys={importedKeys} setImportedKeys={setImportedKeys} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={() => void adoptCurrentCapabilityDraft(0)} onResolve={(input) => void resolveCapabilities(input)} />;
   };
 
   return <main className="app-shell">

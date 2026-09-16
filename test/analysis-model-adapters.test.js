@@ -56,7 +56,11 @@ test("allowlisted CLI models pass untrusted prompts as one argv value without a 
   assert.deepEqual(await adapter.planWorkspaceAnalysis(input), {});
   assert.equal(calls[0].executable, "codex");
   assert.equal(calls[0].options.shell, false);
-  assert.equal(calls[0].args.at(-1), JSON.stringify({ task: "workspace-plan", input }));
+  assert.deepEqual(JSON.parse(calls[0].args.at(-1)), {
+    task: "workspace-plan",
+    input,
+    outputContract: { assignments: "array of bounded workspace analysis assignments" },
+  });
   assert.equal(calls[0].args.filter((value) => value.includes("touch")).length, 1);
 });
 
@@ -195,6 +199,90 @@ test("allowlisted CLI verification exercises authenticated model execution inste
     spawnImpl: cliSpawn({ stdout: '{}\n' }, []),
   });
   await assert.rejects(() => unauthenticated.verify(), /verification challenge/);
+});
+
+test("F006 CLI models implement the analysis and reconciliation contract used by the Workspace runner", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({
+    id: "CLI-F006-RUNNER",
+    cliAdapter: "CODEX",
+    model: "gpt-5.6-terra",
+    spawnImpl: cliSpawn(({ args }) => {
+      const request = JSON.parse(args.at(-1));
+      if (request.task === "analysis") return { stdout: `${JSON.stringify({ candidateFeatures: [{ candidateKey: "orders", name: "Orders" }] })}\n` };
+      if (request.task === "reconciliation") return { stdout: `${JSON.stringify({ candidateDecisions: [{ candidateRef: "CHILD-1:0", disposition: "ACCEPT" }], relations: [], gaps: [] })}\n` };
+      throw new Error(`unexpected CLI task ${request.task}`);
+    }, calls),
+  });
+
+  const analysis = await adapter.analyze({
+    workUnit: { id: "UNIT-1" },
+    workContext: { scopeKey: "orders" },
+    deterministicCandidates: [],
+    evidence: { facts: [] },
+    context: { maxOutputTokens: 1_000 },
+  });
+  const reconciliation = await adapter.reconcile({
+    workUnit: { id: "UNIT-1" },
+    workContext: { scopeKey: "orders" },
+    candidateOptions: [{ ref: "CHILD-1:0" }],
+    contextCandidates: [],
+    scopedArtifacts: [],
+    evidence: { facts: [], sourceSlices: [] },
+    context: { maxOutputTokens: 1_000 },
+  });
+
+  const requests = calls.map(({ args }) => JSON.parse(args.at(-1)));
+  assert.deepEqual(requests.map(({ task }) => task), ["analysis", "reconciliation"]);
+  assert.deepEqual(requests[0].outputContract, {
+    candidateFeatures: [{
+      candidateKey: "stable semantic key",
+      mode: "BUSINESS or API",
+      name: "readable name",
+      description: "evidence-bounded explanation",
+      confidence: "LOW, MEDIUM, or HIGH",
+      evidenceFactIds: ["Fact ids from this input only"],
+      stableEvidenceNodeIds: ["stable node ids from this input only"],
+      design: {},
+      uncertainties: [],
+    }],
+  });
+  assert.deepEqual(requests[1].outputContract, {
+    candidateDecisions: [{
+      candidateRef: "exact supplied ref",
+      disposition: "ACCEPT | REJECT | CONFLICT | MERGE | ALTERNATIVE",
+      rationale: "evidence-bounded reason",
+      relatedCandidateRefs: ["optional supplied refs; only supplied sibling refs; never self"],
+      mergedProposal: {
+        name: "required for MERGE",
+        statement: "one reconciled semantic claim",
+        subjectKey: "optional supplied scoped path",
+        confidence: "LOW | MEDIUM | HIGH",
+      },
+    }],
+    relations: [{
+      sourceCandidateRef: "optional supplied ref",
+      sourceArtifactId: "optional supplied Artifact id",
+      predicate: "semantic relationship",
+      targetCandidateRef: "optional supplied ref",
+      targetArtifactId: "optional supplied Artifact id",
+      evidenceFactIds: ["supplied Fact ids"],
+      sourceSliceIds: ["supplied SourceSlice ids"],
+    }],
+    gaps: [{ code: "bounded gap code", message: "explanation" }],
+    rules: [
+      "Return candidateDecisions, relations, and gaps arrays.",
+      "Decide every supplied candidateRef exactly once.",
+      "MERGE decisions require one or more relatedCandidateRefs; every member must be MERGE and share the same mergedProposal.",
+      "mergedProposal is forbidden for non-MERGE decisions.",
+    ],
+  });
+
+  assert.deepEqual(analysis, { candidateFeatures: [{ candidateKey: "orders", name: "Orders" }] });
+  assert.deepEqual(reconciliation, { candidateDecisions: [{ candidateRef: "CHILD-1:0", disposition: "ACCEPT" }], relations: [], gaps: [] });
+  assert.deepEqual(calls.map((call) => JSON.parse(call.args.at(-1)).task), ["analysis", "reconciliation"]);
+  assert.ok(calls.every((call) => call.options.shell === false));
+  assert.ok(calls.every((call) => call.args.includes("gpt-5.6-terra")));
 });
 
 test("account-bound CLI execution resolves an API-key reference only into the selected adapter environment", async () => {
