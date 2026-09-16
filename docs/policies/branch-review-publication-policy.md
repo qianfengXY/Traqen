@@ -42,20 +42,21 @@ disputed, or unverified findings remain local and must not be published as proje
 The convergence record must map every publishable finding back to each independent review and
 must preserve material disagreement or scope differences.
 
-## 4. Write review descriptions in both languages
+## 4. Write review descriptions in Simplified Chinese
 
 Every formal independent Finding and convergence or consensus description used by the
-publication gate must provide equivalent English and Simplified Chinese versions.
+publication gate must be written in Simplified Chinese.
 
-- Both versions must describe the same problem, severity, evidence, impact, recommended
-  correction, acceptance conditions, and disagreement.
+- Describe the problem, severity, evidence, impact, recommended correction, acceptance
+  conditions, and disagreement.
 - Preserve code symbols, paths, commands, logs, identifiers, commit SHAs, and quoted source text
-  exactly; add an explanation in the other language when needed.
-- Translation must not omit, weaken, strengthen, or otherwise change a claim.
-- Informal scratch notes may use one language, but they cannot serve as an independent
-  confirmation or consensus record until the bilingual description is complete.
+  exactly; add a Chinese explanation when needed.
+- A supplemental translation is optional and must not omit, weaken, strengthen, or otherwise
+  change a claim.
+- Informal scratch notes may use another language, but they cannot serve as an independent
+  confirmation or consensus record until the required Simplified Chinese description is complete.
 
-## 5. Publish bilingual content through the Issue tracker only
+## 5. Publish findings through the Issue tracker only
 
 After the consensus gate passes, deduplicate the confirmed findings and publish them only through
 the project's Issue tracker. Do not commit a review report or consensus document as the
@@ -73,10 +74,8 @@ requires a consolidated report. Every published Issue must include:
 - confirming reviewer identities; and
 - unresolved disagreement or open questions, if any.
 
-The Issue title and body must be bilingual. Use an English title followed by its Simplified
-Chinese equivalent. In the body, provide complete `## English` and `## 简体中文` sections; every
-required field above must appear with equivalent meaning in both sections. A link from one
-language to the other, or a one-language summary, does not satisfy this requirement.
+The Issue title and body must be written in Simplified Chinese. A supplemental translation is
+optional, but it does not replace any required field above.
 
 A request to review a branch authorizes publication of findings that pass this policy unless the
 requester explicitly asks for draft-only output. Never publish findings that fail the consensus
@@ -107,7 +106,7 @@ Publish no Issue when:
 - reviewers examined different commit SHAs;
 - evidence cannot be reproduced or anchored;
 - the reviewers do not reach material consensus;
-- the required bilingual review or Issue content is missing or not equivalent; or
+- the required Review or Issue content is missing; or
 - reviewer independence cannot be established.
 
 In that case, report which gate was not met and retain the findings locally. When publication

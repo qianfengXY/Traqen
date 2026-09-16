@@ -1,0 +1,170 @@
+{
+  "created": "2026-09-07",
+  "generator": "native image_gen.imagegen",
+  "version": "V3",
+  "views": [
+    "business",
+    "system",
+    "application",
+    "data",
+    "deployment"
+  ],
+  "base_commit": "9a69fc37638fa73b1ecdd8727addbbb28bcec9e6",
+  "old_asset_hashes_verified": 32,
+  "figures": [
+    {
+      "figure": "B1",
+      "file": "business-capabilities.png",
+      "source_image": "exec-a4a86a86-aef0-41cd-bfe1-a4556d17cf6f.png",
+      "sha256": "385d9b2c29945fed52d51b8331cec807726452d55159f6ade63a217e3435fc7f",
+      "bytes": 1405131,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "business-capabilities.prompt.txt"
+      ]
+    },
+    {
+      "figure": "B2",
+      "file": "business-collaboration.png",
+      "source_image": "exec-e6e88044-f685-4c67-970b-1739df798c3f.png",
+      "sha256": "d17792cd9c59470ac34059065715fac2be87e157b62da5f2774ea82becfb6e50",
+      "bytes": 1258347,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "business-collaboration.correction.txt",
+        "business-collaboration.prompt.txt"
+      ]
+    },
+    {
+      "figure": "S1",
+      "file": "system-collaboration.png",
+      "source_image": "exec-2505378b-159b-4f9d-87b1-7d56fee4b233.png",
+      "sha256": "ef9f5b2842d15d55fcf0262ea2d0c5f235181018b6961781602731ada268e96e",
+      "bytes": 1720996,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "system-collaboration.correction-2.txt",
+        "system-collaboration.correction-3.txt",
+        "system-collaboration.correction.txt",
+        "system-collaboration.prompt.txt"
+      ]
+    },
+    {
+      "figure": "A1",
+      "file": "application-modules.png",
+      "source_image": "exec-31a69452-f992-4054-a718-d3da37b2d9e3.png",
+      "sha256": "6ca25f0fd320dfeec8f6375862ced8b5d050d01ee90bff1f325a004c0ddabbd7",
+      "bytes": 1303578,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "application-modules.correction-2.txt",
+        "application-modules.correction-3.txt",
+        "application-modules.correction.txt",
+        "application-modules.prompt.txt"
+      ]
+    },
+    {
+      "figure": "A2",
+      "file": "source-components.png",
+      "source_image": "exec-7dab6e2b-afee-44d1-9684-00dbba97d6a3.png",
+      "sha256": "20fa2e961f734228e34a3a854a35f678a4185dffacba51d0816f0ca6fefde47a",
+      "bytes": 1719443,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "source-components.correction-2.txt",
+        "source-components.correction-3.txt",
+        "source-components.correction.txt",
+        "source-components.prompt.txt"
+      ]
+    },
+    {
+      "figure": "A3",
+      "file": "source-publication-sequence.png",
+      "source_image": "exec-1780a97a-f06d-4a61-88a7-a4e4930455a0.png",
+      "sha256": "b5bf5a745f2797d4a1679fa20d27a5c1dc48e1629dfcd18e5b6d017f463e770f",
+      "bytes": 1732657,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "source-publication-sequence.correction-2.txt",
+        "source-publication-sequence.correction-3.txt",
+        "source-publication-sequence.correction.txt",
+        "source-publication-sequence.prompt.txt"
+      ]
+    },
+    {
+      "figure": "D1",
+      "file": "data-model.png",
+      "source_image": "exec-7160b015-254e-459e-a798-56bc2055fa9f.png",
+      "sha256": "d275b93aeabc07833abf14da93d4fda21a03630983ddc456934ac55cb13cbf3c",
+      "bytes": 1746849,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "data-model.correction-2.txt",
+        "data-model.correction.txt",
+        "data-model.prompt.txt"
+      ]
+    },
+    {
+      "figure": "D2",
+      "file": "data-evolution.png",
+      "source_image": "exec-8d260c6a-79ff-41b0-b0ce-a6141c80285a.png",
+      "sha256": "4c63d91dfd70b7cb715a63528651d6ad6b2492f4e7cd58e53c97e1d9f3e7969e",
+      "bytes": 1728175,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "data-evolution.correction.txt",
+        "data-evolution.prompt.txt"
+      ]
+    },
+    {
+      "figure": "P1",
+      "file": "deployment.png",
+      "source_image": "exec-77bd3b1c-ace7-4098-b13f-a01e3d80b324.png",
+      "sha256": "06607bd630c65f0d6d5570333778481fdaa6e198996a8ef1239d16bf8245dd6d",
+      "bytes": 1678022,
+      "width": 1536,
+      "height": 1024,
+      "prompts": [
+        "deployment.correction-2.txt",
+        "deployment.correction.txt",
+        "deployment.prompt.txt"
+      ]
+    }
+  ],
+  "documents": [
+    {
+      "file": "docs/architecture/traqen-product-architecture.zh-CN.md",
+      "images": 17,
+      "new_images": 9,
+      "old_sections_unchanged": true,
+      "local_links_exist": true,
+      "all_77_node_interface_ids_explained": true
+    },
+    {
+      "file": "docs/architecture/traqen-product-architecture.md",
+      "images": 17,
+      "new_images": 9,
+      "old_sections_unchanged": true,
+      "local_links_exist": true,
+      "all_77_node_interface_ids_explained": true
+    }
+  ],
+  "validation_scope": "Diagram/document expression only. Content checked against design and existing implementation; not software acceptance.",
+  "visual_checks": [
+    "Business capabilities preserve seven groups and role collaboration; risk acceptance is not PASS.",
+    "System distinguishes source admission, deterministic evidence, candidates, human authority and real execution.",
+    "Application I03/H1 enters M04; M03 consumes persisted I02 evidence; C03 preflight differs from C07 current admission.",
+    "Publication persists protected bytes before PostgreSQL atomic visibility; failure and lost-response paths retain the correct authority.",
+    "D1 preserves known cardinalities and R1 exact-version Claim/TestSpec association; unresolved snapshot mapping remains explicit.",
+    "D2 keeps content, human authority, verification freshness and projection coverage separate.",
+    "P1 separates CLI egress E1 from database access; present development foundation and unaccepted storage target are labelled."
+  ]
+}

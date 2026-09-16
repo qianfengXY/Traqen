@@ -14,12 +14,15 @@ doc_kind: feature-design
 created: 2026-07-29
 updated: 2026-08-29
 status: superseded
+superseded_by:
+  - ../../features/F001-legacy-system-understanding.md
+  - ../../architecture/traqen-product-architecture.md
 priority: P0
 ---
 
 # Historical: Workspace Scan and Analysis Agent Lifecycle
 
-> **Historical reference only.** This design is superseded by the F001–F004 evidence-first redesign in the [active F001 specification](F001-legacy-system-understanding.md) and [product architecture](../architecture/traqen-product-architecture.md). It remains only for implementation-history compatibility; it is not an active contract.
+> **Historical reference only.** This design is superseded by the F001–F004 evidence-first redesign in the [active F001 specification](../../features/F001-legacy-system-understanding.md) and [product architecture](../../architecture/traqen-product-architecture.md). It remains only for implementation-history compatibility; it is not an active contract.
 
 ## 1. Requirement
 
@@ -126,11 +129,11 @@ The Agent's task universe is the complete immutable `SourceSnapshot`, not the sc
 
 Scanner Facts are a parallel, optional enrichment input. A missing Symbol, Endpoint, or relation Fact must not remove the corresponding source Artifact from the Agent plan. “Analyze every file” therefore means complete, auditable visitation across many bounded WorkUnits; it never means placing the whole repository into one prompt.
 
-The [interactive Workspace analysis workflow](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
+The [interactive Workspace analysis workflow](../../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.html)
 expands deterministic partitioning, same-batch Child
 fan-out, Workspace-scoped capability routes, bounded source reads, hierarchical
 synthesis, Main Agent reconciliation, and explicit quarantine/gap paths. Its
-[Archify JSON source](../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
+[Archify JSON source](../../diagrams/traqen-product-architecture/workspace-analysis-batch.workflow.json)
 is the reproducible visual projection of the algorithm below.
 
 #### 3.3.1 How Inventory partitions are derived
@@ -864,5 +867,4 @@ UI rules:
 6. Compatibility migration and removal of browser execution authority.
 7. Large-repository, refresh, disconnect, pause/resume, restart, and visual acceptance.
 
-Implementation is sequenced by the single active plan:
-[`feature-specs/2026-07-31-traqen-product-foundation.md`](../../feature-specs/2026-07-31-traqen-product-foundation.md).
+At the time, implementation was sequenced by a plan that is no longer retained at a current path. The active replacement is the [F001 source-truth implementation plan](../../../feature-specs/2026-09-06-f001-source-truth-implementation.md).

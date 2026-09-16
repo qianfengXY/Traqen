@@ -1,50 +1,46 @@
-> Language: **English** · [简体中文](README.zh-CN.md)
+> 语言：**简体中文（规范文本）** · [English（可选参考）](README.en.md)
 
-# Documentation
+# 文档
 
-This directory is organized as a feature lifecycle, not as a chronological pile of design drafts. Traqen maintains the active product and engineering truth in English and Simplified Chinese.
+这里按 Feature 生命周期组织文档，而不是按时间堆积设计草稿。Traqen 的活动产品与工程真相源以简体中文为规范文本；既有英文译文只作可选参考。
 
-## Active truth map
+## 活动真相源导航
 
-- [Feature roadmap](ROADMAP.md) · [简体中文](ROADMAP.zh-CN.md)
-- [Product architecture](architecture/traqen-product-architecture.md) · [简体中文](architecture/traqen-product-architecture.zh-CN.md)
-- [System requirements: legacy-system understanding and canonical quality traceability](architecture/traqen-system-requirements.md) · [简体中文](architecture/traqen-system-requirements.zh-CN.md)
-- [ADR-0001: canonical traceability ontology](decisions/ADR-0001-canonical-traceability-ontology.md) · [简体中文](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)
-- [ADR-0002: Workspace aggregate and execution isolation](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md) · [简体中文](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md)
-- [Branch Review Publication Policy](policies/branch-review-publication-policy.md) · [简体中文](policies/branch-review-publication-policy.zh-CN.md)
-- [Project overview and operating guide](../README.md) · [简体中文](../README.zh-CN.md)
+- [Feature 路线图](ROADMAP.zh-CN.md) · [English](ROADMAP.md)
+- [产品架构](architecture/traqen-product-architecture.zh-CN.md) · [English](architecture/traqen-product-architecture.md)
+- [系统需求：存量系统理解与统一质量追溯](architecture/traqen-system-requirements.zh-CN.md) · [English](architecture/traqen-system-requirements.md)
+- [已发布设计基线](design/README.md) · [English（可选参考）](design/README.en.md)
+- [ADR-0001：统一追溯本体](decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md) · [English](decisions/ADR-0001-canonical-traceability-ontology.md)
+- [ADR-0002：Workspace 聚合与执行隔离](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md) · [English](decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md)
+- [代码分支 Review 发布政策](policies/branch-review-publication-policy.zh-CN.md) · [English](policies/branch-review-publication-policy.md)
+- [项目概览与运行指南](../README.zh-CN.md) · [English](../README.md)
 
-## Feature truth
+## Feature 真相源
 
-| ID | Active Feature document | Supporting design |
+| ID | 活动 Feature 文档 | 支撑设计 |
 |---|---|---|
-| F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | product architecture |
-| F002 | [Deterministic Evidence & API Structure](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | product architecture |
-| F003 | [Agent Candidates & Reviewed Business Function Tree](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | product architecture |
-| F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
-| F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
+| F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | [已确认的 Design B](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) |
+| F002 | [确定性证据与 API 结构](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | 产品架构 |
+| F003 | [当前设计入口与历史 Spec](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | [功能全景 V2.0](design/F003-traceability-graph/README.md) · [English（可选参考）](design/F003-traceability-graph/README.en.md) |
+| F004 | [变更影响分析](features/F004-change-impact-analysis.zh-CN.md) · [English](features/F004-change-impact-analysis.md) | 产品架构 |
+| F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [能力解析图](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
-F001–F004 are the active legacy-system-understanding design baseline. F006 retains its separate implementation track. Historical working artifacts may remain unlinked for compatibility or audit, but cannot compete with this table, the roadmap, or the active architecture documents.
+F001–F004 是当前存量系统理解的设计基线。F006 保留其独立实施轨道。历史工作产物可因兼容性或审计目的而保留为未链接文档，但不得与本表、路线图或活动架构文档竞争真相源。
 
-## Visual design
+## 可视化设计
 
-- [Workspace capability resolution — Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)
+- [Workspace 能力解析——Archify](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html)
 
-The F001–F004 redesign does not treat older visual explorations as active specifications; implementation will add visual projections only after the reference-pilot contracts are proven.
+F001–F004 重构不会把旧的可视化探索当作活动规格；只有参考试点合同被证明后，实施才会加入可视化投影。
 
-## Baseline policy
+## 基线规则
 
-The roadmap, active `Fxxx` documents, product architecture, and ADRs form one design baseline. Superseded material is either removed or explicitly unlinked and marked historical; Git history remains the recovery record.
+路线图、活动 `Fxxx` 文档、产品架构、ADR 和已发布设计索引共同构成唯一设计基线。被替代材料移入[归档](archive/README.md)，声明替代它的文档，并排除在本导航之外；Git 历史仍是可恢复记录。
 
-## Bilingual documentation policy
+## 文档语言
 
-Every pull request that adds or changes documentation must add or update both language versions in the same change.
+简体中文是默认且规范的文档语言。
 
-- Prefer an English canonical filename such as `guide.md` with a Simplified Chinese counterpart named `guide.zh-CN.md`.
-- When an existing Chinese document owns a stable canonical path, retain that path and add an English counterpart named `guide.en.md`. The architecture design currently follows this compatibility rule.
-- Every pair must begin with a language switch linking to the other version.
-- Keep code, commands, API paths, identifiers, enum values, configuration keys, and product model names unchanged unless the document explicitly explains a localized label.
-- Product vision, guardrails, security boundaries, acceptance status, and known limitations must have equivalent meaning in both versions. A translation must not weaken or expand a requirement.
-- Update both versions together. If one version cannot be updated accurately, do not merge the documentation change.
-
-The automated test `test/bilingual-documentation.test.js` enforces file pairing and language-switch links for Markdown files under `docs/` and for repository README files.
+- 新增或修改的规范文档使用普通 `.md` 文件名并直接以中文撰写；不要求英文副本、语言切换链接或同步翻译。
+- 已有英文文件可保留为历史或面向读者的可选参考，但不参与规范真相源，也不产生维护义务。
+- 代码、命令、API 路径、标识符、枚举值、配置键和产品模型名称保持原样，除非文档明确说明中文显示名称。

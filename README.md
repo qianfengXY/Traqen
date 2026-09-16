@@ -284,4 +284,4 @@ Govern Evidence retention with `POST /v1/projects/{projectId}/evidence-retention
 
 After a changed implementation is analyzed in a new Reverse Run, an authorized developer or architect can repair the stale implementation segment with `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses`. This creates a new Snapshot-bound mapping and conformance record for the existing Claim and Scope; it never edits or replaces the normative Decision.
 
-The current design starts at [Traqen product architecture](docs/architecture/traqen-product-architecture.md). Superseded design and validation documents are intentionally absent from this baseline; Git history remains the recovery record. See the [documentation truth map and bilingual maintenance policy](docs/README.md).
+The current design starts at [Traqen product architecture](docs/architecture/traqen-product-architecture.md). Superseded design and validation documents are intentionally absent from this baseline; Git history remains the recovery record. See the [Chinese documentation truth map](docs/README.md).

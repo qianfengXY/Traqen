@@ -25,7 +25,8 @@ test("tracked project policy and provider-neutral governance fixture remain enfo
   assert.deepEqual(fixture.immutableConstraints, immutableGovernance);
   assert.match(policy, /At least two distinct models or reviewer identities/);
   assert.match(policy, /A synthesizer\s+must not impersonate another reviewer/);
-  assert.match(policy, /Issue title and body must be bilingual/);
+  assert.match(policy, /Issue title and body must be written in Simplified Chinese/);
+  assert.doesNotMatch(policy, /must be bilingual/);
   assert.ok(policy.includes("branch-review-publication-policy.zh-CN.md"));
   assert.ok(fixture.localProviderInstructions.tracked === false);
   assert.equal(fixture.localProviderInstructions.purpose, "local tool/runtime adaptation only");

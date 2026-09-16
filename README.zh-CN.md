@@ -14,7 +14,7 @@ Traqen 是一个企业可追溯质量平台，适用于没有值得信赖的产�
 
 Web 工作台现在默认使用[企业蓝主题](docs/design/enterprise-blue-theme.zh-CN.md)，提供全局持久化主题切换，并针对信息密集的 27 英寸桌面进行布局优化。该配色与组件规范统一覆盖 Workspace 分析、功能追溯、图谱、审核、影响、指标、表单、表格和有界 Agent 控制台。
 
-当前代码已经具备可复用的领域、扫描、图谱、历史、影响分析和模型 Profile 能力，但尚未实现完整目标产品。特别是当前 UI 固定子 Agent 面板、旧链路依赖 Scanner/Facts，这些只是实现基线，不是目标合同。已确认的重构先固定不可变 Workspace 源码边界，再提取确定性事实与 API 树；之后只有经人工审阅的 Agent 候选才能进入业务功能树，最后才把执行证据连接为建议性的影响与重验证。详见[产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)、[F001–F004 Feature 规格](docs/ROADMAP.zh-CN.md)和[文档真相源导航](docs/README.zh-CN.md)。
+当前代码已经具备可复用的领域、扫描、图谱、历史、影响分析和模型 Profile 能力，但尚未实现完整目标产品。特别是当前 UI 固定子 Agent 面板、旧链路依赖 Scanner/Facts，这些只是实现基线，不是目标合同。已确认的重构先固定不可变 Workspace 源码边界，再提取确定性事实与 API 树；之后只有经人工审阅的 Agent 候选才能进入业务功能树，最后才把执行证据连接为建议性的影响与重验证。详见[产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)、[F001–F004 Feature 规格](docs/ROADMAP.zh-CN.md)和[文档真相源导航](docs/README.md)。
 
 ## 实施基础
 
@@ -284,4 +284,4 @@ Reverse Skill 清单在 `POST/GET /v1/skills` 中注册和列出。有界运行�
 
 在新的反向运行中分析更改的实现后，授权开发人员或架构师可以使用 `POST /v1/projects/{projectId}/features/{featureId}/claims/{claimId}/implementation-reanalyses` 修复过时的实现部分。这将为现有 Claim 和 Scope 创建新的 Snapshot 绑定映射和一致性记录；它从不编辑或替换规范的 Decision。
 
-当前设计从 [Traqen 产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)开始。被替代的设计与验证文档不进入本次基线；Git 历史仍是可恢复记录。完整约定见[文档真相源导航与双语维护策略](docs/README.zh-CN.md)。
+当前设计从 [Traqen 产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)开始。被替代的设计与验证文档不进入本次基线；Git 历史仍是可恢复记录。完整约定见[中文文档真相源导航](docs/README.md)。
