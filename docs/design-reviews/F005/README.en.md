@@ -28,8 +28,9 @@ Four comparisons show the same graph, selected object, versions, and fixture sta
 - [Offline interactive prototype, including the complete Chinese charter](assets/Traqen-F005-review.html)
 - [Standalone charter reader](assets/charter.html)
 - [Full-size screen gallery](assets/gallery.html)
-- [Editable Pencil core boards](assets/F005-layout-navigation-v2.pen)
-- [Original prototype verification record](assets/verification.json)
+- [V2 Pencil core boards (historical visual source; this charter defines current scope)](assets/F005-layout-navigation-v2.pen)
+- [Current desktop and theme verification](assets/desktop-themes-verification.json)
+- [V2 prototype verification record (includes historical narrow-screen checks)](assets/verification.json)
 
 ### Same page, two themes, two desktop viewports
 
@@ -121,6 +122,8 @@ Invalid input and the source name remain visible, with a clear error message and
 
 [Open original size](assets/previews/11-impact.png)
 
+### Historical assets outside current scope
+
 Old graph captures and five mobile images are historical assets, outside current design and acceptance scope.
 
 ## 01 · Design position
@@ -148,7 +151,7 @@ Use professional application density and preserve long Chinese text, evidence, v
 
 ## 02 · F005 responsibility and domain boundaries
 
-Propose expanding F005 from shell/navigation design into the frontend experience charter: information architecture, page patterns, foundations, components, states, responsiveness, and acceptance. Domain features continue to own business semantics, permissions, processes, and data contracts.
+Propose expanding F005 from shell/navigation design into the frontend experience charter: information architecture, page patterns, foundations, components, states, desktop adaptation, and acceptance. Domain features continue to own business semantics, permissions, processes, and data contracts.
 
 | Feature | Presentation responsibility | Domain decisions remain outside F005 |
 |---|---|---|
@@ -257,6 +260,8 @@ The production selector consumes a theme collection and stores a stable `themeId
 New themes cover backgrounds/surfaces, text, boundaries, interaction/selection, focus, disabled states, errors/warnings/success, code, and graph nodes/edges, including each relevant interaction state. Verify section 11 contrast and compare the same graph, component showcase, and error forms. Theme count changes neither information architecture nor domain-state enums.
 
 The offline prototype retains its two-way switch to demonstrate the current defaults. The extensible registry remains an implementation requirement.
+
+### Typography
 
 System stack: -apple-system, BlinkMacSystemFont, PingFang SC, Segoe UI, Noto Sans SC, sans-serif. Use tabular numerals for numbers/versions and ui-monospace/Menlo/Consolas for code. Chinese body text has natural spacing, without negative tracking.
 
