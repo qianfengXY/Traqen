@@ -203,10 +203,11 @@ function headers(apiToken: string, json = false, reviewerToken = false) {
   };
 }
 
-async function parseJson<T>(response: Response): Promise<T> {
+async function parseJson<T>(response: Response, signal?: AbortSignal): Promise<T> {
   const body = await response.json().catch(() => ({})) as T & {
     error?: { code?: string; message?: string; details?: Record<string, unknown> };
   };
+  signal?.throwIfAborted();
   if (!response.ok) throw new ProductFoundationApiError(response.status, body.error);
   return body;
 }
@@ -215,8 +216,8 @@ function base(apiBase: string) {
   return apiBase.replace(/\/$/, "");
 }
 
-export async function getConnectionHealth(apiBase: string) {
-  const response = await fetch(`${base(apiBase)}/health`, { method: "GET" });
+export async function getConnectionHealth(apiBase: string, signal?: AbortSignal) {
+  const response = await fetch(`${base(apiBase)}/health`, { method: "GET", signal });
   if (!response.ok) throw new Error(`Traqen API returned ${response.status}`);
   return response.json() as Promise<Record<string, unknown>>;
 }
@@ -226,14 +227,14 @@ export async function listGlobalModels(apiBase: string, apiToken: string) {
   return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
 }
 
-export async function listGlobalCliModels(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, { method: "GET", headers: headers(apiToken) });
-  return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
+export async function listGlobalCliModels(apiBase: string, apiToken: string, signal?: AbortSignal) {
+  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, { method: "GET", headers: headers(apiToken), signal });
+  return (await parseJson<{ models: GlobalModelProfile[] }>(response, signal)).models;
 }
 
-export async function listGlobalAccounts(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-accounts`, { method: "GET", headers: headers(apiToken) });
-  return (await parseJson<{ accounts: GlobalAccount[] }>(response)).accounts;
+export async function listGlobalAccounts(apiBase: string, apiToken: string, signal?: AbortSignal) {
+  const response = await fetch(`${base(apiBase)}/v1/global-accounts`, { method: "GET", headers: headers(apiToken), signal });
+  return (await parseJson<{ accounts: GlobalAccount[] }>(response, signal)).accounts;
 }
 
 export async function saveGlobalAccount(apiBase: string, apiToken: string, input: Record<string, unknown>) {
@@ -250,14 +251,14 @@ export async function recheckGlobalAccount(apiBase: string, apiToken: string, ac
   return parseJson<GlobalAccount>(response);
 }
 
-export async function listGlobalCapabilities(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, { method: "GET", headers: headers(apiToken) });
-  return (await parseJson<{ capabilities: GlobalCapability[] }>(response)).capabilities;
+export async function listGlobalCapabilities(apiBase: string, apiToken: string, signal?: AbortSignal) {
+  const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, { method: "GET", headers: headers(apiToken), signal });
+  return (await parseJson<{ capabilities: GlobalCapability[] }>(response, signal)).capabilities;
 }
 
-export async function listWorkspaceExecutableSkills(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspace-executable-skills`, { method: "GET", headers: headers(apiToken) });
-  return (await parseJson<{ skills: WorkspaceExecutableSkill[] }>(response)).skills;
+export async function listWorkspaceExecutableSkills(apiBase: string, apiToken: string, signal?: AbortSignal) {
+  const response = await fetch(`${base(apiBase)}/v1/workspace-executable-skills`, { method: "GET", headers: headers(apiToken), signal });
+  return (await parseJson<{ skills: WorkspaceExecutableSkill[] }>(response, signal)).skills;
 }
 
 export async function saveGlobalCapability(apiBase: string, apiToken: string, input: Record<string, unknown>) {
@@ -294,9 +295,9 @@ export async function createGlobalCliModel(apiBase: string, apiToken: string, in
   return parseJson<GlobalModelProfile>(response);
 }
 
-export async function listGlobalCapabilityTemplates(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, { method: "GET", headers: headers(apiToken) });
-  return (await parseJson<{ templates: GlobalCapabilityTemplate[] }>(response)).templates;
+export async function listGlobalCapabilityTemplates(apiBase: string, apiToken: string, signal?: AbortSignal) {
+  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, { method: "GET", headers: headers(apiToken), signal });
+  return (await parseJson<{ templates: GlobalCapabilityTemplate[] }>(response, signal)).templates;
 }
 
 export async function saveGlobalCapabilityTemplate(apiBase: string, apiToken: string, input: {

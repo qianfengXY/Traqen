@@ -118,7 +118,7 @@ try {
   });
   page.on("response", (response) => { if (response.url().startsWith(`${f.apiBase}/v1/workspaces/workspace/source-truth`) && response.status() >= 400) issues.push(`${response.status()} ${new URL(response.url()).pathname}`); });
   const station = (n, timeout = 45000) => page.waitForFunction((value) => document.querySelector('.st-rail [aria-current="step"]')?.getAttribute("data-station") === String(value), n, { timeout });
-  await page.goto("http://127.0.0.1:3188/");
+    await page.goto(f.webOrigin);
   await page.waitForSelector(".connection-button.unavailable");
   await page.getByTitle("部署诊断", { exact: true }).click();
   await page.getByLabel("API 地址", { exact: true }).fill(f.apiBase);
@@ -126,7 +126,7 @@ try {
   await page.getByRole("button", { name: "重新连接并刷新", exact: true }).click();
   await page.waitForSelector(".connection-button.healthy"); await page.locator(".diagnostic-drawer header button").click();
   await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: /^Workspace$/ }) }).click();
-  await page.locator(".nav-button").filter({ hasText: "Workspace 分析" }).click();
+    await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
   await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: base.id.slice(0, 12) }).click();
   await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(1);
   assert.equal(await page.getByRole("combobox", { name: "版本基线", exact: true }).inputValue(), base.id);

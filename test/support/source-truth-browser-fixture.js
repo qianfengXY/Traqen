@@ -15,8 +15,10 @@ import { createConfiguredApplication } from "../../src/api/application-bootstrap
 import { createTraceabilityHttpServer } from "../../src/api/http-server.js";
 import { PostgresTraceabilityStore } from "../../src/storage/index.js";
 import { SourceTruthError } from "../../src/source-truth/errors.js";
+import { browserOrigin } from "./source-truth-browser-origin.js";
 
 export async function browserFixture(t) {
+  const webOrigin = browserOrigin();
   const cluster = await isolatedPostgres(t);
   const { db, repository } = await cluster.createDatabase();
   const names = { directory: "Browser Directory", git: "Browser Git", combined: "Browser Combined", blocked: "Browser Blocked",
@@ -48,7 +50,7 @@ export async function browserFixture(t) {
   const services = sourceTruthServices({ repository, blobs, policy, git });
   const token = "f001-browser-isolated-fixture-token", readerToken = "f001-browser-isolated-reader-token";
   const authenticate = sourceTruthAuthenticator([[token, "owner"], [readerToken, "reader"]].map(([value, actorId]) => ({ tokenDigest: createHash("sha256").update(value).digest("hex"), actorId, tenantId: "tenant" })));
-  const corsAllowedOrigins = ["http://127.0.0.1:3188", "http://localhost:3188"];
+  const corsAllowedOrigins = [webOrigin];
   const configured = createConfiguredApplication({ store: new PostgresTraceabilityStore(db), env: { CORS_ALLOWED_ORIGINS: corsAllowedOrigins.join(",") } });
   await configured.ready;
   const server = createTraceabilityHttpServer({ application: configured.application, corsAllowedOrigins, sourceTruthAllowedOrigins: corsAllowedOrigins, apiBearerToken: token,
@@ -61,6 +63,6 @@ export async function browserFixture(t) {
     if (!response.ok) throw new Error(`Fixture evidence read failed: ${response.status}`);
     return response.json();
   };
-  return { root, names, source, gapCommit, token, readerToken, apiBase, read,
+  return { root, names, source, gapCommit, token, readerToken, apiBase, webOrigin, read,
     failNextGitCapture: (workspace) => { if (!names[workspace]) throw new Error("Unknown fixture Workspace"); failWorkspace = workspace; } };
 }

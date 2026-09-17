@@ -43,7 +43,7 @@ try {
   const screenshot = (name) => page.screenshot({ path: path.join(evidenceDirectory, `${name}.png`), fullPage: true });
   const record = async (value) => { results.push(value); await save(); };
   const connect = async (workspace) => {
-    await page.goto("http://127.0.0.1:3188/");
+    await page.goto(f.webOrigin);
     await page.waitForSelector(".connection-button.unavailable");
     await page.getByTitle("部署诊断", { exact: true }).click();
     await page.getByLabel("API 地址", { exact: true }).fill(f.apiBase);
@@ -51,7 +51,7 @@ try {
     await button("重新连接并刷新").click(); await page.waitForSelector(".connection-button.healthy");
     await page.locator(".diagnostic-drawer header button").click();
     await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: new RegExp(`^${f.names[workspace]}$`) }) }).click();
-    await page.locator(".nav-button").filter({ hasText: "Workspace 分析" }).click();
+    await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
   };
   const start = async () => { await button("保存来源，确认范围").click(); await station(2); await button("确认范围并开始").click(); };

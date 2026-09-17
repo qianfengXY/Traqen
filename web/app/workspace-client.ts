@@ -24,18 +24,29 @@ function headers(apiToken: string, extra: Record<string, string> = {}) {
   };
 }
 
-async function json<T>(response: Response): Promise<T> {
-  const body = await response.json() as T & { error?: { message?: string } };
-  if (!response.ok) throw new Error(body.error?.message ?? `API returned ${response.status}`);
+export class WorkspaceApiError extends Error {
+  status: number;
+  code: string;
+  requestId: string | null;
+  constructor(message: string, status: number, code: string, requestId: string | null) {
+    super(message); this.name = "WorkspaceApiError";
+    this.status = status; this.code = code; this.requestId = requestId;
+  }
+}
+
+async function json<T>(response: Response, signal?: AbortSignal): Promise<T> {
+  const body = await response.json().catch(() => null) as (T & { error?: { message?: string; code?: string; requestId?: string } }) | null;
+  signal?.throwIfAborted();
+  if (!response.ok || body === null) throw new WorkspaceApiError(body?.error?.message ?? `API returned ${response.status}`, response.status, body?.error?.code ?? "WORKSPACE_HTTP_ERROR", body?.error?.requestId ?? response.headers.get("x-request-id"));
   return body;
 }
 
-export async function listWorkspaces(apiBase: string, apiToken: string, userId: string) {
+export async function listWorkspaces(apiBase: string, apiToken: string, userId: string, signal?: AbortSignal) {
   const response = await fetch(
     `${apiBase.replace(/\/$/, "")}/v1/workspaces?userId=${encodeURIComponent(userId)}`,
-    { method: "GET", headers: headers(apiToken) },
+    { method: "GET", headers: headers(apiToken), signal },
   );
-  return (await json<{ workspaces: Workspace[] }>(response)).workspaces;
+  return (await json<{ workspaces: Workspace[] }>(response, signal)).workspaces;
 }
 
 export async function createWorkspace(
