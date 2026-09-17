@@ -1,0 +1,322 @@
+{
+  "version": "0.2",
+  "kind": "author-fixture-render-validation",
+  "fixtureOnly": true,
+  "recordedAt": "2026-09-17T15:17:12.171Z",
+  "sourceHTMLSha256": "6210734b92b083cefc4c36435c46f54c20a0f7841230d037a4d377071e560f43",
+  "screens": [
+    {
+      "file": "previews/01-graph-light.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "1b89b24e1325fb5087aa7ccd826a3b550e5ab66283af16c053cfb4d8eba2b7fd",
+      "view": "graph",
+      "theme": "light",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 313.21875,
+          "width": 840,
+          "height": 523,
+          "overflowX": false
+        },
+        {
+          "x": 1108,
+          "y": 313.21875,
+          "width": 304,
+          "height": 523,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/02-evidence-light.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "50977e36c1a77bd8a264404d8fdbe612646d846b14629485cf2a12dd3043a140",
+      "view": "evidence",
+      "theme": "light",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 260.5,
+          "width": 244,
+          "height": 585,
+          "overflowX": false
+        },
+        {
+          "x": 512,
+          "y": 260.5,
+          "width": 612,
+          "height": 585,
+          "overflowX": false
+        },
+        {
+          "x": 1140,
+          "y": 260.5,
+          "width": 272,
+          "height": 585,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/03-review-light.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "799a774c49d43379a7837dc871224d6fbd1ebc3a2dfa6f05c694d11d22fe395e",
+      "view": "review",
+      "theme": "light",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 260.5,
+          "width": 228,
+          "height": 585,
+          "overflowX": false
+        },
+        {
+          "x": 496,
+          "y": 260.5,
+          "width": 916,
+          "height": 585,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/04-coverage-light.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "37e1997565e95bec884bddfebb95e50f7308b9e6e4d144906325888616ef7d26",
+      "view": "coverage",
+      "theme": "light",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 312.5,
+          "width": 860,
+          "height": 523,
+          "overflowX": false
+        },
+        {
+          "x": 1128,
+          "y": 312.5,
+          "width": 284,
+          "height": 523,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/05-run-light.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "cf733dd3dcf2b5277af3f07b13a14f9aefae8489a515f77e2ecdb28e53445892",
+      "view": "runs",
+      "theme": "light",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 260.5,
+          "width": 832,
+          "height": 585,
+          "overflowX": false
+        },
+        {
+          "x": 1100,
+          "y": 260.5,
+          "width": 312,
+          "height": 585,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/06-preflight-blocked.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "5f6d8132b086edf8c9b2de1330ebb5182b92632a1f888bfe456f894c9e1e2557",
+      "view": "setup",
+      "theme": "light",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 260.5,
+          "width": 802,
+          "height": 585,
+          "overflowX": false
+        },
+        {
+          "x": 1074,
+          "y": 260.5,
+          "width": 338,
+          "height": 585,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/07-graph-dark.png",
+      "width": 1440,
+      "height": 900,
+      "sha256": "e7d11fcbb247f1dd582b858f92d66f0ff6beb94e7663f19924227d224cce75ce",
+      "view": "graph",
+      "theme": "dark",
+      "scale": 1,
+      "frame": {
+        "x": 0,
+        "y": 0,
+        "width": 1440,
+        "height": 900
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252,
+          "y": 313.21875,
+          "width": 840,
+          "height": 523,
+          "overflowX": false
+        },
+        {
+          "x": 1108,
+          "y": 313.21875,
+          "width": 304,
+          "height": 523,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/08-graph-display-light.png",
+      "width": 2560,
+      "height": 1440,
+      "sha256": "76b2d5dedeca9a1f08c6053a071222fed7d06a14174a342f7bd6567c8733c76e",
+      "view": "graph",
+      "theme": "light",
+      "scale": 1.6,
+      "frame": {
+        "x": 128,
+        "y": 0,
+        "width": 2304,
+        "height": 1440
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252.00000762939453,
+          "y": 313.21874618530273,
+          "width": 840,
+          "height": 523.0000305175781,
+          "overflowX": false
+        },
+        {
+          "x": 1108.0000305175781,
+          "y": 313.21874618530273,
+          "width": 303.99993896484375,
+          "height": 523.0000305175781,
+          "overflowX": false
+        }
+      ]
+    },
+    {
+      "file": "previews/09-graph-display-dark.png",
+      "width": 2560,
+      "height": 1440,
+      "sha256": "693738e6c4222e4bfc9ba37b9b2736b6ae4cf62b846ba69f15fb3636e11b159c",
+      "view": "graph",
+      "theme": "dark",
+      "scale": 1.6,
+      "frame": {
+        "x": 128,
+        "y": 0,
+        "width": 2304,
+        "height": 1440
+      },
+      "documentOverflow": false,
+      "panels": [
+        {
+          "x": 252.00000762939453,
+          "y": 313.21874618530273,
+          "width": 840,
+          "height": 523.0000305175781,
+          "overflowX": false
+        },
+        {
+          "x": 1108.0000305175781,
+          "y": 313.21874618530273,
+          "width": 303.99993896484375,
+          "height": 523.0000305175781,
+          "overflowX": false
+        }
+      ]
+    }
+  ],
+  "checks": [
+    "Four graph screenshots have identical main text and normalized panel geometry across themes and viewports.",
+    "Eight routes rendered in both themes with one h1 and no page-level horizontal overflow.",
+    "Equivalent list and human-confirmed filter; hidden selection remains explained and can be restored.",
+    "A directed relationship can be selected with keyboard and exposes its own evidence and scope.",
+    "Object inspectors preserve distinct decisions/material scope; coverage has no misleading graph-only filters.",
+    "Test-asset reading explicitly says no execution record, never a fabricated passed result.",
+    "Theme switch preserves review draft; mock action explains no real decision is written; dialog Escape works.",
+    "Blocking preflight cannot start; explicit fixture-state toggle preserves the entered investigation name."
+  ],
+  "pageErrors": [],
+  "limitations": [
+    "Static design proposal, not product implementation or backend acceptance.",
+    "CSS viewport simulation only, not physical monitor testing.",
+    "No full assistive-technology or WCAG certification.",
+    "Secondary unfinished product actions show an explicit prototype explanation; no business state is written."
+  ],
+  "browser": "151.0.7922.34"
+}

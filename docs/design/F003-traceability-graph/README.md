@@ -26,7 +26,7 @@ status: functional-design-published
 | 哪些不能自动推断或批准 | [展示与治理边界](#7-展示与治理边界) |
 | 尚未确定的技术接口 | [与旧文档的关系及未定接口](#8-与旧文档的关系及未定接口) |
 
-前端效果另见 [UX v0.1 图文阅读稿](../../../feature-discussions/2026-09-09-F003-traceability-graph-design/ux-v0.1.zh-CN.md)。它仍是未确认、未接后端的探索稿，不是本版功能设计的另一套合同。
+前端效果另见 [UX v0.2 · F005 对齐图文稿](ux-v0.2/README.md)：一套方案的六个场景，附瓷白 / 石墨与等比桌面对照。[旧 UX v0.1](../../../feature-discussions/2026-09-09-F003-traceability-graph-design/ux-v0.1.zh-CN.md) 保留为历史。UX 均仍是未确认、未接后端的探索稿，不是本版功能设计的另一套合同；本次只新增阅读入口，不改变功能基线。
 
 ## 1. 定稿范围
 
