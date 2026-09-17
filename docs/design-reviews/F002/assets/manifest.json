@@ -1,0 +1,97 @@
+{
+  "featureId": "F002",
+  "documentVersion": "0.5",
+  "status": "review-proposal-not-adopted",
+  "created": "2026-09-16",
+  "images": [
+    {
+      "file": "history/01-laptop-reading.png",
+      "sourceFile": "exec-1fd17379-95d6-492a-b139-fc3a1387397c.png",
+      "sha256": "35113bae3a01932996ac75d08b20a6ba6e40cb81f67f025a4a7159fa6c5e4c55",
+      "width": 1586,
+      "height": 992,
+      "bytes": 1179309,
+      "kind": "generated-ux-mockup",
+      "provenance": "v0.3-desktop-layout",
+      "usage": "historical-not-current-design"
+    },
+    {
+      "file": "history/02-monitor-reading.png",
+      "sourceFile": "exec-1df84093-b03f-4cfe-963a-be07d62efadd.png",
+      "sha256": "3820d5beeecb720751e82e65e02c548b3e8c7997ce56d97363dc56dcc856b27d",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1440322,
+      "kind": "generated-ux-mockup",
+      "provenance": "v0.3-desktop-layout",
+      "usage": "historical-not-current-design"
+    },
+    {
+      "file": "03-relations.png",
+      "sourceFile": "exec-a6d3f7d4-897d-4fd7-989d-606b8475b085.png",
+      "sha256": "9bcbb8ca2ff1e5fb0ac5895a3ee9179d50c8a3872a40e9c42ca2fd2e96ccd7ce",
+      "width": 1513,
+      "height": 1039,
+      "bytes": 1257558,
+      "kind": "generated-ux-mockup",
+      "provenance": "reused-desktop-interaction-scene",
+      "usage": "active-review-reference"
+    },
+    {
+      "file": "04-coverage-gaps.png",
+      "sourceFile": "exec-03485967-09fb-4ccf-ae72-882481ad4da2.png",
+      "sha256": "793d32d3c531ad4d2077c88bf2afcc0bdbcfec9be24ef177ef8e52089c713fdf",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1539818,
+      "kind": "generated-ux-mockup",
+      "provenance": "reused-desktop-scene-corrected-in-v0.3",
+      "usage": "active-review-reference"
+    },
+    {
+      "file": "05-versions-delivery.png",
+      "sourceFile": "exec-c542297e-fcd4-4443-99a1-fe93384276a0.png",
+      "sha256": "0e3276a211fba1e38b7e93d76440336c0284b6b72f84836fab013a77fa409ce5",
+      "width": 1514,
+      "height": 1039,
+      "bytes": 1167104,
+      "kind": "generated-ux-mockup",
+      "provenance": "reused-desktop-interaction-scene",
+      "usage": "active-review-reference"
+    },
+    {
+      "file": "06-request-validation.png",
+      "sourceFile": "exec-7bcace8f-9f4f-40b9-bcb6-80daeda935b0.png",
+      "sha256": "66b63101376ccd7e80ed7df7a2004956ccd988563a58bf0b0381436ce5a6f59f",
+      "width": 1514,
+      "height": 1039,
+      "bytes": 1443549,
+      "kind": "generated-ux-mockup",
+      "provenance": "reused-desktop-interaction-scene",
+      "usage": "active-review-reference"
+    },
+    {
+      "file": "07-request-result.png",
+      "sourceFile": "exec-386b2945-d8d7-4f12-90f1-900ae47c9ff2.png",
+      "sha256": "70653bfe45293f460185f0ff2cfc47d966ae50290452bad58bd55a6c9a106f64",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 1321122,
+      "kind": "generated-ux-mockup",
+      "provenance": "reused-desktop-interaction-scene",
+      "usage": "active-review-reference"
+    },
+    {
+      "file": "08-unified-desktop-v0.4.png",
+      "sourceFile": "exec-faa2a08b-4dd0-4d2f-85fd-7466f6456c38.png",
+      "sha256": "64eb3c0513e7d5db25b44bfd7367b58cd393f39d0e426d042b1688110713b228",
+      "width": 1672,
+      "height": 941,
+      "bytes": 1476604,
+      "kind": "generated-ux-mockup",
+      "provenance": "v0.4-unified-desktop-text-edit",
+      "usage": "active-review-reference"
+    }
+  ],
+  "updated": "2026-09-17"
+}
