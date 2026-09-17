@@ -1,0 +1,35 @@
+diff --git a/web/app/traqen-product.tsx b/web/app/traqen-product.tsx
+index 846a10b..5d9c2ac 100644
+--- a/web/app/traqen-product.tsx
++++ b/web/app/traqen-product.tsx
+@@ -117,14 +117,13 @@ const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
+   telemetryPolicy: "METADATA_ONLY",
+ };
+ 
+-const modules: Array<{ key: View; icon: string; section: "overview" | "understanding" | "governance" | "configuration"; zh: string; en: string }> = [
+-  { key: "overview", icon: "⌂", section: "overview", zh: "工作台概览", en: "Workspace overview" },
+-  { key: "workspace", icon: "◎", section: "understanding", zh: "Workspace 分析", en: "Workspace analysis" },
+-  { key: "feature", icon: "◇", section: "understanding", zh: "功能 / API", en: "Feature / API" },
+-  { key: "graph", icon: "⌘", section: "understanding", zh: "理解图谱", en: "Understanding graph" },
+-  { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
+-  { key: "impact", icon: "↗", section: "governance", zh: "变更影响", en: "Change impact" },
+-  { key: "settings", icon: "⚙", section: "configuration", zh: "设置中心", en: "Settings center" },
++const modules: Array<{ key: View; icon: string; zh: string; en: string }> = [
++  { key: "overview", icon: "⌂", zh: "Workspace 概览", en: "Workspace overview" },
++  { key: "workspace", icon: "◎", zh: "来源与版本", en: "Sources & versions" },
++  { key: "feature", icon: "◇", zh: "技术结构", en: "Technical structure" },
++  { key: "graph", icon: "⌘", zh: "业务理解", en: "Business understanding" },
++  { key: "impact", icon: "↗", zh: "变更影响", en: "Change impact" },
++  { key: "settings", icon: "⚙", zh: "设置中心", en: "Settings center" },
+ ];
+ 
+ function messageOf(error: unknown, fallback: string) {
+@@ -1053,7 +1052,7 @@ function ServerOwnedProduct() {
+     <aside className="sidebar">
+       <div className="brand"><span className="brand-mark">T</span><span>Traqen</span></div>
+       <div className="workspace-block"><div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button title={t("刷新 Workspace", "Refresh Workspaces")} onClick={() => void reconnect(false)}>↻</button><button className="workspace-add-button" title={t("新建 Workspace", "New Workspace")} onClick={() => { setActiveWorkspace(null); setView("overview"); }}>＋</button></div></div>{activeWorkspace ? <div className="workspace active-workspace"><strong>{activeWorkspace.name}</strong><small>{current ? `Published revision ${current.head.version}` : t("等待首次发布", "Awaiting first publication")}</small></div> : <div className="workspace active-workspace empty-workspace"><strong>{t("未选择 Workspace", "No Workspace selected")}</strong><small>{t("选择或创建一个项目", "Select or create a project")}</small></div>}<div className="workspace-project-list">{workspaces.map((workspace) => <div key={workspace.id} className={`workspace-project-row ${workspace.id === activeWorkspace?.id ? "active" : ""}`}><button className="workspace-project-open" onClick={() => selectWorkspace(workspace)}><strong>{workspace.name}</strong><small>{workspace.lifecycleState}</small></button></div>)}</div></div>
+-      {(["overview", "understanding", "governance", "configuration"] as const).map((section) => <nav key={section} className="nav" aria-label={section}><p className="workspace-label">{section === "understanding" ? t("理解", "Understanding") : section === "governance" ? t("治理", "Governance") : section === "configuration" ? t("配置", "Configuration") : t("工作台", "Workspace")}</p>{modules.filter((item) => item.section === section).map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => { if (item.key === "settings") setSettingsScope("chooser"); setView(item.key); }}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "review" && openReviewCount > 0 && <em>{openReviewCount}</em>}{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>)}
++      <nav className="nav" aria-label={t("主导航", "Primary navigation")}><p className="workspace-label">{t("主导航", "Primary")}</p>{modules.map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => { if (item.key === "settings") setSettingsScope("chooser"); setView(item.key); }}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>
+       <div className="shell-status-summary" aria-label={t("全局状态摘要", "Global status summary")}><span>Published Head <b>{current ? `r${current.head.version}` : "—"}</b></span><span>Review Queue <b>{openReviewCount}</b></span><span>Impact Actions <b>{impactActionCount}</b></span></div>
+       <div className="sidebar-note"><b>{t("权威边界", "Authority boundary")}</b><br />{t("实线为 Published；虚线为 Candidate。历史版本只读。", "Solid is Published; dashed is Candidate. Historical revisions are read-only.")}</div>
+     </aside>

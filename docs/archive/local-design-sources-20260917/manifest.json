@@ -1,0 +1,672 @@
+{
+  "captured": "2026-09-17",
+  "status": "historical-source-only",
+  "entries": [
+    {
+      "source": "worktree-21:web/app/demo/f002/demo-contract.md",
+      "path": "f002-concept/web/app/demo/f002/demo-contract.md",
+      "sha256": "644a1f3b257cad45416c24f74d5e2e13238f4746bcc09759b95b4d3c0809020e",
+      "bytes": 4509
+    },
+    {
+      "source": "worktree-21:web/app/demo/f002/model.ts",
+      "path": "f002-concept/web/app/demo/f002/model.ts",
+      "sha256": "2e89adc119c50f9b6e665d005af5693af81afb1ceb4a757fcaf5618d48b93116",
+      "bytes": 12561
+    },
+    {
+      "source": "worktree-21:web/app/demo/f002/page.tsx",
+      "path": "f002-concept/web/app/demo/f002/page.tsx",
+      "sha256": "f0c997ea2a52dd9dcf11783fc8bef4c3ddb62b9a781ddbf6c3cf9affb532d08f",
+      "bytes": 23913
+    },
+    {
+      "source": "worktree-21:web/app/demo/f002/surface.css",
+      "path": "f002-concept/web/app/demo/f002/surface.css",
+      "sha256": "e9692b41b511c700cd36a20db3bb15320e213895606fc497ddc77d714814d1fa",
+      "bytes": 19575
+    },
+    {
+      "source": "worktree-21:web/app/demo/f002/verification.md",
+      "path": "f002-concept/web/app/demo/f002/verification.md",
+      "sha256": "23a4e120aebe6062a5f48820d5addb8906efa4e879b06c31180467ef0f739e66",
+      "bytes": 5243
+    },
+    {
+      "source": "worktree-21:web/public/f002-demo-architecture.png",
+      "path": "f002-concept/web/public/f002-demo-architecture.png",
+      "sha256": "f3cafe4b781c3a0060073c61ff2f0abbbe801481eb24495b810967b952fcc840",
+      "bytes": 21889
+    },
+    {
+      "source": "worktree-21:web/tests/f002-demo-browser.mjs",
+      "path": "f002-concept/web/tests/f002-demo-browser.mjs",
+      "sha256": "8faf781128239ddc6a1c6df702fb4356e5c08bd8ef804ea57f29e11394614b27",
+      "bytes": 7904
+    },
+    {
+      "source": "worktree-21:web/tests/f002-demo.test.mjs",
+      "path": "f002-concept/web/tests/f002-demo.test.mjs",
+      "sha256": "a85f58619c43b6c1ada287ee345cd97bf4325e99064127c5141acf757470f25d",
+      "bytes": 2222
+    },
+    {
+      "source": "worktree-21:web/tests/fixtures/f002-image.html",
+      "path": "f002-concept/web/tests/fixtures/f002-image.html",
+      "sha256": "7d3044147e6be47c5e89f3fc1ef982f792c15c0e9ff7c90318f906a9c54ba570",
+      "bytes": 1288
+    },
+    {
+      "source": "worktree-23:designs/F005-layout-navigation-v2.pen",
+      "path": "f005-v2/designs/F005-layout-navigation-v2.pen",
+      "sha256": "a3050c76cf214bad13cc68243eed403b21035b1270516fd704fdc58b01fa741b",
+      "bytes": 67474
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/F005-design-charter.proposal.zh-CN.md",
+      "path": "f005-v2/designs/F005-v2/F005-design-charter.proposal.zh-CN.md",
+      "sha256": "d3a35fbdc0cc8856929c9ee9ea59305533b3c0e73d088180bf57d8acaaa17b61",
+      "bytes": 37653
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/README.zh-CN.md",
+      "path": "f005-v2/designs/F005-v2/README.zh-CN.md",
+      "sha256": "8237b70de89b1e8df403d36230d5e39b5259fd4d7d0371c03fe5ddb65fad7b22",
+      "bytes": 2514
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/Traqen-F005-review.html",
+      "path": "f005-v2/designs/F005-v2/Traqen-F005-review.html",
+      "sha256": "bae31d14f6954a33b275b292b7ebcb686cec930acde1bb01a0781561603319ee",
+      "bytes": 149626
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/app.js",
+      "path": "f005-v2/designs/F005-v2/app.js",
+      "sha256": "3f2576c91682fa65bb3df2db92a8ad805c49297aeac8e42c74a0f1490c90b649",
+      "bytes": 65961
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/capture.mjs",
+      "path": "f005-v2/designs/F005-v2/capture.mjs",
+      "sha256": "307f6344f732d8b556df2af050e227a1d1575ae5e34adf245373f08c68dcd943",
+      "bytes": 3355
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/charter.html",
+      "path": "f005-v2/designs/F005-v2/charter.html",
+      "sha256": "833fc1b1bcc2d1105d02206e6b59e0437efdcce2b55439b231c723cf6c1b6e10",
+      "bytes": 47488
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/gallery.html",
+      "path": "f005-v2/designs/F005-v2/gallery.html",
+      "sha256": "3b80dfca3326e5ccc13bc1955aa7770cc94032337bf53d2c4e4a6ead33452c72",
+      "bytes": 7331
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/index.html",
+      "path": "f005-v2/designs/F005-v2/index.html",
+      "sha256": "1e4fabcc79947be7f8da95e32733c336d1dfdce908b4eafeaacc2dca6464016f",
+      "bytes": 1398
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/01-overview.png",
+      "path": "f005-v2/designs/F005-v2/previews/01-overview.png",
+      "sha256": "fec47d639e6ec9ffd2fa82c271d0dd9ccfdb503bc67033516ce6b9798f7e4c10",
+      "bytes": 276514
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/02-graph-light.png",
+      "path": "f005-v2/designs/F005-v2/previews/02-graph-light.png",
+      "sha256": "c77fd8add379b6b5dc2b29e2ea728c4e82180b065e30b8b367e241d3b2ac3511",
+      "bytes": 238526
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/03-graph-dark.png",
+      "path": "f005-v2/designs/F005-v2/previews/03-graph-dark.png",
+      "sha256": "b7f39295b847719bdfb3ec37433019a7409c3f32e1a6fe8be7ae23c60f988d1d",
+      "bytes": 221334
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/04-sources.png",
+      "path": "f005-v2/designs/F005-v2/previews/04-sources.png",
+      "sha256": "7be30f90a560e60aceafa54b5b33a5c77b9f6781ccbb2d7976ec424691102388",
+      "bytes": 225626
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/05-evidence.png",
+      "path": "f005-v2/designs/F005-v2/previews/05-evidence.png",
+      "sha256": "d779005b8a63a5f5a86117c191305fa200d999d5390b1eb45c201ffb5d9ff5ca",
+      "bytes": 215824
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/06-settings.png",
+      "path": "f005-v2/designs/F005-v2/previews/06-settings.png",
+      "sha256": "2eed134353ce76f59992d35eb962540a7e7f138e5837f1ad8ddba17cbfe84d95",
+      "bytes": 183428
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/07-components.png",
+      "path": "f005-v2/designs/F005-v2/previews/07-components.png",
+      "sha256": "1e027fc8596f643ce926c09185e613e32f9437dbe85bfdc782784a1bdc8bd089",
+      "bytes": 382463
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/08-form-error.png",
+      "path": "f005-v2/designs/F005-v2/previews/08-form-error.png",
+      "sha256": "a85fdfc58ceb64587cba12533c432174d2d7ce3c4cebe15ba9c865ef53ce0e72",
+      "bytes": 265862
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/09-review.png",
+      "path": "f005-v2/designs/F005-v2/previews/09-review.png",
+      "sha256": "91c111b519e0a4de8add81a9afa169f46ce0f5ad3993c4716bb1efee70dbf7d1",
+      "bytes": 264085
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/10-command.png",
+      "path": "f005-v2/designs/F005-v2/previews/10-command.png",
+      "sha256": "f1bf3ef3720b019f80a0c52b0f44558e68f21ade6865581d42ff566f5d9ff4d1",
+      "bytes": 227431
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/11-impact.png",
+      "path": "f005-v2/designs/F005-v2/previews/11-impact.png",
+      "sha256": "c3ed55ed68efc108714c459aac2ad6d83ecf68dfedb2a9801da35412b12193ed",
+      "bytes": 190156
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/12-mobile-overview.png",
+      "path": "f005-v2/designs/F005-v2/previews/12-mobile-overview.png",
+      "sha256": "3630f16877f1978261ce2763b9d99b759e6af469389796fbe54c03241303e231",
+      "bytes": 138276
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/13-mobile-navigation.png",
+      "path": "f005-v2/designs/F005-v2/previews/13-mobile-navigation.png",
+      "sha256": "525fe039746d82d4f4a88f8baebab415049650982841b66ac7ba5285d4c6c681",
+      "bytes": 76648
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/14-mobile-graph-list.png",
+      "path": "f005-v2/designs/F005-v2/previews/14-mobile-graph-list.png",
+      "sha256": "648a164544af4f4d5d4dca6318f24d6dff69557808f7a94dd0ca67fe2d19ec4c",
+      "bytes": 70856
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/15-mobile-detail.png",
+      "path": "f005-v2/designs/F005-v2/previews/15-mobile-detail.png",
+      "sha256": "c0321e9468ebf7050e4f5ffe7d0ee897e82769cc8b1a9f4be418ed6a14ed2cab",
+      "bytes": 55544
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/16-mobile-dark-settings.png",
+      "path": "f005-v2/designs/F005-v2/previews/16-mobile-dark-settings.png",
+      "sha256": "86e4051e1e1d8f0a7954927effbe31969d99b09f8c4ad057a0b71d2d4652e3b1",
+      "bytes": 85435
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/17-charter.png",
+      "path": "f005-v2/designs/F005-v2/previews/17-charter.png",
+      "sha256": "1a23f4a9a0c0caacf54bb103bc74a06c1b8f6251e046172fccbb1573e7420e71",
+      "bytes": 240600
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/graph-first.png",
+      "path": "f005-v2/designs/F005-v2/previews/graph-first.png",
+      "sha256": "efbe137bb1d3f915ae4859d27a81494f9b48c0e03219755375d78f8fdeb08329",
+      "bytes": 238218
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/overview-first.png",
+      "path": "f005-v2/designs/F005-v2/previews/overview-first.png",
+      "sha256": "3d648dcc864cbafc423da65b9947da7a5c30e275698908e7ddddc7c2421836c4",
+      "bytes": 276170
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/pencil/Dpnzv.png",
+      "path": "f005-v2/designs/F005-v2/previews/pencil/Dpnzv.png",
+      "sha256": "cdb2a9d9780acf1a338b6f02afa2ee8af1ceee3c3b13e234bfaedbb6e9bd7756",
+      "bytes": 104250
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/pencil/GBpiC.png",
+      "path": "f005-v2/designs/F005-v2/previews/pencil/GBpiC.png",
+      "sha256": "7a3ace7136d6941bb3fb1a136402abdeb42dba550f93dc462f9e122fe5a9a99d",
+      "bytes": 159221
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/previews/pencil/m3mfF.png",
+      "path": "f005-v2/designs/F005-v2/previews/pencil/m3mfF.png",
+      "sha256": "bf705cb8cc6c980d04fb29643b37a452c3f0125956428a6e3b3ae38c2f2f704d",
+      "bytes": 160564
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/styles.css",
+      "path": "f005-v2/designs/F005-v2/styles.css",
+      "sha256": "9ebde056cf1ba8227ed36f2a333b22e176edca8d47fffa1aa591da5090753863",
+      "bytes": 35222
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/verification.json",
+      "path": "f005-v2/designs/F005-v2/verification.json",
+      "sha256": "aa8918e02256a24a1ada199ff6dee0ec208521c19fe66306345d6784b5941383",
+      "bytes": 4249
+    },
+    {
+      "source": "worktree-23:designs/F005-v2/verify.mjs",
+      "path": "f005-v2/designs/F005-v2/verify.mjs",
+      "sha256": "f01dd9847a672c6162e44b9bee9c964a96cb99f522073d9e5bbba71d7a32c6e3",
+      "bytes": 8547
+    },
+    {
+      "source": "worktree-00:designs/F005-layout-navigation.pen",
+      "path": "f005-initial/designs/F005-layout-navigation.pen",
+      "sha256": "574baf202ce354479caa3dfdfe6feb141d8a067ee7fd5dd21cc278c7606aac9f",
+      "bytes": 246574
+    },
+    {
+      "source": "worktree-00:designs/previews/AGd0N.png",
+      "path": "f005-initial/designs/previews/AGd0N.png",
+      "sha256": "8dd815b2faca9412d083b0d61b0b384a3c9390877b78952882c438cd44bc12e8",
+      "bytes": 153859
+    },
+    {
+      "source": "worktree-00:designs/previews/JXm2N.png",
+      "path": "f005-initial/designs/previews/JXm2N.png",
+      "sha256": "94cbdf5d8a32b1937cbf81136b3e0f9878a307d18f6b006f100304d321de1e38",
+      "bytes": 35375
+    },
+    {
+      "source": "worktree-00:designs/previews/YG1Ip.png",
+      "path": "f005-initial/designs/previews/YG1Ip.png",
+      "sha256": "ca1bec6e6f7e0b66ea99fd842a5b67ad0e02742a4481ec579b4e79e33cd5e24a",
+      "bytes": 133189
+    },
+    {
+      "source": "worktree-00:designs/previews/Z7v2yl.png",
+      "path": "f005-initial/designs/previews/Z7v2yl.png",
+      "sha256": "589de34766ae78b40426c09773116178f8a39c343f7e8678058d9c3e6764abbd",
+      "bytes": 157682
+    },
+    {
+      "source": "worktree-00:designs/previews/d0Fkj.png",
+      "path": "f005-initial/designs/previews/d0Fkj.png",
+      "sha256": "2edfb98e6386cca626c72afac234da9db402750dc33360c16054a5e8faaa650e",
+      "bytes": 54932
+    },
+    {
+      "source": "worktree-00:designs/previews/export.pdf",
+      "path": "f005-initial/designs/previews/export.pdf",
+      "sha256": "535304b2ac12b291e7ff71425d11260044c1e24726ba58cb2bdc3f12039e5c81",
+      "bytes": 3878171
+    },
+    {
+      "source": "worktree-00:designs/previews/o6zvO.png",
+      "path": "f005-initial/designs/previews/o6zvO.png",
+      "sha256": "016def18b65b72e195886650997e3f4b664687d3b5797544d81616b5e48fc1ab",
+      "bytes": 201290
+    },
+    {
+      "source": "worktree-00:designs/previews/yNUoY.png",
+      "path": "f005-initial/designs/previews/yNUoY.png",
+      "sha256": "6eb6604cfad2ef8c7bc8f8fcfbb2a4bb9572773a8925cb8fa8c7188c9a429aa5",
+      "bytes": 124240
+    },
+    {
+      "source": "root-untracked:f005-proto-desktop.png",
+      "path": "f005-initial/f005-proto-desktop.png",
+      "sha256": "aaaa7d20662e094de37c65324a2f0a2f983fd16548352a7e9aadc5aa9df062c9",
+      "bytes": 257936
+    },
+    {
+      "source": "external-generation:f005-capture-desktop.mjs",
+      "path": "f005-v21-generation/f005-capture-desktop.mjs",
+      "sha256": "697a458f4556ec3460a343361f1ab02b997e56d712ad4e417f2fbe28a0c2a1c1",
+      "bytes": 7069
+    },
+    {
+      "source": "external-generation:f005-render-readers.mjs",
+      "path": "f005-v21-generation/f005-render-readers.mjs",
+      "sha256": "65a77397b3ed270ee2eebc351a62f0fea3629929b8557bedebf28e399f61a874",
+      "bytes": 4402
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.1-candidate.zh-CN.png",
+      "path": "f003-candidates/f003-functional-panorama-v1.1-candidate.zh-CN.png",
+      "sha256": "5df40b78783dd175a1e7b6687a569fe150a39b5f00725dd81f14610ffd240339",
+      "bytes": 1524887
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.2-candidate.prompt.txt",
+      "path": "f003-candidates/f003-functional-panorama-v1.2-candidate.prompt.txt",
+      "sha256": "e2a5275ba17d05558a36fd8524a8f23b349965bd7a731967d73dd7391a6b7a7c",
+      "bytes": 7549
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.2-candidate.provenance.json",
+      "path": "f003-candidates/f003-functional-panorama-v1.2-candidate.provenance.json",
+      "sha256": "02abf89588305997f9cafad4a3a62dfe3c753be1d71a30cfc7d8d3721e4d9989",
+      "bytes": 2227
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.2-candidate.sha256",
+      "path": "f003-candidates/f003-functional-panorama-v1.2-candidate.sha256",
+      "sha256": "366f1da1bcfd562e2c39cf8a7fa2c6ac825c56f8c7a0e1d3f1d73cd980132e7d",
+      "bytes": 116
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.2-candidate.zh-CN.png",
+      "path": "f003-candidates/f003-functional-panorama-v1.2-candidate.zh-CN.png",
+      "sha256": "f21bed37ece6983f364ead605f0621b02be6abcd60ac2d2d53c8728b5b21019e",
+      "bytes": 1757609
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.3-candidate.prompt.txt",
+      "path": "f003-candidates/f003-functional-panorama-v1.3-candidate.prompt.txt",
+      "sha256": "bc3f183cc268b65c3034ad318d22b71382d05ecd1f8251a58e68ed76b74f92de",
+      "bytes": 4804
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.3-candidate.provenance.json",
+      "path": "f003-candidates/f003-functional-panorama-v1.3-candidate.provenance.json",
+      "sha256": "d409e80b206ccbd13c9c2f0d8541d4874c4f94eb9da64f4968039f0d8093f0f3",
+      "bytes": 3449
+    },
+    {
+      "source": "root-untracked:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.3-candidate.sha256",
+      "path": "f003-candidates/f003-functional-panorama-v1.3-candidate.sha256",
+      "sha256": "7f9fb898c57a5911468e84007d9b80f9c18ae1331bf09868cbedd827b9b71afb",
+      "bytes": 116
+    },
+    {
+      "source": "main@4b71025:feature-discussions/2026-09-09-F003-traceability-graph-design/assets/f003-functional-panorama-v1.3-candidate.zh-CN.png",
+      "path": "f003-candidates/f003-functional-panorama-v1.3-candidate.zh-CN.png",
+      "sha256": "92db9c60a49a10de902e71e061c5f39ebb7718b1b20712eb1028a805edd45ab7",
+      "bytes": 1768230
+    },
+    {
+      "source": "root-untracked:feature-discussions/软件质量追溯系统-架构设计与功能大纲.md",
+      "path": "architecture-notes/软件质量追溯系统-架构设计与功能大纲.md",
+      "sha256": "a756e36034cab2d198692315bf30d733abb1018a1d9a602ec530fb95e3aea3e6",
+      "bytes": 8715
+    },
+    {
+      "source": "main@4b71025:docs/README.md",
+      "path": "local-main-4b71025/docs/README.md",
+      "sha256": "3d917e057bf9c1d8b5ebb76817d291ff9132289c85957cc087c3a2d01d1c4c67",
+      "bytes": 4925
+    },
+    {
+      "source": "main@4b71025:docs/README.zh-CN.md",
+      "path": "local-main-4b71025/docs/README.zh-CN.md",
+      "sha256": "882e3f1fe28e256d32841bd223490397e4c4b66ae304cae7c7c6f1dd4e8b9b79",
+      "bytes": 4478
+    },
+    {
+      "source": "main@4b71025:docs/design-reviews/F005/README.md",
+      "path": "local-main-4b71025/docs/design-reviews/F005/README.md",
+      "sha256": "8d623a51aa22ed51caf11e7702efb70d2438ae2c5df67a1ddacb06b5fa977e65",
+      "bytes": 39425
+    },
+    {
+      "source": "main@4b71025:docs/design-reviews/F005/README.zh-CN.md",
+      "path": "local-main-4b71025/docs/design-reviews/F005/README.zh-CN.md",
+      "sha256": "1eb2215c689202f9a0b5a19998f162460872c06cef25280baffa97123eb63001",
+      "bytes": 42377
+    },
+    {
+      "source": "main@4b71025:docs/design-reviews/F005/assets/Traqen-F005-review.html",
+      "path": "local-main-4b71025/docs/design-reviews/F005/assets/Traqen-F005-review.html",
+      "sha256": "afab2ce1f554f286f55aa0caeda966373eab2ac6689d9dc419b7a956cffc1c17",
+      "bytes": 149625
+    },
+    {
+      "source": "main@4b71025:docs/design-reviews/F005/assets/gallery.html",
+      "path": "local-main-4b71025/docs/design-reviews/F005/assets/gallery.html",
+      "sha256": "dbaec6a1ff6728428b792fa0fd4663e4cd7edda93994512c0f3dd6b3d064d4e5",
+      "bytes": 7363
+    },
+    {
+      "source": "main@4b71025:docs/design-reviews/F005/assets/previews/13-mobile-navigation.png",
+      "path": "local-main-4b71025/docs/design-reviews/F005/assets/previews/13-mobile-navigation.png",
+      "sha256": "525fe039746d82d4f4a88f8baebab415049650982841b66ac7ba5285d4c6c681",
+      "bytes": 76648
+    },
+    {
+      "source": "main@4b71025:docs/features/F003-traceability-graph.md",
+      "path": "local-main-4b71025/docs/features/F003-traceability-graph.md",
+      "sha256": "4f3695302180b54a818c5d110a69a0989fdd04cd9dc647308b61b5a224233552",
+      "bytes": 5857
+    },
+    {
+      "source": "main@4b71025:docs/features/F003-traceability-graph.zh-CN.md",
+      "path": "local-main-4b71025/docs/features/F003-traceability-graph.zh-CN.md",
+      "sha256": "a2e487ba107d5e68cc47d70c037655aa93d025d13d54f6b934577f44e6010e65",
+      "bytes": 5065
+    },
+    {
+      "source": "main@4b71025:feature-discussions/2026-09-09-F002-deterministic-facts-design/README.md",
+      "path": "local-main-4b71025/feature-discussions/2026-09-09-F002-deterministic-facts-design/README.md",
+      "sha256": "06f376a5f0820248afc6d16dad08fb497946b2324c3ab6f20d92fc12ff066571",
+      "bytes": 27452
+    },
+    {
+      "source": "main@4b71025:feature-discussions/2026-09-09-F002-deterministic-facts-design/README.zh-CN.md",
+      "path": "local-main-4b71025/feature-discussions/2026-09-09-F002-deterministic-facts-design/README.zh-CN.md",
+      "sha256": "629acabe8d3f45e0f4b7add7f3ecfe333586409a0bf25b9032c5edac93aa858d",
+      "bytes": 24975
+    },
+    {
+      "source": "main@4b71025:feature-discussions/2026-09-09-F002-deterministic-facts-design/assets/f002-functional-panorama-v4-f003-style.prompt.md",
+      "path": "local-main-4b71025/feature-discussions/2026-09-09-F002-deterministic-facts-design/assets/f002-functional-panorama-v4-f003-style.prompt.md",
+      "sha256": "12cba9b795c04248c4d239d1fd31ecc25f9f94f01229c22026a9f3e0511a0236",
+      "bytes": 15231
+    },
+    {
+      "source": "main@4b71025:feature-discussions/2026-09-09-F003-traceability-graph-design/README.md",
+      "path": "local-main-4b71025/feature-discussions/2026-09-09-F003-traceability-graph-design/README.md",
+      "sha256": "3ff174dacf52dde58d9c6bce2ab012946d62da8494683c404cd5d0bde2ff3df3",
+      "bytes": 17455
+    },
+    {
+      "source": "main@4b71025:feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md",
+      "path": "local-main-4b71025/feature-discussions/2026-09-09-F003-traceability-graph-design/README.zh-CN.md",
+      "sha256": "8f3730a55e74f7f1b0a7e6a225f81457017449b4fdf0ceef184e64569ef4d180",
+      "bytes": 14241
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md",
+      "sha256": "5bf003c79d7cc7db24e8973bc49e5525700ac166e28e4bc42f4d07bffebc8078",
+      "bytes": 39205
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-add-sources-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-add-sources-zh-CN.html",
+      "sha256": "cb1d54518ad835310696d93bb44e06144d26e96e2cf2d95e22962afddb442ab0",
+      "bytes": 15024
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-add-sources-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-add-sources-zh-CN.png",
+      "sha256": "3bf161e8ed24b14125698ead4a50a5cc177e33bfafe5cdd69470b04cf2cc647f",
+      "bytes": 160535
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-capture-progress-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-capture-progress-zh-CN.html",
+      "sha256": "577f64fd2bfa87dea79dca3f3800c30071af152b4f9442233bb4578487889833",
+      "bytes": 15843
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-capture-progress-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-capture-progress-zh-CN.png",
+      "sha256": "d7e24cccbc2a1888d14e63ba4e6c4dc96b26e6915b1cb8c7998d541bea237679",
+      "bytes": 141348
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-composite-source-setup-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-composite-source-setup-zh-CN.html",
+      "sha256": "e32b8a2d82e8479da380d1fb1e521e8e2a1d072f038a2fd9287e26ce4d82f951",
+      "bytes": 15533
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-composite-source-setup-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-composite-source-setup-zh-CN.png",
+      "sha256": "60bce11f4803a1b446af334f2713eca8277f71ffb21146815279dcafb34da9fb",
+      "bytes": 166629
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-blocked-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-blocked-zh-CN.html",
+      "sha256": "5df5cac350cf7ab971a0a059f783818463ad091746d5c847cd6fe824407957c5",
+      "bytes": 18482
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-blocked-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-blocked-zh-CN.png",
+      "sha256": "70d0e67b76add7315bcf6675d9f2f19375bf153dfd5511a15ca1a052b52ceba9",
+      "bytes": 209114
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-capturing-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-capturing-zh-CN.html",
+      "sha256": "09b15a58b59bdee6b7dccb8d75bfaed6f33ee738ebdbd3e0dc608859a12907be",
+      "bytes": 19463
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-capturing-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-capturing-zh-CN.png",
+      "sha256": "de95b06e8f6e57c15628fcce6ea67c06568d68e3d9d24b8ae13163602cba3b82",
+      "bytes": 249167
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-empty-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-empty-zh-CN.html",
+      "sha256": "35a63fd925a6142824de768ddd1fd950b1808ac1b2a7d40a006f2d01090b9540",
+      "bytes": 18485
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-empty-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-empty-zh-CN.png",
+      "sha256": "bedb2f0b937f0a09d61530d19d67febb4e8007c0d1cf7c1985b62bacb5455e3c",
+      "bytes": 200639
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-map-8-station-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-map-8-station-zh-CN.html",
+      "sha256": "0863f6f558694dba8393a8ccb95f8fdeae3f896ef6f8844f6adac959e5a6ea75",
+      "bytes": 28908
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-map-8-station-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-journey-map-8-station-zh-CN.png",
+      "sha256": "799cce0ec9e997b617067dee4a7178cc7270f511f783d2a84ac8b022c7515009",
+      "bytes": 230959
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-new-version-file-changes-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-new-version-file-changes-zh-CN.html",
+      "sha256": "13419dbe346979f51917954fc4638bf95f96104aac36f38658b2bc68da816507",
+      "bytes": 15852
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-new-version-file-changes-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-new-version-file-changes-zh-CN.png",
+      "sha256": "3b0d4c71d55a25fc416768a83285d01235e781a1dba8f07312200b6c2d50f798",
+      "bytes": 161772
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-preflight-blocked-zh-CN-v2.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-preflight-blocked-zh-CN-v2.html",
+      "sha256": "c97acfce5e0a5932dc1ce5996b88a668d7ebc3c89f991f92b6ec47ddd90d2c49",
+      "bytes": 15780
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-preflight-blocked-zh-CN-v2.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-preflight-blocked-zh-CN-v2.png",
+      "sha256": "a4eebe58b515ad6dbbed5eaf5e06665ac6e15a647c182029215aa66050649c85",
+      "bytes": 157347
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-composite-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-composite-zh-CN.html",
+      "sha256": "627c15d198b41512ccc495c98f11a6229889b1adf67acd47d6893b1e0abb08c2",
+      "bytes": 17164
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-composite-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-composite-zh-CN.png",
+      "sha256": "266b61a947fa70c61115b768b9b46c60452dba833fe98c981929471ebeefe3dc",
+      "bytes": 204948
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-blocked-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-blocked-zh-CN.png",
+      "sha256": "bbda44ec6327da05e49f724191b0742db57531569f694b021cc6c0bef61560dd",
+      "bytes": 193355
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-capturing-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-capturing-zh-CN.png",
+      "sha256": "32da331f3a70f20e68cae4d0af3e803dab6d47bfa915ccca10874eaabaf2bc65",
+      "bytes": 193421
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-empty-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-empty-zh-CN.png",
+      "sha256": "b6b4d353c71ccb78382e97cfb3c04b8b911af594b3142dac71699cf5c5ebc1f6",
+      "bytes": 199051
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-frozen-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-frozen-zh-CN.png",
+      "sha256": "3c493f6b8df1785443b08e569dccc1f2c4c6b1c31253973cd9b75e353ef35d2e",
+      "bytes": 207117
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-gaps-zh-CN.png",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-gaps-zh-CN.png",
+      "sha256": "1bbcbbdccad362669d092dadde47c13999e1b2df82acb0da0379e9db8fff914e",
+      "bytes": 207476
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-zh-CN.html",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-snapshot-workbench-v2-zh-CN.html",
+      "sha256": "cd25747c9c3d463792b6d9dbbfefda3fadfb5d77898a37dea762265e75cead1b",
+      "bytes": 34045
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/journey-demo-contract.md",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/journey-demo-contract.md",
+      "sha256": "f1dcaf74a59040bc30ea542bdd5888d30eb5b3334947a1696a55675cd5a90b4d",
+      "bytes": 7018
+    },
+    {
+      "source": "root-wip:feature-discussions/2026-08-30-F001-workspace-source-truth-design/verify-journey-demo.mjs",
+      "path": "f001-early-design/feature-discussions/2026-08-30-F001-workspace-source-truth-design/verify-journey-demo.mjs",
+      "sha256": "ad5aa1feef37ff4450c281ee4f27c9a2d740620f9f4233213cc3a6793e05684d",
+      "bytes": 7571
+    },
+    {
+      "source": "root-wip:4b71025:web/app/traqen-product.tsx",
+      "path": "f005-navigation-wip/working-tree.patch",
+      "sha256": "8e0d6ffed730a518c8202396389d675d930e81f1c0588eb05e76c01cde90bb21",
+      "bytes": 5264
+    }
+  ],
+  "f001_staged_deletions": {
+    "base": "4b710259d6e55389bb06c92b63becec8f74335f9",
+    "applied_to_current_main": false,
+    "paths": [
+      "feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-preflight-blocked-zh-CN.png",
+      "feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-preflight-blocked.png",
+      "feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-with-accepted-gaps-v2.png",
+      "feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-with-accepted-gaps-zh-CN.png",
+      "feature-discussions/2026-08-30-F001-workspace-source-truth-design/assets/source-truth-ready-with-accepted-gaps.png"
+    ],
+    "note": "Original image blobs remain in the base commit and current main. The original index and binary patches are also preserved in the external recovery package."
+  }
+}

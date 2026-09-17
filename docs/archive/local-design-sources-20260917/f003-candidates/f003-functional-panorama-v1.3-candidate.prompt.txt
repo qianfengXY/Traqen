@@ -1,0 +1,50 @@
+Use case: infographic-diagram / precise local edit.
+Input image 1 is the EXACT EDIT TARGET: Traqen F003 V1.2 candidate.
+Produce ONE V1.3 candidate image. Preserve the existing full-page layout, panel sizes and positions, all eight functional groups, typography and colors, all five table rows, and ALL content and connectors except the following explicitly listed local changes. No redesign, no content simplification, no new functional scope.
+
+1. Update only the subtitle to “V1.3 候选 · 待确认”.
+
+2. PANEL 03: FIX THE ENDPOINTS using ONE child-Agent GROUP box, NOT two separate child nodes.
+Keep the top master box and its exact text “主 Agent：规划 · 分派 · 回读核查”.
+DELETE both old lower boxes “子 Agent 1” and “子 Agent 2…N（可选）”, and DELETE their old arrows.
+Replace the two lower boxes with ONE continuous, clearly bordered rounded rectangle spanning their combined width, in the SAME lower area of panel 03. This one shared box has two lines:
+“子 Agent 组（1…N，至少 1 名）”
+“每个子 Agent：接收任务并返回证据”
+There must be NO separate child 1 / child 2 boxes inside it. It is a visual grouping of one or more children, not an additional dispatcher.
+Between the TOP master box and this ONE group box draw TWO DISTINCT parallel VERTICAL arrows, both fully connected:
+- DOWNWARD arrow labeled “下发任务”: tail TOUCHES master BOTTOM border, arrowhead TOUCHES group TOP border.
+- UPWARD arrow labeled “返回证据”: tail TOUCHES THE SAME group TOP border, arrowhead TOUCHES THE SAME master BOTTOM border.
+The two arrows join exactly the SAME two boxes, with opposite directions. No arrow may end in whitespace, on text, or on a different child. Read the endpoints explicitly before finishing.
+Keep “跨材料：读原文 · 追关系 · 查条件 · 找反例” below the group box, and keep all external 02→03→04 arrows. Use the available space inside 03 only.
+
+3. PANEL 07: RESTORE EVIDENCE as a node/edge attribute, without dropping applicability.
+Keep “默认展示：自动收录 + 人工确认”.
+Replace the line below it with this exact text:
+“可筛选仅人工确认；节点与边保留来源、状态、依据与适用范围”
+The word “依据” MUST be present; it means evidence supporting the relationship. Do not substitute “条件” for “依据”. Keep both evidence and scope.
+Preserve the graph nodes and ALL existing neutral directed semantic links: 业务功能/规则, 功能A/功能B, 文档, API/代码, 配置/数据, 测试资产; retain hierarchy and shared/many-to-many links.
+Keep the three view tabs, status-example pills, and the one-way “关系与依据” output to F004 unchanged.
+
+4. PANEL 07 QUERY-ARROW LEGEND: make its legend status explicit.
+In the existing query direction area, add the small heading “查询方向（图例）” above the blue and orange arrows.
+Change ONLY these two legend arrows to thinner DASHED lines with small arrowheads:
+blue RIGHTWARD “正向追溯”; orange LEFTWARD “反向查询”.
+Keep “查询双向；语义关系保留方向” below.
+These are deliberately legend symbols, NOT actual graph edges. Do not connect them to graph nodes. Preserve real workflow/semantic/output arrows as they are.
+
+5. PANEL 06 GREEN WORKFLOW LINE: remove duplicate wording only.
+Keep inside 06 the [07] problem-card text “人工决定校验后落实” and “仅选定命题或关系；决定留痕”.
+Keep the green arrow from that exact [07] card RIGHTWARD into 07.
+Remove ONLY the second occurrence of “人工决定校验后落实” printed OUTSIDE the card above that green line. Do not remove the card text, line, or arrowhead.
+
+HARD INVARIANTS, all must remain:
+- 01 input compartments F001/F002/F006 and all guardrail text.
+- “支撑充分、条件明确、无未决冲突” in row 1 of 05; NEVER shorten to 无冲突.
+- All five dispositions and exact target numbers [07], [03], [06], [02], [08].
+- “尚无可靠解释”; bounded supplementation; retained material does not automatically loop; invalid output remains isolated.
+- Two real graph-admission paths: cyan 05→07 automatic admission; green 06→07 validated human decisions.
+- 06 [03] answer/supplement return and 新增文件→F001新版本→[01].
+- 04 具体命题 / 层级与多对多 / 冲突编组 / 归并后再核查.
+- 08 cross-cutting governance, persistence, cancellation, recovery, version/impact check and 人工参考案例.
+- Footer disclaimers and three-state distinction unchanged.
+Do not move or reorder any functional panel. Do not regenerate the page into a different design. Keep all Chinese glyphs crisp, standard and legible. This is a narrowly scoped repair of the four listed review points, plus the version label.
