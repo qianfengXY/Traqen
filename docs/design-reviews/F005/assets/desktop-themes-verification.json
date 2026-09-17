@@ -1,0 +1,783 @@
+{
+  "revision": "2.1",
+  "request": "0001789614562911-000019-617589c4",
+  "recordedAt": "2026-09-17T03:30:38.361Z",
+  "fixtureOnly": true,
+  "deviceScaleFactor": 1,
+  "baselineViewports": [
+    {
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "width": 2560,
+      "height": 1440
+    }
+  ],
+  "additionalDesktopViewports": [
+    {
+      "width": 1280,
+      "height": 800
+    },
+    {
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "themeChoice": "Existing Porcelain Light / Graphite Dark; no new palette",
+  "screens": [
+    {
+      "file": "previews/18-graph-laptop-light.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "selected": "cancel",
+      "overflow": false,
+      "sidebar": 224,
+      "h1": "32px",
+      "graph": {
+        "x": 258,
+        "y": 287.09375,
+        "width": 828,
+        "height": 745.53125,
+        "top": 287.09375,
+        "right": 1086,
+        "bottom": 1032.625,
+        "left": 258
+      }
+    },
+    {
+      "file": "previews/19-graph-laptop-dark.png",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "selected": "cancel",
+      "overflow": false,
+      "sidebar": 224,
+      "h1": "32px",
+      "graph": {
+        "x": 258,
+        "y": 287.09375,
+        "width": 828,
+        "height": 745.53125,
+        "top": 287.09375,
+        "right": 1086,
+        "bottom": 1032.625,
+        "left": 258
+      }
+    },
+    {
+      "file": "previews/20-graph-display-light.png",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "selected": "cancel",
+      "overflow": false,
+      "sidebar": 244,
+      "h1": "32px",
+      "graph": {
+        "x": 292,
+        "y": 295.09375,
+        "width": 1900,
+        "height": 620,
+        "top": 295.09375,
+        "right": 2192,
+        "bottom": 915.09375,
+        "left": 292
+      }
+    },
+    {
+      "file": "previews/21-graph-display-dark.png",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "selected": "cancel",
+      "overflow": false,
+      "sidebar": 244,
+      "h1": "32px",
+      "graph": {
+        "x": 292,
+        "y": 295.09375,
+        "width": 1900,
+        "height": 620,
+        "top": 295.09375,
+        "right": 2192,
+        "bottom": 915.09375,
+        "left": 292
+      }
+    }
+  ],
+  "layoutChecks": [
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "light",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "theme": "dark",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "light",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "theme": "dark",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "light",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "theme": "dark",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "light",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "overview",
+      "overflow": false,
+      "h1": "订单服务平台",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "sources",
+      "overflow": false,
+      "h1": "来源快照",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "evidence",
+      "overflow": false,
+      "h1": "技术证据",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "graph",
+      "overflow": false,
+      "h1": "业务图谱",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "impact",
+      "overflow": false,
+      "h1": "变更影响",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "settings",
+      "overflow": false,
+      "h1": "设置中心",
+      "sidebarVisible": true
+    },
+    {
+      "viewport": {
+        "width": 1920,
+        "height": 1080
+      },
+      "theme": "dark",
+      "view": "components",
+      "overflow": false,
+      "h1": "组件展台",
+      "sidebarVisible": true
+    }
+  ],
+  "interactionChecks": [
+    {
+      "viewport": 1440,
+      "check": "Theme switch preserves all non-theme fixture state",
+      "passed": true
+    },
+    {
+      "viewport": 1440,
+      "check": "Reload restores chosen dark theme",
+      "passed": true
+    },
+    {
+      "viewport": 1440,
+      "check": "Theme switch works with keyboard Enter",
+      "passed": true
+    },
+    {
+      "viewport": 2560,
+      "check": "Theme switch preserves all non-theme fixture state",
+      "passed": true
+    },
+    {
+      "viewport": 2560,
+      "check": "Reload restores chosen dark theme",
+      "passed": true
+    },
+    {
+      "viewport": 2560,
+      "check": "Theme switch works with keyboard Enter",
+      "passed": true
+    },
+    {
+      "check": "Standalone reader HTTP 200, 16 sections, embedded reader identical, opens/closes",
+      "passed": true
+    },
+    {
+      "check": "Gallery has 14 desktop images and no active mobile images",
+      "passed": true
+    }
+  ],
+  "pageErrors": [],
+  "limitations": [
+    "CSS viewport simulation, not physical hardware testing.",
+    "No new mobile design or mobile acceptance.",
+    "No complete WCAG certification or production theme registry."
+  ],
+  "browser": "153.0.8010.36"
+}

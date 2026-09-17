@@ -3,26 +3,27 @@ feature_ids: [F005]
 topics: [experience-design, navigation, design-system, components, graph, accessibility]
 doc_kind: design-proposal
 created: 2026-09-15
-updated: 2026-09-16
+updated: 2026-09-17
 status: review-proposal-not-adopted
-version: 2.0
+version: 2.1
 owner: 砚砚/gpt-6-astra
 source_thread: thread_mtp1pj7vy5aeq7h3
 source_message: 0001789458139802-000323-ea91580b
 publication_request: 0001789530224292-000425-1446a766
+revision_request: 0001789614562911-000019-617589c4
 ---
 
 > Language: **English reference** · [简体中文](README.md)
 
 # F005 · Traqen Experience and Frontend Design Charter
 
-> Complete V2 review proposal, originally delivered on 2026-09-15. Screens and interactions use fixtures. This is not an adopted Feature Spec or a claim that the product has implemented these requirements.
+> V2.1 desktop-scope revision · 2026-09-17. Fixture design proposal, not an adopted Feature Spec or implemented product.
 
 ## Reading entry and screen designs
 
-The operator's 2026-09-16 03:43 UTC request authorizes placing the existing proposal in documentation for reading. This edition embeds the screenshots and preserves the proposal's review status. Publication is not design acceptance or implementation authorization. The 2026-09-16 update captures the fully expanded mobile drawer, adds the dark form-error state, and restores the standalone charter page without changing the design proposal.
+The operator's 2026-09-17 03:09 UTC request limits design to **14-inch laptops and 27-inch displays**, defers narrow screens, and requests two expandable default themes. This revision retains **Porcelain Light and Graphite Dark**, including the existing blue accent, as the demonstration choice. It updates the proposal and presentation, without formal adoption or general implementation authorization.
 
-Read the seventeen screenshots, then the sixteen charter sections. Both language editions use the same Chinese UI images and fixture prototype.
+Four comparisons show the same graph, selected object, versions, and fixture state at two desktop viewports in both themes. Fourteen current desktop screenshots precede the sixteen charter sections. The Chinese edition is canonical.
 
 - [Offline interactive prototype, including the complete Chinese charter](assets/Traqen-F005-review.html)
 - [Standalone charter reader](assets/charter.html)
@@ -30,23 +31,39 @@ Read the seventeen screenshots, then the sixteen charter sections. Both language
 - [Editable Pencil core boards](assets/F005-layout-navigation-v2.pen)
 - [Original prototype verification record](assets/verification.json)
 
+### Same page, two themes, two desktop viewports
+
+Cancel Order, its evidence, and the graph state stay identical. Extra space does not scale type or controls.
+
+#### 14-inch laptop · Porcelain Light · 1440×900
+
+![14-inch laptop · Porcelain Light · 1440×900](assets/previews/18-graph-laptop-light.png)
+
+[Open original size](assets/previews/18-graph-laptop-light.png)
+
+#### 14-inch laptop · Graphite Dark · 1440×900
+
+![14-inch laptop · Graphite Dark · 1440×900](assets/previews/19-graph-laptop-dark.png)
+
+[Open original size](assets/previews/19-graph-laptop-dark.png)
+
+#### 27-inch display · Porcelain Light · 2560×1440
+
+![27-inch display · Porcelain Light · 2560×1440](assets/previews/20-graph-display-light.png)
+
+[Open original size](assets/previews/20-graph-display-light.png)
+
+#### 27-inch display · Graphite Dark · 2560×1440
+
+![27-inch display · Graphite Dark · 2560×1440](assets/previews/21-graph-display-dark.png)
+
+[Open original size](assets/previews/21-graph-display-dark.png)
+
 ### Workspace overview
 
 ![Workspace overview — existing rendered fixture design](assets/previews/01-overview.png)
 
 [Open original size](assets/previews/01-overview.png)
-
-### Business graph · light
-
-![Business graph · light — existing rendered fixture design](assets/previews/02-graph-light.png)
-
-[Open original size](assets/previews/02-graph-light.png)
-
-### Business graph · dark
-
-![Business graph · dark — existing rendered fixture design](assets/previews/03-graph-dark.png)
-
-[Open original size](assets/previews/03-graph-dark.png)
 
 ### Source snapshots
 
@@ -104,36 +121,7 @@ Invalid input and the source name remain visible, with a clear error message and
 
 [Open original size](assets/previews/11-impact.png)
 
-### Mobile overview
-
-![Mobile overview — existing rendered fixture design](assets/previews/12-mobile-overview.png)
-
-[Open original size](assets/previews/12-mobile-overview.png)
-
-### Mobile navigation
-
-![Mobile navigation — existing rendered fixture design](assets/previews/13-mobile-navigation.png)
-
-[Open original size](assets/previews/13-mobile-navigation.png)
-
-### Mobile graph list
-
-![Mobile graph list — existing rendered fixture design](assets/previews/14-mobile-graph-list.png)
-
-[Open original size](assets/previews/14-mobile-graph-list.png)
-
-### Mobile inspector
-
-![Mobile inspector — existing rendered fixture design](assets/previews/15-mobile-detail.png)
-
-[Open original size](assets/previews/15-mobile-detail.png)
-
-### Mobile dark settings
-
-![Mobile dark settings — existing rendered fixture design](assets/previews/16-mobile-dark-settings.png)
-
-[Open original size](assets/previews/16-mobile-dark-settings.png)
-
+Old graph captures and five mobile images are historical assets, outside current design and acceptance scope.
 
 ## 01 · Design position
 
@@ -255,11 +243,26 @@ The following are Traqen proposal values, not Apple-prescribed sizes. Use semant
 
 Decorative separators cannot be the only indication of a control. Status uses a quiet tinted surface plus explicit text; color alone is insufficient. Dark primary buttons use light blue with dark text, not an automatic inversion of white-on-blue.
 
+### Default themes and future extension
+
+| Stable ID | Name | Appearance | Default behavior |
+|---|---|---|---|
+| `light` | Porcelain Light | Light surfaces, graphite text, blue accent | First visit without a saved choice |
+| `dark` | Graphite Dark | Dark surfaces, light text, pale-blue accent | Restore after explicit selection |
+
+These are complete light/dark palettes; business-status colors retain their semantic roles. Switching preserves workspace, source/fact/graph identities, filters, selection, graph position, and unsaved input. The current choice stays recognizable, keyboard-selectable, and restored on reload.
+
+The production selector consumes a theme collection and stores a stable `themeId`. Theme definitions contain `id`, `label`, `colorScheme` (light/dark), and complete semantic `tokens`. Built-ins use this same contract; new themes register without rewriting page components. Configuration cannot be limited to an `isDark` Boolean. A custom color editor or theme marketplace is outside this revision.
+
+New themes cover backgrounds/surfaces, text, boundaries, interaction/selection, focus, disabled states, errors/warnings/success, code, and graph nodes/edges, including each relevant interaction state. Verify section 11 contrast and compare the same graph, component showcase, and error forms. Theme count changes neither information architecture nor domain-state enums.
+
+The offline prototype retains its two-way switch to demonstrate the current defaults. The extensible registry remains an implementation requirement.
+
 System stack: -apple-system, BlinkMacSystemFont, PingFang SC, Segoe UI, Noto Sans SC, sans-serif. Use tabular numerals for numbers/versions and ui-monospace/Menlo/Consolas for code. Chinese body text has natural spacing, without negative tracking.
 
 | Role | Size / line height | Weight |
 |---|---|---|
-| Page title, one h1 | 32/40; narrow 28/36 | 600–650 |
+| Page title, one h1 | 32/40 | 600–650 |
 | Featured narrative | 28/38 | 600 |
 | Section title | 20/28 | 600 |
 | Small heading | 15/22 | 600 |
@@ -270,26 +273,28 @@ System stack: -apple-system, BlinkMacSystemFont, PingFang SC, Segoe UI, Noto San
 
 Microcopy must not contain key errors or judgments. Target a reading width equivalent to 64–76 Latin characters. Long titles can wrap to two lines with full reading available. Truncated table cells can expand without relying exclusively on hover. Important identifiers wrap or copy without irreversible omission.
 
-Spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64. Desktop margins 32–40; compact desktop 24; mobile 18–20. Between sections 24–32; inside sections 16–24.
+Spacing scale: 4, 8, 12, 16, 20, 24, 32, 40, 48, 64. Laptop baseline margins 34; display baseline 48 horizontally and 42 vertically; compact desktop windows 24–34. Between sections 24–32; inside sections 16–24.
 
-Radii: status 6; input/button 9; graph nodes 11–12; panels 16; mobile sheets 20. Avoid making every element a pill. Standard borders 1px; focus ring 3px with 3px offset; selected graph nodes use a 2px edge and soft outer halo.
+Radii: status 6; input/button 9; graph nodes 11–12; panels 16. Avoid making every element a pill. Standard borders 1px; focus ring 3px with 3px offset; selected graph nodes use a 2px edge and soft outer halo.
 
 Use content/floating/modal elevation tiers, with content nearly flat. Centralize stacking order: content → fixed navigation → inspector → backdrop → dialogs/menus → toast. Icons default to 18px with 1.5–1.75px strokes, one consistent family, and text or an accessible name; core icons are not emoji.
 
-## 06 · Widths, density, and responsiveness
+## 06 · Desktop dimensions, density, and layout
 
-| Width | Navigation | Content and details |
-|---|---|---|
-| ≥1680 | 244px sidebar | Bounded reading width, expanding analysis canvas, 320–360px inspector, comparison possible |
-| 1280–1679 | About 224px | 32–34px margins; about 300px inspector |
-| 1024–1279 | 200px | Reduce secondary spacing, not critical text; 270–300px inspector or overlay |
-| 768–1023 | 184px or explicit collapse | One work surface; temporary inspector; wrapping toolbar |
-| 390–767 | Drawer | Single column, bottom/full-page details, graph list by default, local table scrolling |
-| 320–389 | Drawer | Preserve reading and core actions without scaling down a desktop screen |
+Only 14-inch laptops and 27-inch displays are in scope. Inches describe physical size, not CSS pixels; resolution, system scaling, browser zoom, and window size affect available space. These are design/capture baselines, not hardware-default claims.
 
-Desktop comfortable rows are 52px; two-line rows 72px; compact single-line rows 40px. Touch targets are at least 44px or have an equivalent hit region. Visual control size and hit region are separate properties.
+| Scenario | Design viewport (CSS px) | Navigation and margins | Work surface |
+|---|---|---|---|
+| 14-inch laptop | 1440×900 | 224px sidebar; about 34px content margins | Graph plus approximately 300px inspector; primary actions first, secondary tools can wrap |
+| 27-inch display | 2560×1440 | 244px sidebar; 48px horizontal / 42px vertical margins | Expanded analysis area; 300–360px inspector, comparison possible; bounded prose |
 
-The graph can pan in two dimensions; ordinary prose cannot require page-wide horizontal scrolling. Hidden secondary columns remain available through configuration/details; names, critical status, and recovery stay accessible. Mobile starts with readable graph rows instead of shrinking a whole diagram to dots.
+Additional desktop-window checks at 1280×800 and 1920×1080 cover reduced usable space/scaling without new device designs. Workspace, versions, key actions, and recovery remain reachable. Reduce secondary spacing, wrap tools, or reveal details on demand before reducing text size.
+
+Both contexts use the same type and controls. Extra space increases visible content and analysis area; do not proportionally enlarge the laptop screen or stretch prose across the display. Graph labels stay stable; use pan, zoom, and progressive expansion. Tables expose configurable extra columns. Except for two-dimensional diagrams and necessary local table scrolling, ordinary content must not require horizontal scrolling.
+
+Comfortable rows are 52px, two-line rows 72px, and compact single-line rows 40px. Density follows the task/user choice, not physical inches. Hit regions and visual size are separate. Hidden secondary data stays available in details; names, status, and recovery cannot disappear.
+
+**Phones, tablets, narrow drawers, mobile details, and mobile-specific interactions are outside this revision's design and acceptance.** Previous 320/390/768px breakpoints and mobile artifacts are historical. Desktop keyboard, text enlargement, and browser-zoom reflow requirements remain; accessibility reflow does not create a mobile product scope.
 
 ## 07 · Frontend component standards
 
@@ -297,12 +302,12 @@ The common state vocabulary includes default, hover, pressed, focus-visible, dis
 
 | Component | Required anatomy and behavior |
 |---|---|
-| AppShell | Stable sidebar, contextual toolbar, main content, overlay host; mobile drawer closes by Escape/backdrop and returns focus |
+| AppShell | Stable sidebar, contextual toolbar, main content, overlay host; stable navigation on both desktop contexts; closing overlays/details returns focus |
 | WorkspaceSwitcher | Name, short ID, selected workspace, search; only accessible scopes; handle unsaved edits and unavailable destinations |
 | NavItem | Icon, label, meaningful optional count, current state; aria-current and a non-color current indicator |
-| PageHeader | One h1, explanation, context, task action; wrap narrow layouts and keep one primary action |
+| PageHeader | One h1, explanation, context, task action; wrap within laptop windows and keep one primary action |
 | Button | Primary/secondary/ghost/destructive; 36px default; loading preserves width and prevents duplicates; stable name and nearby disabled reason |
-| IconButton | 18px icon in 36px desktop target, 44px touch target; aria-label; tooltip is supplementary |
+| IconButton | 18px icon in 36px desktop target with discernible spacing; aria-label; tooltip is supplementary |
 | Link/TextButton | Destination versus operation uses correct semantics; external destinations clear; no nested row/button controls |
 | TextField | Visible bound label, input, help, error; aria-invalid/describedby and preserved values |
 | TextArea | Label, multiline input, length/save feedback; resizing; newline is not submit; IME composition never triggers premature submit |
@@ -365,7 +370,7 @@ Exploration requirements:
 4. Aggregate large graphs before expansion; avoid random full-layout rearrangement.
 5. Provide pan, zoom, fit, and previous-position controls; dragging is not the only input.
 6. Filters remain visible; explain a hidden selection and allow restoring conditions.
-7. List mode preserves objects, relations, origins, and statuses; use it by default on phones.
+7. List mode preserves objects, relations, origins, and statuses; both desktop contexts allow explicit graph/list choice.
 8. Full-detail navigation returns to the same selection, expansion set, projection, zoom, and pan.
 
 Coverage distinguishes material processing, business investigation, evidence, and actual test execution. Missing bound execution reads “no linked execution,” not a green pass.
@@ -405,7 +410,7 @@ Respect prefers-reduced-motion: remove translation, elasticity, and shimmer whil
 
 Target WCAG 2.2 AA. Ordinary text requires 4.5:1 and large text 3:1; see [Contrast Minimum](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html). Necessary control/graphic identification requires non-text contrast assessment; decorative lines cannot stand in for that boundary.
 
-WCAG's target-size baseline is 24 CSS px with defined exceptions such as spacing; see [Target Size Minimum](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html). The separate Traqen touch design target is 44px.
+WCAG's target-size baseline is 24 CSS px with defined exceptions such as spacing; see [Target Size Minimum](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html). Desktop icon buttons default to a 36px hit region, separate from visual icon size.
 
 Acceptance includes keyboard flows, visible focus, no unintended focus traps, named dialogs and returned focus, Chinese IME, screen-reader status feedback, 200% text size, reflow at 400% zoom, and equivalent graph-list reading. The two-dimensional diagram can retain pan, but surrounding controls and prose remain readable.
 
@@ -449,7 +454,8 @@ Aesthetic acceptance includes main work surfaces, action results, and recovery, 
 | Configuration | Global/workspace/Agent scopes distinct; draft/application separate; old runs do not hot-switch |
 | Forms | Invalid input retained and focused; long Chinese/URLs fit; duplicate prevention |
 | Accessibility | Keyboard, focus, readers, contrast, zoom, reduced motion per section 11 |
-| Responsive layout | Core actions reachable at 390/768/1280/1600/1920; basic reading at 320 |
+| Desktop layout | Core actions reachable at 1440×900 / 2560×1440 baselines and 1280×800 / 1920×1080 desktop-window checks; narrow screens are outside this gate |
+| Themes | Same graph in both baseline viewports and themes; switching preserves domain/edit state, reload restores choice, new themes follow section 05 |
 | Complete states | First-use empty, no-results, loading, partial failure, restriction, invalidity, conflict |
 | Performance | Measured results identify failing data scales; screenshots are not performance evidence |
 
@@ -463,20 +469,23 @@ Required journeys:
 4. Read ambiguity evidence → write scope → decide only that proposition or investigate further → inspect record; no unrelated approval.
 5. Fix comparison endpoints → read known/unknown paths → inspect evidence → obtain unexecuted validation advice.
 6. Choose capability scope → edit draft → save → apply → identify the new-run configuration.
-7. Mobile navigation → graph list → object → details → return to the list.
+7. Cancel Order graph and evidence → switch themes → retain selection, versions, filters, graph position, and drafts → restore theme on reload.
+8. Check both baselines and additional desktop-window sizes → reachable actions/status/details, stable type, bounded prose.
 
 ## 14 · Deliverables and explicit limits
 
-This documentation package retains the offline prototype, seventeen screens, Pencil boards, and original verification under assets/. The complete charter is in these Markdown pages, the standalone reader, and inside the offline prototype. The six destinations plus component showcase use the same visual foundation.
+This package presents fourteen desktop images (four new comparisons and ten existing states) and the offline prototype. V2 Pencil boards, older graph captures, five mobile images, and original verification remain historical assets. The complete charter is in these Markdown pages, the standalone reader, and inside the offline prototype. The six destinations plus component showcase use the same visual foundation.
 
 | Area | Delivered proposal | Remaining product implementation |
 |---|---|---|
-| Pages/visuals | Seven browsable views, light/dark, narrow adaptation | Production-page migration and full browser acceptance |
+| Pages/visuals | Seven views, laptop/display contexts, two default themes | Production-page migration and full browser acceptance |
 | Interactions | Draft sources, search, selection, edges, filters, zoom, notes, configuration draft/application | Real identity, permission, persistence, async tasks |
 | Graph | Local fixture, inspector, list, one-hop expansion | Full layout, large aggregation, complete list-edge details, historical versions |
 | Technical evidence | OrderService code/fact example | All object categories and real source location |
 | Settings | Scope and representative capability changes | Complete account/model/Skill/MCP editing and validation |
 | Accessibility | Native semantics, labels, focus styling, keyboard examples, reduced motion | Reader testing, all widget patterns, zoom/browser certification |
+
+[Desktop/theme verification](assets/desktop-themes-verification.json) records this revision separately. The V2 Pencil file is not updated for this scope; this charter controls current requirements. Legacy narrow-screen prototype behavior creates no current product requirement.
 
 The fixture label is explicit. The prototype does not connect to entered repositories, collect directories, call models, execute tests, or change real business data. Offline demo notes use a dedicated browser storage namespace; embedded-chat interactions only guarantee current-page state. Production requires authorized backend persistence.
 
@@ -490,7 +499,7 @@ After complete-proposal acceptance, integrate approved requirements into the aut
 4. Impact and settings scope, including read-only, invalid, conflict, and permission states.
 5. Compare real rendering and journeys to this proposal, record deviations, then replace old styles after acceptance.
 
-This packaging does not modify canonical F005 specifications, architecture, ADRs, or lifecycle. Viewing/archiving the proposal is not formal adoption; approval of a color or dimension is not acceptance of the entire design.
+This revision does not modify canonical F005 specifications, architecture, ADRs, or lifecycle. Viewing/archiving the proposal is not formal adoption; approval of a color or dimension is not acceptance of the entire design.
 
 ## 16 · Sources and design record
 
@@ -501,6 +510,7 @@ Product sources were read on 2026-09-15; newer accepted material takes precedenc
 - [F003 published V2 functional panorama](../../design/F003-traceability-graph/README.md).
 - [F006 workspace capability settings](../../features/F006-workspace-capability-settings.md).
 - [System requirements](../../architecture/traqen-system-requirements.md); newer F003 acceptance overrides old automatic-recording/confirmation assumptions.
+- Revision authorization: 2026-09-17 03:09 UTC, message 0001789614562911-000019-617589c4; two desktop contexts, two expandable default themes, and explicit documentation permission. V2.1 supersedes old narrow-screen scope and acceptance, preserving domain boundaries.
 - Original redesign request: 0001789458139802-000323-ea91580b; documentation-view request: 0001789530224292-000425-1446a766.
 
 External references support only the cited Apple hierarchy/material ideas and W3C contrast, target-size, and combobox requirements. Traqen-specific colors, dimensions, component boundaries, layouts, and performance budgets are proposal judgments.
