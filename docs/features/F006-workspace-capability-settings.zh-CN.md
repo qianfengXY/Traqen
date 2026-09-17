@@ -2,11 +2,11 @@
 
 ---
 feature_ids: [F006]
-related_features: [F001]
+related_features: [F001, F003, F005]
 topics: [settings, workspace, cli, oauth, api-key, models, skills, mcp, agents, runtime-isolation, frontend]
 doc_kind: spec
 created: 2026-07-31
-updated: 2026-08-28
+updated: 2026-09-17
 description: 全局能力资产与 Workspace 范围内 Agent 配置，并通过草稿到生效版本固定运行快照。
 description_source: human
 description_author: cat-4v94tazw
@@ -16,7 +16,8 @@ description_updated_at: 2026-08-28T14:53:00Z
 # F006：Workspace 能力设置
 
 > **状态：** in-progress · **优先级：** P2 · **Owner：** TBD
-> **产品真相：** 本文取代此前 F006 规范及其模板/覆盖模型。
+> **当前阅读入口：** [功能与 UX 设计 V1.0](../design/F006-workspace-capability-settings/README.md)（2026-09-17 发布）。本次明确 MCP 暂停、F003 分析准备为配置确认宿主，并按 F005 设计桌面双主题 UX；不代表这些界面或启动接线已经完成。
+> **合同关系：** 下文保留既有 Spec 与实现追溯；与上述明确校准项冲突时以新版设计为准。此前模板/覆盖模型不再有效，Feature 状态仍为 in-progress。
 
 ## 时间线
 
