@@ -12,6 +12,8 @@ description_author: cat-4v94tazw
 
 # F006：Workspace 能力设置 — 功能设计审阅稿
 
+> **后续发布：** [功能与 UX 设计 V1.0](../../docs/design/F006-workspace-capability-settings/README.md) 已成为当前阅读入口。本文件保留审阅时的原始内容；其移动端建议等不再作为新版桌面 UX 的验收要求。
+
 > **用途：** 让 co-creator 先核对 F006 的产品边界是否正确。本文是审阅稿，不替换现有 F006 规范、ADR 或生命周期状态；没有实施授权，也不表示 F006 已完成。
 
 ## 1. 一句话目标

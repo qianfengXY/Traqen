@@ -23,7 +23,7 @@
 | F002 | [当前设计入口与历史 Spec](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | [确定性事实层：功能设计 V1.0](design/F002-deterministic-facts/README.md) |
 | F003 | [当前设计入口与历史 Spec](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | [功能设计 V2.0（发布版，含八组功能逐项说明）](design/F003-traceability-graph/README.md) · [English（可选参考）](design/F003-traceability-graph/README.en.md) |
 | F004 | [变更影响分析](features/F004-change-impact-analysis.zh-CN.md) · [English](features/F004-change-impact-analysis.md) | 产品架构 |
-| F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [能力解析图](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
+| F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [功能与 UX 设计 V1.0（桌面双主题）](design/F006-workspace-capability-settings/README.md) |
 
 F001–F004 是当前存量系统理解的设计基线。F006 保留其独立实施轨道。历史工作产物可因兼容性或审计目的而保留为未链接文档，但不得与本表、路线图或活动架构文档竞争真相源。
 
