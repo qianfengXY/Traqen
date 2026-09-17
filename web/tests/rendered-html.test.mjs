@@ -21,13 +21,13 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   assert.match(html, /<title>Traqen · 可追溯质量工作台<\/title>/i);
   for (const text of [
     "工作台概览",
-    "Workspace 分析",
+    "来源快照",
     "功能 / API",
     "理解图谱",
     "声明审核",
     "变更影响",
     "设置中心",
-    "创建第一个 Workspace",
+    "连接工作空间",
     "新建 Workspace",
     "中文",
     "English",
@@ -38,6 +38,7 @@ test("server-renders the Traqen proof-chain product surface", async () => {
     assert.match(html, new RegExp(text));
   }
   assert.doesNotMatch(html, /API 地址.*API token/s);
+  assert.doesNotMatch(html, /创建第一个 Workspace|FULL 分析/);
   assert.doesNotMatch(html, /webkitdirectory|兼容导入|浏览器扫描|SELF WORKSPACE|codex-preview/i);
 });
 

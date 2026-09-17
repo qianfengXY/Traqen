@@ -79,22 +79,24 @@ export function EmptyWorkspace({
   setWorkspaceName,
   working,
   onCreate,
+  error = "",
 }: {
   t: T;
   workspaceName: string;
   setWorkspaceName: (value: string) => void;
   working: boolean;
   onCreate: () => void;
+  error?: string;
 }) {
   return (
     <section className="onboarding panel">
       <div className="onboarding-copy">
         <p className="eyebrow">Server-owned Workspace</p>
-        <h1>{t("创建第一个 Workspace", "Create the first Workspace")}</h1>
+        <h1>{t("新建 Workspace", "New Workspace")}</h1>
         <p>
           {t(
-            "先建立隔离的工作空间，再配置授权源码与不可变执行 Profile。所有扫描、Agent 执行、审核和发布均由服务端持有。",
-            "Create an isolated Workspace, then configure its authorized source and immutable execution profile. Scanning, Agent execution, review, and publication remain server-owned.",
+            "先建立工作空间，再进入来源快照，采集并冻结可追溯的材料。来源权限由管理员绑定；创建 Workspace 不会自动启动分析。",
+            "Create a Workspace, then capture and freeze traceable materials in Source snapshots. Administrators bind source access; creating a Workspace does not start analysis.",
           )}
         </p>
         <div
@@ -107,19 +109,20 @@ export function EmptyWorkspace({
           </span>
           <span>
             <b>2</b>
-            {t("授权源码", "Authorized source")}
+            {t("来源快照", "Source snapshots")}
           </span>
           <span>
             <b>3</b>
-            {t("能力配置", "Capabilities")}
+            {t("复核清单", "Review inventory")}
           </span>
           <span>
             <b>4</b>
-            {t("FULL 分析", "FULL analysis")}
+            {t("冻结来源", "Freeze sources")}
           </span>
         </div>
       </div>
       <div className="onboarding-form">
+        {error && <p className="connection-notice" role="alert">{error}</p>}
         <label>
           {t("Workspace 名称", "Workspace name")}
           <input
@@ -133,7 +136,7 @@ export function EmptyWorkspace({
           disabled={working || !workspaceName.trim()}
           onClick={onCreate}
         >
-          {t("新建 Workspace", "New Workspace")}
+          {working ? t("正在创建…", "Creating…") : t("新建 Workspace", "New Workspace")}
         </button>
         <small>
           {t(

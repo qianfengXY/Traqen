@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { SourceTruthWorkbench } from "./source-truth/workbench";
+import { WorkspaceConnection, connectionIssue, type ConnectionIssue } from "./workspace-connection";
 import { createDefaultChildSlots } from "./capability-roster";
 import { F006SettingsCenter } from "./f006-settings-center";
 import {
@@ -109,7 +110,7 @@ const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
 
 const modules: Array<{ key: View; icon: string; section: "overview" | "understanding" | "governance" | "configuration"; zh: string; en: string }> = [
   { key: "overview", icon: "⌂", section: "overview", zh: "工作台概览", en: "Workspace overview" },
-  { key: "workspace", icon: "◎", section: "understanding", zh: "Workspace 分析", en: "Workspace analysis" },
+  { key: "workspace", icon: "◎", section: "understanding", zh: "来源快照", en: "Source snapshots" },
   { key: "feature", icon: "◇", section: "understanding", zh: "功能 / API", en: "Feature / API" },
   { key: "graph", icon: "⌘", section: "understanding", zh: "理解图谱", en: "Understanding graph" },
   { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
@@ -153,6 +154,9 @@ function ServerOwnedProduct() {
   const [view, setView] = useState<View>("overview");
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
   const [apiToken, setApiToken] = useState("");
+  const [entryIssue, setEntryIssue] = useState<ConnectionIssue | null>(null);
+  const [workspaceCreateError, setWorkspaceCreateError] = useState("");
+  const connectionRequest = useRef(0), workspaceCreating = useRef(false);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [health, setHealth] = useState<Health>("checking");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -339,9 +343,11 @@ function ServerOwnedProduct() {
   }, [refreshWorkspaceReads]);
 
   const reconnect = useCallback(async (preferRemembered = false) => {
+    const request = ++connectionRequest.current;
     revisionRequestRef.current += 1;
     setTraceabilityLoading(false);
     setHealth("checking");
+    setEntryIssue(null);
     try {
       const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities, availableExecutableSkills] = await Promise.all([
         listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
@@ -352,6 +358,7 @@ function ServerOwnedProduct() {
         listGlobalCapabilities(apiBase, apiToken),
         listWorkspaceExecutableSkills(apiBase, apiToken),
       ]);
+      if (request !== connectionRequest.current) return;
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
@@ -362,6 +369,10 @@ function ServerOwnedProduct() {
       setExecutableSkills(availableExecutableSkills);
       const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
+      if (activeWorkspace && !visible.some(({ id }) => id === activeWorkspace.id)) {
+        contextRef.current = { workspaceId: "", contextVersion: contextRef.current.contextVersion + 1 };
+        setActiveWorkspace(null);
+      }
       if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
       if (activeWorkspace && visible.some(({ id }) => id === activeWorkspace.id)) {
         const next = { ...contextRef.current };
@@ -369,7 +380,9 @@ function ServerOwnedProduct() {
       }
       notify("");
     } catch (error) {
+      if (request !== connectionRequest.current) return;
       setHealth("unavailable");
+      setEntryIssue(connectionIssue(error));
       notify(messageOf(error, t("无法连接 Traqen API", "Unable to connect to the Traqen API")), "error");
     }
   }, [activeWorkspace, apiBase, apiToken, notify, refreshWorkspaceReads, selectWorkspace, t]);
@@ -502,16 +515,25 @@ function ServerOwnedProduct() {
   }, [activeWorkspace, apiBase, apiToken, artifact, boundedGraph, displayRevision?.id, displayRevision?.snapshotManifestId, focusedNodeId, t]);
 
   async function createFirstWorkspace() {
-    if (!workspaceName.trim()) return;
+    if (!workspaceName.trim() || health !== "healthy" || workspaceCreating.current) return;
+    const request = connectionRequest.current;
+    workspaceCreating.current = true;
+    setWorkspaceCreateError("");
     setWorking(true);
     try {
       const created = await createWorkspace(apiBase, apiToken, { id: `WORKSPACE-${crypto.randomUUID()}`, name: workspaceName.trim(), userId: WEB_OPERATOR });
+      if (request !== connectionRequest.current) return;
       setWorkspaces((existing) => [...existing, created]);
       setWorkspaceName("");
       selectWorkspace(created);
-      notify(t("Workspace 已创建。接下来配置能力并注册授权源码。", "Workspace created. Configure capabilities and register an authorized source next."));
-    } catch (error) { notify(messageOf(error, t("创建失败", "Creation failed")), "error"); }
-    finally { setWorking(false); }
+      setView("workspace");
+      notify(t("Workspace 已创建。来源材料权限由管理员独立绑定，不会自动开始分析。", "Workspace created. Source access is bound separately by an administrator; no analysis has started."));
+    } catch (error) {
+      if (request !== connectionRequest.current) return;
+      setWorkspaceCreateError(messageOf(error, t("创建未确认，请先刷新列表核对结果。你的输入已保留。", "Creation is unconfirmed. Refresh the list before retrying; your input is retained.")));
+      if (connectionIssue(error) === "authentication") { setEntryIssue("authentication"); setHealth("unavailable"); }
+    }
+    finally { workspaceCreating.current = false; setWorking(false); }
   }
 
 
@@ -888,6 +910,7 @@ function ServerOwnedProduct() {
     || artifact?.productionEligible === false;
   const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
   const renderView = () => {
+    if (health !== "healthy") return <WorkspaceConnection t={t} checking={health === "checking"} issue={entryIssue} apiBase={apiBase} token={apiToken} onToken={setApiToken} onConnect={() => void reconnect(true)} onDiagnostics={() => setDiagnosticsOpen(true)} />;
     if (view === "settings") return <F006SettingsCenter
       t={t}
       scope={settingsScope}
@@ -929,7 +952,7 @@ function ServerOwnedProduct() {
     />;
     if (view === "templates") return <GlobalCapabilityTemplateLibrary t={t} templates={globalCapabilityTemplates} working={working} onSave={(input) => void saveGlobalTemplate(input)} />;
     if (!activeWorkspace) {
-      return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} onCreate={() => void createFirstWorkspace()} />;
+      return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} error={workspaceCreateError} onCreate={() => void createFirstWorkspace()} />;
     }
     const workspace = activeWorkspace;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;

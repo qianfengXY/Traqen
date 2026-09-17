@@ -1,0 +1,14 @@
+.workspace-connection { max-width: 680px; margin: 48px auto; padding: 32px; }
+.workspace-connection h1 { margin: 0; font-size: 28px; line-height: 1.3; }
+.workspace-connection p { line-height: 1.7; }
+.workspace-connection header > p, .workspace-connection small, .connection-target { color: var(--muted); }
+.connection-notice { padding: 16px; margin: 24px 0; border-left: 3px solid var(--warning); background: var(--warning-subtle); border-radius: var(--radius-sm); }
+.connection-notice p { margin: 8px 0 0; }
+.workspace-connection form { display: grid; gap: 10px; }
+.workspace-connection label { font-weight: 600; }
+.workspace-connection input { width: 100%; min-height: 44px; padding: 10px 12px; color: var(--ink); background: var(--panel); border: 1px solid var(--muted); border-radius: var(--radius-sm); }
+.workspace-connection input:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.workspace-connection small { font-size: 12px; line-height: 1.6; }
+.connection-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.connection-target { margin-bottom: 0; font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .workspace-connection { margin: 20px 16px; padding: 24px 20px; } .connection-actions .button { min-height: 44px; } }

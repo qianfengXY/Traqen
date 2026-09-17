@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { browserOrigin } from "./source-truth-browser-origin.js";
 import { cp, lstat, mkdir, mkdtemp, readdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -84,7 +85,8 @@ export async function browserHistoryFixture(t, { pilotRoot, clusterRoot, binarie
   const services = sourceTruthServices({ repository, blobs, policy: capturePolicy() }); // No live Git source and no background worker.
   const token = access === "READ" ? "f001-history-read-only-fixture-token" : "f001-copied-capture-fixture-token";
   const authenticate = sourceTruthAuthenticator([{ tokenDigest: createHash("sha256").update(token).digest("hex"), actorId: access === "READ" ? "reader" : "owner", tenantId: "tenant" }]);
-  const origins = ["http://127.0.0.1:3188", "http://localhost:3188"];
+  const webOrigin = browserOrigin();
+  const origins = [webOrigin];
   const configured = createConfiguredApplication({ store: new PostgresTraceabilityStore(db), env: { CORS_ALLOWED_ORIGINS: origins.join(",") } });
   await configured.ready;
   const server = createTraceabilityHttpServer({ application: configured.application, corsAllowedOrigins: origins, sourceTruthAllowedOrigins: origins,
@@ -96,7 +98,7 @@ export async function browserHistoryFixture(t, { pilotRoot, clusterRoot, binarie
     const response = await fetch(`${apiBase}/v1/workspaces/workspace/source-truth${route}`, { headers: { authorization: `Bearer ${token}` } });
     assert.equal(response.status, 200); return response.json();
   };
-  return { root, sourceReportHash: createHash("sha256").update(sourceText).digest("hex"), apiBase, token, read,
+  return { root, sourceReportHash: createHash("sha256").update(sourceText).digest("hex"), apiBase, webOrigin, token, read,
     async assertPriorHistoryUnchanged() { assert.deepEqual((await db.query("SELECT id,payload FROM source_truth_bundle WHERE workspace_id='workspace' AND id=ANY($1::text[]) ORDER BY published_at,id", [expectedBundleIds])).rows, frozen); },
     async assertHistoryUnchanged() { assert.deepEqual((await db.query("SELECT id,payload FROM source_truth_bundle WHERE workspace_id='workspace' ORDER BY published_at,id")).rows, frozen); } };
 }

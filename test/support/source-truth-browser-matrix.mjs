@@ -29,7 +29,7 @@ try {
   page.on("request", (request) => { if (request.url().startsWith(f.apiBase) && !["GET", "OPTIONS"].includes(request.method())) mutations.push({ method: request.method(), url: request.url() }); });
   const station = async (n) => page.waitForFunction((value) => document.querySelector('.st-rail [aria-current="step"]')?.getAttribute("data-station") === String(value), n, { timeout: 45000 });
   const connect = async (workspace) => {
-    await page.goto("http://127.0.0.1:3188/");
+    await page.goto(f.webOrigin);
     // The SSR diagnostic button is present before React event handlers attach.
     await page.waitForSelector(".connection-button.unavailable");
     await page.getByTitle("部署诊断", { exact: true }).click();
@@ -39,7 +39,7 @@ try {
     await page.waitForSelector(".connection-button.healthy");
     await page.locator(".diagnostic-drawer header button").click();
     await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: new RegExp(`^${f.names[workspace]}$`) }) }).click();
-    await page.locator(".nav-button").filter({ hasText: "Workspace 分析" }).click();
+    await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
   };
   const picker = async (name, count, version = 1) => page.evaluate(async ({ name, count, version }) => {
