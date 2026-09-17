@@ -125,7 +125,7 @@ try {
   await page.getByLabel("API token（仅当前页面内存）", { exact: true }).fill(f.token);
   await page.getByRole("button", { name: "重新连接并刷新", exact: true }).click();
   await page.waitForSelector(".connection-button.healthy"); await page.locator(".diagnostic-drawer header button").click();
-  await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: /^Workspace$/ }) }).click();
+  await page.getByLabel("切换工作区", { exact: true }).selectOption({ label: "Workspace" });
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
   await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: base.id.slice(0, 12) }).click();
   await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(1);

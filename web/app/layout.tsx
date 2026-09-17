@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { themes } from "./product-themes";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,13 +32,13 @@ export const metadata: Metadata = {
 
 const themeInitScript = `
   (function() {
-    try {
-      var theme = window.localStorage.getItem("traqen-theme");
-      document.documentElement.setAttribute(
-        "data-theme",
-        theme && ["enterprise","apple","warm","fresh","minimal"].includes(theme) ? theme : "enterprise"
-      );
-    } catch (e) {}
+    var themes = ${JSON.stringify(themes)};
+    var saved = null;
+    try { saved = window.localStorage.getItem("traqen-theme"); } catch (e) {}
+    var theme = themes.find(function(item) { return item.id === saved; }) || themes[0];
+    document.documentElement.setAttribute("data-theme", theme.id);
+    document.documentElement.style.colorScheme = theme.colorScheme;
+    Object.keys(theme.tokens).forEach(function(key) { document.documentElement.style.setProperty("--" + key, theme.tokens[key]); });
   })();
 `;
 

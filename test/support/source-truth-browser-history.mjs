@@ -44,7 +44,7 @@ try {
     await page.getByRole("button", { name: "重新连接并刷新", exact: true }).click();
     await page.waitForSelector(".connection-button.healthy");
     await page.locator(".diagnostic-drawer header button").click();
-    await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: /^Workspace$/ }) }).click();
+    await page.getByLabel("切换工作区", { exact: true }).selectOption({ label: "Workspace" });
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByText("当前成员为只读权限，可查看历史与证据，不能创建任务、上传、确认或冻结。", { exact: true }).waitFor();
   };

@@ -81,6 +81,7 @@ export function EmptyWorkspace({
   working,
   onCreate,
   error = "",
+  embedded = false,
 }: {
   t: T;
   workspaceName: string;
@@ -88,12 +89,13 @@ export function EmptyWorkspace({
   working: boolean;
   onCreate: () => void;
   error?: string;
+  embedded?: boolean;
 }) {
   return (
     <section className="onboarding panel">
       <div className="onboarding-copy">
         <p className="eyebrow">Server-owned Workspace</p>
-        <h1>{t("新建 Workspace", "New Workspace")}</h1>
+        {embedded ? <h2>{t("新建 Workspace", "New Workspace")}</h2> : <h1>{t("新建 Workspace", "New Workspace")}</h1>}
         <p>
           {t(
             "先建立工作空间，再进入来源快照，采集并冻结可追溯的材料。来源权限由管理员绑定；创建 Workspace 不会自动启动分析。",
@@ -184,7 +186,7 @@ export function WorkspaceOverview({
       <section className="hero product-hero">
         <div className="hero-card">
           <p className="eyebrow">{workspace.name}</p>
-          <h1>{t("工作台概览", "Workspace overview")}</h1>
+          <h1>{t("工作区概览", "Workspace overview")}</h1>
           <p className="hero-sub">
             {t(
               "从当前发布版本出发，继续最重要的分析、审核或影响处置工作。",
@@ -730,7 +732,7 @@ export function FeatureExplorer({
       <section className="page-heading">
         <div>
           <p className="eyebrow">F002 · Understanding</p>
-          <h1>{t("功能 / API", "Feature / API")}</h1>
+          <h1>{t("技术证据", "Technical evidence")}</h1>
           <p>
             {t(
               "沿不可变 Snapshot 检查证据、关系、Gap 与历史；对象身份不会被混合。",
@@ -1422,7 +1424,7 @@ export function GraphExplorer({
       <section className="page-heading">
         <div>
           <p className="eyebrow">F003 · Understanding</p>
-          <h1>{t("理解图谱", "Understanding graph")}</h1>
+          <h1>{t("业务图谱", "Business graph")}</h1>
           <p>
             {t(
               "服务端执行有界扩展与路径解释；每个节点、边和 hop 都携带可解析证据。",

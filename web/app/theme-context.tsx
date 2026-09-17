@@ -1,49 +1,47 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useSyncExternalStore, type ReactNode } from "react";
 
-export type Theme = "enterprise" | "apple" | "warm" | "fresh" | "minimal";
+import { resolveTheme, type Theme } from "./product-themes";
+export type { Theme } from "./product-themes";
 
 const ThemeContext = createContext<{
   theme: Theme;
   setTheme: (theme: Theme) => void;
 }>({
-  theme: "enterprise",
+  theme: "light",
   setTheme: () => {},
 });
 
 const STORAGE_KEY = "traqen-theme";
 
-function getInitialTheme(): Theme {
-  if (typeof window === "undefined") return "enterprise";
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY) as Theme | null;
-    if (stored && ["enterprise", "apple", "warm", "fresh", "minimal"].includes(stored)) return stored;
-  } catch {
-    // ignore
-  }
-  return "enterprise";
+function applyTheme(id: Theme) {
+  const theme = resolveTheme(id);
+  document.documentElement.dataset.theme = theme.id;
+  document.documentElement.style.colorScheme = theme.colorScheme;
+  for (const [key, value] of Object.entries(theme.tokens)) document.documentElement.style.setProperty(`--${key}`, value);
+}
+
+function subscribeTheme(notify: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key !== STORAGE_KEY && event.key !== null) return;
+    applyTheme(resolveTheme(event.newValue).id);
+    notify();
+  };
+  window.addEventListener("traqen:theme", notify);
+  window.addEventListener("storage", onStorage);
+  return () => { window.removeEventListener("traqen:theme", notify); window.removeEventListener("storage", onStorage); };
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("enterprise");
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setThemeState(getInitialTheme()));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, theme);
-    } catch {
-      // ignore
-    }
-  }, [theme]);
+  // The pre-paint script and the selector read the same theme; no delayed second state.
+  const theme = useSyncExternalStore(subscribeTheme, () => resolveTheme(document.documentElement.dataset.theme ?? null).id, () => "light" as Theme);
 
   const setTheme = useCallback((next: Theme) => {
-    setThemeState(next);
+    const id = resolveTheme(next).id;
+    applyTheme(id);
+    try { localStorage.setItem(STORAGE_KEY, id); } catch { /* Storage is optional. */ }
+    window.dispatchEvent(new Event("traqen:theme"));
   }, []);
 
   return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;

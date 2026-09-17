@@ -1,6 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+
+import { desktopScale, productHref, readProductRoute, subscribeProductRoute, writeProductRoute, type ProductView } from "./product-navigation";
+import { NavigationIcon } from "./navigation-icon";
+import "./product-shell.css";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { SourceTruthWorkbench } from "./source-truth/workbench";
@@ -86,7 +90,7 @@ import {
 } from "./understanding-graph-client";
 import { createWorkspace, listWorkspaces, staleWorkspaceRequestResponse, staleWorkspaceResponse, type CurrentWorkspaceContext, type Workspace } from "./workspace-client";
 
-type View = "overview" | "workspace" | "feature" | "graph" | "review" | "impact" | "templates" | "settings";
+type View = ProductView;
 type SettingsScope = "chooser" | "global" | "workspace";
 type Language = "zh-CN" | "en";
 type Health = "checking" | "healthy" | "unavailable";
@@ -108,14 +112,13 @@ const DEFAULT_SECURITY_BOUNDARY: SecurityBoundaryDraft = {
   telemetryPolicy: "METADATA_ONLY",
 };
 
-const modules: Array<{ key: View; icon: string; section: "overview" | "understanding" | "governance" | "configuration"; zh: string; en: string }> = [
-  { key: "overview", icon: "⌂", section: "overview", zh: "工作台概览", en: "Workspace overview" },
-  { key: "workspace", icon: "◎", section: "understanding", zh: "来源快照", en: "Source snapshots" },
-  { key: "feature", icon: "◇", section: "understanding", zh: "功能 / API", en: "Feature / API" },
-  { key: "graph", icon: "⌘", section: "understanding", zh: "理解图谱", en: "Understanding graph" },
-  { key: "review", icon: "✓", section: "governance", zh: "声明审核", en: "Claim review" },
-  { key: "impact", icon: "↗", section: "governance", zh: "变更影响", en: "Change impact" },
-  { key: "settings", icon: "⚙", section: "configuration", zh: "设置中心", en: "Settings center" },
+const modules: Array<{ key: View; zh: string; en: string; description: string }> = [
+  { key: "overview", zh: "工作区概览", en: "Workspace overview", description: "查看当前工作区、继续工作与需要关注的事项。" },
+  { key: "workspace", zh: "来源快照", en: "Source snapshots", description: "添加来源、配置范围，恢复采集并回查冻结版本。" },
+  { key: "feature", zh: "技术证据", en: "Technical evidence", description: "查看已有实现对象及其依据。尚未生成的技术事实不会显示为已完成。" },
+  { key: "graph", zh: "业务图谱", en: "Business graph", description: "浏览已有业务、实现与依据的关联，处理需要确认的命题。" },
+  { key: "impact", zh: "变更影响", en: "Change impact", description: "查看已生成的版本比较与影响路径；没有比较结果时不推断影响。" },
+  { key: "settings", zh: "设置中心", en: "Settings center", description: "选择全局或工作区范围，管理已有账号、模型与能力配置。" },
 ];
 
 function messageOf(error: unknown, fallback: string) {
@@ -151,7 +154,22 @@ function resolveGovernedSelection(artifact: GraphArtifact | null, selectedId: st
 
 function ServerOwnedProduct() {
   const [language, setLanguage] = useState<Language>("zh-CN");
-  const [view, setView] = useState<View>("overview");
+  const routeSearch = useSyncExternalStore(subscribeProductRoute, () => window.location.search, () => "");
+  const route = readProductRoute(routeSearch);
+  const view = route.view;
+  const sourceDirty = useRef(false);
+  const setView = useCallback((next: View) => {
+    writeProductRoute(next, readProductRoute(window.location.search).workspaceId);
+  }, []);
+  const [scale, setScale] = useState(1);
+  const [visitedSource, setVisitedSource] = useState<string | null>(null);
+  const onSourceDirty = useCallback((dirty: boolean) => { sourceDirty.current = dirty; }, []);
+  useEffect(() => {
+    const resize = () => setScale(desktopScale(window.innerWidth, window.innerHeight));
+    const frame = requestAnimationFrame(resize);
+    window.addEventListener("resize", resize);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener("resize", resize); };
+  }, []);
   const [apiBase, setApiBase] = useState(DEFAULT_API_BASE);
   const [apiToken, setApiToken] = useState("");
   const [entryIssue, setEntryIssue] = useState<ConnectionIssue | null>(null);
@@ -215,6 +233,11 @@ function ServerOwnedProduct() {
   const graphRequestRef = useRef(0);
   const pathRequestRef = useRef(0);
   const revisionRequestRef = useRef(0);
+  const capabilityDirty = Boolean(capabilityDraft && hasUnsavedCapabilityDraftChanges(capabilityDraft, currentCapabilityDraftInput(capabilityDraft.revision)));
+  const leaveGuard = useCallback(() => {
+    if (sourceDirty.current && !window.confirm("来源有尚未保存的编辑。切换工作区或重新连接会丢弃这些输入；已保存的任务和版本不受影响。仍要继续吗？")) return false;
+    return !capabilityDirty || window.confirm("当前工作区的能力设置尚未保存。切换工作区或重新连接会丢弃这些输入。仍要继续吗？");
+  }, [capabilityDirty]);
   const t: T = useCallback((zh, en) => language === "zh-CN" ? zh : en, [language]);
   const resolveEvidence = useCallback((resolver: string) =>
     resolveGraphEvidence(apiBase, apiToken, resolver), [apiBase, apiToken]);
@@ -302,7 +325,7 @@ function ServerOwnedProduct() {
     contextRef.current = nextContext;
     if (workspace) window.localStorage.setItem("traqen.activeWorkspaceId", workspace.id);
     setActiveWorkspace(workspace);
-    if (!preserveView) setView("overview");
+    if (!preserveView) writeProductRoute(readProductRoute(window.location.search).view, workspace?.id ?? "");
     setJob(null);
     setCurrent(null);
     setArtifact(null);
@@ -352,7 +375,8 @@ function ServerOwnedProduct() {
     const timer = window.setTimeout(() => controller.abort(new DOMException("Workspace connection timed out", "TimeoutError")), 10_000);
     connectionAbort.current = () => { window.clearTimeout(timer); controller.abort(); };
     const { signal } = controller;
-    const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
+    const requested = readProductRoute(window.location.search).workspaceId;
+    const remembered = requested ?? (preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id);
     // Neither workspace-specific nor global data from the previous identity may survive attachment.
     selectWorkspace(null, true);
     setWorkspaces([]);
@@ -381,8 +405,11 @@ function ServerOwnedProduct() {
       setWorkspaces(visible);
       setHealth("healthy");
       setWorkspaceCreateError("");
-      const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
-      if (selection) selectWorkspace(selection, true);
+      const selection = visible.find(({ id }) => id === remembered) ?? (requested === null && preferRemembered ? visible[0] : null);
+      if (selection) {
+        selectWorkspace(selection, true);
+        if (requested === null) writeProductRoute(readProductRoute(window.location.search).view, selection.id, true);
+      }
       notify("");
       const results = await auxiliary;
       if (request !== connectionRequest.current) return;
@@ -416,6 +443,30 @@ function ServerOwnedProduct() {
     // Initial attachment is GET-only. Connection changes require an explicit reconnect command.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (health !== "healthy" || route.workspaceId === null || route.workspaceId === (activeWorkspace?.id ?? "")) return;
+    const timer = window.setTimeout(() => {
+      if (!leaveGuard()) { writeProductRoute(view, activeWorkspace?.id ?? "", true); return; }
+      const target = workspaces.find(workspace => workspace.id === route.workspaceId) ?? null;
+      selectWorkspace(target, true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [route.workspaceId, activeWorkspace?.id, health, workspaces, selectWorkspace, view, leaveGuard]);
+
+  useEffect(() => {
+    if (view !== "workspace" || !activeWorkspace) return;
+    const timer = setTimeout(() => setVisitedSource(activeWorkspace.id), 0);
+    return () => clearTimeout(timer);
+  }, [view, activeWorkspace]);
+
+  useEffect(() => {
+    const warn = (event: BeforeUnloadEvent) => {
+      if (sourceDirty.current || capabilityDirty) { event.preventDefault(); event.returnValue = ""; }
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [capabilityDirty]);
 
   useEffect(() => {
     if (!activeWorkspace || !job || ["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)) return;
@@ -929,9 +980,15 @@ function ServerOwnedProduct() {
   const referenceOnly = current?.head.productionEligible === false
     || current?.revision.productionEligible === false
     || artifact?.productionEligible === false;
-  const selectedModule = modules.find(({ key }) => key === view) ?? modules[0];
+  const selectedModule = modules.find(({ key }) => key === (view === "review" ? "graph" : view === "templates" ? "settings" : view)) ?? modules[0];
+  const switchWorkspace = (workspace: Workspace | null) => {
+    if (workspace?.id === activeWorkspace?.id) return;
+    if (!leaveGuard()) return;
+    selectWorkspace(workspace);
+  };
   const renderView = () => {
-    if (health !== "healthy") return <WorkspaceConnection t={t} checking={health === "checking"} issue={entryIssue} apiBase={apiBase} token={apiToken} onToken={setApiToken} onConnect={() => void reconnect(true)} onDiagnostics={() => setDiagnosticsOpen(true)} />;
+    if (view === "not-found") return <section className="destination-state panel"><h1>无法识别这个页面</h1><p>链接中的页面入口不存在。请选择左侧导航，工作区与历史记录没有改变。</p><a className="button" href={productHref("overview", route.workspaceId)} onClick={(event) => { event.preventDefault(); setView("overview"); }}>返回工作区概览</a></section>;
+    if (health !== "healthy") return <WorkspaceConnection heading={t(selectedModule.zh, selectedModule.en)} description={selectedModule.description} t={t} checking={health === "checking"} issue={entryIssue} apiBase={apiBase} token={apiToken} onToken={setApiToken} onConnect={() => void reconnect(true)} onDiagnostics={() => setDiagnosticsOpen(true)} />;
     if (view === "settings") return <F006SettingsCenter
       t={t}
       scope={settingsScope}
@@ -973,11 +1030,12 @@ function ServerOwnedProduct() {
     />;
     if (view === "templates") return <GlobalCapabilityTemplateLibrary t={t} templates={globalCapabilityTemplates} working={working} onSave={(input) => void saveGlobalTemplate(input)} />;
     if (!activeWorkspace) {
-      return <EmptyWorkspace t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} error={workspaceCreateError} onCreate={() => void createFirstWorkspace()} />;
+      return <><section className="destination-state"><h1>{t(selectedModule.zh, selectedModule.en)}</h1><p>{selectedModule.description}</p>{route.workspaceId && <p role="alert">当前身份无法打开链接中的工作区。请选择一个可访问的工作区，或联系管理员核对访问权限。</p>}<p>先在侧栏选择工作区，或创建一个工作区后继续。</p></section><EmptyWorkspace embedded t={t} workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} working={working} error={workspaceCreateError} onCreate={() => void createFirstWorkspace()} /></>;
     }
     const workspace = activeWorkspace;
+    if (["feature", "graph", "impact"].includes(view) && !artifact) return <section className="destination-state panel"><h1>{t(selectedModule.zh, selectedModule.en)}</h1><p>{selectedModule.description}</p><h2>{t("当前没有可读取的发布结果", "No published result is available to read")}</h2><p>{t("此工作区尚未生成结果，或结果读取暂时不可用。来源冻结本身不会自动启动技术提取、业务调查或影响分析。", "Results have not been generated or cannot currently be read. Freezing a source does not automatically run extraction, investigation, or impact analysis.")}</p><div className="heading-actions"><button className="button primary" onClick={() => setView("workspace")}>{t("查看来源快照", "Open source snapshots")}</button><button className="button" onClick={() => { setSettingsScope("workspace"); setView("settings"); }}>{t("检查工作区能力配置", "Check Workspace capabilities")}</button><button className="button" onClick={() => { if (leaveGuard()) void refreshWorkspaceReads(workspace, { ...contextRef.current }); }}>{t("重新读取结果", "Retry reading results")}</button></div></section>;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
-    if (view === "workspace") return <SourceTruthWorkbench key={workspace.id} apiBase={apiBase} apiToken={apiToken} workspaceId={workspace.id} workspaceName={workspace.name} />;
+    if (view === "workspace") return null;
     if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
@@ -985,23 +1043,36 @@ function ServerOwnedProduct() {
     return <CapabilitySettings t={t} models={globalModels} globalTemplates={globalCapabilityTemplates} catalog={effectiveCatalog} draft={capabilityDraft} draftInput={currentCapabilityDraftInput(capabilityDraft?.revision ?? 0)} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} importedKeys={importedKeys} setImportedKeys={setImportedKeys} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={() => void adoptCurrentCapabilityDraft(0)} onResolve={(input) => void resolveCapabilities(input)} />;
   };
 
-  return <main className="app-shell">
+  return <div className="desktop-frame" style={{ "--desktop-scale": scale } as CSSProperties}><main className="app-shell f005-shell">
+    <a className="skip-link" href="#product-content">跳到主要内容</a>
     <aside className="sidebar">
-      <div className="brand"><span className="brand-mark">T</span><span>Traqen</span></div>
-      <div className="workspace-block"><div className="workspace-switcher-head"><p className="workspace-label">Workspace</p><div><button title={t("刷新 Workspace", "Refresh Workspaces")} onClick={() => void reconnect(false)}>↻</button><button className="workspace-add-button" title={t("新建 Workspace", "New Workspace")} onClick={() => { setActiveWorkspace(null); setView("overview"); }}>＋</button></div></div>{activeWorkspace ? <div className="workspace active-workspace"><strong>{activeWorkspace.name}</strong><small>{current ? `Published revision ${current.head.version}` : t("等待首次发布", "Awaiting first publication")}</small></div> : <div className="workspace active-workspace empty-workspace"><strong>{t("未选择 Workspace", "No Workspace selected")}</strong><small>{t("选择或创建一个项目", "Select or create a project")}</small></div>}<div className="workspace-project-list">{workspaces.map((workspace) => <div key={workspace.id} className={`workspace-project-row ${workspace.id === activeWorkspace?.id ? "active" : ""}`}><button className="workspace-project-open" onClick={() => selectWorkspace(workspace)}><strong>{workspace.name}</strong><small>{workspace.lifecycleState}</small></button></div>)}</div></div>
-      {(["overview", "understanding", "governance", "configuration"] as const).map((section) => <nav key={section} className="nav" aria-label={section}><p className="workspace-label">{section === "understanding" ? t("理解", "Understanding") : section === "governance" ? t("治理", "Governance") : section === "configuration" ? t("配置", "Configuration") : t("工作台", "Workspace")}</p>{modules.filter((item) => item.section === section).map((item) => <button key={item.key} className={`nav-button ${view === item.key ? "active" : ""}`} onClick={() => { if (item.key === "settings") setSettingsScope("chooser"); setView(item.key); }}><span className="nav-icon">{item.icon}</span><span>{language === "zh-CN" ? item.zh : item.en}</span>{item.key === "review" && openReviewCount > 0 && <em>{openReviewCount}</em>}{item.key === "impact" && impactActionCount > 0 && <em>{impactActionCount}</em>}</button>)}</nav>)}
-      <div className="shell-status-summary" aria-label={t("全局状态摘要", "Global status summary")}><span>Published Head <b>{current ? `r${current.head.version}` : "—"}</b></span><span>Review Queue <b>{openReviewCount}</b></span><span>Impact Actions <b>{impactActionCount}</b></span></div>
-      <div className="sidebar-note"><b>{t("权威边界", "Authority boundary")}</b><br />{t("实线为 Published；虚线为 Candidate。历史版本只读。", "Solid is Published; dashed is Candidate. Historical revisions are read-only.")}</div>
+      <div className="brand"><span className="brand-mark">Ŧ</span><span>Traqen</span></div>
+      <div className="workspace-block">
+        <label className="workspace-label" htmlFor="workspace-switcher">工作区</label>
+        <select id="workspace-switcher" aria-label="切换工作区" value={activeWorkspace?.id ?? ""} onChange={event => switchWorkspace(workspaces.find(workspace => workspace.id === event.target.value) ?? null)}>
+          <option value="">{health === "healthy" ? "选择工作区" : "连接后选择工作区"}</option>
+          {workspaces.map(workspace => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+        </select>
+        <div className="workspace-tools"><button title="刷新 Workspace" onClick={() => { if (leaveGuard()) void reconnect(false); }}>刷新列表</button><button title="新建 Workspace" onClick={() => { if (leaveGuard()) { selectWorkspace(null); writeProductRoute("overview", ""); } }}>新建工作区</button></div>
+      </div>
+      <nav className="nav" aria-label="主导航">
+        {modules.filter(item => item.key !== "settings").map(item => <a key={item.key} href={productHref(item.key, route.workspaceId)} className={`nav-button ${selectedModule.key === item.key && view !== "not-found" ? "active" : ""}`} aria-current={selectedModule.key === item.key && view !== "not-found" ? "page" : undefined} onClick={event => { if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); setView(item.key); } }}><NavigationIcon name={item.key} /><span>{t(item.zh, item.en)}</span></a>)}
+      </nav>
+      <div className="sidebar-bottom"><a className={`nav-button ${selectedModule.key === "settings" ? "active" : ""}`} href={productHref("settings", route.workspaceId)} aria-current={selectedModule.key === "settings" ? "page" : undefined} onClick={event => { if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) { event.preventDefault(); setSettingsScope("chooser"); setView("settings"); } }}><NavigationIcon name="settings" /><span>设置中心</span></a><p className="sidebar-note">来源冻结、技术提取与业务调查分别进行；历史记录保持可回查。</p></div>
     </aside>
     <div className="main">
       <header className="topbar"><div className="breadcrumb"><span>{activeWorkspace?.name ?? "Traqen"}</span><i>/</i><b>{language === "zh-CN" ? selectedModule.zh : selectedModule.en}</b>{historical && <em>{t("历史只读", "Historical read-only")}</em>}</div><div className="top-actions"><span className={`mode-badge ${current && !referenceOnly ? "live" : ""}`}>{current ? referenceOnly ? `REFERENCE ONLY · r${current.head.version}` : `PUBLISHED · r${current.head.version}` : t("未发布", "Unpublished")}</span><button className={`connection-button ${health}`} title={t("部署诊断", "Deployment diagnostics")} onClick={() => setDiagnosticsOpen(true)}><i />Connection Health · {health === "healthy" ? t("正常", "Healthy") : health === "checking" ? t("检查中", "Checking") : t("不可用", "Unavailable")}</button><ThemeSwitcher ariaLabel={t("全局主题配色", "Global color theme")} /><div className="language-switch"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>中文</button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>English</button></div><span className="identity-chip" title={t("身份由服务端认证", "Identity is server-authenticated")}>◉ {WEB_OPERATOR}</span></div></header>
       {referenceOnly && <div className="reference-banner" role="alert"><b>LOCAL REFERENCE · NON-PRODUCTION</b><span>{t("该图谱由本地合成 reference evidence 生成，不是独立生产审核结论。", "This graph was generated from local synthetic reference evidence and is not an independently reviewed production conclusion.")}</span></div>}
       {message && <div className={`toast-message ${messageKind}`} role={messageKind === "error" ? "alert" : "status"}><span>{messageKind === "error" ? "!" : "✓"}</span>{message}<button onClick={() => setMessage("")}>×</button></div>}
       {health === "healthy" && auxiliaryState !== "ready" && <div className="connection-notice" role="status" data-auxiliary-state={auxiliaryState}>{auxiliaryState === "checking" ? t("正在读取辅助目录，不阻断 Workspace 入口；来源权限仍单独核验。", "Loading auxiliary catalogs does not block Workspace entry; source permissions are checked separately.") : t("部分辅助目录不可用（不是空目录），不会阻断 Workspace 或授予权限。请刷新连接重试：", "Some auxiliary catalogs are unavailable (not empty); this does not block Workspaces or grant permissions. Refresh the connection to retry: ")}{auxiliaryState === "partial" && auxiliaryFailures.join(", ")}</div>}
-      {renderView()}
+      <div id="product-content" tabIndex={-1}>
+        {(view === "graph" || view === "review") && <nav className="page-subnav" aria-label="业务图谱视图">{([["graph", "图谱"], ["review", "待确认问题"]] as const).map(([key, label]) => <a key={key} href={productHref(key, route.workspaceId)} aria-current={view === key ? "page" : undefined} onClick={event => { event.preventDefault(); setView(key); }}>{label}{key === "review" && openReviewCount > 0 ? ` · ${openReviewCount}` : ""}</a>)}</nav>}
+        {renderView()}
+        {health === "healthy" && activeWorkspace && (view === "workspace" || visitedSource === activeWorkspace.id) && <div hidden={view !== "workspace"}><SourceTruthWorkbench key={activeWorkspace.id} apiBase={apiBase} apiToken={apiToken} workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onDirtyChange={onSourceDirty} /></div>}
+      </div>
     </div>
-    {diagnosticsOpen && <div className="drawer-backdrop" onMouseDown={() => setDiagnosticsOpen(false)}><aside className="diagnostic-drawer" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Deployment diagnostics</p><h2>{t("部署诊断", "Deployment diagnostics")}</h2></div><button onClick={() => setDiagnosticsOpen(false)}>×</button></header><p>{t("这些信息用于部署与故障诊断，不属于产品主导航。", "These settings are deployment diagnostics and are not primary product navigation.")}</p><label>{t("API 地址", "API base")}<input value={apiBase} onChange={(event) => setApiBase(event.currentTarget.value)} /></label><label>{t("API token（仅当前页面内存）", "API token (page memory only)")}<input type="password" value={apiToken} onChange={(event) => setApiToken(event.currentTarget.value)} autoComplete="off" /></label><dl><dt>Connection Health</dt><dd>{health}</dd><dt>Workspace ID</dt><dd>{activeWorkspace?.id ?? "—"}</dd><dt>GraphRevision ID</dt><dd>{displayRevision?.id ?? "—"}</dd></dl><button className="button primary" disabled={health === "checking"} onClick={() => void reconnect(false)}>{t("重新连接并刷新", "Reconnect and refresh")}</button></aside></div>}
-  </main>;
+    {diagnosticsOpen && <div className="drawer-backdrop" onMouseDown={() => setDiagnosticsOpen(false)}><aside className="diagnostic-drawer" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Deployment diagnostics</p><h2>{t("部署诊断", "Deployment diagnostics")}</h2></div><button onClick={() => setDiagnosticsOpen(false)}>×</button></header><p>{t("这些信息用于部署与故障诊断，不属于产品主导航。", "These settings are deployment diagnostics and are not primary product navigation.")}</p><label>{t("API 地址", "API base")}<input value={apiBase} onChange={(event) => setApiBase(event.currentTarget.value)} /></label><label>{t("API token（仅当前页面内存）", "API token (page memory only)")}<input type="password" value={apiToken} onChange={(event) => setApiToken(event.currentTarget.value)} autoComplete="off" /></label><dl><dt>Connection Health</dt><dd>{health}</dd><dt>Workspace ID</dt><dd>{activeWorkspace?.id ?? "—"}</dd><dt>GraphRevision ID</dt><dd>{displayRevision?.id ?? "—"}</dd></dl><button className="button primary" disabled={health === "checking"} onClick={() => { if (leaveGuard()) void reconnect(false); }}>{t("重新连接并刷新", "Reconnect and refresh")}</button></aside></div>}
+  </main></div>;
 }
 
 export function TraqenProduct() {

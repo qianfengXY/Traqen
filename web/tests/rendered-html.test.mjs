@@ -20,26 +20,25 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   const html = await response.text();
   assert.match(html, /<title>Traqen · 可追溯质量工作台<\/title>/i);
   for (const text of [
-    "工作台概览",
+    "工作区概览",
     "来源快照",
-    "功能 / API",
-    "理解图谱",
-    "声明审核",
+    "技术证据",
+    "业务图谱",
     "变更影响",
     "设置中心",
-    "连接工作空间",
+    "先验证访问身份",
     "中文",
     "English",
   ]) {
     assert.match(html, new RegExp(text));
   }
-  for (const text of ["Published Head", "Review Queue", "Impact Actions", "Connection Health", "部署诊断"]) {
+  for (const text of ["Connection Health", "部署诊断", "切换工作区"]) {
     assert.match(html, new RegExp(text));
   }
   assert.doesNotMatch(html, /API 地址.*API token/s);
   assert.doesNotMatch(html, /创建第一个 Workspace|FULL 分析/);
   assert.match(html, /<section[^>]*class="workspace-connection panel"[^>]*aria-labelledby="workspace-connection-title"/);
-  assert.match(html, /<h1 id="workspace-connection-title">连接工作空间<\/h1>/);
+  assert.match(html, /<h1 id="workspace-connection-title">工作区概览<\/h1>/);
   assert.doesNotMatch(html, /<section class="onboarding panel">/,
     "SSR has no authenticated list; a sidebar tooltip is not an empty-state rendering");
   assert.doesNotMatch(html, /webkitdirectory|兼容导入|浏览器扫描|SELF WORKSPACE|codex-preview/i);
@@ -54,7 +53,7 @@ test("ships only the server-owned understanding path after Web cutover", async (
     readFile(new URL("../app/understanding-graph-client.ts", import.meta.url), "utf8"),
   ]);
   assert.match(page, /<TraqenProduct \/>/);
-  assert.match(product, /if \(view === "workspace"\) return <SourceTruthWorkbench key=\{workspace\.id\}/,
+  assert.match(product, /<SourceTruthWorkbench key=\{activeWorkspace\.id\}/,
     "the source entry must mount the workspace-bound eight-station snapshot workbench");
   assert.doesNotMatch(product, /registerServerWorkspaceSource|startServerWorkspaceUnderstanding|controlServerWorkspaceUnderstanding|openStartConfirmation|startConfirmation/,
     "the superseded raw-source analysis entry and its unreachable confirmation must not survive cutover");
@@ -123,7 +122,8 @@ test("ships only the server-owned understanding path after Web cutover", async (
   const refreshSource = product.slice(product.indexOf("const refreshWorkspaceReads"), product.indexOf("const selectWorkspace"));
   const legacyConfigSource = refreshSource.slice(refreshSource.indexOf('if (configResult.status'), refreshSource.indexOf('if (profileResult.status'));
   assert.doesNotMatch(legacyConfigSource, /setMainModel|setMainSkillNames|setMainMcpNames|setChildSlots/);
-  assert.doesNotMatch(product, /window\.confirm/);
+  assert.doesNotMatch(product.slice(product.indexOf("async function resolveCapabilities"), product.indexOf("const openReviewCount")), /window\.confirm/,
+    "capability activation uses its governed Effective Diff; a generic confirm cannot authorize activation");
   assert.match(surfaces, /reference\.source/);
   assert.match(surfaces, /ACTIVE_RUN/);
   assert.match(surfaces, /atomic transaction|原子事务/);
