@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Traqen · F001 Source Truth 流程</title>
+  <style>
+    :root {
+      --ink: #1d1d1f; --muted: #6e6e73; --paper: #f5f5f7; --panel: #ffffff; --line: #d2d2d7;
+      --accent: #007aff; --accent-hover: #0051d5; --accent-subtle: rgba(0, 122, 255, .08);
+      --success: #34c759; --success-subtle: #e8f9ec; --warning: #ff9500; --warning-subtle: #fff5e6;
+      --danger: #ff3b30; --danger-subtle: #ffebea; --info: #007aff;
+      --surface-muted: #f2f2f7;
+      --shadow: 0 1px 3px rgba(0, 0, 0, .04), 0 4px 12px rgba(0, 0, 0, .03);
+      --shadow-lg: 0 10px 30px rgba(0, 0, 0, .06);
+      --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
+      --sidebar-bg: #f2f2f7; --sidebar-text: #1d1d1f; --sidebar-muted: #6e6e73;
+      --sidebar-border: rgba(0, 0, 0, .08); --sidebar-hover: rgba(0, 0, 0, .05);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--paper); }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; -webkit-font-smoothing: antialiased; }
+    .app-shell { min-height: 100vh; display: grid; grid-template-columns: 256px minmax(0, 1fr); }
+    .sidebar { min-height: 100vh; padding: 24px 16px; color: var(--sidebar-text); background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border); display: flex; flex-direction: column; gap: 14px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.03em; font-size: 20px; color: var(--sidebar-text); }
+    .brand-mark { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: var(--accent); font-size: 14px; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 122, 255, .35); }
+    .workspace-label { margin: 0 8px 8px; color: var(--sidebar-muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .workspace-switcher-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .workspace-switcher-head .workspace-label { margin-bottom: 6px; }
+    .workspace-switcher-head > div { display: flex; gap: 4px; }
+    .workspace-switcher-head button { width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); cursor: pointer; }
+    .workspace-switcher-head .workspace-add-button { border-color: var(--accent); background: var(--accent); color: #fff; font-size: 17px; }
+    .workspace { padding: 10px 12px; border: 1px solid var(--sidebar-border); border-radius: 12px; background: var(--panel); }
+    .workspace strong { display: block; font-size: 13px; }
+    .workspace small { display: block; margin-top: 3px; color: var(--sidebar-muted); font-size: 11px; }
+    .workspace.active-workspace { background: var(--accent-subtle); border-color: rgba(0,122,255,.35); }
+    .nav { display: grid; gap: 4px; }
+    .nav-button { width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: #475569; text-align: left; cursor: pointer; display: flex; gap: 10px; align-items: center; }
+    .nav-button:hover { background: var(--sidebar-hover); color: var(--accent-hover); }
+    .nav-button.active { background: var(--accent); color: #fff; font-weight: 650; box-shadow: 0 4px 14px rgba(0, 0, 0, .12); }
+    .nav-icon { width: 22px; text-align: center; font-family: monospace; }
+    .subnav { display: grid; gap: 2px; margin: 2px 0 4px 34px; padding-left: 9px; border-left: 1px solid var(--sidebar-border); }
+    .subnav-button { width: 100%; min-height: 25px; padding: 5px 8px; border: 0; border-radius: 7px; background: transparent; color: var(--sidebar-muted); display: flex; align-items: center; gap: 7px; text-align: left; font-size: 10px; cursor: pointer; }
+    .subnav-button.active { background: rgba(0,122,255,.08); color: var(--accent); font-weight: 700; }
+    .subnav-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; opacity: .65; }
+    .sidebar-note { margin-top: auto; padding: 14px; border-radius: 12px; color: var(--sidebar-muted); background: var(--panel); border: 1px solid var(--sidebar-border); font-size: 11px; line-height: 1.55; }
+
+    .main { min-width: 0; width: 100%; padding: 22px clamp(18px, 1.7vw, 34px) 52px; }
+    .topbar { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; min-height: 42px; margin-bottom: 22px; }
+    .breadcrumb { padding-top: 9px; color: var(--muted); font-size: 13px; }
+    .breadcrumb b { color: var(--ink); font-weight: 600; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .connection-button { padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 11px; font-weight: 650; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+    .connection-button i { width: 8px; height: 8px; border-radius: 999px; background: var(--success); }
+    .identity-chip { padding: 6px 10px; border-radius: 999px; background: var(--surface-muted); color: var(--muted); font-size: 11px; font-weight: 650; }
+
+    .page-heading { margin-bottom: 20px; }
+    .eyebrow { margin: 0 0 8px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+    .page-heading h1 { margin: 0; font-size: clamp(30px, 4vw, 44px); letter-spacing: -.045em; line-height: 1.05; }
+    .page-heading p { max-width: 720px; margin: 10px 0 0; color: var(--muted); line-height: 1.6; }
+
+    /* Subway map */
+    .subway-map { padding: 24px; border-radius: var(--radius-lg); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); margin-bottom: 20px; }
+    .subway-map h2 { margin: 0 0 18px; font-size: 16px; letter-spacing: -.01em; }
+    .subway-line { display: flex; align-items: flex-start; gap: 8px; position: relative; }
+    .subway-station { flex: 1; min-width: 0; position: relative; }
+    .subway-station::before { content: ""; position: absolute; top: 14px; left: 50%; right: -8px; height: 4px; background: var(--line); z-index: 0; }
+    .subway-station:last-child::before { display: none; }
+    .station-dot { width: 32px; height: 32px; border-radius: 50%; background: var(--panel); border: 3px solid var(--line); display: grid; place-items: center; margin: 0 auto 10px; position: relative; z-index: 1; font-size: 13px; font-weight: 700; color: var(--muted); }
+    .station-label { text-align: center; font-size: 12px; font-weight: 650; color: var(--ink); line-height: 1.35; }
+    .station-meta { text-align: center; font-size: 10px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+
+    .subway-station.done .station-dot { background: var(--success); border-color: var(--success); color: #fff; }
+    .subway-station.done::before { background: var(--success); }
+    .subway-station.current .station-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 4px var(--accent-subtle); }
+    .subway-station.current::before { background: var(--line); }
+    .subway-station.current .station-label { color: var(--accent); font-weight: 700; }
+    .subway-station.pending .station-dot { background: var(--panel); border-color: var(--line); color: var(--muted); }
+    .subway-station.blocked .station-dot { background: var(--danger); border-color: var(--danger); color: #fff; }
+    .subway-station.warning .station-dot { background: var(--warning); border-color: var(--warning); color: #fff; }
+
+    .branch-row { display: flex; gap: 12px; margin-top: 16px; }
+    .branch-card { flex: 1; padding: 14px; border-radius: var(--radius-md); border: 1px solid var(--line); background: var(--surface-muted); }
+    .branch-card.active { background: var(--accent-subtle); border-color: rgba(0,122,255,.35); }
+    .branch-card h4 { margin: 0 0 6px; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+    .branch-card p { margin: 0; font-size: 11px; color: var(--muted); line-height: 1.5; }
+    .branch-tag { display: inline-block; padding: 2px 6px; border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 10px; font-weight: 700; margin-top: 8px; }
+    .branch-card.active .branch-tag { background: var(--accent); color: #fff; }
+
+    .panel { padding: 22px; border-radius: var(--radius-md); background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); margin-bottom: 16px; }
+    .panel h3 { margin: 0 0 14px; font-size: 16px; letter-spacing: -.01em; }
+    .panel h4 { margin: 0 0 8px; font-size: 13px; }
+    .panel p { margin: 0 0 12px; color: var(--muted); line-height: 1.6; }
+    .panel p:last-child { margin-bottom: 0; }
+
+    .step-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 16px; }
+    .step-detail { display: grid; gap: 12px; }
+    .info-list { display: grid; gap: 10px; }
+    .info-row { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-muted); font-size: 12px; }
+    .info-row b { color: var(--ink); }
+    .info-row span { color: var(--muted); }
+
+    .button { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 8px 14px; background: var(--panel); color: var(--ink); font-weight: 650; font-size: 12px; cursor: pointer; }
+    .button:hover { background: var(--surface-muted); }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+    .button.primary:hover { background: var(--accent-hover); }
+    .button:disabled { opacity: .5; cursor: not-allowed; }
+    .action-bar { display: flex; gap: 10px; margin-top: 16px; }
+
+    .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .status-badge.ready { background: var(--success-subtle); color: #1a7f37; }
+    .status-badge.warning { background: var(--warning-subtle); color: #a45b00; }
+    .status-badge.blocked { background: var(--danger-subtle); color: #c41c1c; }
+
+    .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; font-size: 11px; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+    .next-step-card { padding: 16px; border-radius: var(--radius-md); background: var(--accent-subtle); border: 1px solid rgba(0,122,255,.2); }
+    .next-step-card h4 { margin: 0 0 6px; color: var(--accent); font-size: 13px; }
+    .next-step-card p { margin: 0; font-size: 12px; color: var(--ink); line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">T</span><span>Traqen</span></div>
+      <div>
+        <div class="workspace-switcher-head">
+          <p class="workspace-label">Workspace</p>
+          <div>
+            <button title="刷新">↻</button>
+            <button class="workspace-add-button" title="新建">＋</button>
+          </div>
+        </div>
+        <div class="workspace active-workspace">
+          <strong>order-platform</strong>
+          <small>legacy-system-understanding</small>
+        </div>
+      </div>
+      <nav class="nav" aria-label="workspace">
+        <p class="workspace-label">工作空间</p>
+        <button class="nav-button"><span class="nav-icon">⌂</span><span>Workspace 概览</span></button>
+        <button class="nav-button active" aria-current="page"><span class="nav-icon">◎</span><span>来源与版本</span></button>
+        <div class="subnav" aria-label="来源与版本二级导航">
+          <button class="subnav-button"><span class="subnav-dot"></span>来源登记</button>
+          <button class="subnav-button active"><span class="subnav-dot"></span>版本与快照</button>
+          <button class="subnav-button"><span class="subnav-dot"></span>缺口清单</button>
+          <button class="subnav-button"><span class="subnav-dot"></span>冻结包管理</button>
+        </div>
+      </nav>
+      <nav class="nav" aria-label="understanding">
+        <p class="workspace-label">理解</p>
+        <button class="nav-button"><span class="nav-icon">◇</span><span>技术结构</span></button>
+        <button class="nav-button"><span class="nav-icon">⌘</span><span>业务理解</span></button>
+      </nav>
+      <nav class="nav" aria-label="governance">
+        <p class="workspace-label">治理</p>
+        <button class="nav-button"><span class="nav-icon">↗</span><span>变更影响</span></button>
+      </nav>
+      <nav class="nav" aria-label="configuration">
+        <p class="workspace-label">配置</p>
+        <button class="nav-button"><span class="nav-icon">⚙</span><span>设置中心</span></button>
+      </nav>
+      <div class="sidebar-note">
+        <b>F001</b> 为当前 Workspace 建立可复现的来源底座。Seal 后的 Receipt 才可进入 F002。
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="breadcrumb"><b>来源与版本</b> / Source Truth</div>
+        <div class="top-actions">
+          <span class="connection-button"><i></i>本地运行</span>
+          <span class="identity-chip">skybowen</span>
+        </div>
+      </div>
+
+      <div class="page-heading">
+        <p class="eyebrow">F001 Workspace Source Truth</p>
+        <h1>建立可复现的来源底座</h1>
+        <p>选择 Git 来源和/或本地目录，配置范围，预检并密封成一份 Receipt。整个流程的每个节点都会在这里显示当前状态、上一步和下一步。</p>
+      </div>
+
+      <section class="subway-map">
+        <h2>📍 F001 流程图 · 当前：④ 采集来源</h2>
+        <div class="subway-line">
+          <div class="subway-station done">
+            <div class="station-dot">✓</div>
+            <div class="station-label">① 选择来源</div>
+            <div class="station-meta">Git + 目录</div>
+          </div>
+          <div class="subway-station done">
+            <div class="station-dot">✓</div>
+            <div class="station-label">② 配置范围</div>
+            <div class="station-meta">root / policy</div>
+          </div>
+          <div class="subway-station done">
+            <div class="station-dot">✓</div>
+            <div class="station-label">③ 预检</div>
+            <div class="station-meta">可开始</div>
+          </div>
+          <div class="subway-station current">
+            <div class="station-dot">4</div>
+            <div class="station-label">④ 采集</div>
+            <div class="station-meta">发现 / 验证 / 传输</div>
+          </div>
+          <div class="subway-station pending">
+            <div class="station-dot">5</div>
+            <div class="station-label">⑤ 核对结果</div>
+            <div class="station-meta">manifest 对账</div>
+          </div>
+          <div class="subway-station pending">
+            <div class="station-dot">6</div>
+            <div class="station-label">⑥ 密封</div>
+            <div class="station-meta">Receipt</div>
+          </div>
+          <div class="subway-station pending">
+            <div class="station-dot">7</div>
+            <div class="station-label">⑦ 就绪</div>
+            <div class="station-meta">进入 F002</div>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i style="background:#34c759"></i>已完成</span>
+          <span><i style="background:#007aff;box-shadow:0 0 0 2px rgba(0,122,255,.15)"></i>当前步骤</span>
+          <span><i style="background:#d2d2d7"></i>待进行</span>
+          <span><i style="background:#ff3b30"></i>阻断</span>
+          <span><i style="background:#ff9500"></i>带限制</span>
+        </div>
+      </section>
+
+      <div class="step-grid">
+        <div class="step-detail">
+          <section class="panel">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h3>当前步骤：④ 采集来源</h3>
+              <span class="status-badge ready">进行中 · 75%</span>
+            </div>
+            <p>系统正在把 Git commit 与目录上传的字节写入 Traqen 管理存储，并验证每个文件的哈希与清单。完成后将进入“核对结果”，最后密封成 Receipt。</p>
+            <div class="info-list">
+              <div class="info-row"><b>Git 组件</b><span>commit 9f2b8e4 · 已验证 42,103 / 50,000 文件</span></div>
+              <div class="info-row"><b>目录组件</b><span>manifest d81f…a3 · 增量上传 · 已传输 1.2 GB / 1.8 GB</span></div>
+              <div class="info-row"><b>组合来源包</b><span>Bundle bundle-2026…a1</span></div>
+            </div>
+            <div class="action-bar">
+              <button class="button">后台运行</button>
+              <button class="button" disabled>进入下一步</button>
+              <button class="button" style="margin-left:auto;color:var(--danger);border-color:var(--danger)">取消本次采集</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>上一步：③ 预检通过</h3>
+            <p>Git commit 可解析，目录选择器返回了文件列表，策略排除范围已确认。未发现阻断项，有一个预期 Gap（二进制文件超过策略大小）将在 Receipt 中显式继承。</p>
+            <div class="action-bar">
+              <button class="button">查看预检报告</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="step-detail">
+          <section class="panel">
+            <h3>来源分支</h3>
+            <div class="branch-row">
+              <div class="branch-card active">
+                <h4>🌿 Git</h4>
+                <p>锁定到精确 commit。后续新版本只需切换 commit，未变对象复用。</p>
+                <span class="branch-tag">已锁定 9f2b8e4</span>
+              </div>
+              <div class="branch-card active">
+                <h4>📂 目录上传</h4>
+                <p>浏览器目录选择器完整枚举。首次为全量；后续版本基于前版 manifest 只传变化字节，但仍需重新枚举以发现删除。</p>
+                <span class="branch-tag">增量 · 对比 manifest d81f…a3</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="next-step-card">
+            <h4>下一步：⑤ 核对结果</h4>
+            <p>所有文件写入管理存储后，系统会冻结最终 manifest 并与来源声明对账。核对通过后才能 Seal；核对失败会进入可重试失败或阻断状态，不会签发 Receipt。</p>
+          </section>
+
+          <section class="panel">
+            <h3>流程规则</h3>
+            <p>① Git 与目录是<strong>独立来源组件</strong>，不是互斥三选一；② 目录上传区分<strong>全量</strong>与<strong>增量</strong>，增量以上一版 manifest 为基线；③ 只有 Seal 后的 Receipt 才能进入 F002；④ 阻断状态无接受/绕过按钮。</p>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

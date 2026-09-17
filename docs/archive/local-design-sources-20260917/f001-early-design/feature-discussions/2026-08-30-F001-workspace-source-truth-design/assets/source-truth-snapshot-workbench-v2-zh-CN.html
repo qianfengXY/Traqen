@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>F001 来源快照工作台 v2</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --sidebar: #f2f4f8;
+      --text: #111827;
+      --muted: #64748b;
+      --border: #dbe3ef;
+      --border-strong: #cbd5e1;
+      --blue: #2563eb;
+      --blue-soft: #e8f1ff;
+      --green: #16a34a;
+      --green-soft: #eaf8ef;
+      --orange: #d97706;
+      --orange-soft: #fff7e6;
+      --red: #dc2626;
+      --red-soft: #fff0f0;
+      --shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 8px 24px rgba(15, 23, 42, .04);
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 100%; min-width: 1180px; height: 100%; color: var(--text); background: var(--bg); }
+    body { display: flex; overflow: hidden; }
+    button { font: inherit; }
+
+    .sidebar {
+      width: 236px;
+      height: 100vh;
+      flex: 0 0 236px;
+      background: var(--sidebar);
+      border-right: 1px solid var(--border);
+      padding: 22px 16px 18px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; margin-bottom: 24px; font-size: 20px; font-weight: 800; }
+    .brand-mark { width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: #fff; background: var(--blue); box-shadow: 0 7px 14px rgba(37, 99, 235, .2); }
+    .side-label { margin: 0 8px 9px; font-size: 11px; font-weight: 800; letter-spacing: .14em; color: #718096; text-transform: uppercase; }
+    .workspace-card { padding: 13px 14px; border: 1px solid #8fb9ff; border-radius: 12px; background: #e5efff; margin-bottom: 24px; }
+    .workspace-card strong { display: block; font-size: 14px; }
+    .workspace-card span { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+
+    .side-nav { display: grid; gap: 6px; }
+    .side-nav-item { min-height: 42px; padding: 0 12px; border-radius: 9px; display: flex; align-items: center; gap: 10px; color: #526078; font-size: 13px; }
+    .side-nav-item.active { color: #1557c9; background: #dce9fb; box-shadow: inset 3px 0 0 var(--blue); font-weight: 700; }
+    .side-nav-item .icon { width: 18px; text-align: center; font-size: 14px; }
+    .side-separator { height: 1px; background: var(--border); margin: 18px 8px; }
+    .sidebar-spacer { flex: 1; }
+    .truth-note { padding: 13px; border: 1px solid var(--border); border-radius: 11px; background: rgba(255,255,255,.75); color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .truth-note strong { display: block; color: var(--blue); margin-bottom: 4px; }
+
+    .app { min-width: 0; flex: 1; height: 100vh; display: flex; flex-direction: column; }
+    .topbar { height: 58px; flex: 0 0 58px; padding: 0 26px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: rgba(255,255,255,.82); }
+    .breadcrumb { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .breadcrumb strong { color: var(--text); }
+    .top-actions { display: flex; align-items: center; gap: 9px; }
+    .top-pill { padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: #526078; font-size: 11px; font-weight: 700; }
+    .top-pill.live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; background: var(--green); }
+
+    .content { flex: 1; min-height: 0; padding: 18px 26px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .page-heading { min-height: 66px; display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+    .eyebrow { margin: 0 0 5px; color: var(--blue); font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 30px; line-height: 1.12; letter-spacing: -.03em; }
+    .subtitle { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+    .heading-status { margin-top: 3px; display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border-radius: 9px; color: #174ea6; background: var(--blue-soft); font-size: 12px; font-weight: 800; white-space: nowrap; }
+    .heading-status.warning { color: #9a5800; background: var(--orange-soft); }
+    .heading-status.danger { color: #b42318; background: var(--red-soft); }
+    .heading-status.success { color: #137333; background: var(--green-soft); }
+
+    .panel { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+    .metro-panel { height: 176px; flex: 0 0 176px; padding: 16px 20px 13px; }
+    .metro-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 13px; }
+    .metro-title { font-size: 14px; font-weight: 800; }
+    .metro-caption { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .position-pill { padding: 7px 10px; border-radius: 999px; background: var(--blue-soft); color: var(--blue); font-size: 11px; font-weight: 800; }
+    .position-pill.warning { color: #9a5800; background: var(--orange-soft); }
+    .position-pill.danger { color: #b42318; background: var(--red-soft); }
+    .position-pill.success { color: #137333; background: var(--green-soft); }
+
+    .rail { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); align-items: start; gap: 0; padding: 0 15px; }
+    .rail::before { content: ""; position: absolute; left: 7.3%; right: 7.3%; top: 17px; height: 4px; border-radius: 999px; background: #d8dde6; }
+    .rail-progress { position: absolute; left: 7.3%; top: 17px; height: 4px; border-radius: 999px; background: var(--green); }
+    .station { position: relative; z-index: 1; text-align: center; }
+    .node { width: 36px; height: 36px; margin: 0 auto 8px; display: grid; place-items: center; border: 3px solid #c8ced8; border-radius: 50%; background: var(--surface); color: #7b8492; font-size: 12px; font-weight: 900; }
+    .station.done .node { border-color: var(--green); color: #fff; background: var(--green); }
+    .station.current .node { border-color: #cfe0ff; color: #fff; background: var(--blue); box-shadow: 0 0 0 5px #eaf2ff; }
+    .station.current.warning .node { border-color: #fde4b2; background: var(--orange); box-shadow: 0 0 0 5px #fff6e5; }
+    .station.current.danger .node { border-color: #fecaca; background: var(--red); box-shadow: 0 0 0 5px #fff0f0; }
+    .station.current.success .node { border-color: #bbf7d0; background: var(--green); box-shadow: 0 0 0 5px #ebfaef; }
+    .station-name { font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .station.current .station-name { color: var(--blue); }
+    .station.current.warning .station-name { color: var(--orange); }
+    .station.current.danger .station-name { color: var(--red); }
+    .station.current.success .station-name { color: var(--green); }
+    .station-hint { margin-top: 4px; color: #8b94a3; font-size: 9px; white-space: nowrap; }
+    .legend { display: flex; align-items: center; gap: 16px; margin-top: 13px; border-top: 1px solid #eef2f7; padding-top: 10px; color: var(--muted); font-size: 10px; }
+    .legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; background: #c8ced8; }
+    .legend .l-done::before { background: var(--green); }
+    .legend .l-current::before { background: var(--blue); }
+    .legend .l-warning::before { background: var(--orange); }
+    .legend .l-danger::before { background: var(--red); }
+
+    .workbench { min-height: 0; flex: 1; display: grid; grid-template-columns: minmax(0, 1.72fr) minmax(280px, .78fr); gap: 12px; }
+    .current-card { min-height: 0; padding: 17px 18px; display: flex; flex-direction: column; overflow: hidden; }
+    .current-card.state-warning { border-color: #f0bb63; }
+    .current-card.state-danger { border-color: #f39a9a; }
+    .card-head { display: flex; justify-content: space-between; gap: 15px; align-items: flex-start; margin-bottom: 12px; }
+    .step-label { margin: 0 0 4px; color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .card-head h2 { margin: 0; font-size: 20px; letter-spacing: -.02em; }
+    .card-copy { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .badge { display: inline-flex; align-items: center; padding: 6px 9px; border-radius: 999px; font-size: 10px; font-weight: 900; white-space: nowrap; }
+    .badge.blue { color: #1557c9; background: var(--blue-soft); }
+    .badge.green { color: #137333; background: var(--green-soft); }
+    .badge.orange { color: #9a5800; background: var(--orange-soft); }
+    .badge.red { color: #b42318; background: var(--red-soft); }
+    .badge.gray { color: #5f6b7a; background: #eef2f7; }
+
+    .source-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 11px; }
+    .source-card { padding: 13px 14px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-soft); }
+    .source-card.selected { border-color: #9ec0fb; background: #f2f7ff; }
+    .source-title { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; font-weight: 800; }
+    .source-title span:first-child { display: flex; align-items: center; gap: 7px; }
+    .source-meta { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; color: var(--muted); font-size: 10px; }
+    .source-meta strong { color: #253046; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .source-description { min-height: 34px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .source-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+    .progress-block { padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); margin-bottom: 9px; }
+    .progress-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; font-size: 11px; }
+    .progress-head strong { font-size: 12px; }
+    .progress-meta { color: var(--muted); font-size: 10px; }
+    .progress-track { height: 7px; overflow: hidden; margin: 9px 0 7px; border-radius: 99px; background: #e7ecf3; }
+    .progress-value { height: 100%; border-radius: inherit; background: var(--blue); }
+    .progress-value.green { background: var(--green); }
+    .progress-foot { display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+
+    .inventory-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-bottom: 10px; }
+    .metric { padding: 10px 11px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); }
+    .metric span { display: block; color: var(--muted); font-size: 9px; }
+    .metric strong { display: block; margin-top: 3px; font-size: 17px; }
+    .gap-list { display: grid; gap: 7px; }
+    .gap-row { padding: 9px 10px; display: grid; grid-template-columns: 18px minmax(0,1fr) auto; align-items: center; gap: 9px; border: 1px solid #f3d3a0; border-radius: 9px; background: #fffaf0; font-size: 10px; }
+    .gap-row.danger { border-color: #f4b3b3; background: #fff4f4; }
+    .gap-icon { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--orange); font-weight: 900; }
+    .gap-row.danger .gap-icon { background: var(--red); }
+    .gap-row strong { display: block; font-size: 11px; }
+    .gap-row p { margin: 2px 0 0; color: var(--muted); }
+
+    .receipt { display: grid; grid-template-columns: 1.2fr 1fr; gap: 10px; }
+    .receipt-main, .receipt-side { padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+    .receipt-main h3, .receipt-side h3 { margin: 0 0 9px; font-size: 12px; }
+    .receipt-id { margin-bottom: 9px; color: var(--blue); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; font-weight: 800; }
+    .receipt-line { display: flex; justify-content: space-between; gap: 14px; padding: 6px 0; border-top: 1px solid #e6ebf2; color: var(--muted); font-size: 10px; }
+    .receipt-line strong { color: #253046; text-align: right; }
+    .admission { padding: 10px; border-radius: 9px; background: var(--blue-soft); color: #174ea6; font-size: 10px; line-height: 1.5; }
+
+    .danger-box { padding: 13px; border: 1px solid #f29a9a; border-left: 4px solid var(--red); border-radius: 10px; background: var(--red-soft); }
+    .danger-box h3 { margin: 0 0 7px; font-size: 13px; color: #9f1d1d; }
+    .danger-box p { margin: 4px 0; color: #8f2a2a; font-size: 11px; line-height: 1.55; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .action-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: auto; padding-top: 11px; }
+    .action-set { display: flex; gap: 8px; }
+    .button { min-height: 34px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); color: #263247; font-size: 11px; font-weight: 800; }
+    .button.primary { border-color: var(--blue); color: #fff; background: var(--blue); }
+    .button.warn { border-color: #e0a64b; color: #8a4e00; background: #fff9ec; }
+    .button.danger { border-color: #f1aaaa; color: #b42318; background: #fff6f6; }
+    .button:disabled { border-color: #dde3ec; color: #a0a8b5; background: #f3f5f8; }
+
+    .context-stack { min-height: 0; display: grid; grid-template-rows: 1fr 1.18fr; gap: 12px; }
+    .context-card { min-height: 0; padding: 15px 16px; overflow: hidden; }
+    .context-card h3 { margin: 0 0 9px; font-size: 13px; }
+    .context-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .context-card .context-kicker { display: block; margin-bottom: 7px; color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .context-card.next { border-color: #acd0ff; background: #f3f8ff; }
+    .context-card.next h3 { color: #1557c9; }
+    .evidence-list { display: grid; gap: 7px; margin-top: 10px; }
+    .evidence-item { padding: 8px 9px; border-radius: 8px; background: #f3f5f8; color: #445067; font-size: 10px; }
+    .evidence-item::before { content: "✓"; margin-right: 6px; color: var(--green); font-weight: 900; }
+
+    .footer-strip { min-height: 54px; flex: 0 0 54px; padding: 10px 13px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+    .footer-copy { min-width: 0; }
+    .footer-copy strong { display: block; font-size: 11px; }
+    .footer-copy span { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .footer-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+    @media (max-width: 1300px) {
+      .sidebar { width: 216px; flex-basis: 216px; }
+      .content { padding-left: 20px; padding-right: 20px; }
+      .station-name { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <aside class="sidebar" aria-label="F001 工作区上下文">
+    <div class="brand"><span class="brand-mark">T</span><span>Traqen</span></div>
+    <p class="side-label">Workspace</p>
+    <div class="workspace-card">
+      <strong>order-platform</strong>
+      <span>当前基线 · r3</span>
+    </div>
+    <p class="side-label">来源真相</p>
+    <nav class="side-nav">
+      <div class="side-nav-item active"><span class="icon">◎</span><span>来源快照</span></div>
+      <div class="side-nav-item"><span class="icon">◷</span><span>快照历史</span></div>
+    </nav>
+    <div class="side-separator"></div>
+    <div class="side-nav-item"><span class="icon">⌁</span><span>清单与缺口</span></div>
+    <div class="sidebar-spacer"></div>
+    <div class="truth-note">
+      <strong>F001 边界</strong>
+      只负责取得、核验并冻结来源包。业务、API 与影响判断不在本页面发生。
+    </div>
+  </aside>
+
+  <div class="app">
+    <header class="topbar">
+      <div class="breadcrumb"><span>order-platform</span><span>/</span><strong>来源快照</strong></div>
+      <div class="top-actions">
+        <span class="top-pill live">连接正常</span>
+        <span class="top-pill">Enterprise</span>
+        <span class="top-pill">中文</span>
+        <span class="top-pill">WEB-OPERATOR</span>
+      </div>
+    </header>
+
+    <main class="content">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">F001 · Workspace & Source Truth</p>
+          <h1 id="page-title"></h1>
+          <p class="subtitle" id="page-subtitle"></p>
+        </div>
+        <div class="heading-status" id="heading-status"></div>
+      </section>
+
+      <section class="metro-panel panel" aria-label="F001 八站来源包旅程">
+        <div class="metro-head">
+          <div>
+            <div class="metro-title">来源包旅程</div>
+            <div class="metro-caption">完整流程固定在当前任务现场；完成站可回看证据，下一站只显示进入条件。</div>
+          </div>
+          <div class="position-pill" id="position-pill"></div>
+        </div>
+        <div class="rail" id="rail"></div>
+        <div class="legend">
+          <span class="l-done">已完成并留证</span>
+          <span class="l-current">当前步骤</span>
+          <span>尚未到达</span>
+          <span class="l-warning">带已知限制</span>
+          <span class="l-danger">不可绕过的阻断</span>
+        </div>
+      </section>
+
+      <section class="workbench">
+        <article class="current-card panel" id="current-card"></article>
+        <aside class="context-stack">
+          <section class="context-card panel" id="previous-card"></section>
+          <section class="context-card panel next" id="next-card"></section>
+        </aside>
+      </section>
+
+      <section class="footer-strip panel" id="footer-strip"></section>
+    </main>
+  </div>
+
+  <script>
+    const stations = [
+      ["添加来源", "Git 和/或目录"],
+      ["配置范围", "根目录与版本"],
+      ["自动预检", "权限与安全"],
+      ["枚举材料", "发现完整范围"],
+      ["冻结清单", "锁定可信分母"],
+      ["采集与校验", "双来源并行"],
+      ["核对清单与缺口", "Inventory / Gap"],
+      ["冻结来源包", "Bundle / Receipt"]
+    ];
+
+    const views = {
+      empty: {
+        current: 1,
+        tone: "blue",
+        title: "建立首个来源快照",
+        subtitle: "选择 Git 仓库、本地目录，或同时选择两者；系统会把它们作为独立来源组件冻结到同一个来源包。",
+        status: "尚未开始 · 第 1 / 8 站",
+        stepTitle: "添加来源",
+        stepCopy: "至少添加一种来源后才能继续。Git 与目录不是互斥选项，也不会因为路径同名而互相覆盖。",
+        badge: "等待选择",
+        badgeTone: "gray",
+        content: `
+          <div class="source-grid">
+            <section class="source-card">
+              <div class="source-title"><span>◇ Git 来源</span><span class="badge blue">推荐</span></div>
+              <div class="source-description">填写只读仓库地址并选择版本。branch 或 tag 只用于定位，系统最终锁定精确 commit。</div>
+              <div class="source-actions"><button class="button primary">添加 Git 来源</button></div>
+            </section>
+            <section class="source-card">
+              <div class="source-title"><span>▣ 本地目录</span><span class="badge gray">全量 / 增量</span></div>
+              <div class="source-description">首次完整枚举；后续重选目录时仍完整枚举以发现删除，但只上传服务端缺失的变化字节。</div>
+              <div class="source-actions"><button class="button primary">选择目录</button></div>
+            </section>
+          </div>
+          <div class="action-row">
+            <span class="progress-meta">用户不需要配置 glob、哈希算法或并发参数。</span>
+            <button class="button" disabled>继续配置范围</button>
+          </div>`,
+        previous: `<span class="context-kicker">上一步</span><h3>尚无历史步骤</h3><p>当前 Workspace 还没有来源快照。若以后创建新版本，这里会显示所选基线及其 Receipt。</p>`,
+        next: `<span class="context-kicker">下一站 · 第 2 站</span><h3>配置范围</h3><p>添加来源后确认 Git 目录根和目录上传范围。系统会自动展示采用全量还是增量路径，不把采集策略交给用户。</p>`,
+        footer: `<div class="footer-copy"><strong>尚无已冻结来源包</strong><span>下游能力保持关闭；选择来源不会自动启动采集。</span></div><div class="footer-actions"><button class="button" disabled>下游准入未解锁</button></div>`
+      },
+
+      capturing: {
+        current: 6,
+        tone: "blue",
+        title: "建立第 4 版来源快照",
+        subtitle: "清单已经冻结；Git 与目录沿各自路径采集和校验，完成后汇入同一来源包。",
+        status: "运行中 · 第 6 / 8 站",
+        stepTitle: "采集与校验",
+        stepCopy: "分母来自已冻结清单。页面只显示服务端检查点与可证明计数，不估算剩余时间。",
+        badge: "运行中",
+        badgeTone: "blue",
+        content: `
+          <div class="progress-block">
+            <div class="progress-head"><strong>◇ Git · acme/order-platform</strong><span class="badge green">已校验 commit 9f2b8e4</span></div>
+            <div class="progress-track"><div class="progress-value green" style="width:100%"></div></div>
+            <div class="progress-foot"><span>47,231 / 47,231 个对象</span><span>对象复用 98%</span></div>
+          </div>
+          <div class="progress-block">
+            <div class="progress-head"><strong>▣ 目录 · legacy-docs-v3.1</strong><span class="badge blue">增量上传</span></div>
+            <div class="progress-track"><div class="progress-value" style="width:92.2%"></div></div>
+            <div class="progress-foot"><span>已校验 118 / 128 项</span><span>需传输 34.2 MB · 已传 31.5 MB</span></div>
+          </div>
+          <div class="action-row">
+            <div class="action-set"><button class="button primary">查看采集详情</button><button class="button">后台运行</button></div>
+            <button class="button danger">取消本次采集</button>
+          </div>`,
+        previous: `<span class="context-kicker">上一步 · 第 5 站</span><h3>冻结清单</h3><p>Git tree 与目录 manifest 已锁定，得到可信分母。</p><div class="evidence-list"><div class="evidence-item">manifest · 47,359 项</div><div class="evidence-item">Git 47,231 · 目录 128</div></div>`,
+        next: `<span class="context-kicker">下一站 · 第 7 站</span><h3>核对清单与缺口</h3><p>两个来源组件都达到终态后自动进入。届时核对 Inventory 守恒，并处理每一个明确 Gap；任何失败项都不会从分母中消失。</p>`,
+        footer: `<div class="footer-copy"><strong>当前版本尚未冻结；旧版 r3 仍然可用</strong><span>运行、取消或重试本次尝试都不会改写旧 Receipt。</span></div><div class="footer-actions"><span class="badge green">旧 Receipt r3 可用</span><button class="button" disabled>下游准入未解锁</button></div>`
+      },
+
+      gaps: {
+        current: 7,
+        tone: "warning",
+        title: "核对来源清单与缺口",
+        subtitle: "采集结果已经守恒；两个非阻断缺口必须明确处置后，才能冻结来源包。",
+        status: "需要决定 · 第 7 / 8 站",
+        stepTitle: "核对清单与缺口",
+        stepCopy: "限制不会被绿色成功状态掩盖。接受只表示知情继续，不表示材料已经完整。",
+        badge: "2 个待处置缺口",
+        badgeTone: "orange",
+        content: `
+          <div class="inventory-grid">
+            <div class="metric"><span>清单总数</span><strong>47,359</strong></div>
+            <div class="metric"><span>已完整采集</span><strong>47,356</strong></div>
+            <div class="metric"><span>策略排除</span><strong>1</strong></div>
+            <div class="metric"><span>非阻断缺口</span><strong>2</strong></div>
+          </div>
+          <div class="gap-list">
+            <div class="gap-row"><span class="gap-icon">!</span><div><strong>2 个二进制文件超过留存大小上限</strong><p>记录路径、大小和哈希；内容不进入来源包，限制将由下游继承。</p></div><span class="badge orange">非阻断</span></div>
+            <div class="gap-row"><span class="gap-icon">!</span><div><strong>1 个文件因租户策略不可留存内容</strong><p>保留发现证据与处置原因；不允许把它显示成“已采集”。</p></div><span class="badge orange">非阻断</span></div>
+          </div>
+          <div class="action-row">
+            <button class="button">返回调整来源</button>
+            <div class="action-set"><button class="button">查看完整清单</button><button class="button warn">填写理由并接受限制</button></div>
+          </div>`,
+        previous: `<span class="context-kicker">上一步 · 第 6 站</span><h3>采集与校验完成</h3><p>两条来源轨均已完成哈希校验，Inventory 汇总与明细计数一致。</p><div class="evidence-list"><div class="evidence-item">Git commit 9f2b8e4</div><div class="evidence-item">目录 manifest d81f…a3</div></div>`,
+        next: `<span class="context-kicker">下一站 · 第 8 站</span><h3>冻结来源包</h3><p>只有所有缺口都完成处置且不存在 blocker 才能进入。接受记录会写入 Receipt，并由后续分析完整继承。</p>`,
+        footer: `<div class="footer-copy"><strong>旧版 r3 仍可用；新版尚无 Receipt</strong><span>未处置限制不会被自动接受，也不能提前解锁下游。</span></div><div class="footer-actions"><span class="badge orange">等待缺口决定</span><button class="button" disabled>冻结来源包</button></div>`
+      },
+
+      blocked: {
+        current: 3,
+        tone: "danger",
+        title: "预检被阻断",
+        subtitle: "来源范围存在安全边界问题；修复来源或显式收窄声明范围后才能继续。",
+        status: "已阻断 · 第 3 / 8 站",
+        stepTitle: "自动预检",
+        stepCopy: "阻断条件没有接受或继续入口。本次失败不会影响早先已经冻结的来源包。",
+        badge: "不可绕过",
+        badgeTone: "red",
+        content: `
+          <div class="danger-box">
+            <h3>路径安全检查失败</h3>
+            <p>Git 声明范围内的符号链接解析到仓库根目录之外。</p>
+            <p><strong>受影响组件：</strong>Git · <span class="code">services/payment/config/../etc/passwd</span></p>
+            <p><strong>恢复动作：</strong>移除该符号链接，或显式收窄声明范围并留下范围收缩证据，然后重新运行预检。</p>
+          </div>
+          <div class="action-row">
+            <div class="action-set"><button class="button">查看预检报告</button><button class="button primary">编辑来源与范围</button></div>
+            <button class="button" disabled>开始枚举</button>
+          </div>`,
+        previous: `<span class="context-kicker">上一步 · 第 2 站</span><h3>配置范围</h3><p>Git 已解析到精确 commit，目录范围也已明确。</p><div class="evidence-list"><div class="evidence-item">commit 9f2b8e4</div><div class="evidence-item">根目录 services/payment</div></div>`,
+        next: `<span class="context-kicker">恢复后 · 第 4 站</span><h3>枚举材料</h3><p>必须先消除安全 blocker。系统不会用“忽略此项”跳过边界问题，也不会签发带伪完整外观的 Receipt。</p>`,
+        footer: `<div class="footer-copy"><strong>新版创建已停止；旧版 r3 未受影响</strong><span>阻断项不能接受、继续或降级为普通提醒。</span></div><div class="footer-actions"><span class="badge green">旧 Receipt r3 可用</span><button class="button" disabled>下游仍使用 r3</button></div>`
+      },
+
+      frozen: {
+        current: 8,
+        tone: "success",
+        title: "来源包已冻结",
+        subtitle: "第 4 版来源快照已经密封；原生组件身份、完整清单与已接受限制共同写入 Receipt。",
+        status: "已完成 · 第 8 / 8 站",
+        stepTitle: "冻结来源包",
+        stepCopy: "来源包不可修改且可重放。F001 到此结束；下游只能引用这份 Receipt，而不能回读活动路径。",
+        badge: "可用但有限制",
+        badgeTone: "orange",
+        content: `
+          <div class="receipt">
+            <section class="receipt-main">
+              <h3>Receipt 身份</h3>
+              <div class="receipt-id">receipt-r4-8a2e</div>
+              <div class="receipt-line"><span>来源包</span><strong>bundle-7k2m9p</strong></div>
+              <div class="receipt-line"><span>冻结时间</span><strong>2026-09-04 03:42 UTC</strong></div>
+              <div class="receipt-line"><span>逻辑清单</span><strong>47,359 项</strong></div>
+            </section>
+            <section class="receipt-side">
+              <h3>来源组件</h3>
+              <div class="receipt-line"><span>Git</span><strong>commit 9f2b8e4</strong></div>
+              <div class="receipt-line"><span>目录</span><strong>manifest d81f…a3</strong></div>
+              <div class="receipt-line"><span>已接受限制</span><strong style="color:#9a5800">2 个</strong></div>
+              <div class="admission"><strong>下游准入已解锁</strong><br />后续分析必须携带本 Receipt 和完整 inherited Gap 集。</div>
+            </section>
+          </div>
+          <div class="action-row">
+            <div class="action-set"><button class="button primary">查看完整 Receipt</button><button class="button">创建新版本</button></div>
+            <button class="button">在技术结构中使用</button>
+          </div>`,
+        previous: `<span class="context-kicker">上一步 · 第 7 站</span><h3>清单与缺口已核对</h3><p>两个非阻断限制已由 WEB-OPERATOR 填写理由并接受，记录仍保留为缺口。</p><div class="evidence-list"><div class="evidence-item">接受记录 acc-81f…20</div><div class="evidence-item">有效期至 2026-10-04</div></div>`,
+        next: `<span class="context-kicker">F001 之后</span><h3>选择下游分析</h3><p>这不是第 9 站。技术结构、业务理解或影响分析在自己的功能中启动，并只读消费已冻结来源包及其限制。</p>`,
+        footer: `<div class="footer-copy"><strong>当前基线已更新为 r4；r3 仍可重放</strong><span>新版本不会覆盖旧版本，历史 Receipt 始终指向当时的完整来源真相。</span></div><div class="footer-actions"><span class="badge orange">READY_WITH_ACCEPTED_GAPS</span><span class="badge blue">下游准入已解锁</span></div>`
+      }
+    };
+
+    const params = new URLSearchParams(window.location.search);
+    const state = views[params.get("state")] ? params.get("state") : "capturing";
+    const view = views[state];
+
+    document.documentElement.dataset.state = state;
+    document.getElementById("page-title").textContent = view.title;
+    document.getElementById("page-subtitle").textContent = view.subtitle;
+
+    const headingStatus = document.getElementById("heading-status");
+    headingStatus.textContent = view.status;
+    if (view.tone !== "blue") headingStatus.classList.add(view.tone === "warning" ? "warning" : view.tone === "danger" ? "danger" : "success");
+
+    const positionPill = document.getElementById("position-pill");
+    positionPill.textContent = view.status;
+    if (view.tone !== "blue") positionPill.classList.add(view.tone === "warning" ? "warning" : view.tone === "danger" ? "danger" : "success");
+
+    const rail = document.getElementById("rail");
+    const progress = document.createElement("div");
+    progress.className = "rail-progress";
+    progress.style.width = `${Math.max(0, (view.current - 1) / 7 * 85.4)}%`;
+    rail.appendChild(progress);
+    stations.forEach(([name, hint], index) => {
+      const number = index + 1;
+      const station = document.createElement("div");
+      station.className = "station";
+      if (number < view.current || (state === "frozen" && number === view.current)) station.classList.add("done");
+      if (number === view.current) {
+        station.classList.add("current");
+        if (view.tone !== "blue") station.classList.add(view.tone);
+      }
+      station.innerHTML = `<div class="node">${number < view.current || state === "frozen" ? "✓" : number}</div><div class="station-name">${name}</div><div class="station-hint">${hint}</div>`;
+      rail.appendChild(station);
+    });
+
+    const currentCard = document.getElementById("current-card");
+    if (view.tone === "warning") currentCard.classList.add("state-warning");
+    if (view.tone === "danger") currentCard.classList.add("state-danger");
+    currentCard.innerHTML = `<div class="card-head"><div><p class="step-label">当前步骤 · 第 ${view.current} 站</p><h2>${view.stepTitle}</h2><p class="card-copy">${view.stepCopy}</p></div><span class="badge ${view.badgeTone}">${view.badge}</span></div>${view.content}`;
+    document.getElementById("previous-card").innerHTML = view.previous;
+    document.getElementById("next-card").innerHTML = view.next;
+    document.getElementById("footer-strip").innerHTML = view.footer;
+  </script>
+</body>
+</html>

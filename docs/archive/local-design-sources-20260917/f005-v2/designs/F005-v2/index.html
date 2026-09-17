@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Traqen · F005 整体体验设计</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#main">跳到主要内容</a>
+  <div class="studio" aria-label="设计提案工具栏">
+    <a href="#overview" class="studio-brand">F005 <span>整体体验设计 · 提案 V2</span></a>
+    <div class="studio-links"><a href="#overview">体验样稿</a><a href="#components">组件展台</a><a href="charter.html">设计总纲 ↗</a></div>
+    <span class="demo-label">示例数据 · 仅在本机保存演示操作</span>
+    <button id="theme-toggle" class="studio-theme" aria-label="切换深色外观">◐ <span>外观</span></button>
+  </div>
+  <div id="product" class="product" data-client-revision="f005-v2-20260915">
+    <aside id="sidebar" class="sidebar" aria-label="工作区导航"></aside>
+    <div class="workspace">
+      <header id="toolbar" class="toolbar"></header>
+      <main id="main" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <dialog id="dialog" aria-labelledby="dialog-title"></dialog>
+  <div id="scrim" class="scrim" hidden></div>
+  <script src="app.js"></script>
+</body>
+</html>

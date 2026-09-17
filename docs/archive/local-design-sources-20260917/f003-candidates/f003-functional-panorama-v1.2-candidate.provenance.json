@@ -1,0 +1,41 @@
+{
+  "feature": "F003",
+  "version": "1.2",
+  "status": "candidate",
+  "artifact": "f003-functional-panorama-v1.2-candidate.zh-CN.png",
+  "sha256": "f21bed37ece6983f364ead605f0621b02be6abcd60ac2d2d53c8728b5b21019e",
+  "prompt": "f003-functional-panorama-v1.2-candidate.prompt.txt",
+  "generation_mode": "built-in image_gen edit; one image generated in this revision",
+  "generated_source": "exec-ce85c26e-3a37-4a20-a630-06dc484ef50b.png",
+  "parent_artifact": "f003-functional-panorama-v1.1-candidate.zh-CN.png",
+  "parent_sha256": "5df40b78783dd175a1e7b6687a569fe150a39b5f00725dd81f14610ffd240339",
+  "thread_id": "thread_mtgypu3cay1bysab",
+  "change_request": "0001789112603080-000208-e660d53c",
+  "feedback_messages": [
+    "0001789021419491-000176-6251c528",
+    "0001789024029288-000200-cc1771d0"
+  ],
+  "author": "砚砚/gpt-6-astra",
+  "created": "2026-09-11",
+  "changes": [
+    "05 restores 支撑充分、条件明确、无未决冲突; keeps all five disposition destinations and recovery constraints.",
+    "03 restores main/child task/evidence arrows and 回读核查.",
+    "04 restores 具体命题 and 层级与多对多.",
+    "07 restores four asset types and an illustrative hierarchy/shared-asset graph, separate bidirectional query navigation, three view tabs and explicit automatic-plus-human default display.",
+    "01 restores sealed-source/provenance, F002 uncovered-source and F006 version guardrails.",
+    "05→07 automatic admission and 06→07 validated human decision are visible as separate workflow arrows.",
+    "08 restores cancel, affected-region recheck, history/differences and 人工参考案例."
+  ],
+  "verification": {
+    "methods": [
+      "Visual inspection against the design text and review feedback",
+      "Apple Vision OCR with language correction disabled; ambiguous glyphs inspected visually",
+      "Generated/archive image SHA-256 equality"
+    ],
+    "exact_critical_copy": "支撑充分、条件明确、无未决冲突",
+    "baseline_document": "../README.zh-CN.md",
+    "independent_review": "not yet performed for this V1.2 image",
+    "scope": "Image candidate only; not a code review, feature acceptance, or baseline approval."
+  },
+  "baseline_replaced": false
+}

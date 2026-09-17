@@ -1,0 +1,88 @@
+Use case: infographic-diagram, precise content-restoration edit.
+Asset: Traqen F003 functional panorama, V1.2 CANDIDATE, not an approved baseline.
+Image 1 is the EXACT EDIT TARGET, V1.1. Preserve its white background, blue/navy palette, flat engineering style, 4:3 aspect ratio, eight numbered panel positions, widths, borders, row order and main arrows. NO overall layout redesign. You may uniformly render at higher resolution (ideally 2880×2160) and re-typeset/rearrange content INSIDE the existing 01,03,04,05,07,08 panels. Remove decorative icons if space is needed, not required content. Produce ONE image only.
+
+Change subtitle to “V1.2 候选 · 待确认”. Keep main title “F003 功能全景” and principle line unchanged.
+
+01 INPUT GUARDRAILS — preserve all three source compartments INSIDE the 01 preflight panel. Restore these exact lines, clear and legible:
+F001 原材料
+文档 · 代码 · 配置 · 数据结构 · 测试
+封存版本 · 原文可回查
+F002 参考结果
+技术事实 · 关系 · 提取缺口
+未提取 ≠ 不可分析
+F006 执行配置
+主子模型 · 工具权限 · 配置版本
+Below the compartments: “选择来源版本；核对权限、身份、完整性与版本；阻断项不可跳过”.
+All sources are subject to this common preflight. No new source arrow bypasses 01.
+
+02 unchanged: raw-material reading, inventory and coverage ledger retain analyzed/unexamined/restricted/unassigned material and reasons.
+
+03 RESTORE A REAL MAIN/CHILD COLLABORATION LOOP inside its current panel, replacing the decorative person icon/static role list:
+Top rounded box: “主 Agent：规划 · 分派 · 回读核查”.
+Bottom two small boxes: “子 Agent 1” and “子 Agent 2…N（可选）”.
+Distinct DOWNWARD arrow from Main to the child group labeled “下发任务”.
+Distinct UPWARD arrow from the child group to Main labeled “返回证据”.
+Both arrowheads must visibly terminate on the correct box borders. Do not reverse directions. This is a visual cycle, not merely role-description text.
+Footer within 03: “跨材料：读原文 · 追关系 · 查条件 · 找反例”.
+Keep 02→03→04 external main sequence.
+
+04 RESTORE PRECISE CANDIDATE CONTENT; exact lines:
+“具体命题 · 证据 · 范围 · 不确定性”
+“去重 · 层级与多对多 · 冲突编组”
+“保留来源，归并后再核查”
+Keep 04→05 arrow. Do not add any 03→05 shortcut.
+
+05 CRITICAL SEMANTIC CORRECTION — exact FIRST ROW first-cell text:
+“支撑充分、条件明确、无未决冲突”
+NEVER shorten this to “无冲突”. Resolved conflicts do not bar automatic admission. The characters “未决” MUST appear.
+Subheading: “核对引用、权限、版本与语义；按关系类型核查，非模型投票”.
+Keep all FIVE outcome rows and their ownership/stop/resume meaning:
+支撑充分、条件明确、无未决冲突 | 自动收录 | [07] Agent 分析态
+关键证据不足 | 自动补证 | [03] 有界调查；仍不确定转 [06]
+规则或归属有歧义 | 人工审核 | [06] 具体问题卡
+尚无可靠解释 | 保留待查 | [02] 覆盖账本；不自动循环
+无效引用 / 越权 / 混版 | 隔离待修 | [08] 修复后按条件恢复
+Do not introduce automatic loops for retained material or force all runtime failures to restart the entire analysis. No invalid output enters the valid graph.
+
+06 keep the existing functional problem cards, per-proposition/relation decision scope, answer/evidence return to [03], and “新增文件 → F001 新版本 → [01]”. Make its first [07] row read “人工决定校验后落实” clearly, with scope text “仅选定命题或关系；决定留痕” retained within 06.
+
+TWO CLEAR GRAPH-ADMISSION ARROWS, without moving panels or creating long crossed loops:
+(1) Add a short CYAN downward arrow from bottom of 05 to top of 07, in the existing gap at about x=1120 (coordinates relative to the 1448×1086 reference). Label “自动收录” next to it in the gap. Its meaning corresponds only to the first table row and [07] tag.
+(2) Add a GREEN rightward arrow from the FIRST [07] decision row of 06, through the existing narrow gap, entering the LEFT border of 07. The existing row text “人工决定校验后落实” serves as the arrow label. Make green line visually connect this row and 07.
+Leave other return destinations as numbered tags. These two arrows are workflow, not semantic graph edges. Do not let them attach to F004 or decorative symbols.
+
+07 RESTORE THE GRAPH, keeping its existing outer panel and F004 output compartment:
+At top, THREE visibly selectable tab-shaped labels:
+“业务视图（功能树）” | “实现视图” | “覆盖视图”
+Small caption “同一图谱，三种视图”.
+Replace the two-box 1:1 illustration with a COMPACT MULTI-NODE DIRECTED GRAPH marked “结构示例”.
+Left: neutral root “业务功能 / 规则” with two child nodes “功能 A” and “功能 B”, visually forming a hierarchy.
+Right: FOUR DISTINCT material nodes labeled EXACTLY:
+“文档”
+“API / 代码”
+“配置 / 数据”
+“测试资产”
+Draw neutral gray directed semantic links: A links to 文档, API/代码 and 测试资产; B links to the SAME API/代码 node and to 配置/数据. Thus the visible graph really shows a hierarchy AND shared/many-to-many relationships, not just a textual promise.
+Keep this graph compact but readable, not a giant hairball. Do not replace the four nodes with a generic “来源材料” box.
+Separate QUERY NAVIGATION from semantic links: a slim blue rightward arrow “正向追溯” and orange leftward arrow “反向查询” in a dedicated little strip, caption “查询双向；语义关系保留方向”. Never make every semantic edge bidirectional merely to show reverse lookup.
+Keep status example pills “Agent 分析” / “人工确认” / “待查 / 争议”, explicitly marked “状态示例”. Neutral example nodes are NOT all automatically human-confirmed.
+Bottom copy, on two lines if needed:
+“默认展示：自动收录 + 人工确认”
+“可筛选仅人工确认；节点与边保留来源、状态与条件”
+Retain a DISTINCT external “F004 下游消费” card and a ONE-WAY output arrow “关系与依据” from 07 toward F004. No reverse dependency.
+
+08 remains the SAME bottom horizontal support band, not a sequential step:
+“运行与版本维护” / “横向支撑，不是顺序步骤”
+运行恢复 [01 / 03]: “暂停 · 恢复 · 取消 · 局部重试”; “任务持久化 · 晚到结果隔离”.
+异常与更新 [01 / 03 / 07]: “权限或版本变更 → [01] 预检”; “局部修复按条件恢复”; “新版本自动核查相关区域，保留历史与差异”.
+质量复核 [07]: “人工参考案例”; “检查错误、遗漏与证据”.
+Use 案例, not 样例.
+
+KEEP footer:
+“编号标签表示目标模块；保留待查不等于自动跳转”
+“自动收录 ≠ 人工确认；测试资产 ≠ 执行结果”
+“F003 不推断测试通过”
+Require crisp, STANDARD Simplified Chinese glyphs, especially “无未决冲突”, “尚无可靠解释”, “回读核查”, “层级与多对多”.
+Do not drop the distinction between automatic Agent analysis and human confirmation, the supplement limits, the source-version return or the uncertainty states.
+Preserve ALL panel positions and external main arrows 01→02→03→04→05. No shortcut arrows. Content restoration only, not redesign, not scope expansion.

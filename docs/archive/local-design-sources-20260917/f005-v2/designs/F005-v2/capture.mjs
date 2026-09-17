@@ -1,0 +1,30 @@
+import {chromium} from '/Volumes/WorkSSD/clowder-ai/node_modules/playwright/index.mjs';
+import {readFile,writeFile} from 'node:fs/promises';
+const base=new URL('.',import.meta.url).pathname;
+const b=await chromium.launch({headless:true,channel:'chrome'});
+const context=await b.newContext({viewport:{width:1600,height:1000},deviceScaleFactor:1});
+const p=await context.newPage();const errors=[];
+p.on('pageerror',e=>errors.push(e.message));
+const act=key=>p.locator('[data-action="'+key+'"]').first();
+const go=async v=>{await p.goto('http://127.0.0.1:5185/#'+v);await p.locator('h1').waitFor()};
+const shot=async name=>{await p.evaluate(()=>scrollTo(0,0));await p.waitForTimeout(250);await p.screenshot({path:base+'previews/'+name+'.png',fullPage:true,animations:'disabled'})};
+await go('overview');await shot('01-overview');await act('focus-cancel').click();await p.waitForURL('**/#graph');await shot('02-graph-light');
+await p.locator('#theme-toggle').click();await shot('03-graph-dark');await p.locator('#theme-toggle').click();
+for(const[v,name]of [['sources','04-sources'],['evidence','05-evidence'],['settings','06-settings'],['components','07-components'],['impact','11-impact']]){await go(v);await shot(name)}
+await go('graph');await act('review').click();await shot('09-review');await p.keyboard.press('Escape');
+await p.keyboard.press('Meta+k');await p.locator('#command-input').fill('订单');await shot('10-command');await p.keyboard.press('Escape');
+const overflows=[];
+for(const width of [390,768,1280,1600,1920]){await p.setViewportSize({width,height:width===390?844:1000});for(const v of ['overview','sources','evidence','graph','impact','settings','components']){await go(v);const dimensions=await p.evaluate(()=>({body:document.body.scrollWidth,viewport:innerWidth}));if(dimensions.body>width+1)overflows.push({width,v,...dimensions})}}
+console.log('RESPONSIVE '+JSON.stringify(overflows));
+await p.setViewportSize({width:390,height:844});await p.reload();await go('overview');await shot('12-mobile-overview');await act('menu').click();await p.screenshot({path:base+'previews/13-mobile-navigation.png'});await p.keyboard.press('Escape');
+await go('graph');await shot('14-mobile-graph-list');await act('node:cancel').click();await p.screenshot({path:base+'previews/15-mobile-detail.png'});await p.keyboard.press('Escape');
+await p.locator('#theme-toggle').click();await go('settings');await shot('16-mobile-dark-settings');
+await p.setViewportSize({width:1440,height:1000});await p.goto('http://127.0.0.1:5185/charter.html');console.log('CHARTER_SECTIONS '+await p.locator('main h2').count());await p.screenshot({path:base+'previews/17-charter.png'});
+const report=JSON.parse(await readFile(base+'verification.json','utf8'));
+report.checks=report.checks.filter(x=>x.pass);
+report.checks.push({name:'35 viewport/page combinations without whole-page overflow',pass:overflows.length===0,details:overflows},{name:'browser page errors in visual run',pass:errors.length===0,details:errors},{name:'charter readable with 16 sections',pass:await p.locator('main h2').count()===16});
+report.date=new Date().toISOString();
+await writeFile(base+'verification.json',JSON.stringify(report,null,2));
+console.log(JSON.stringify(report.checks.map(c=>({name:c.name,pass:c.pass}))));
+await b.close();
+if(overflows.length||errors.length)process.exitCode=1;

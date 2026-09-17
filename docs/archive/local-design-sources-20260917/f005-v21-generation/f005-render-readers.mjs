@@ -1,0 +1,31 @@
+import {readFile,writeFile} from 'node:fs/promises';
+import {resolve,relative,dirname} from 'node:path';
+import {marked} from '/Volumes/WorkSSD/clowder-ai/node_modules/.pnpm/marked@16.4.2/node_modules/marked/lib/marked.esm.js';
+const assetDir='/Volumes/WorkSSD/projects/Traqen-worktrees/f005-docs-publication/docs/design-reviews/F005/assets';
+const docDir=dirname(assetDir);
+const md=await readFile(resolve(docDir,'README.md'),'utf8');
+const old=await readFile(resolve(assetDir,'charter.html'),'utf8');
+const esc=s=>s.replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+const headings=[...md.matchAll(/^## (\d\d) · (.+)$/gm)];
+if(headings.length!==16)throw Error('Expected 16 sections');
+let html=marked.parse(md.slice(md.indexOf('## 01 ·')));
+let section=0;
+html=html.replace(/<h2>/g,()=>`<h2 id="section-${++section}">`)
+ .replace(/<table>/g,'<div class="table-scroll"><table>').replace(/<\/table>/g,'</table></div>')
+ .replace(/\b(href|src)="([^"]+)"/g,(all,attr,url)=>/^([a-z]+:|#|\/\/)/i.test(url)?all:`${attr}="${relative(assetDir,resolve(docDir,url))}"`);
+const nav='<nav><div class="caption">设计总纲 · V2.1</div>'+headings.map(h=>`<a href="#section-${Number(h[1])}">${h[1]} · ${h[2]}</a>`).join('')+'</nav>';
+let reader=old.replace(/<nav>[\s\S]*?<\/nav>/,nav).replace(/<main>[\s\S]*?<\/main>/,`<main><div class="intro-label">TRAQEN / EXPERIENCE DESIGN V2.1</div><h1>整体体验与前端设计总纲</h1><p class="callout">2026-09-17 桌面修订：14 英寸笔记本、27 英寸显示器；瓷白与石墨两种默认主题，保留扩展。窄屏暂不设计。构造数据提案，未正式采纳。</p><p><a href="gallery.html">查看同页双主题效果图</a> · <a href="../README.md">查看图文 Markdown</a></p>${html}</main>`).replace('设计总纲 V2</title>','设计总纲 V2.1</title>');
+await writeFile(resolve(assetDir,'charter.html'),reader);
+let proto=await readFile(resolve(assetDir,'Traqen-F005-review.html'),'utf8');
+proto=proto.replace('整体体验设计 · 提案 V2</span>','桌面体验设计 · 提案 V2.1</span>').replace('data-client-revision="f005-v2-20260915"','data-client-revision="f005-v2.1-20260917"');
+const iframe=/<iframe title="F005 完整设计总纲"[^>]*srcdoc="[\s\S]*?"\s*><\/iframe>/;
+if(!iframe.test(proto))throw Error('embedded reader missing');
+proto=proto.replace(iframe,`<iframe title="F005 完整设计总纲" style="width:100%;height:100%;border:0" srcdoc="${esc(reader)}"></iframe>`);
+await writeFile(resolve(assetDir,'Traqen-F005-review.html'),proto);
+let gallery=await readFile(resolve(assetDir,'gallery.html'),'utf8');
+const figures=[...gallery.matchAll(/<figure[\s\S]*?<\/figure>/g)].map(m=>m[0]).filter(f=>! /previews\/(?:02-|03-|12-|13-|14-|15-|16-)/.test(f));
+if(figures.length!==10)throw Error('Expected 10 retained desktop figures');
+const comparisons=[['18-graph-laptop-light.png','14 英寸笔记本 · 瓷白浅色','1440×900 CSS px'],['19-graph-laptop-dark.png','14 英寸笔记本 · 石墨深色','1440×900 CSS px'],['20-graph-display-light.png','27 英寸显示器 · 瓷白浅色','2560×1440 CSS px'],['21-graph-display-dark.png','27 英寸显示器 · 石墨深色','2560×1440 CSS px']].map(([file,title,size])=>`<figure class="wide"><a href="previews/${file}"><img loading="lazy" src="previews/${file}" alt="${title}，同一取消订单图谱与依据面板"></a><figcaption><span class="num">同页双主题 · ${size}</span><b>${title}</b><p>相同节点、版本、关系与选中状态；点击查看原尺寸。屏幕英寸不直接换算 CSS 像素。</p></figcaption></figure>`);
+gallery=gallery.replace(/<main>[\s\S]*?<\/main>/,`<main>${comparisons.join('')}${figures.join('')}</main>`).replace('EXPERIENCE DESIGN V2<','EXPERIENCE DESIGN V2.1<').replace('以下效果图由同一套交互样稿实际渲染，点击可查看原图。','本轮只考虑 14 英寸笔记本与 27 英寸显示器。先看同页双主题对照，再看其余桌面工作面，共 14 张。<br>窄屏暂不设计；旧图保留历史记录，不进入本轮验收。点击查看实际样稿原图。').replace('href="../README.md">阅读完整总纲','href="charter.html">阅读完整总纲');
+await writeFile(resolve(assetDir,'gallery.html'),gallery);
+console.log(JSON.stringify({sections:section,activeScreens:figures.length+comparisons.length,embeddedReaderSynced:true}));

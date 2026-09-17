@@ -1,0 +1,82 @@
+{
+  "feature": "F003",
+  "version": "1.3",
+  "status": "candidate",
+  "created": "2026-09-14",
+  "author": "砚砚/gpt-6-astra",
+  "artifact": "f003-functional-panorama-v1.3-candidate.zh-CN.png",
+  "sha256": "92db9c60a49a10de902e71e061c5f39ebb7718b1b20712eb1028a805edd45ab7",
+  "prompt": "f003-functional-panorama-v1.3-candidate.prompt.txt",
+  "generation_mode": "built-in image_gen edit; one generated image in this revision",
+  "generated_source": "exec-2c96371b-2841-412f-a724-caaea8cd1fbb.png",
+  "parent_artifact": "f003-functional-panorama-v1.2-candidate.zh-CN.png",
+  "parent_sha256": "f21bed37ece6983f364ead605f0621b02be6abcd60ac2d2d53c8728b5b21019e",
+  "thread_id": "thread_mtgypu3cay1bysab",
+  "request_message": "0001789349467855-000293-b7e59fd0",
+  "review_message": "0001789118753946-000238-847eed22",
+  "findings": [
+    {
+      "id": "P1-03",
+      "task": "0001789350006569-000304-3ea3368f",
+      "before": "Main→Child1 task; optional Child2…N→Main evidence.",
+      "after": "Main→one child group task; the same child group→Main evidence; each child receives tasks and returns evidence."
+    },
+    {
+      "id": "P1-07",
+      "task": "0001789350006594-000305-655e5236",
+      "before": "Node/edge caption omits evidence.",
+      "after": "节点与边保留来源、状态、依据与适用范围"
+    },
+    {
+      "id": "P2-query-legend",
+      "task": "0001789350006618-000306-f5e0b529",
+      "after": "查询方向（图例） heading; dashed query arrows separate from actual semantic/workflow/output edges."
+    },
+    {
+      "id": "P2-duplicate-label",
+      "task": "0001789350006647-000307-36afc7d5",
+      "after": "One human-decision label remains in the [07] card; green connection into 07 retained."
+    }
+  ],
+  "author_verification": {
+    "methods": [
+      "Visual comparison to V1.2 and the design text",
+      "Endpoint-by-endpoint workflow check",
+      "OCR with language correction disabled, with visual inspection for ambiguous characters",
+      "SHA-256 identity of source and archived image"
+    ],
+    "workflow_endpoints": [
+      "01→02",
+      "02→03",
+      "03→04",
+      "04→05",
+      "Main→child group",
+      "child group→Main",
+      "05→07 automatic admission",
+      "06 selected [07] decision card→07",
+      "07→F004"
+    ],
+    "disposition_targets": [
+      "automatic admission→07",
+      "bounded supplement→03; unresolved→06",
+      "human issue→06",
+      "retained material→02 without automatic looping",
+      "invalid output→08 with conditional recovery"
+    ],
+    "retained_invariants": [
+      "无未决冲突 qualifier",
+      "four distinct asset types and hierarchy/shared relationships",
+      "three view tabs",
+      "automatic-plus-human default display",
+      "source guardrails",
+      "new source files return through new source version and preflight",
+      "runtime persistence and version/impact checks"
+    ],
+    "full_raster_text_certification": false,
+    "independent_review": "pending; author checks do not approve a baseline"
+  },
+  "audit_note": "Regression came from checking that labels/arrows existed without verifying endpoint identity. This revision uses one explicit child group and checks each source/target pair. Evidence support and applicability are separate attributes, not interchangeable captions.",
+  "baseline_replaced": false,
+  "formal_design_documents_changed": false,
+  "committed": false
+}
