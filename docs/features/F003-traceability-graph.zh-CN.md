@@ -5,7 +5,7 @@ feature_ids: [F003]
 topics: [agent-analysis, semantic-candidates, human-review, business-function-tree, provenance]
 doc_kind: feature-spec
 created: 2026-08-29
-updated: 2026-09-15
+updated: 2026-09-17
 description: 在确定性工作空间证据之上产出可追溯的语义候选和经人工批准的业务功能树。
 description_source: human
 description_author: co-creator
@@ -18,9 +18,11 @@ description_updated_at: 2026-08-29T03:18:18Z
 **负责人：** TBD
 **依赖：** F001、F002、F006
 
-## 当前功能设计 — V2.0
+## 当前功能设计 — V2.0 发布版
 
-co-creator 已于 2026-09-15 授权以已验收的 [F003 功能全景设计 V2.0](../design/F003-traceability-graph/README.md) 替换之前的设计主图。该文档引用同一份已验收 HTML/PNG，保留八组功能、五档分流、回流路径、版本校验值及验收追溯；V1.0 降为历史记录。
+请阅读 [F003 功能设计 V2.0（发布版）](../design/F003-traceability-graph/README.md)。2026-09-17 按 co-creator 要求发布，包含目标与输入输出、八组功能的操作/处理/输出/边界、五档分流、主活动和未定接口，作为当前功能设计入口。
+
+本版仍引用 co-creator 于 2026-09-15 授权纳入、Kimi 验收通过的同一份 V2.0 HTML/PNG，保留校验值及验收追溯，不重画或更换图片；V1.0 仅作历史记录。UX v0.1 仍为探索稿，本次不宣称实现或接口已完成。
 
 **本页下文为 2026-08-29 历史 Spec，不是当前 V2.0 功能合同。** 其中“所有候选先经人工批准才能进入业务树”的要求，已由“自动收录 Agent 分析态 + 例外人工审核”替代；自动收录不等于人工确认。来源读取与治理接口的未定项见 V2.0 第 8 节；本次文档写入不改变其他 Feature 或 ADR，不推进功能生命周期，也不声称实现已验收。
 
