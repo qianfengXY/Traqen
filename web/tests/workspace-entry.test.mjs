@@ -1,6 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { listWorkspaces, createWorkspace } from "../app/workspace-client.ts";
+import { getConnectionHealth, listGlobalCliModels, listGlobalAccounts, listGlobalCapabilities, listWorkspaceExecutableSkills, listGlobalCapabilityTemplates } from "../app/product-foundation-client.ts";
+
+test("connection reads pass cancellation through to fetch", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async (_url, options) => {
+    assert.equal(options.signal, controller.signal);
+    return new Response(JSON.stringify({ workspaces: [], models: [], accounts: [], capabilities: [], skills: [], templates: [] }));
+  });
+  await listWorkspaces("/api", "", "owner", controller.signal);
+  await getConnectionHealth("/api", controller.signal);
+  for (const read of [listGlobalCliModels, listGlobalAccounts, listGlobalCapabilities, listWorkspaceExecutableSkills, listGlobalCapabilityTemplates]) await read("/api", "", controller.signal);
+});
+
+test("cancelled Workspace body consumption cannot publish a successful list", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async () => ({ ok: true, status: 200, json: async () => {
+    controller.abort();
+    return { workspaces: [] };
+  } }));
+  await assert.rejects(listWorkspaces("/api", "", "owner", controller.signal), { name: "AbortError" });
+});
+
+test("cancelled auxiliary body consumption cannot publish a successful catalog", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async () => ({ ok: true, status: 200, json: async () => {
+    controller.abort();
+    return { skills: [] };
+  } }));
+  await assert.rejects(listWorkspaceExecutableSkills("/api", "", controller.signal), { name: "AbortError" });
+});
 
 test("Workspace authentication failures retain their status and request identity, not an empty list", async (t) => {
   t.mock.method(globalThis, "fetch", async () => new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "A valid API bearer token is required" } }), { status: 401, headers: { "content-type": "application/json", "x-request-id": "entry-401" } }));

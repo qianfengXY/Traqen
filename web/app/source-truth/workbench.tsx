@@ -30,6 +30,10 @@ const copies = [
 const emptyInput: DraftInput = { sources: [], baselineBundleId: null };
 const short = (value: string | null | undefined) => value ? `${value.slice(0, 12)}…` : "—";
 
+export function SourceAccessState({ error }: { error: Error | null }) {
+  return error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "来源权限需要管理员绑定到当前成员和 Workspace。创建 Workspace 或持有通用 API Token 不会自动获得该权限。" : "请核对上方成员访问令牌与服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>;
+}
+
 export function SourceTruthWorkbench({ apiBase, apiToken, workspaceId, workspaceName }: { apiBase: string; apiToken: string; workspaceId: string; workspaceName: string }) {
   const [credential, setCredential] = useState(apiToken);
   const [credentialInput, setCredentialInput] = useState(apiToken);
@@ -185,7 +189,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
     <header className="st-heading"><div><h1>来源快照</h1><p>先固定依据，再开始理解。{workspaceName} 的每个冻结版本都可独立回查。</p></div><span className={`st-badge ${journey.tone}`}>{journey.label}</span></header>
     {error && <div className="st-callout danger" role="alert"><strong>{error.message}</strong>{error instanceof SourceClientError && <small>{error.code} {error.requestId ? `· 请求 ${error.requestId}` : ""}</small>}<button className="st-link" onClick={() => void attempt(refresh)}>查询最新状态</button></div>}
     {notice && <p className="st-callout" role="status">{notice}</p>}
-    {!overview ? (error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "来源权限需要管理员绑定到当前成员和 Workspace。创建 Workspace 或持有通用 API Token 不会自动获得该权限。" : "请核对上方成员访问令牌与服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>) : <>
+    {!overview ? <SourceAccessState error={error} /> : <>
       {!writable && <p className="st-callout">当前成员为只读权限，可查看历史与证据，不能创建任务、上传、确认或冻结。</p>}
       {latestVersion && <section className="st-panel st-frozen-summary" aria-label="最近冻结版本"><div><h2>最近冻结版本</h2><p><code>{short(latestVersion.id)}</code> · 文件 {latestVersion.counts.fileCount} · 目录 {latestVersion.counts.directoryCount}</p><small>冻结记录保留；新采集失败不覆盖旧版本。当前准入与备份覆盖需独立核验。</small></div><button className="button" onClick={() => { historyCursor.current.bundles = null; setVersionId(latestVersion.id); void attempt(refresh); document.getElementById("source-version-history")?.scrollIntoView({ block: "start" }); }}>查看冻结版本</button></section>}
       <section className="st-metro" aria-label="八站来源快照旅程"><div className="st-metro-head"><div><h2>快照旅程</h2><p>一个工作台，八个节点。实线表示已完成；点击节点只回看或预览，不跳过验证。</p></div><button className="st-link" onClick={returnToCurrent}>回到当前 · 第 {journey.current} 站</button></div>

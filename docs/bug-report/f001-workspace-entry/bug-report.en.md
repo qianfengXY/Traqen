@@ -55,3 +55,37 @@ External evidence: Parent path: `/private/tmp/traqen-f001-entry-ui.GLillt/`; Chi
 ## Remaining boundaries
 
 This fix does not add a user-facing source-access administration flow. Existing administrator binding cannot be claimed as automatic after Workspace creation. Sending the local deployment credential to the public domain requires explicit authorization for that destination; a rejected attempt was not retried through another channel. Native OS picker, 100k/8G aggregate budgets and independent protected backup/restore are not covered by these green checks.
+
+## Entry recovery revalidation (2026-09-17 UTC)
+
+The earlier results remain historical. This addendum records implementation diagnosis on top of `b7eb0f3a6300e85e23c23553e5aa1a926663a2b2`, not an independent review verdict.
+
+### Cause and correction
+
+The initial fix used the aggregate outcome of seven connection reads as the Workspace entry gate. An auxiliary skills 404 blocked sources even when Workspace listing returned 200. Stale creation errors, unbounded checking and stale responses share an incomplete connection-state boundary: each attachment needs its own identity, result-commit and termination conditions.
+
+- Workspace listing alone determines entry and 401/403 classification. Six auxiliary reads settle separately; failures name the catalog and available HTTP status, never pretend to be empty catalogs or grant source access.
+- Each attachment clears the previous identity's Workspace and global catalogs, cancels its requests, and rejects late commits through a connection sequence and Workspace context. Connection GETs share a ten-second deadline; cancelled body consumption cannot publish successful data.
+- Successful listing clears an old create error while retaining the name. Checking retains token and connection-settings controls. Creation writes are never automatically retried.
+- Browser fixtures require an explicit localhost/127.0.0.1 origin on port 3190. Missing values, 3188, 3100, 5432, other ports and external targets fail closed before PostgreSQL creation.
+- Presentation tests render actual React components. The positive SSR assertion targets the connection panel, not a same-named sidebar tooltip. Notice consumers explicitly import their stylesheet.
+
+The failure-mode audit covered all seven reads, body cancellation, identity switches, Workspace context, creation results and source-denial rendering. This separates authoritative listing from auxiliary catalogs rather than layering guesses of success. Backend, schema, source grants and eight-station sealing contracts remain unchanged.
+
+### Red-to-green and retained failures
+
+On the original b7 product, four browser recovery cases completed setup and failed as expected during exercise; three of seven targeted checks also failed as expected. An additional cancelled-body regression first produced `Missing expected rejection (AbortError)` before the fix. These RED results are not evidence of a successful repair.
+
+At 06:59 UTC, 14 targeted checks, all 111 Web tests and build, type and lint passed. The private wrapper then invoked the bilingual test deleted in `2379606`, producing `Could not find 'test/bilingual-documentation.test.js'`. This was the author's stale wrapper command, not a product or document-content failure. Its FAILED summary remains; successful static suites were not repeated. Both current Chinese-default documentation checks passed. The existing English companion is maintained voluntarily, not described as a mandatory bilingual gate.
+
+At 07:04–07:08 UTC, the corrected wrapper passed documentation 2, recovery 6, entry 5, journeys 12 and empty-source 4. Hanging auxiliary reads and superseded-identity recovery are two supplementary checks, not claimed as original RED cases. Environment: Chrome 151.0.7922.34 / Darwin 25.6.0 / arm64, independent PG/API 3197 and Web 3190; Web PID 93889 had the implementation checkout's cwd. All 15 current source hashes, 14 unchanged static-source hashes, tracked diff, check logs, four original reports and 33 screenshot hashes matched. Ports 3190/3197 were empty afterward.
+
+Visual inspection covered all six recovery captures, authentication/create-error/source-403 states, 1440×900 and 2560×900, accepted-Gap sealing, empty-Git review and rejected empty-directory replacement. Legacy analysis-read warnings remain visible. Screenshots support the corresponding states; timing/cancellation claims come from executed browser assertions. F005 subsequently required the same interface with scaling only: eight-width overflow checks **do not prove** uniform scaling, so this run does not claim completed F005 alignment.
+
+Original RED: Parent path: `/private/tmp/traqen-f001-review141-red.zH261m/`; Child path: `summary.json`; SHA-256 `ab78e09c7ecf408ad12232e4ed35f50dfc0d944db4a25bf19a9e15b3e5f7c45a`.
+
+Retained wrapper failure/static evidence: Parent path: `/private/tmp/traqen-f001-review141-green.wiDMSu/`; Child path: `summary.json`; SHA-256 `aafe31d3ef0d1e3c11a601c65ce78dfab3cbe624445b8b1be85828124272acf6`.
+
+Current GREEN: Parent path: `/private/tmp/traqen-f001-review141-ui.gaREkm/`; Child path: `summary.json`; SHA-256 `2e45d8d02bf429b5ce650f09663be6dd86e072450193a9f37d12dc8eb973d618`. Recovery report at the same Parent; Child path: `recovery/report.json`; SHA-256 `5989db86915bd3f2a880cbd4ac64c06b37b5479efa412a86fce4a9c4d3176e1e`.
+
+This is isolated verification of an unmerged fix. Independent quality gate and exact-commit re-review remain required. Nothing was merged or deployed; public credentials, source grants, native picker, scale/8G and backup boundaries remain open.

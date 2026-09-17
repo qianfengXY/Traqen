@@ -157,6 +157,9 @@ function ServerOwnedProduct() {
   const [entryIssue, setEntryIssue] = useState<ConnectionIssue | null>(null);
   const [workspaceCreateError, setWorkspaceCreateError] = useState("");
   const connectionRequest = useRef(0), workspaceCreating = useRef(false);
+  const connectionAbort = useRef<(() => void) | null>(null);
+  const [auxiliaryState, setAuxiliaryState] = useState<"checking" | "ready" | "partial">("checking");
+  const [auxiliaryFailures, setAuxiliaryFailures] = useState<string[]>([]);
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const [health, setHealth] = useState<Health>("checking");
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -294,12 +297,12 @@ function ServerOwnedProduct() {
     if (failures.length > 0) notify(t("部分 Workspace 数据暂时不可用，请检查连接诊断。", "Some Workspace data is unavailable; inspect connection diagnostics."), "error");
   }, [apiBase, apiToken, notify, t]);
 
-  const selectWorkspace = useCallback((workspace: Workspace) => {
-    const nextContext = { workspaceId: workspace.id, contextVersion: contextRef.current.contextVersion + 1 };
+  const selectWorkspace = useCallback((workspace: Workspace | null, preserveView = false) => {
+    const nextContext = { workspaceId: workspace?.id ?? "", contextVersion: contextRef.current.contextVersion + 1 };
     contextRef.current = nextContext;
-    window.localStorage.setItem("traqen.activeWorkspaceId", workspace.id);
+    if (workspace) window.localStorage.setItem("traqen.activeWorkspaceId", workspace.id);
     setActiveWorkspace(workspace);
-    setView("overview");
+    if (!preserveView) setView("overview");
     setJob(null);
     setCurrent(null);
     setArtifact(null);
@@ -339,59 +342,77 @@ function ServerOwnedProduct() {
     setChildSlots(createDefaultChildSlots());
     setProfileRevisionId("");
     setMessage("");
-    void refreshWorkspaceReads(workspace, nextContext);
+    if (workspace) void refreshWorkspaceReads(workspace, nextContext);
   }, [refreshWorkspaceReads]);
 
   const reconnect = useCallback(async (preferRemembered = false) => {
     const request = ++connectionRequest.current;
-    revisionRequestRef.current += 1;
-    setTraceabilityLoading(false);
+    connectionAbort.current?.();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(new DOMException("Workspace connection timed out", "TimeoutError")), 10_000);
+    connectionAbort.current = () => { window.clearTimeout(timer); controller.abort(); };
+    const { signal } = controller;
+    const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
+    // Neither workspace-specific nor global data from the previous identity may survive attachment.
+    selectWorkspace(null, true);
+    setWorkspaces([]);
+    setGlobalModels([]);
+    setGlobalCapabilityTemplates([]);
+    setGlobalAccounts([]);
+    setGlobalCapabilities([]);
+    setExecutableSkills([]);
+    setAuxiliaryState("checking");
+    setAuxiliaryFailures([]);
     setHealth("checking");
     setEntryIssue(null);
+    // Collect every auxiliary failure without making any of them an entry/authentication gate.
+    const auxiliary = Promise.allSettled([
+      getConnectionHealth(apiBase, signal),
+      listGlobalCliModels(apiBase, apiToken, signal),
+      listGlobalCapabilityTemplates(apiBase, apiToken, signal),
+      listGlobalAccounts(apiBase, apiToken, signal),
+      listGlobalCapabilities(apiBase, apiToken, signal),
+      listWorkspaceExecutableSkills(apiBase, apiToken, signal),
+    ]);
     try {
-      const [available, , availableModels, availableTemplates, availableAccounts, availableCapabilities, availableExecutableSkills] = await Promise.all([
-        listWorkspaces(apiBase, apiToken, WEB_OPERATOR),
-        getConnectionHealth(apiBase),
-        listGlobalCliModels(apiBase, apiToken),
-        listGlobalCapabilityTemplates(apiBase, apiToken),
-        listGlobalAccounts(apiBase, apiToken),
-        listGlobalCapabilities(apiBase, apiToken),
-        listWorkspaceExecutableSkills(apiBase, apiToken),
-      ]);
+      const available = await listWorkspaces(apiBase, apiToken, WEB_OPERATOR, signal);
       if (request !== connectionRequest.current) return;
       const visible = available.filter(({ hidden, lifecycleState }) => !hidden && lifecycleState === "ACTIVE");
       setWorkspaces(visible);
       setHealth("healthy");
-      setGlobalModels(availableModels);
-      setGlobalCapabilityTemplates(availableTemplates);
-      setGlobalAccounts(availableAccounts);
-      setGlobalCapabilities(availableCapabilities);
-      setExecutableSkills(availableExecutableSkills);
-      const remembered = preferRemembered ? window.localStorage.getItem("traqen.activeWorkspaceId") : activeWorkspace?.id;
+      setWorkspaceCreateError("");
       const selection = visible.find(({ id }) => id === remembered) ?? (preferRemembered ? visible[0] : null);
-      if (activeWorkspace && !visible.some(({ id }) => id === activeWorkspace.id)) {
-        contextRef.current = { workspaceId: "", contextVersion: contextRef.current.contextVersion + 1 };
-        setActiveWorkspace(null);
-      }
-      if (selection && selection.id !== activeWorkspace?.id) selectWorkspace(selection);
-      if (activeWorkspace && visible.some(({ id }) => id === activeWorkspace.id)) {
-        const next = { ...contextRef.current };
-        void refreshWorkspaceReads(activeWorkspace, next);
-      }
+      if (selection) selectWorkspace(selection, true);
       notify("");
+      const results = await auxiliary;
+      if (request !== connectionRequest.current) return;
+      const [, models, templates, accounts, capabilities, skills] = results;
+      if (models.status === "fulfilled") setGlobalModels(models.value);
+      if (templates.status === "fulfilled") setGlobalCapabilityTemplates(templates.value);
+      if (accounts.status === "fulfilled") setGlobalAccounts(accounts.value);
+      if (capabilities.status === "fulfilled") setGlobalCapabilities(capabilities.value);
+      if (skills.status === "fulfilled") setExecutableSkills(skills.value);
+      const labels = ["health", "global-cli-models", "capability-templates", "global-accounts", "global-capabilities", "workspace-executable-skills"];
+      const failures = results.flatMap((result, index) => result.status === "rejected"
+        ? [`${labels[index]}${result.reason instanceof ProductFoundationApiError ? ` (HTTP ${result.reason.status})` : ""}`] : []);
+      setAuxiliaryFailures(failures);
+      setAuxiliaryState(failures.length ? "partial" : "ready");
     } catch (error) {
       if (request !== connectionRequest.current) return;
+      controller.abort();
       setHealth("unavailable");
       setEntryIssue(connectionIssue(error));
       notify(messageOf(error, t("无法连接 Traqen API", "Unable to connect to the Traqen API")), "error");
+    } finally {
+      window.clearTimeout(timer);
     }
-  }, [activeWorkspace, apiBase, apiToken, notify, refreshWorkspaceReads, selectWorkspace, t]);
+  }, [activeWorkspace, apiBase, apiToken, notify, selectWorkspace, t]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void reconnect(true);
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); connectionRequest.current += 1; connectionAbort.current?.(); };
     // Initial attachment is GET-only. Connection changes require an explicit reconnect command.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -976,6 +997,7 @@ function ServerOwnedProduct() {
       <header className="topbar"><div className="breadcrumb"><span>{activeWorkspace?.name ?? "Traqen"}</span><i>/</i><b>{language === "zh-CN" ? selectedModule.zh : selectedModule.en}</b>{historical && <em>{t("历史只读", "Historical read-only")}</em>}</div><div className="top-actions"><span className={`mode-badge ${current && !referenceOnly ? "live" : ""}`}>{current ? referenceOnly ? `REFERENCE ONLY · r${current.head.version}` : `PUBLISHED · r${current.head.version}` : t("未发布", "Unpublished")}</span><button className={`connection-button ${health}`} title={t("部署诊断", "Deployment diagnostics")} onClick={() => setDiagnosticsOpen(true)}><i />Connection Health · {health === "healthy" ? t("正常", "Healthy") : health === "checking" ? t("检查中", "Checking") : t("不可用", "Unavailable")}</button><ThemeSwitcher ariaLabel={t("全局主题配色", "Global color theme")} /><div className="language-switch"><button className={language === "zh-CN" ? "active" : ""} onClick={() => setLanguage("zh-CN")}>中文</button><button className={language === "en" ? "active" : ""} onClick={() => setLanguage("en")}>English</button></div><span className="identity-chip" title={t("身份由服务端认证", "Identity is server-authenticated")}>◉ {WEB_OPERATOR}</span></div></header>
       {referenceOnly && <div className="reference-banner" role="alert"><b>LOCAL REFERENCE · NON-PRODUCTION</b><span>{t("该图谱由本地合成 reference evidence 生成，不是独立生产审核结论。", "This graph was generated from local synthetic reference evidence and is not an independently reviewed production conclusion.")}</span></div>}
       {message && <div className={`toast-message ${messageKind}`} role={messageKind === "error" ? "alert" : "status"}><span>{messageKind === "error" ? "!" : "✓"}</span>{message}<button onClick={() => setMessage("")}>×</button></div>}
+      {health === "healthy" && auxiliaryState !== "ready" && <div className="connection-notice" role="status" data-auxiliary-state={auxiliaryState}>{auxiliaryState === "checking" ? t("正在读取辅助目录，不阻断 Workspace 入口；来源权限仍单独核验。", "Loading auxiliary catalogs does not block Workspace entry; source permissions are checked separately.") : t("部分辅助目录不可用（不是空目录），不会阻断 Workspace 或授予权限。请刷新连接重试：", "Some auxiliary catalogs are unavailable (not empty); this does not block Workspaces or grant permissions. Refresh the connection to retry: ")}{auxiliaryState === "partial" && auxiliaryFailures.join(", ")}</div>}
       {renderView()}
     </div>
     {diagnosticsOpen && <div className="drawer-backdrop" onMouseDown={() => setDiagnosticsOpen(false)}><aside className="diagnostic-drawer" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Deployment diagnostics</p><h2>{t("部署诊断", "Deployment diagnostics")}</h2></div><button onClick={() => setDiagnosticsOpen(false)}>×</button></header><p>{t("这些信息用于部署与故障诊断，不属于产品主导航。", "These settings are deployment diagnostics and are not primary product navigation.")}</p><label>{t("API 地址", "API base")}<input value={apiBase} onChange={(event) => setApiBase(event.currentTarget.value)} /></label><label>{t("API token（仅当前页面内存）", "API token (page memory only)")}<input type="password" value={apiToken} onChange={(event) => setApiToken(event.currentTarget.value)} autoComplete="off" /></label><dl><dt>Connection Health</dt><dd>{health}</dd><dt>Workspace ID</dt><dd>{activeWorkspace?.id ?? "—"}</dd><dt>GraphRevision ID</dt><dd>{displayRevision?.id ?? "—"}</dd></dl><button className="button primary" disabled={health === "checking"} onClick={() => void reconnect(false)}>{t("重新连接并刷新", "Reconnect and refresh")}</button></aside></div>}

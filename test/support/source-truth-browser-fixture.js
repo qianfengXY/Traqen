@@ -18,6 +18,7 @@ import { SourceTruthError } from "../../src/source-truth/errors.js";
 import { browserOrigin } from "./source-truth-browser-origin.js";
 
 export async function browserFixture(t) {
+  const webOrigin = browserOrigin();
   const cluster = await isolatedPostgres(t);
   const { db, repository } = await cluster.createDatabase();
   const names = { directory: "Browser Directory", git: "Browser Git", combined: "Browser Combined", blocked: "Browser Blocked",
@@ -49,7 +50,6 @@ export async function browserFixture(t) {
   const services = sourceTruthServices({ repository, blobs, policy, git });
   const token = "f001-browser-isolated-fixture-token", readerToken = "f001-browser-isolated-reader-token";
   const authenticate = sourceTruthAuthenticator([[token, "owner"], [readerToken, "reader"]].map(([value, actorId]) => ({ tokenDigest: createHash("sha256").update(value).digest("hex"), actorId, tenantId: "tenant" })));
-  const webOrigin = browserOrigin();
   const corsAllowedOrigins = [webOrigin];
   const configured = createConfiguredApplication({ store: new PostgresTraceabilityStore(db), env: { CORS_ALLOWED_ORIGINS: corsAllowedOrigins.join(",") } });
   await configured.ready;

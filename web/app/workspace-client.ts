@@ -34,18 +34,19 @@ export class WorkspaceApiError extends Error {
   }
 }
 
-async function json<T>(response: Response): Promise<T> {
+async function json<T>(response: Response, signal?: AbortSignal): Promise<T> {
   const body = await response.json().catch(() => null) as (T & { error?: { message?: string; code?: string; requestId?: string } }) | null;
+  signal?.throwIfAborted();
   if (!response.ok || body === null) throw new WorkspaceApiError(body?.error?.message ?? `API returned ${response.status}`, response.status, body?.error?.code ?? "WORKSPACE_HTTP_ERROR", body?.error?.requestId ?? response.headers.get("x-request-id"));
   return body;
 }
 
-export async function listWorkspaces(apiBase: string, apiToken: string, userId: string) {
+export async function listWorkspaces(apiBase: string, apiToken: string, userId: string, signal?: AbortSignal) {
   const response = await fetch(
     `${apiBase.replace(/\/$/, "")}/v1/workspaces?userId=${encodeURIComponent(userId)}`,
-    { method: "GET", headers: headers(apiToken) },
+    { method: "GET", headers: headers(apiToken), signal },
   );
-  return (await json<{ workspaces: Workspace[] }>(response)).workspaces;
+  return (await json<{ workspaces: Workspace[] }>(response, signal)).workspaces;
 }
 
 export async function createWorkspace(

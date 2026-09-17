@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import "./workspace-connection.css";
 
 import { addChildSlot, removeChildSlot } from "./capability-roster";
 import type {

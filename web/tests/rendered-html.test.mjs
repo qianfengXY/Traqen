@@ -28,7 +28,6 @@ test("server-renders the Traqen proof-chain product surface", async () => {
     "变更影响",
     "设置中心",
     "连接工作空间",
-    "新建 Workspace",
     "中文",
     "English",
   ]) {
@@ -39,6 +38,10 @@ test("server-renders the Traqen proof-chain product surface", async () => {
   }
   assert.doesNotMatch(html, /API 地址.*API token/s);
   assert.doesNotMatch(html, /创建第一个 Workspace|FULL 分析/);
+  assert.match(html, /<section[^>]*class="workspace-connection panel"[^>]*aria-labelledby="workspace-connection-title"/);
+  assert.match(html, /<h1 id="workspace-connection-title">连接工作空间<\/h1>/);
+  assert.doesNotMatch(html, /<section class="onboarding panel">/,
+    "SSR has no authenticated list; a sidebar tooltip is not an empty-state rendering");
   assert.doesNotMatch(html, /webkitdirectory|兼容导入|浏览器扫描|SELF WORKSPACE|codex-preview/i);
 });
 
