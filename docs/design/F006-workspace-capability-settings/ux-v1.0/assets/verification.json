@@ -2,7 +2,7 @@
   "version": "1.0",
   "kind": "author-fixture-render-and-interaction-validation",
   "fixtureOnly": true,
-  "recordedAt": "2026-09-18T08:00:35.372Z",
+  "recordedAt": "2026-09-18T08:25:39.972Z",
   "sourceHTMLSha256": "2f58f7a741611b80a68129443a178d212c8ecf09c72b63af6fc251976241774d",
   "screens": [
     {
@@ -139,6 +139,15 @@
       "height": 900,
       "title": "MCP",
       "sha256": "bc37ffec077523c84f86813fc2e6c58687647df2b6120d910218dd8578e3a7dc"
+    },
+    {
+      "file": "previews/13-mcp-light.png",
+      "scene": "mcp",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "MCP",
+      "sha256": "8af4809889805a228f21d1b6612eb1681b20eeda2f701009b0b55bac861880fb"
     },
     {
       "file": "previews/14-versions-light.png",

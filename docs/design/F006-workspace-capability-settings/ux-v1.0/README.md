@@ -53,7 +53,7 @@ source_design: ../README.md
 | S05 能力管理 | [四分组、本地能力、失效授权修复](assets/previews/08-capabilities-light.png) | 瓷白 · 1440×900 |
 | S06 草稿冲突 | [M2/M3 恢复](assets/previews/09-conflict-light.png) / [石墨对照](assets/previews/10-conflict-dark.png) | 双主题 · 1440×900 |
 | S07 生命周期 | [影响与命名确认](assets/previews/11-lifecycle-light.png) / [石墨对照](assets/previews/12-lifecycle-dark.png) | 双主题 · 1440×900 |
-| S08 MCP 暂停 | [只读历史项与暂停边界](assets/previews/13-mcp-dark.png) | 石墨 · 1440×900 |
+| S08 MCP 暂停 | [瓷白：只读历史项与暂停边界](assets/previews/13-mcp-light.png) / [石墨](assets/previews/13-mcp-dark.png) | 双主题 · 1440×900 |
 | S09 生效版本 | [草稿、Active、Run 版本分离](assets/previews/14-versions-light.png) | 瓷白 · 1440×900 |
 | S10 F003 配置确认 | [明确未接线的确认示意](assets/previews/15-f003-dark.png) | 石墨 · 1440×900 |
 
@@ -63,7 +63,7 @@ source_design: ../README.md
 
 `prototype.html` 的场景选择器、主题切换、Agent 选择、Child 2 模型编辑、409 恢复、生命周期确认/取消和 F003 提示均可操作。调试控制显式标注“设计演示数据”，位于产品壳外。
 
-`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：19 张截图、0 个浏览器页面错误，以及以下 8 项通过项：
+`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：20 张截图、0 个浏览器页面错误，以及以下 8 项通过项：
 
 1. S01–S10 渲染时都有一个页面 h1，页面与控件没有横向溢出。
 2. S04 在 1440×900、2560×1440 的双主题主图，以及 1280×800、1920×1080 补充布局中保持非缩放的桌面文字与控件尺寸。
@@ -82,7 +82,7 @@ node assets/render.mjs /absolute/path/to/Google\ Chrome
 (cd assets && shasum -a 256 -c SHA256SUMS)
 ```
 
-[SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 19 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
+[SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 20 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
 
 ## 明确限制
 

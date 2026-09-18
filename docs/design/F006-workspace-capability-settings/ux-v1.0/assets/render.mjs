@@ -189,6 +189,7 @@ try {
     ["11-lifecycle-light", "lifecycle", "light", 1440, 900],
     ["12-lifecycle-dark", "lifecycle", "dark", 1440, 900],
     ["13-mcp-dark", "mcp", "dark", 1440, 900],
+    ["13-mcp-light", "mcp", "light", 1440, 900],
     ["14-versions-light", "versions", "light", 1440, 900],
     ["15-f003-dark", "f003", "dark", 1440, 900],
     ["16-team-compact-light", "team", "light", 1280, 800],
