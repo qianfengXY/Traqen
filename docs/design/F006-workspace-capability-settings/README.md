@@ -4,7 +4,7 @@ related_features: [F003, F005]
 topics: [functional-design, ux, settings, accounts, cli-models, skills, agent-configuration, desktop, themes]
 doc_kind: published-functional-and-ux-design
 created: 2026-09-17
-updated: 2026-09-17
+updated: 2026-09-18
 status: published-design
 version: 1.0
 description: F006 的功能边界、桌面双主题 UX、状态恢复与效果图验收依据；不代表产品实现完成。
@@ -17,6 +17,8 @@ description: F006 的功能边界、桌面双主题 UX、状态恢复与效果�
 本文是 2026-09-17 发布的功能与 UX 设计，不是代码完成声明。功能沿用已讨论的 F006 逻辑；视觉与交互按 co-creator 要求对齐 [F005 整体体验总纲 V2.1](../../design-reviews/F005/README.md)。F005 在其原线程仍是待评审提案，本次引用只确定 F006 的设计参照，不替其他 Feature 宣布采用。
 
 阅读顺序：第 1–3 节看做什么，第 4–6 节看用户怎样完成任务，第 7–9 节看页面与恢复状态，第 10 节是独立效果图优化的交付合同。
+
+效果图优化的已发布阅读入口：[F006 桌面双主题效果图与交互原型 V1.0](ux-v1.0/README.md)。其中包含离线样稿、S01–S10 场景图、当前 main 的隔离 before 证据和 fixture 验证记录；它不改变本页的功能边界，也不宣称生产实现完成。
 
 ## 1. 范围与本次发布依据
 
