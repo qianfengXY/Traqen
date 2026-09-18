@@ -196,6 +196,45 @@ try {
   report.checks.push("All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; form, conflict, dialog, and MCP paused states include both-theme evidence.");
   report.checks.push("S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.");
 
+  // F005 AppShell alignment and state honesty: fixture controls stay outside the product shell;
+  // cards and their inspector checkboxes read from the same skill configuration.
+  await go("team", "light", 1440, 900);
+  const shellResult = await cdp.evaluate(`(() => {
+    const cardIds = [...document.querySelectorAll('[data-agent]')].map((card) => card.dataset.agent);
+    const skillCounts = {};
+    for (const id of cardIds) {
+      document.querySelector('[data-agent="' + id + '"]').click();
+      skillCounts[id] = {
+        card: Number(document.querySelector('[data-agent="' + id + '"]').dataset.skillCount),
+        checked: document.querySelectorAll('.grant-list input:checked').length,
+      };
+    }
+    const toolbar = document.querySelector('[data-testid=product-toolbar]')?.textContent || '';
+    const sidebar = document.querySelector('.side')?.textContent || '';
+    const productShell = document.querySelector('.shell')?.textContent || '';
+    return {
+      toolbar,
+      sidebar,
+      productShell,
+      skillCounts,
+      fixtureOutsideShell: !document.querySelector('[data-testid=fixture-tools]')?.closest('.shell'),
+      workspaceSettingsNav: Boolean(document.querySelector('[data-testid=workspace-settings-nav]')),
+      draftSavedVisible: Boolean(document.querySelector('[data-testid=draft-saved]')?.offsetParent),
+    };
+  })()`);
+  assert.equal(shellResult.fixtureOutsideShell, true);
+  assert.equal(shellResult.workspaceSettingsNav, true);
+  assert.equal(shellResult.draftSavedVisible, true);
+  assert.match(shellResult.sidebar, /最近查看/);
+  assert.match(shellResult.sidebar, /帮助与快捷键/);
+  assert.match(shellResult.sidebar, /Sky/);
+  assert.doesNotMatch(shellResult.toolbar, /设计演示数据|不连接 API|F006/);
+  assert.doesNotMatch(shellResult.productShell, /设计演示数据|隔离 fixture|隔离环境/);
+  for (const [id, counts] of Object.entries(shellResult.skillCounts)) {
+    assert.equal(counts.checked, counts.card, `${id}: displayed Skill count must match checked explicit grants`);
+  }
+  report.checks.push("F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.");
+
   // Theme, selection, and refresh recovery — presentation actions are not business writes.
   await go("team", "light", 1440, 900);
   await cdp.evaluate("document.querySelector('[data-testid=agent-child-2]').click()");

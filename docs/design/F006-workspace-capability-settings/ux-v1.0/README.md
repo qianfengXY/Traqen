@@ -5,7 +5,7 @@ topics: [desktop-ux, settings, fixture-prototype, porcelain, graphite]
 doc_kind: ux-effect-prototype
 created: 2026-09-18
 version: "1.0"
-status: published-fixture-prototype
+status: operator-review-pending-fixture-prototype
 source_design: ../README.md
 ---
 
@@ -13,7 +13,7 @@ source_design: ../README.md
 
 [返回 F006 功能与 UX 设计](../README.md) · [F005 V2.1 体验总纲](../../../design-reviews/F005/README.md) · [离线交互样稿](assets/prototype.html) · [作者验证记录](assets/verification.json)
 
-这是 F006 设计文档 §10 的独立效果图交付：一份可维护的、使用构造数据的离线 HTML 原型和实际浏览器渲染图片。它只验证视觉、交互示意与 fixture 控制流，**不是**生产前端接线、后端、CLI、凭据、MCP 或 F003 启动实现的完成声明。
+这是 F006 设计文档 §10 的**待 operator 审查**效果图稿：一份可维护的、使用构造数据的离线 HTML 原型和实际浏览器渲染图片。它只验证视觉、交互示意与 fixture 控制流，**不是**生产前端接线、后端、CLI、凭据、MCP 或 F003 启动实现的完成声明，也不表示 operator 已批准或已合入。
 
 ## 先看 S04：同一团队，四张桌面主图
 
@@ -63,21 +63,23 @@ source_design: ../README.md
 
 `prototype.html` 的场景选择器、主题切换、Agent 选择、Child 2 模型编辑、409 恢复、生命周期确认/取消和 F003 提示均可操作。调试控制显式标注“设计演示数据”，位于产品壳外。
 
-`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次验证结果：17 张截图、0 个浏览器页面错误，以及以下 7 项通过项：
+`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：17 张截图、0 个浏览器页面错误，以及以下 8 项通过项：
 
 1. S01–S10 渲染时都有一个页面 h1，页面与控件没有横向溢出。
 2. S04 在 1440×900、2560×1440 的双主题主图，以及 1280×800、1920×1080 补充布局中保持非缩放的桌面文字与控件尺寸。
-3. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
-4. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
-5. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`；冲突中没有额外 PUT，也没有 activation 请求。
-6. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
-7. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
+3. F005 AppShell 有图标导航、最近查看、帮助与账号脚；调试控制在产品壳外；Workspace 二级导航与“草稿已保存”在壳内可见，每张 Agent 卡的 Skill 数量均与其勾选授权一致。
+4. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
+5. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
+6. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`；冲突中没有额外 PUT，也没有 activation 请求。
+7. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
+8. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
 
 复现（替换为本机 Chrome 绝对路径）：
 
 ```sh
 node assets/verify-contract.mjs
 node assets/render.mjs /absolute/path/to/Google\ Chrome
+(cd assets && shasum -a 256 -c SHA256SUMS)
 ```
 
 [SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 17 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
