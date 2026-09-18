@@ -2,7 +2,7 @@
   "version": "1.0",
   "kind": "author-fixture-render-and-interaction-validation",
   "fixtureOnly": true,
-  "recordedAt": "2026-09-18T07:53:59.431Z",
+  "recordedAt": "2026-09-18T08:00:35.372Z",
   "sourceHTMLSha256": "2f58f7a741611b80a68129443a178d212c8ecf09c72b63af6fc251976241774d",
   "screens": [
     {
@@ -24,6 +24,15 @@
       "sha256": "0d3f0819314bdf6d42452e0fe4fb7480e30e0c06d5815a88560663e9df577c5a"
     },
     {
+      "file": "previews/02-accounts-dark.png",
+      "scene": "accounts",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "账号",
+      "sha256": "7b04e5c8d643d605a8ab7cba7ee5ec11ff816176821ef57c3e85dbfb80c87c74"
+    },
+    {
       "file": "previews/03-models-dark.png",
       "scene": "models",
       "theme": "dark",
@@ -31,6 +40,15 @@
       "height": 900,
       "title": "CLI 模型与 Skill",
       "sha256": "15f340766f81507bbcfab97bc051a0da5c3060ae15bb05f69fd59510fa75a136"
+    },
+    {
+      "file": "previews/03-models-light.png",
+      "scene": "models",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "CLI 模型与 Skill",
+      "sha256": "ed1fada3ab5e0b2d2a6735cbabc272f11d19137810d4b7250d13e367651ce4d1"
     },
     {
       "file": "previews/04-team-laptop-light.png",
@@ -160,7 +178,7 @@
     }
   ],
   "checks": [
-    "All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; form, conflict, dialog, and MCP paused states include both-theme evidence.",
+    "All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.",
     "S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.",
     "F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.",
     "Theme toggle and refresh preserve the selected Child; theme presentation records zero business writes.",

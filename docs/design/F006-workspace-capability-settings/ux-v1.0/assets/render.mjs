@@ -176,7 +176,9 @@ try {
   const shots = [
     ["01-empty-light", "empty", "light", 1440, 900],
     ["02-accounts-light", "accounts", "light", 1440, 900],
+    ["02-accounts-dark", "accounts", "dark", 1440, 900],
     ["03-models-dark", "models", "dark", 1440, 900],
+    ["03-models-light", "models", "light", 1440, 900],
     ["04-team-laptop-light", "team", "light", 1440, 900],
     ["05-team-laptop-dark", "team", "dark", 1440, 900],
     ["06-team-display-light", "team", "light", 2560, 1440],
@@ -193,7 +195,7 @@ try {
     ["17-team-external-dark", "team", "dark", 1920, 1080],
   ];
   for (const args of shots) await snapshot(...args);
-  report.checks.push("All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; form, conflict, dialog, and MCP paused states include both-theme evidence.");
+  report.checks.push("All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.");
   report.checks.push("S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.");
 
   // F005 AppShell alignment and state honesty: fixture controls stay outside the product shell;

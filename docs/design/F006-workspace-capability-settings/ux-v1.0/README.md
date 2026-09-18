@@ -47,8 +47,8 @@ source_design: ../README.md
 | 场景 | 画面 / 交互证据 | 主题与视口 |
 | --- | --- | --- |
 | S01 范围与初始空态 | [范围、Main + Child 引导](assets/previews/01-empty-light.png) | 瓷白 · 1440×900 |
-| S02 账号 | [API 引用错误保留、OAuth 状态](assets/previews/02-accounts-light.png) | 瓷白 · 1440×900 |
-| S03 模型与 Skill | [READY / 失败、挂载执行器选择](assets/previews/03-models-dark.png) | 石墨 · 1440×900 |
+| S02 账号 | [瓷白：API 引用错误保留、OAuth 状态](assets/previews/02-accounts-light.png) / [石墨](assets/previews/02-accounts-dark.png) | 双主题 · 1440×900 |
+| S03 模型与 Skill | [瓷白：READY / 失败、挂载执行器选择](assets/previews/03-models-light.png) / [石墨](assets/previews/03-models-dark.png) | 双主题 · 1440×900 |
 | S04 完整团队 | 上方四张主图；另有 [1280×800](assets/previews/16-team-compact-light.png) 与 [1920×1080](assets/previews/17-team-external-dark.png) 布局检查 | 双主题 · 4 个桌面视口 |
 | S05 能力管理 | [四分组、本地能力、失效授权修复](assets/previews/08-capabilities-light.png) | 瓷白 · 1440×900 |
 | S06 草稿冲突 | [M2/M3 恢复](assets/previews/09-conflict-light.png) / [石墨对照](assets/previews/10-conflict-dark.png) | 双主题 · 1440×900 |
@@ -57,13 +57,13 @@ source_design: ../README.md
 | S09 生效版本 | [草稿、Active、Run 版本分离](assets/previews/14-versions-light.png) | 瓷白 · 1440×900 |
 | S10 F003 配置确认 | [明确未接线的确认示意](assets/previews/15-f003-dark.png) | 石墨 · 1440×900 |
 
-错误表单（S02/S03）、409 恢复（S06）和命名确认弹窗（S07）均有双主题浏览器检查。弹窗属于可操作原型的交互状态；截图只展示其所属工作面，避免把一个模态框当成整项覆盖。
+错误表单（S02/S03）、409 恢复（S06）、命名确认弹窗（S07）与 MCP 暂停（S08）均有双主题浏览器截图。弹窗属于可操作原型的交互状态；截图只展示其所属工作面，避免把一个模态框当成整项覆盖。
 
 ## 可操作范围与验证
 
 `prototype.html` 的场景选择器、主题切换、Agent 选择、Child 2 模型编辑、409 恢复、生命周期确认/取消和 F003 提示均可操作。调试控制显式标注“设计演示数据”，位于产品壳外。
 
-`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：17 张截图、0 个浏览器页面错误，以及以下 8 项通过项：
+`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：19 张截图、0 个浏览器页面错误，以及以下 8 项通过项：
 
 1. S01–S10 渲染时都有一个页面 h1，页面与控件没有横向溢出。
 2. S04 在 1440×900、2560×1440 的双主题主图，以及 1280×800、1920×1080 补充布局中保持非缩放的桌面文字与控件尺寸。
@@ -82,7 +82,7 @@ node assets/render.mjs /absolute/path/to/Google\ Chrome
 (cd assets && shasum -a 256 -c SHA256SUMS)
 ```
 
-[SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 17 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
+[SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 19 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
 
 ## 明确限制
 
