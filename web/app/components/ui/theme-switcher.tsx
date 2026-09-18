@@ -1,24 +1,17 @@
 "use client";
 
 import { useTheme, type Theme } from "../../theme-context";
-
-const themes: Array<{ key: Theme; label: string; dot: string }> = [
-  { key: "enterprise", label: "Enterprise", dot: "#2563eb" },
-  { key: "apple", label: "Apple", dot: "#007aff" },
-  { key: "warm", label: "Warm", dot: "#d97706" },
-  { key: "fresh", label: "Fresh", dot: "#10b981" },
-  { key: "minimal", label: "Minimal", dot: "#0066cc" },
-];
+import { themes } from "../../product-themes";
 
 export function ThemeSwitcher({ ariaLabel }: { ariaLabel?: string }) {
   const { theme, setTheme } = useTheme();
-  const activeTheme = themes.find((item) => item.key === theme) ?? themes[0];
+  const activeTheme = themes.find((item) => item.id === theme) ?? themes[0];
 
   return (
     <label className="theme-switch" title={ariaLabel ?? "Color theme"}>
-      <span className="theme-dot" style={{ background: activeTheme.dot }} aria-hidden="true" />
+      <span className="theme-dot" style={{ background: activeTheme.tokens.accent }} aria-hidden="true" />
       <select aria-label={ariaLabel ?? "Color theme"} value={theme} onChange={(event) => setTheme(event.currentTarget.value as Theme)}>
-        {themes.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+        {themes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
       </select>
     </label>
   );

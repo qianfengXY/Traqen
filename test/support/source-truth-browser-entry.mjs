@@ -79,7 +79,7 @@ try {
   await page.screenshot({ path: path.join(evidenceDirectory, "entry-source-access-denied.png") });
   results.push({ case: "created-workspace-is-visible-but-does-not-auto-grant-source-permissions", passed: true });
 
-  await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: /^Browser Directory$/ }) }).click();
+  await page.getByLabel("切换工作区", { exact: true }).selectOption("directory");
   await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
   await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).isDisabled(), true);
@@ -96,11 +96,11 @@ try {
   assert.equal(await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).count(), 0);
   await page.getByRole("button", { name: "回到当前 · 第 1 站", exact: true }).click();
   assert.equal((await f.read("directory")).activeRun, null);
-  for (const theme of ["enterprise", "apple", "warm", "fresh", "minimal"]) {
+  for (const theme of ["light", "dark"]) {
     await page.getByRole("combobox", { name: "全局主题配色", exact: true }).selectOption(theme);
     assert.equal(await page.getByRole("heading", { name: "快照旅程", exact: true }).isVisible(), true);
   }
-  results.push({ case: "source-layout-eight-viewports-five-existing-themes-and-keyboard-preview", passed: true });
+  results.push({ case: "source-layout-eight-viewports-two-f005-themes-and-keyboard-preview", passed: true });
   assert.deepEqual(pageErrors, []);
   report.status = "PASSED";
 } catch (error) {

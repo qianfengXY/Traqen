@@ -34,17 +34,17 @@ export function SourceAccessState({ error }: { error: Error | null }) {
   return error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "来源权限需要管理员绑定到当前成员和 Workspace。创建 Workspace 或持有通用 API Token 不会自动获得该权限。" : "请核对上方成员访问令牌与服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>;
 }
 
-export function SourceTruthWorkbench({ apiBase, apiToken, workspaceId, workspaceName }: { apiBase: string; apiToken: string; workspaceId: string; workspaceName: string }) {
+export function SourceTruthWorkbench({ apiBase, apiToken, workspaceId, workspaceName, onDirtyChange }: { apiBase: string; apiToken: string; workspaceId: string; workspaceName: string; onDirtyChange?: (dirty: boolean) => void }) {
   const [credential, setCredential] = useState(apiToken);
   const [credentialInput, setCredentialInput] = useState(apiToken);
   const [identityVersion, setIdentityVersion] = useState(0);
   return <section className="st-workbench" aria-label="来源快照工作台">
     <details className="st-auth"><summary>来源快照成员身份</summary><p>由服务端绑定成员与 Workspace 权限；通用 API Token 不自动获得来源材料权限。</p><div className="st-actions"><label>成员访问令牌（仅本页内存）<input type="password" autoComplete="off" value={credentialInput} onChange={(event) => setCredentialInput(event.target.value)} /></label><button className="button" onClick={() => { setCredential(credentialInput); setIdentityVersion((version) => version + 1); }}>验证并连接</button></div></details>
-    <SourceWorkspaceSession key={`${apiBase}:${workspaceId}:${identityVersion}`} apiBase={apiBase} token={credential} workspaceId={workspaceId} workspaceName={workspaceName} />
+    <SourceWorkspaceSession key={`${apiBase}:${workspaceId}:${identityVersion}`} apiBase={apiBase} token={credential} workspaceId={workspaceId} workspaceName={workspaceName} onDirtyChange={onDirtyChange} />
   </section>;
 }
 
-function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: { apiBase: string; token: string; workspaceId: string; workspaceName: string }) {
+function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, onDirtyChange }: { apiBase: string; token: string; workspaceId: string; workspaceName: string; onDirtyChange?: (dirty: boolean) => void }) {
   const client = useMemo(() => new SourceTruthClient(apiBase, token, workspaceId), [apiBase, token, workspaceId]);
   const [overview, setOverview] = useState<SourceOverview | null>(null);
   const [detail, setDetail] = useState<RunDetail | null>(null);
@@ -65,6 +65,10 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName }: 
   const historyCursor = useRef<{ bundles: string | null; runs: string | null }>({ bundles: null, runs: null });
   const directory = useRef<DirectoryHandle | null>(null), transferController = useRef<AbortController | null>(null);
   const rail = useRef<HTMLOListElement | null>(null);
+  useEffect(() => {
+    onDirtyChange?.(editing && JSON.stringify(form) !== JSON.stringify(overview?.draft?.input ?? emptyInput));
+    return () => onDirtyChange?.(false);
+  }, [editing, form, overview?.draft?.input, onDirtyChange]);
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     const [data, versionPage, runPage] = await Promise.all([client.request<SourceOverview>(), client.request<Page<FrozenVersion>>(`/history/bundles?limit=50${historyCursor.current.bundles ? `&cursor=${historyCursor.current.bundles}` : ""}`), client.request<Page<SourceRun>>(`/history/runs?limit=50${historyCursor.current.runs ? `&cursor=${historyCursor.current.runs}` : ""}`)]);

@@ -50,7 +50,7 @@ try {
     await page.getByLabel("API token（仅当前页面内存）", { exact: true }).fill(f.token);
     await button("重新连接并刷新").click(); await page.waitForSelector(".connection-button.healthy");
     await page.locator(".diagnostic-drawer header button").click();
-    await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: new RegExp(`^${f.names[workspace]}$`) }) }).click();
+    await page.getByLabel("切换工作区", { exact: true }).selectOption(workspace);
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
   };

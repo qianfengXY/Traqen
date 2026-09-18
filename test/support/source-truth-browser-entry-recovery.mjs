@@ -50,7 +50,7 @@ try {
     await page.route(`${f.apiBase}/v1/workspace-executable-skills`, (route) => route.fulfill({ status: 404, json: { error: { code: "NOT_FOUND" } } }));
     await reconnect(page);
     await page.waitForSelector(".connection-button.healthy");
-    await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: /^Browser Directory$/ }) }).click();
+    await page.getByLabel("切换工作区", { exact: true }).selectOption("directory");
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
     assert.equal(await page.locator(".workspace-connection").count(), 0);
@@ -92,7 +92,7 @@ try {
     await page.route(`${f.apiBase}/v1/workspace-executable-skills`, () => {});
     await reconnect(page);
     await page.waitForSelector(".connection-button.healthy");
-    await page.locator(".workspace-project-open").filter({ has: page.locator("strong", { hasText: /^Browser Directory$/ }) }).click();
+    await page.getByLabel("切换工作区", { exact: true }).selectOption("directory");
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
     await page.locator('[data-auxiliary-state="partial"]').waitFor({ timeout: 15000 });
@@ -113,14 +113,14 @@ try {
     await reconnect(page); await pending;
     await page.locator(".workspace-connection [role=status]").waitFor();
     assert.ok(firstRoute);
-    assert.equal(await page.locator(".workspace-project-open").count(), 0);
+    assert.equal(await page.locator('#workspace-switcher option:not([value=""])').count(), 0);
     const cancelled = page.waitForEvent("requestfailed", { predicate: (request) => request === firstRoute.request() });
     await page.locator("#workspace-access-token").fill("isolated-invalid-identity");
     await reconnect(page);
     await firstRoute.fulfill({ status: 200, json: originalBody });
     assert.match((await cancelled).failure().errorText, /ABORTED|CANCEL/i);
     await page.locator(".workspace-connection").getByText("需要访问令牌", { exact: true }).waitFor();
-    assert.equal(await page.locator(".workspace-project-open").count(), 0);
+    assert.equal(await page.locator('#workspace-switcher option:not([value=""])').count(), 0);
     assert.equal(await page.locator(".connection-button.healthy").count(), 0);
   });
   report.status = results.every(({ passed }) => passed) ? "PASSED" : "FAILED";
