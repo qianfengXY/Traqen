@@ -11,13 +11,13 @@ source_design: ../README.md
 
 # F006 · 桌面双主题效果图与交互原型 V1.0
 
-[返回 F006 功能与 UX 设计](../README.md) · [F005 V2.1 体验总纲](../../../design-reviews/F005/README.md) · [离线交互样稿](assets/prototype.html) · [作者验证记录](assets/verification.json)
+[返回 F006 功能与 UX 设计](../README.md) · [F005 一套桌面母版候选（待其责任线程发布）](https://github.com/qianfengXY/Traqen/blob/e8d2991fbb272243dec07e23c075b30f09fe9477/docs/design/F005-layout-navigation/README.md) · [离线交互样稿](assets/prototype.html) · [作者验证记录](assets/verification.json)
 
 这是 F006 设计文档 §10 的**待 operator 审查**效果图稿：一份可维护的、使用构造数据的离线 HTML 原型和实际浏览器渲染图片。它只验证视觉、交互示意与 fixture 控制流，**不是**生产前端接线、后端、CLI、凭据、MCP 或 F003 启动实现的完成声明，也不表示 operator 已批准或已合入。
 
-## 先看 S04：同一团队，四张桌面主图
+## 先看 S04：同一团队，四张桌面视口图
 
-四图保持同一团队数据、选中对象和“有未应用更改”状态。27 英寸画面增加并列阅读空间，不缩放字体或把笔记本画面等比放大。
+四图保持同一团队数据、选中对象、“有未应用更改”状态和相对结构。以 1440×900 为逻辑母版：1440×900 为 1×；1920×1080 为 1.2×、左右余量 96px；2560×1440 为 1.6×、左右余量 128px。文字、控件、菜单、焦点与点击命中随同一倍率缩放；1280×800 只检查可读性与重排，不另造一套桌面设计。
 
 | 14 英寸 · 1440×900 | 27 英寸 · 2560×1440 |
 | --- | --- |
@@ -49,7 +49,7 @@ source_design: ../README.md
 | S01 范围与初始空态 | [真实团队配置面内的 Main + Child 1 空占位](assets/previews/01-empty-light.png) | 瓷白 · 1440×900 |
 | S02 账号 | [瓷白：API 引用错误保留、OAuth 状态](assets/previews/02-accounts-light.png) / [石墨](assets/previews/02-accounts-dark.png) | 双主题 · 1440×900 |
 | S03 模型与 Skill | [模型 · 瓷白](assets/previews/03-models-light.png) / [石墨](assets/previews/03-models-dark.png)；[Skill · 瓷白](assets/previews/03-skills-light.png) / [石墨](assets/previews/03-skills-dark.png) | 两个独立页面，均为双主题 · 1440×900 |
-| S04 完整团队 | 上方四张主图；另有 [1280×800](assets/previews/16-team-compact-light.png) 与 [1920×1080](assets/previews/17-team-external-dark.png) 布局检查 | 双主题 · 4 个桌面视口 |
+| S04 完整团队 | 上方四张主图；另有 [1280×800](assets/previews/16-team-compact-light.png) 可读性检查与 [1920×1080](assets/previews/17-team-external-dark.png) 的 1.2×画布检查 | 双主题 · 一个逻辑画布、4 个视口 |
 | S05 能力管理 | [四分组与范围](assets/previews/08-capabilities-light.png)；[Child 1 详情内可撤销的 legacy-lint 历史授权](assets/previews/08-legacy-authorization-light.png) | 瓷白 · 1440×900 |
 | S06 草稿冲突 | [团队详情内的恢复状态](assets/previews/09-conflict-light.png) / [石墨对照](assets/previews/10-conflict-dark.png)；技术写入证据仅在壳外 fixture 日志与验证记录中 | 双主题 · 1440×900 |
 | S07 生命周期 | [已打开的名称确认弹窗 · 瓷白](assets/previews/11-lifecycle-confirm-light.png) / [石墨](assets/previews/12-lifecycle-confirm-dark.png) | 双主题 · 1440×900 |
@@ -63,20 +63,21 @@ source_design: ../README.md
 
 `prototype.html` 的场景选择器、主题切换、Agent 选择、Child 2 模型编辑、409 恢复、生命周期确认/取消和 F003 提示均可操作。调试控制显式标注“设计演示数据”，位于产品壳外。
 
-`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：23 张截图、0 个浏览器页面错误，以及以下 12 项通过项：
+`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：23 张截图、0 个浏览器页面错误，以及以下 13 项通过项：
 
 1. S01–S10 渲染时都有一个页面 h1，页面与控件没有横向溢出。
-2. S04 在 1440×900、2560×1440 的双主题主图，以及 1280×800、1920×1080 补充布局中保持非缩放的桌面文字与控件尺寸。
-3. F005 AppShell 有图标导航、最近查看、帮助与账号脚；调试控制在产品壳外；Workspace 二级导航与“草稿已保存”在壳内可见，每张 Agent 卡的 Skill 数量均与其勾选授权一致。
-4. 账号、模型、Skill 与 MCP 共用壳内全局二级导航；模型和 Skill 是可独立抵达的产品页。
-5. S01 保持在 Agent 团队配置面，呈现 Main 与 Child 1 的真实空占位、零隐式模型/Skill 与不可用的 Apply。
-6. 正常 S04 的所有 Agent 都为就绪且 Apply 可用；legacy-lint 仅在独立的 Child 1 可撤销失效授权状态中显示。
-7. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
-8. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
-9. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`；冲突中没有额外 PUT，也没有 activation 请求，且产品壳内不显示这些技术标签或模拟事件日志。
-10. 生效版本面为只读，没有 Apply；Child 2 的生效基线和模型/Skill 草稿差异相互对应，并提供返回团队编辑入口。
-11. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
-12. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
+2. S04 使用一个 1440×900 逻辑画布：1440×900 为 1×，1920×1080 为 1.2×且左右余量 96px，2560×1440 为 1.6×且左右余量 128px；1280×800 是可读性空间检查，不是第二套桌面设计。
+3. 逻辑画布在 1920×1080 和 2560×1440 归一化后保持同一内容与相对布局；指针命中、焦点、导航和对话框随同一倍率缩放；1280×800 仍保持 13px 可读控件。
+4. F005 AppShell 有图标导航、最近查看、帮助与账号脚；调试控制在产品壳外；Workspace 二级导航与“草稿已保存”在壳内可见，每张 Agent 卡的 Skill 数量均与其勾选授权一致。
+5. 账号、模型、Skill 与 MCP 共用壳内全局二级导航；模型和 Skill 是可独立抵达的产品页。
+6. S01 保持在 Agent 团队配置面，呈现 Main 与 Child 1 的真实空占位、零隐式模型/Skill 与不可用的 Apply。
+7. 正常 S04 的所有 Agent 都为就绪且 Apply 可用；legacy-lint 仅在独立的 Child 1 可撤销失效授权状态中显示。
+8. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
+9. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
+10. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`；冲突中没有额外 PUT，也没有 activation 请求，且产品壳内不显示这些技术标签或模拟事件日志。
+11. 生效版本面为只读，没有 Apply；Child 2 的生效基线和模型/Skill 草稿差异相互对应，并提供返回团队编辑入口。
+12. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
+13. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
 
 复现（替换为本机 Chrome 绝对路径）：
 
@@ -94,3 +95,4 @@ node assets/render.mjs /absolute/path/to/Google\ Chrome
 - 示例 Workspace、模型、账号、Skill、版本、影响列表和运行均为构造数据；不会读取或写入用户数据。
 - 模拟事件日志仅证明原型的有界控制流，不能代替服务端的 409、持久化、权限或 activation 验收。
 - S10 只表达 F003 应展示和确认 F006 已生效配置；不连接材料、不复活旧启动 API、不创建 Run，不代表 AC-C2 完成。
+- 截图记录了视口、逻辑倍率、浏览器缩放与设备像素比；它不构成真实硬件显示、200%/400% 浏览器缩放、完整读屏或多浏览器的验收。

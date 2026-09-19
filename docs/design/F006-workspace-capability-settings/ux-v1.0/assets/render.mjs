@@ -155,6 +155,8 @@ try {
       return {
         scene: window.__f006UX.state.scene,
         theme: document.documentElement.dataset.theme,
+        desktopLayout: window.__f006UX.state.desktopLayout,
+        stage: (() => { const rect = document.querySelector('[data-testid=logical-stage]').getBoundingClientRect(); return { left: rect.left, top: rect.top, width: rect.width, height: rect.height }; })(),
         h1Count: document.querySelectorAll('h1').length,
         pageOverflow: document.documentElement.scrollWidth > innerWidth,
         outOfViewportX: boxes.filter((box) => box.left < -1 || box.right > innerWidth + 1),
@@ -168,11 +170,16 @@ try {
     assert.equal(layout.pageOverflow, false, `${name}: page-level horizontal overflow`);
     assert.equal(layout.outOfViewportX.length, 0, `${name}: controls or panels overflow horizontally`);
     assert.equal(layout.scrollY, 0, `${name}: screenshot starts at the top of its page`);
+    const expectsDesktopScale = width >= 1440 && height >= 900;
+    const expectedScale = expectsDesktopScale ? Math.min(width / 1440, height / 900) : 1;
+    assert.equal(layout.desktopLayout.mode, expectsDesktopScale ? "desktop" : "accessibility", `${name}: expected desktop or accessibility layout mode`);
+    assert.ok(Math.abs(layout.desktopLayout.scale - expectedScale) < .000001, `${name}: expected uniform desktop scale`);
+    assert.ok(Math.abs(layout.stage.width - (expectsDesktopScale ? 1440 * expectedScale : width)) < 1, `${name}: stage width matches its layout mode`);
     const capture = await cdp.call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
     const output = resolve(previews, `${name}.png`);
     const bytes = Buffer.from(capture.data, "base64");
     await writeFile(output, bytes);
-    report.screens.push({ file: `previews/${basename(output)}`, scene, theme, width, height, title: layout.title, sha256: createHash("sha256").update(bytes).digest("hex") });
+    report.screens.push({ file: `previews/${basename(output)}`, scene, theme, width, height, title: layout.title, logicalCanvas: layout.desktopLayout.canvas, scale: layout.desktopLayout.scale, layoutMode: layout.desktopLayout.mode, margin: layout.desktopLayout.margin, browserZoom: layout.desktopLayout.browserZoom, deviceScaleFactor: layout.desktopLayout.deviceScaleFactor, sha256: createHash("sha256").update(bytes).digest("hex") });
   }
   async function snapshot(name, scene, theme, width, height) {
     await go(scene, theme, width, height);
@@ -222,7 +229,7 @@ try {
   await snapshotLifecycleDialog("11-lifecycle-confirm-light", "light");
   await snapshotLifecycleDialog("12-lifecycle-confirm-dark", "dark");
   report.checks.push("All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.");
-  report.checks.push("S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.");
+  report.checks.push("S04 uses one 1440×900 logical canvas: 1440×900 renders at 1×, 1920×1080 at 1.2× with 96px side margins, and 2560×1440 at 1.6× with 128px side margins; 1280×800 is an accessibility-space check rather than a second desktop design.");
 
   // F005 AppShell alignment and state honesty: fixture controls stay outside the product shell;
   // cards and their inspector checkboxes read from the same skill configuration.
@@ -262,6 +269,59 @@ try {
     assert.equal(counts.checked, counts.card, `${id}: displayed Skill count must match checked explicit grants`);
   }
   report.checks.push("F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.");
+
+  // One logical desktop canvas: normal desktop screenshots must normalize to the same layout and pointer targets.
+  async function geometryFor(width, height) {
+    await go("team", "light", width, height);
+    return cdp.evaluate(`(() => {
+      const stage = document.querySelector('[data-testid=logical-stage]').getBoundingClientRect();
+      const scale = window.__f006UX.state.desktopLayout.scale;
+      const normalize = (selector) => { const rect = document.querySelector(selector).getBoundingClientRect(); return { left: (rect.left - stage.left) / scale, top: (rect.top - stage.top) / scale, width: rect.width / scale, height: rect.height / scale }; };
+      return { layout: window.__f006UX.state.desktopLayout, stage: { left: stage.left, width: stage.width, height: stage.height }, text: document.querySelector('.shell').textContent, normalized: { sidebar: normalize('.side'), child2: normalize('[data-testid=agent-child-2]'), apply: normalize('[data-testid=apply-config]') } };
+    })()`);
+  }
+  const masterGeometry = await geometryFor(1440, 900);
+  for (const [width, height, scale, margin] of [[1920, 1080, 1.2, 96], [2560, 1440, 1.6, 128]]) {
+    const candidate = await geometryFor(width, height);
+    assert.equal(candidate.layout.mode, "desktop");
+    assert.ok(Math.abs(candidate.layout.scale - scale) < .000001);
+    assert.ok(Math.abs(candidate.stage.left - margin) < 1);
+    assert.equal(candidate.text, masterGeometry.text);
+    for (const key of Object.keys(masterGeometry.normalized)) {
+      for (const measure of ["left", "top", "width", "height"]) assert.ok(Math.abs(candidate.normalized[key][measure] - masterGeometry.normalized[key][measure]) < 1, `${width} ${key} ${measure}: normalized layout differs from master canvas`);
+    }
+  }
+  const child2Point = await cdp.evaluate(`(() => { const rect = document.querySelector('[data-testid=agent-child-2]').getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('[data-agent]')?.dataset.agent }; })()`);
+  assert.equal(child2Point.hit, "child-2");
+  await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x: child2Point.x, y: child2Point.y, button: "left", clickCount: 1 });
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: child2Point.x, y: child2Point.y, button: "left", clickCount: 1 });
+  await settle();
+  assert.equal(await cdp.evaluate("window.__f006UX.state.selected"), "child-2");
+  await go("models", "light", 2560, 1440);
+  const skillPoint = await cdp.evaluate(`(() => { const button = document.querySelector('[data-scene=skills]'); const rect = button.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('[data-scene]')?.dataset.scene }; })()`);
+  assert.equal(skillPoint.hit, "skills");
+  await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x: skillPoint.x, y: skillPoint.y, button: "left", clickCount: 1 });
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: skillPoint.x, y: skillPoint.y, button: "left", clickCount: 1 });
+  await settle();
+  assert.equal(await cdp.evaluate("window.__f006UX.state.scene"), "skills");
+  await go("lifecycle", "light", 2560, 1440);
+  const dialogPoint = await cdp.evaluate(`(() => { const button = document.querySelector('#open-lifecycle'); const rect = button.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.id }; })()`);
+  assert.equal(dialogPoint.hit, "open-lifecycle");
+  await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x: dialogPoint.x, y: dialogPoint.y, button: "left", clickCount: 1 });
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseReleased", x: dialogPoint.x, y: dialogPoint.y, button: "left", clickCount: 1 });
+  await settle();
+  const dialogScale = await cdp.evaluate("({open:document.querySelector('#lifecycle-dialog').open, width:document.querySelector('#lifecycle-dialog').getBoundingClientRect().width, focus:document.activeElement.id})");
+  assert.equal(dialogScale.open, true);
+  assert.ok(Math.abs(dialogScale.width - 520 * 1.6) < 3, "dialog scales with the desktop canvas");
+  assert.equal(dialogScale.focus, "confirm-name");
+  await cdp.evaluate("document.querySelector('#lifecycle-dialog').close()");
+  await go("team", "light", 1280, 800);
+  const accessibilitySpace = await cdp.evaluate("({layout:window.__f006UX.state.desktopLayout, font:getComputedStyle(document.querySelector('.agent-card')).fontSize, apply:document.querySelector('[data-testid=apply-config]').disabled})");
+  assert.equal(accessibilitySpace.layout.mode, "accessibility");
+  assert.equal(accessibilitySpace.layout.scale, 1);
+  assert.equal(accessibilitySpace.font, "13px");
+  assert.equal(accessibilitySpace.apply, false);
+  report.checks.push("The 1440×900 logical canvas normalizes identically at 1920×1080 (1.2×) and 2560×1440 (1.6×), including content, relative layout, pointer hit targets, focus, navigation and dialog scale; 1280×800 retains readable 13px controls as an accessibility-space check.");
 
   // Global configuration pages share real product navigation; model and Skill do not collapse into one work surface.
   for (const scene of ["accounts", "models", "skills", "mcp"]) {

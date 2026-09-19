@@ -2,8 +2,8 @@
   "version": "1.0",
   "kind": "author-fixture-render-and-interaction-validation",
   "fixtureOnly": true,
-  "recordedAt": "2026-09-19T04:25:40.044Z",
-  "sourceHTMLSha256": "f6ad476b36e721d6d0db6b89630b4a383f1018e610604d32b9a9bef71ec8f4e7",
+  "recordedAt": "2026-09-19T04:46:46.516Z",
+  "sourceHTMLSha256": "d43c86c06485ab0f6e303a4b3138a9abbc12614072580f3478b9a4ab956e2283",
   "screens": [
     {
       "file": "previews/01-empty-light.png",
@@ -12,7 +12,19 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "1594c2de7d4f994ad7c540989bc7c8058ab5bd1b13e42738cbf09dbf36ee1f1c"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "d2b31feb07f6a5ffe3078141b516c8e08093744e7147bfdad65978b91d1ed77d"
     },
     {
       "file": "previews/02-accounts-light.png",
@@ -21,7 +33,19 @@
       "width": 1440,
       "height": 900,
       "title": "账号",
-      "sha256": "b53e65c126916305c1052c0fdf2c5f3923e9a463b256f5938c871e87febaf902"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ebf017fcf987627e2ce4f156d2db6c26595a94daf19c76a52eac890b9bd9a7c6"
     },
     {
       "file": "previews/02-accounts-dark.png",
@@ -30,7 +54,19 @@
       "width": 1440,
       "height": 900,
       "title": "账号",
-      "sha256": "e0b6741b4750c9be7f6b96a65d957d79a77bb044b2591766b04d77400fef8995"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "11d9ecee0d0de4678df0f1dd1223123c9a21ef18e557dde67aeef321f4ce673b"
     },
     {
       "file": "previews/03-models-dark.png",
@@ -39,7 +75,19 @@
       "width": 1440,
       "height": 900,
       "title": "CLI 模型",
-      "sha256": "ce27b92da902c565222276fab993862f4399eb6d995e113388c52a36a8ae4a9b"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "53590a19b77ca2c61473f3da94a26b2f98a33e3735ae634c8d7d2833cde9ed32"
     },
     {
       "file": "previews/03-models-light.png",
@@ -48,7 +96,19 @@
       "width": 1440,
       "height": 900,
       "title": "CLI 模型",
-      "sha256": "ec9bf861e2b581cd002504649cd04e1a55238bed2135b4e19362939425642e65"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "1cc10dc3274800af394a40e7a017c4843239cd9f22c10443b071b68674fc1652"
     },
     {
       "file": "previews/03-skills-dark.png",
@@ -57,7 +117,19 @@
       "width": 1440,
       "height": 900,
       "title": "Skill",
-      "sha256": "ac7a8294c62c7cb70abd24b2d8be0544ce01a7a2b142544c40eede3ad6a9f600"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "a00813a328663aead00ad18ce7148e3b6c29a799d445c20867812216f0f7ec22"
     },
     {
       "file": "previews/03-skills-light.png",
@@ -66,7 +138,19 @@
       "width": 1440,
       "height": 900,
       "title": "Skill",
-      "sha256": "1d6fb43de2e35e2f79f4ce29841bad0e181bbfefd0628674cbfa620982bed25c"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "439d8f4b2399e101116ebc9fc4fde59da59e4e7efb0714e066b62de6c7a28cb2"
     },
     {
       "file": "previews/04-team-laptop-light.png",
@@ -75,7 +159,19 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "8e68c35d54ab86c33722a1886ec05c8034c2f5747ef8195fb874e98e0f2f4bbb"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "d209fbb147b80b3181b814703ab1081fbabe7025955bacdf3178db714a523c14"
     },
     {
       "file": "previews/05-team-laptop-dark.png",
@@ -84,7 +180,19 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "b1c205ab3ff0c728b7fd56ccac56cb17638f2fe40aa7271ef298821eed5806c9"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "b23d91c1204671a38637eb1ab6d3466703a814afd9599e3e6e5163818693db8e"
     },
     {
       "file": "previews/06-team-display-light.png",
@@ -93,7 +201,19 @@
       "width": 2560,
       "height": 1440,
       "title": "Agent 团队",
-      "sha256": "255ecff6c10708205784fdd909777a1a59291bdea1e416f97352eba2cfa1af30"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.6,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 128,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "a2ec33c1228b8169a31a8f442cdb7c02b18ad3051a022722db59794316666bb4"
     },
     {
       "file": "previews/07-team-display-dark.png",
@@ -102,7 +222,19 @@
       "width": 2560,
       "height": 1440,
       "title": "Agent 团队",
-      "sha256": "5c4e0c75c2fc7273821ddaf8495810f0f15b28621300307f2237a752781109e6"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.6,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 128,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "e1d0ade9f5885092a054c78fd1ce09fac2c9d6ef94e83e1fab22b3076d2f7d52"
     },
     {
       "file": "previews/08-capabilities-light.png",
@@ -111,7 +243,19 @@
       "width": 1440,
       "height": 900,
       "title": "能力管理",
-      "sha256": "293c4e9f9698a42b076ce78ecc06eb7ea3878de0c8cbd59e7f7745e1b9fd2527"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "799349788d9abc6ece52e02c06b2af0696676e20b3b8ea0d7ee8a0e0a4024634"
     },
     {
       "file": "previews/09-conflict-light.png",
@@ -120,7 +264,19 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "225eb05314ee986e35e17f2ad3b1080f33854152b15b7a5c14d96e4aa2109a8b"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "6794ed476972a66774f3273ac0be2e7a19aa0a4f3a9eb754a99eebed76e21efb"
     },
     {
       "file": "previews/10-conflict-dark.png",
@@ -129,7 +285,19 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "f630d58196fa485bf67dee2244c6c164e58b89e0157de6b707726e5f6a49c410"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "18a9d1a8ea0cc18752155e99f8a3055a81232b24731b40e499c6b1f2f8949a88"
     },
     {
       "file": "previews/13-mcp-dark.png",
@@ -138,7 +306,19 @@
       "width": 1440,
       "height": 900,
       "title": "MCP",
-      "sha256": "379de90944c128f79aa550a47434269c75191d5ada02286532a3d841d687ba5d"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ba33ec809331ea8a51c77a67f7e231cb2fed800e36e30aee223e9bbaac13869a"
     },
     {
       "file": "previews/13-mcp-light.png",
@@ -147,7 +327,19 @@
       "width": 1440,
       "height": 900,
       "title": "MCP",
-      "sha256": "722955d7aa0f40c91c0e14b2900698c2f818881e66b8e22b038e686b583b9093"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2527c14c5ccf4b60e1d971948ea35f2332959312d8a51d879e139d330f898df2"
     },
     {
       "file": "previews/14-versions-light.png",
@@ -156,7 +348,19 @@
       "width": 1440,
       "height": 900,
       "title": "当前生效配置",
-      "sha256": "dd80d6b90d232ef58e4845943dbd19eb4e8f48d472ad0a4c65aeea943227df5f"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "4a3e6945b5ce7408eeacf77f379b39954306602c92c11693ef1442ac60ed404b"
     },
     {
       "file": "previews/15-f003-dark.png",
@@ -165,7 +369,19 @@
       "width": 1440,
       "height": 900,
       "title": "确认将使用的 F006 生效配置",
-      "sha256": "20a876f93e673f9cbb105988b4713dfec1a26d01e8540e0ccb3cc956d62afcd0"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "1f35d152e6e93f299cdc2a3297d834a9bd15f6064300627ad95d0f174d14129e"
     },
     {
       "file": "previews/16-team-compact-light.png",
@@ -174,6 +390,18 @@
       "width": 1280,
       "height": 800,
       "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "accessibility",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
       "sha256": "c83ddf6de4abdafdca5914d2d39d9c94ff396332c7d3e99059bbd88080d95c81"
     },
     {
@@ -183,7 +411,19 @@
       "width": 1920,
       "height": 1080,
       "title": "Agent 团队",
-      "sha256": "0b811d4f262672f797c43ca2c3684f79ac287c084f1fcbedd342f06d18dade10"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.2,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 96,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "dbfbe61bee9bf7a09e3db8d45c386a5becf58551026566a6d0006404097eb236"
     },
     {
       "file": "previews/08-legacy-authorization-light.png",
@@ -192,7 +432,19 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "5522c0339780aa3af4121f1121a13c8348bad3b672746eaa9f55abd34f5f5248"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "deae6925fb42b1aac803bde2955a6a6aa6db046d484987d884ac7946a24fa7db"
     },
     {
       "file": "previews/11-lifecycle-confirm-light.png",
@@ -201,7 +453,19 @@
       "width": 1440,
       "height": 900,
       "title": "能力生命周期",
-      "sha256": "7e315f78b38185e3adb1e301d3b8a411cd6f3860dadcec1cc174c8ea3ca4db99"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "25749cdbfac7beeddc404166d0c91b8dddff9e48ffe7696dd44ac36ff2762885"
     },
     {
       "file": "previews/12-lifecycle-confirm-dark.png",
@@ -210,13 +474,26 @@
       "width": 1440,
       "height": 900,
       "title": "能力生命周期",
-      "sha256": "095a241289cd0fd035eb166084bbbb2616322402ec0c226095e79844c7427c78"
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "979ebc2ccf4607280d885591ea116d96c4feb77db3d3127732220c244c2bb7ff"
     }
   ],
   "checks": [
     "All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.",
-    "S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.",
+    "S04 uses one 1440×900 logical canvas: 1440×900 renders at 1×, 1920×1080 at 1.2× with 96px side margins, and 2560×1440 at 1.6× with 128px side margins; 1280×800 is an accessibility-space check rather than a second desktop design.",
     "F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.",
+    "The 1440×900 logical canvas normalizes identically at 1920×1080 (1.2×) and 2560×1440 (1.6×), including content, relative layout, pointer hit targets, focus, navigation and dialog scale; 1280×800 retains readable 13px controls as an accessibility-space check.",
     "Accounts, models, Skill, and paused MCP use one in-shell global secondary navigation; models and Skill are independently addressable product pages.",
     "The empty state remains in the Agent-team configuration surface with real Main and Child 1 placeholders, zero implicit model or Skill grants, and no available Apply action.",
     "The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; unavailable legacy authorization is isolated to its own actionable Child 1 state.",
