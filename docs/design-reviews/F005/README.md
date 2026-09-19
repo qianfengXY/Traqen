@@ -581,7 +581,7 @@ WCAG 2.2 最小目标尺寸的基准为 24 CSS px，并有间距等例外；见 
 
 产品依据（阅读日期 2026-09-15；新确认内容优先于旧概览）：
 
-- [F001：工作空间与源码真相设计](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)。
+- [F001：工作空间与源码真相设计](../../design/F001-workspace-source-truth/README.md)。
 - [F002：已发布功能设计，采用已评审 V4 功能全景](../../design/F002-deterministic-facts/README.md)。
 - [F003：已发布 V2 功能全景](../../design/F003-traceability-graph/README.md)。
 - F006：docs/features/F006-workspace-capability-settings.zh-CN.md。

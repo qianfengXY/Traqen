@@ -47,6 +47,7 @@ UX 效果图直接嵌在[第 10 节](#10-ux-效果图与交互说明待讨论)�
 - **功能设计发布授权：** 2026-09-17 14:07 UTC，co-creator 要求“请将F003的功能设计发布一版，我需要看具体的文档。”本次只整理既有功能说明与阅读入口，不将跨功能接口建议或 UX 探索升级为已确认设计。
 - **统一文档授权：** 2026-09-19，co-creator 要求“功能与UX效果图放在一起，一个功能就一份设计文档”（`0001789790997835-000011-29e839f1`）。本页合并 PR #39 的功能说明与 PR #41 的 UX 图文；这次整理不代表 UX 已获确认。
 - **旧入口清理授权：** 2026-09-19，co-creator 确认统一方式，并要求不再保留之前的独立 UX 文档（`0001789792288047-000063-f01b6906`）。删除旧 v0.1 图文稿与 v0.2 迁移页，保留本页引用的图稿、原型和校验资料；旧文档可从 Git 历史恢复。
+- **目录与产物清理授权：** 2026-09-19（`0001789795568668-000196-bd4d7d48`）统一设计入口；现用 UX 图稿、原型与验证资料迁至 `assets/ux/`，删除旧 UX 目录、v0.1 截图及旧交互原型、未采纳的独立候选和中英文旧 Spec。已跟踪内容可从 Git 历史回查，不建立另一份归档设计。
 - **版本规则：** 本次原样纳入已验收的 V2.0 HTML/PNG，不改图内文字或重渲染；V1.0 及候选图保留为历史，不再作为当前主图。
 
 ## 2. 功能全景图
@@ -209,12 +210,12 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 | 差异 | 本版处理 |
 |---|---|
-| 2026-08-29 F003 Spec 要求所有候选先人工批准才能进入业务树。 | 该功能描述已被本版“自动收录 Agent 分析态 + 例外人工审核”替代；旧 Spec 正文标为历史参考。自动收录不等于人工基线发布权。 |
+| 2026-08-29 F003 Spec 要求所有候选先人工批准才能进入业务树。 | 该功能描述已被本版“自动收录 Agent 分析态 + 例外人工审核”替代；旧 Spec 正文已依 2026-09-19 授权删除，历史内容从 Git 回查。自动收录不等于人工基线发布权。 |
 | ADR-0003 与产品架构规定 F002 是来源包唯一直接消费者。 | 本版明确 F001 原材料主分析、F002 参考，但不决定直接读取还是经受控证据服务读取。读取入口、完整清单/片段交接、权限复验与版本绑定需联合对齐；不授权绕过 F001 封存与准入边界。 |
 | 既有 Candidate/Decision/Claim 与发布接口。 | 图中的状态和决定范围是功能要求；字段、接口、角色授权和并发修订协议尚未由本图定稿，不声称已有实现满足它们。 |
 | 自动收录的具体证据判据与质量验收值。 | 按关系类型核查、补证有上限、用人工参考案例复核已明确；具体规则版本、预算值及可测量验收指标仍需细化，不在本次落盘时补造。 |
 
-相关文档：[F003 Spec 历史正文与当前入口](../../features/F003-traceability-graph.zh-CN.md)、[F001 当前中文设计](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)、[F002 当前功能设计](../F002-deterministic-facts/README.md)、[F006](../../features/F006-workspace-capability-settings.zh-CN.md)、[F004](../../features/F004-change-impact-analysis.zh-CN.md)、[ADR-0003](../../decisions/ADR-0003-source-truth-boundary.zh-CN.md)、[产品架构](../../architecture/traqen-product-architecture.zh-CN.md)。
+相关文档：[F001 当前中文设计](../F001-workspace-source-truth/README.md)、[F002 当前功能设计](../F002-deterministic-facts/README.md)、[F006 当前功能与 UX 设计](../F006-workspace-capability-settings/README.md)、[F004](../../features/F004-change-impact-analysis.zh-CN.md)、[ADR-0003](../../decisions/ADR-0003-source-truth-boundary.zh-CN.md)、[产品架构](../../architecture/traqen-product-architecture.zh-CN.md)。
 
 ## 9. 版本与验收追溯
 
@@ -248,15 +249,15 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 ## 10. UX 效果图与交互说明（待讨论）
 
-[F005 体验总纲](../../design-reviews/F005/README.md) · [离线样稿](ux-v0.2/assets/prototype.html) · [既有渲染验证](ux-v0.2/assets/verification.json)
+[F005 体验总纲](../../design-reviews/F005/README.md) · [离线样稿](assets/ux/prototype.html) · [既有渲染验证](assets/ux/verification.json)
 
 **这是一套方案的六个场景，不是六份候选。** 下方直接嵌入效果图，远程阅读不需要 localhost。全部订单、原文、版本、人员和运行均为构造示例；**UX 待讨论，未连接后端，不代表已实现或已确认**。F003 功能 V2.0 与原全景图不变。
 
 ### 10.1 先看主屏
 
-![业务图谱：F005 统一导航、局部关系图与右侧证据检查器](ux-v0.2/assets/previews/01-graph-light.png)
+![业务图谱：F005 统一导航、局部关系图与右侧证据检查器](assets/ux/previews/01-graph-light.png)
 
-[查看主屏原图](ux-v0.2/assets/previews/01-graph-light.png)
+[查看主屏原图](assets/ux/previews/01-graph-light.png)
 
 本版的主张：**从一个业务问题进入，在图谱中定位，在原文中验证，只把真正的歧义交给人。**
 
@@ -280,9 +281,9 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 ### 10.2 原文追溯：解释不能盖住材料
 
-![证据阅读：材料目录、固定代码、当前关系依据及材料反查](ux-v0.2/assets/previews/02-evidence-light.png)
+![证据阅读：材料目录、固定代码、当前关系依据及材料反查](assets/ux/previews/02-evidence-light.png)
 
-[查看原图](ux-v0.2/assets/previews/02-evidence-light.png)
+[查看原图](assets/ux/previews/02-evidence-light.png)
 
 - **左侧选材料：** 同一命题的代码、文档、测试资产，不强制每份材料都有 F002 Fact。
 - **中间读原文：** 固定版本、路径、行号或章节在阅读区顶部；相关范围高亮。
@@ -294,9 +295,9 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 ### 10.3 人工审核：先问清楚，再记录单条决定
 
-![人工审核：按功能组织问题，原文对照，限定范围后记录单条决定](ux-v0.2/assets/previews/03-review-light.png)
+![人工审核：按功能组织问题，原文对照，限定范围后记录单条决定](assets/ux/previews/03-review-light.png)
 
-[查看原图](ux-v0.2/assets/previews/03-review-light.png)
+[查看原图](assets/ux/previews/03-review-light.png)
 
 | 区域 | 内容 | 防止的误读 |
 |---|---|---|
@@ -313,9 +314,9 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 ### 10.4 材料覆盖：已读、理解、执行不是一回事
 
-![覆盖视图：材料处置列表，未归属原因与受限提示](ux-v0.2/assets/previews/04-coverage-light.png)
+![覆盖视图：材料处置列表，未归属原因与受限提示](assets/ux/previews/04-coverage-light.png)
 
-[查看原图](ux-v0.2/assets/previews/04-coverage-light.png)
+[查看原图](assets/ux/previews/04-coverage-light.png)
 
 - 列表优先显示材料、类型、处置状态及“关联或保留原因”。已关联、待补证、未归属和受限分开。
 - 选中未归属材料，右侧说明为何没有形成候选，以及保留待调查的下一步；不是丢弃材料。
@@ -325,9 +326,9 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 ### 10.5 分析运行：把执行与结果分开看
 
-![运行详情：固定上下文、主子调查、五档分流和恢复入口](ux-v0.2/assets/previews/05-run-light.png)
+![运行详情：固定上下文、主子调查、五档分流和恢复入口](assets/ux/previews/05-run-light.png)
 
-[查看原图](ux-v0.2/assets/previews/05-run-light.png)
+[查看原图](assets/ux/previews/05-run-light.png)
 
 | 位置 | 呈现 |
 |---|---|
@@ -344,9 +345,9 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 ### 10.6 启动预检：阻断必须看得见
 
-![启动预检：来源、参考版本、固定团队与不可跳过的版本阻断](ux-v0.2/assets/previews/06-preflight-blocked.png)
+![启动预检：来源、参考版本、固定团队与不可跳过的版本阻断](assets/ux/previews/06-preflight-blocked.png)
 
-[查看原图](ux-v0.2/assets/previews/06-preflight-blocked.png)
+[查看原图](assets/ux/previews/06-preflight-blocked.png)
 
 - 左侧填写调查问题，选择固定 F001 来源与对应的 F002 参考；不在这里重新上传目录。
 - 明确展示 F006 已生效的团队与配置身份，新运行和恢复保持固定上下文，不热切换授权。
@@ -370,13 +371,13 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 #### 石墨深色 · 同一笔记本视口
 
-![同一图谱的石墨深色主题，1440×900](ux-v0.2/assets/previews/07-graph-dark.png)
+![同一图谱的石墨深色主题，1440×900](assets/ux/previews/07-graph-dark.png)
 
 #### 27 英寸设计视口 · 仅等比缩放
 
-![同一图谱瓷白主题，2560×1440 等比展示](ux-v0.2/assets/previews/08-graph-display-light.png)
+![同一图谱瓷白主题，2560×1440 等比展示](assets/ux/previews/08-graph-display-light.png)
 
-![同一图谱石墨主题，2560×1440 等比展示](ux-v0.2/assets/previews/09-graph-display-dark.png)
+![同一图谱石墨主题，2560×1440 等比展示](assets/ux/previews/09-graph-display-dark.png)
 
 英寸不等于 CSS 像素，上述是截图验证视口，不是硬件规格声明。本轮不做手机/平板设计。等比展示用于效果比较；样稿另提供“原尺寸阅读”，避免小窗口被迫把中文缩到不可读。正式产品的浏览器放大、键盘、重排和辅助技术仍需专门验收，不能用等比效果图替代。
 
@@ -406,11 +407,11 @@ HTML 是本图文案与布局的维护源；PNG 为 2896 × 2924 的渲染产物
 
 | 产物 | 用途 |
 |---|---|
-| [prototype.html](ux-v0.2/assets/prototype.html) | 可校对的 HTML/CSS/SVG 视觉源；有限页面、主题与检查器交互 |
+| [prototype.html](assets/ux/prototype.html) | 可校对的 HTML/CSS/SVG 视觉源；有限页面、主题与检查器交互 |
 | 本页九张 PNG | 一套方案的六个主要场景 + 三张同屏主题/尺寸对照 |
-| [render.mjs](ux-v0.2/assets/render.mjs) | 使用显式 Playwright 模块与 Chromium 路径渲染，只启动短时本地静态服务器；结束即关闭 |
-| [verification.json](ux-v0.2/assets/verification.json) | 作者渲染/交互检查，不冒充独立审阅或产品验收 |
-| [SHA256SUMS](ux-v0.2/assets/SHA256SUMS) | 视觉源与本次九张截图的身份校验 |
+| [render.mjs](assets/ux/render.mjs) | 使用显式 Playwright 模块与 Chromium 路径渲染，只启动短时本地静态服务器；结束即关闭 |
+| [verification.json](assets/ux/verification.json) | 作者渲染/交互检查，不冒充独立审阅或产品验收 |
+| [SHA256SUMS](assets/ux/SHA256SUMS) | 视觉源与本次九张截图的身份校验 |
 
 UX v0.2 原交付验证（本次文档合并未重跑浏览器）：九张图片实际渲染；八个示例路由 × 两主题无页面级横向溢出；四张主屏文字与归一化面板几何一致；列表/人工确认筛选、测试资产提示、主题切换保留当前审核输入、预检阻断与显式状态切换通过，浏览器脚本错误为 0。右侧检查器等阅读面允许独立纵向滚动。
 

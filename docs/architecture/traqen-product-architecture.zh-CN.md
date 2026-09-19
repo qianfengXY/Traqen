@@ -349,8 +349,8 @@ F001 最新设计 B 将状态拆为四个问题，这一表达应在整体产品
 | 依据 | 使用范围 |
 | --- | --- |
 | [产品愿景](../../README.zh-CN.md)与[系统需求](traqen-system-requirements.zh-CN.md) | 愿景定义高价值业务功能从意图到部署证据的完整追溯；系统需求承载当前交付主线及 R1–R9，不替代完整业务能力框架。 |
-| [F001 当前中文设计 B](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) | F001 产品行为与验收的当前权威；优先于未同步的旧 Spec、英文与 ADR 摘要。 |
-| [F002](../features/F002-feature-api-traceability.zh-CN.md)、[F003](../features/F003-traceability-graph.zh-CN.md)、[F004](../features/F004-change-impact-analysis.zh-CN.md) | 确定性事实、人工发布、执行与影响合同。 |
+| [F001 当前中文设计 B](../design/F001-workspace-source-truth/README.md) | F001 产品行为与验收的当前权威；优先于未同步的旧 Spec、英文与 ADR 摘要。 |
+| [F002](../features/F002-feature-api-traceability.zh-CN.md)、[F003](../design/F003-traceability-graph/README.md)、[F004](../features/F004-change-impact-analysis.zh-CN.md) | 确定性事实、人工发布、执行与影响合同。 |
 | [F006](../features/F006-workspace-capability-settings.zh-CN.md)及[能力解析图](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) | CLI 资产、显式授权、Apply 与 Run 固定边界。 |
 | [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md) | 统一本体、稳定身份与不同权威层级。 |
 | [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.zh-CN.md) | Workspace 聚合与执行隔离；F006 采用文内较新修订。 |
@@ -613,7 +613,7 @@ A2 中 C04 接收 C01/C02 已验证字节；C07 读取 C06 发布记录；C08 �
 
 ### 9.7 依据与表达校验
 
-图和文字依据 [产品愿景](../../README.zh-CN.md)、[本页既有业务能力](#1-业务架构业务功能的全生命周期质量追溯)、[F001 中文设计 B](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)、[F002](../features/F002-feature-api-traceability.zh-CN.md)、[F003](../features/F003-traceability-graph.zh-CN.md)、[F004](../features/F004-change-impact-analysis.zh-CN.md)、[F006](../features/F006-workspace-capability-settings.zh-CN.md)、[ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)及上述实现锚点。旧 Spec 中的来源措辞以 F001 当前 B 合同为准。
+图和文字依据 [产品愿景](../../README.zh-CN.md)、[本页既有业务能力](#1-业务架构业务功能的全生命周期质量追溯)、[F001 中文设计 B](../design/F001-workspace-source-truth/README.md)、[F002](../features/F002-feature-api-traceability.zh-CN.md)、[F003](../design/F003-traceability-graph/README.md)、[F004](../features/F004-change-impact-analysis.zh-CN.md)、[F006](../features/F006-workspace-capability-settings.zh-CN.md)、[ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.zh-CN.md)及上述实现锚点。旧 Spec 中的来源措辞以 F001 当前 B 合同为准。
 
 表达方法参考 [C4 软件结构](https://c4model.com/diagrams/container)、[组件展开](https://c4model.com/diagrams/component)、[部署视图](https://c4model.com/diagrams/deployment)和 [arc42 运行视图](https://docs.arc42.org/section-6/)。这些方法提供视图表达，Traqen 的节点与机制来自项目材料。
 

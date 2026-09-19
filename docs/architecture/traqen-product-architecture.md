@@ -351,8 +351,8 @@ Fact replay, distinct publication authority for both trees, recovery, and permis
 | Source | Scope |
 | --- | --- |
 | [Product vision](../../README.md) and [system requirements](traqen-system-requirements.md) | The vision defines complete intent-to-deployment traceability for high-value business capabilities. System requirements describe the current delivery focus and R1–R9, not the entire capability framework. |
-| [Current F001 Chinese design B](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) | Current authority for F001 behavior and acceptance; takes precedence over unsynchronized older specs, English documents, and ADR summaries. |
-| [F002](../features/F002-feature-api-traceability.md), [F003](../features/F003-traceability-graph.md), [F004](../features/F004-change-impact-analysis.md) | Deterministic facts, human publication, execution, and impact contracts. |
+| [Current F001 Chinese design B](../design/F001-workspace-source-truth/README.md) | Current authority for F001 behavior and acceptance; takes precedence over unsynchronized older specs, English documents, and ADR summaries. |
+| [F002](../features/F002-feature-api-traceability.md), [F003](../design/F003-traceability-graph/README.md), [F004](../features/F004-change-impact-analysis.md) | Deterministic facts, human publication, execution, and impact contracts. |
 | [F006](../features/F006-workspace-capability-settings.md) and [capability-resolution map](../diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) | CLI assets, explicit grants, and separate Apply/Run pinning boundaries. |
 | [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md) | Canonical ontology, stable identity, and distinct authority levels. |
 | [ADR-0002](../decisions/ADR-0002-workspace-aggregate-and-execution-isolation.md) | Workspace aggregation and execution isolation; use its later F006 amendment. |
@@ -619,7 +619,7 @@ Exposing these boundaries is part of the architecture description. This redraw d
 
 ### 9.7 Sources and expression checks
 
-Sources are the [product vision](../../README.md), [existing business capability map](#1-business-architecture-lifecycle-quality-traceability), [authoritative F001 Chinese design B](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md), [F002](../features/F002-feature-api-traceability.md), [F003](../features/F003-traceability-graph.md), [F004](../features/F004-change-impact-analysis.md), [F006](../features/F006-workspace-capability-settings.md), [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md), and implementation anchors above. F001 B overrides older source wording in Specs.
+Sources are the [product vision](../../README.md), [existing business capability map](#1-business-architecture-lifecycle-quality-traceability), [authoritative F001 Chinese design B](../design/F001-workspace-source-truth/README.md), [F002](../features/F002-feature-api-traceability.md), [F003](../design/F003-traceability-graph/README.md), [F004](../features/F004-change-impact-analysis.md), [F006](../features/F006-workspace-capability-settings.md), [ADR-0001](../decisions/ADR-0001-canonical-traceability-ontology.md), and implementation anchors above. F001 B overrides older source wording in Specs.
 
 Notation references: [C4 software structure](https://c4model.com/diagrams/container), [component decomposition](https://c4model.com/diagrams/component), [deployment](https://c4model.com/diagrams/deployment), and [arc42 runtime views](https://docs.arc42.org/section-6/). These explain representation; Traqen nodes/mechanisms come from project sources.
 
