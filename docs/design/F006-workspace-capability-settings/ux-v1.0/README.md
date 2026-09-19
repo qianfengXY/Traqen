@@ -51,19 +51,19 @@ source_design: ../README.md
 | S03 模型与 Skill | [模型 · 瓷白](assets/previews/03-models-light.png) / [石墨](assets/previews/03-models-dark.png)；[Skill · 瓷白](assets/previews/03-skills-light.png) / [石墨](assets/previews/03-skills-dark.png) | 两个独立页面，均为双主题 · 1440×900 |
 | S04 完整团队 | 上方四张主图；另有 [瓷白](assets/previews/18-team-laptop-bottom-light.png) / [石墨](assets/previews/19-team-laptop-bottom-dark.png) 的滚动到底部证据，1400×860 与 [1280×800](assets/previews/16-team-compact-light.png) 的 1×可读性检查，以及 [1920×1080](assets/previews/17-team-external-dark.png) 的 1.2×画布检查 | 双主题 · 一个逻辑画布、滚动与 4 个导出视口 |
 | S05 能力管理 | [四分组与范围](assets/previews/08-capabilities-light.png)；[Child 1 详情内可撤销的 legacy-lint 历史授权](assets/previews/08-legacy-authorization-light.png) | 瓷白 · 1440×900 |
-| S06 草稿冲突 | [团队详情内的恢复状态](assets/previews/09-conflict-light.png) / [石墨对照](assets/previews/10-conflict-dark.png)；技术写入证据仅在壳外 fixture 日志与验证记录中 | 双主题 · 1440×900 |
+| S06 草稿冲突 | [团队详情内的恢复状态](assets/previews/09-conflict-light.png) / [石墨对照](assets/previews/10-conflict-dark.png)；两主题都让选中 Agent 与右侧恢复详情一致，技术写入证据仅在壳外 fixture 日志与验证记录中 | 双主题 · 1440×900 |
 | S07 生命周期 | [已打开的名称确认弹窗 · 瓷白](assets/previews/11-lifecycle-confirm-light.png) / [石墨](assets/previews/12-lifecycle-confirm-dark.png) | 双主题 · 1440×900 |
 | S08 MCP 暂停 | [瓷白：只读历史项与暂停边界](assets/previews/13-mcp-light.png) / [石墨](assets/previews/13-mcp-dark.png) | 双主题 · 1440×900 |
 | S09 生效版本 | [草稿、Active、Run 版本分离](assets/previews/14-versions-light.png) | 瓷白 · 1440×900 |
 | S10 F003 配置确认 | [明确未接线的确认示意](assets/previews/15-f003-dark.png) | 石墨 · 1440×900 |
 
-错误表单（S02 与 S03 两个独立页面）、草稿恢复（S06）、**已打开的**命名确认弹窗（S07）与 MCP 暂停（S08）均有双主题浏览器截图。S06 的用户工作面只表达保留、更改与恢复选择；模拟请求版本和写入序列只留在壳外 fixture 证据中。
+错误表单（S02 与 S03 两个独立页面）、草稿恢复（S06）、**已打开的**命名确认弹窗（S07）与 MCP 暂停（S08）均有双主题浏览器截图。S06 的用户工作面只表达保留、更改与恢复选择，选中名单项与恢复详情同源；模拟请求版本和写入序列只留在壳外 fixture 证据中。
 
 ## 可操作范围与验证
 
 `prototype.html` 的场景选择器、主题切换、Agent 选择、Child 2 模型编辑、409 恢复、生命周期确认/取消和 F003 提示均可操作。调试控制显式标注“设计演示数据”，位于产品壳外。
 
-`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：25 张截图、0 个浏览器页面错误，以及以下 14 项通过项：
+`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：25 张截图、0 个浏览器页面错误，以及以下 15 项通过项：
 
 1. S01–S10 渲染时都有一个页面 h1，页面与控件没有横向溢出。
 2. S04 使用一个 1440×900 逻辑画布：1440×900 为 1×，1920×1080 为 1.2×且左右余量 96px，2560×1440 为 1.6×且左右余量 128px；1400×860 与 1280×800 的普通窗口保持 1×，不是第二套桌面设计。
@@ -76,9 +76,10 @@ source_design: ../README.md
 9. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
 10. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
 11. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`，随后清除阻断横幅并回到可编辑、Apply 可用的团队页；采用服务器草稿会先明示丢弃 M3、清除冲突且不增加业务写入。
-12. 生效版本面为只读，没有 Apply；从正常团队入口进入并返回后，保留 Child 2 选择和滚动位置、团队页仍可编辑，且全程零业务写入。
-13. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
-14. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
+12. 未恢复的冲突在两主题中都令选中 Agent 与恢复详情一致；经生效版本、能力管理、直接回团队或刷新后仍保留 M3 与恢复入口，没有可执行的 Apply、自动写入或 activation；只有显式恢复才清除冲突。
+13. 生效版本面为只读，没有 Apply；从正常团队入口进入并返回后，保留 Child 2 选择和滚动位置、团队页仍可编辑，且全程零业务写入。
+14. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
+15. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
 
 复现（替换为本机 Chrome 绝对路径）：
 

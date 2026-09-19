@@ -2,8 +2,8 @@
   "version": "1.0",
   "kind": "author-fixture-render-and-interaction-validation",
   "fixtureOnly": true,
-  "recordedAt": "2026-09-19T05:23:57.681Z",
-  "sourceHTMLSha256": "7c676330c9b31d6b1da9cee2d69eec4bf4875ea65f22f0b9ed0cc825852a391e",
+  "recordedAt": "2026-09-19T05:57:19.166Z",
+  "sourceHTMLSha256": "3dd2182219c27a58bd626f0dcf75ae8010952bd96c619ad56c9458c3fb0e153a",
   "screens": [
     {
       "file": "previews/01-empty-light.png",
@@ -258,48 +258,6 @@
       "sha256": "799349788d9abc6ece52e02c06b2af0696676e20b3b8ea0d7ee8a0e0a4024634"
     },
     {
-      "file": "previews/09-conflict-light.png",
-      "scene": "conflict",
-      "theme": "light",
-      "width": 1440,
-      "height": 900,
-      "title": "Agent 团队",
-      "logicalCanvas": {
-        "width": 1440,
-        "height": 900
-      },
-      "scale": 1,
-      "layoutMode": "desktop",
-      "margin": {
-        "x": 0,
-        "y": 0
-      },
-      "browserZoom": 1,
-      "deviceScaleFactor": 1,
-      "sha256": "fdba2be193189812971469f40fe4d5a783d0985693ecb2c0c4ea641707405ef3"
-    },
-    {
-      "file": "previews/10-conflict-dark.png",
-      "scene": "conflict",
-      "theme": "dark",
-      "width": 1440,
-      "height": 900,
-      "title": "Agent 团队",
-      "logicalCanvas": {
-        "width": 1440,
-        "height": 900
-      },
-      "scale": 1,
-      "layoutMode": "desktop",
-      "margin": {
-        "x": 0,
-        "y": 0
-      },
-      "browserZoom": 1,
-      "deviceScaleFactor": 1,
-      "sha256": "9b5be12d37f339b34977a99bf95030e2e602701d821085ef4af3c16ee569a64f"
-    },
-    {
       "file": "previews/13-mcp-dark.png",
       "scene": "mcp",
       "theme": "dark",
@@ -489,6 +447,48 @@
       "sha256": "3119b39dd972fa68752169fca231a3cdef025aa67a57c4c859bc6b415fd2a767"
     },
     {
+      "file": "previews/09-conflict-light.png",
+      "scene": "conflict",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "29cad67f375c9ee6a2cec68842ceeeba40d7c23b2b4b11cc395a262e3e0879aa"
+    },
+    {
+      "file": "previews/10-conflict-dark.png",
+      "scene": "conflict",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "d448098c950cab52beff6263179ca3a0fe171d4c18888fc6995d386943cb2256"
+    },
+    {
       "file": "previews/11-lifecycle-confirm-light.png",
       "scene": "lifecycle",
       "theme": "light",
@@ -542,6 +542,7 @@
     "The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; the documented 320px logical team list and explicit Workspace/forward-analysis Apply scope remain visible beside the action, while unavailable legacy authorization is isolated to its own actionable Child 1 state.",
     "Theme toggle and refresh preserve the selected Child; theme presentation records zero business writes.",
     "Changing Child 2 creates one fixture draft write and leaves the Main and another-Workspace sentinels unchanged.",
+    "Both porcelain and graphite S06 snapshots keep the selected Agent and matching recovery detail; unresolved-conflict navigation preserves local M3 plus recovery entry through active-version, capability, team and refresh paths, exposes no actionable Apply, and records zero automatic write or activation until an explicit recovery.",
     "Fixture M2 409 → M3 local edit → retry produces exactly M2(409), M2(200), M3(200), then clears the blocking banner into an editable, enabled-Apply team view; explicitly adopting the server draft discards M3 only after disclosure, clears the conflict, and adds zero business writes.",
     "The active-version view is read-only with no Apply action; entering it from the normal team action and returning preserves Child 2 selection and team scroll position, keeps the editor available, and records zero business writes.",
     "Lifecycle cancel closes the named dialog, restores focus to its invoker, and records zero fixture business writes.",

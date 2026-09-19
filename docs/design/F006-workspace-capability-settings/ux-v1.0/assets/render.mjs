@@ -215,6 +215,16 @@ try {
     assert.equal(await cdp.evaluate("Boolean(document.querySelector('[data-testid=legacy-authorization]'))"), true);
     await capture("08-legacy-authorization-light", "team", "light", 1440, 900);
   }
+  async function snapshotConflict(name, theme) {
+    await go("conflict", theme, 1440, 900);
+    const identity = await cdp.evaluate(`(() => ({
+      selected: window.__f006UX.state.selected,
+      selectedCard: document.querySelector('.agent-card.selected')?.dataset.agent,
+      detail: document.querySelector('.detail')?.getAttribute('aria-label'),
+    }))()`);
+    assert.deepEqual(identity, { selected: "main", selectedCard: "main", detail: "Main 草稿恢复" }, `${name}: conflict detail must describe its selected Agent`);
+    await capture(name, "conflict", theme, 1440, 900);
+  }
 
   const shots = [
     ["01-empty-light", "empty", "light", 1440, 900],
@@ -229,8 +239,6 @@ try {
     ["06-team-display-light", "team", "light", 2560, 1440],
     ["07-team-display-dark", "team", "dark", 2560, 1440],
     ["08-capabilities-light", "capabilities", "light", 1440, 900],
-    ["09-conflict-light", "conflict", "light", 1440, 900],
-    ["10-conflict-dark", "conflict", "dark", 1440, 900],
     ["13-mcp-dark", "mcp", "dark", 1440, 900],
     ["13-mcp-light", "mcp", "light", 1440, 900],
     ["14-versions-light", "versions", "light", 1440, 900],
@@ -242,6 +250,8 @@ try {
   await snapshotTeamBottom("18-team-laptop-bottom-light", "light");
   await snapshotTeamBottom("19-team-laptop-bottom-dark", "dark");
   await snapshotLegacyAuthorization();
+  await snapshotConflict("09-conflict-light", "light");
+  await snapshotConflict("10-conflict-dark", "dark");
   await snapshotLifecycleDialog("11-lifecycle-confirm-light", "light");
   await snapshotLifecycleDialog("12-lifecycle-confirm-dark", "dark");
   report.checks.push("All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.");
@@ -453,6 +463,49 @@ try {
   assert.equal(conflictInitial.writes.length, 1);
   assert.match(conflictInitial.writes[0].detail, /M2.*409/);
   assert.equal(conflictInitial.apply, true);
+  const initialConflictIdentity = await cdp.evaluate(`(() => ({
+    selected: window.__f006UX.state.selected,
+    selectedCard: document.querySelector('.agent-card.selected')?.dataset.agent,
+    detail: document.querySelector('.detail')?.getAttribute('aria-label'),
+  }))()`);
+  assert.deepEqual(initialConflictIdentity, { selected: "main", selectedCard: "main", detail: "Main 草稿恢复" }, "conflict selection and detail must describe the same Agent");
+  await cdp.evaluate("document.querySelector('[data-agent=child-2]').click()");
+  await settle();
+  const switchedConflictIdentity = await cdp.evaluate(`(() => ({
+    selected: window.__f006UX.state.selected,
+    selectedCard: document.querySelector('.agent-card.selected')?.dataset.agent,
+    detail: document.querySelector('.detail')?.getAttribute('aria-label'),
+  }))()`);
+  assert.deepEqual(switchedConflictIdentity, { selected: "child-2", selectedCard: "child-2", detail: "Child 2 草稿恢复" }, "switching an Agent during conflict must switch its detail too");
+  await cdp.evaluate("document.querySelector('[data-agent=main]').click()");
+  await settle();
+  assert.equal(await cdp.evaluate("document.querySelector('.detail')?.getAttribute('aria-label')"), "Main 草稿恢复", "switching back during conflict must restore the Main detail");
+
+  await cdp.evaluate("const input=document.querySelector('#m3-note'); input.value='导航期间仍需保留'; input.dispatchEvent(new Event('input',{bubbles:true}))");
+  const writesBeforeConflictNavigation = await cdp.evaluate("window.__f006UX.getWriteCount()");
+  await cdp.evaluate("document.querySelector('[data-testid=conflict-versions-entry]').click()");
+  await settle();
+  const conflictVersions = await cdp.evaluate("({scene:window.__f006UX.state.scene, conflict:window.__f006UX.state.conflict, m3:window.__f006UX.state.m3, conflictNotice:Boolean(document.querySelector('[data-testid=versions-conflict-notice]')), writes:window.__f006UX.getWriteCount(), activation:window.__f006UX.getBusinessLog().filter(event=>event.type==='activation').length})");
+  assert.deepEqual(conflictVersions, { scene: "versions", conflict: true, m3: "导航期间仍需保留", conflictNotice: true, writes: writesBeforeConflictNavigation, activation: 0 }, "read-only version navigation must preserve and visibly disclose an unresolved conflict without writes or activation");
+  await cdp.evaluate("document.querySelector('[data-testid=versions-return]').click()");
+  await settle();
+  const returnedUnresolvedConflict = await cdp.evaluate("({scene:window.__f006UX.state.scene, conflict:window.__f006UX.state.conflict, m3:window.__f006UX.state.m3, recoveryEntry:Boolean(document.querySelector('[data-testid=conflict-retry]')), applyDisabled:document.querySelector('[data-testid=conflict-apply]')?.disabled, writes:window.__f006UX.getWriteCount()})");
+  assert.deepEqual(returnedUnresolvedConflict, { scene: "team", conflict: true, m3: "导航期间仍需保留", recoveryEntry: true, applyDisabled: true, writes: writesBeforeConflictNavigation }, "returning from active versions must remain in the unresolved conflict state");
+  await cdp.evaluate("document.querySelector('[data-scene=capabilities]').click()");
+  await settle();
+  const unresolvedCapabilities = await cdp.evaluate("({scene:window.__f006UX.state.scene, conflict:window.__f006UX.state.conflict, m3:window.__f006UX.state.m3, actionableApply:[...document.querySelectorAll('button')].filter(button=>button.textContent.includes('应用配置')&&!button.disabled).length, writes:window.__f006UX.getWriteCount()})");
+  assert.deepEqual(unresolvedCapabilities, { scene: "capabilities", conflict: true, m3: "导航期间仍需保留", actionableApply: 0, writes: writesBeforeConflictNavigation }, "capabilities navigation must not expose an actionable Apply while conflict remains unresolved");
+  await cdp.evaluate("document.querySelector('[data-scene=team]').click()");
+  await settle();
+  await cdp.call("Page.reload", { ignoreCache: true });
+  await settle();
+  const refreshedUnresolvedConflict = await cdp.evaluate("({scene:window.__f006UX.state.scene, conflict:window.__f006UX.state.conflict, m3:window.__f006UX.state.m3, recoveryEntry:Boolean(document.querySelector('[data-testid=conflict-retry]')), writes:window.__f006UX.getWriteCount()})");
+  assert.deepEqual(refreshedUnresolvedConflict, { scene: "team", conflict: true, m3: "导航期间仍需保留", recoveryEntry: true, writes: 0 }, "refresh must retain unresolved conflict content and its recovery entry without a write");
+  await cdp.evaluate("document.querySelector('[data-testid=conflict-apply]').click()");
+  assert.equal(await cdp.evaluate("window.__f006UX.getBusinessLog().filter(event=>event.type==='activation').length"), 0, "unresolved conflict Apply must produce zero activation");
+  report.checks.push("Both porcelain and graphite S06 snapshots keep the selected Agent and matching recovery detail; unresolved-conflict navigation preserves local M3 plus recovery entry through active-version, capability, team and refresh paths, exposes no actionable Apply, and records zero automatic write or activation until an explicit recovery.");
+
+  await go("conflict", "light", 1440, 900);
   await cdp.evaluate("const input=document.querySelector('#m3-note'); input.value='M3 后续说明'; input.dispatchEvent(new Event('input',{bubbles:true}))");
   assert.equal(await cdp.evaluate("window.__f006UX.getWriteCount()"), 1);
   await cdp.evaluate("document.querySelector('[data-testid=conflict-retry]').click()");
