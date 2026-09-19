@@ -130,7 +130,9 @@ MCP：暂停、历史只读，不进入本期执行路径。
 
 ### 4.2 模型与 Skill
 
-![CLI 模型与 Skill 的代表性状态](ux-v1.0/assets/previews/03-models-dark.png)
+![CLI 模型：独立的全局页](ux-v1.0/assets/previews/03-models-dark.png)
+
+![Skill：独立的全局页](ux-v1.0/assets/previews/03-skills-dark.png)
 
 模型与 Skill 在产品导航中是不同页面；对照图或场景可以并列解释，不能因此把产品目录合成一个总开关。
 
@@ -159,6 +161,8 @@ Skill 页主动作“添加 Skill”。运行映射只能选择服务端实际�
 ### 5.2 能力管理
 
 ![工作区能力四组](ux-v1.0/assets/previews/08-capabilities-light.png)
+
+![Child 1 详情中的可撤销失效授权](ux-v1.0/assets/previews/08-legacy-authorization-light.png)
 
 四组固定为“继承且可用”“本 Workspace 已禁用”“全局不可用”“Workspace 本地”。组名与数量可直接解释其范围，不用同色开关模糊来源。
 
@@ -205,9 +209,9 @@ Skill 页主动作“添加 Skill”。运行映射只能选择服务端实际�
 
 ## 7. 停用、删除及影响：先对象，后后果，最后确认
 
-![影响确认：瓷白](ux-v1.0/assets/previews/11-lifecycle-light.png)
+![影响确认：瓷白，已打开名称确认](ux-v1.0/assets/previews/11-lifecycle-confirm-light.png)
 
-![影响确认：石墨](ux-v1.0/assets/previews/12-lifecycle-dark.png)
+![影响确认：石墨，已打开名称确认](ux-v1.0/assets/previews/12-lifecycle-confirm-dark.png)
 
 从对象行进入，展示要操作的能力名称、当前状态、可见范围内的 Workspace/Agent 影响、历史保留说明，再输入**能力名称**确认。影响读取失败不能用空列表代替；影响变化需重新确认。取消不产生业务写入，焦点回到触发器。
 
@@ -271,7 +275,8 @@ F003 展示用户即将使用的精确生效配置、Main/Child 模型、能力�
 - [F005 V2.1 完整总纲与渲染样稿](../../design-reviews/F005/README.md)：页面骨架、组件、状态、密度、桌面与双主题参照。
 - [F006 功能与 UX V1.0](README.md)：三层范围、团队、CLI-only、自动保存/Apply、恢复、MCP暂停和F003边界。
 - [2026-08-28 功能收敛](../../../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.zh-CN.md)：既定功能逻辑，不被新画面改变。
-- 图稿由既有独立视觉子任务提供。发布审阅包前须引入修正后的冻结资产，并逐一核对本文的图片、状态与文件清单；该核对未完成前，本稿不宣称图文已闭合。整合过程不修改作者工作现场。
+- 冻结图稿源：`ux-v1.0/assets/prototype.html`（SHA-256 `f6ad476b36e721d6d0db6b89630b4a383f1018e610604d32b9a9bef71ec8f4e7`）、`render.mjs`、[23 张场景图与清单](ux-v1.0/assets/SHA256SUMS)、[浏览器验证记录](ux-v1.0/assets/verification.json)。当前记录来自隔离 HeadlessChrome 153：23 张图、12 条检查、0 个页面错误；清单共 24 条（原型源加 23 张图）。
+- 图文对账完成的范围：本稿引用的主图、全局模型/Skill、空态、能力与 Child 1 失效授权、团队内冲突、已打开的双主题名称确认、MCP 暂停、只读版本和 F003 示意都来自上述冻结原型。未覆盖项仍明确为**未实测**：真实产品 API/CLI/OAuth/MCP、服务端持久化与权限、F003 启动接线、完整读屏/多浏览器/中文输入法/所有缩放组合，以及 WCAG 各状态的完整认证。
 
 | 版本 | 说明 |
 |---|---|
