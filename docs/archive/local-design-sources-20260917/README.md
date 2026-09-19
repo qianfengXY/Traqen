@@ -13,8 +13,7 @@ superseded_by: ../../design/README.md
 
 ## 仍供阅读与探索的产物
 
-- [F003 UX v0.1 图文稿](../../../feature-discussions/2026-09-09-F003-traceability-graph-design/ux-v0.1.zh-CN.md)：保留八张页面图，只修正返回已发布功能设计的链接。
-- [F003 完整交互原型](../../../prototypes/f003-ux-v0.1/README.md)：完整保留 `1b41c61` 中的 22 个文件，包括源码、验证脚本和十二张截图；仍为未批准的探索稿。
+- [F003 统一设计文档](../../design/F003-traceability-graph/README.md)：功能与 UX 效果图在同一页。依 2026-09-19 的清理要求，旧 UX v0.1 独立图文稿已删除，可从 Git 历史回查；旧截图与交互原型已按追加授权删除；原 22 文件原型可从 Git 提交 `1b41c61` 回查。
 - [F006 功能设计审阅稿](../../../feature-discussions/2026-09-17-F006-function-design-review/README.zh-CN.md)：原文保留用户请求的审阅稿；MCP 暂停，未接通的 F003 启动确认仍未完成。
 
 ## 历史材料

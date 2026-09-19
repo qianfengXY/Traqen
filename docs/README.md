@@ -19,19 +19,14 @@
 
 | ID | 活动 Feature 文档 | 支撑设计 |
 |---|---|---|
-| F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | [已确认的 Design B](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) |
+| F001 | [工作空间与源码真相](features/F001-legacy-system-understanding.zh-CN.md) · [English](features/F001-legacy-system-understanding.md) | [已确认的 Design B](design/F001-workspace-source-truth/README.md) |
 | F002 | [当前设计入口与历史 Spec](features/F002-feature-api-traceability.zh-CN.md) · [English](features/F002-feature-api-traceability.md) | [确定性事实层：功能设计 V1.0](design/F002-deterministic-facts/README.md) |
-| F003 | [当前设计入口与历史 Spec](features/F003-traceability-graph.zh-CN.md) · [English](features/F003-traceability-graph.md) | [功能设计 V2.0（发布版，含八组功能逐项说明）](design/F003-traceability-graph/README.md) · [English（可选参考）](design/F003-traceability-graph/README.en.md) |
+| F003 | [功能与 UX 统一设计文档](design/F003-traceability-graph/README.md) | 已确认功能 V2.0 + 待讨论 UX v0.2；旧 Spec 和独立 UX 入口已删除。 |
 | F004 | [变更影响分析](features/F004-change-impact-analysis.zh-CN.md) · [English](features/F004-change-impact-analysis.md) | 产品架构 |
+| F005 | [整体布局与导航设计规范 V1.0](design/F005-layout-navigation/README.md) | 六入口、统一缩放、双主题、前端组件与体验验收；历史效果图的适用边界见正文 |
 | F006 | [Workspace 能力配置](features/F006-workspace-capability-settings.zh-CN.md) · [English](features/F006-workspace-capability-settings.md) | [功能与 UX 设计 V1.0（桌面双主题）](design/F006-workspace-capability-settings/README.md) |
 
-F001–F004 是当前存量系统理解的设计基线。F006 保留其独立实施轨道。历史工作产物可因兼容性或审计目的而保留为未链接文档，但不得与本表、路线图或活动架构文档竞争真相源。
-
-## 待评审设计
-
-- [F005 · 整体体验与前端设计总纲（桌面布局、双主题效果图与组件规范）](design-reviews/F005/README.md)
-
-此入口供阅读完整提案；方案仍待评审，不改变上方活动设计基线。
+F001–F004 是当前存量系统理解的设计基线。F005 规定整体页面体验；正式文档不等于全部页面已实现。F006 保留其独立实施轨道。历史工作产物可因兼容性或审计目的而保留，但不得与本表、路线图或活动架构文档竞争真相源。
 
 ## 可视化设计
 

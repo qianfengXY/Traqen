@@ -3,8 +3,9 @@ feature_ids: [F005]
 topics: [experience-design, navigation, design-system, components, graph, accessibility]
 doc_kind: design-proposal
 created: 2026-09-15
-updated: 2026-09-17
-status: review-proposal-not-adopted
+updated: 2026-09-19
+status: superseded
+superseded_by: ../../design/F005-layout-navigation/README.md
 version: 2.1
 owner: 砚砚/gpt-6-astra
 source_thread: thread_mtp1pj7vy5aeq7h3
@@ -16,6 +17,8 @@ revision_request: 0001789614562911-000019-617589c4
 > Language: **English reference** · [简体中文](README.md)
 
 # F005 · Traqen Experience and Frontend Design Charter
+
+> **Historical proposal, superseded.** The current authority is [F005 Layout and Navigation Design V1.0 (normative Chinese)](../../design/F005-layout-navigation/README.md). The V2.1 text, images and verification below remain historical. Separate sidebar sizes and extra content on larger displays are no longer current rules; images 18–21 do not prove uniform scaling. Mobile boards, Pencil and offline prototypes are also historical. Publication does not retroactively approve those artifacts or declare full product implementation.
 
 > V2.1 desktop-scope revision · 2026-09-17. Fixture design proposal, not an adopted Feature Spec or implemented product.
 
@@ -510,7 +513,7 @@ This revision does not modify canonical F005 specifications, architecture, ADRs,
 
 Product sources were read on 2026-09-15; newer accepted material takes precedence over old overview wording:
 
-- [F001 source-truth discussion](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md).
+- [F001 source-truth discussion](../../design/F001-workspace-source-truth/README.md).
 - [F002 published functional design with the reviewed V4 panorama](../../design/F002-deterministic-facts/README.md).
 - [F003 published V2 functional panorama](../../design/F003-traceability-graph/README.md).
 - [F006 workspace capability settings](../../features/F006-workspace-capability-settings.md).

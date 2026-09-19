@@ -162,7 +162,7 @@ F001 is the source-evidence boundary for F002–F004. F006 supplies related Work
 ## Decision record
 
 - [2026-08-30 F001 source-truth convergence (historical)](../../feature-discussions/2026-08-30-F001-workspace-source-truth/README.md)
-- [2026-08-30 F001 approved Workspace & Source Truth design](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md)
+- [2026-08-30 F001 approved Workspace & Source Truth design](../design/F001-workspace-source-truth/README.md)
 - [ADR-0003: Source Truth boundary and downstream admission](../decisions/ADR-0003-source-truth-boundary.md)
 
 **Next:** implementation planning may turn this approved contract into ownership, storage, UI, and test plans. It must preserve source-component identity, immutable incremental versions, explicit gaps, and F002-only admission.
