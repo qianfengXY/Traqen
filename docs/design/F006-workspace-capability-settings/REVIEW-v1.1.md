@@ -288,7 +288,7 @@ F003 展示用户即将使用的精确生效配置、Main/Child 模型、能力�
 - [旧F005 V2.1](../../design-reviews/F005/README.md)与[F006 V1.0](README.md)中沿用的“大屏额外内容、两尺寸不整体缩放”只保留为历史，不作为本审阅稿的设计依据。后续权威入口同步待本稿审查，不据此改写其他Feature。
 - [F006 功能与 UX V1.0](README.md)：三层范围、团队、CLI-only、自动保存/Apply、恢复、MCP暂停和F003边界。
 - [2026-08-28 功能收敛](../../../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.zh-CN.md)：既定功能逻辑，不被新画面改变。
-- 冻结图稿源：`ux-v1.0/assets/prototype.html`（SHA-256 `d43c86c06485ab0f6e303a4b3138a9abbc12614072580f3478b9a4ab956e2283`）、`render.mjs`、[23 张场景图与清单](ux-v1.0/assets/SHA256SUMS)、[浏览器验证记录](ux-v1.0/assets/verification.json)。当前记录来自隔离 HeadlessChrome 153：23 张图、13 条检查、0 个页面错误；清单共 24 条（原型源加 23 张图）。检查记录包含 1440×900 母版、1920×1080 的 1.2×/96px 留白和 2560×1440 的 1.6×/128px 留白，以及归一化几何、真实点击与焦点检查。
+- 冻结图稿源：`ux-v1.0/assets/prototype.html`（SHA-256 `d43c86c06485ab0f6e303a4b3138a9abbc12614072580f3478b9a4ab956e2283`）、`render.mjs`、[23 张场景图与清单](ux-v1.0/assets/SHA256SUMS)、[浏览器验证记录](ux-v1.0/assets/verification.json)。当前记录来自隔离 HeadlessChrome 153：23 张图、13 条检查、0 个页面错误；清单共 24 条（原型源加 23 张图）。检查记录包含 1440×900 母版、1920×1080 的 1.2×/96px 留白、2560×1440 的 1.6×/128px 留白，以及 1400×860/1280×800 的 1×下限、可达滚动、归一化几何、真实点击与焦点检查。
 - 图文对账完成的范围：本稿引用的主图、全局模型/Skill、空态、能力与 Child 1 失效授权、团队内冲突、已打开的双主题名称确认、MCP 暂停、只读版本和 F003 示意都来自上述冻结原型。未覆盖项仍明确为**未实测**：真实产品 API/CLI/OAuth/MCP、服务端持久化与权限、F003 启动接线、完整读屏/多浏览器/中文输入法/所有缩放组合，以及 WCAG 各状态的完整认证。
 
 | 版本 | 说明 |

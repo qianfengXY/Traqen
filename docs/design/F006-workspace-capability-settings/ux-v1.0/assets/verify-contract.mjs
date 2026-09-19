@@ -20,6 +20,8 @@ assert.match(html, /window\.__f006UX/, "fixture state must be inspectable by the
 assert.match(html, /零业务写入/, "fixture must label simulated-write evidence honestly");
 assert.match(html, /const agentConfigs/, "agent card Skill counts must have one source of truth");
 assert.match(html, /function applyDesktopScale/, "desktop fixture must calculate one logical-canvas scale");
+assert.match(html, /innerWidth >= 1440 && innerHeight >= 900/, "smaller ordinary windows must enter accessibility layout");
+assert.match(html, /const scale = isDesktop \? Math\.min\(innerWidth \/ 1440, innerHeight \/ 900\) : 1/, "smaller ordinary windows must retain the 1× scale floor");
 assert.doesNotMatch(html, /wide-only/, "wide screens must not reveal extra fixture-only content");
 assert.doesNotMatch(html, /可以应用/, "agent cards must not imply a local Apply action");
 console.log(JSON.stringify({ result: "PASS", contract: "F006-UX-v1.0", scenes: 11 }));

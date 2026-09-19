@@ -2,7 +2,7 @@
   "version": "1.0",
   "kind": "author-fixture-render-and-interaction-validation",
   "fixtureOnly": true,
-  "recordedAt": "2026-09-19T04:46:46.516Z",
+  "recordedAt": "2026-09-19T05:05:25.339Z",
   "sourceHTMLSha256": "d43c86c06485ab0f6e303a4b3138a9abbc12614072580f3478b9a4ab956e2283",
   "screens": [
     {
@@ -491,9 +491,9 @@
   ],
   "checks": [
     "All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.",
-    "S04 uses one 1440×900 logical canvas: 1440×900 renders at 1×, 1920×1080 at 1.2× with 96px side margins, and 2560×1440 at 1.6× with 128px side margins; 1280×800 is an accessibility-space check rather than a second desktop design.",
+    "S04 uses one 1440×900 logical canvas: 1440×900 renders at 1×, 1920×1080 at 1.2× with 96px side margins, and 2560×1440 at 1.6× with 128px side margins; ordinary 1400×860 and 1280×800 windows retain the 1× floor as accessibility-space checks rather than a second desktop design.",
     "F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.",
-    "The 1440×900 logical canvas normalizes identically at 1920×1080 (1.2×) and 2560×1440 (1.6×), including content, relative layout, pointer hit targets, focus, navigation and dialog scale; 1280×800 retains readable 13px controls as an accessibility-space check.",
+    "The 1440×900 logical canvas normalizes identically at 1920×1080 (1.2×) and 2560×1440 (1.6×), including content, relative layout, pointer hit targets, focus, navigation and dialog scale; ordinary 1400×860 and 1280×800 windows retain the 1× floor, readable 13px controls, available primary action, no horizontal clipping, and reachable document scrolling.",
     "Accounts, models, Skill, and paused MCP use one in-shell global secondary navigation; models and Skill are independently addressable product pages.",
     "The empty state remains in the Agent-team configuration surface with real Main and Child 1 placeholders, zero implicit model or Skill grants, and no available Apply action.",
     "The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; unavailable legacy authorization is isolated to its own actionable Child 1 state.",
@@ -503,6 +503,66 @@
     "The active-version view is read-only with no Apply action; its Child 2 baseline and the later model/Skill draft delta are explicitly paired with a return-to-team editing path.",
     "Lifecycle cancel closes the named dialog, restores focus to its invoker, and records zero fixture business writes.",
     "Native buttons, inputs, selects, and dialogs expose keyboard focus; keyboard Escape closes the impact dialog without a focus trap."
+  ],
+  "smallWindowChecks": [
+    {
+      "viewport": {
+        "width": 1400,
+        "height": 860
+      },
+      "layout": {
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "viewport": {
+          "width": 1400,
+          "height": 860
+        },
+        "scale": 1,
+        "mode": "accessibility",
+        "margin": {
+          "x": 0,
+          "y": 0
+        },
+        "browserZoom": 1,
+        "deviceScaleFactor": 1
+      },
+      "font": "13px",
+      "applyDisabled": false,
+      "pageOverflow": false,
+      "offscreenControls": 0,
+      "documentScrollHeight": 1062
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": {
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "viewport": {
+          "width": 1280,
+          "height": 800
+        },
+        "scale": 1,
+        "mode": "accessibility",
+        "margin": {
+          "x": 0,
+          "y": 0
+        },
+        "browserZoom": 1,
+        "deviceScaleFactor": 1
+      },
+      "font": "13px",
+      "applyDisabled": false,
+      "pageOverflow": false,
+      "offscreenControls": 0,
+      "documentScrollHeight": 1062
+    }
   ],
   "pageErrors": [],
   "limitations": [
