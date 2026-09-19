@@ -19,9 +19,9 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 
 | ID | Active Feature document | Supporting design |
 |---|---|---|
-| F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | [approved Design B](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md) |
+| F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | [approved Design B](design/F001-workspace-source-truth/README.md) |
 | F002 | [Current design entry and historical spec](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | [Deterministic Facts: Functional Design V1.0 (normative Chinese)](design/F002-deterministic-facts/README.md) |
-| F003 | [Current design entry and historical spec](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | [Functional Panorama V2.0](design/F003-traceability-graph/README.en.md) · [中文（规范文本）](design/F003-traceability-graph/README.md) |
+| F003 | [Canonical Chinese functional and UX design](design/F003-traceability-graph/README.md) | Approved functional V2.0 plus exploratory UX v0.2; superseded spec and separate UX entry points removed. |
 | F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
 | F005 | [Layout and Navigation Design V1.0 (normative Chinese)](design/F005-layout-navigation/README.md) | Six destinations, uniform scaling, two themes, frontend components and UX acceptance; historical visual limits are stated in the document |
 | F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |

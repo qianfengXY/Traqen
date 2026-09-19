@@ -199,7 +199,7 @@ F001 是 F002–F004 的来源证据边界。F006 提供相关 Workspace 能力�
 ## 决策记录
 
 - [2026-08-30 F001 Source Truth 收敛（历史）](../../feature-discussions/2026-08-30-F001-workspace-source-truth/README.zh-CN.md)
-- [2026-08-30 F001 已确认的 Workspace & Source Truth 设计](../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)
+- [2026-08-30 F001 已确认的 Workspace & Source Truth 设计](../design/F001-workspace-source-truth/README.md)
 - [ADR-0003：Source Truth 边界与下游准入](../decisions/ADR-0003-source-truth-boundary.zh-CN.md)
 
 **下一步：** 审阅本轮中文设计文档。现有 HTML/PNG 未随本轮修改；新增生命周期约定不冒充原型已有能力。代码、迁移、数据卷创建和运行部署仍需单独授权，所有实现验收保持未完成。

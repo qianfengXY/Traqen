@@ -513,7 +513,7 @@ This revision does not modify canonical F005 specifications, architecture, ADRs,
 
 Product sources were read on 2026-09-15; newer accepted material takes precedence over old overview wording:
 
-- [F001 source-truth discussion](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.md).
+- [F001 source-truth discussion](../../design/F001-workspace-source-truth/README.md).
 - [F002 published functional design with the reviewed V4 panorama](../../design/F002-deterministic-facts/README.md).
 - [F003 published V2 functional panorama](../../design/F003-traceability-graph/README.md).
 - [F006 workspace capability settings](../../features/F006-workspace-capability-settings.md).

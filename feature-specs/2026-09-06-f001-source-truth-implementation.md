@@ -9,7 +9,7 @@ status: in-progress
 
 # F001 来源快照工作台实施计划
 
-**Feature:** F001 — [当前中文设计（文件 B）](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md)。旧文件 A 不作实现依据。
+**Feature:** F001 — [当前中文设计（文件 B）](../docs/design/F001-workspace-source-truth/README.md)。旧文件 A 不作实现依据。
 
 **Goal:** 架构师在一个 Workspace 的八站工作台中，将 Git 固定提交、完整上传目录或二者建立为长期保存、可恢复、可重放的冻结来源包与 Receipt；后续手动新版本只传缺失变化字节。
 

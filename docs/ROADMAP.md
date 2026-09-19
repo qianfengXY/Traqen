@@ -23,9 +23,9 @@ Traqen uses a repository-local `Fxxx` sequence for engineering Feature lifecycle
 
 | ID | Priority | Feature | Status | Owner | Source | Spec |
 |---|---|---|---|---|---|---|
-| F001 | P0 | Workspace & Source Truth | in-progress | CodeX | operator-authorized implementation; [当前中文设计 B](../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) | [实施计划](../feature-specs/2026-09-06-f001-source-truth-implementation.md) |
+| F001 | P0 | Workspace & Source Truth | in-progress | CodeX | operator-authorized implementation; [当前中文设计 B](design/F001-workspace-source-truth/README.md) | [实施计划](../feature-specs/2026-09-06-f001-source-truth-implementation.md) |
 | F002 | P0 | Deterministic Evidence & API Structure | spec | TBD | operator-confirmed redesign | [F002](features/F002-feature-api-traceability.md) |
-| F003 | P1 | Agent Candidates & Reviewed Business Function Tree | spec | TBD | operator-confirmed redesign | [F003](features/F003-traceability-graph.md) |
+| F003 | P1 | Agent Candidates & Reviewed Business Function Tree | spec | TBD | operator-confirmed redesign | [F003](design/F003-traceability-graph/README.md) |
 | F004 | P0 | Change Impact Analysis | spec | TBD | operator-confirmed redesign | [F004](features/F004-change-impact-analysis.md) |
 | F006 | P2 | Workspace capability settings | spec | TBD | operator-authorized [design convergence](../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.md) | [F006](features/F006-workspace-capability-settings.md) |
 

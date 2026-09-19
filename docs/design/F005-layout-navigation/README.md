@@ -47,7 +47,7 @@ F005 负责整体外壳、导航、页面模板、视觉 token、通用组件、
 
 | Feature | 页面必须承接的事实 | 业务权威 |
 |---|---|---|
-| F001 | 来源、范围、八站过程、材料清单、缺口、冻结身份、旧版本与恢复 | [来源真相设计](../../../feature-discussions/2026-08-30-F001-workspace-source-truth-design/README.zh-CN.md) |
+| F001 | 来源、范围、八站过程、材料清单、缺口、冻结身份、旧版本与恢复 | [来源真相设计](../F001-workspace-source-truth/README.md) |
 | F002 | 对象、声明、派生事实、确定性关系、原文和缺口 | [确定性事实设计](../F002-deterministic-facts/README.md) |
 | F003 | 调查、分析态入库、例外确认、关系依据、图谱版本 | [业务图谱设计](../F003-traceability-graph/README.md) |
 | F004 | 比较范围、影响路径、判断限制、建议验证 | [变更影响](../../features/F004-change-impact-analysis.zh-CN.md) |

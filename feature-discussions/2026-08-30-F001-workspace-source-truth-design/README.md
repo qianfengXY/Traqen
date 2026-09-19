@@ -1,4 +1,4 @@
-> Language: **English** · [简体中文](README.zh-CN.md)
+> Language: **English** · [简体中文](../../docs/design/F001-workspace-source-truth/README.md)
 
 ---
 feature_ids: [F001]
@@ -12,6 +12,8 @@ design_gate: operator-approved
 ---
 
 # F001 design — Workspace & Source Truth
+
+> Historical English reference only. The current authoritative Chinese design, including its functional and UX sections, is [the canonical F001 document](../../docs/design/F001-workspace-source-truth/README.md).
 
 ## 1. What F001 completes
 
@@ -191,37 +193,37 @@ The screens extend the Workspace rather than introduce a new dashboard. Visual e
 
 ### 10.1 Add one or two source components
 
-![Simplified-Chinese starting page with independent Git and directory inputs](assets/source-truth-add-sources-zh-CN.png)
+![Simplified-Chinese starting page with independent Git and directory inputs](../../docs/design/F001-workspace-source-truth/assets/source-truth-add-sources-zh-CN.png)
 
 The page begins with exactly two independent source cards: **Add Git source** and **Select directory**. The user may add either card, or both. At least one enables preflight; when both are present, they jointly define the current analysis range. “Git + directory” is therefore a composition outcome, not a third input type or a mutually exclusive choice.
 
 ### 10.2 Configure both sources without overlay
 
-![Simplified-Chinese composite-source configuration](assets/source-truth-composite-source-setup-zh-CN.png)
+![Simplified-Chinese composite-source configuration](../../docs/design/F001-workspace-source-truth/assets/source-truth-composite-source-setup-zh-CN.png)
 
 After both cards are present, the screen shows their native identities side by side: Git locks a resolved commit; the directory begins full discovery before its manifest is frozen. Same relative paths remain separate records under their component namespace. The composition rule is visible here only because both components have already been added.
 
 ### 10.3 Capture a large combined scope
 
-![Simplified-Chinese combined-source capture progress](assets/source-truth-capture-progress-zh-CN.png)
+![Simplified-Chinese combined-source capture progress](../../docs/design/F001-workspace-source-truth/assets/source-truth-capture-progress-zh-CN.png)
 
 Capture shows each component and the combined total without pretending a single source exists. It first freezes the manifest, then shows real verified totals; the user-facing fourth stage is **Verify captured results**, not accounting jargon. A checkpoint permits safe recovery, and the page never renders a 100,000-row inventory during capture.
 
 ### 10.4 A usable receipt with accepted limitations
 
-![Simplified-Chinese composite receipt with an accepted Gap](assets/source-truth-ready-composite-zh-CN.png)
+![Simplified-Chinese composite receipt with an accepted Gap](../../docs/design/F001-workspace-source-truth/assets/source-truth-ready-composite-zh-CN.png)
 
 `READY_WITH_ACCEPTED_GAPS` deliberately uses amber, not green. It means the sealed bundle is usable, **not complete**: the Gap keeps an owner and expiry, and the downstream action says F002 inherits the limitation. `Display-redacted` is different from redaction that limits analysis; the latter must create a Gap.
 
 ### 10.5 Create a later immutable version
 
-![Simplified-Chinese file-level new-version comparison](assets/source-truth-new-version-file-changes-zh-CN.png)
+![Simplified-Chinese file-level new-version comparison](../../docs/design/F001-workspace-source-truth/assets/source-truth-new-version-file-changes-zh-CN.png)
 
 The version page compares a selected baseline with a target bundle. Git reuses a locked unchanged component; a directory is fully re-enumerated to make deletions visible but transfers only missing changed bytes. Its `add` / `modify` / `delete` list is source evidence only—not an F004 impact verdict.
 
 ### 10.6 A preflight block
 
-![Simplified-Chinese blocked Source Truth preflight](assets/source-truth-preflight-blocked-zh-CN-v2.png)
+![Simplified-Chinese blocked Source Truth preflight](../../docs/design/F001-workspace-source-truth/assets/source-truth-preflight-blocked-zh-CN-v2.png)
 
 The block stays in the same Workspace journey. It identifies the failed check, affected boundary, correction action, disabled capture action, and that an earlier sealed version is unchanged. A safety/integrity blocker offers no accept or bypass path.
 
