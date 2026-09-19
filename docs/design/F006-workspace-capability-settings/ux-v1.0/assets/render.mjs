@@ -147,7 +147,7 @@ try {
     await cdp.evaluate("sessionStorage.removeItem('traqen-f006-ux-scroll'); scrollTo(0, 0)");
     await settle();
   }
-  async function capture(name, scene, theme, width, height) {
+  async function capture(name, scene, theme, width, height, { expectTop = true } = {}) {
     const layout = await cdp.evaluate(`(() => {
       const boxes = [...document.querySelectorAll('button,input,select,.panel')].map((element) => {
         const rect = element.getBoundingClientRect();
@@ -170,7 +170,7 @@ try {
     assert.equal(layout.h1Count, 1, `${name}: exactly one page h1`);
     assert.equal(layout.pageOverflow, false, `${name}: page-level horizontal overflow`);
     assert.equal(layout.outOfViewportX.length, 0, `${name}: controls or panels overflow horizontally`);
-    assert.equal(layout.scrollY, 0, `${name}: screenshot starts at the top of its page`);
+    if (expectTop) assert.equal(layout.scrollY, 0, `${name}: screenshot starts at the top of its page`);
     const expectsDesktopScale = width >= 1440 && height >= 900;
     const expectedScale = expectsDesktopScale ? Math.min(width / 1440, height / 900) : 1;
     assert.equal(layout.desktopLayout.mode, expectsDesktopScale ? "desktop" : "accessibility", `${name}: expected desktop or accessibility layout mode`);
@@ -185,6 +185,19 @@ try {
   async function snapshot(name, scene, theme, width, height) {
     await go(scene, theme, width, height);
     await capture(name, scene, theme, width, height);
+  }
+  async function snapshotTeamBottom(name, theme) {
+    await go("team", theme, 1440, 900);
+    await cdp.evaluate("scrollTo(0, document.documentElement.scrollHeight)");
+    await settle();
+    const reachability = await cdp.evaluate(`(() => {
+      const visible = (selector) => { const rect = document.querySelector(selector).getBoundingClientRect(); return rect.top >= -1 && rect.bottom <= innerHeight + 1; };
+      return { scrollY, lastGrant: visible('.grant-list label:last-child'), footer: visible('.side-foot') };
+    })()`);
+    assert.ok(reachability.scrollY > 0, `${name}: must scroll below the initial desktop viewport`);
+    assert.equal(reachability.lastGrant, true, `${name}: final Skill authorization is reachable after scrolling`);
+    assert.equal(reachability.footer, true, `${name}: help and account footer are reachable after scrolling`);
+    await capture(name, "team", theme, 1440, 900, { expectTop: false });
   }
   async function snapshotLifecycleDialog(name, theme) {
     await go("lifecycle", theme, 1440, 900);
@@ -226,6 +239,8 @@ try {
     ["17-team-external-dark", "team", "dark", 1920, 1080],
   ];
   for (const args of shots) await snapshot(...args);
+  await snapshotTeamBottom("18-team-laptop-bottom-light", "light");
+  await snapshotTeamBottom("19-team-laptop-bottom-dark", "dark");
   await snapshotLegacyAuthorization();
   await snapshotLifecycleDialog("11-lifecycle-confirm-light", "light");
   await snapshotLifecycleDialog("12-lifecycle-confirm-dark", "dark");
@@ -278,10 +293,13 @@ try {
       const stage = document.querySelector('[data-testid=logical-stage]').getBoundingClientRect();
       const scale = window.__f006UX.state.desktopLayout.scale;
       const normalize = (selector) => { const rect = document.querySelector(selector).getBoundingClientRect(); return { left: (rect.left - stage.left) / scale, top: (rect.top - stage.top) / scale, width: rect.width / scale, height: rect.height / scale }; };
-      return { layout: window.__f006UX.state.desktopLayout, stage: { left: stage.left, width: stage.width, height: stage.height }, text: document.querySelector('.shell').textContent, normalized: { sidebar: normalize('.side'), child2: normalize('[data-testid=agent-child-2]'), apply: normalize('[data-testid=apply-config]') } };
+      return { layout: window.__f006UX.state.desktopLayout, stage: { left: stage.left, width: stage.width, height: stage.height, overflow: getComputedStyle(document.querySelector('[data-testid=logical-stage]')).overflow }, text: document.querySelector('.shell').textContent, normalized: { sidebar: normalize('.side'), agentList: normalize('.agent-list'), child2: normalize('[data-testid=agent-child-2]'), apply: normalize('[data-testid=apply-config]') } };
     })()`);
   }
   const masterGeometry = await geometryFor(1440, 900);
+  assert.equal(masterGeometry.stage.overflow, "visible", "desktop canvas must not crop lower content");
+  assert.equal(masterGeometry.normalized.agentList.width, 320, "desktop master Agent list must be 320 logical px");
+  assert.ok(masterGeometry.stage.height > 900, "desktop canvas must reserve vertical space for the full team configuration");
   for (const [width, height, scale, margin] of [[1920, 1080, 1.2, 96], [2560, 1440, 1.6, 128]]) {
     const candidate = await geometryFor(width, height);
     assert.equal(candidate.layout.mode, "desktop");
@@ -292,6 +310,31 @@ try {
       for (const measure of ["left", "top", "width", "height"]) assert.ok(Math.abs(candidate.normalized[key][measure] - masterGeometry.normalized[key][measure]) < 1, `${width} ${key} ${measure}: normalized layout differs from master canvas`);
     }
   }
+  await go("team", "light", 1440, 900);
+  const verticalBeforeInput = await cdp.evaluate(`(() => ({
+    scrollY,
+    scrollHeight: document.documentElement.scrollHeight,
+    targetTop: document.querySelector('.grant-list label:last-child').getBoundingClientRect().top,
+    targetBottom: document.querySelector('.grant-list label:last-child').getBoundingClientRect().bottom,
+  }))()`);
+  assert.ok(verticalBeforeInput.scrollHeight > 900, "team configuration requires reachable vertical document space");
+  assert.ok(verticalBeforeInput.targetBottom > 900, "the final Skill authorization must extend beyond the initial viewport without being cropped");
+  await cdp.call("Input.dispatchMouseEvent", { type: "mouseWheel", x: 1080, y: 720, deltaX: 0, deltaY: 960 });
+  await settle();
+  assert.ok(await cdp.evaluate("scrollY"), "mouse wheel must move the document toward lower team content");
+  await cdp.call("Input.dispatchKeyEvent", { type: "keyDown", key: "End", code: "End", windowsVirtualKeyCode: 35 });
+  await cdp.call("Input.dispatchKeyEvent", { type: "keyUp", key: "End", code: "End", windowsVirtualKeyCode: 35 });
+  await settle();
+  const verticalAfterInput = await cdp.evaluate(`(() => {
+    const visible = (selector) => { const rect = document.querySelector(selector).getBoundingClientRect(); return rect.top >= -1 && rect.bottom <= innerHeight + 1; };
+    const lastGrant = document.querySelector('.grant-list label:last-child').getBoundingClientRect();
+    return { scrollY, lastGrantVisible: visible('.grant-list label:last-child'), sideFootVisible: visible('.side-foot'), hit: document.elementFromPoint(lastGrant.left + 20, lastGrant.top + 20)?.closest('label') === document.querySelector('.grant-list label:last-child') };
+  })()`);
+  assert.ok(verticalAfterInput.scrollY > 0, "End key must preserve a vertically reachable lower state");
+  assert.equal(verticalAfterInput.lastGrantVisible, true, "final Skill authorization must be visible after keyboard scrolling");
+  assert.equal(verticalAfterInput.sideFootVisible, true, "help and account footer must be visible after keyboard scrolling");
+  assert.equal(verticalAfterInput.hit, true, "lower Skill authorization must retain its pointer hit target after scrolling");
+  report.checks.push("The complete team configuration uses vertical document reachability instead of stage cropping: the final Skill authorization and sidebar help/account footer are reachable by wheel and End-key scrolling, with the lower checkbox hit target intact.");
   const child2Point = await cdp.evaluate(`(() => { const rect = document.querySelector('[data-testid=agent-child-2]').getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, hit: document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)?.closest('[data-agent]')?.dataset.agent }; })()`);
   assert.equal(child2Point.hit, "child-2");
   await cdp.call("Input.dispatchMouseEvent", { type: "mousePressed", x: child2Point.x, y: child2Point.y, button: "left", clickCount: 1 });
@@ -367,9 +410,16 @@ try {
   const readyTeam = await cdp.evaluate(`(() => ({
     allReady: [...document.querySelectorAll('[data-agent]')].every((card) => card.textContent.includes('就绪')),
     applyEnabled: !document.querySelector('[data-testid=apply-config]').disabled,
+    listWidth: document.querySelector('.agent-list').getBoundingClientRect().width,
+    scope: document.querySelector('[data-testid=apply-scope]').textContent.trim(),
+    scopeNearApply: document.querySelector('[data-testid=apply-scope]').parentElement.contains(document.querySelector('[data-testid=apply-config]')),
   }))()`);
-  assert.deepEqual(readyTeam, { allReady: true, applyEnabled: true });
-  report.checks.push("The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; unavailable legacy authorization is isolated to its own actionable Child 1 state.");
+  assert.equal(readyTeam.allReady, true);
+  assert.equal(readyTeam.applyEnabled, true);
+  assert.equal(readyTeam.listWidth, 320, "S04 team list must use the documented 320px logical width");
+  assert.equal(readyTeam.scopeNearApply, true, "Apply scope must remain adjacent to the action");
+  assert.match(readyTeam.scope, /仅订单平台；仅影响之后的新分析，不改变其他 Workspace 或已有运行。/);
+  report.checks.push("The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; the documented 320px logical team list and explicit Workspace/forward-analysis Apply scope remain visible beside the action, while unavailable legacy authorization is isolated to its own actionable Child 1 state.");
 
   // Theme, selection, and refresh recovery — presentation actions are not business writes.
   await go("team", "light", 1440, 900);
@@ -395,7 +445,7 @@ try {
   assert.equal(scopeResult.writes.length, 1);
   report.checks.push("Changing Child 2 creates one fixture draft write and leaves the Main and another-Workspace sentinels unchanged.");
 
-  // M2 409 recovery: M3 does not write during conflict; retry confirms M2 then writes M3 once; Apply stays blocked.
+  // M2 409 recovery: M3 does not write during conflict; retry confirms M2 then writes M3 once and returns to a usable team editor.
   await go("conflict", "light", 1440, 900);
   const conflictProduct = await cdp.evaluate("document.querySelector('.shell').textContent");
   assert.doesNotMatch(conflictProduct, /M2|M3|PUT|模拟事件日志/);
@@ -412,21 +462,94 @@ try {
   assert.match(conflictRecovered[1].detail, /M2.*200/);
   assert.match(conflictRecovered[2].detail, /M3.*一次/);
   assert.equal(conflictRecovered.filter((event) => event.type === "activation").length, 0);
-  report.checks.push("Fixture M2 409 → M3 local edit → retry produces exactly M2(409), M2(200), M3(200): no conflict-period extra PUT and no activation request.");
+  const retryRecovery = await cdp.evaluate(`(() => ({
+    scene: window.__f006UX.state.scene,
+    conflict: window.__f006UX.state.conflict,
+    recovery: window.__f006UX.state.recovery,
+    m3: window.__f006UX.state.m3,
+    applyEnabled: !document.querySelector('[data-testid=apply-config]').disabled,
+    errorVisible: Boolean(document.querySelector('.notice.danger')),
+    success: document.querySelector('[data-testid=recovery-success]')?.textContent.trim(),
+  }))()`);
+  assert.equal(retryRecovery.scene, "team");
+  assert.equal(retryRecovery.conflict, false);
+  assert.equal(retryRecovery.recovery, "retry");
+  assert.equal(retryRecovery.m3, "M3 后续说明");
+  assert.equal(retryRecovery.applyEnabled, true);
+  assert.equal(retryRecovery.errorVisible, false);
+  assert.match(retryRecovery.success, /M2 已确认，M3 已恰好补存一次/);
+  await cdp.evaluate("document.querySelector('[data-testid=agent-child-2]').click(); document.querySelector('#agent-model').value='gpt-5.6-sol · medium'; document.querySelector('#agent-model').dispatchEvent(new Event('change',{bubbles:true}))");
+  await settle();
+  assert.equal(await cdp.evaluate("window.__f006UX.state.child2Model"), "gpt-5.6-sol", "retry recovery must permit a subsequent normal edit");
+  assert.equal(await cdp.evaluate("window.__f006UX.getBusinessLog().length"), 4, "retry recovery must not hide the next normal draft write");
 
-  await go("versions", "light", 1440, 900);
+  await go("conflict", "light", 1440, 900);
+  await cdp.evaluate("const input=document.querySelector('#m3-note'); input.value='将被丢弃的本地说明'; input.dispatchEvent(new Event('input',{bubbles:true}))");
+  const writesBeforeServerRecovery = await cdp.evaluate("window.__f006UX.getWriteCount()");
+  await cdp.evaluate("document.querySelector('[data-testid=conflict-server]').click()");
+  await settle();
+  const serverRecovery = await cdp.evaluate(`(() => ({
+    scene: window.__f006UX.state.scene,
+    conflict: window.__f006UX.state.conflict,
+    recovery: window.__f006UX.state.recovery,
+    m3: window.__f006UX.state.m3,
+    applyEnabled: !document.querySelector('[data-testid=apply-config]').disabled,
+    errorVisible: Boolean(document.querySelector('.notice.danger')),
+    success: document.querySelector('[data-testid=recovery-success]')?.textContent.trim(),
+    writes: window.__f006UX.getWriteCount(),
+  }))()`);
+  assert.equal(serverRecovery.scene, "team");
+  assert.equal(serverRecovery.conflict, false);
+  assert.equal(serverRecovery.recovery, "server");
+  assert.equal(serverRecovery.m3, "");
+  assert.equal(serverRecovery.applyEnabled, true);
+  assert.equal(serverRecovery.errorVisible, false);
+  assert.match(serverRecovery.success, /未保存的本地 M3 说明已按你的选择丢弃；没有新增业务写入/);
+  assert.equal(serverRecovery.writes, writesBeforeServerRecovery, "adopting the server draft must add zero business writes");
+  report.checks.push("Fixture M2 409 → M3 local edit → retry produces exactly M2(409), M2(200), M3(200), then clears the blocking banner into an editable, enabled-Apply team view; explicitly adopting the server draft discards M3 only after disclosure, clears the conflict, and adds zero business writes.");
+
+  await go("team", "light", 1440, 900);
+  await cdp.evaluate("document.querySelector('[data-testid=agent-child-2]').click(); scrollTo(0, 260)");
+  await settle();
+  const teamScrollBeforeVersions = await cdp.evaluate("scrollY");
+  assert.ok(teamScrollBeforeVersions > 0, "team editor must have a nonzero reachable scroll state before opening active version");
+  const writesBeforeVersions = await cdp.evaluate("window.__f006UX.getWriteCount()");
+  await cdp.evaluate("document.querySelector('[data-testid=versions-entry]').click()");
+  await settle();
   const versionsResult = await cdp.evaluate(`(() => ({
+    scene: window.__f006UX.state.scene,
+    selected: window.__f006UX.state.selected,
+    writes: window.__f006UX.getWriteCount(),
     applyText: [...document.querySelectorAll('button')].some((button) => button.textContent.includes('应用配置')),
     teamLinks: document.querySelectorAll('[data-scene=team]').length,
     activeChild2: [...document.querySelectorAll('.key-value')].find((row) => row.textContent.includes('Child 2'))?.textContent,
     draftChild2: document.querySelector('.versions aside')?.textContent,
   }))()`);
+  assert.equal(versionsResult.scene, "versions");
+  assert.equal(versionsResult.selected, "child-2");
+  assert.equal(versionsResult.writes, writesBeforeVersions, "opening the read-only active version must not write the draft");
   assert.equal(versionsResult.applyText, false);
   assert.ok(versionsResult.teamLinks >= 2);
   assert.match(versionsResult.activeChild2, /gpt-5\.6-sol.*1 项 Skill/);
   assert.match(versionsResult.draftChild2, /gpt-5\.6-sol → gpt-5\.6-terra/);
   assert.match(versionsResult.draftChild2, /合计 2 项 Skill/);
-  report.checks.push("The active-version view is read-only with no Apply action; its Child 2 baseline and the later model/Skill draft delta are explicitly paired with a return-to-team editing path.");
+  await cdp.evaluate("document.querySelector('[data-testid=versions-return]').click()");
+  await settle();
+  const returnedTeam = await cdp.evaluate(`(() => ({
+    scene: window.__f006UX.state.scene,
+    selected: window.__f006UX.state.selected,
+    scrollY,
+    model: document.querySelector('#agent-model')?.value,
+    applyEnabled: !document.querySelector('[data-testid=apply-config]').disabled,
+    writes: window.__f006UX.getWriteCount(),
+  }))()`);
+  assert.equal(returnedTeam.scene, "team");
+  assert.equal(returnedTeam.selected, "child-2");
+  assert.ok(Math.abs(returnedTeam.scrollY - teamScrollBeforeVersions) < 2, `returning from active version must preserve the team scroll position (before ${teamScrollBeforeVersions}, actual ${returnedTeam.scrollY})`);
+  assert.equal(returnedTeam.model, "gpt-5.6-terra · high");
+  assert.equal(returnedTeam.applyEnabled, true);
+  assert.equal(returnedTeam.writes, writesBeforeVersions, "returning from active version must not write the draft");
+  report.checks.push("The active-version view is read-only with no Apply action; entering it from the normal team action and returning preserves Child 2 selection and team scroll position, keeps the editor available, and records zero business writes.");
 
   // Lifecycle cancel and focus return do not write a business change.
   await go("lifecycle", "dark", 1440, 900);

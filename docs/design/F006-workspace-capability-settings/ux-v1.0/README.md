@@ -49,7 +49,7 @@ source_design: ../README.md
 | S01 范围与初始空态 | [真实团队配置面内的 Main + Child 1 空占位](assets/previews/01-empty-light.png) | 瓷白 · 1440×900 |
 | S02 账号 | [瓷白：API 引用错误保留、OAuth 状态](assets/previews/02-accounts-light.png) / [石墨](assets/previews/02-accounts-dark.png) | 双主题 · 1440×900 |
 | S03 模型与 Skill | [模型 · 瓷白](assets/previews/03-models-light.png) / [石墨](assets/previews/03-models-dark.png)；[Skill · 瓷白](assets/previews/03-skills-light.png) / [石墨](assets/previews/03-skills-dark.png) | 两个独立页面，均为双主题 · 1440×900 |
-| S04 完整团队 | 上方四张主图；另有 1400×860 与 [1280×800](assets/previews/16-team-compact-light.png) 的 1×可读性检查，以及 [1920×1080](assets/previews/17-team-external-dark.png) 的 1.2×画布检查 | 双主题 · 一个逻辑画布、4 个导出视口 |
+| S04 完整团队 | 上方四张主图；另有 [瓷白](assets/previews/18-team-laptop-bottom-light.png) / [石墨](assets/previews/19-team-laptop-bottom-dark.png) 的滚动到底部证据，1400×860 与 [1280×800](assets/previews/16-team-compact-light.png) 的 1×可读性检查，以及 [1920×1080](assets/previews/17-team-external-dark.png) 的 1.2×画布检查 | 双主题 · 一个逻辑画布、滚动与 4 个导出视口 |
 | S05 能力管理 | [四分组与范围](assets/previews/08-capabilities-light.png)；[Child 1 详情内可撤销的 legacy-lint 历史授权](assets/previews/08-legacy-authorization-light.png) | 瓷白 · 1440×900 |
 | S06 草稿冲突 | [团队详情内的恢复状态](assets/previews/09-conflict-light.png) / [石墨对照](assets/previews/10-conflict-dark.png)；技术写入证据仅在壳外 fixture 日志与验证记录中 | 双主题 · 1440×900 |
 | S07 生命周期 | [已打开的名称确认弹窗 · 瓷白](assets/previews/11-lifecycle-confirm-light.png) / [石墨](assets/previews/12-lifecycle-confirm-dark.png) | 双主题 · 1440×900 |
@@ -63,21 +63,22 @@ source_design: ../README.md
 
 `prototype.html` 的场景选择器、主题切换、Agent 选择、Child 2 模型编辑、409 恢复、生命周期确认/取消和 F003 提示均可操作。调试控制显式标注“设计演示数据”，位于产品壳外。
 
-`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：23 张截图、0 个浏览器页面错误，以及以下 13 项通过项：
+`render.mjs` 用一次性 loopback 静态服务器和临时 headless Chrome profile 生成图片，并写入 [verification.json](assets/verification.json)。本次作者验证结果：25 张截图、0 个浏览器页面错误，以及以下 14 项通过项：
 
 1. S01–S10 渲染时都有一个页面 h1，页面与控件没有横向溢出。
 2. S04 使用一个 1440×900 逻辑画布：1440×900 为 1×，1920×1080 为 1.2×且左右余量 96px，2560×1440 为 1.6×且左右余量 128px；1400×860 与 1280×800 的普通窗口保持 1×，不是第二套桌面设计。
 3. 逻辑画布在 1920×1080 和 2560×1440 归一化后保持同一内容与相对布局；指针命中、焦点、导航和对话框随同一倍率缩放；1400×860 与 1280×800 均保留 13px 可读控件、可用主动作且没有水平裁切。
 4. F005 AppShell 有图标导航、最近查看、帮助与账号脚；调试控制在产品壳外；Workspace 二级导航与“草稿已保存”在壳内可见，每张 Agent 卡的 Skill 数量均与其勾选授权一致。
-5. 账号、模型、Skill 与 MCP 共用壳内全局二级导航；模型和 Skill 是可独立抵达的产品页。
-6. S01 保持在 Agent 团队配置面，呈现 Main 与 Child 1 的真实空占位、零隐式模型/Skill 与不可用的 Apply。
-7. 正常 S04 的所有 Agent 都为就绪且 Apply 可用；legacy-lint 仅在独立的 Child 1 可撤销失效授权状态中显示。
-8. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
-9. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
-10. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`；冲突中没有额外 PUT，也没有 activation 请求，且产品壳内不显示这些技术标签或模拟事件日志。
-11. 生效版本面为只读，没有 Apply；Child 2 的生效基线和模型/Skill 草稿差异相互对应，并提供返回团队编辑入口。
-12. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
-13. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
+5. S04 用文档滚动而非固定舞台裁切：滚轮和 End 键均可抵达最后一项 Skill 授权与帮助/账号脚，末项 checkbox 仍可点击。
+6. 账号、模型、Skill 与 MCP 共用壳内全局二级导航；模型和 Skill 是可独立抵达的产品页。
+7. S01 保持在 Agent 团队配置面，呈现 Main 与 Child 1 的真实空占位、零隐式模型/Skill 与不可用的 Apply。
+8. 正常 S04 的所有 Agent 都为就绪且 Apply 可用；名单为 320px 逻辑宽度，Apply 邻近完整作用范围；legacy-lint 仅在独立的 Child 1 可撤销失效授权状态中显示。
+9. 切主题与刷新都保留选中的 Child，且主题动作的模拟业务写入为零。
+10. 修改 Child 2 只产生一次 fixture 草稿写入；Main 和另一 Workspace 的 sentinel 不变。
+11. M2 409 → M3 本地编辑 → 重试依次得到 `M2(409)`、`M2(200)`、`M3(200)`，随后清除阻断横幅并回到可编辑、Apply 可用的团队页；采用服务器草稿会先明示丢弃 M3、清除冲突且不增加业务写入。
+12. 生效版本面为只读，没有 Apply；从正常团队入口进入并返回后，保留 Child 2 选择和滚动位置、团队页仍可编辑，且全程零业务写入。
+13. 取消生命周期确认会关闭具名弹窗、把焦点返还原操作行，并产生零 fixture 业务写入。
+14. 原生 button/input/select/dialog 可获得键盘焦点；Escape 能关闭影响确认弹窗而不形成焦点陷阱。
 
 复现（替换为本机 Chrome 绝对路径）：
 
@@ -87,7 +88,7 @@ node assets/render.mjs /absolute/path/to/Google\ Chrome
 (cd assets && shasum -a 256 -c SHA256SUMS)
 ```
 
-[SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 23 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
+[SHA256SUMS](assets/SHA256SUMS) 绑定 `prototype.html` 与本次 25 张原型截图；before 图单独标识为当前 main 的隔离宿主证据，不与原型效果图混作同一渲染源。
 
 ## 明确限制
 
