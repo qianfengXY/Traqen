@@ -23,15 +23,10 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 | F002 | [Current design entry and historical spec](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | [Deterministic Facts: Functional Design V1.0 (normative Chinese)](design/F002-deterministic-facts/README.md) |
 | F003 | [Current design entry and historical spec](features/F003-traceability-graph.md) · [中文](features/F003-traceability-graph.zh-CN.md) | [Functional Panorama V2.0](design/F003-traceability-graph/README.en.md) · [中文（规范文本）](design/F003-traceability-graph/README.md) |
 | F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
+| F005 | [Layout and Navigation Design V1.0 (normative Chinese)](design/F005-layout-navigation/README.md) | Six destinations, uniform scaling, two themes, frontend components and UX acceptance; historical visual limits are stated in the document |
 | F006 | [Workspace Capability Settings](features/F006-workspace-capability-settings.md) · [中文](features/F006-workspace-capability-settings.zh-CN.md) | [capability-resolution diagram](diagrams/traqen-product-architecture/workspace-capability-resolution.dataflow.html) |
 
-F001–F004 are the active legacy-system-understanding design baseline. F006 retains its separate implementation track. Historical working artifacts may remain unlinked for compatibility or audit, but cannot compete with this table, the roadmap, or the active architecture documents.
-
-## Designs awaiting review
-
-- [F005 · Experience and Frontend Design Charter (desktop layouts, two-theme previews, and component specifications)](design-reviews/F005/README.en.md) · [简体中文](design-reviews/F005/README.md)
-
-This entry makes the complete proposal available for reading. It remains awaiting review and does not change the active design baseline above.
+F001–F004 are the active legacy-system-understanding design baseline. F005 defines the overall page experience; publication does not declare every page implemented. F006 retains its separate implementation track. Historical working artifacts may remain for compatibility or audit, but cannot compete with this table, the roadmap, or the active architecture documents.
 
 ## Visual design
 
