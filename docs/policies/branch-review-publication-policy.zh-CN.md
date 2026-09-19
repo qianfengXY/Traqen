@@ -2,23 +2,30 @@
 
 # 代码分支 Review 发布政策
 
-当模型或 reviewer 接到针对指定分支或 commit 的 Review 任务时，必须遵守本政策。本政策约束 Review
-产物和 Finding 的发布方式，不授权实施代码修改。
+本政策分为两层：通用审阅保障适用于任何被请求的分支或 commit Review；发布门只约束准备发布为
+Traqen Issue 的候选 Finding。它不授权实施代码修改，也不单独定义分支合入本地 `main` 的 reviewer
+数量或合入职责。普通分支 Review 的非作者审阅、精确 SHA 覆盖、反馈处理和合入门禁遵从《标准操作流程》
+及 Cat Café 的风险路由。
 
-## 1. 被审仓库保持只读
+普通分支 Review 不会自动进入本发布门：它只需满足本地合入所选的风险匹配审阅来源。只有 operator
+或 Review 请求明确要把某条候选 Finding 发布为 Traqen Issue 时，才适用本政策的双独立 Review 与共识要求。
+
+## 1. 所有被审仓库保持只读
+
+以下通用审阅保障适用于任何被请求的分支或 commit Review，包括没有 Issue 发布意图的普通本地合入审阅。
 
 - 开始 Review 前，记录仓库、目标分支和被审 commit 的完整 SHA。
 - Review 期间不得修改被审源码，也不得把 Review 专用产物提交到项目仓库的任何分支。
 - Review 笔记、报告、收敛矩阵和共识文档都属于 Review 专用产物。
 - 修复代码必须另行取得实施授权并使用独立分支。
+- 每份 Review 记录必须保留 reviewer 的真实身份和原始表述；任何 reviewer 或收敛者不得冒充他人。
 
 不同 commit SHA 的 Review 不属于对同一目标的独立审查，不得合并为共识。
 
-## 2. 先独立 Review，再进行收敛
+## 2. 发布前先独立 Review，再进行收敛
 
-- 至少两个不同模型或 reviewer 身份必须独立 Review 同一个 commit。
+- 准备发布 Issue 的候选 Finding，至少两个不同模型或 reviewer 身份必须独立 Review 同一个 commit。
 - 每个 reviewer 必须先完成并标注时间的证据化 Finding，之后才能阅读或引用其他 reviewer 的结论。
-- 每份独立记录必须保留 reviewer 的真实身份和原始表述；收敛者不得冒充其他 reviewer。
 - reviewer 看过他人 Review 后才产生的一致意见属于补充核验，不能单独满足独立确认门槛。
 
 ## 3. 共识必须由证据支撑
@@ -63,13 +70,21 @@ Issue 必须包含：
 
 Issue 的标题和正文必须使用简体中文。补充译文可选，但不得替代上述任何必填字段。
 
-要求 Review 某个分支，即代表授权发布通过本政策门槛的 Finding，除非请求者明确要求仅输出草稿。
-任何未通过共识门的 Finding 都不得发布。
+进入发布门必须由 operator 或 Review 请求明确说明“发布 Issue”；普通分支 Review 的 Finding 应先交由
+作者在本地分支合入流程中处置，不得自动发布。任何未通过共识门的 Finding 都不得发布。
 
-## 6. 本地 Review 记录不得进入 Git
+## 6. 本地分支合入和远端同步
 
-reviewer 可以在本地保留独立笔记和收敛记录。在可行时，应将它们放在仓库根目录之外。如果工具必须
-使用仓库内相对路径，则使用：
+- 本地 `main` 是唯一合入真相源；所有实现和文档分支都必须先完成本地 Review 与门禁，再合入本地 `main`。
+- 侧分支及其 Review/验收 worktree 只留在本地，不得推送侧分支，也不得通过远端分支或远端 PR 绕过本地 `main`。
+- 合入后在本地 `main` 上完成适用的验收，再仅从本地 `main` 推送到 `origin/main`；远端仓库仅保留 `main` 分支。
+- 远端 `main` 与本地 `main` 确认为同一提交后，立即删除已合入的本地分支并移除对应 worktree；有未提交内容或仍被运行任务占用时，先保全并报告，不得强制清理。
+- 本发布门不为分支合入本地 `main` 增加第二位 reviewer；第二份独立 Review 只在发布 Issue 的候选 Finding 需要共识时触发。
+
+## 7. 本地 Review 记录不得进入 Git
+
+任何 Review 的 reviewer 都可以在本地保留独立笔记；进入发布门时还可以保留收敛记录。在可行时，应
+将它们放在仓库根目录之外。如果工具必须使用仓库内相对路径，则使用：
 
 ```text
 .review-local/<target-branch>/<reviewed-sha>/<reviewer-id>.md
@@ -82,9 +97,9 @@ reviewer 可以在本地保留独立笔记和收敛记录。在可行时，应�
 
 仓库中既有的已跟踪 Review 产物属于历史记录，不构成新的 Review 可以继续提交文档的先例。
 
-## 7. 门槛不满足时默认不发布
+## 8. 发布门门槛不满足时默认不发布
 
-出现以下任一情况时不得发布 Issue：
+对于准备发布 Issue 的候选 Finding，出现以下任一情况时不得发布：
 
 - 少于两个独立 reviewer 审查了目标；
 - reviewer 审查的 commit SHA 不同；
