@@ -18,8 +18,8 @@ normal local-main merge review that has no Issue-publication intent.
   branch in the project repository.
 - Review notes, reports, convergence matrices, and consensus documents are review-only artifacts.
 - Code fixes require a separate implementation request and branch.
-- Each review record must retain the reviewer's real identity and wording. A reviewer must not
-  impersonate another reviewer. A synthesizer must not impersonate another reviewer.
+- Each review record must retain the reviewer's real identity and wording. No reviewer or
+  synthesizer may impersonate another reviewer.
 
 An ordinary review must cover the exact commit that is proposed for its local merge gate. Reviews
 of different commit SHAs are not independent reviews of the same target and must not be combined
@@ -91,20 +91,13 @@ A normal branch review does not itself enter the publication gate or add a secon
 Only an explicit operator or review request to publish a candidate Finding as a Traqen Issue
 activates this gate. Never publish findings that fail the consensus gate.
 
-## 6. Integrate locally and synchronize the remote from local main
+## 6. Preserve the publication boundary during local integration
 
-- Local `main` is the sole integration source. Every implementation and documentation branch must
-  complete its applicable local review and gate before merging into local `main`.
-- Side branches and their review or acceptance worktrees stay local. Do not push a side branch or
-  bypass local `main` through a remote branch or remote pull request.
-- After the merge, complete applicable acceptance on local `main`, then push only local `main` to
-  `origin/main`. The remote repository retains only the `main` branch.
-- After local and remote `main` are confirmed at the same commit, promptly delete the merged local
-  branch and remove its worktree. Preserve and report a dirty or running worktree; never force its
-  cleanup.
-- This publication gate does not add a second reviewer to a branch merge into local `main`. A
-  second independent review is required only when a candidate Finding is being published as an
-  Issue.
+Local integration and remote synchronization rules are defined by `docs/SOP.md`. This publication
+gate does not add a second reviewer to a branch merge into local `main`; a second independent
+review is required only when a candidate Finding is being published as an Issue. Existing remote
+branch or pull-request disposition is a migration concern governed by that SOP, not a publication
+action authorized by this policy.
 
 ## 7. Keep local review records out of Git
 

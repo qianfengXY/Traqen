@@ -29,10 +29,20 @@ Traqen keeps product truth in this repository and uses Cat Café as its collabor
   `main` through a remote branch or pull request.
 - After review and the applicable gate cover a side branch's exact SHA, merge that branch into
   local `main`; run post-merge checks and acceptance from local `main`.
-- Push `origin/main` only after local `main` acceptance passes. The remote retains only `main`.
+- Push `origin/main` only after local `main` acceptance passes. Creating or updating a remote
+  side branch is not a delivery path; the post-migration remote target retains only `main`.
 - After local and remote `main` are confirmed at the same commit, promptly delete the merged local
   branch and remove its worktree. Preserve and report a dirty or running worktree; never force its
   cleanup.
+- A pre-existing remote branch or open pull request is not authorization for deletion or closure,
+  and its temporary existence does not violate this workflow while migration is incomplete. Do not
+  delete a remote branch unless its exact tip is reachable from local `main` and its disposition is
+  recorded. If an open pull request or its head branch would be closed or removed, require explicit
+  co-creator authorization for that exact action first.
+- When a pre-existing remote branch has commits not reachable from local `main`, preserve it until
+  its work is integrated or the co-creator approves a documented disposition with a recovery ref.
+  Inventory and disposition of pre-existing remote branches and pull requests are a separate,
+  operator-gated migration; routine local-main delivery never performs that cleanup.
 
 ## Repository and data boundaries
 
