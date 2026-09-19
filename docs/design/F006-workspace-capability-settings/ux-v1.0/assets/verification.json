@@ -2,8 +2,8 @@
   "version": "1.0",
   "kind": "author-fixture-render-and-interaction-validation",
   "fixtureOnly": true,
-  "recordedAt": "2026-09-18T08:25:39.972Z",
-  "sourceHTMLSha256": "2f58f7a741611b80a68129443a178d212c8ecf09c72b63af6fc251976241774d",
+  "recordedAt": "2026-09-19T04:25:40.044Z",
+  "sourceHTMLSha256": "f6ad476b36e721d6d0db6b89630b4a383f1018e610604d32b9a9bef71ec8f4e7",
   "screens": [
     {
       "file": "previews/01-empty-light.png",
@@ -11,8 +11,8 @@
       "theme": "light",
       "width": 1440,
       "height": 900,
-      "title": "先准备可信的配置资产",
-      "sha256": "e580e11230276f3d89377d1ea7915d9bfe5633db00f2ed269cd1c791bba23091"
+      "title": "Agent 团队",
+      "sha256": "1594c2de7d4f994ad7c540989bc7c8058ab5bd1b13e42738cbf09dbf36ee1f1c"
     },
     {
       "file": "previews/02-accounts-light.png",
@@ -21,7 +21,7 @@
       "width": 1440,
       "height": 900,
       "title": "账号",
-      "sha256": "0d3f0819314bdf6d42452e0fe4fb7480e30e0c06d5815a88560663e9df577c5a"
+      "sha256": "b53e65c126916305c1052c0fdf2c5f3923e9a463b256f5938c871e87febaf902"
     },
     {
       "file": "previews/02-accounts-dark.png",
@@ -30,7 +30,7 @@
       "width": 1440,
       "height": 900,
       "title": "账号",
-      "sha256": "7b04e5c8d643d605a8ab7cba7ee5ec11ff816176821ef57c3e85dbfb80c87c74"
+      "sha256": "e0b6741b4750c9be7f6b96a65d957d79a77bb044b2591766b04d77400fef8995"
     },
     {
       "file": "previews/03-models-dark.png",
@@ -38,8 +38,8 @@
       "theme": "dark",
       "width": 1440,
       "height": 900,
-      "title": "CLI 模型与 Skill",
-      "sha256": "15f340766f81507bbcfab97bc051a0da5c3060ae15bb05f69fd59510fa75a136"
+      "title": "CLI 模型",
+      "sha256": "ce27b92da902c565222276fab993862f4399eb6d995e113388c52a36a8ae4a9b"
     },
     {
       "file": "previews/03-models-light.png",
@@ -47,8 +47,26 @@
       "theme": "light",
       "width": 1440,
       "height": 900,
-      "title": "CLI 模型与 Skill",
-      "sha256": "ed1fada3ab5e0b2d2a6735cbabc272f11d19137810d4b7250d13e367651ce4d1"
+      "title": "CLI 模型",
+      "sha256": "ec9bf861e2b581cd002504649cd04e1a55238bed2135b4e19362939425642e65"
+    },
+    {
+      "file": "previews/03-skills-dark.png",
+      "scene": "skills",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "Skill",
+      "sha256": "ac7a8294c62c7cb70abd24b2d8be0544ce01a7a2b142544c40eede3ad6a9f600"
+    },
+    {
+      "file": "previews/03-skills-light.png",
+      "scene": "skills",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Skill",
+      "sha256": "1d6fb43de2e35e2f79f4ce29841bad0e181bbfefd0628674cbfa620982bed25c"
     },
     {
       "file": "previews/04-team-laptop-light.png",
@@ -57,7 +75,7 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "a6234ee0352d26b54d0da165525d4c2999e5c0d5c1fa7993779a3048f8ccf31f"
+      "sha256": "8e68c35d54ab86c33722a1886ec05c8034c2f5747ef8195fb874e98e0f2f4bbb"
     },
     {
       "file": "previews/05-team-laptop-dark.png",
@@ -66,7 +84,7 @@
       "width": 1440,
       "height": 900,
       "title": "Agent 团队",
-      "sha256": "74ee28cf24b06e1831b9dbca5774e5741feb960dbf2fb79bb1df1aa320ac7061"
+      "sha256": "b1c205ab3ff0c728b7fd56ccac56cb17638f2fe40aa7271ef298821eed5806c9"
     },
     {
       "file": "previews/06-team-display-light.png",
@@ -75,7 +93,7 @@
       "width": 2560,
       "height": 1440,
       "title": "Agent 团队",
-      "sha256": "ae9ba2ca15b61a6c8b9c4d002b90259cf82cf77b0099de82f6ed2ed8cd19970e"
+      "sha256": "255ecff6c10708205784fdd909777a1a59291bdea1e416f97352eba2cfa1af30"
     },
     {
       "file": "previews/07-team-display-dark.png",
@@ -84,7 +102,7 @@
       "width": 2560,
       "height": 1440,
       "title": "Agent 团队",
-      "sha256": "53e8b26dab4d094ccae74f12768f585f6e7d28aab5b80394f3cc3ea7a3a0371d"
+      "sha256": "5c4e0c75c2fc7273821ddaf8495810f0f15b28621300307f2237a752781109e6"
     },
     {
       "file": "previews/08-capabilities-light.png",
@@ -93,7 +111,7 @@
       "width": 1440,
       "height": 900,
       "title": "能力管理",
-      "sha256": "5e21aef4479b8f09bbcd4496b8b937358124dd249b3178c3999837edcf6ab8c6"
+      "sha256": "293c4e9f9698a42b076ce78ecc06eb7ea3878de0c8cbd59e7f7745e1b9fd2527"
     },
     {
       "file": "previews/09-conflict-light.png",
@@ -101,8 +119,8 @@
       "theme": "light",
       "width": 1440,
       "height": 900,
-      "title": "草稿冲突恢复",
-      "sha256": "ef10e25caee2e571ebabb4a3f8fc15b7b0b719a13e39b65cf63eace8478986fc"
+      "title": "Agent 团队",
+      "sha256": "225eb05314ee986e35e17f2ad3b1080f33854152b15b7a5c14d96e4aa2109a8b"
     },
     {
       "file": "previews/10-conflict-dark.png",
@@ -110,26 +128,8 @@
       "theme": "dark",
       "width": 1440,
       "height": 900,
-      "title": "草稿冲突恢复",
-      "sha256": "5aac786423502367f3cbfa4a90ab4f22ff100135795c52fed909690d734502ef"
-    },
-    {
-      "file": "previews/11-lifecycle-light.png",
-      "scene": "lifecycle",
-      "theme": "light",
-      "width": 1440,
-      "height": 900,
-      "title": "能力生命周期",
-      "sha256": "eea4d027053c410ba2eca8017090f75a8ce1043bf78a4107090509b41079ff18"
-    },
-    {
-      "file": "previews/12-lifecycle-dark.png",
-      "scene": "lifecycle",
-      "theme": "dark",
-      "width": 1440,
-      "height": 900,
-      "title": "能力生命周期",
-      "sha256": "84a87c4388764c508478113d1f475c29f757f686eef53a96edd95069122f10ea"
+      "title": "Agent 团队",
+      "sha256": "f630d58196fa485bf67dee2244c6c164e58b89e0157de6b707726e5f6a49c410"
     },
     {
       "file": "previews/13-mcp-dark.png",
@@ -138,7 +138,7 @@
       "width": 1440,
       "height": 900,
       "title": "MCP",
-      "sha256": "bc37ffec077523c84f86813fc2e6c58687647df2b6120d910218dd8578e3a7dc"
+      "sha256": "379de90944c128f79aa550a47434269c75191d5ada02286532a3d841d687ba5d"
     },
     {
       "file": "previews/13-mcp-light.png",
@@ -147,7 +147,7 @@
       "width": 1440,
       "height": 900,
       "title": "MCP",
-      "sha256": "8af4809889805a228f21d1b6612eb1681b20eeda2f701009b0b55bac861880fb"
+      "sha256": "722955d7aa0f40c91c0e14b2900698c2f818881e66b8e22b038e686b583b9093"
     },
     {
       "file": "previews/14-versions-light.png",
@@ -156,7 +156,7 @@
       "width": 1440,
       "height": 900,
       "title": "当前生效配置",
-      "sha256": "630c8255f2aa1c91b76f45e85f29d2ffea7ba4633e76f06df07b1914c57a7651"
+      "sha256": "dd80d6b90d232ef58e4845943dbd19eb4e8f48d472ad0a4c65aeea943227df5f"
     },
     {
       "file": "previews/15-f003-dark.png",
@@ -174,7 +174,7 @@
       "width": 1280,
       "height": 800,
       "title": "Agent 团队",
-      "sha256": "51f4ee194dbe94492c83bafc88566f612b4c8badbdc2e09f43997823f4ccec0b"
+      "sha256": "c83ddf6de4abdafdca5914d2d39d9c94ff396332c7d3e99059bbd88080d95c81"
     },
     {
       "file": "previews/17-team-external-dark.png",
@@ -183,16 +183,47 @@
       "width": 1920,
       "height": 1080,
       "title": "Agent 团队",
-      "sha256": "2e0ec8e8f56fed617c87846725319cd4a4d37920310bf311bfea407048152204"
+      "sha256": "0b811d4f262672f797c43ca2c3684f79ac287c084f1fcbedd342f06d18dade10"
+    },
+    {
+      "file": "previews/08-legacy-authorization-light.png",
+      "scene": "team",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "sha256": "5522c0339780aa3af4121f1121a13c8348bad3b672746eaa9f55abd34f5f5248"
+    },
+    {
+      "file": "previews/11-lifecycle-confirm-light.png",
+      "scene": "lifecycle",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "能力生命周期",
+      "sha256": "7e315f78b38185e3adb1e301d3b8a411cd6f3860dadcec1cc174c8ea3ca4db99"
+    },
+    {
+      "file": "previews/12-lifecycle-confirm-dark.png",
+      "scene": "lifecycle",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "能力生命周期",
+      "sha256": "095a241289cd0fd035eb166084bbbb2616322402ec0c226095e79844c7427c78"
     }
   ],
   "checks": [
     "All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.",
     "S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.",
     "F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.",
+    "Accounts, models, Skill, and paused MCP use one in-shell global secondary navigation; models and Skill are independently addressable product pages.",
+    "The empty state remains in the Agent-team configuration surface with real Main and Child 1 placeholders, zero implicit model or Skill grants, and no available Apply action.",
+    "The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; unavailable legacy authorization is isolated to its own actionable Child 1 state.",
     "Theme toggle and refresh preserve the selected Child; theme presentation records zero business writes.",
     "Changing Child 2 creates one fixture draft write and leaves the Main and another-Workspace sentinels unchanged.",
     "Fixture M2 409 → M3 local edit → retry produces exactly M2(409), M2(200), M3(200): no conflict-period extra PUT and no activation request.",
+    "The active-version view is read-only with no Apply action; its Child 2 baseline and the later model/Skill draft delta are explicitly paired with a return-to-team editing path.",
     "Lifecycle cancel closes the named dialog, restores focus to its invoker, and records zero fixture business writes.",
     "Native buttons, inputs, selects, and dialogs expose keyboard focus; keyboard Escape closes the impact dialog without a focus trap."
   ],

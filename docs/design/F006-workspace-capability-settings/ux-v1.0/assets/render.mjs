@@ -143,10 +143,10 @@ try {
     await cdp.call("Page.navigate", { url: `${origin}/prototype.html?render=${randomUUID()}#${scene}` });
     await settle();
     await cdp.evaluate(`window.__f006UX.applyTheme(${JSON.stringify(theme)})`);
+    await cdp.evaluate("sessionStorage.removeItem('traqen-f006-ux-scroll'); scrollTo(0, 0)");
     await settle();
   }
-  async function snapshot(name, scene, theme, width, height) {
-    await go(scene, theme, width, height);
+  async function capture(name, scene, theme, width, height) {
     const layout = await cdp.evaluate(`(() => {
       const boxes = [...document.querySelectorAll('button,input,select,.panel')].map((element) => {
         const rect = element.getBoundingClientRect();
@@ -158,6 +158,7 @@ try {
         h1Count: document.querySelectorAll('h1').length,
         pageOverflow: document.documentElement.scrollWidth > innerWidth,
         outOfViewportX: boxes.filter((box) => box.left < -1 || box.right > innerWidth + 1),
+        scrollY,
         title: document.querySelector('h1')?.textContent,
       };
     })()`);
@@ -166,11 +167,32 @@ try {
     assert.equal(layout.h1Count, 1, `${name}: exactly one page h1`);
     assert.equal(layout.pageOverflow, false, `${name}: page-level horizontal overflow`);
     assert.equal(layout.outOfViewportX.length, 0, `${name}: controls or panels overflow horizontally`);
+    assert.equal(layout.scrollY, 0, `${name}: screenshot starts at the top of its page`);
     const capture = await cdp.call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false, fromSurface: true });
     const output = resolve(previews, `${name}.png`);
     const bytes = Buffer.from(capture.data, "base64");
     await writeFile(output, bytes);
     report.screens.push({ file: `previews/${basename(output)}`, scene, theme, width, height, title: layout.title, sha256: createHash("sha256").update(bytes).digest("hex") });
+  }
+  async function snapshot(name, scene, theme, width, height) {
+    await go(scene, theme, width, height);
+    await capture(name, scene, theme, width, height);
+  }
+  async function snapshotLifecycleDialog(name, theme) {
+    await go("lifecycle", theme, 1440, 900);
+    await cdp.evaluate("document.querySelector('#open-lifecycle').click()");
+    await settle();
+    assert.equal(await cdp.evaluate("document.querySelector('#lifecycle-dialog').open"), true, `${name}: lifecycle confirmation must be open`);
+    await capture(name, "lifecycle", theme, 1440, 900);
+    await cdp.evaluate("document.querySelector('#lifecycle-dialog').close()");
+  }
+  async function snapshotLegacyAuthorization() {
+    await go("capabilities", "light", 1440, 900);
+    await cdp.evaluate("document.querySelector('[data-action=open-legacy-issue]').click()");
+    await settle();
+    assert.equal(await cdp.evaluate("window.__f006UX.state.scene"), "team");
+    assert.equal(await cdp.evaluate("Boolean(document.querySelector('[data-testid=legacy-authorization]'))"), true);
+    await capture("08-legacy-authorization-light", "team", "light", 1440, 900);
   }
 
   const shots = [
@@ -179,6 +201,8 @@ try {
     ["02-accounts-dark", "accounts", "dark", 1440, 900],
     ["03-models-dark", "models", "dark", 1440, 900],
     ["03-models-light", "models", "light", 1440, 900],
+    ["03-skills-dark", "skills", "dark", 1440, 900],
+    ["03-skills-light", "skills", "light", 1440, 900],
     ["04-team-laptop-light", "team", "light", 1440, 900],
     ["05-team-laptop-dark", "team", "dark", 1440, 900],
     ["06-team-display-light", "team", "light", 2560, 1440],
@@ -186,8 +210,6 @@ try {
     ["08-capabilities-light", "capabilities", "light", 1440, 900],
     ["09-conflict-light", "conflict", "light", 1440, 900],
     ["10-conflict-dark", "conflict", "dark", 1440, 900],
-    ["11-lifecycle-light", "lifecycle", "light", 1440, 900],
-    ["12-lifecycle-dark", "lifecycle", "dark", 1440, 900],
     ["13-mcp-dark", "mcp", "dark", 1440, 900],
     ["13-mcp-light", "mcp", "light", 1440, 900],
     ["14-versions-light", "versions", "light", 1440, 900],
@@ -196,6 +218,9 @@ try {
     ["17-team-external-dark", "team", "dark", 1920, 1080],
   ];
   for (const args of shots) await snapshot(...args);
+  await snapshotLegacyAuthorization();
+  await snapshotLifecycleDialog("11-lifecycle-confirm-light", "light");
+  await snapshotLifecycleDialog("12-lifecycle-confirm-dark", "dark");
   report.checks.push("All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.");
   report.checks.push("S04 used the same team fixture at 1440×900 and 2560×1440 in porcelain and graphite; additional 1280×800 and 1920×1080 layout screenshots use unscaled desktop typography.");
 
@@ -238,6 +263,37 @@ try {
   }
   report.checks.push("F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.");
 
+  // Global configuration pages share real product navigation; model and Skill do not collapse into one work surface.
+  for (const scene of ["accounts", "models", "skills", "mcp"]) {
+    await go(scene, "light", 1440, 900);
+    const globalNav = await cdp.evaluate(`(() => ({
+      labels: [...document.querySelectorAll('[data-testid=global-settings-nav] button')].map((button) => button.textContent.trim()),
+      active: document.querySelector('[data-testid=global-settings-nav] button[aria-current=page]')?.dataset.scene,
+      shell: document.querySelector('.shell')?.textContent || '',
+    }))()`);
+    assert.deepEqual(globalNav.labels, ["账号", "模型", "Skill", "MCP · 已暂停"]);
+    assert.equal(globalNav.active, scene);
+    assert.doesNotMatch(globalNav.shell, /设计演示数据|隔离 fixture/);
+  }
+  report.checks.push("Accounts, models, Skill, and paused MCP use one in-shell global secondary navigation; models and Skill are independently addressable product pages.");
+
+  await go("empty", "light", 1440, 900);
+  const emptyResult = await cdp.evaluate(`(() => ({
+    placeholders: ['main', 'child-1'].every((id) => Boolean(document.querySelector('[data-testid="empty-' + id + '"]'))),
+    apply: [...document.querySelectorAll('button')].some((button) => button.textContent.includes('应用配置')),
+  }))()`);
+  assert.equal(emptyResult.placeholders, true);
+  assert.equal(emptyResult.apply, false);
+  report.checks.push("The empty state remains in the Agent-team configuration surface with real Main and Child 1 placeholders, zero implicit model or Skill grants, and no available Apply action.");
+
+  await go("team", "light", 1440, 900);
+  const readyTeam = await cdp.evaluate(`(() => ({
+    allReady: [...document.querySelectorAll('[data-agent]')].every((card) => card.textContent.includes('就绪')),
+    applyEnabled: !document.querySelector('[data-testid=apply-config]').disabled,
+  }))()`);
+  assert.deepEqual(readyTeam, { allReady: true, applyEnabled: true });
+  report.checks.push("The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; unavailable legacy authorization is isolated to its own actionable Child 1 state.");
+
   // Theme, selection, and refresh recovery — presentation actions are not business writes.
   await go("team", "light", 1440, 900);
   await cdp.evaluate("document.querySelector('[data-testid=agent-child-2]').click()");
@@ -264,6 +320,8 @@ try {
 
   // M2 409 recovery: M3 does not write during conflict; retry confirms M2 then writes M3 once; Apply stays blocked.
   await go("conflict", "light", 1440, 900);
+  const conflictProduct = await cdp.evaluate("document.querySelector('.shell').textContent");
+  assert.doesNotMatch(conflictProduct, /M2|M3|PUT|模拟事件日志/);
   const conflictInitial = await cdp.evaluate("({writes:window.__f006UX.getBusinessLog(), apply:document.querySelector('[data-testid=conflict-apply]').disabled})");
   assert.equal(conflictInitial.writes.length, 1);
   assert.match(conflictInitial.writes[0].detail, /M2.*409/);
@@ -278,6 +336,20 @@ try {
   assert.match(conflictRecovered[2].detail, /M3.*一次/);
   assert.equal(conflictRecovered.filter((event) => event.type === "activation").length, 0);
   report.checks.push("Fixture M2 409 → M3 local edit → retry produces exactly M2(409), M2(200), M3(200): no conflict-period extra PUT and no activation request.");
+
+  await go("versions", "light", 1440, 900);
+  const versionsResult = await cdp.evaluate(`(() => ({
+    applyText: [...document.querySelectorAll('button')].some((button) => button.textContent.includes('应用配置')),
+    teamLinks: document.querySelectorAll('[data-scene=team]').length,
+    activeChild2: [...document.querySelectorAll('.key-value')].find((row) => row.textContent.includes('Child 2'))?.textContent,
+    draftChild2: document.querySelector('.versions aside')?.textContent,
+  }))()`);
+  assert.equal(versionsResult.applyText, false);
+  assert.ok(versionsResult.teamLinks >= 2);
+  assert.match(versionsResult.activeChild2, /gpt-5\.6-sol.*1 项 Skill/);
+  assert.match(versionsResult.draftChild2, /gpt-5\.6-sol → gpt-5\.6-terra/);
+  assert.match(versionsResult.draftChild2, /合计 2 项 Skill/);
+  report.checks.push("The active-version view is read-only with no Apply action; its Child 2 baseline and the later model/Skill draft delta are explicitly paired with a return-to-team editing path.");
 
   // Lifecycle cancel and focus return do not write a business change.
   await go("lifecycle", "dark", 1440, 900);
