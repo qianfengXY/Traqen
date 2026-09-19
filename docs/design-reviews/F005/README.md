@@ -3,10 +3,11 @@ feature_ids: [F005]
 topics: [experience-design, navigation, design-system, components, graph, accessibility]
 doc_kind: design-proposal
 created: 2026-09-15
-updated: 2026-09-17
+updated: 2026-09-19
 publication_request: 0001789530224292-000425-1446a766
 revision_request: 0001789614562911-000019-617589c4
-status: review-proposal-not-adopted
+status: superseded
+superseded_by: ../../design/F005-layout-navigation/README.md
 version: 2.1
 owner: 砚砚/gpt-6-astra
 source_thread: thread_mtp1pj7vy5aeq7h3
@@ -16,6 +17,8 @@ source_message: 0001789458139802-000323-ea91580b
 > 语言：**简体中文** · [English（可选参考）](README.en.md)
 
 # F005 · Traqen 整体体验与前端设计总纲
+
+> **历史提案，已被取代。** 当前规范为 [F005 整体布局与导航设计规范 V1.0](../../design/F005-layout-navigation/README.md)。以下保留 V2.1 原文、图片与验证记录；其中双侧栏尺寸、大屏增加内容等规则不再有效，18–21 图不能证明统一缩放通过。移动稿、Pencil 与离线样稿同属历史资料。本次正式发布不追认历史图稿，也不表示全部产品功能已实现。
 
 > V2.1 桌面范围修订 · 2026-09-17。效果图与交互样稿均使用构造数据。本提案尚未写入正式 Feature Spec，也不代表产品功能已经实现。
 
