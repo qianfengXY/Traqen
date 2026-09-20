@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Traqen 应用架构</title>
+<link rel="stylesheet" href="style.css?v=4">
+<style>
+  .wrap{display:flex;gap:12px;align-items:stretch;}
+  .layers{flex:1;display:flex;flex-direction:column;}
+  .support{width:158px;flex:0 0 158px;display:flex;flex-direction:column;gap:10px;}
+  .support .sh{background:var(--amber);color:#fff;border-radius:8px;text-align:center;
+    font-size:13px;font-weight:700;padding:10px 6px;letter-spacing:2px;}
+  .support .node{flex:1;display:flex;flex-direction:column;justify-content:center;}
+  .gap{position:relative;height:30px;}
+  .gap svg{position:absolute;left:0;top:0;}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .dom{display:grid;grid-template-columns:1.05fr 1fr 1fr 1.35fr;gap:12px;}
+  .colhead{font-size:12px;font-weight:700;color:var(--blue-deep);margin-bottom:7px;
+    display:flex;align-items:center;gap:6px;}
+  .minis{display:flex;flex-direction:column;gap:6px;}
+  .mini{background:#fff;border:1px solid var(--line);border-radius:6px;padding:6px 9px;
+    font-size:12px;font-weight:600;color:#334155;display:flex;align-items:center;gap:6px;}
+  .mini i{font-style:normal;font-size:10px;color:var(--faint);font-weight:400;margin-left:auto;white-space:nowrap;}
+  .chips{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .chip2{background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+    font-size:11.5px;font-weight:600;color:#334155;text-align:center;}
+  .chips .wide{grid-column:1 / -1;}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="hd">
+    <div class="t"><em>Traqen</em>应用架构图</div>
+    <div class="s">src/ 模块结构 · 四层代码分层 + 平台外执行器（运行边界）+ 横向支撑<br>Node ≥ 20 纯 ESM · 零 Web 框架 · 无队列 / 无缓存 / 无图库<br>修订 v4 · 保留 v2 / v3 供对照 · 节点徽标 = 实现状态，箭头 = 调用关系</div>
+  </div>
+
+  <div class="wrap">
+    <div class="layers">
+
+      <!-- ① 接入层 -->
+      <div class="layer" style="margin-bottom:0;">
+        <div class="band blue"><span>接入层</span></div>
+        <div class="lbody">
+          <div class="grid3">
+            <div class="node pri">
+              <div class="ttl"><span class="n">A1</span>Web UI <span class="tag st-impl">实现</span></div>
+              <div class="dsc">Next.js 16 + React 19 + Cytoscape + Tailwind 4，vinext 构建，经 Cloudflare Worker 发布。</div>
+            </div>
+            <div class="node pri">
+              <div class="ttl"><span class="n">A2</span>CLI <span class="tag st-impl">实现</span></div>
+              <div class="dsc">开发启动、质量门、仓库自扫描，研发与质量的本地入口。</div>
+            </div>
+            <div class="node pri">
+              <div class="ttl"><span class="n">A3</span>REST API <span class="tag st-impl">实现</span></div>
+              <div class="dsc">自研零框架 http-server（api/），开发 :3100 / 生产 :3000。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap">
+        <svg width="1732" height="30" viewBox="0 0 1732 30">
+          <line x1="866" y1="2" x2="866" y2="20" stroke="#2563eb" stroke-width="2"/>
+          <polygon points="860,20 872,20 866,29" fill="#2563eb"/>
+          <text class="wlbl blue" x="880" y="19">REST / 本地调用</text>
+        </svg>
+      </div>
+
+      <!-- ② 应用服务层 -->
+      <div class="layer" style="margin-bottom:0;">
+        <div class="band deep"><span>应用服务层</span></div>
+        <div class="lbody">
+          <div class="grid4" style="grid-template-columns:repeat(5,1fr)">
+            <div class="node">
+              <div class="ttl"><span class="n">S1</span>traceability-application <span class="tag st-impl">实现</span></div>
+              <div class="dsc">用例编排与事务边界，对接入层暴露业务能力。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">S2</span>analysis job runner + worker <span class="tag st-impl">实现</span></div>
+              <div class="dsc">长任务单进程执行，append-only job 表驱动，无消息队列。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">S3</span>source-slice-broker <span class="tag st-impl">实现</span></div>
+              <div class="dsc">受控源码切片服务，按需供给最小必要上下文。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">S4</span>understanding-equivalence <span class="tag st-impl">实现</span></div>
+              <div class="dsc">跨轮理解的等价性校验，防语义漂移。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">X3</span>证据回收入口 <span class="tag st-impl">实现</span></div>
+              <div class="dsc">平台侧接口： runner 签名证据 HMAC 验签入库（原误置平台外，已移回应用服务层）。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap">
+        <svg width="1732" height="30" viewBox="0 0 1732 30">
+          <line x1="866" y1="2" x2="866" y2="20" stroke="#2563eb" stroke-width="2"/>
+          <polygon points="860,20 872,20 866,29" fill="#2563eb"/>
+          <text class="wlbl blue" x="880" y="19">函数调用（同进程）</text>
+        </svg>
+      </div>
+
+      <!-- ③ 领域能力层 -->
+      <div class="layer" style="margin-bottom:0;">
+        <div class="band slate"><span>领域能力层</span></div>
+        <div class="lbody">
+          <div class="dom">
+            <div>
+              <div class="colhead"><span class="n">D1</span>来源真相 source-truth（F001） <span class="tag st-impl">实现</span></div>
+              <div class="minis">
+                <div class="mini">git-gateway</div>
+                <div class="mini">capture</div>
+                <div class="mini">staging</div>
+                <div class="mini">blob-store</div>
+                <div class="mini">publication</div>
+                <div class="mini">admission-service</div>
+                <div class="mini" style="color:#94a3b8;">+ backup-service / policy<i>约 40 文件</i></div>
+              </div>
+            </div>
+            <div>
+              <div class="colhead"><span class="n">D2</span>扫描器 scanner <span class="tag st-impl">实现</span></div>
+              <div class="minis">
+                <div class="mini">AST 解析（JavaScript）</div>
+                <div class="mini">AST 解析（Java）</div>
+                <div class="mini">OpenAPI 契约</div>
+                <div class="mini">PostgreSQL DDL</div>
+                <div class="mini">artifact inventory</div>
+                <div class="mini">git-diff</div>
+              </div>
+            </div>
+            <div>
+              <div class="colhead"><span class="n">D3</span>分析 analysis <span class="tag st-impl">实现</span><span class="tag st-design">分流设计</span></div>
+              <div class="minis">
+                <div class="mini">model-adapters</div>
+                <div class="mini">capability-router<i>分流入图 · 设计目标</i></div>
+                <div class="mini">understanding-planner<i>调查规划 · 实现</i></div>
+                <div class="mini">reconciliation<i>冲突核查 · 实现</i></div>
+                <div class="mini" style="color:#94a3b8;">ast-grep / acorn / ajv<i>解析底座</i></div>
+              </div>
+              <div class="mini" style="border-style:dashed;font-weight:400;font-size:11px;line-height:1.5;align-items:flex-start;">F003 §8 五档分流（分流职责为设计目标，列内模块已落地）：自动收录（Agent 分析态，无人工委任发布权）· 自动补证回调查 · 人工审核 · 保留待调查 · 无效隔离重试</div>
+            </div>
+            <div>
+              <div class="colhead"><span class="n">D4</span>纯领域模型 domain <span class="tag st-impl">实现</span></div>
+              <div class="chips">
+                <div class="chip2">governance</div>
+                <div class="chip2">decision-governance</div>
+                <div class="chip2">review</div>
+                <div class="chip2">test-spec</div>
+                <div class="chip2">execution-evidence</div>
+                <div class="chip2">change-impact</div>
+                <div class="chip2">invalidation</div>
+                <div class="chip2">feature-graph</div>
+                <div class="chip2">trace-chain</div>
+                <div class="chip2">continuous-protection 等 30+</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap">
+        <svg width="1732" height="30" viewBox="0 0 1732 30">
+          <line x1="866" y1="2" x2="866" y2="20" stroke="#2563eb" stroke-width="2"/>
+          <polygon points="860,20 872,20 866,29" fill="#2563eb"/>
+          <text class="wlbl blue" x="880" y="19">storage 端口接口</text>
+        </svg>
+      </div>
+
+      <!-- ④ 存储层 -->
+      <div class="layer" style="margin-bottom:0;">
+        <div class="band ink"><span>存储层</span></div>
+        <div class="lbody">
+          <div class="grid3">
+            <div class="node">
+              <div class="ttl"><span class="n">M1</span>storage 端口 <span class="tag st-impl">实现</span></div>
+              <div class="dsc">领域只依赖存储端口接口，可替换适配器。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">M2</span>memory 适配器 <span class="tag st-impl">实现</span></div>
+              <div class="dsc">仅开发 / 测试使用，零外部依赖启动。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">M3</span>postgres 适配器 <span class="tag st-impl">实现</span></div>
+              <div class="dsc">生产适配器，pg 8.22；pglite 仅开发 / 测试。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="gap">
+        <svg width="1732" height="30" viewBox="0 0 1732 30">
+          <!-- 任务下发：平台 → runner（经 S2 下发） -->
+          <line x1="620" y1="2" x2="620" y2="20" stroke="#b45309" stroke-width="2" stroke-dasharray="5 4"/>
+          <polygon points="614,20 626,20 620,29" fill="#b45309"/>
+          <text class="wlbl amber" x="608" y="19" text-anchor="end">签名任务下发（S2 → X1 · 传输待定）</text>
+          <!-- 证据回传：runner → 平台内 X3 验签入库（方向向上） -->
+          <line x1="1120" y1="28" x2="1120" y2="10" stroke="#b45309" stroke-width="2" stroke-dasharray="5 4"/>
+          <polygon points="1114,10 1126,10 1120,1" fill="#b45309"/>
+          <text class="wlbl amber" x="1132" y="19">证据回传 → 平台内 X3 验签入库</text>
+        </svg>
+      </div>
+
+      <!-- ⑤ 平台外执行器（运行边界，非代码分层） -->
+      <div class="layer" style="margin-bottom:0;">
+        <div class="band amber"><span>平台外执行器</span></div>
+        <div class="lbody">
+          <div class="grid3" style="grid-template-columns:repeat(2,1fr)">
+            <div class="node">
+              <div class="ttl"><span class="n">X1</span>runner 受控执行器 <span class="tag st-impl">实现</span><span class="tag st-tbd">接线待定</span></div>
+              <div class="dsc">验签后在外部进程执行：任务 HMAC 验签 · 快照绑定 · 本地凭据解析均已实现。</div>
+            </div>
+            <div class="node">
+              <div class="ttl"><span class="n">X2</span>被测环境 <span class="tag st-tbd">待定</span></div>
+              <div class="dsc">外部部署形态与传输方式未定，不画成既成事实；证据经签名后回传平台内 X3 入口验签入库。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 右侧横向支撑 -->
+    <div class="support">
+      <div class="sh">横向支撑</div>
+      <div class="node gov">
+        <div class="ttl"><span class="n am">H1</span>F006 能力设置 <span class="tag st-impl">实现</span></div>
+        <div class="dsc">Workspace 级能力开关与执行白名单配置。</div>
+      </div>
+      <div class="node gov">
+        <div class="ttl"><span class="n am">H2</span>质量门 <span class="tag st-impl">实现</span><span class="tag st-design">设计</span></div>
+        <div class="dsc">准入检查（权限 / 完整性 / 来源，已有实现，未过阻断）；变更影响检查（F004 建议性产出，不阻断流转）。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="lt">图例 · 编号 — 名称 — 职责 · 节点徽标 = 实现状态，箭头 = 调用关系方向</div>
+    <div class="lgrow">
+      <div class="lg"><span class="tag st-impl">实现</span><b>已有实现</b><span class="sep">—</span>代码在库（64100c2）；≠ 已部署 / 已验收。判定依据：代码 + F003 / F006 现行设计</div>
+      <div class="lg"><span class="tag st-design">设计</span><b>设计目标</b><span class="sep">—</span>已发布设计中的目标行为，本层代码未落地或仅部分落地</div>
+      <div class="lg"><span class="tag st-tbd">待定</span><b>待定接口</b><span class="sep">—</span>契约未定，显式列出、不臆造</div>
+      <div class="lg"><span class="n">A1</span><b>Web UI</b><span class="sep">—</span>Next.js 前端，CF Worker 发布</div>
+      <div class="lg"><span class="n">A2</span><b>CLI</b><span class="sep">—</span>dev 启动 / 质量门 / 自扫描</div>
+      <div class="lg"><span class="n">A3</span><b>REST API</b><span class="sep">—</span>自研零框架 http-server</div>
+      <div class="lg"><span class="n">S1</span><b>traceability-application</b><span class="sep">—</span>用例编排与事务边界</div>
+      <div class="lg"><span class="n">S2</span><b>job runner + worker</b><span class="sep">—</span>单进程 append-only 长任务</div>
+      <div class="lg"><span class="n">S3</span><b>source-slice-broker</b><span class="sep">—</span>受控源码切片供给</div>
+      <div class="lg"><span class="n">S4</span><b>understanding-equivalence</b><span class="sep">—</span>理解等价校验</div>
+      <div class="lg"><span class="n">D1</span><b>source-truth</b><span class="sep">—</span>F001 不可变来源包全生命周期</div>
+      <div class="lg"><span class="n">D2</span><b>scanner</b><span class="sep">—</span>六类结构扫描器</div>
+      <div class="lg"><span class="n">D3</span><b>analysis</b><span class="sep">—</span>模型接入与语义假设流水线；五档分流归宿见列内注（分流职责为设计目标）</div>
+      <div class="lg"><span class="n">D4</span><b>纯领域模型 domain</b><span class="sep">—</span>governance / decision-governance / review / test-spec / execution-evidence / change-impact 等 30+ 模块，库内同进程调用</div>
+      <div class="lg"><span class="n">X3</span><b>证据回收入口</b><span class="sep">—</span>平台侧验签入库接口（应用服务层，非平台外组件）；接收 X1 回传签名证据</div>
+      <div class="lg"><span class="n wide">X1–X2</span><b>平台外执行器</b><span class="sep">—</span>runner 验签执行 · 被测环境；代码在库，外部接线与传输待定（任务下发 S2 → X1，证据 X1 → 平台内 X3）</div>
+      <div class="lg"><span class="n wide">M1–M3</span><b>storage</b><span class="sep">—</span>端口 + memory / postgres 适配器</div>
+      <div class="lg"><span class="n am">H1</span><b>F006 能力设置</b><span class="sep">—</span>租户级能力开关与白名单</div>
+      <div class="lg"><span class="n am">H2</span><b>质量门</b><span class="sep">—</span>准入检查阻断（实现）；变更影响检查建议性、不阻断（F004）</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

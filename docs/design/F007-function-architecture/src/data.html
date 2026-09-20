@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Traqen 数据架构</title>
+<link rel="stylesheet" href="style.css?v=4">
+<style>
+  .main{position:relative;height:1030px;}
+  .abs{position:absolute;}
+  .grp{position:absolute;border:1.5px dashed #94a3b8;border-radius:10px;background:transparent;}
+  .grp .gt{position:absolute;top:-13px;left:16px;background:var(--canvas);padding:0 10px;
+    font-weight:700;font-size:13.5px;color:#334155;letter-spacing:1px;}
+  .grp .gt .n{width:20px;height:20px;font-size:11px;}
+  .ent{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 11px;
+    border-top:3px solid var(--blue);}
+  .ent .ttl{font-size:13px;font-weight:700;display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
+  .ent .dsc{font-size:11px;color:var(--muted);line-height:1.45;margin-top:3px;}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="hd">
+    <div class="t"><em>Traqen</em>数据架构图（实体关系）</div>
+    <div class="s">核心实体按四个域分组 · 关系线标注基数 · 全部 append-only / versioned<br>加粗蓝线 = 假设 → 确认 → 验证 → 计算验证状态的关键证据路径<br>修订 v4 · 保留 v2 / v3 供对照 · 节点徽标 = 实现状态，连线 = 关系语义</div>
+  </div>
+
+  <div class="main">
+    <svg class="wire" width="1800" height="1030" viewBox="0 0 1800 1030">
+      <!-- ===== G1 internal ===== -->
+      <line x1="270" y1="198" x2="330" y2="198" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="570" y1="198" x2="630" y2="198" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="710" y1="231" x2="710" y2="288" stroke="#2563eb" stroke-width="2.4"/>
+      <line x1="630" y1="330" x2="570" y2="330" stroke="#2563eb" stroke-width="2.4"/>
+      <!-- human_decision -> Claim bottom：绑定 1 个 Claim 版本 -->
+      <polyline points="630,460 450,460 450,426" fill="none" stroke="#2563eb" stroke-width="2.4"/>
+      <!-- Claim -> TestSpec elbow -->
+      <polyline points="330,330 110,330 110,660 185,660" fill="none" stroke="#2563eb" stroke-width="2.4"/>
+      <!-- ===== G3 internal (highlight) ===== -->
+      <line x1="185" y1="730" x2="185" y2="830" stroke="#2563eb" stroke-width="2.4"/>
+      <line x1="300" y1="865" x2="380" y2="865" stroke="#2563eb" stroke-width="2.4"/>
+      <line x1="570" y1="865" x2="620" y2="865" stroke="#2563eb" stroke-width="2.4"/>
+      <!-- VerificationResult -> Claim -->
+      <polyline points="715,827 715,560 450,560 450,384" fill="none" stroke="#2563eb" stroke-width="2.4"/>
+      <!-- ===== G2 internal ===== -->
+      <line x1="1180" y1="193" x2="1250" y2="193" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="1070" y1="226" x2="1070" y2="290" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="1070" y1="354" x2="1070" y2="420" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="1180" y1="453" x2="1250" y2="453" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="1370" y1="252" x2="1370" y2="290" stroke="#94a3b8" stroke-width="1.6"/>
+      <!-- ===== G4 internal ===== -->
+      <line x1="1075" y1="764" x2="1075" y2="830" stroke="#94a3b8" stroke-width="1.6"/>
+      <!-- SnapshotManifest -> ChangeSet：from / to 双引用 -->
+      <line x1="1050" y1="486" x2="1050" y2="660" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="1090" y1="486" x2="1090" y2="660" stroke="#94a3b8" stroke-width="1.6"/>
+      <!-- ===== cross-group trunk x=880 ===== -->
+      <line x1="880" y1="198" x2="880" y2="850" stroke="#94a3b8" stroke-width="1.6"/>
+      <line x1="790" y1="198" x2="880" y2="198" stroke="#94a3b8" stroke-width="1.6"/>
+      <polyline points="680,231 680,504 880,504" fill="none" stroke="#94a3b8" stroke-width="1.6"/>
+      <polyline points="1370,504 1370,545 880,545" fill="none" stroke="#94a3b8" stroke-width="1.6"/>
+      <!-- 自动收录通路（设计目标 F003 §8）：Candidate -> Claim，与人工审核通路并存 -->
+      <polyline points="630,216 605,216 605,286 505,286 505,298" fill="none" stroke="#b45309" stroke-width="1.8" stroke-dasharray="6 4"/>
+      <line x1="880" y1="850" x2="960" y2="850" stroke="#94a3b8" stroke-width="1.6"/>
+      <!-- tap dots -->
+      <circle cx="880" cy="198" r="3.5" fill="#475569"/>
+      <circle cx="880" cy="504" r="3.5" fill="#475569"/>
+      <circle cx="880" cy="545" r="3.5" fill="#475569"/>
+      <circle cx="880" cy="850" r="3.5" fill="#475569"/>
+      <!-- ===== cardinality / edge labels ===== -->
+      <text class="wlbl" x="283" y="190">0..*</text>
+      <text class="wlbl" x="582" y="190">0..*</text>
+      <text class="wlbl blue" x="719" y="262">0..1</text>
+      <text class="wlbl" x="719" y="280" style="font-size:10px;fill:#64748b;">按 run 唯一</text>
+      <text class="wlbl blue" x="586" y="322">0..1</text>
+      <text class="wlbl blue" x="586" y="452">1</text>
+      <text class="wlbl blue" x="122" y="320">多对多 · 版本化</text>
+      <text class="wlbl blue" x="194" y="784">0..*</text>
+      <text class="wlbl blue" x="326" y="857">1..*</text>
+      <text class="wlbl blue" x="586" y="857">1..*</text>
+      <text class="wlbl blue" x="452" y="548">计算验证状态（派生展示，不回写主张）：Claim 版本 × 快照 × 执行</text>
+      <text class="wlbl amber" x="600" y="279" text-anchor="end">自动收录 · Agent 分析态（设计目标 · F003 §8）</text>
+      <text class="wlbl" x="1188" y="185">1..*</text>
+      <text class="wlbl" x="1078" y="262">1..*</text>
+      <text class="wlbl" x="1078" y="390">0..*</text>
+      <text class="wlbl" x="1188" y="445">1..*</text>
+      <text class="wlbl" x="1378" y="268">0..*</text>
+      <text class="wlbl" x="1083" y="784">0..*</text>
+      <text class="wlbl" transform="rotate(-90 1043 573)" x="1043" y="573">from 变更前</text>
+      <text class="wlbl" transform="rotate(-90 1097 573)" x="1097" y="573">to 变更后</text>
+      <text class="wlbl" x="800" y="190">1..*</text>
+      <text class="wlbl" x="688" y="306">1..*</text>
+      <text class="wlbl" x="1330" y="537">1..*</text>
+      <text class="wlbl" x="898" y="842">1..*</text>
+      <text class="wlbl" x="892" y="700" transform="rotate(90 892 700)">跨域关系通道（端点标注基数）</text>
+    </svg>
+
+    <!-- group frames -->
+    <div class="grp" style="left:40px;top:120px;width:780px;height:400px;">
+      <div class="gt"><span class="n">G1</span>身份与治理</div>
+    </div>
+    <div class="grp" style="left:920px;top:120px;width:846px;height:400px;">
+      <div class="gt"><span class="n">G2</span>来源与事实</div>
+    </div>
+    <div class="grp" style="left:40px;top:600px;width:780px;height:420px;">
+      <div class="gt"><span class="n">G3</span>验证</div>
+    </div>
+    <div class="grp" style="left:920px;top:600px;width:846px;height:420px;">
+      <div class="gt"><span class="n">G4</span>变更与缺口</div>
+    </div>
+
+    <!-- G1 entities -->
+    <div class="abs ent" style="left:70px;top:165px;width:200px;height:66px;">
+      <div class="ttl">Workspace<span class="tag st-impl">实现</span></div>
+      <div class="dsc">租户与治理聚合根</div>
+    </div>
+    <div class="abs ent" style="left:330px;top:165px;width:240px;height:66px;">
+      <div class="ttl">Feature / FeatureVersion<span class="tag vr">V</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">功能资产及其版本</div>
+    </div>
+    <div class="abs ent" style="left:630px;top:165px;width:160px;height:66px;">
+      <div class="ttl">Candidate<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">Agent 语义假设，带来源与不确定性</div>
+    </div>
+    <div class="abs ent" style="left:630px;top:288px;width:190px;height:128px;">
+      <div class="ttl">审核记录<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">确认 / 拒绝 / 例外 / 证据不足 / 暂缓；按 (project, run, candidate) 唯一；拒绝 / 暂缓可无 Claim（0..1）；未审核＝尚无记录；目标模型待定 · F003 §8</div>
+    </div>
+    <div class="abs ent" style="left:630px;top:428px;width:190px;height:64px;">
+      <div class="ttl">human_decision<span class="tag st-impl">实现</span></div>
+      <div class="dsc">人工决定对象，绑定 1 个 Claim 版本（端点 1）</div>
+    </div>
+    <div class="abs ent" style="left:330px;top:300px;width:240px;height:124px;">
+      <div class="ttl">Claim<span class="tag vr">V</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">四类声明：规范要求 / 实现行为 / 设计意图 / 质量期望，版本化；修订追加留痕，authority / verification 维度分离；现行关联 Feature.id，与 FeatureVersion 版本级关联为设计目标</div>
+    </div>
+
+    <!-- G2 entities -->
+    <div class="abs ent" style="left:960px;top:160px;width:220px;height:66px;">
+      <div class="ttl">SourceBundle<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">F001 不可变来源包（≤1 Git + ≤1 上传目录）</div>
+    </div>
+    <div class="abs ent" style="left:1250px;top:160px;width:240px;height:92px;">
+      <div class="ttl">SourceTruthReceipt<span class="tag st-impl">实现</span></div>
+      <div class="dsc">签发回执：READY / READY_WITH_ACCEPTED_GAPS / BLOCKED；同包续签产生新 Receipt，Bundle 身份不变（F001 §8.3）</div>
+    </div>
+    <div class="abs ent" style="left:960px;top:290px;width:220px;height:64px;">
+      <div class="ttl">ArtifactInventory<span class="tag st-impl">实现</span></div>
+      <div class="dsc">来源构件清点</div>
+    </div>
+    <div class="abs ent" style="left:1250px;top:290px;width:240px;height:64px;">
+      <div class="ttl">CoverageGap<span class="tag st-impl">实现</span></div>
+      <div class="dsc">来源覆盖缺口记录</div>
+    </div>
+    <div class="abs ent" style="left:960px;top:420px;width:220px;height:66px;">
+      <div class="ttl">SnapshotManifest<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">快照清单：source / build / deployment / runtime 四组件</div>
+    </div>
+    <div class="abs ent" style="left:1250px;top:420px;width:240px;height:84px;">
+      <div class="ttl">FactBundle<span class="tag ao">AO</span><span class="tag sg">SHA-256</span><span class="tag st-design">设计</span></div>
+      <div class="dsc">确定性事实集合：FactNode / FactEdge / FactBundle，内容寻址 + 推导留痕（F002 现行设计）</div>
+    </div>
+
+    <!-- G3 entities -->
+    <div class="abs ent" style="left:70px;top:660px;width:230px;height:70px;">
+      <div class="ttl">TestSpec<span class="tag vr">V</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">测试规格，与 Claim 精确版本多对多关联</div>
+    </div>
+    <div class="abs ent" style="left:70px;top:830px;width:230px;height:70px;">
+      <div class="ttl">TestExecution<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">真实执行记录，含 fixture 与超时约束；尚未执行为正常态（0..*）</div>
+    </div>
+    <div class="abs ent" style="left:380px;top:827px;width:190px;height:76px;">
+      <div class="ttl">Evidence<span class="tag ao">AO</span><span class="tag sg">HMAC</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">执行证据，Runner HMAC-SHA256 签名，平台验签入库</div>
+    </div>
+    <div class="abs ent" style="left:620px;top:827px;width:200px;height:100px;">
+      <div class="ttl">VerificationResult<span class="tag st-design">设计</span></div>
+      <div class="dsc">计算验证状态（派生展示，不回写主张）：PASS / FAIL / INCONCLUSIVE；保留 TestSpec 精确版本、部署环境与作用域</div>
+    </div>
+
+    <!-- G4 entities -->
+    <div class="abs ent" style="left:960px;top:660px;width:230px;height:104px;">
+      <div class="ttl">ChangeSet<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">快照间差异；影响分级 CONFIRMED / POSSIBLE / UNKNOWN（建议性，不阻断）；经 from / to 双引用分别指向变更前、变更后快照（端点 1 / 0..*）</div>
+    </div>
+    <div class="abs ent" style="left:960px;top:830px;width:230px;height:80px;">
+      <div class="ttl">TraceGap<span class="tag ao">AO</span><span class="tag st-impl">实现</span></div>
+      <div class="dsc">缺口显式记录：缺失 / 陈旧 / 冲突 / 失败；挂接功能与快照上下文（经 ChangeSet 定位）</div>
+    </div>
+    <div class="abs node gov" style="left:1260px;top:660px;width:460px;height:120px;">
+      <div class="ttl"><span class="n am">N1</span>TraceGap 处置生命周期</div>
+      <div class="dsc">登记 → 指派责任 → 补证 / 修复 / 风险接受 → 关闭；处置动作 append-only 留痕，未关闭缺口进入交付证明的剩余风险清单。</div>
+    </div>
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="lt">图例 · 域分组 — 实体 — 职责 / 角标 · 节点徽标 = 实现状态，连线 = 关系语义</div>
+    <div class="lgrow">
+      <div class="lg"><span class="tag st-impl">实现</span><b>已有实现</b><span class="sep">—</span>代码在库（64100c2）；≠ 已部署 / 已验收</div>
+      <div class="lg"><span class="tag st-design">设计</span><b>设计目标</b><span class="sep">—</span>依据 F001 / F003 / F006 现行已发布设计，代码未落地</div>
+      <div class="lg"><span class="tag st-tbd">待定</span><b>待定接口</b><span class="sep">—</span>契约未定，显式列出、不臆造</div>
+      <div class="lg"><span class="n">G1</span><b>身份与治理</b><span class="sep">—</span>Workspace 租户根 · Feature/FeatureVersion 功能资产 · Candidate 语义假设 · 审核记录 CandidateReview（按 (project, run, candidate) 唯一，关联 0..1 个 Claim 版本；拒绝 / 暂缓可无 Claim；未审核＝尚无记录）· human_decision（绑定 1 个 Claim 版本）· Claim 版本化声明（现行关联 Feature.id）；目标模型与发布接口待对齐 F003 §8</div>
+      <div class="lg"><span class="n">G2</span><b>来源与事实</b><span class="sep">—</span>SourceBundle 来源包 · SourceTruthReceipt 签发回执 · ArtifactInventory 清点 · CoverageGap 覆盖缺口 · SnapshotManifest 快照 · FactBundle 确定性事实</div>
+      <div class="lg"><span class="n">G3</span><b>验证</b><span class="sep">—</span>TestSpec 测试规格 · TestExecution 执行记录 · Evidence 签名证据 · VerificationResult 判定结果</div>
+      <div class="lg"><span class="n">G4</span><b>变更与缺口</b><span class="sep">—</span>ChangeSet 快照差异（from / to 双引用）· TraceGap 追溯缺口（生命周期见 N1）</div>
+      <div class="lg"><span class="tag ao">AO</span><b>append-only</b><span class="sep">—</span>只追加，永不修改删除</div>
+      <div class="lg"><span class="tag vr">V</span><b>versioned</b><span class="sep">—</span>版本化，历史可追溯</div>
+      <div class="lg"><span class="tag sg">HMAC</span><b>签名 / 哈希</b><span class="sep">—</span>证据 HMAC-SHA256 签名，事实 SHA-256 内容寻址</div>
+      <div class="lg"><span class="n">—</span><b>关键证据路径</b><span class="sep">—</span>Candidate →（自动收录 · Agent 分析态［设计目标］／审核记录 + human_decision 人工审核［实现］）→ Claim → TestSpec ⇢ TestExecution（0..*）→ Evidence → VerificationResult → 计算验证状态（派生展示）</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Traqen 业务架构</title>
+<link rel="stylesheet" href="style.css?v=4">
+<style>
+  .role-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .flow-strip{display:flex;align-items:center;gap:10px;margin:0 2px 10px;}
+  .flow-strip .fs-line{flex:1;height:2px;background:linear-gradient(90deg,#93c5fd,var(--blue));}
+  .flow-strip .fs-txt{font-size:12px;font-weight:600;color:var(--blue-deep);white-space:nowrap;}
+  .cap-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;}
+  .cap-grid .node{padding:9px 9px;min-height:158px;display:flex;flex-direction:column;}
+  .cap-grid .ttl{font-size:12.5px;}
+  .val-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;}
+  .gov-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .cap-grid .node{position:relative;}
+  .cap-grid .node:not(:last-child)::after{
+    content:"›";position:absolute;right:-9px;top:50%;transform:translateY(-50%);
+    color:var(--blue);font-size:18px;font-weight:700;z-index:2;}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="hd">
+    <div class="t"><em>Traqen</em>业务架构图</div>
+    <div class="s">面向无可信资产存量系统的企业可追溯质量平台 · 业务能力与价值产出视图<br>视角：业务与治理 · 不含任何技术实现细节 · 修订 v4 · 保留 v2 / v3 供对照</div>
+  </div>
+
+  <!-- 层1 角色 -->
+  <div class="layer">
+    <div class="band slate"><span>业务角色</span></div>
+    <div class="lbody">
+      <div class="role-grid">
+        <div class="node pri">
+          <div class="ttl"><span class="n">R1</span>产品 / 业务负责人</div>
+          <div class="dsc">确认功能目标、业务规则与验收基线，对业务定义签字负责。</div>
+        </div>
+        <div class="node pri">
+          <div class="ttl"><span class="n">R2</span>架构师与研发</div>
+          <div class="dsc">登记来源材料、重建系统知识、评估变更影响并修复缺口。</div>
+        </div>
+        <div class="node pri">
+          <div class="ttl"><span class="n">R3</span>测试与质量</div>
+          <div class="dsc">圈定验证范围、留存真实执行证据、跟踪并处置质量缺口。</div>
+        </div>
+        <div class="node pri">
+          <div class="ttl"><span class="n">R4</span>交付与运维</div>
+          <div class="dsc">按版本查证完整证据链，支撑交付验收与运行期审计。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 层2 业务能力 -->
+  <div class="layer">
+    <div class="band blue"><span>业务能力</span></div>
+    <div class="lbody">
+      <div class="flow-strip">
+        <span class="fs-txt">价值链：知识供给</span><div class="fs-line"></div>
+        <span class="fs-txt">基线治理</span><div class="fs-line"></div>
+        <span class="fs-txt">追溯</span><div class="fs-line"></div>
+        <span class="fs-txt">验证</span><div class="fs-line"></div>
+        <span class="fs-txt">变更</span><div class="fs-line"></div>
+        <span class="fs-txt">处置</span><div class="fs-line"></div>
+        <span class="fs-txt">态势与证明</span>
+      </div>
+      <div class="cap-grid">
+        <div class="node">
+          <div class="ttl"><span class="n">B01</span>知识重建与资产化</div>
+          <div class="dsc">从存量材料识别功能、流程与规则，保留来源、歧义与缺失。</div>
+        </div>
+        <div class="node">
+          <div class="ttl"><span class="n">B02</span>业务定义与基线治理</div>
+          <div class="dsc">确认功能目的、规则、范围与责任，留存版本与决策历史。</div>
+        </div>
+        <div class="node">
+          <div class="ttl"><span class="n">B03</span>端到端关联与质量追溯</div>
+          <div class="dsc">意图、设计、实现、配置、测试、部署类型化关联，断链可定位。</div>
+        </div>
+        <div class="node">
+          <div class="ttl"><span class="n">B04</span>测试设计与质量验证</div>
+          <div class="dsc">规则推导测试规格，连接真实执行与断言，产出可信结论。</div>
+        </div>
+        <div class="node">
+          <div class="ttl"><span class="n">B05</span>变更影响与持续回归</div>
+          <div class="dsc">版本间差异比较，影响按确定、可能、未知三级显式分级。</div>
+        </div>
+        <div class="node">
+          <div class="ttl"><span class="n">B06</span>质量缺口与协同处置</div>
+          <div class="dsc">缺失、陈旧、冲突、失败统一登记，补证、修复或风险接受留痕。</div>
+        </div>
+        <div class="node">
+          <div class="ttl"><span class="n">B07</span>质量态势与交付证明</div>
+          <div class="dsc">按功能、版本、部署汇合质量状态，导出证据与剩余风险。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 层3 价值产出 -->
+  <div class="layer">
+    <div class="band deep"><span>价值产出</span></div>
+    <div class="lbody">
+      <div class="val-grid">
+        <div class="node pri">
+          <div class="ttl"><span class="n">V1</span>软件知识可继承</div>
+          <div class="dsc">功能资产不依赖个人记忆，随人员更替持续可用、可交接。</div>
+        </div>
+        <div class="node pri">
+          <div class="ttl"><span class="n">V2</span>质量可解释</div>
+          <div class="dsc">每个质量结论都能追溯到证据、判定人与判定依据，绝不合成总分。</div>
+        </div>
+        <div class="node pri">
+          <div class="ttl"><span class="n">V3</span>交付可查证</div>
+          <div class="dsc">交付验收依据完整证据链与剩余风险清单，而非口头承诺。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 治理带 -->
+  <div class="layer">
+    <div class="band amber"><span>治理贯穿</span></div>
+    <div class="lbody" style="background:var(--amber-bg);">
+      <div class="gov-grid">
+        <div class="node gov">
+          <div class="ttl"><span class="n am">B16</span>角色与权限</div>
+          <div class="dsc">按角色划分操作边界，越权操作被拒绝并留痕。</div>
+        </div>
+        <div class="node gov">
+          <div class="ttl"><span class="n am">B17</span>禁止自我审阅</div>
+          <div class="dsc">提出假设者与审阅决策者分离，结论须经独立确认。</div>
+        </div>
+        <div class="node gov">
+          <div class="ttl"><span class="n am">B18</span>人工审批</div>
+          <div class="dsc">单人、双人、业务合规与紧急破窗四级审批模式。</div>
+        </div>
+        <div class="node gov">
+          <div class="ttl"><span class="n am">B19</span>证据审计</div>
+          <div class="dsc">关键操作全量留痕，审计视角可回放完整决策链。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="lt">图例 · 编号 — 名称 — 职责</div>
+    <div class="lgrow">
+      <div class="lg"><span class="n ghost">R1</span><b>产品/业务负责人</b><span class="sep">—</span>确认目标、规则与验收基线</div>
+      <div class="lg"><span class="n ghost">R2</span><b>架构师与研发</b><span class="sep">—</span>登记来源、重建知识、查影响</div>
+      <div class="lg"><span class="n ghost">R3</span><b>测试与质量</b><span class="sep">—</span>验证范围、执行证据、缺口处置</div>
+      <div class="lg"><span class="n ghost">R4</span><b>交付与运维</b><span class="sep">—</span>查证证据链、验收审计</div>
+      <div class="lg"><span class="n">B01</span><b>知识重建与资产化</b><span class="sep">—</span>存量材料识别功能/流程/规则</div>
+      <div class="lg"><span class="n">B02</span><b>业务定义与基线治理</b><span class="sep">—</span>确认目的/规则/范围/责任</div>
+      <div class="lg"><span class="n">B03</span><b>端到端关联与质量追溯</b><span class="sep">—</span>六类证据正反查询、断链定位</div>
+      <div class="lg"><span class="n">B04</span><b>测试设计与质量验证</b><span class="sep">—</span>规则到执行的闭环验证</div>
+      <div class="lg"><span class="n">B05</span><b>变更影响与持续回归</b><span class="sep">—</span>差异比较与三级影响分级</div>
+      <div class="lg"><span class="n">B06</span><b>质量缺口与协同处置</b><span class="sep">—</span>补证/修复/风险接受留痕</div>
+      <div class="lg"><span class="n">B07</span><b>质量态势与交付证明</b><span class="sep">—</span>按功能/版本/部署导出证据</div>
+      <div class="lg"><span class="n">V1</span><b>软件知识可继承</b><span class="sep">—</span>知识随人员更替持续可用</div>
+      <div class="lg"><span class="n">V2</span><b>质量可解释</b><span class="sep">—</span>结论可追溯到证据与判定</div>
+      <div class="lg"><span class="n">V3</span><b>交付可查证</b><span class="sep">—</span>验收依据证据链而非承诺</div>
+      <div class="lg"><span class="n am">B16</span><b>角色与权限</b><span class="sep">—</span>角色操作边界与越权拒绝</div>
+      <div class="lg"><span class="n am">B17</span><b>禁止自我审阅</b><span class="sep">—</span>假设与审阅决策强制分离</div>
+      <div class="lg"><span class="n am">B18</span><b>人工审批</b><span class="sep">—</span>单人/双人/合规/破窗四级</div>
+      <div class="lg"><span class="n am">B19</span><b>证据审计</b><span class="sep">—</span>操作留痕、决策链可回放</div>
+      <div class="lg"><span class="n wide">—</span><b>视图约定</b><span class="sep">—</span>业务视图不标实现状态；实现 / 设计 / 待定徽标见系统 · 应用 · 数据 · 部署视图。下一层展开：B01–B07 主责角色与输入输出、能力到 V1–V3 的价值路径</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

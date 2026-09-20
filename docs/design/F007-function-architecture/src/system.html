@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Traqen 系统架构</title>
+<link rel="stylesheet" href="style.css?v=4">
+<style>
+  .main{position:relative;height:800px;}
+  .abs{position:absolute;}
+  .chip{background:#fff;border:1.5px solid var(--blue);border-radius:20px;
+    display:flex;align-items:center;justify-content:center;flex-direction:column;
+    font-weight:700;color:var(--blue-deep);}
+  .chip small{font-weight:400;font-size:11px;color:var(--muted);margin-top:2px;}
+  .sysbox{border-radius:12px;padding:18px;display:flex;flex-direction:column;}
+  .sysbox .bt{font-size:19px;font-weight:700;color:#fff;letter-spacing:1px;text-align:center;}
+  .sysbox .bs{font-size:12px;color:#94a3b8;text-align:center;margin-top:4px;}
+  .sysbox .pills{display:flex;gap:14px;justify-content:center;margin-top:34px;}
+  .sysbox .pill{border:1px solid #475569;border-radius:8px;padding:12px 18px;color:#e2e8f0;
+    font-size:15px;font-weight:600;background:#1e293b;}
+  .sysbox .note{margin-top:auto;text-align:center;font-size:11px;color:#64748b;}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="hd">
+    <div class="t"><em>Traqen</em>系统架构图（系统上下文）</div>
+    <div class="s">平台与角色、外部系统之间的数据流边界 · 平台保持黑盒<br>所有跨边界数据流均标注方向与协议 · 修订 v4 · 保留 v2 / v3 供对照</div>
+  </div>
+
+  <div class="main">
+    <svg class="wire" width="1800" height="800" viewBox="0 0 1800 800">
+      <defs>
+        <marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0,0 8,4.5 0,9" fill="#475569"/>
+        </marker>
+        <marker id="ahb" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+          <polygon points="0,0 8,4.5 0,9" fill="#2563eb"/>
+        </marker>
+      </defs>
+      <!-- roles to access bus -->
+      <line x1="280" y1="169" x2="328" y2="169" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+      <line x1="280" y1="265" x2="328" y2="265" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+      <line x1="280" y1="361" x2="328" y2="361" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+      <line x1="280" y1="457" x2="328" y2="457" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ah)"/>
+      <line x1="330" y1="169" x2="330" y2="457" stroke="#94a3b8" stroke-width="1.6"/>
+      <!-- bus to gateways -->
+      <line x1="330" y1="240" x2="378" y2="240" stroke="#2563eb" stroke-width="1.8" marker-end="url(#ahb)"/>
+      <line x1="330" y1="360" x2="378" y2="360" stroke="#2563eb" stroke-width="1.8" marker-end="url(#ahb)"/>
+      <!-- gateways to system -->
+      <line x1="540" y1="240" x2="738" y2="300" stroke="#2563eb" stroke-width="2" marker-end="url(#ahb)"/>
+      <line x1="540" y1="360" x2="738" y2="420" stroke="#2563eb" stroke-width="2" marker-end="url(#ahb)"/>
+      <!-- system to right externals（箭头 = 数据流方向） -->
+      <line x1="1338" y1="230" x2="1200" y2="300" stroke="#475569" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+      <line x1="1338" y1="380" x2="1200" y2="400" stroke="#475569" stroke-width="1.8" stroke-dasharray="6 4" marker-end="url(#ah)"/>
+      <!-- system to bottom bus -->
+      <line x1="970" y1="490" x2="970" y2="598" stroke="#475569" stroke-width="1.8" marker-end="url(#ah)"/>
+      <line x1="230" y1="600" x2="1090" y2="600" stroke="#475569" stroke-width="1.8"/>
+      <line x1="230" y1="600" x2="230" y2="638" stroke="#475569" stroke-width="1.8" marker-end="url(#ah)"/>
+      <line x1="660" y1="600" x2="660" y2="638" stroke="#475569" stroke-width="1.8" marker-end="url(#ah)"/>
+      <line x1="1090" y1="600" x2="1090" y2="638" stroke="#475569" stroke-width="1.8" marker-end="url(#ah)"/>
+      <!-- E6 runner：Traqen ↔ Runner 直接双向（不经底部总线） -->
+      <line x1="1200" y1="470" x2="1324" y2="655" stroke="#475569" stroke-width="1.8" marker-end="url(#ah)"/>
+      <polyline points="1730,690 1780,690 1780,310 1206,310" fill="none" stroke="#475569" stroke-width="1.8" marker-end="url(#ah)"/>
+      <!-- labels -->
+      <text class="wlbl" x="284" y="160">操作与查询请求</text>
+      <text class="wlbl blue" x="556" y="262">HTTPS · REST API</text>
+      <text class="wlbl blue" x="556" y="446">本地 CLI 调用</text>
+      <text class="wlbl" x="1206" y="246">git fetch · 字节输入</text>
+      <text class="wlbl" x="1204" y="416">材料上传 · HTTPS（输入）</text>
+      <text class="wlbl" x="240" y="592">SQL（DATABASE_URL · SSL 必需）</text>
+      <text class="wlbl" x="680" y="592">F001 来源字节读写（必须挂载）</text>
+      <text class="wlbl" x="1100" y="592">配套备份复制 · 独立故障域</text>
+      <text class="wlbl" x="1250" y="556" text-anchor="end">签名任务下发</text>
+      <text class="wlbl" x="1290" y="302">签名证据回传</text>
+    </svg>
+
+    <!-- left: roles -->
+    <div class="abs node pri" style="left:40px;top:130px;width:240px;height:78px;">
+      <div class="ttl"><span class="n">R1</span>产品 / 业务负责人</div>
+      <div class="dsc">确认目标、规则与验收</div>
+    </div>
+    <div class="abs node pri" style="left:40px;top:226px;width:240px;height:78px;">
+      <div class="ttl"><span class="n">R2</span>架构师与研发</div>
+      <div class="dsc">登记来源、重建知识、查影响</div>
+    </div>
+    <div class="abs node pri" style="left:40px;top:322px;width:240px;height:78px;">
+      <div class="ttl"><span class="n">R3</span>测试与质量</div>
+      <div class="dsc">验证范围、执行证据、缺口处置</div>
+    </div>
+    <div class="abs node pri" style="left:40px;top:418px;width:240px;height:78px;">
+      <div class="ttl"><span class="n">R4</span>交付与运维</div>
+      <div class="dsc">查证证据链、验收审计</div>
+    </div>
+
+    <!-- gateways -->
+    <div class="abs chip" style="left:380px;top:212px;width:160px;height:56px;">
+      <div>浏览器 · Web 控制台</div><small>角色统一入口</small>
+    </div>
+    <div class="abs chip" style="left:380px;top:332px;width:160px;height:56px;">
+      <div>CLI 终端</div><small>研发与质量门</small>
+    </div>
+
+    <!-- central black box -->
+    <div class="abs sysbox node dark" style="left:740px;top:230px;width:460px;height:260px;">
+      <div class="bt">Traqen 可追溯质量平台</div>
+      <div class="bs">S · 首期单节点 · fail-closed · 已有实现 <span class="tag st-impl">实现</span></div>
+      <div class="pills">
+        <div class="pill">证据链引擎</div>
+        <div class="pill">质量缺口雷达</div>
+      </div>
+      <div class="note">黑盒视图 — 内部模块划分见应用架构图；运行单元与信任边界展开为下一层</div>
+    </div>
+
+    <!-- right externals -->
+    <div class="abs node ext" style="left:1340px;top:180px;width:390px;height:100px;">
+      <div class="ttl"><span class="n dk">E1</span>Git 托管</div>
+      <div class="dsc">平台以只读方式拉取来源仓库字节，作为不可变来源包的一部分。</div>
+    </div>
+    <div class="abs node ext" style="left:1340px;top:330px;width:390px;height:100px;">
+      <div class="ttl"><span class="n dk">E2</span>上传目录（受托材料）</div>
+      <div class="dsc">无法入 Git 的材料经受控上传进入同一来源包治理流程。</div>
+    </div>
+
+    <!-- bottom externals -->
+    <div class="abs node ext" style="left:40px;top:640px;width:380px;height:96px;">
+      <div class="ttl"><span class="n dk">E3</span>PostgreSQL <span class="tag st-impl">实现</span></div>
+      <div class="dsc">全部结构化事实与审计记录的单一存储（SSL 必需）。</div>
+    </div>
+    <div class="abs node ext" style="left:470px;top:640px;width:380px;height:96px;">
+      <div class="ttl"><span class="n dk">E4</span>专用持久化文件卷 <span class="tag st-impl">实现</span></div>
+      <div class="dsc">F001 不可变来源字节的落盘位置，部署时必须挂载。</div>
+    </div>
+    <div class="abs node ext" style="left:900px;top:640px;width:380px;height:96px;">
+      <div class="ttl"><span class="n dk">E5</span>独立故障域备份 <span class="tag st-design">设计</span></div>
+      <div class="dsc">数据库与来源字节同水位成对备份（F001 §8.4）；计划与 RPO/RTO 待部署配置。</div>
+    </div>
+    <div class="abs node ext" style="left:1330px;top:640px;width:400px;height:96px;">
+      <div class="ttl"><span class="n dk">E6</span>外部 Runner / CI <span class="tag st-impl">实现</span><span class="tag st-tbd">接线待定</span></div>
+      <div class="dsc">平台外执行：签名任务验签、证据验签入库已有实现；外部部署接线与传输方式待定。</div>
+    </div>
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="lt">图例 · 编号 — 名称 — 职责 · 节点徽标 = 实现状态，箭头 = 数据流方向</div>
+    <div class="lgrow">
+      <div class="lg"><span class="tag st-impl">实现</span><b>已有实现</b><span class="sep">—</span>代码在库（64100c2）；≠ 已部署 / 已验收</div>
+      <div class="lg"><span class="tag st-design">设计</span><b>设计目标</b><span class="sep">—</span>依据 F001 / F003 现行已发布设计</div>
+      <div class="lg"><span class="tag st-tbd">待定</span><b>待定接口</b><span class="sep">—</span>契约未定，显式列出、不臆造</div>
+      <div class="lg"><span class="n wide">R1–R4</span><b>四类业务角色</b><span class="sep">—</span>经浏览器或 CLI 接入平台</div>
+      <div class="lg"><span class="n dk">S</span><b>Traqen 平台（黑盒）</b><span class="sep">—</span>证据链引擎与质量缺口雷达</div>
+      <div class="lg"><span class="n dk">E1</span><b>Git 托管</b><span class="sep">—</span>只读拉取来源字节</div>
+      <div class="lg"><span class="n dk">E2</span><b>上传目录</b><span class="sep">—</span>受托上传材料入口</div>
+      <div class="lg"><span class="n dk">E3</span><b>PostgreSQL</b><span class="sep">—</span>结构化事实存储</div>
+      <div class="lg"><span class="n dk">E4</span><b>持久文件卷</b><span class="sep">—</span>F001 字节，必须挂载</div>
+      <div class="lg"><span class="n dk">E5</span><b>独立故障域备份</b><span class="sep">—</span>成对恢复点（F001 §8.4）</div>
+      <div class="lg"><span class="n dk">E6</span><b>外部 Runner/CI</b><span class="sep">—</span>受控执行、回传签名证据</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

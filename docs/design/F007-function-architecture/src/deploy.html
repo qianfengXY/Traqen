@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Traqen 部署架构</title>
+<link rel="stylesheet" href="style.css?v=4">
+<style>
+  .main{position:relative;height:1010px;}
+  .abs{position:absolute;}
+  .nodebox{border:1.5px solid var(--blue);border-radius:12px;background:#fff;padding:14px 16px;}
+  .nodebox .nb-t{font-size:15px;font-weight:700;color:var(--blue-deep);display:flex;align-items:center;flex-wrap:wrap;gap:4px;}
+  .nodebox .nb-s{font-size:11.5px;color:var(--muted);margin-top:3px;}
+  .unit{background:#fff;border:1px solid var(--line);border-left:4px solid var(--blue);
+    border-radius:8px;padding:10px 12px;margin-top:10px;}
+  .unit .u-t{font-size:13px;font-weight:700;}
+  .unit .u-s{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
+  .zone{border:2px solid #334155;border-radius:14px;position:absolute;background:#f1f5f9;}
+  .zone .z-t{position:absolute;top:-14px;left:24px;background:var(--canvas);padding:0 12px;
+    font-size:14.5px;font-weight:700;letter-spacing:1px;}
+  .zone-dr{border:2px dashed #b45309;border-radius:14px;position:absolute;background:#fffbeb;}
+  .zone-dr .z-t{position:absolute;top:-14px;left:24px;background:var(--canvas);padding:0 12px;
+    font-size:14.5px;font-weight:700;letter-spacing:1px;color:#b45309;}
+  .sub{position:absolute;font-size:11.5px;font-weight:700;color:#475569;letter-spacing:1px;}
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="hd">
+    <div class="t"><em>Traqen</em>部署架构图</div>
+    <div class="s">首期单节点 · 单实例 ×1 · fail-closed 发布 · 启动自检不过即拒绝服务<br>无消息队列 / 无缓存 / 不承诺高可用与吞吐 · 备份目标在独立故障域<br>修订 v4 · 保留 v2 / v3 供对照 · TLS 两段链路见左下提案</div>
+  </div>
+
+  <div class="main">
+
+    <!-- browser -->
+    <div class="abs node pri" style="left:40px;top:300px;width:170px;height:90px;">
+      <div class="ttl"><span class="n">B</span>浏览器</div>
+      <div class="dsc">四类角色的统一入口</div>
+    </div>
+
+    <!-- Cloudflare edge -->
+    <div class="abs node ext nodebox" style="left:290px;top:250px;width:260px;height:200px;border-style:dashed;">
+      <div class="nb-t"><span class="n dk">E1</span> Cloudflare 边缘 <span class="tag st-design">部署假设</span></div>
+      <div class="nb-s">全球分发与静态托管</div>
+      <div class="unit">
+        <div class="u-t">Web Worker</div>
+        <div class="u-s">SSR / API 代理回源</div>
+      </div>
+      <div class="unit" style="border-left-color:#64748b;">
+        <div class="u-t">静态资产</div>
+        <div class="u-s">vinext 构建产物</div>
+      </div>
+    </div>
+
+    <!-- TLS two-segment proposal note -->
+    <div class="abs node gov" style="left:40px;top:500px;width:510px;height:330px;">
+      <div class="ttl"><span class="n am">T1</span>TLS 两段链路 <span class="tag st-tbd">提案待定</span></div>
+      <div class="dsc">已核实事实：Node 生产入口仅提供 HTTP（production-server.js）；Cloudflare 是否已接线回源<b>未经部署证实</b>，本图不作「当前 HTTP 回源」的认定。<br><br>① 浏览器 → Cloudflare：HTTPS 终止（现有能力）<br>② Cloudflare → Node 源站：<b>接线未证实</b>；两段提案分别画清——<br><br>提案 A（推荐）：Cloudflare Tunnel。源站常驻 cloudflared 连接器；CF 边缘 ↔ 连接器为出向加密隧道；连接器 → Node 可配 HTTP；无需公网暴露源站与源站证书。代价：引入 cloudflared 外部依赖。<br><br>提案 B：Full(strict) 直连，两段协议分开画：<b>Cloudflare —HTTPS→ 反代（Caddy 自动证书 / nginx；CF 官方要求源站 HTTPS + 有效证书）—HTTP→ Node</b>（与已核实 Node 入口一致）；可叠加源站防火墙仅放行 CF 源站 IP。代价：证书管理与源站暴露；若反代 → Node 也走 HTTPS，须另列 Node TLS 端点新增设计。<br>两案均标提案待定，拍板后落定。</div>
+    </div>
+
+    <!-- single node zone -->
+    <div class="zone" style="left:640px;top:60px;width:920px;height:560px;">
+      <div class="z-t">单节点 · 单实例 ×1 · fail-closed</div>
+      <div class="sub" style="left:44px;top:52px;">应用进程</div>
+      <div class="sub" style="left:584px;top:52px;">数据面（同节点）</div>
+    </div>
+
+    <!-- Node API process -->
+    <div class="abs nodebox" style="left:680px;top:130px;width:500px;height:400px;">
+      <div class="nb-t"><span class="n">P1</span> Node API 进程 <span class="tag st-impl">实现</span></div>
+      <div class="nb-s">监听 0.0.0.0:3000 · Node ≥ 20 纯 ESM · 零 Web 框架 · 单进程</div>
+      <div class="unit">
+        <div class="u-t">HTTP 服务（自研 api）</div>
+        <div class="u-s">REST API · 质量门端点 · 证据验签（生产入口为 HTTP）</div>
+      </div>
+      <div class="unit">
+        <div class="u-t">分析 job 单进程</div>
+        <div class="u-s">append-only job 表驱动长任务，无队列</div>
+      </div>
+      <div class="unit">
+        <div class="u-t">CLI 白名单子进程位</div>
+        <div class="u-s">仅放行登记命令，越权拒绝并留痕</div>
+      </div>
+    </div>
+
+    <!-- data plane -->
+    <div class="abs node" style="left:1220px;top:130px;width:300px;height:120px;">
+      <div class="ttl"><span class="n">P2</span>PostgreSQL <span class="tag st-impl">实现</span></div>
+      <div class="dsc">SQL 结构化事实 · pg 8.22 · DATABASE_URL 注入 · SSL require</div>
+    </div>
+    <div class="abs node" style="left:1220px;top:266px;width:300px;height:120px;">
+      <div class="ttl"><span class="n">P3</span>专用持久化文件卷 <span class="tag st-impl">实现</span></div>
+      <div class="dsc">F001 不可变来源字节读写 · 部署必须挂载 · 独立于数据库生命周期</div>
+    </div>
+
+    <!-- backup: separate failure domain zone -->
+    <div class="zone-dr" style="left:640px;top:660px;width:920px;height:170px;">
+      <div class="z-t">独立故障域 · 备份目标（主数据卷之外）</div>
+    </div>
+    <div class="abs node gov" style="left:680px;top:700px;width:840px;height:100px;">
+      <div class="ttl"><span class="n am">P4</span>配套备份目标（成对恢复点） <span class="tag st-design">设计</span></div>
+      <div class="dsc">数据库一致性备份 ＋ 来源字节快照，同一水位成对复制与校验（F001 §8.4：一致性水位 / 引用内容集合 / 完整性校验 / SourceBackupSet 封闭完成记录）；备份计划、目标与 RPO/RTO 由部署配置显式登记，未配置或未成功显示「备份未就绪」</div>
+    </div>
+
+    <!-- external bottom -->
+    <div class="abs node ext" style="left:40px;top:850px;width:380px;height:110px;">
+      <div class="ttl"><span class="n dk">E2</span>Git 托管 / 上传目录</div>
+      <div class="dsc">平台只读拉取来源仓库字节；受托材料经受控上传，汇入同一 F001 来源包。</div>
+    </div>
+    <div class="abs node ext" style="left:470px;top:850px;width:420px;height:110px;">
+      <div class="ttl"><span class="n dk">E3</span>外部 Runner / CI <span class="tag st-impl">实现</span><span class="tag st-tbd">接线待定</span></div>
+      <div class="dsc">平台外受控执行：签名任务验签（HMAC-SHA256）→ 执行 → 证据签名回传、平台验签入库（均已有实现）；外部部署接线与传输方式待定。</div>
+    </div>
+    <div class="abs node gov" style="left:960px;top:850px;width:600px;height:110px;">
+      <div class="ttl"><span class="n am">N1</span>首期部署承诺边界</div>
+      <div class="dsc">单实例 ×1；fail-closed 发布，启动自检不过即拒绝服务；无消息队列、无缓存；不承诺高可用与吞吐。规模增长后再评估水平扩展。</div>
+    </div>
+
+    <!-- wires on top -->
+    <svg class="wire" width="1800" height="1010" viewBox="0 0 1800 1010">
+      <!-- browser -> CF -->
+      <line x1="210" y1="345" x2="290" y2="345" stroke="#2563eb" stroke-width="2.2"/>
+      <!-- CF -> origin -->
+      <line x1="550" y1="350" x2="640" y2="350" stroke="#2563eb" stroke-width="2.2"/>
+      <!-- api -> data plane -->
+      <line x1="1180" y1="190" x2="1220" y2="190" stroke="#475569" stroke-width="1.8"/>
+      <line x1="1180" y1="326" x2="1220" y2="326" stroke="#475569" stroke-width="1.8"/>
+      <!-- data plane -> backup (paired recovery point) -->
+      <polyline points="1370,250 1370,640 900,640 900,700" fill="none" stroke="#d97706" stroke-width="1.8" stroke-dasharray="6 4"/>
+      <polyline points="1440,386 1440,676 1120,676 1120,700" fill="none" stroke="#d97706" stroke-width="1.8" stroke-dasharray="6 4"/>
+      <!-- git/upload -> api -->
+      <polyline points="230,850 230,832 590,832 590,345 676,345" fill="none" stroke="#475569" stroke-width="1.8" stroke-dasharray="6 4"/>
+      <!-- runner -> api -->
+      <line x1="700" y1="850" x2="700" y2="530" stroke="#475569" stroke-width="1.8"/>
+      <!-- labels -->
+      <text class="wlbl blue" x="216" y="337">HTTPS（现有）</text>
+      <text class="wlbl amber" x="556" y="472" text-anchor="end">CF → 源站：接线未证实 · 已核实 Node 仅 HTTP · 方案见 T1</text>
+      <text class="wlbl" x="250" y="824">git fetch · 受控上传（经 API 进入来源包）</text>
+      <text class="wlbl" x="692" y="837" text-anchor="end">签名任务下发 / 签名证据回传</text>
+      <text class="wlbl amber" x="906" y="632">数据库一致性备份</text>
+      <text class="wlbl amber" x="1130" y="670">来源字节快照（同水位成对）</text>
+    </svg>
+  </div>
+
+  <!-- 图例 -->
+  <div class="legend">
+    <div class="lt">图例 · 编号 — 名称 — 职责 · 节点徽标 = 实现状态，连线 = 关系语义（含方向）</div>
+    <div class="lgrow">
+      <div class="lg"><span class="tag st-impl">实现</span><b>已有实现</b><span class="sep">—</span>代码在库（64100c2）；≠ 已部署 / 已验收</div>
+      <div class="lg"><span class="tag st-design">设计</span><b>设计目标</b><span class="sep">—</span>依据 F001 / F003 现行已发布设计</div>
+      <div class="lg"><span class="tag st-tbd">待定</span><b>待定 / 提案</b><span class="sep">—</span>契约未定，显式列出、不臆造</div>
+      <div class="lg"><span class="n">B</span><b>浏览器</b><span class="sep">—</span>角色经 HTTPS 访问</div>
+      <div class="lg"><span class="n dk">E1</span><b>Cloudflare 边缘</b><span class="sep">—</span>Web Worker + 静态资产分发（部署假设）</div>
+      <div class="lg"><span class="n am">T1</span><b>TLS 两段链路</b><span class="sep">—</span>浏览器→CF：HTTPS 现有；CF→Node：接线未证实（Node 仅 HTTP）；提案 A Tunnel（cloudflared）/ 提案 B Full(strict)+反代证书，均待定</div>
+      <div class="lg"><span class="n">P1</span><b>Node API 进程</b><span class="sep">—</span>HTTP 服务 / 分析 job / CLI 子进程位</div>
+      <div class="lg"><span class="n">P2</span><b>PostgreSQL</b><span class="sep">—</span>SQL 事实存储，SSL 必需</div>
+      <div class="lg"><span class="n">P3</span><b>持久文件卷</b><span class="sep">—</span>F001 字节，必须挂载</div>
+      <div class="lg"><span class="n am">P4</span><b>配套备份目标</b><span class="sep">—</span>独立故障域，成对恢复点（F001 §8.4）</div>
+      <div class="lg"><span class="n dk">E2</span><b>Git 托管 / 上传目录</b><span class="sep">—</span>来源字节输入</div>
+      <div class="lg"><span class="n dk">E3</span><b>外部 Runner / CI</b><span class="sep">—</span>签名任务下发与证据回传（验签在库；外部接线待定）</div>
+      <div class="lg"><span class="n am">N1</span><b>承诺边界</b><span class="sep">—</span>首期不承诺 HA / 吞吐 / 队列 / 缓存</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

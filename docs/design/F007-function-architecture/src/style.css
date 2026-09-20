@@ -1,0 +1,79 @@
+/* Traqen architecture diagram shared style — consulting deliverable grade */
+:root{
+  --ink:#0f172a; --muted:#64748b; --faint:#94a3b8;
+  --line:#cbd5e1; --line-soft:#e2e8f0;
+  --blue:#2563eb; --blue-deep:#1d4ed8; --blue-bg:#eff6ff;
+  --amber:#d97706; --amber-bg:#fffbeb;
+  --ext:#475569;
+  --canvas:#f8fafc; --band:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html,body{background:#ffffff;}
+body{font-family:"PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;}
+.canvas{width:1800px;margin:0 auto;background:var(--canvas);padding:26px 34px 22px;overflow:hidden;}
+
+/* ---------- header ---------- */
+.hd{display:flex;align-items:flex-end;justify-content:space-between;
+  border-bottom:3px solid var(--blue);padding-bottom:12px;margin-bottom:18px;}
+.hd .t{font-size:26px;font-weight:700;letter-spacing:1px;}
+.hd .t em{font-style:normal;color:var(--blue);margin-right:10px;}
+.hd .s{font-size:13px;color:var(--muted);text-align:right;line-height:1.6;}
+
+/* ---------- layer with left color band ---------- */
+.layer{display:flex;margin-bottom:16px;}
+.band{width:38px;flex:0 0 38px;border-radius:8px 0 0 8px;display:flex;align-items:center;justify-content:center;}
+.band span{writing-mode:vertical-rl;letter-spacing:5px;color:#fff;font-size:14px;font-weight:600;}
+.band.blue{background:var(--blue);}
+.band.slate{background:#475569;}
+.band.amber{background:var(--amber);}
+.band.ink{background:var(--band);}
+.band.deep{background:var(--blue-deep);}
+.lbody{flex:1;background:#ffffff;border:1px solid var(--line-soft);border-left:none;
+  border-radius:0 8px 8px 0;padding:14px 16px;}
+
+/* ---------- nodes ---------- */
+.node{background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+.node .ttl{display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:700;line-height:1.35;}
+.node .dsc{font-size:12px;color:var(--muted);line-height:1.5;margin-top:5px;}
+.node.pri{border-color:var(--blue);border-top-width:3px;border-top-color:var(--blue);}
+.node.gov{border-color:var(--amber);border-top-width:3px;border-top-color:var(--amber);}
+.node.ext{border-style:dashed;border-color:var(--ext);}
+.node.dark{background:var(--band);border-color:var(--band);color:#fff;}
+.node.dark .dsc{color:#cbd5e1;}
+
+/* numbered badge */
+.n{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:22px;height:22px;border-radius:50%;background:var(--blue);color:#fff;
+  font-size:11.5px;font-weight:700;}
+.n.am{background:var(--amber);}
+.n.dk{background:#334155;}
+.n.ghost{background:#e2e8f0;color:#334155;}
+.n.wide{width:auto;padding:0 7px;border-radius:11px;}
+
+/* small corner badge on ER entities */
+.tag{display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;
+  margin-left:6px;vertical-align:1px;}
+.tag.ao{background:#e2e8f0;color:#334155;}
+.tag.vr{background:var(--blue-bg);color:var(--blue-deep);}
+.tag.sg{background:var(--amber-bg);color:var(--amber);}
+
+/* node status badges — 实现状态（与连线含义分离） */
+.tag.st-impl{background:#ecfdf5;color:#047857;border:1px solid #a7f3d0;}
+.tag.st-design{background:var(--blue-bg);color:var(--blue-deep);border:1px solid #bfdbfe;}
+.tag.st-tbd{background:#f1f5f9;color:#64748b;border:1px dashed #94a3b8;}
+
+/* ---------- legend ---------- */
+.legend{margin-top:4px;background:#fff;border:1px solid var(--line-soft);border-radius:8px;
+  padding:10px 16px;}
+.legend .lt{font-size:12px;font-weight:700;color:var(--muted);letter-spacing:2px;margin-bottom:8px;}
+.lgrow{display:flex;flex-wrap:wrap;gap:6px 26px;}
+.lg{display:flex;align-items:flex-start;gap:6px;font-size:12px;color:#334155;line-height:1.5;}
+.lg b{color:var(--ink);white-space:nowrap;}
+.lg .sep{color:var(--faint);}
+
+/* SVG connectors */
+svg.wire{position:absolute;left:0;top:0;pointer-events:none;}
+.wlbl{font-family:"PingFang SC","Microsoft YaHei",sans-serif;font-size:11.5px;font-weight:600;fill:#334155;}
+.wlbl.blue{fill:var(--blue-deep);}
+.wlbl.amber{fill:var(--amber);}
