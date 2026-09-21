@@ -1,0 +1,69 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>部署架构 · 候选拓扑与恢复边界</title><style>*{box-sizing:border-box}body{margin:0;background:white;color:#102746;font-family:"PingFang SC","Microsoft YaHei",sans-serif}.canvas{position:relative;width:1800px;height:1720px;background:#f8fafc}header{position:absolute;left:40px;top:26px;right:40px;border-bottom:3px solid #2563eb;padding-bottom:18px}h1{margin:0;font-size:38px}header p{position:absolute;right:0;top:4px;font-size:22px;color:#475569}.panel{position:absolute;border:1px solid #bfdbfe;border-radius:12px;background:#eff6ff;z-index:0}.panel.amber{border-color:#fbbf24;background:#fffbeb}h2{font-size:26px;margin:18px 24px}.node{position:absolute;z-index:2;border:2px solid #60a5fa;background:white;border-radius:9px;padding:16px 20px;text-align:center;display:flex;flex-direction:column;justify-content:center;gap:8px;font-size:24px;line-height:1.35}.node strong{font-size:27px}.node.amber{border-color:#f59e0b;background:#fffdf5}.node div{color:#475569}.note{position:absolute;z-index:3;font-size:23px;line-height:1.5;color:#475569}.wire{position:absolute;left:0;top:0;z-index:1;pointer-events:none}.edge-label{position:absolute;z-index:3;background:#f8fafc;border-radius:4px;padding:2px 8px;font-size:22px;white-space:nowrap;color:#1d4ed8}.edge-label.amber{color:#b45309;background:#fffbeb}</style><div class="canvas"><header><h1>Traqen 部署架构 · 候选拓扑与恢复边界</h1><p>F007 · v5 · 结构方案／讨论稿</p></header><svg width="0" height="0"><defs><marker id="blue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10" fill="#2563eb"/></marker><marker id="amber" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0,0 L10,5 L0,10" fill="#d97706"/></marker></defs></svg><section class="panel " style="left:410px;top:120px;width:1020px;height:700px"><h2>平台主节点 · 单实例形态</h2></section>
+<div data-node="B" class="node " style="left:35px;top:185px;width:285px;height:90px"><strong>B 浏览器</strong><div>用户交互</div></div>
+<div data-node="E1" class="node " style="left:35px;top:365px;width:285px;height:110px"><strong>E1 Cloudflare 边缘</strong><div>Web 资产／请求入口</div></div>
+<div data-node="E2" class="node " style="left:35px;top:650px;width:285px;height:110px"><strong>E2 来源</strong><div>Git／受托上传</div></div>
+<div data-node="P0" class="node " style="left:455px;top:190px;width:365px;height:115px"><strong>P0 源站接入</strong><div>网络方案 A／B</div></div>
+<div data-node="P1" class="node " style="left:455px;top:430px;width:365px;height:125px"><strong>P1 Node API</strong><div>用例与分析作业宿主</div></div>
+<div data-node="P2" class="node " style="left:1010px;top:190px;width:365px;height:115px"><strong>P2 PostgreSQL</strong><div>结构化记录</div></div>
+<div data-node="P3" class="node " style="left:1010px;top:430px;width:365px;height:125px"><strong>P3 持久文件卷</strong><div>来源字节／检查点</div></div>
+<div data-node="P5" class="node " style="left:1010px;top:670px;width:365px;height:105px"><strong>P5 模型 CLI</strong><div>受控子进程</div></div>
+<div data-node="E7" class="node " style="left:1510px;top:670px;width:260px;height:105px"><strong>E7 模型服务</strong><div>模型输出</div></div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="B" data-to="E1" points="170,275 170,365" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:185px;top:305px">HTTPS</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="E1" data-to="P0" points="320,415 370,415 370,245 455,245" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:327px;top:202px">A／B 接入</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="E2" data-to="P1" points="320,705 370,705 370,505 455,505" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:330px;top:605px">固定材料</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P0" data-to="P1" points="635,305 635,430" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:655px;top:350px">本机 HTTP</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P1" data-to="P2" points="820,470 900,470 900,240 1010,240" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:835px;top:322px">SQL／TLS 配置</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P2" data-to="P1" points="1010,270 945,270 945,500 820,500" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P1" data-to="P3" points="820,520 1010,520" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:838px;top:530px">材料读写</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P3" data-to="P1" points="1010,470 970,470 970,565 845,565 845,540 820,540" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P1" data-to="P5" points="635,555 635,710 1010,710" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:700px;top:674px">获准上下文</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P5" data-to="P1" points="1010,748 590,748 590,555" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:745px;top:754px">CLI 输出</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P5" data-to="E7" points="1375,700 1510,700" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:1370px;top:660px">授权调用</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="E7" data-to="P5" points="1510,750 1375,750" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:1370px;top:780px">模型输出</div>
+<section class="panel amber" style="left:410px;top:880px;width:1020px;height:240px"><h2>P4 配套恢复目标</h2></section>
+<div data-node="P4-db" class="node amber" style="left:455px;top:955px;width:295px;height:95px"><strong>数据库恢复点</strong><div>一致性水位</div></div>
+<div data-node="P4-bytes" class="node amber" style="left:790px;top:955px;width:295px;height:95px"><strong>来源内容集合</strong><div>被引用字节</div></div>
+<div data-node="P4-manifest" class="node amber" style="left:1125px;top:955px;width:265px;height:95px"><strong>封闭完成清单</strong><div>引用与完整性</div></div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><path data-from="P2" data-to="P4-db" d="M1375,245 L1470,245 L1470,689 M1470,711 L1470,739 M1470,761 L1470,855 L700,855 L700,955" fill="none" stroke="#d97706" stroke-width="3" marker-end="url(#amber)"/></svg>
+<div class="edge-label amber" style="left:840px;top:820px">数据库一致性备份</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><path data-from="P3" data-to="P4-bytes" d="M1190,555 L1450,555 L1450,689 M1450,711 L1450,739 M1450,761 L1450,870 L940,870 L940,955" fill="none" stroke="#d97706" stroke-width="3" marker-end="url(#amber)"/></svg>
+<div class="edge-label amber" style="left:1180px;top:870px">来源内容备份</div>
+<div class="note" style="left:445px;top:1070px;width:950px">独立故障域保存同一配套恢复集合；在隔离环境校验后恢复。</div>
+<section class="panel " style="left:30px;top:1150px;width:1740px;height:220px"><h2>测试执行接线 · C06（同号节点为同一运行单元）</h2></section>
+<div data-node="P1-test" class="node " style="left:70px;top:1225px;width:365px;height:100px"><strong>P1 平台 API</strong><div>签名任务／证据摄取</div></div>
+<div data-node="E3" class="node amber" style="left:700px;top:1225px;width:400px;height:100px"><strong>E3 测试 Runner</strong><div>目标侧受控执行</div></div>
+<div data-node="E8" class="node amber" style="left:1370px;top:1225px;width:350px;height:100px"><strong>E8 被测系统</strong><div>目标环境</div></div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="P1-test" data-to="E3" points="435,1250 700,1250" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:478px;top:1207px">签名任务</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="E3" data-to="P1-test" points="700,1300 435,1300" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="edge-label blue" style="left:478px;top:1320px">签名证据</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="E3" data-to="E8" points="1100,1250 1370,1250" fill="none" stroke="#d97706" stroke-width="3" marker-end="url(#amber)"/></svg>
+<div class="edge-label amber" style="left:1155px;top:1207px">受控执行</div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="E8" data-to="E3" points="1370,1300 1100,1300" fill="none" stroke="#d97706" stroke-width="3" marker-end="url(#amber)"/></svg>
+<div class="edge-label amber" style="left:1145px;top:1320px">观察／日志</div>
+<section class="panel " style="left:30px;top:1400px;width:855px;height:215px"><h2>网络候选 A · Tunnel（择一）</h2></section>
+<section class="panel " style="left:915px;top:1400px;width:855px;height:215px"><h2>网络候选 B · Full (strict)（择一）</h2></section>
+<div data-node="A-CF" class="node " style="left:55px;top:1470px;width:210px;height:70px"><strong>CF 边缘</strong></div>
+<div data-node="A-P0" class="node " style="left:350px;top:1470px;width:260px;height:70px"><strong>cloudflared</strong></div>
+<div data-node="A-P1" class="node " style="left:700px;top:1470px;width:150px;height:70px"><strong>Node</strong></div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="A-CF" data-to="A-P0" points="265,1493 350,1493" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="A-P0" data-to="A-CF" points="350,1522 265,1522" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="A-P0" data-to="A-P1" points="610,1505 700,1505" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="note" style="left:70px;top:1555px;width:790px">CF ⇄ 连接器：出向加密隧道；连接器 → Node：本机 HTTP<br>代价：引入连接器与运维。</div>
+<div data-node="B-CF" class="node " style="left:940px;top:1470px;width:205px;height:70px"><strong>CF 边缘</strong></div>
+<div data-node="B-P0" class="node " style="left:1230px;top:1470px;width:255px;height:70px"><strong>Caddy／nginx</strong></div>
+<div data-node="B-P1" class="node " style="left:1570px;top:1470px;width:160px;height:70px"><strong>Node</strong></div>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="B-CF" data-to="B-P0" points="1145,1505 1230,1505" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<svg class="wire" width="1800" height="1720" aria-hidden="true"><polyline data-from="B-P0" data-to="B-P1" points="1485,1505 1570,1505" fill="none" stroke="#2563eb" stroke-width="3" marker-end="url(#blue)"/></svg>
+<div class="note" style="left:950px;top:1555px;width:790px">CF → 反代：HTTPS＋有效源站证书；反代 → Node：本机 HTTP<br>代价：管理证书与源站访问控制。</div>
+<div class="note" style="left:45px;top:1635px;width:1710px">全图为候选物理拓扑。实现观察、TLS 配置与未决参数见正文证据表。<br>单实例故障会暂停服务；数据库与来源字节共同恢复，RPO／RTO 由演练给出。</div></div><script type="application/json" id="relationship-manifest">{"nodes":["B","E1","E2","P0","P1","P2","P3","P5","E7","P4-db","P4-bytes","P4-manifest","P1-test","E3","E8","A-CF","A-P0","A-P1","B-CF","B-P0","B-P1"],"edges":[{"from":"B","to":"E1","pts":"170,275 170,365","label":"HTTPS"},{"from":"E1","to":"P0","pts":"320,415 370,415 370,245 455,245","label":"A／B 接入"},{"from":"E2","to":"P1","pts":"320,705 370,705 370,505 455,505","label":"固定材料"},{"from":"P0","to":"P1","pts":"635,305 635,430","label":"本机 HTTP"},{"from":"P1","to":"P2","pts":"820,470 900,470 900,240 1010,240","label":"SQL／TLS 配置"},{"from":"P2","to":"P1","pts":"1010,270 945,270 945,500 820,500","label":""},{"from":"P1","to":"P3","pts":"820,520 1010,520","label":"材料读写"},{"from":"P3","to":"P1","pts":"1010,470 970,470 970,565 845,565 845,540 820,540","label":""},{"from":"P1","to":"P5","pts":"635,555 635,710 1010,710","label":"获准上下文"},{"from":"P5","to":"P1","pts":"1010,748 590,748 590,555","label":"CLI 输出"},{"from":"P5","to":"E7","pts":"1375,700 1510,700","label":"授权调用"},{"from":"E7","to":"P5","pts":"1510,750 1375,750","label":"模型输出"},{"from":"P2","to":"P4-db","pts":"1375,245 1470,245 1470,855 700,855 700,955","label":"数据库一致性备份"},{"from":"P3","to":"P4-bytes","pts":"1190,555 1450,555 1450,870 940,870 940,955","label":"来源内容备份"},{"from":"P1-test","to":"E3","pts":"435,1250 700,1250","label":"签名任务"},{"from":"E3","to":"P1-test","pts":"700,1300 435,1300","label":"签名证据"},{"from":"E3","to":"E8","pts":"1100,1250 1370,1250","label":"受控执行"},{"from":"E8","to":"E3","pts":"1370,1300 1100,1300","label":"观察／日志"},{"from":"A-CF","to":"A-P0","pts":"265,1493 350,1493","label":""},{"from":"A-P0","to":"A-CF","pts":"350,1522 265,1522","label":""},{"from":"A-P0","to":"A-P1","pts":"610,1505 700,1505","label":""},{"from":"B-CF","to":"B-P0","pts":"1145,1505 1230,1505","label":""},{"from":"B-P0","to":"B-P1","pts":"1485,1505 1570,1505","label":""}]}</script></html>

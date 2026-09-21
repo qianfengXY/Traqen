@@ -1,0 +1,14 @@
+Create a publication-quality software architecture diagram in Simplified Chinese. Precise flat technical drawing, landscape 1800px or larger, white/light-gray background, deep navy labels, blue partition headings and borders, orange governance/exception accents; no pictorial illustrations. Large readable Chinese text, generous spacing, orthogonal non-overlapping connectors with clear arrowheads and edge captions. Same polished engineering visual language as reference, but completely redesign content/layout to instructions. Header contains only title plus 'F007 · v5 · 结构方案／讨论稿'. NO implementation-status badges: do not include 实现、设计目标、待定、已核实、commit SHA, no versions of tech stacks. Domain words such as 实现映射 are allowed as business semantics. Diagrams describe a proposed structure, not deployment or completion evidence. Every box must have concise meaning. No invented nodes or edges.
+Redraw this application diagram cleanly. The first image has incorrect edges: S2→domain instead of S1→domain; scanner→analysis instead of S2→analysis; evidence from source-truth instead of Runner→X3. Correct through SMALL INDEPENDENT PANELS. Pure WHITE background. Portrait / tall layout for readability. Title Traqen 应用架构; subtitle F007 · v5 · 结构方案／讨论稿. Use exactly panels and connections below; repeated S1 ids intentionally same application responsibility, NOT independent services.
+PANEL 1 '接入与用例': A1 Web UI→A3 REST API→S1 用例编排（事务与业务协作）. A2 操作 CLI→S1, separate. H1 能力与授权配置, H2 准入检查／建议性影响结果 as side support cards WITHOUT spurious arrows.
+PANEL 2 '应用职责': four cards S2 分析作业（进度与恢复）; S3 材料访问（范围与切片）; S4 理解核查（语义与证据）; X3 证据摄取（验签、绑定与入库）. No inter-card arrows.
+PANEL 3 '主要模块依赖': FIVE ROWS with arrows, NO shared bus:
+S1 用例编排 → D4 domain（纯领域计算，无外部 I/O） label规则调用.
+S1 用例编排 → D1 source-truth（规则与 I/O 复合模块） label来源用例.
+S2 分析作业 → D3 analysis（调查规划、模型适配与核查） label分析编排.
+S1 用例编排 → D2 scanner（材料解析与提取） label提取用例.
+S1 用例编排 → M1 存储端口 → M2 内存适配／M3 PostgreSQL适配. Last combined terminal node allowable.
+PANEL 4 AMBER 'D1 内部职责分解（非目录迁移）': D1b 采集、存储与发布适配（git-process / blob-store / postgres-archive）→D1a 来源身份与策略规则（identity / policy） label校验. D1b→Git／文件卷／PostgreSQL labelI/O. D1a is NOT connected to external resources.
+PANEL 5 '测试证据跨界': outer platform side X3 证据摄取 INSIDE blue platform boundary on LEFT. Orange target execution boundary on RIGHT contains X1 测试Runner and X2 被测环境. X1→X3 '签名证据' LEFT-facing arrow, one direction only. X1→X2 '受控执行', X2→X1 '观察'. DO NOT add any platform→Runner task arrow. NO S2→X1. Model analysis is not testing.
+Footer: 同号节点＝同一职责；箭头表示指定依赖或数据流。测试任务传输合同见 C06。影响分析提供建议，不强制阻断流转。
+Do not invent any other edges, especially no D2→D3, D1b→X3, S2→D4. Text sharp and ample whitespace.

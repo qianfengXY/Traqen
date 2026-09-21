@@ -1,0 +1,50 @@
+{
+  "baseline": "064f94014eb8c0a987508ed52d1ab0c24f5ba42c",
+  "assets": [
+    {
+      "view": "biz",
+      "path": "images/traqen-architecture-v5-biz.png",
+      "method": "native image-generation",
+      "source": "exec-a18c3e7d-d0a7-487b-b58a-bacb7f56c8ac.png",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "0fdf990630ab0f44e00931e862c331a34b6ce719f241d160338f832d3452447d"
+    },
+    {
+      "view": "system",
+      "path": "images/traqen-architecture-v5-system.png",
+      "method": "native image-generation",
+      "source": "exec-81e6e10b-c589-40b5-bd5a-83337ac8acff.png",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "48880cf23fec06a6729a30a309db08abc275fa38dfa0e3fa2585d92c65f1c7cf"
+    },
+    {
+      "view": "data",
+      "path": "images/traqen-architecture-v5-data.png",
+      "method": "native image-generation",
+      "source": "exec-268d3262-4273-49b8-9792-b211478486fb.png",
+      "width": 1536,
+      "height": 1024,
+      "sha256": "3807ace0b5161d3917714718c9e2cd06bb5a95dada0bda6777d94761c5baefc4"
+    },
+    {
+      "view": "app",
+      "path": "images/traqen-architecture-v5-app.png",
+      "method": "HTML/SVG + Chromium screenshot",
+      "source": "src/v5/app.html",
+      "width": 1800,
+      "height": 2010,
+      "sha256": "db45a0e542d56dfbd4f9728bf2980d37ad22603ac87d141620a3e6a21200ff5e"
+    },
+    {
+      "view": "deploy",
+      "path": "images/traqen-architecture-v5-deploy.png",
+      "method": "HTML/SVG + Chromium screenshot",
+      "source": "src/v5/deploy.html",
+      "width": 1800,
+      "height": 1720,
+      "sha256": "5ce716785814b431aa5eed6594fb935a198f5eda8e37968b67828554b7ffbd86"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+Edit the provided deployment diagram, preserving its readable layout, title, palette, text and panels. Repair exact endpoint errors, not adding extra new capabilities:
+1. In BOTH network option panels, Node is P1, NEVER P0. Replace each '(即 P0)' with '(即 P1)'. P0 is cloudflared or source reverse-proxy entry, not Node.
+2. Database backup arrow MUST begin at bottom of P2 PostgreSQL and end at P4 数据库恢复点. Route it to the far RIGHT outside main-host enclosure then horizontally to P4 using clear elbow, with label 数据库一致性备份. Delete the current arrow that starts from mainhost left border and delete the extra unnamed arrow from P3 into P4. No backup line starts from P5.
+3. Source content backup arrow MUST start P3 and end 来源内容集合, only one arrow labelled 被引用来源内容.
+4. Model calls must be blue: P5→E7 授权调用 and E7→P5 模型输出. Remove any orange downward line from the P5/E7 call.
+5. Test Runner connections must originate at P1 Node, not P5 or platform boundary. Draw P1→E3 签名任务（C06） and E3→P1 签名证据（C06）, routed around the RIGHT side of the platform without crossing P5 or E7. If too dense, use a separate clearly labeled bottom inset showing 'P1 Node API' ↔ 'E3 测试 Runner' ↔ 'E8 被测系统', and omit these arrows from upper topology. Repeated numbered nodes refer to same node.
+6. E2→P0 ingestion entry is fine; keep P0→P1, P1↔P2, P1↔P3, P1↔P5.
+7. Current recovery arrow points at host P5 vicinity. Remove ambiguous recovery arrow. Instead caption under backup target: '配套恢复：数据库＋来源内容＋完成清单；在隔离环境校验后恢复。'
+8. P5 subtitle currently '本机推理调用' is misleading as CLI can call remote model. Change to '受控 CLI 调用'.
+Preserve proposed deployment status globally ('候选单节点拓扑') and A/B alternatives; no implemented badges, no SHA, no SSL必需 claim. Enlarge canvas if necessary to avoid crossings, all Chinese correct.
