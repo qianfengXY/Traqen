@@ -5,7 +5,7 @@ topics: [product-architecture, business-architecture, system-architecture, appli
 doc_kind: architecture-design-draft
 created: 2026-09-20
 updated: 2026-09-21
-version: "0.3.1"
+version: "0.3.2"
 status: discussion-draft-not-final
 owner: 砚砚/gpt-6-astra
 source_thread: thread_mtqkycp918zlran6
@@ -13,11 +13,12 @@ write_authorization: 0001789868005959-000340-91d817d0
 visual_revision_authorization: 0001789894667228-000356-83a09c63
 local_branch_authorization: 0001789897566524-000365-8a047452
 architecture_revision_authorization: 0001789955795624-000383-749dcc90
+identifier_revision_authorization: 0001789982767773-000557-2eef7ee7
 ---
 
 # F007 · Traqen 整体架构设计
 
-> **讨论稿 v0.3.1，功能与整体方案未定稿。** 五视角结构图采用 **v5**，其中部署图修订为 **v5.1**；两张展开流程图仍为 **v1**。既有原图和图源全部保留供对照。图描述职责、关系与边界；实现证据集中在下表。文档进入 main 表示可共同查阅和追踪，**不表示功能、技术选型或整体设计已获批准**。
+> **讨论稿 v0.3.2，功能与整体方案未定稿。** 五视角结构图采用 **v5**，其中部署图修订为 **v5.1**；两张展开流程图仍为 **v1**。既有原图和图源全部保留供对照。图描述职责、关系与边界；实现证据集中在下文证据表。文档进入 main 表示可共同查阅和追踪，**不表示功能、技术选型或整体设计已获批准**。
 
 **产品方向：** 以业务功能为核心资产，连接业务意图、设计、实现、配置、测试与部署证据，让软件知识可以继承、质量可以解释、交付可以查证。架构必须同时服务业务负责人、研发、测试和交付团队，不能缩成架构师的分析工具。
 
@@ -42,20 +43,31 @@ architecture_revision_authorization: 0001789955795624-000383-749dcc90
 
 **依据边界：** F007 整体方案尚未定稿，但 F001 已确认设计、F002 V1.0、F003 V2.0、F006 V1.0 仍各有明确功能约束。本文不撤销这些局部基线，也不借它们宣布整体方案通过。具体读取接口、Schema、角色授权和量化验收须按各源文档保留待定。来源见[第 10 节](#sources)。
 
+### 编号与引用约定
+
+| 编号 | 含义与适用范围 | 引用示例 |
+|---|---|---|
+| EV01–EV08 | 本文实现证据索引，集中登记在下表 | 证据 EV07（变更引用） |
+| E1、E2、E6–E9 | 系统／部署视图的外部角色；E9 在部署视图引入 | 外部角色 E7（模型服务） |
+| C01–C07 | §2.3 系统间合同，供跨章节引用 | 合同 C01（来源准入） |
+| 分流图 C1–C5 | §3.3 流程图内的五档分流节点 | 分流图 C1（自动收录） |
+
+合同 C01 与分流图 C1 是不同对象。引用时保留完整编号：合同不省略前导零，分流节点带“分流图”限定。各展开图的其他局部编号按图名定位，跨图对应关系以正文的显式映射为准。
+
 ### 实现证据与方案状态
 
 **观察基线：main `064f94014eb8c0a987508ed52d1ab0c24f5ba42c`，核对时间 2026-09-21 UTC。** 以下相对链接便于阅读；复查历史断言时使用 `git show 064f940:<文件路径>`。图上不放实现徽标、代码 SHA 或验收判断，结构方案与本表分别维护。
 
 | ID／对象 | 在观察基线可复核的事实 | 依据 | 方案／运行状态 |
 |---|---|---|---|
-| E01 接入与前端 | API 使用 Node HTTP 入口；Web 声明 Next／React 依赖 | [production-server.js](../../../src/api/production-server.js)、[web/package.json](../../../web/package.json) | 构建配置不证明 Cloudflare 生产接线；HTTP 入口、前端框架是不同范围 |
-| E02 来源与领域模块 | source-truth 同时有身份／策略规则与 Git、文件、数据库 I/O；domain 的 32 个 JS 文件未直接导入 fs／child_process／pg | [identity](../../../src/source-truth/identity.js)、[policy](../../../src/source-truth/policy.js)、[git-process](../../../src/source-truth/git-process.js)、[blob-store](../../../src/source-truth/blob-store.js)、[postgres-archive](../../../src/source-truth/postgres-archive.js)、[domain](../../../src/domain/) | D1a／D1b 是职责分解，不宣称目录已重构；直接导入检查也不证明整个调用闭包无副作用 |
-| E03 分析编排 | S2 组织 Workspace 分析作业；能力路由选择模型与 Skill | [job-runner](../../../src/application/workspace-analysis-job-runner.js)、[worker](../../../src/application/workspace-analysis-worker.js)、[capability-router](../../../src/analysis/analysis-capability-router.js) | F003 五档业务分流与发布合同仍按 O04／O12 收敛；S2 不充当测试 Runner 调度器 |
-| E04 执行与摄取 | 任务 HMAC、快照绑定在 Runner 中；S1 的 ingestExecutionEvidence 验签、检查精确 TestSpec 与快照后入库 | [task](../../../src/runner/task.js)、[controlled-runner](../../../src/runner/controlled-runner.js)、[traceability-application](../../../src/application/traceability-application.js) | 外部任务传输、注册和部署接线留 O11；应用图只连接有明确职责的证据摄取 |
-| E05 数据库 TLS | POSTGRES_SSL 默认 require（校验证书），同时接受 no-verify 与 disable | [production-server.js](../../../src/api/production-server.js) 的 postgresSsl | 代码提供配置选项；生产采用值、证书与网络策略需运行验收，不以“SSL 必需”概括代码 |
-| E06 审核与版本 | 同 project／run／candidate 审核记录唯一；确认／例外绑定 Claim，其他处置可无 Claim；human_decision 绑定精确 Claim 版本 | [0006 迁移](../../../db/migrations/0006_candidate_review_baseline.sql)、[0001 迁移](../../../db/migrations/0001_core_traceability.sql) | 图中 run 级基数对应此约束；F003 分析条目与目标发布模型留 O04 |
-| E07 变更引用 | ChangeSet 有 from／to 两个快照外键且要求不同 | [0007 迁移](../../../db/migrations/0007_change_impact.sql) | 跨版本身份与变化传播仍须按 O10 验证 |
-| E08 来源装配与恢复 | SOURCE_TRUTH_CONFIG 缺省不装配来源运行时；提供配置时检查失败阻止启动；存在备份实现入口 | [production-server.js](../../../src/api/production-server.js)、[backup-service](../../../src/source-truth/backup-service.js) | 配套恢复要求依据 F001 §8.4；本次没有生产资产、备份计划或 RPO／RTO 演练证据 |
+| EV01 接入与前端 | API 使用 Node HTTP 入口；Web 声明 Next／React 依赖 | [production-server.js](../../../src/api/production-server.js)、[web/package.json](../../../web/package.json) | 构建配置不证明 Cloudflare 生产接线；HTTP 入口、前端框架是不同范围 |
+| EV02 来源与领域模块 | source-truth 同时有身份／策略规则与 Git、文件、数据库 I/O；domain 的 32 个 JS 文件未直接导入 fs／child_process／pg | [identity](../../../src/source-truth/identity.js)、[policy](../../../src/source-truth/policy.js)、[git-process](../../../src/source-truth/git-process.js)、[blob-store](../../../src/source-truth/blob-store.js)、[postgres-archive](../../../src/source-truth/postgres-archive.js)、[domain](../../../src/domain/) | D1a／D1b 是职责分解，不宣称目录已重构；直接导入检查也不证明整个调用闭包无副作用 |
+| EV03 分析编排 | S2 组织 Workspace 分析作业；能力路由选择模型与 Skill | [job-runner](../../../src/application/workspace-analysis-job-runner.js)、[worker](../../../src/application/workspace-analysis-worker.js)、[capability-router](../../../src/analysis/analysis-capability-router.js) | F003 五档业务分流与发布合同仍按 O04／O12 收敛；S2 不充当测试 Runner 调度器 |
+| EV04 执行与摄取 | 任务 HMAC、快照绑定在 Runner 中；S1 的 ingestExecutionEvidence 验签、检查精确 TestSpec 与快照后入库 | [task](../../../src/runner/task.js)、[controlled-runner](../../../src/runner/controlled-runner.js)、[traceability-application](../../../src/application/traceability-application.js) | 外部任务传输、注册和部署接线留 O11；应用图只连接有明确职责的证据摄取 |
+| EV05 数据库 TLS | POSTGRES_SSL 默认 require（校验证书），同时接受 no-verify 与 disable | [production-server.js](../../../src/api/production-server.js) 的 postgresSsl | 代码提供配置选项；生产采用值、证书与网络策略需运行验收，不以“SSL 必需”概括代码 |
+| EV06 审核与版本 | 同 project／run／candidate 审核记录唯一；确认／例外绑定 Claim，其他处置可无 Claim；human_decision 绑定精确 Claim 版本 | [0006 迁移](../../../db/migrations/0006_candidate_review_baseline.sql)、[0001 迁移](../../../db/migrations/0001_core_traceability.sql) | 图中 run 级基数对应此约束；F003 分析条目与目标发布模型留 O04 |
+| EV07 变更引用 | ChangeSet 有 from／to 两个快照外键且要求不同 | [0007 迁移](../../../db/migrations/0007_change_impact.sql) | 跨版本身份与变化传播仍须按 O10 验证 |
+| EV08 来源装配与恢复 | SOURCE_TRUTH_CONFIG 缺省不装配来源运行时；提供配置时检查失败阻止启动；存在备份实现入口 | [production-server.js](../../../src/api/production-server.js)、[backup-service](../../../src/source-truth/backup-service.js) | 配套恢复要求依据 F001 §8.4；本次没有生产资产、备份计划或 RPO／RTO 演练证据 |
 
 历史 v4 图中的 `64100c2` 和文档 v0.2 的 `010de0e` 都来自侧分支，非本次 main 基线祖先；这些旧断言仅留在历史材料中。旧[产品架构文档](../../architecture/traqen-product-architecture.zh-CN.md)也只作历史参照，本轮不修改其他 Feature 真相源。
 
@@ -155,7 +167,7 @@ E7 与 E6 是两种不同的外部协作：前者生成解释，后者取得执�
 
 ### 2.3 系统间合同目录
 
-这里规定需交接的信息，不冻结 HTTP 路径或字段 Schema。合同可由模块内调用实现，也可在后续独立运行时保持相同语义。
+这里规定需交接的信息，不冻结 HTTP 路径或字段 Schema。合同可由模块内调用实现，也可在后续独立运行时保持相同语义。C01–C07 是本目录的合同编号，与 §3.3 分流图内的 C1–C5 节点分开引用。
 
 | 合同 | 生产者 → 消费者 | 交接内容 | 不成立时怎样处理 |
 |---|---|---|---|
@@ -181,7 +193,7 @@ F003 自动收录结果如何被 F004 的不同分类消费，须保留权威状
 
 | 图中节点 | 软件职责与输入产出 | 依赖／实现观察与限制 |
 |---|---|---|
-| A1 Web UI | 当前 Workspace、版本选择、图谱、审核与证据查看 | `web/`；Next／React 与图形组件属于展示实现，版本与构建依据见 E01 |
+| A1 Web UI | 当前 Workspace、版本选择、图谱、审核与证据查看 | `web/`；Next／React 与图形组件属于展示实现，版本与构建依据见 EV01 |
 | A2 操作 CLI | 开发启动、自扫描、追溯评估等命令入口 | `src/cli/`；不是 F006 模型 CLI，也不授予生产阻断权 |
 | A3 REST API | 解析请求、身份认证、作用域检查、错误响应，调用应用用例 | [http-server.js](../../../src/api/http-server.js)；当前为 Node HTTP 服务 |
 | S1 用例编排 | 业务基线、审核、证据入库、追溯与影响查询，组织事务 | [traceability-application.js](../../../src/application/traceability-application.js)；文件中已有多个领域的用例，不代表目标模块边界已重构完毕 |
@@ -203,7 +215,7 @@ F003 自动收录结果如何被 F004 的不同分类消费，须保留权威状
 | H1 F006 能力设置 | 全局资产、Workspace 可用范围、Agent 显式授权、生效配置 | 不是单一开关；模型执行 CLI-only，MCP 暂停，不把存在的元数据入口视为可执行能力 |
 | H2 准入与结果策略 | 权限／完整性／来源检查；对影响结论提供建议 | 前者可拒绝不合格输入；后者遵循 F004 首版不阻断工作，不能合成一个对外强制质量门 |
 
-图中只画主要职责依赖，同号 S1 表示同一用例编排责任。测试证据从 X1 流向平台内 X3；测试任务下发的具体应用接线留在 C06／O11，不将分析作业 S2 指定为测试调度器。应用图展开目标 Runner 的执行边界；模型 CLI 的受控执行边界见 [§2.2 运行单元与信任边界](#system)及 [§5.1 部署图](#deployment)中的 P5，与测试 Runner 分别配置授权。
+图中只画主要职责依赖，同号 S1 表示同一用例编排责任。测试证据从 X1 流向平台内 X3；测试任务下发的具体应用接线见合同 C06 与待定项 O11，不将分析作业 S2 指定为测试调度器。应用图展开目标 Runner 的执行边界；模型 CLI 的受控执行边界见 [§2.2 运行单元与信任边界](#system)及 [§5.1 部署图](#deployment)中的 P5，与测试 Runner 分别配置授权。
 
 ### 3.2 流程一：固定来源，形成可以消费的版本
 
@@ -223,7 +235,9 @@ F003 自动收录结果如何被 F004 的不同分类消费，须保留权威状
 
 [打开完整尺寸图片](images/traqen-analysis-flow-v1.png) · [生成提示词与核对记录](src/flow-visuals-v1.md) · [原始流程定义](src/flow-definitions-v0.1.md)
 
-图按分析准备、调查与核查、五档分流、图谱与人工回流展开。C1 自动收录直接以 Agent 分析态入图；C3 人工审核另有确认、补证、否决／暂缓出口，不是自动收录的前置审批。
+本图的 C1–C5 是局部节点编号，依次表示自动收录、有界补证、人工审核、保留材料待调查、隔离与修复；它们不对应 §2.3 的合同 C01–C07。
+
+图按分析准备、调查与核查、五档分流、图谱与人工回流展开。分流图 C1 自动收录直接以 Agent 分析态入图；分流图 C3 人工审核另有确认、补证、否决／暂缓出口，不是自动收录的前置审批。
 
 此流程转述 F003 V2.0，不新增“所有候选必须人工批准”的门槛。F002 参考与原材料都绑定准确版本；未被提取的材料仍可以在授权范围内调查。Main 至少协同一个 Child，模型一致不能替代证据。补证可以向 F002 发出定向请求；F002 修复产生新版本，是否选用必须明确，不能静默替换本次输入。
 
@@ -266,7 +280,7 @@ F003 分析准备展示服务端已生效配置摘要，首次或生效版本变
 | G2 SourceBundle／SourceTruthReceipt | 不可变来源内容组合／一次来源签发及准入依据 | 同包可续签新 Receipt；内容相同不等于同一次发布操作，冻结身份不等于当前资格 |
 | G2 ArtifactInventory／CoverageGap | 所有材料及其处理处置／已发现来源限制 | 被排除、受限和未获正文有记录；零 Gap 不能证明不存在未发现遗漏 |
 | G2 SnapshotManifest | 被追溯或执行上下文的复合快照引用 | 现有执行模型包含 source／build／deployment／runtime；来源 Bundle 与完整部署快照不是同一对象，单有源码不能补造后三者 |
-| G2 FactBundle／FactNode／FactEdge | 确定性技术记录与关系的既有实现对象；F002 目标出口见 C02 | F002 完整事实引用为 `workspaceId + graphVersionId + factId`，其中版本是事实数据集版本，不能混作 F003 图谱版本 |
+| G2 FactBundle／FactNode／FactEdge | 确定性技术记录与关系的既有实现对象；F002 目标出口见合同 C02 | F002 完整事实引用为 `workspaceId + graphVersionId + factId`，其中版本是事实数据集版本，不能混作 F003 图谱版本 |
 | G3 TestSpec | 与规则和断言关联的版本化测试规格 | 规格存在、结构有效、获准执行是不同条件；静态测试文件不是 TestExecution |
 | G3 TestExecution／Evidence | 一次真实执行及可核验观察材料 | 绑定精确 TestSpec、快照、Runner、目标环境和时间；签名／摘要不能代替业务断言 |
 | G3 VerificationResult | 基于规格、执行和证据计算的验证结论 | 概念上保留 PASS／FAIL／INCONCLUSIVE 等语义；未执行、执行错误、跳过等也须可表达。是否独立存成实体及其基数尚未定稿 |
@@ -314,7 +328,7 @@ ArtifactInventory 说明来源材料，SnapshotManifest 说明复合版本上下
 
 - **领域历史与可变头分开。** 已发布内容、决定、运行结果和证据保留不可变身份；当前图谱头、配置草稿、用户视图偏好有受控更新。数据域分别定义写入约束，不把“全部 append-only”当作统一存储规则。
 - **修正追加版本。** 修复 F002 提取、补充来源、修订命题、改变配置均保留旧引用与来源；新运行显式选用。查询展示“当前”也须能回到产生它的版本。
-- **隔离与并发。** Workspace、运行、任务持有者、配置版本及发布修订参与校验；失效执行者和迟到结果不能推进当前头。目标跨模块事务、比较并交换和冲突响应须由 C05／O04 定稿。
+- **隔离与并发。** Workspace、运行、任务持有者、配置版本及发布修订参与校验；失效执行者和迟到结果不能推进当前头。目标跨模块事务、比较并交换和冲突响应须按合同 C05 与待定项 O04 收敛定稿。
 - **数据库与字节共同持久化。** F001 不可变字节在受管理文件存储，数据库保存身份、引用、状态及审计。其他数据域的物理存储扩展需另定，不能仅凭“图谱”就增加图数据库。
 - **保留与删除显式。** F001 历史、任务和审计默认 TTL=0；证据内容的归档／删除必须有适用政策和明确授权，不能用容量不足自动删除历史。物理删除后仍需按约束保留可核验处置记录，不能笼统承诺所有字节永久留存。
 - **机密不进入公共证据。** 配置和执行任务保存凭据引用，访问原文按当前权限；敏感材料的可保存范围、脱敏视图与模型外发分别控制，不将前端隐藏当作数据隔离。
@@ -327,7 +341,7 @@ ArtifactInventory 说明来源材料，SnapshotManifest 说明复合版本上下
 
 ![Traqen 部署架构 v5.1：统一外部角色编号的候选拓扑与独立恢复域](images/traqen-architecture-v5.1-deploy.png)
 
-系统图与本部署图的外部角色编号统一：E1 为 Git 托管，E2 为上传材料提供方，E6 为测试 Runner／CI，E7 为模型服务，E8 为被测系统；E9 是部署层新增的 Cloudflare 边缘入口。部署图将 E1／E2 合并在一个来源框内，仅合并展示，不合并身份。应用图的 X1 与运行展开图的 R1 对应此处 E6；P5 则对应运行展开图的受控模型 CLI，二者职责与授权分开。正文 E01–E08 是实现证据索引，与外部角色 E1／E2 等节点编号不同。
+系统图与本部署图的外部角色编号统一：E1 为 Git 托管，E2 为上传材料提供方，E6 为测试 Runner／CI，E7 为模型服务，E8 为被测系统；E9 是部署层新增的 Cloudflare 边缘入口。部署图将 E1／E2 合并在一个来源框内，仅合并展示，不合并身份。应用图的 X1 与运行展开图的 R1 对应此处 E6；P5 则对应运行展开图的受控模型 CLI，二者职责与授权分开。正文 EV01–EV08 是实现证据索引，与外部角色 E1／E2 等节点编号不同。
 
 首期以可恢复的单节点形态讨论，不宣称高可用或零丢失。**图中的实例位置是候选部署，不是生产资产盘点。** 当前代码提供 Node API、PostgreSQL 适配与文件存储集成；前端存在 Cloudflare 构建配置，但没有本轮生产网络、进程或恢复演练证据。数据库与 API 是否同机须按实际部署配置登记。
 
@@ -346,7 +360,7 @@ ArtifactInventory 说明来源材料，SnapshotManifest 说明复合版本上下
 | 网络候选 A／B、P0 源站接入 | 浏览器入口与源站回源的加密和认证路径 | 见下节；不能把 Node 裸 HTTP 推论为当前 Cloudflare 必然在 HTTP 回源 |
 | 图下注明的首期承诺边界 | 说明单节点的能力限制 | 尚无本版批准的吞吐、并发、可用性和 RPO／RTO 数值 |
 
-**代码配置核对：** 默认端口、运行时要求分别见 [production-server.js](../../../src/api/production-server.js)、根 [package.json](../../../package.json) 和 [web/package.json](../../../web/package.json)。数据库 TLS 与来源装配的观察统一登记在 E05／E08。图中“SQL／TLS 配置”指明连接的配置责任，实际取值与证书策略须随部署记录验收。
+**代码配置核对：** 默认端口、运行时要求分别见 [production-server.js](../../../src/api/production-server.js)、根 [package.json](../../../package.json) 和 [web/package.json](../../../web/package.json)。数据库 TLS 与来源装配的观察统一登记在 EV05／EV08。图中“SQL／TLS 配置”指明连接的配置责任，实际取值与证书策略须随部署记录验收。
 
 ### 5.2 两段网络链路，保留两种候选
 
@@ -480,7 +494,7 @@ F001 Design B §8.4 已确认恢复一致性要求，具体备份目标、频率
 
 ### 9.1 图稿登记
 
-**当前正文使用 v5 结构方案，部署图采用 v5.1 编号修订。** 五张图统一移除实现状态徽标和代码 SHA；实现观察集中在开篇 E01–E08。业务、系统、数据图由原生 image-generation 生成；应用和部署图各经历两轮原生生成仍有关系错误，改由 HTML/SVG 精确绘制并截图。完整提示词、失败降级依据、端点定义和校验值见 [v5 图源登记](src/v5/README.md)及 [v5.1 部署图登记](src/v5.1/README.md)。旧版只作历史对照，不作为现行结构依据。
+**当前正文使用 v5 结构方案，部署图采用 v5.1 编号修订。** 五张图统一移除实现状态徽标和代码 SHA；实现观察集中在开篇 EV01–EV08。业务、系统、数据图由原生 image-generation 生成；应用和部署图各经历两轮原生生成仍有关系错误，改由 HTML/SVG 精确绘制并截图。完整提示词、失败降级依据、端点定义和校验值见 [v5 图源登记](src/v5/README.md)及 [v5.1 部署图登记](src/v5.1/README.md)。旧版只作历史对照，不作为现行结构依据。
 
 | 视角 | 当前图 | v4 对照 | v3 对照 | v2 对照 | 当前生成来源 |
 |---|---|---|---|---|---|
@@ -518,6 +532,7 @@ v5 的应用／部署图在 `src/v5/` 内使用相同本机静态服务方法预
 | 文档 v0.2／展开图 v1 | 2026-09-20 | 两张 Mermaid 展开图替换为同风格、可直接显示的 PNG；保留原关系定义、提示词与失败降级记录；五视角 v2／v3／v4 图片未改动 | co-creator 消息 `0001789894667228-000356-83a09c63` 要求修正图形呈现；不改变功能或整体设计的定稿状态 |
 | 文档 v0.3／五视角 v5 | 2026-09-21 | 将结构关系与实现观察分开；修正来源模块分层、系统边界、零态基数、业务价值路径和执行接线；保留全部旧图 | co-creator 消息 `0001789955795624-000383-749dcc90` 授权按审查建议修改；整体方案仍为讨论稿 |
 | 文档 v0.3.1／部署图 v5.1 | 2026-09-21 | 统一外部角色编号，标明模型 CLI 执行边界所在视图，说明业务治理编号并保留原图；拓扑和接口不变 | 延续同一图文一致性修订授权；功能、接口与整体方案仍未定稿 |
+| 文档 v0.3.2 | 2026-09-21 | 实现证据索引统一为 EV01–EV08；前置编号约定，区分合同 C01–C07 与分流图 C1–C5，补齐引用范围；图片、架构关系与合同内容不变 | co-creator 消息 `0001789982767773-000557-2eef7ee7` 授权处理符号治理建议；整体方案仍为讨论稿 |
 
 <a id="sources"></a>
 
