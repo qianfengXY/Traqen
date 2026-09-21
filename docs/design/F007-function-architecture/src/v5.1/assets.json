@@ -1,0 +1,14 @@
+{
+  "baseline": "df08b0d91ce1e727484a0be8e35f1a46bec03ef2",
+  "assets": [
+    {
+      "view": "deploy",
+      "path": "images/traqen-architecture-v5.1-deploy.png",
+      "method": "HTML/SVG + Chromium screenshot",
+      "source": "src/v5.1/deploy.html",
+      "width": 1800,
+      "height": 1720,
+      "sha256": "f0cd74ff52c4650df1f3bc096435aa97dc08ebf5978a6efb1a209dfc87e4d15c"
+    }
+  ]
+}
