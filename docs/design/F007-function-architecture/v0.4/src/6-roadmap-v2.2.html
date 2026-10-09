@@ -1,0 +1,139 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f5f7fb;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#1d2b45;position:relative;overflow:hidden}
+.title{position:absolute;left:40px;top:24px;font-size:30px;font-weight:700;color:#0d1b36;letter-spacing:.3px}
+.subtitle{position:absolute;left:40px;top:68px;font-size:14.5px;color:#4a5a75}
+.corner{position:absolute;right:40px;top:30px;font-size:13.5px;color:#5b6b86;text-align:right;line-height:1.5}
+.rule{position:absolute;left:40px;right:40px;top:98px;height:2px;background:#2f6fdb}
+.panel{position:absolute;border:1.5px solid #d3dcea;border-radius:14px;background:rgba(255,255,255,.6)}
+.panel.ext{border:1.6px dashed #aebbd0;background:rgba(255,255,255,.35)}
+.panel.newp{border:2px dashed #7fd3b8;background:rgba(232,250,243,.45)}
+.panel.openp{border:2px dashed #efb066;background:rgba(255,247,234,.5)}
+.panel.banner{border:2px solid #0e9f77;background:#effcf7}
+.plabel{position:absolute;font-size:14.5px;font-weight:700;color:#2a3f66;white-space:nowrap}
+.node{position:absolute;border-radius:10px;padding:9px 12px;background:#fff;border:1.6px solid #2f6fdb;
+      box-shadow:0 1px 2px rgba(20,40,80,.06);display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.node .t{font-size:15.5px;font-weight:700;color:#0d1b36;line-height:1.3}
+.node .s{font-size:12.8px;color:#4a5a75;line-height:1.5;margin-top:3px}
+.node.center .t,.node.center .s{text-align:center}
+.node.new{background:#e9fbf4;border:2px solid #0e9f77}
+.node.open{background:#fff7ea;border:2px dashed #e07a00}
+.node.plain{background:#fff;border:1.4px solid #9fb3d1}
+.node.light{background:#f2f5fa;border:1.4px dashed #9fb3d1}
+.node.warn{background:#fff7ea;border:1.8px solid #e07a00}
+.node.dark{background:#0f2a5c;border:none}
+.node.dark .t{color:#fff}.node.dark .s{color:#cfe0ff}
+.node.hub{background:#0b5e4c;border:none;box-shadow:0 4px 14px rgba(11,94,76,.25)}
+.node.hub .t{color:#fff;font-size:19px}.node.hub .s{color:#d4f5ea}
+.node.chip{padding:0;border-radius:14px;justify-content:center;align-items:center}
+.node.chip .t{font-size:15px;text-align:center}
+.node.chip.new{background:#0e9f77;border:none}.node.chip.new .t{color:#fff}
+.node.chip.ex{background:#fff;border:1.6px solid #2f6fdb}.node.chip.ex .t{color:#2f6fdb}
+.code{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:#2f6fdb;border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.node.dark .code{background:#4d84e8}
+.tag{position:absolute;top:6px;right:8px;font-size:11px;font-weight:700;color:#fff;background:#0e9f77;border-radius:9px;padding:1px 7px}
+.tag.open{background:#e07a00}.node.hub .tag{background:#34d399;color:#063b2f}
+.owner{display:inline-block;align-self:flex-start;margin-top:6px;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.owner.own{color:#2f6fdb;background:#e8f0ff;border:1px solid #b9cff7}
+.owner.gap{color:#fff;background:#e07a00}
+.node.hub .owner.gap{background:#ffb54d;color:#4a2600}
+.bul{font-size:12.8px;line-height:1.55;margin-top:4px;color:#0b7a5c;font-weight:600}
+.q7{list-style:none;margin-top:8px}
+.q7 li{font-size:14.5px;line-height:1.72;color:#fff}
+.q7 li b{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:#d4f5ea;color:#0b5e4c;font-size:12px;margin-right:9px;vertical-align:1px}
+.st{margin-top:9px;font-size:12.8px;color:#d4f5ea;border-top:1px solid rgba(212,245,234,.35);padding-top:7px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 4px 0 2px;vertical-align:0}
+.lbl{position:absolute;transform:translate(-50%,-50%);font-size:12.5px;color:#2a3f66;background:rgba(255,255,255,.94);
+     padding:1px 6px;border-radius:4px;white-space:nowrap;line-height:18px}
+.lbl.new{color:#0b7a5c;font-weight:600}.lbl.open{color:#b45f00;font-weight:600}
+.note{position:absolute;font-size:13px;color:#3a4a66;line-height:1.6}
+.note b{color:#0d1b36}
+.legend{position:absolute;display:flex;gap:22px;align-items:center;font-size:12.5px;color:#3a4a66}
+.legend .sw{display:inline-block;width:26px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+.legend .ln{display:inline-block;width:30px;height:0;margin-right:6px;vertical-align:3px}
+ body{width:1800px;height:1300px}</style></head><body>
+<div class="title">Traqen MVP 与分期 · 依赖关系</div><div class="subtitle">依据 2026-10-08 新版 README 愿景 · v2.2 吸收三轮审视 · 候选，待你确认 · 箭头与每格「依赖」都表示前者完成后者才能开始；O 编号为 F007 待定项</div><div class="corner">F007 v0.4 分期草案 · v2.2<br>宪宪 · 2026-10-09</div><div class="rule"></div>
+<div class="panel " style="left:40px;top:118px;width:250px;height:1010px"></div>
+<div class="plabel" style="left:56px;top:127px">已有基线（复用）</div>
+<div class="panel newp" style="left:320px;top:118px;width:480px;height:1010px"></div>
+<div class="plabel" style="left:336px;top:127px">一期 · MVP（单块试点业务，仅自用）</div>
+<div class="panel " style="left:830px;top:118px;width:310px;height:1010px"></div>
+<div class="plabel" style="left:846px;top:127px">二期 · 答卷自己长起来</div>
+<div class="panel " style="left:1170px;top:118px;width:290px;height:1010px"></div>
+<div class="plabel" style="left:1186px;top:127px">三期 · 向外：新系统与外部 AI</div>
+<div class="panel " style="left:1490px;top:118px;width:270px;height:1010px"></div>
+<div class="plabel" style="left:1506px;top:127px">四期 · 规模化与企业化</div>
+<svg style="position:absolute;left:0;top:0" width="1800" height="1300" viewBox="0 0 1800 1300"><defs>
+<marker id="m-ex" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a6fa8"/></marker>
+<marker id="m-new" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e9f77"/></marker>
+<marker id="m-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e07a00"/></marker>
+<marker id="m-thin" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7f93b5"/></marker>
+</defs>
+<path d="M274,300 L340,300" fill="none" stroke="#f5f7fb" stroke-width="6.6" stroke-linejoin="round"/>
+<path d="M274,300 L340,300" fill="none" stroke="#7f93b5" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m-thin)"/>
+<path d="M560,325 L560,338" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M560,325 L560,338" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M560,438 L560,452" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M560,438 L560,452" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M274,492 L340,492" fill="none" stroke="#f5f7fb" stroke-width="6.6" stroke-linejoin="round"/>
+<path d="M274,492 L340,492" fill="none" stroke="#7f93b5" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m-thin)"/>
+<path d="M274,636 L340,636" fill="none" stroke="#f5f7fb" stroke-width="6.6" stroke-linejoin="round"/>
+<path d="M274,636 L340,636" fill="none" stroke="#7f93b5" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m-thin)"/>
+<path d="M274,756 L340,756" fill="none" stroke="#f5f7fb" stroke-width="6.6" stroke-linejoin="round"/>
+<path d="M274,756 L340,756" fill="none" stroke="#7f93b5" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m-thin)"/>
+<path d="M274,984 L340,984" fill="none" stroke="#f5f7fb" stroke-width="6.6" stroke-linejoin="round"/>
+<path d="M274,984 L340,984" fill="none" stroke="#7f93b5" stroke-width="1.6" stroke-linejoin="round" marker-end="url(#m-thin)"/>
+<path d="M780,388 L812,388 L812,234 L846,234" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M780,388 L812,388 L812,234 L846,234" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M780,634 L824,634 L824,372 L846,372" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M780,634 L824,634 L824,372 L846,372" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M985,298 L985,314" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M985,298 L985,314" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M780,984 L818,984 L818,746 L846,746" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M780,984 L818,984 L818,746 L846,746" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1315,486 L1315,468" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1315,486 L1315,468" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1444,684 L1475,684 L1475,354 L1506,354" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1444,684 L1475,684 L1475,354 L1506,354" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+</svg>
+<div class="node " data-id="b1" style="left:56px;top:170px;width:218px;height:80px"><div class="t">来源快照（F001）</div><div class="s">冻结材料 · 清单 · 缺口 · Receipt</div></div>
+<div class="node " data-id="b3" style="left:56px;top:264px;width:218px;height:80px"><div class="t">图谱与当前头（F003）</div><div class="s">分析运行 · 发布门禁</div></div>
+<div class="node " data-id="b2" style="left:56px;top:358px;width:218px;height:80px"><div class="t">确定性事实（F002）</div><div class="s">JS／Java 扫描器</div></div>
+<div class="node " data-id="b7" style="left:56px;top:452px;width:218px;height:80px"><div class="t">现有五段式追溯视图</div><div class="s">七问答卷的演进起点</div></div>
+<div class="node " data-id="b5" style="left:56px;top:596px;width:218px;height:80px"><div class="t">主张 · 决定 · 审核</div><div class="s">追加式记录；决定可带有效期</div></div>
+<div class="node " data-id="b4" style="left:56px;top:716px;width:218px;height:80px"><div class="t">变更影响（F004）</div><div class="s">ChangeSet · 失效 · 重验证建议</div></div>
+<div class="node " data-id="b6" style="left:56px;top:830px;width:218px;height:80px"><div class="t">测试规格 · 执行 · 证据</div><div class="s">Runner 签名 · 证据摄取</div></div>
+<div class="node " data-id="b8" style="left:56px;top:944px;width:218px;height:80px"><div class="t">F005 六入口 · F006 能力配置</div><div class="s">页面落点与模型授权</div></div>
+<div class="node warn" data-id="fd" style="left:340px;top:160px;width:440px;height:165px"><div class="t">地基（关键路径，最先做；不可砍）</div><div class="s">团队持久单节点＋配套备份，并完成一次隔离恢复演练（会话、决定、材料引用可恢复，未覆盖时段明确显示）· 试点真值集：七问格式、独立评审，作留出评估集，评估前不进答卷 · F006→F003 真实运行链（O12）· 材料准入合同（O03）</div></div>
+<div class="node new" data-id="m0" style="left:340px;top:338px;width:440px;height:100px"><span class="tag">核心</span><div class="t">入图分流（试点关系类型）</div><div class="s">按 F003 §5：证据充分→分析态；歧义→人工；无效→隔离；未知保留；不改成全量人工批准<br><span style='color:#9a5b00;font-weight:600'>依赖：地基</span></div></div>
+<div class="node new" data-id="m1" style="left:340px;top:452px;width:440px;height:118px"><span class="tag">核心</span><div class="t">七问答卷</div><div class="s">单块试点业务；逐条带依据 · 适用范围 · 版本 · 来源与状态；意图与实现材料分开标注，冲突并列；默认读当前受控头并注明版本<br><span style='color:#9a5b00;font-weight:600'>依赖：入图分流 · 五段式视图</span></div></div>
+<div class="node new" data-id="m2" style="left:340px;top:584px;width:440px;height:100px"><span class="tag">核心</span><div class="t">工作会话 ＋ 人工回写</div><div class="s">带着问题进入（可先不归属）；引用冻结材料；留下说明 · 理由 · 修正 · 验证结果；正式决定走决定流程<br><span style='color:#9a5b00;font-weight:600'>依赖：地基 · 主张与决定</span></div></div>
+<div class="node new" data-id="m3" style="left:340px;top:698px;width:440px;height:118px"><span class="tag">核心</span><div class="t">变化举手（含发布门禁回路）</div><div class="s">新运行→质量证据→获准发布→更新答卷；未获准时保留旧头并显示「新分析尚未生效」；影响分已证实／可能／未知；有效期到期重评估<br><span style='color:#9a5b00;font-weight:600'>依赖：七问答卷 · F004 · O10</span></div></div>
+<div class="node new" data-id="m4" style="left:340px;top:830px;width:440px;height:100px"><span class="tag">通道</span><div class="t">AI 只读（读取通道一，优先保留）</div><div class="s">CLI／API；固定试点策略：限定调用身份与可返回内容、缓存复验权限、读取留痕<br><span style='color:#9a5b00;font-weight:600'>依赖：七问答卷</span></div></div>
+<div class="node new" data-id="m5" style="left:340px;top:944px;width:440px;height:84px"><span class="tag">通道</span><div class="t">页面落点（读取通道二，可降级）</div><div class="s">会话→工作区概览；答卷→业务图谱；工期紧时降级为现有五段式视图<br><span style='color:#9a5b00;font-weight:600'>依赖：答卷 · 会话 · F005 页面内容确认</span></div></div>
+<div class="node light" data-id="mg" style="left:340px;top:1042px;width:440px;height:72px"><div class="t">同步工程护栏</div><div class="s">响应注明版本 · 存储边界依赖检查（CI）· 答案状态语义测试</div></div>
+<div class="node " data-id="p2a" style="left:846px;top:170px;width:278px;height:128px"><div class="t">分流覆盖扩展</div><div class="s">更多关系类型、有界自动补证；仍只进分析态<br><span style='color:#9a5b00;font-weight:600'>依赖：入图分流（一期）· O04 · O12</span></div></div>
+<div class="node " data-id="p2b" style="left:846px;top:314px;width:278px;height:118px"><div class="t">AI 回写</div><div class="s">经工作会话与分流，只进分析态；写入令牌绑定会话<br><span style='color:#9a5b00;font-weight:600'>依赖：工作会话 · 分流覆盖扩展</span></div></div>
+<div class="node " data-id="p2c" style="left:846px;top:448px;width:278px;height:104px"><div class="t">业务数据对象</div><div class="s">第四问在业务层回答<br><span style='color:#9a5b00;font-weight:600'>依赖：七问答卷 · F002（O04 · O05）</span></div></div>
+<div class="node " data-id="p2d" style="left:846px;top:568px;width:278px;height:104px"><div class="t">缺口协同处置</div><div class="s">还说不清的项有人认领、补证、关闭<br><span style='color:#9a5b00;font-weight:600'>依赖：工作会话（O08）</span></div></div>
+<div class="node " data-id="p2e" style="left:846px;top:688px;width:278px;height:118px"><div class="t">工作优先的入口</div><div class="s">按 MVP 使用证据重排 F005 入口<br><span style='color:#9a5b00;font-weight:600'>依赖：页面落点（O16）</span></div></div>
+<div class="node " data-id="p2f" style="left:846px;top:822px;width:278px;height:104px"><div class="t">扩展到更多业务</div><div class="s">单块试点验证后再扩面<br><span style='color:#9a5b00;font-weight:600'>依赖：一期验收通过</span></div></div>
+<div class="node " data-id="p3a" style="left:1186px;top:170px;width:258px;height:132px"><div class="t">正向登记</div><div class="s">新系统、AI 生成系统的意图直接登记；经决定流程，追加式<br><span style='color:#9a5b00;font-weight:600'>依赖：主张与决定 · 工作会话（O02）</span></div></div>
+<div class="node " data-id="p3b" style="left:1186px;top:318px;width:258px;height:150px"><div class="t">外部 AI 接入</div><div class="s">通用分级外发 · 短期令牌 · 读取审计可回放 · MCP 入站候选；非自用 Workspace 的前提<br><span style='color:#9a5b00;font-weight:600'>依赖：AI 只读 · 风险分级</span></div></div>
+<div class="node " data-id="p3c" style="left:1186px;top:486px;width:258px;height:120px"><div class="t">风险分级与身份策略</div><div class="s">高风险操作阈值、企业身份、多人审批<br><span style='color:#9a5b00;font-weight:600'>依赖：既有治理（O07）</span></div></div>
+<div class="node " data-id="p3d" style="left:1186px;top:624px;width:258px;height:120px"><div class="t">测试与执行产品流程</div><div class="s">规格设计与批准、报告接入<br><span style='color:#9a5b00;font-weight:600'>依赖：测试基线 · 七问答卷（O06）</span></div></div>
+<div class="node " data-id="p4a" style="left:1506px;top:170px;width:238px;height:116px"><div class="t">运行信号接入</div><div class="s">日志 · 告警平台集成，服务排查；引入新外部依赖<br><span style='color:#9a5b00;font-weight:600'>依赖：工作会话 · F001</span></div></div>
+<div class="node " data-id="p4b" style="left:1506px;top:302px;width:238px;height:104px"><div class="t">外部 Runner／CI 接线</div><div class="s">调度 · 传输 · 取消<br><span style='color:#9a5b00;font-weight:600'>依赖：测试与执行流程（O11）</span></div></div>
+<div class="node " data-id="p4c" style="left:1506px;top:422px;width:238px;height:120px"><div class="t">企业私有化与容量</div><div class="s">网络 TLS A／B 定案、隔离、容量<br><span style='color:#9a5b00;font-weight:600'>依赖：风险分级与身份（O13 · O15）</span></div></div>
+<div class="node " data-id="p4d" style="left:1506px;top:558px;width:238px;height:104px"><div class="t">持续恢复演练</div><div class="s">测得 RPO／RTO，演练常态化<br><span style='color:#9a5b00;font-weight:600'>依赖：首次恢复演练（一期）· O14</span></div></div>
+<div class="node " data-id="p4e" style="left:1506px;top:678px;width:238px;height:108px"><div class="t">交付证明导出</div><div class="s">版本 · 证据 · 剩余风险<br><span style='color:#9a5b00;font-weight:600'>依赖：七问答卷 · 测试流程（O09）</span></div></div>
+<div class="node warn" data-id="gate" style="left:40px;top:1142px;width:1720px;height:112px"><div class="t">裁剪线与硬门槛</div><div class="s"><b>裁剪线</b>：地基与四个核心（入图分流、七问答卷、工作会话、变化举手）不可砍；两条读取通道至少保留一条——优先保留 AI 只读（本团队主要开发者是 AI，CLI 成本低），页面落点可降级为现有视图。<br><b>硬门槛</b>：一期第一条 AI 读取起，就执行固定试点策略（限定调用身份、可返回内容、缓存复验权限、读取留痕）；通用分级、企业身份与对外接入在三期，非自用 Workspace 开放前必须完成。</div></div>
+<div class="lbl " data-e="0" style="left:306px;top:284px">发布门禁</div>
+<div class="legend" style="left:40px;top:1272px"><span><span class="sw" style="background:#fff;border:1.6px solid #2f6fdb"></span>既有（沿用 F007 v5.1 编号）</span><span><span class="sw" style="background:#e9fbf4;border:2px solid #0e9f77"></span>新增（本轮候选，不编号）</span><span><span class="sw" style="background:#fff7ea;border:2px dashed #e07a00"></span>待定</span><span><span class="ln" style="border-top:2px solid #4a6fa8"></span>既有关系</span><span><span class="ln" style="border-top:2.4px solid #0e9f77"></span>新增关系</span><span><span class="ln" style="border-top:2px dashed #e07a00"></span>待定关系</span><span>线交叉处断开＝互不相连</span></div>
+<script>document.fonts.ready.then(()=>{const r={overflow:[],labels:[]};
+document.querySelectorAll('.node').forEach(n=>{if(n.scrollHeight>n.clientHeight+1||n.scrollWidth>n.clientWidth+1)r.overflow.push(n.dataset.id+' '+n.scrollHeight+'/'+n.clientHeight)});
+document.querySelectorAll('.lbl').forEach(l=>{const b=l.getBoundingClientRect();r.labels.push([+l.dataset.e,b.left,b.top,b.right,b.bottom])});
+r.orphans=[];document.querySelectorAll('.node .s,.node .t,.node .bul,.note,.lbl').forEach(el=>{const g=document.createRange();g.selectNodeContents(el);const rs=[...g.getClientRects()].filter(x=>x.width>0&&x.height>0);if(rs.length<2)return;const L={};rs.forEach(x=>{const k=Math.round(x.bottom);L[k]=(L[k]||0)+x.width;});const ks=Object.keys(L).map(Number).sort((a,b)=>a-b);if(ks.length>1&&L[ks[ks.length-1]]<20){const n=el.closest('.node');r.orphans.push((n?n.dataset.id:'note')+'…'+el.textContent.slice(-6));}});
+r.plabels=[];document.querySelectorAll('.plabel').forEach(l=>{const b=l.getBoundingClientRect();r.plabels.push([b.left,b.top,b.right,b.bottom,l.textContent])});
+const p=document.createElement('pre');p.id='report';p.style.display='none';p.textContent=JSON.stringify(r);document.body.appendChild(p);});</script>
+</body></html>

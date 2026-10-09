@@ -1,0 +1,124 @@
+{
+  "document_version": "0.4",
+  "visual_revision": "v2.2",
+  "diagram_author": "宪宪/claude-opus-5-5",
+  "document_curator": "砚砚/gpt-6-astra",
+  "source_thread": "thread_mtqkycp918zlran6",
+  "source_message": "0001791530572860-000533-dd5cb4b0",
+  "write_authorization": "0001791539548792-000539-ae0c0c97",
+  "copied_without_modification": true,
+  "assets": [
+    {
+      "id": "0-overview",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/0-overview-v2.2.png",
+        "sha256": "335550defc77845156f7ce5f50d495403b5d45fac1d940a7e81cf115a07fbeba",
+        "bytes": 854258,
+        "width": 3600,
+        "height": 2580
+      },
+      "html": {
+        "path": "src/0-overview-v2.2.html",
+        "sha256": "3f644dc10cece3d998746821e08a109bcce60a76078ad70ccb8479f6d0773216",
+        "bytes": 18277
+      }
+    },
+    {
+      "id": "1-business",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/1-business-v2.2.png",
+        "sha256": "a85b8eeaff9ce48a713b6f89de093c70507be6f65cec4c78977e5dc82ff4eaa6",
+        "bytes": 886353,
+        "width": 3600,
+        "height": 2900
+      },
+      "html": {
+        "path": "src/1-business-v2.2.html",
+        "sha256": "c9b4a92b7d62fbb0f168022f7af23941003fd89a7c9c9ca877645822d0585db0",
+        "bytes": 20826
+      }
+    },
+    {
+      "id": "2-system",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/2-system-v2.2.png",
+        "sha256": "0a2c28024ad44c587c914f3f447fe3bf3e8d990531718093453b08c8ce91d164",
+        "bytes": 572054,
+        "width": 3600,
+        "height": 2060
+      },
+      "html": {
+        "path": "src/2-system-v2.2.html",
+        "sha256": "a7e2a5fcf6f4a371eeb7b44632d9acba3534f347e52ae972c598c8752f46ff9f",
+        "bytes": 15612
+      }
+    },
+    {
+      "id": "3-application",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/3-application-v2.2.png",
+        "sha256": "96efacb15d0600585730d6198b6eed2c7aca07de84f891030735e72f46ca619e",
+        "bytes": 887988,
+        "width": 3600,
+        "height": 2768
+      },
+      "html": {
+        "path": "src/3-application-v2.2.html",
+        "sha256": "8f50585b55c1f976fa4503512627cc752e4de53c937efbe6f6b9bd28b43d5ea8",
+        "bytes": 22015
+      }
+    },
+    {
+      "id": "4-data",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/4-data-v2.2.png",
+        "sha256": "d4914f156253c4bb84812b5ee76e4e4a295e2b28b800c9661dc3d1de5e9248b5",
+        "bytes": 786021,
+        "width": 3600,
+        "height": 2536
+      },
+      "html": {
+        "path": "src/4-data-v2.2.html",
+        "sha256": "4d9424435819a6cb3c9decd78343aeeba876ee64bb46495df2f8a51d7a0cdb46",
+        "bytes": 17819
+      }
+    },
+    {
+      "id": "5-deployment",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/5-deployment-v2.2.png",
+        "sha256": "30a42fde67e21fd3c37e1909709ba43fab307b71fd61187526fd91135015eb42",
+        "bytes": 765688,
+        "width": 3600,
+        "height": 2736
+      },
+      "html": {
+        "path": "src/5-deployment-v2.2.html",
+        "sha256": "9a1b07d752802cfd68e6a41e15c7f6658bf8b15caa7289b913ead1b533619e09",
+        "bytes": 18820
+      }
+    },
+    {
+      "id": "6-roadmap",
+      "visual_revision": "v2.2",
+      "png": {
+        "path": "images/6-roadmap-v2.2.png",
+        "sha256": "2d7462b8d56f86282b6ae1636cc5a39ec0af684cf9366f101d95e7ff3509155b",
+        "bytes": 1206762,
+        "width": 3600,
+        "height": 2600
+      },
+      "html": {
+        "path": "src/6-roadmap-v2.2.html",
+        "sha256": "8dc2a39653d0505689fca7ac21c79cacb2d9ca9d6a83f386d6e3888d4dd353e5",
+        "bytes": 21629
+      }
+    }
+  ]
+}
