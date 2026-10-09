@@ -1,0 +1,125 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f5f7fb;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#1d2b45;position:relative;overflow:hidden}
+.title{position:absolute;left:40px;top:24px;font-size:30px;font-weight:700;color:#0d1b36;letter-spacing:.3px}
+.subtitle{position:absolute;left:40px;top:68px;font-size:14.5px;color:#4a5a75}
+.corner{position:absolute;right:40px;top:30px;font-size:13.5px;color:#5b6b86;text-align:right;line-height:1.5}
+.rule{position:absolute;left:40px;right:40px;top:98px;height:2px;background:#2f6fdb}
+.panel{position:absolute;border:1.5px solid #d3dcea;border-radius:14px;background:rgba(255,255,255,.6)}
+.panel.ext{border:1.6px dashed #aebbd0;background:rgba(255,255,255,.35)}
+.panel.newp{border:2px dashed #7fd3b8;background:rgba(232,250,243,.45)}
+.panel.openp{border:2px dashed #efb066;background:rgba(255,247,234,.5)}
+.panel.banner{border:2px solid #0e9f77;background:#effcf7}
+.plabel{position:absolute;font-size:14.5px;font-weight:700;color:#2a3f66;white-space:nowrap}
+.node{position:absolute;border-radius:10px;padding:9px 12px;background:#fff;border:1.6px solid #2f6fdb;
+      box-shadow:0 1px 2px rgba(20,40,80,.06);display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.node .t{font-size:15.5px;font-weight:700;color:#0d1b36;line-height:1.3}
+.node .s{font-size:12.8px;color:#4a5a75;line-height:1.5;margin-top:3px}
+.node.center .t,.node.center .s{text-align:center}
+.node.new{background:#e9fbf4;border:2px solid #0e9f77}
+.node.open{background:#fff7ea;border:2px dashed #e07a00}
+.node.plain{background:#fff;border:1.4px solid #9fb3d1}
+.node.light{background:#f2f5fa;border:1.4px dashed #9fb3d1}
+.node.warn{background:#fff7ea;border:1.8px solid #e07a00}
+.node.dark{background:#0f2a5c;border:none}
+.node.dark .t{color:#fff}.node.dark .s{color:#cfe0ff}
+.node.hub{background:#0b5e4c;border:none;box-shadow:0 4px 14px rgba(11,94,76,.25)}
+.node.hub .t{color:#fff;font-size:19px}.node.hub .s{color:#d4f5ea}
+.node.chip{padding:0;border-radius:14px;justify-content:center;align-items:center}
+.node.chip .t{font-size:15px;text-align:center}
+.node.chip.new{background:#0e9f77;border:none}.node.chip.new .t{color:#fff}
+.node.chip.ex{background:#fff;border:1.6px solid #2f6fdb}.node.chip.ex .t{color:#2f6fdb}
+.code{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:#2f6fdb;border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.node.dark .code{background:#4d84e8}
+.tag{position:absolute;top:6px;right:8px;font-size:11px;font-weight:700;color:#fff;background:#0e9f77;border-radius:9px;padding:1px 7px}
+.tag.open{background:#e07a00}.node.hub .tag{background:#34d399;color:#063b2f}
+.owner{display:inline-block;align-self:flex-start;margin-top:6px;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.owner.own{color:#2f6fdb;background:#e8f0ff;border:1px solid #b9cff7}
+.owner.gap{color:#fff;background:#e07a00}
+.node.hub .owner.gap{background:#ffb54d;color:#4a2600}
+.bul{font-size:12.8px;line-height:1.55;margin-top:4px;color:#0b7a5c;font-weight:600}
+.q7{list-style:none;margin-top:8px}
+.q7 li{font-size:14.5px;line-height:1.72;color:#fff}
+.q7 li b{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:#d4f5ea;color:#0b5e4c;font-size:12px;margin-right:9px;vertical-align:1px}
+.st{margin-top:9px;font-size:12.8px;color:#d4f5ea;border-top:1px solid rgba(212,245,234,.35);padding-top:7px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 4px 0 2px;vertical-align:0}
+.lbl{position:absolute;transform:translate(-50%,-50%);font-size:12.5px;color:#2a3f66;background:rgba(255,255,255,.94);
+     padding:1px 6px;border-radius:4px;white-space:nowrap;line-height:18px}
+.lbl.new{color:#0b7a5c;font-weight:600}.lbl.open{color:#b45f00;font-weight:600}
+.note{position:absolute;font-size:13px;color:#3a4a66;line-height:1.6}
+.note b{color:#0d1b36}
+.legend{position:absolute;display:flex;gap:22px;align-items:center;font-size:12.5px;color:#3a4a66}
+.legend .sw{display:inline-block;width:26px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+.legend .ln{display:inline-block;width:30px;height:0;margin-right:6px;vertical-align:3px}
+ body{width:1800px;height:1030px}</style></head><body>
+<div class="title">Traqen 系统上下文 · 补一条入站边界：AI 也来读</div><div class="subtitle">依据 2026-10-08 新版 README 愿景 · v2.2 吸收三轮审视 · 候选方案，非定稿 · S 保持黑盒；线箭头＝数据方向；本层不规定传输协议</div><div class="corner">F007 · 依新愿景重思 · v2.2<br>宪宪 · 吸收三轮审视 · 2026-10-08</div><div class="rule"></div>
+<svg style="position:absolute;left:0;top:0" width="1800" height="1030" viewBox="0 0 1800 1030"><defs>
+<marker id="m-ex" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a6fa8"/></marker>
+<marker id="m-new" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e9f77"/></marker>
+<marker id="m-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e07a00"/></marker>
+<marker id="m-thin" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7f93b5"/></marker>
+</defs>
+<path d="M310,510 L360,510" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M310,510 L360,510" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M560,490 L700,490" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M560,490 L700,490" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M700,535 L560,535" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M700,535 L560,535" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M860,330 L860,234" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M860,330 L860,234" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M960,234 L960,330" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M960,234 L960,330" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1300,340 L1120,340" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1300,340 L1120,340" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1300,450 L1120,450" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1300,450 L1120,450" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1120,575 L1300,575" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1120,575 L1300,575" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1300,615 L1120,615" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1300,615 L1120,615" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M850,670 L850,790" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M850,670 L850,790" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M930,790 L930,670" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M930,790 L930,670" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1040,820 L1180,820" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1040,820 L1180,820" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1180,860 L1040,860" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1180,860 L1040,860" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M620,838 L660,838 L660,640 L700,640" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M620,838 L660,838 L660,640 L700,640" fill="none" stroke="#e07a00" stroke-width="1.9" stroke-linejoin="round" stroke-dasharray="7 5" marker-end="url(#m-open)"/>
+</svg>
+<div class="node " data-id="roles" style="left:40px;top:385px;width:270px;height:250px"><div class="t">用户角色</div><div class="s">R1 产品／业务负责人<br>R2 研发与接手者<br>R3 测试与质量<br>R4 交付与运维</div></div>
+<div class="node " data-id="U" style="left:360px;top:455px;width:200px;height:110px"><div class="t"><span class="code">U</span>交互入口</div><div class="s">Web ／ 操作 CLI</div></div>
+<div class="node dark center" data-id="S" style="left:700px;top:330px;width:420px;height:340px"><div class="t"><span class="code">S</span>Traqen 平台</div><div class="s">以业务功能为中心的研发数据：<br>七问答卷 · 依据 · 版本 · 未知<br><br><span style='opacity:.8'>黑盒；平台自有数据、答卷投影与备份责任都在边界内</span></div></div>
+<div class="node new" data-id="AIX" style="left:660px;top:122px;width:500px;height:112px"><span class="tag">新增</span><div class="t">外部 AI 协作者</div><div class="s">编码／调查 Agent：改代码前先读懂这块业务，改完回写发现；读写分开授权</div></div>
+<div class="node warn" data-id="TB" style="left:1190px;top:118px;width:400px;height:140px"><div class="t">新增信任边界</div><div class="s">研发数据外发给外部 AI：答卷摘要、依据片段、原文分级放开（原文默认拒绝）；读取与缓存返回都按当前调用者权限和外发策略过滤；不另开通道</div></div>
+<div class="node " data-id="E1" style="left:1300px;top:300px;width:240px;height:80px"><div class="t"><span class="code">E1</span>Git 托管</div><div class="s">版本化仓库材料</div></div>
+<div class="node " data-id="E2" style="left:1300px;top:410px;width:240px;height:80px"><div class="t"><span class="code">E2</span>上传材料提供方</div><div class="s">受控上传文件</div></div>
+<div class="node " data-id="E7" style="left:1300px;top:540px;width:240px;height:100px"><div class="t"><span class="code">E7</span>模型服务</div><div class="s">Traqen 调用的模型（出站）</div></div>
+<div class="node new" data-id="n12" style="left:1565px;top:280px;width:205px;height:230px"><div class="t">新增区分</div><div class="s">两类材料分别标识：<br>· 意图：需求·设计·决定<br>· 实现：代码·SQL·配置·测试<br>意图材料同样带版本与状态，不天然比实现观察权威；冲突时并列呈现</div></div>
+<div class="node light" data-id="n7" style="left:1565px;top:540px;width:205px;height:100px"><div class="t">两种 AI</div><div class="s">E7：Traqen 用 AI<br>外部协作者：AI 用 Traqen</div></div>
+<div class="node " data-id="E6" style="left:740px;top:790px;width:300px;height:95px"><div class="t"><span class="code">E6</span>测试 Runner ／ CI</div><div class="s">执行测试任务并收集证据</div></div>
+<div class="node " data-id="E8" style="left:1180px;top:790px;width:280px;height:95px"><div class="t"><span class="code">E8</span>被测系统</div><div class="s">待验证的软件系统</div></div>
+<div class="node open" data-id="RS" style="left:280px;top:790px;width:340px;height:105px"><span class="tag open">待定</span><div class="t">运行信号（日志·告警·事件）</div><div class="s">排查用；经上传材料同一通道冻结准入（F001）后挂到工作会话</div></div>
+<div class="lbl " data-e="1" style="left:630px;top:474px">操作·查询·回写</div>
+<div class="lbl " data-e="2" style="left:630px;top:551px">答卷·结果·状态</div>
+<div class="lbl new" data-e="3" style="left:768px;top:282px">按权限过滤的答卷与依据</div>
+<div class="lbl new" data-e="4" style="left:1078px;top:282px">回写：发现·依据·疑问（只进分析态）</div>
+<div class="lbl " data-e="5" style="left:1210px;top:324px">固定版本材料</div>
+<div class="lbl " data-e="6" style="left:1210px;top:434px">材料与来源信息</div>
+<div class="lbl " data-e="7" style="left:1210px;top:559px">获准上下文</div>
+<div class="lbl " data-e="8" style="left:1210px;top:631px">模型输出</div>
+<div class="lbl " data-e="9" style="left:795px;top:730px">签名任务</div>
+<div class="lbl " data-e="10" style="left:1000px;top:730px">签名执行证据</div>
+<div class="lbl " data-e="11" style="left:1110px;top:804px">受控执行</div>
+<div class="lbl " data-e="12" style="left:1110px;top:876px">观察／日志</div>
+<div class="lbl open" data-e="13" style="left:560px;top:740px">排查用运行观察（待定）</div>
+<div class="note " style="left:40px;top:932px;width:1720px">S 的逻辑边界包含平台自有数据、答卷投影与备份责任；内部见应用图　·　既有元素沿用 F007 v5.1 编号（E1 Git、E2 上传、E6 Runner、E7 模型、E8 被测系统）；新增元素不编号</div>
+<div class="legend" style="left:40px;top:978px"><span><span class="sw" style="background:#fff;border:1.6px solid #2f6fdb"></span>既有（沿用 F007 v5.1 编号）</span><span><span class="sw" style="background:#e9fbf4;border:2px solid #0e9f77"></span>新增（本轮候选，不编号）</span><span><span class="sw" style="background:#fff7ea;border:2px dashed #e07a00"></span>待定</span><span><span class="ln" style="border-top:2px solid #4a6fa8"></span>既有关系</span><span><span class="ln" style="border-top:2.4px solid #0e9f77"></span>新增关系</span><span><span class="ln" style="border-top:2px dashed #e07a00"></span>待定关系</span><span>线交叉处断开＝互不相连</span></div>
+<script>document.fonts.ready.then(()=>{const r={overflow:[],labels:[]};
+document.querySelectorAll('.node').forEach(n=>{if(n.scrollHeight>n.clientHeight+1||n.scrollWidth>n.clientWidth+1)r.overflow.push(n.dataset.id+' '+n.scrollHeight+'/'+n.clientHeight)});
+document.querySelectorAll('.lbl').forEach(l=>{const b=l.getBoundingClientRect();r.labels.push([+l.dataset.e,b.left,b.top,b.right,b.bottom])});
+r.orphans=[];document.querySelectorAll('.node .s,.node .t,.node .bul,.note,.lbl').forEach(el=>{const g=document.createRange();g.selectNodeContents(el);const rs=[...g.getClientRects()].filter(x=>x.width>0&&x.height>0);if(rs.length<2)return;const L={};rs.forEach(x=>{const k=Math.round(x.bottom);L[k]=(L[k]||0)+x.width;});const ks=Object.keys(L).map(Number).sort((a,b)=>a-b);if(ks.length>1&&L[ks[ks.length-1]]<20){const n=el.closest('.node');r.orphans.push((n?n.dataset.id:'note')+'…'+el.textContent.slice(-6));}});
+r.plabels=[];document.querySelectorAll('.plabel').forEach(l=>{const b=l.getBoundingClientRect();r.plabels.push([b.left,b.top,b.right,b.bottom,l.textContent])});
+const p=document.createElement('pre');p.id='report';p.style.display='none';p.textContent=JSON.stringify(r);document.body.appendChild(p);});</script>
+</body></html>

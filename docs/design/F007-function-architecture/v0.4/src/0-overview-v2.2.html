@@ -1,0 +1,124 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f5f7fb;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#1d2b45;position:relative;overflow:hidden}
+.title{position:absolute;left:40px;top:24px;font-size:30px;font-weight:700;color:#0d1b36;letter-spacing:.3px}
+.subtitle{position:absolute;left:40px;top:68px;font-size:14.5px;color:#4a5a75}
+.corner{position:absolute;right:40px;top:30px;font-size:13.5px;color:#5b6b86;text-align:right;line-height:1.5}
+.rule{position:absolute;left:40px;right:40px;top:98px;height:2px;background:#2f6fdb}
+.panel{position:absolute;border:1.5px solid #d3dcea;border-radius:14px;background:rgba(255,255,255,.6)}
+.panel.ext{border:1.6px dashed #aebbd0;background:rgba(255,255,255,.35)}
+.panel.newp{border:2px dashed #7fd3b8;background:rgba(232,250,243,.45)}
+.panel.openp{border:2px dashed #efb066;background:rgba(255,247,234,.5)}
+.panel.banner{border:2px solid #0e9f77;background:#effcf7}
+.plabel{position:absolute;font-size:14.5px;font-weight:700;color:#2a3f66;white-space:nowrap}
+.node{position:absolute;border-radius:10px;padding:9px 12px;background:#fff;border:1.6px solid #2f6fdb;
+      box-shadow:0 1px 2px rgba(20,40,80,.06);display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.node .t{font-size:15.5px;font-weight:700;color:#0d1b36;line-height:1.3}
+.node .s{font-size:12.8px;color:#4a5a75;line-height:1.5;margin-top:3px}
+.node.center .t,.node.center .s{text-align:center}
+.node.new{background:#e9fbf4;border:2px solid #0e9f77}
+.node.open{background:#fff7ea;border:2px dashed #e07a00}
+.node.plain{background:#fff;border:1.4px solid #9fb3d1}
+.node.light{background:#f2f5fa;border:1.4px dashed #9fb3d1}
+.node.warn{background:#fff7ea;border:1.8px solid #e07a00}
+.node.dark{background:#0f2a5c;border:none}
+.node.dark .t{color:#fff}.node.dark .s{color:#cfe0ff}
+.node.hub{background:#0b5e4c;border:none;box-shadow:0 4px 14px rgba(11,94,76,.25)}
+.node.hub .t{color:#fff;font-size:19px}.node.hub .s{color:#d4f5ea}
+.node.chip{padding:0;border-radius:14px;justify-content:center;align-items:center}
+.node.chip .t{font-size:15px;text-align:center}
+.node.chip.new{background:#0e9f77;border:none}.node.chip.new .t{color:#fff}
+.node.chip.ex{background:#fff;border:1.6px solid #2f6fdb}.node.chip.ex .t{color:#2f6fdb}
+.code{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:#2f6fdb;border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.node.dark .code{background:#4d84e8}
+.tag{position:absolute;top:6px;right:8px;font-size:11px;font-weight:700;color:#fff;background:#0e9f77;border-radius:9px;padding:1px 7px}
+.tag.open{background:#e07a00}.node.hub .tag{background:#34d399;color:#063b2f}
+.owner{display:inline-block;align-self:flex-start;margin-top:6px;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.owner.own{color:#2f6fdb;background:#e8f0ff;border:1px solid #b9cff7}
+.owner.gap{color:#fff;background:#e07a00}
+.node.hub .owner.gap{background:#ffb54d;color:#4a2600}
+.bul{font-size:12.8px;line-height:1.55;margin-top:4px;color:#0b7a5c;font-weight:600}
+.q7{list-style:none;margin-top:8px}
+.q7 li{font-size:14.5px;line-height:1.72;color:#fff}
+.q7 li b{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:#d4f5ea;color:#0b5e4c;font-size:12px;margin-right:9px;vertical-align:1px}
+.st{margin-top:9px;font-size:12.8px;color:#d4f5ea;border-top:1px solid rgba(212,245,234,.35);padding-top:7px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 4px 0 2px;vertical-align:0}
+.lbl{position:absolute;transform:translate(-50%,-50%);font-size:12.5px;color:#2a3f66;background:rgba(255,255,255,.94);
+     padding:1px 6px;border-radius:4px;white-space:nowrap;line-height:18px}
+.lbl.new{color:#0b7a5c;font-weight:600}.lbl.open{color:#b45f00;font-weight:600}
+.note{position:absolute;font-size:13px;color:#3a4a66;line-height:1.6}
+.note b{color:#0d1b36}
+.legend{position:absolute;display:flex;gap:22px;align-items:center;font-size:12.5px;color:#3a4a66}
+.legend .sw{display:inline-block;width:26px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+.legend .ln{display:inline-block;width:30px;height:0;margin-right:6px;vertical-align:3px}
+ body{width:1800px;height:1290px}</style></head><body>
+<div class="title">Traqen 架构重心 · 一个中心 ＋ 一条工作回路</div><div class="subtitle">依据 2026-10-08 新版 README 愿景 · v2.2 吸收三轮审视 · 候选方案，非定稿 · 每块标出目前由哪个 Feature 承接</div><div class="corner">F007 · 依新愿景重思 · v2.2<br>宪宪 · 吸收三轮审视 · 2026-10-08</div><div class="rule"></div>
+<div class="panel " style="left:40px;top:118px;width:1720px;height:186px"></div>
+<div class="plabel" style="left:60px;top:127px">工作回路 · README「怎样使用 Traqen」五步</div>
+<svg style="position:absolute;left:0;top:0" width="1800" height="1290" viewBox="0 0 1800 1290"><defs>
+<marker id="m-ex" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a6fa8"/></marker>
+<marker id="m-new" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e9f77"/></marker>
+<marker id="m-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e07a00"/></marker>
+<marker id="m-thin" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7f93b5"/></marker>
+</defs>
+<path d="M370,206 L410,206" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M370,206 L410,206" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M710,206 L750,206" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M710,206 L750,206" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1050,206 L1090,206" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1050,206 L1090,206" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1390,206 L1430,206" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1390,206 L1430,206" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1580,264 L1580,288 L220,288 L220,264" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1580,264 L1580,288 L220,288 L220,264" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M540,415 L390,415" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M540,415 L390,415" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1260,415 L1410,415" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1260,415 L1410,415" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1410,642 L1260,642" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1410,642 L1260,642" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M900,770 L900,720" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M900,770 L900,720" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M435,915 L435,866" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M435,915 L435,866" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M745,915 L745,866" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M745,915 L745,866" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1055,915 L1055,866" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1055,915 L1055,866" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1365,915 L1365,866" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1365,915 L1365,866" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M60,480 L42,480 L42,1078 L1020,1078 L1020,1055" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M60,480 L42,480 L42,1078 L1020,1078 L1020,1055" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1740,480 L1764,480 L1764,1100 L1090,1100 L1090,1055" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1740,480 L1764,480 L1764,1100 L1090,1100 L1090,1055" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+</svg>
+<div class="node plain" data-id="s1" style="left:70px;top:150px;width:300px;height:114px"><div class="t">步骤 1 · 带着工作进入</div><div class="s">接手 · 排查 · 变更 · 验证 · 交付；<br>先说清业务范围和问题</div><div class="owner gap">无主责（F003「调查重点」只是种子）</div></div>
+<div class="node plain" data-id="s2" style="left:410px;top:150px;width:300px;height:114px"><div class="t">步骤 2 · 固定本次材料</div><div class="s">精确版本 · 材料清单 · 缺口</div><div class="owner own">F001</div></div>
+<div class="node plain" data-id="s3" style="left:750px;top:150px;width:300px;height:114px"><div class="t">步骤 3 · 调查并核对</div><div class="s">分清事实、推断、人工确认与未知</div><div class="owner own">F002 · F003 · F006</div></div>
+<div class="node plain" data-id="s4" style="left:1090px;top:150px;width:300px;height:114px"><div class="t">步骤 4 · 完成工作并留下依据</div><div class="s">说明、理由、修正、验证结果<br>关联回这块业务</div><div class="owner gap">无主责</div></div>
+<div class="node plain" data-id="s5" style="left:1430px;top:150px;width:300px;height:114px"><div class="t">步骤 5 · 下次接着用</div><div class="s">比较变化，复核受影响的认识</div><div class="owner own">F004（仅变更比较部分）</div></div>
+<div class="node " data-id="people" style="left:60px;top:355px;width:330px;height:160px"><div class="t">使用者 · 人</div><div class="s">R1 业务／产品负责人 · R2 研发与接手者<br>R3 测试与质量 · R4 交付与运维</div><div class="owner own">F005（人用工作面；一级入口按处理阶段排列）</div></div>
+<div class="node new" data-id="ai" style="left:1410px;top:355px;width:330px;height:160px"><span class="tag">新增</span><div class="t">使用者 · AI 协作者</div><div class="s">改代码前先读懂这块业务；<br>改完把发现回写（只进分析态）</div><div class="owner gap">无主责</div></div>
+<div class="node hub" data-id="sheet" style="left:540px;top:330px;width:720px;height:390px"><span class="tag">新增</span><div class="t">业务功能 · 七问答卷</div><ol class='q7'><li><b>1</b>这个功能是做什么的</li><li><b>2</b>有哪些业务规则、角色、状态和例外</li><li><b>3</b>由哪些设计、代码、SQL 和配置实现</li><li><b>4</b>会读取或改变哪些业务数据</li><li><b>5</b>哪些测试验证了哪些业务规则</li><li><b>6</b>当前结论对应哪个代码、配置、数据库和环境版本</li><li><b>7</b>为什么可以相信当前版本是正常的</li></ol><div class='st' style='line-height:1.62'><span class='dot' style='background:#34d399'></span>说得清　<span class='dot' style='background:#fbbf24'></span>变了待复核　<span class='dot' style='border:1.5px solid #d4f5ea'></span>还说不清<br>说得清＝有依据地解释清楚，不等于系统正常；失败、冲突、未验证另行可见<br>每条答案带：依据 · 适用范围 · 版本 · 来源与状态；人工确认的另列确认人<br><span style='opacity:.78'>七问是组织视角：问题的拆分与展示由设计细化，不冻结为数据模型（README 第 76 行）</span></div><div class="owner gap">无主责</div></div>
+<div class="node " data-id="change" style="left:1410px;top:575px;width:330px;height:135px"><div class="t">跟着变化走</div><div class="s">版本比较 → 受影响的答案标为<br>待复核（不自动推翻原结论），<br>给出重查与重验证范围</div><div class="owner own">F004</div></div>
+<div class="node " data-id="base" style="left:300px;top:770px;width:1200px;height:96px"><div class="t">真相底座（保留，不拆）</div><div class="s">图谱 · 五层分离（来源／事实／解释／权威／执行证据）· 五维状态 · 固定版本 · 追加历史</div><div class="owner own">F003 图谱 · 既有实现</div></div>
+<div class="node new" data-id="fwd" style="left:300px;top:915px;width:270px;height:140px"><span class="tag">新增</span><div class="t">正向登记</div><div class="s">需求 · 设计 · 决定直接登记到<br>业务功能；经决定流程，追加式记录</div><div class="owner gap">无主责</div></div>
+<div class="node " data-id="rev" style="left:610px;top:915px;width:270px;height:140px"><div class="t">逆向重建</div><div class="s">固定来源 → 确定性事实 →<br>Agent 调查 → 五档分流入图</div><div class="owner own">F001 · F002 · F003 · F006</div></div>
+<div class="node new" data-id="ws" style="left:920px;top:915px;width:270px;height:140px"><span class="tag">新增</span><div class="t">工作会话 · 回写入口</div><div class="s">统一入口、分路校验：调查发现→五档分流；人工决定→决定流程；新材料→F001；执行结果→证据摄取</div><div class="owner gap">无主责</div></div>
+<div class="node " data-id="exe" style="left:1230px;top:915px;width:270px;height:140px"><div class="t">执行证据</div><div class="s">测试规格 · 真实执行 · 证据</div><div class="owner own">既有实现（产品流程待定 O06）</div></div>
+<div class="node warn" data-id="finding" style="left:40px;top:1124px;width:1720px;height:104px"><div class="t">关键发现与分期（详见 MVP 与分期依赖图）</div><div class="s">既有 Feature 主要覆盖<b>生产者</b>一侧；价值兑现所在的<b>中心</b>（七问答卷）、<b>回路</b>（工作会话与回写）、<b>AI 使用者</b>与<b>正向登记</b>目前无主责 —— 建议以新愿景为锚起 F007 v0.4，承重墙保留。<br><b>一期 MVP</b>（单块试点业务、仅自用）＝地基（持久档位＋配套备份与首次恢复演练＋独立真值集＋真实运行链）＋四个核心（入图分流、七问答卷、工作会话、变化举手）＋至少一条读取通道（AI 只读优先，页面可降级）。二期扩展分流覆盖与 AI 回写；正向登记与外部 AI 在三期。详见路线图。</div></div>
+<div class="lbl new" data-e="4" style="left:900px;top:288px">这次弄明白的，成为下次的起点</div>
+<div class="lbl new" data-e="5" style="left:465px;top:397px">读：答卷·依据·未知</div>
+<div class="lbl new" data-e="6" style="left:1335px;top:397px">读：按权限过滤</div>
+<div class="lbl new" data-e="7" style="left:1335px;top:624px">待复核</div>
+<div class="lbl new" data-e="8" style="left:965px;top:745px">派生投影</div>
+<div class="lbl new" data-e="13" style="left:520px;top:1078px">人：说明·决定·修正·验证</div>
+<div class="lbl new" data-e="14" style="left:1420px;top:1100px">AI：发现·依据·疑问（只进分析态）</div>
+<div class="legend" style="left:40px;top:1248px"><span><span class="sw" style="background:#fff;border:1.6px solid #2f6fdb"></span>既有（沿用 F007 v5.1 编号）</span><span><span class="sw" style="background:#e9fbf4;border:2px solid #0e9f77"></span>新增（本轮候选，不编号）</span><span><span class="sw" style="background:#fff7ea;border:2px dashed #e07a00"></span>待定</span><span><span class="ln" style="border-top:2px solid #4a6fa8"></span>既有关系</span><span><span class="ln" style="border-top:2.4px solid #0e9f77"></span>新增关系</span><span><span class="ln" style="border-top:2px dashed #e07a00"></span>待定关系</span><span>线交叉处断开＝互不相连</span><span><span class="owner own" style="margin:0 6px 0 0">F00x</span>已有 Feature 承接</span><span><span class="owner gap" style="margin:0 6px 0 0">无主责</span>愿景要求、尚无主责 Feature</span></div>
+<script>document.fonts.ready.then(()=>{const r={overflow:[],labels:[]};
+document.querySelectorAll('.node').forEach(n=>{if(n.scrollHeight>n.clientHeight+1||n.scrollWidth>n.clientWidth+1)r.overflow.push(n.dataset.id+' '+n.scrollHeight+'/'+n.clientHeight)});
+document.querySelectorAll('.lbl').forEach(l=>{const b=l.getBoundingClientRect();r.labels.push([+l.dataset.e,b.left,b.top,b.right,b.bottom])});
+r.orphans=[];document.querySelectorAll('.node .s,.node .t,.node .bul,.note,.lbl').forEach(el=>{const g=document.createRange();g.selectNodeContents(el);const rs=[...g.getClientRects()].filter(x=>x.width>0&&x.height>0);if(rs.length<2)return;const L={};rs.forEach(x=>{const k=Math.round(x.bottom);L[k]=(L[k]||0)+x.width;});const ks=Object.keys(L).map(Number).sort((a,b)=>a-b);if(ks.length>1&&L[ks[ks.length-1]]<20){const n=el.closest('.node');r.orphans.push((n?n.dataset.id:'note')+'…'+el.textContent.slice(-6));}});
+r.plabels=[];document.querySelectorAll('.plabel').forEach(l=>{const b=l.getBoundingClientRect();r.plabels.push([b.left,b.top,b.right,b.bottom,l.textContent])});
+const p=document.createElement('pre');p.id='report';p.style.display='none';p.textContent=JSON.stringify(r);document.body.appendChild(p);});</script>
+</body></html>

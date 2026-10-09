@@ -1,0 +1,141 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f5f7fb;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#1d2b45;position:relative;overflow:hidden}
+.title{position:absolute;left:40px;top:24px;font-size:30px;font-weight:700;color:#0d1b36;letter-spacing:.3px}
+.subtitle{position:absolute;left:40px;top:68px;font-size:14.5px;color:#4a5a75}
+.corner{position:absolute;right:40px;top:30px;font-size:13.5px;color:#5b6b86;text-align:right;line-height:1.5}
+.rule{position:absolute;left:40px;right:40px;top:98px;height:2px;background:#2f6fdb}
+.panel{position:absolute;border:1.5px solid #d3dcea;border-radius:14px;background:rgba(255,255,255,.6)}
+.panel.ext{border:1.6px dashed #aebbd0;background:rgba(255,255,255,.35)}
+.panel.newp{border:2px dashed #7fd3b8;background:rgba(232,250,243,.45)}
+.panel.openp{border:2px dashed #efb066;background:rgba(255,247,234,.5)}
+.panel.banner{border:2px solid #0e9f77;background:#effcf7}
+.plabel{position:absolute;font-size:14.5px;font-weight:700;color:#2a3f66;white-space:nowrap}
+.node{position:absolute;border-radius:10px;padding:9px 12px;background:#fff;border:1.6px solid #2f6fdb;
+      box-shadow:0 1px 2px rgba(20,40,80,.06);display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.node .t{font-size:15.5px;font-weight:700;color:#0d1b36;line-height:1.3}
+.node .s{font-size:12.8px;color:#4a5a75;line-height:1.5;margin-top:3px}
+.node.center .t,.node.center .s{text-align:center}
+.node.new{background:#e9fbf4;border:2px solid #0e9f77}
+.node.open{background:#fff7ea;border:2px dashed #e07a00}
+.node.plain{background:#fff;border:1.4px solid #9fb3d1}
+.node.light{background:#f2f5fa;border:1.4px dashed #9fb3d1}
+.node.warn{background:#fff7ea;border:1.8px solid #e07a00}
+.node.dark{background:#0f2a5c;border:none}
+.node.dark .t{color:#fff}.node.dark .s{color:#cfe0ff}
+.node.hub{background:#0b5e4c;border:none;box-shadow:0 4px 14px rgba(11,94,76,.25)}
+.node.hub .t{color:#fff;font-size:19px}.node.hub .s{color:#d4f5ea}
+.node.chip{padding:0;border-radius:14px;justify-content:center;align-items:center}
+.node.chip .t{font-size:15px;text-align:center}
+.node.chip.new{background:#0e9f77;border:none}.node.chip.new .t{color:#fff}
+.node.chip.ex{background:#fff;border:1.6px solid #2f6fdb}.node.chip.ex .t{color:#2f6fdb}
+.code{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:#2f6fdb;border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.node.dark .code{background:#4d84e8}
+.tag{position:absolute;top:6px;right:8px;font-size:11px;font-weight:700;color:#fff;background:#0e9f77;border-radius:9px;padding:1px 7px}
+.tag.open{background:#e07a00}.node.hub .tag{background:#34d399;color:#063b2f}
+.owner{display:inline-block;align-self:flex-start;margin-top:6px;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.owner.own{color:#2f6fdb;background:#e8f0ff;border:1px solid #b9cff7}
+.owner.gap{color:#fff;background:#e07a00}
+.node.hub .owner.gap{background:#ffb54d;color:#4a2600}
+.bul{font-size:12.8px;line-height:1.55;margin-top:4px;color:#0b7a5c;font-weight:600}
+.q7{list-style:none;margin-top:8px}
+.q7 li{font-size:14.5px;line-height:1.72;color:#fff}
+.q7 li b{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:#d4f5ea;color:#0b5e4c;font-size:12px;margin-right:9px;vertical-align:1px}
+.st{margin-top:9px;font-size:12.8px;color:#d4f5ea;border-top:1px solid rgba(212,245,234,.35);padding-top:7px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 4px 0 2px;vertical-align:0}
+.lbl{position:absolute;transform:translate(-50%,-50%);font-size:12.5px;color:#2a3f66;background:rgba(255,255,255,.94);
+     padding:1px 6px;border-radius:4px;white-space:nowrap;line-height:18px}
+.lbl.new{color:#0b7a5c;font-weight:600}.lbl.open{color:#b45f00;font-weight:600}
+.note{position:absolute;font-size:13px;color:#3a4a66;line-height:1.6}
+.note b{color:#0d1b36}
+.legend{position:absolute;display:flex;gap:22px;align-items:center;font-size:12.5px;color:#3a4a66}
+.legend .sw{display:inline-block;width:26px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+.legend .ln{display:inline-block;width:30px;height:0;margin-right:6px;vertical-align:3px}
+ body{width:1800px;height:1368px}</style></head><body>
+<div class="title">Traqen 部署架构 · 补外发通道与持久化档位</div><div class="subtitle">依据 2026-10-08 新版 README 愿景 · v2.2 吸收三轮审视 · 候选物理拓扑，非定稿 · 同号节点为同一运行单元；TLS 两段链路候选 A／B 沿用 F007 v5.1，未重画</div><div class="corner">F007 · 依新愿景重思 · v2.2<br>宪宪 · 吸收三轮审视 · 2026-10-08</div><div class="rule"></div>
+<div class="panel " style="left:40px;top:585px;width:340px;height:330px"></div>
+<div class="plabel" style="left:56px;top:594px">部署档位（新增分档）</div>
+<div class="panel " style="left:420px;top:150px;width:1020px;height:720px"></div>
+<div class="plabel" style="left:436px;top:158px">平台主节点 · 单实例形态</div>
+<div class="panel ext" style="left:1480px;top:150px;width:290px;height:545px"></div>
+<div class="plabel" style="left:1496px;top:158px">部署边界外 · Agent 环境</div>
+<div class="panel " style="left:40px;top:1130px;width:1720px;height:150px"></div>
+<div class="plabel" style="left:56px;top:1139px">测试执行接线 · C06／O11（外部传输待定）</div>
+<svg style="position:absolute;left:0;top:0" width="1800" height="1368" viewBox="0 0 1800 1368"><defs>
+<marker id="m-ex" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a6fa8"/></marker>
+<marker id="m-new" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e9f77"/></marker>
+<marker id="m-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e07a00"/></marker>
+<marker id="m-thin" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7f93b5"/></marker>
+</defs>
+<path d="M190,220 L190,280" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M190,220 L190,280" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M340,320 L398,320 L398,240 L460,240" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M340,320 L398,320 L398,240 L460,240" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M340,478 L460,478" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M340,478 L460,478" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1725,195 L1725,128 L760,128 L760,195" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1725,195 L1725,128 L760,128 L760,195" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M630,285 L630,360" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M630,285 L630,360" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M800,400 L880,400 L880,250 L960,250" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M800,400 L880,400 L880,250 L960,250" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)" marker-start="url(#m-ex)"/>
+<path d="M800,432 L960,432" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M800,432 L960,432" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)" marker-start="url(#m-ex)"/>
+<path d="M780,650 L780,785 L960,785" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M780,650 L780,785 L960,785" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)" marker-start="url(#m-ex)"/>
+<path d="M1400,785 L1500,785" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1400,785 L1500,785" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)" marker-start="url(#m-ex)"/>
+<path d="M1400,250 L1416,250 L1416,900 L1000,900 L1000,920" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1400,250 L1416,250 L1416,900 L1000,900 L1000,920" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1400,425 L1416,425 L1416,900 L1000,900 L1000,920" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1400,425 L1416,425 L1416,900 L1000,900 L1000,920" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M400,1205 L700,1205" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M400,1205 L700,1205" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M700,1240 L400,1240" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M700,1240 L400,1240" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1020,1205 L1320,1205" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1020,1205 L1320,1205" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+<path d="M1320,1240 L1020,1240" fill="none" stroke="#f5f7fb" stroke-width="6.9" stroke-linejoin="round"/>
+<path d="M1320,1240 L1020,1240" fill="none" stroke="#4a6fa8" stroke-width="1.9" stroke-linejoin="round" marker-end="url(#m-ex)"/>
+</svg>
+<div class="node " data-id="B" style="left:40px;top:150px;width:300px;height:70px"><div class="t"><span class="code">B</span>浏览器</div><div class="s">用户交互</div></div>
+<div class="node " data-id="E9" style="left:40px;top:280px;width:300px;height:80px"><div class="t"><span class="code">E9</span>Cloudflare 边缘</div><div class="s">Web 资产／请求入口</div></div>
+<div class="node " data-id="E12" style="left:40px;top:430px;width:300px;height:95px"><div class="t"><span class="code">E1／E2</span>来源</div><div class="s">Git／受托上传；意图材料与实现材料分别标识</div></div>
+<div class="node plain" data-id="tierA" style="left:60px;top:625px;width:300px;height:75px"><div class="t">本地演示</div><div class="s">内存存储；不是长期资产</div></div>
+<div class="node new" data-id="tierB" style="left:60px;top:712px;width:300px;height:95px"><span class="tag">新增</span><div class="t">团队持久单节点</div><div class="s">PostgreSQL＋文件卷＋备份；团队真正自用的前提；需备份演练</div></div>
+<div class="node plain" data-id="tierC" style="left:60px;top:820px;width:300px;height:80px"><div class="t">企业私有化</div><div class="s">隔离部署；模型与 AI 外发受控</div></div>
+<div class="node " data-id="P0" style="left:460px;top:195px;width:340px;height:90px"><div class="t"><span class="code">P0</span>源站接入</div><div class="s">网络方案 A／B（沿用 v5.1）</div></div>
+<div class="node " data-id="P1" style="left:460px;top:360px;width:340px;height:290px"><div class="t"><span class="code">P1</span>Node API</div><div class="s">用例与分析作业宿主</div><div class='bul'>＋ AI 知识接口（新增 · 同进程端点）<br>＋ 答卷投影缓存（新增 · 按变更失效，可重建）<br>＋ 外发策略与读取审计（新增）<br>＋ 读答卷不依赖模型 CLI（模型不可用时仍可查）</div></div>
+<div class="node " data-id="P2" style="left:960px;top:195px;width:440px;height:110px"><div class="t"><span class="code">P2</span>PostgreSQL</div><div class="s">结构化记录；新增：工作会话 · 贡献 · 答卷投影修订</div></div>
+<div class="node " data-id="P3" style="left:960px;top:380px;width:440px;height:90px"><div class="t"><span class="code">P3</span>持久文件卷</div><div class="s">来源字节／检查点</div></div>
+<div class="node " data-id="P5" style="left:960px;top:740px;width:440px;height:90px"><div class="t"><span class="code">P5</span>模型 CLI</div><div class="s">受控子进程</div></div>
+<div class="node new" data-id="AIX" style="left:1500px;top:195px;width:250px;height:150px"><span class="tag">新增</span><div class="t">外部 AI 协作者</div><div class="s">编码／调查 Agent；可经 MCP 薄适配器（入站接口候选，与 F006 已暂停的 MCP 执行接线无关）或 REST／CLI 接入</div></div>
+<div class="node warn" data-id="EGN" style="left:1500px;top:360px;width:250px;height:320px"><div class="t">新增外发面</div><div class="s">返回给外部 AI 的内容会离开部署边界：<br>· 分级外发：答卷摘要 → 依据片段 → 原文，按 Workspace 策略逐级放开；原文默认拒绝<br>· 读取与缓存返回都按当前调用者权限过滤<br>· 短期令牌；写入令牌绑定工作会话<br>· 读取审计记录返回内容摘要，可回放</div></div>
+<div class="node " data-id="E7" style="left:1500px;top:740px;width:260px;height:90px"><div class="t"><span class="code">E7</span>模型服务</div><div class="s">模型输出</div></div>
+<div class="node " data-id="P4" style="left:420px;top:920px;width:1020px;height:170px"><div class="t"><span class="code">P4</span>配套恢复目标（独立故障域）</div><div style='display:flex;gap:14px;margin-top:8px'><div style='flex:1;border:1.4px solid #9fb3d1;border-radius:8px;padding:6px 10px;background:#fff'><div class='t' style='font-size:14.5px'>数据库恢复点</div><div class='s'>一致性水位</div></div><div style='flex:1;border:1.4px solid #9fb3d1;border-radius:8px;padding:6px 10px;background:#fff'><div class='t' style='font-size:14.5px'>来源内容集合</div><div class='s'>被引用字节</div></div><div style='flex:1;border:1.4px solid #9fb3d1;border-radius:8px;padding:6px 10px;background:#fff'><div class='t' style='font-size:14.5px'>封闭完成清单</div><div class='s'>引用与完整性</div></div></div><div class='s' style='margin-top:8px'>新增对象随数据库一致性备份；答卷投影缓存可重建，不需备份；RPO／RTO 与演练频率待定（O14），以演练测得为准</div></div>
+<div class="node " data-id="P1b" style="left:80px;top:1180px;width:320px;height:80px"><div class="t"><span class="code">P1</span>Node API</div><div class="s">签名任务／证据摄取（同一运行单元）</div></div>
+<div class="node " data-id="E6" style="left:700px;top:1180px;width:320px;height:80px"><div class="t"><span class="code">E6</span>测试 Runner ／ CI</div><div class="s">目标侧受控执行</div></div>
+<div class="node " data-id="E8" style="left:1320px;top:1180px;width:320px;height:80px"><div class="t"><span class="code">E8</span>被测系统</div><div class="s">目标环境</div></div>
+<div class="lbl " data-e="0" style="left:228px;top:250px">HTTPS</div>
+<div class="lbl " data-e="1" style="left:398px;top:282px">A／B 接入</div>
+<div class="lbl " data-e="2" style="left:400px;top:460px">固定材料</div>
+<div class="lbl new" data-e="3" style="left:1190px;top:128px">HTTPS · 短期作用域令牌（经源站接入）</div>
+<div class="lbl " data-e="4" style="left:682px;top:322px">本机 HTTP</div>
+<div class="lbl " data-e="5" style="left:880px;top:325px">SQL／TLS 配置</div>
+<div class="lbl " data-e="6" style="left:900px;top:450px">材料读写</div>
+<div class="lbl " data-e="7" style="left:870px;top:769px">获准上下文／CLI 输出</div>
+<div class="lbl " data-e="8" style="left:1460px;top:767px">调用／输出</div>
+<div class="lbl " data-e="9" style="left:1180px;top:900px">配套备份：数据库一致性水位＋被引用来源字节</div>
+<div class="lbl " data-e="11" style="left:550px;top:1189px">签名任务</div>
+<div class="lbl " data-e="12" style="left:550px;top:1256px">签名证据</div>
+<div class="lbl " data-e="13" style="left:1170px;top:1189px">受控执行</div>
+<div class="lbl " data-e="14" style="left:1170px;top:1256px">观察／日志</div>
+<div class="note " style="left:40px;top:1294px;width:1720px">全图为候选物理拓扑；实现观察与未决参数见 F007 正文证据表　·　既有元素沿用 F007 v5.1 编号（E1 Git、E2 上传、E6 Runner、E7 模型、E8 被测系统、E9 边缘）；新增元素不编号</div>
+<div class="legend" style="left:40px;top:1332px"><span><span class="sw" style="background:#fff;border:1.6px solid #2f6fdb"></span>既有（沿用 F007 v5.1 编号）</span><span><span class="sw" style="background:#e9fbf4;border:2px solid #0e9f77"></span>新增（本轮候选，不编号）</span><span><span class="sw" style="background:#fff7ea;border:2px dashed #e07a00"></span>待定</span><span><span class="ln" style="border-top:2px solid #4a6fa8"></span>既有关系</span><span><span class="ln" style="border-top:2.4px solid #0e9f77"></span>新增关系</span><span><span class="ln" style="border-top:2px dashed #e07a00"></span>待定关系</span><span>线交叉处断开＝互不相连</span></div>
+<script>document.fonts.ready.then(()=>{const r={overflow:[],labels:[]};
+document.querySelectorAll('.node').forEach(n=>{if(n.scrollHeight>n.clientHeight+1||n.scrollWidth>n.clientWidth+1)r.overflow.push(n.dataset.id+' '+n.scrollHeight+'/'+n.clientHeight)});
+document.querySelectorAll('.lbl').forEach(l=>{const b=l.getBoundingClientRect();r.labels.push([+l.dataset.e,b.left,b.top,b.right,b.bottom])});
+r.orphans=[];document.querySelectorAll('.node .s,.node .t,.node .bul,.note,.lbl').forEach(el=>{const g=document.createRange();g.selectNodeContents(el);const rs=[...g.getClientRects()].filter(x=>x.width>0&&x.height>0);if(rs.length<2)return;const L={};rs.forEach(x=>{const k=Math.round(x.bottom);L[k]=(L[k]||0)+x.width;});const ks=Object.keys(L).map(Number).sort((a,b)=>a-b);if(ks.length>1&&L[ks[ks.length-1]]<20){const n=el.closest('.node');r.orphans.push((n?n.dataset.id:'note')+'…'+el.textContent.slice(-6));}});
+r.plabels=[];document.querySelectorAll('.plabel').forEach(l=>{const b=l.getBoundingClientRect();r.plabels.push([b.left,b.top,b.right,b.bottom,l.textContent])});
+const p=document.createElement('pre');p.id='report';p.style.display='none';p.textContent=JSON.stringify(r);document.body.appendChild(p);});</script>
+</body></html>

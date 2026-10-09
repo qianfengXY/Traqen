@@ -1,0 +1,141 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#f5f7fb;font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;color:#1d2b45;position:relative;overflow:hidden}
+.title{position:absolute;left:40px;top:24px;font-size:30px;font-weight:700;color:#0d1b36;letter-spacing:.3px}
+.subtitle{position:absolute;left:40px;top:68px;font-size:14.5px;color:#4a5a75}
+.corner{position:absolute;right:40px;top:30px;font-size:13.5px;color:#5b6b86;text-align:right;line-height:1.5}
+.rule{position:absolute;left:40px;right:40px;top:98px;height:2px;background:#2f6fdb}
+.panel{position:absolute;border:1.5px solid #d3dcea;border-radius:14px;background:rgba(255,255,255,.6)}
+.panel.ext{border:1.6px dashed #aebbd0;background:rgba(255,255,255,.35)}
+.panel.newp{border:2px dashed #7fd3b8;background:rgba(232,250,243,.45)}
+.panel.openp{border:2px dashed #efb066;background:rgba(255,247,234,.5)}
+.panel.banner{border:2px solid #0e9f77;background:#effcf7}
+.plabel{position:absolute;font-size:14.5px;font-weight:700;color:#2a3f66;white-space:nowrap}
+.node{position:absolute;border-radius:10px;padding:9px 12px;background:#fff;border:1.6px solid #2f6fdb;
+      box-shadow:0 1px 2px rgba(20,40,80,.06);display:flex;flex-direction:column;justify-content:center;overflow:hidden}
+.node .t{font-size:15.5px;font-weight:700;color:#0d1b36;line-height:1.3}
+.node .s{font-size:12.8px;color:#4a5a75;line-height:1.5;margin-top:3px}
+.node.center .t,.node.center .s{text-align:center}
+.node.new{background:#e9fbf4;border:2px solid #0e9f77}
+.node.open{background:#fff7ea;border:2px dashed #e07a00}
+.node.plain{background:#fff;border:1.4px solid #9fb3d1}
+.node.light{background:#f2f5fa;border:1.4px dashed #9fb3d1}
+.node.warn{background:#fff7ea;border:1.8px solid #e07a00}
+.node.dark{background:#0f2a5c;border:none}
+.node.dark .t{color:#fff}.node.dark .s{color:#cfe0ff}
+.node.hub{background:#0b5e4c;border:none;box-shadow:0 4px 14px rgba(11,94,76,.25)}
+.node.hub .t{color:#fff;font-size:19px}.node.hub .s{color:#d4f5ea}
+.node.chip{padding:0;border-radius:14px;justify-content:center;align-items:center}
+.node.chip .t{font-size:15px;text-align:center}
+.node.chip.new{background:#0e9f77;border:none}.node.chip.new .t{color:#fff}
+.node.chip.ex{background:#fff;border:1.6px solid #2f6fdb}.node.chip.ex .t{color:#2f6fdb}
+.code{display:inline-block;font-size:11.5px;font-weight:700;color:#fff;background:#2f6fdb;border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:2px}
+.node.dark .code{background:#4d84e8}
+.tag{position:absolute;top:6px;right:8px;font-size:11px;font-weight:700;color:#fff;background:#0e9f77;border-radius:9px;padding:1px 7px}
+.tag.open{background:#e07a00}.node.hub .tag{background:#34d399;color:#063b2f}
+.owner{display:inline-block;align-self:flex-start;margin-top:6px;font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 7px}
+.owner.own{color:#2f6fdb;background:#e8f0ff;border:1px solid #b9cff7}
+.owner.gap{color:#fff;background:#e07a00}
+.node.hub .owner.gap{background:#ffb54d;color:#4a2600}
+.bul{font-size:12.8px;line-height:1.55;margin-top:4px;color:#0b7a5c;font-weight:600}
+.q7{list-style:none;margin-top:8px}
+.q7 li{font-size:14.5px;line-height:1.72;color:#fff}
+.q7 li b{display:inline-block;width:20px;height:20px;line-height:20px;text-align:center;border-radius:10px;background:#d4f5ea;color:#0b5e4c;font-size:12px;margin-right:9px;vertical-align:1px}
+.st{margin-top:9px;font-size:12.8px;color:#d4f5ea;border-top:1px solid rgba(212,245,234,.35);padding-top:7px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:5px;margin:0 4px 0 2px;vertical-align:0}
+.lbl{position:absolute;transform:translate(-50%,-50%);font-size:12.5px;color:#2a3f66;background:rgba(255,255,255,.94);
+     padding:1px 6px;border-radius:4px;white-space:nowrap;line-height:18px}
+.lbl.new{color:#0b7a5c;font-weight:600}.lbl.open{color:#b45f00;font-weight:600}
+.note{position:absolute;font-size:13px;color:#3a4a66;line-height:1.6}
+.note b{color:#0d1b36}
+.legend{position:absolute;display:flex;gap:22px;align-items:center;font-size:12.5px;color:#3a4a66}
+.legend .sw{display:inline-block;width:26px;height:14px;border-radius:4px;margin-right:6px;vertical-align:-2px}
+.legend .ln{display:inline-block;width:30px;height:0;margin-right:6px;vertical-align:3px}
+ body{width:1800px;height:1268px}</style></head><body>
+<div class="title">Traqen 数据架构 · 在 G1–G4 上加四个概念对象</div><div class="subtitle">依据 2026-10-08 新版 README 愿景 · v2.2 吸收三轮审视 · 候选方案，非定稿 · 概念层，不是表结构；既有 G1–G4 内部关系与基数沿用 F007 v5（不重画）</div><div class="corner">F007 · 依新愿景重思 · v2.2<br>宪宪 · 吸收三轮审视 · 2026-10-08</div><div class="rule"></div>
+<div class="panel " style="left:40px;top:118px;width:240px;height:830px"></div>
+<div class="plabel" style="left:54px;top:127px">G1 身份、分析与权威</div>
+<div class="panel " style="left:360px;top:118px;width:320px;height:200px"></div>
+<div class="plabel" style="left:374px;top:127px">G4 变更与缺口</div>
+<div class="panel " style="left:1180px;top:118px;width:580px;height:380px"></div>
+<div class="plabel" style="left:1194px;top:127px">G2 来源与事实</div>
+<div class="panel " style="left:1180px;top:790px;width:580px;height:220px"></div>
+<div class="plabel" style="left:1194px;top:799px">G3 测试与验证</div>
+<svg style="position:absolute;left:0;top:0" width="1800" height="1268" viewBox="0 0 1800 1268"><defs>
+<marker id="m-ex" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4a6fa8"/></marker>
+<marker id="m-new" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0e9f77"/></marker>
+<marker id="m-open" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e07a00"/></marker>
+<marker id="m-thin" viewBox="0 0 10 10" refX="9.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7f93b5"/></marker>
+</defs>
+<path d="M260,610 L360,610" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M260,610 L360,610" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M640,653 L780,653" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M640,653 L780,653" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M500,760 L500,790" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M500,760 L500,790" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M500,995 L500,1045" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M500,995 L500,1045" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M360,807 L260,807" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M360,807 L260,807" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M360,897 L260,897" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M360,897 L260,897" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M925,598 L925,570" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M925,598 L925,570" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M925,358 L925,308" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M925,358 L925,308" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M660,191 L780,191" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M660,191 L780,191" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1200,375 L1070,375" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1200,375 L1070,375" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1070,653 L1200,653" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1070,653 L1200,653" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+<path d="M1440,598 L1440,528 L1610,528 L1610,390" fill="none" stroke="#f5f7fb" stroke-width="7.2" stroke-linejoin="round"/>
+<path d="M1440,598 L1440,528 L1610,528 L1610,390" fill="none" stroke="#0e9f77" stroke-width="2.2" stroke-linejoin="round" marker-end="url(#m-new)"/>
+</svg>
+<div class="node " data-id="Cand" style="left:60px;top:160px;width:200px;height:55px"><div class="t">Candidate</div></div>
+<div class="node " data-id="CRev" style="left:60px;top:235px;width:200px;height:55px"><div class="t">CandidateReview</div></div>
+<div class="node " data-id="Claim" style="left:60px;top:310px;width:200px;height:55px"><div class="t">Claim 版本</div></div>
+<div class="node " data-id="Wsp" style="left:60px;top:580px;width:200px;height:60px"><div class="t">Workspace</div></div>
+<div class="node " data-id="AgE" style="left:60px;top:780px;width:200px;height:55px"><div class="t">Agent 分析条目</div></div>
+<div class="node " data-id="HDec" style="left:60px;top:870px;width:200px;height:55px"><div class="t">human_decision</div></div>
+<div class="node " data-id="CS" style="left:380px;top:160px;width:280px;height:62px"><div class="t">ChangeSet</div><div class="s">前后快照之间的变更集合</div></div>
+<div class="node " data-id="TG" style="left:380px;top:238px;width:280px;height:62px"><div class="t">TraceGap</div><div class="s">可独立产生，不以 ChangeSet 为前提</div></div>
+<div class="node new" data-id="WSS" style="left:360px;top:540px;width:280px;height:220px"><span class="tag">新增</span><div class="t">工作会话</div><div class="s">一次真实工作：目的（接手／排查／变更／验证／交付）· 问题与调查范围（可先于业务功能存在）· 引用 F001 冻结材料 0..*（只引用不复制）· 关联分析运行／ChangeSet／TestExecution 各 0..* · 默认持久化</div></div>
+<div class="node new" data-id="CTR" style="left:360px;top:790px;width:280px;height:205px"><span class="tag">新增</span><div class="t">贡献</div><div class="s">工作中的回写 · 类型：依据补充／规则说明／决定理由／修正／验证结果／未知问题 · 目标：一个功能、主张或关系；调查发现可暂未归属，先挂会话与材料，之后再关联 · 支撑引用 0..* · 正式决定必须绑定明确主张与范围，不能自升为权威</div></div>
+<div class="node new" data-id="ACT" style="left:360px;top:1045px;width:280px;height:92px"><span class="tag">新增</span><div class="t">行为者</div><div class="s">人，或 Agent（稳定身份）＋ 模型／Skill／配置修订</div></div>
+<div class="node new" data-id="ANSI" style="left:780px;top:118px;width:290px;height:190px"><span class="tag">新增</span><div class="t">答案条目</div><div class="s">七问之一的一条回答 · 显示状态：说得清／变了待复核／还说不清（说得清≠系统正常）· 五维状态 · 依据、适用范围、版本、来源与状态；人工确认的另列确认人 · 支撑引用 0..*（说不清时可为零）</div></div>
+<div class="node new" data-id="ASP" style="left:780px;top:358px;width:290px;height:212px"><span class="tag">新增</span><div class="t">答卷投影</div><div class="s">派生视图，不另存真相 · 键：业务功能 × 版本上下文 · 版本上下文＝来源快照＋事实数据集版本＋图谱修订（需要时加执行快照），未知分量显式为空；不拼接不兼容的上下文，不按每次提交生成 · 依赖的有效期到达时重新评估，历史投影保留原评估时点</div></div>
+<div class="node dark center" data-id="HUB" style="left:780px;top:598px;width:290px;height:110px"><div class="t"><span class="code">G1</span>业务功能</div><div class="s">Feature／版本 · 稳定业务身份<br>（属 G1，置于中心）</div></div>
+<div class="node new" data-id="BDO" style="left:1200px;top:598px;width:280px;height:120px"><span class="tag">新增</span><div class="t">业务数据对象</div><div class="s">订单、库存、支付流水等业务层数据；不是物理表；与物理结构的映射规则待定（O04）</div></div>
+<div class="node " data-id="SB" style="left:1200px;top:160px;width:260px;height:55px"><div class="t">已发布 SourceBundle</div></div>
+<div class="node " data-id="STR" style="left:1480px;top:160px;width:260px;height:55px"><div class="t">SourceTruthReceipt</div></div>
+<div class="node " data-id="AIG" style="left:1200px;top:240px;width:540px;height:55px"><div class="t">ArtifactInventory ／ CoverageGap</div></div>
+<div class="node " data-id="SM" style="left:1200px;top:330px;width:260px;height:60px"><div class="t">SnapshotManifest</div></div>
+<div class="node " data-id="FB" style="left:1480px;top:330px;width:260px;height:60px"><div class="t">FactBundle</div></div>
+<div class="node " data-id="TS" style="left:1200px;top:835px;width:260px;height:55px"><div class="t">TestSpec</div></div>
+<div class="node " data-id="TE" style="left:1480px;top:835px;width:260px;height:55px"><div class="t">TestExecution</div></div>
+<div class="node " data-id="EV" style="left:1200px;top:925px;width:260px;height:55px"><div class="t">Evidence</div></div>
+<div class="node " data-id="VR" style="left:1480px;top:925px;width:260px;height:55px"><div class="t">VerificationResult</div></div>
+<div class="lbl new" data-e="0" style="left:310px;top:592px">0..* 归属</div>
+<div class="lbl new" data-e="1" style="left:710px;top:635px">0..* 关联业务功能</div>
+<div class="lbl new" data-e="2" style="left:555px;top:775px">0..* 产出</div>
+<div class="lbl new" data-e="3" style="left:545px;top:1020px">1 由谁</div>
+<div class="lbl new" data-e="4" style="left:310px;top:789px">0..1 分析态</div>
+<div class="lbl new" data-e="5" style="left:310px;top:879px">0..1 人工决定</div>
+<div class="lbl new" data-e="6" style="left:842px;top:584px">0..* 每个版本上下文</div>
+<div class="lbl new" data-e="7" style="left:862px;top:333px">0..* 七问×条目</div>
+<div class="lbl new" data-e="8" style="left:720px;top:173px">0..* 待复核</div>
+<div class="lbl new" data-e="9" style="left:1135px;top:357px">0..* 快照分量</div>
+<div class="lbl new" data-e="10" style="left:1135px;top:635px">0..* 读取／改变</div>
+<div class="lbl new" data-e="11" style="left:1525px;top:528px">0..* 实现映射</div>
+<div class="note " style="left:60px;top:395px;width:200px">业务功能（Feature／版本）<br>移到中心展示<br><span style='color:#7a879c'>内部关系沿用 F007 v5</span></div>
+<div class="note " style="left:1200px;top:412px;width:540px"><span style='color:#7a879c'>内部关系沿用 F007 v5（如已发布 SourceBundle → Receipt 1..*）</span></div>
+<div class="note " style="left:40px;top:1160px;width:1720px">箭头＝引用／产生关系；基数按箭头方向，表示每个起点可关联多少终点　·　AI 回写经五档分流自动收录为分析态；人工权威只经 human_decision　·　ChangeSet 使受影响答案标为待复核，不自动推翻　·　七问是答卷投影的组织视角，不冻结为表结构（README 第 76 行）</div>
+<div class="legend" style="left:40px;top:1228px"><span><span class="sw" style="background:#fff;border:1.6px solid #2f6fdb"></span>既有（沿用 F007 v5.1 编号）</span><span><span class="sw" style="background:#e9fbf4;border:2px solid #0e9f77"></span>新增（本轮候选，不编号）</span><span><span class="sw" style="background:#fff7ea;border:2px dashed #e07a00"></span>待定</span><span><span class="ln" style="border-top:2px solid #4a6fa8"></span>既有关系</span><span><span class="ln" style="border-top:2.4px solid #0e9f77"></span>新增关系</span><span><span class="ln" style="border-top:2px dashed #e07a00"></span>待定关系</span><span>线交叉处断开＝互不相连</span></div>
+<script>document.fonts.ready.then(()=>{const r={overflow:[],labels:[]};
+document.querySelectorAll('.node').forEach(n=>{if(n.scrollHeight>n.clientHeight+1||n.scrollWidth>n.clientWidth+1)r.overflow.push(n.dataset.id+' '+n.scrollHeight+'/'+n.clientHeight)});
+document.querySelectorAll('.lbl').forEach(l=>{const b=l.getBoundingClientRect();r.labels.push([+l.dataset.e,b.left,b.top,b.right,b.bottom])});
+r.orphans=[];document.querySelectorAll('.node .s,.node .t,.node .bul,.note,.lbl').forEach(el=>{const g=document.createRange();g.selectNodeContents(el);const rs=[...g.getClientRects()].filter(x=>x.width>0&&x.height>0);if(rs.length<2)return;const L={};rs.forEach(x=>{const k=Math.round(x.bottom);L[k]=(L[k]||0)+x.width;});const ks=Object.keys(L).map(Number).sort((a,b)=>a-b);if(ks.length>1&&L[ks[ks.length-1]]<20){const n=el.closest('.node');r.orphans.push((n?n.dataset.id:'note')+'…'+el.textContent.slice(-6));}});
+r.plabels=[];document.querySelectorAll('.plabel').forEach(l=>{const b=l.getBoundingClientRect();r.plabels.push([b.left,b.top,b.right,b.bottom,l.textContent])});
+const p=document.createElement('pre');p.id='report';p.style.display='none';p.textContent=JSON.stringify(r);document.body.appendChild(p);});</script>
+</body></html>
