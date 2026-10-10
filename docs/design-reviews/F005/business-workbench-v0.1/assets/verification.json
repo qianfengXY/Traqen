@@ -1,0 +1,253 @@
+{
+  "artifact": "F005 business-workbench v0.1",
+  "verifiedAt": "2026-10-10T07:38:35.871Z",
+  "checks": [
+    {
+      "name": "navigation-overview",
+      "passed": true
+    },
+    {
+      "name": "navigation-sources",
+      "passed": true
+    },
+    {
+      "name": "navigation-evidence",
+      "passed": true
+    },
+    {
+      "name": "navigation-graph",
+      "passed": true
+    },
+    {
+      "name": "navigation-impact",
+      "passed": true
+    },
+    {
+      "name": "navigation-settings",
+      "passed": true
+    },
+    {
+      "name": "answer-purpose",
+      "passed": true
+    },
+    {
+      "name": "answer-rules",
+      "passed": true
+    },
+    {
+      "name": "answer-implementation",
+      "passed": true
+    },
+    {
+      "name": "answer-data",
+      "passed": true
+    },
+    {
+      "name": "answer-tests",
+      "passed": true
+    },
+    {
+      "name": "answer-versions",
+      "passed": true
+    },
+    {
+      "name": "answer-verification",
+      "passed": true
+    },
+    {
+      "name": "evidence-return-keeps-answer",
+      "passed": true
+    },
+    {
+      "name": "confirmation-source-and-scope",
+      "passed": true
+    },
+    {
+      "name": "dialog-escape-returns-focus",
+      "passed": true
+    },
+    {
+      "name": "empty-contribution-field-error",
+      "passed": true
+    },
+    {
+      "name": "theme-preserves-draft",
+      "passed": true
+    },
+    {
+      "name": "reload-restores-theme-and-draft",
+      "passed": true
+    },
+    {
+      "name": "decision-does-not-fake-success",
+      "passed": true
+    },
+    {
+      "name": "contribution-saved-as-demo-pending",
+      "passed": true
+    },
+    {
+      "name": "unassigned-session-and-isolated-contributions",
+      "passed": true
+    },
+    {
+      "name": "new-contribution-does-not-leak-to-original",
+      "passed": true
+    },
+    {
+      "name": "old-head-preserved-and-impact-reasons",
+      "passed": true
+    },
+    {
+      "name": "ai-read-boundary-visible",
+      "passed": true
+    },
+    {
+      "name": "no-horizontal-overflow-01-overview-light",
+      "passed": true
+    },
+    {
+      "name": "no-horizontal-overflow-02-answer-light",
+      "passed": true
+    },
+    {
+      "name": "no-horizontal-overflow-03-session-light",
+      "passed": true
+    },
+    {
+      "name": "no-horizontal-overflow-04-impact-light",
+      "passed": true
+    },
+    {
+      "name": "desktop-same-content-scale-1.6",
+      "passed": true
+    },
+    {
+      "name": "desktop-normalized-geometry-identical",
+      "passed": true
+    },
+    {
+      "name": "scaled-pointer-opens-dialog",
+      "passed": true
+    },
+    {
+      "name": "single-file-render",
+      "passed": true
+    },
+    {
+      "name": "zero-page-errors",
+      "passed": true
+    }
+  ],
+  "screenshots": [
+    {
+      "id": "01-overview-light",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "scale": 1
+    },
+    {
+      "id": "02-answer-light",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "scale": 1
+    },
+    {
+      "id": "03-session-light",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "scale": 1
+    },
+    {
+      "id": "04-impact-light",
+      "width": 1440,
+      "height": 900,
+      "theme": "light",
+      "scale": 1
+    },
+    {
+      "id": "05-answer-dark",
+      "width": 1440,
+      "height": 900,
+      "theme": "dark",
+      "scale": 1
+    },
+    {
+      "id": "06-answer-2560-light",
+      "width": 2560,
+      "height": 1440,
+      "theme": "light",
+      "scale": 1.6
+    }
+  ],
+  "layouts": [
+    {
+      "screen": "01-overview-light",
+      "width": 1216,
+      "scrollWidth": 1216,
+      "height": 834,
+      "scrollHeight": 834
+    },
+    {
+      "screen": "02-answer-light",
+      "width": 1201,
+      "scrollWidth": 1201,
+      "height": 834,
+      "scrollHeight": 872
+    },
+    {
+      "screen": "03-session-light",
+      "width": 1201,
+      "scrollWidth": 1201,
+      "height": 834,
+      "scrollHeight": 878
+    },
+    {
+      "screen": "04-impact-light",
+      "width": 1201,
+      "scrollWidth": 1201,
+      "height": 834,
+      "scrollHeight": 951
+    }
+  ],
+  "normalizedGeometry": [
+    {
+      "selector": ".sidebar",
+      "dx": 0,
+      "dy": 0,
+      "dw": 0.000003814697265625,
+      "dh": 0
+    },
+    {
+      "selector": ".topbar",
+      "dx": 0.000003814697265625,
+      "dy": 0,
+      "dw": 0.0000152587890625,
+      "dh": 9.5367431640625e-7
+    },
+    {
+      "selector": ".reading",
+      "dx": 0.00000762939453125,
+      "dy": 0.000003814697265625,
+      "dw": 0.00002288818359375,
+      "dh": 0.0000152587890625
+    },
+    {
+      "selector": ".inspector",
+      "dx": 0.0000152587890625,
+      "dy": 0.000003814697265625,
+      "dw": 0.0000457763671875,
+      "dh": 0.0000152587890625
+    }
+  ],
+  "pageErrors": [],
+  "limitations": [
+    "Synthetic design fixture only; no production/API/model calls",
+    "No backend persistence, authorization, real admission or publication tested",
+    "Small-window reflow, full graph exploration and WCAG certification not claimed",
+    "Managed preview launchd bootstrap failed; localhost is temporary"
+  ]
+}
