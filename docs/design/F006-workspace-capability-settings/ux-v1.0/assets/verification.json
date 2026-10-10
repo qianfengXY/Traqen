@@ -1,0 +1,619 @@
+{
+  "version": "1.0",
+  "kind": "author-fixture-render-and-interaction-validation",
+  "fixtureOnly": true,
+  "recordedAt": "2026-09-19T05:57:19.166Z",
+  "sourceHTMLSha256": "3dd2182219c27a58bd626f0dcf75ae8010952bd96c619ad56c9458c3fb0e153a",
+  "screens": [
+    {
+      "file": "previews/01-empty-light.png",
+      "scene": "empty",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "19052cdc4b469c647f9f026fe52e33422a2e2f2ae333a0da1a6ccf429285716a"
+    },
+    {
+      "file": "previews/02-accounts-light.png",
+      "scene": "accounts",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "账号",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ebf017fcf987627e2ce4f156d2db6c26595a94daf19c76a52eac890b9bd9a7c6"
+    },
+    {
+      "file": "previews/02-accounts-dark.png",
+      "scene": "accounts",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "账号",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "11d9ecee0d0de4678df0f1dd1223123c9a21ef18e557dde67aeef321f4ce673b"
+    },
+    {
+      "file": "previews/03-models-dark.png",
+      "scene": "models",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "CLI 模型",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "53590a19b77ca2c61473f3da94a26b2f98a33e3735ae634c8d7d2833cde9ed32"
+    },
+    {
+      "file": "previews/03-models-light.png",
+      "scene": "models",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "CLI 模型",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "1cc10dc3274800af394a40e7a017c4843239cd9f22c10443b071b68674fc1652"
+    },
+    {
+      "file": "previews/03-skills-dark.png",
+      "scene": "skills",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "Skill",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "a00813a328663aead00ad18ce7148e3b6c29a799d445c20867812216f0f7ec22"
+    },
+    {
+      "file": "previews/03-skills-light.png",
+      "scene": "skills",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Skill",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "439d8f4b2399e101116ebc9fc4fde59da59e4e7efb0714e066b62de6c7a28cb2"
+    },
+    {
+      "file": "previews/04-team-laptop-light.png",
+      "scene": "team",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "fc29a1bcd1e2dd834cfd0d7a0f915f301a83c6a4b0932812cf8ae914b88b5f87"
+    },
+    {
+      "file": "previews/05-team-laptop-dark.png",
+      "scene": "team",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "19dd2eae60001a661325c165198099d3cc0b4f488c02148aea384714b58d4aa2"
+    },
+    {
+      "file": "previews/06-team-display-light.png",
+      "scene": "team",
+      "theme": "light",
+      "width": 2560,
+      "height": 1440,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.6,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 128,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "e6d187ffa00880a8b384bda51579fb49fc568070d38fa5eed6f7cfeb69fdbab2"
+    },
+    {
+      "file": "previews/07-team-display-dark.png",
+      "scene": "team",
+      "theme": "dark",
+      "width": 2560,
+      "height": 1440,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.6,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 128,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "c65411faa022e0d7033f68d5cf171b362458f176aeafff5fa8f5fc2624b68f8e"
+    },
+    {
+      "file": "previews/08-capabilities-light.png",
+      "scene": "capabilities",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "能力管理",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "799349788d9abc6ece52e02c06b2af0696676e20b3b8ea0d7ee8a0e0a4024634"
+    },
+    {
+      "file": "previews/13-mcp-dark.png",
+      "scene": "mcp",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "MCP",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ba33ec809331ea8a51c77a67f7e231cb2fed800e36e30aee223e9bbaac13869a"
+    },
+    {
+      "file": "previews/13-mcp-light.png",
+      "scene": "mcp",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "MCP",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2527c14c5ccf4b60e1d971948ea35f2332959312d8a51d879e139d330f898df2"
+    },
+    {
+      "file": "previews/14-versions-light.png",
+      "scene": "versions",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "当前生效配置",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "4a3e6945b5ce7408eeacf77f379b39954306602c92c11693ef1442ac60ed404b"
+    },
+    {
+      "file": "previews/15-f003-dark.png",
+      "scene": "f003",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "确认将使用的 F006 生效配置",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "1f35d152e6e93f299cdc2a3297d834a9bd15f6064300627ad95d0f174d14129e"
+    },
+    {
+      "file": "previews/16-team-compact-light.png",
+      "scene": "team",
+      "theme": "light",
+      "width": 1280,
+      "height": 800,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "accessibility",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "f630f596322649d2b343ed1bb2a38a63ab505fd999120a48071d0f6f7156fb2a"
+    },
+    {
+      "file": "previews/17-team-external-dark.png",
+      "scene": "team",
+      "theme": "dark",
+      "width": 1920,
+      "height": 1080,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.2,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 96,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "c2020c0ca3a8cd09df7edf474f4fc5bbe2e6d47f9c1bf514c1edf6f8161d5d01"
+    },
+    {
+      "file": "previews/18-team-laptop-bottom-light.png",
+      "scene": "team",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "5064ec08811877831d757410eea68218d0d6fa7fa80cc29a8a47c79f531e633d"
+    },
+    {
+      "file": "previews/19-team-laptop-bottom-dark.png",
+      "scene": "team",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "707011fc48ced8f3ba1d6882346826a1f8004e56d424b33a06250d7d2459b2cd"
+    },
+    {
+      "file": "previews/08-legacy-authorization-light.png",
+      "scene": "team",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "3119b39dd972fa68752169fca231a3cdef025aa67a57c4c859bc6b415fd2a767"
+    },
+    {
+      "file": "previews/09-conflict-light.png",
+      "scene": "conflict",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "29cad67f375c9ee6a2cec68842ceeeba40d7c23b2b4b11cc395a262e3e0879aa"
+    },
+    {
+      "file": "previews/10-conflict-dark.png",
+      "scene": "conflict",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "Agent 团队",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "d448098c950cab52beff6263179ca3a0fe171d4c18888fc6995d386943cb2256"
+    },
+    {
+      "file": "previews/11-lifecycle-confirm-light.png",
+      "scene": "lifecycle",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "title": "能力生命周期",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "25749cdbfac7beeddc404166d0c91b8dddff9e48ffe7696dd44ac36ff2762885"
+    },
+    {
+      "file": "previews/12-lifecycle-confirm-dark.png",
+      "scene": "lifecycle",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "title": "能力生命周期",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "layoutMode": "desktop",
+      "margin": {
+        "x": 0,
+        "y": 0
+      },
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "979ebc2ccf4607280d885591ea116d96c4feb77db3d3127732220c244c2bb7ff"
+    }
+  ],
+  "checks": [
+    "All S01–S10 fixture scenes rendered with one h1 and no page/control horizontal overflow; error forms, conflict recovery, lifecycle dialog, and MCP paused states each include recorded porcelain and graphite evidence.",
+    "S04 uses one 1440×900 logical canvas: 1440×900 renders at 1×, 1920×1080 at 1.2× with 96px side margins, and 2560×1440 at 1.6× with 128px side margins; ordinary 1400×860 and 1280×800 windows retain the 1× floor as accessibility-space checks rather than a second desktop design.",
+    "F005-aligned AppShell exposes icon navigation, recent views, help and account footer; fixture controls remain outside the shell, Workspace subnavigation and visible saved-draft status remain inside, and each Agent's Skill count matches its explicit checked grants.",
+    "The complete team configuration uses vertical document reachability instead of stage cropping: the final Skill authorization and sidebar help/account footer are reachable by wheel and End-key scrolling, with the lower checkbox hit target intact.",
+    "The 1440×900 logical canvas normalizes identically at 1920×1080 (1.2×) and 2560×1440 (1.6×), including content, relative layout, pointer hit targets, focus, navigation and dialog scale; ordinary 1400×860 and 1280×800 windows retain the 1× floor, readable 13px controls, available primary action, no horizontal clipping, and reachable document scrolling.",
+    "Accounts, models, Skill, and paused MCP use one in-shell global secondary navigation; models and Skill are independently addressable product pages.",
+    "The empty state remains in the Agent-team configuration surface with real Main and Child 1 placeholders, zero implicit model or Skill grants, and no available Apply action.",
+    "The normal S04 fixture keeps every displayed Agent ready when Apply is enabled; the documented 320px logical team list and explicit Workspace/forward-analysis Apply scope remain visible beside the action, while unavailable legacy authorization is isolated to its own actionable Child 1 state.",
+    "Theme toggle and refresh preserve the selected Child; theme presentation records zero business writes.",
+    "Changing Child 2 creates one fixture draft write and leaves the Main and another-Workspace sentinels unchanged.",
+    "Both porcelain and graphite S06 snapshots keep the selected Agent and matching recovery detail; unresolved-conflict navigation preserves local M3 plus recovery entry through active-version, capability, team and refresh paths, exposes no actionable Apply, and records zero automatic write or activation until an explicit recovery.",
+    "Fixture M2 409 → M3 local edit → retry produces exactly M2(409), M2(200), M3(200), then clears the blocking banner into an editable, enabled-Apply team view; explicitly adopting the server draft discards M3 only after disclosure, clears the conflict, and adds zero business writes.",
+    "The active-version view is read-only with no Apply action; entering it from the normal team action and returning preserves Child 2 selection and team scroll position, keeps the editor available, and records zero business writes.",
+    "Lifecycle cancel closes the named dialog, restores focus to its invoker, and records zero fixture business writes.",
+    "Native buttons, inputs, selects, and dialogs expose keyboard focus; keyboard Escape closes the impact dialog without a focus trap."
+  ],
+  "smallWindowChecks": [
+    {
+      "viewport": {
+        "width": 1400,
+        "height": 860
+      },
+      "layout": {
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "viewport": {
+          "width": 1400,
+          "height": 860
+        },
+        "scale": 1,
+        "mode": "accessibility",
+        "margin": {
+          "x": 0,
+          "y": 0
+        },
+        "browserZoom": 1,
+        "deviceScaleFactor": 1
+      },
+      "font": "13px",
+      "applyDisabled": false,
+      "pageOverflow": false,
+      "offscreenControls": 0,
+      "documentScrollHeight": 1089
+    },
+    {
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "layout": {
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "viewport": {
+          "width": 1280,
+          "height": 800
+        },
+        "scale": 1,
+        "mode": "accessibility",
+        "margin": {
+          "x": 0,
+          "y": 0
+        },
+        "browserZoom": 1,
+        "deviceScaleFactor": 1
+      },
+      "font": "13px",
+      "applyDisabled": false,
+      "pageOverflow": false,
+      "offscreenControls": 0,
+      "documentScrollHeight": 1089
+    }
+  ],
+  "pageErrors": [],
+  "limitations": [
+    "This is an isolated HTML/CSS/JS fixture, not a product frontend or backend acceptance run.",
+    "No API, CLI, credential, MCP connector, user workspace, or production data is loaded.",
+    "Viewport screenshots validate the designed desktop layouts; they do not certify physical-display behavior or full assistive-technology conformance.",
+    "Simulated write events validate only fixture control flow and scope sentinels; they are not service-side persistence evidence."
+  ],
+  "browser": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36"
+}
