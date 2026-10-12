@@ -18,7 +18,7 @@ revision_request: 0001789614562911-000019-617589c4
 
 # F005 · Traqen Experience and Frontend Design Charter
 
-> **Historical proposal, superseded.** The current authority is [F005 Layout and Navigation Design V1.0 (normative Chinese)](../../design/F005-layout-navigation/README.md). The V2.1 text, images and verification below remain historical. Separate sidebar sizes and extra content on larger displays are no longer current rules; images 18–21 do not prove uniform scaling. Mobile boards, Pencil and offline prototypes are also historical. Publication does not retroactively approve those artifacts or declare full product implementation.
+> **Historical proposal, superseded.** The current authority is [Current F005 Layout and Navigation Design (normative Chinese)](../../design/F005-layout-navigation/README.md). The V2.1 text, images and verification below remain historical. Separate sidebar sizes and extra content on larger displays are no longer current rules; images 18–21 do not prove uniform scaling. Mobile boards, Pencil and offline prototypes are also historical. Publication does not retroactively approve those artifacts or declare full product implementation.
 
 > V2.1 desktop-scope revision · 2026-09-17. Fixture design proposal, not an adopted Feature Spec or implemented product.
 
