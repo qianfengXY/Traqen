@@ -1,0 +1,515 @@
+{
+  "artifact": "F005 business-workbench v0.1.1",
+  "verifiedAt": "2026-10-12T02:14:36.067Z",
+  "checks": [
+    {
+      "name": "影响入口返回回答后可见新分析未生效及当前 g7",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "30 分钟条目就地提示 r9 已证实影响和待复核",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "保留 r8 的30分钟并列新材料15分钟，不偷换当前规则",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "Q02 三个命题分别可选",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "检查器随回答变化且功能目的不借用已支付分歧",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "data 不用通用带依据徽标遮蔽未知或未验证",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "tests 不用通用带依据徽标遮蔽未知或未验证",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "versions 不用通用带依据徽标遮蔽未知或未验证",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "verification 不用通用带依据徽标遮蔽未知或未验证",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "业务数据有带类型未知原因",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "原文往返保留准确回答条目",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "人工确认只绑定主动取消命题",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "确认详情明确不覆盖自动取消及退款",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "对话框 Escape 返回触发控件",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "已支付命题单独显示分歧且无 D-012 确认",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "主题切换保留准确命题和就地影响提示",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "刷新恢复主题且 URL 指定同一条目",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "回答可回到准确影响项",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "purpose 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "rules 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "implementation 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "data 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "tests 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "versions 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "verification 有自己的五维状态和范围",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "数据条目的原文入口不冒充需求文件",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "工作区概览 导航 URL 与唯一 active 一致",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "来源快照 导航 URL 与唯一 active 一致",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "技术证据 导航 URL 与唯一 active 一致",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "业务图谱 导航 URL 与唯一 active 一致",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "变更影响 导航 URL 与唯一 active 一致",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "设置中心 导航 URL 与唯一 active 一致",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "Agent 合成身份可回查模型 Skill 和配置修订",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "空回写定位字段且有错误说明",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "主题切换保留会话草稿",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "离开后返回保留会话草稿",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "正式决定不伪造提交成功",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "演示贡献仍是待分流未进入真实答卷",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "未归属新工作不虚构 Agent 参与",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "新会话草稿与已有贡献隔离",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "1440 page=overview 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "1440 page=graph&q=rules&answer=rules-timeout 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "1440 page=overview&view=session 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "1440 page=impact 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "2560 page=overview 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "2560 page=graph&q=rules&answer=rules-timeout 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "2560 page=overview&view=session 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "2560 page=impact 无横向溢出",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "两显示倍率文本相同且几何归一误差小于1px",
+      "pass": true,
+      "details": ""
+    },
+    {
+      "name": "离线单文件同步回答状态和新分析提示",
+      "pass": true,
+      "details": ""
+    }
+  ],
+  "passed": 50,
+  "total": 50,
+  "layouts": [
+    {
+      "width": 1440,
+      "height": 900,
+      "query": "page=overview",
+      "scale": 1,
+      "overflow": false,
+      "geometry": [
+        [
+          224,
+          900
+        ],
+        [
+          1216,
+          66
+        ],
+        null,
+        null
+      ],
+      "text": "从上次的理解，继续工作。\n\n订单服务平台 · 让已有依据成为下一次工作的起点。\n\n开始一件工作\n继续上次工作\n调查中\n取消订单，是否意味着退款完成？\n\n文档允许已支付订单申请取消，当前实现拒绝了这一分支。上次已找到差异，下一步核对“取消成功”的业务边界。\n\n会话 WS-028\n取消订单 · BIZ-024\n林予 + 调查 Agent\n继续核对\n先读业务答卷\n需要你关注\n3 项\n变化\n自动取消时限发生变化\n\n来源 r9 · 规则与验证范围待复核\n\n›\n分歧\n取消与退款的定义不一致\n\n意图材料与实现观察并列保留\n\n›\n未知\n未关联真实执行记录\n\n测试文件存在，尚不能判断通过\n\n›\n从业务开始\n按业务读懂依据与未知\n取消订单\n订单管理 / BIZ-024\n退款边界待澄清\n当前答卷 g7 · 来源 r8\n阅读答卷\n还不知道属于哪块业务？\n可以先从问题开始\n\n记录调查问题，再关联业务与材料。\n\n开始工作\n这次工作留下了什么\n\n固定调查材料 r8\n\n林予 · 09:12 · 需求、代码、测试\n\n保留取消与退款的分歧\n\n调查 Agent · 09:26 · 解释候选\n\n记录下一步核对范围\n\n林予 · 09:40 · 等待业务澄清"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "query": "page=graph&q=rules&answer=rules-timeout",
+      "scale": 1,
+      "overflow": false,
+      "geometry": [
+        [
+          224,
+          900
+        ],
+        [
+          1216,
+          66
+        ],
+        [
+          644,
+          615.109375
+        ],
+        [
+          302,
+          502.1953125
+        ]
+      ],
+      "text": "取消订单\n\n单业务演示 BIZ-024 · 多业务正式入口先领域／搜索，再选择业务。\n\nAI 读取范围\n继续调查\n订单管理 / 取消订单 BIZ-024\n·\n来源 r8\n事实 f12\n图谱 g7\n查看版本上下文\n新分析 R-029（r9）尚未生效，当前阅读 g7。\n\n原答卷仍可阅读；受影响命题在答案旁标明待复核，不自动替换为新规则。\n\n七问答卷\n关系图\n依据原文 →\n01\n功能目的\n未验证\n02\n规则与例外\n受影响 · 待复核\n03\n如何实现\n未验证\n04\n业务数据\n未调查 · 待核查\n05\n规则与测试\n缺少依据 · 待核查\n06\n版本与环境\n未关联 · 待核查\n07\n为什么可信\n受影响 · 待复核\n\n提示来自条目状态，\n未知也要说明原因。\n\n用户主动取消\n未验证\nD-012 · 苏禾确认\n自动取消时限\n受影响 · 待复核\n分析态 · 无人工确认\n已支付取消\n分歧待澄清\n分析态 · 无人工确认\nrules-timeout\n受影响 · 待复核\nr8：超过 30 分钟未支付，系统自动取消。\n已证实受 r9 影响 · 待复核\n\n新材料将自动取消时限从 30 分钟改为 15 分钟；分析 R-029 尚未生效，当前阅读 g7 / r8。\n\n查看对应影响项 →\n\n当前可读答卷仍为 g7，以下保留其 r8 原命题；不能把新材料中的 15 分钟静默替换进当前答卷。\n\n范围：未支付订单 / 自动取消时限\n\n当前答卷的原命题\n\n适用条件为未支付且超过 30 分钟。新材料 r9 改变了时限，当前适用性待复核。\n\n超过 30 分钟未支付，系统自动取消。\n\n订单需求.md §3.2 · r8 · 第 43 行\n\n此命题没有人工确认；D-012 不覆盖自动取消。\n\n查阅依据\n留下说明\n所选回答 · RULES-TIMEOUT\n这条回答的状态与依据\n\n未支付订单 / 自动取消时限\n\n权威\n分析态 · 无人工确认\n符合性\n新时限与实现的一致性待核查\n验证\n未关联真实执行\n新鲜度\n受 r9 已证实影响 · 待复核\n冲突\n该命题暂无已知冲突\n本条依据 · 1 项\n订单需求.md →\n意图材料 · §3.2 · r8\n\n示例评估时点：2026-10-10 09:40\n仅描述所选回答，不代表整个业务。"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "query": "page=overview&view=session",
+      "scale": 1,
+      "overflow": false,
+      "geometry": [
+        [
+          224,
+          900
+        ],
+        [
+          1216,
+          66
+        ],
+        null,
+        [
+          302,
+          520.390625
+        ]
+      ],
+      "text": "工作会话\n\nWS-028 · 取消订单 / BIZ-024 · 调查中\n\n阅读业务答卷\n本次要弄清楚\n取消订单，是否意味着退款完成？\n保留调查过程\n林予\n固定调查材料\n09:12\n\n本次核对使用来源 r8，保留需求、代码与测试的精确位置。\n\n订单需求.md · OrderService.ts · 取消订单.spec.ts\n\n来源 r8 / 事实 f12 / 图谱 g7\n调查 Agent · 查看身份\n解释候选\n09:26\n\n需求允许已支付订单进入退款流程；代码在 PAID 状态直接拒绝取消。两者描述的“取消”可能不在同一范围。\n\n回到对应回答与依据 →\n林予\n下一步调查\n09:40\n\n先核对是否存在另一退款入口，再确认“取消成功”应承诺到哪一步。当前不作业务决定。\n\n林予\n演示贡献 · 待分流\n\n回归检查：先核对退款入口，再留下理由。\n\nWS-028 · 本机演示保存，未进入真实分析或答卷。\n\n把这次弄明白的留下来\n调查发现\n正式业务决定\n新增材料\n执行结果\n说明、理由或待核对的问题\n\n提交后进入证据核查与分流，尚不代表收录或人工确认。\n\n保存演示贡献\n这次工作\n目的\n排查与澄清\n关联业务\n取消订单 · BIZ-024\n参与者\n林予 / 调查 Agent\n材料\nr8 · 已冻结\n按来源继续查证\n已固定材料与缺口 →\n查看身份，不复制一份来源\n新材料可能改变什么 →\n来源 r8 → r9 · 保留旧答卷\n\n工作中的说明不自动成为人工决定。只有正式决定流程能够确认明确命题。\n\n本原型仅在此浏览器保存演示草稿。正式产品需服务端持久化、权限与冲突处理。"
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "query": "page=impact",
+      "scale": 1,
+      "overflow": false,
+      "geometry": [
+        [
+          224,
+          900
+        ],
+        [
+          1216,
+          66
+        ],
+        null,
+        [
+          302,
+          433.5546875
+        ]
+      ],
+      "text": "哪些回答，需要重新核查？\n\n变更影响 · 先保留已知依据，再聚焦受到变化影响的部分。\n\n继续调查\n当前可读答卷 已发布\n来源 r8 · 事实 f12 · 图谱 g7\n→\n新材料分析 尚未生效\n来源 r9 · 事实 f13 · 分析运行 R-029\n新分析尚未生效，当前仍阅读 g7。\n\n新运行需完成对应质量证据与发布准入。你仍可继续调查、补充说明和查看旧依据。\n\n已证实影响\n规则与例外 · 自动取消时限\n\n配置从 30 分钟改为 15 分钟，原回答中“超过 30 分钟”的适用性需要核查。\n\ncancelTimeout → 自动取消规则 → 答案 Q02\n查看原回答\n在会话中复核\n可能影响\n规则与测试 · 边界场景\n\n原测试描述包含 30 分钟边界。需要核对 15 分钟前后的断言是否仍适用，建议尚未执行。\n\n时间边界变化 → 测试规格待核查 → 答案 Q05\n查看测试依据\n影响未知\n退款分支 · 范围暂不完整\n\n当前材料尚未说明退款入口与自动取消的全部关联，无法可靠判断影响范围。\n\n继续调查未知\n有范围地复核\n变化不会抹去历史。\n\n已发布的 g7 和原依据继续保留。确认某条变化时，应说明对象、版本、范围和理由。\n\n本次没有改变\n\n现有业务身份\n历史决定与来源引用\n原执行记录及其适用范围\n\n影响建议不自动阻止代码合并或部署。分析发布准入与 F004 建议边界分别呈现。\n\n查看决定到期示例"
+    },
+    {
+      "width": 2560,
+      "height": 1440,
+      "query": "page=overview",
+      "scale": 1.6,
+      "overflow": false,
+      "geometry": [
+        [
+          223.99999618530273,
+          900
+        ],
+        [
+          1215.999984741211,
+          65.99999904632568
+        ],
+        null,
+        null
+      ],
+      "text": "从上次的理解，继续工作。\n\n订单服务平台 · 让已有依据成为下一次工作的起点。\n\n开始一件工作\n继续上次工作\n调查中\n取消订单，是否意味着退款完成？\n\n文档允许已支付订单申请取消，当前实现拒绝了这一分支。上次已找到差异，下一步核对“取消成功”的业务边界。\n\n会话 WS-028\n取消订单 · BIZ-024\n林予 + 调查 Agent\n继续核对\n先读业务答卷\n需要你关注\n3 项\n变化\n自动取消时限发生变化\n\n来源 r9 · 规则与验证范围待复核\n\n›\n分歧\n取消与退款的定义不一致\n\n意图材料与实现观察并列保留\n\n›\n未知\n未关联真实执行记录\n\n测试文件存在，尚不能判断通过\n\n›\n从业务开始\n按业务读懂依据与未知\n取消订单\n订单管理 / BIZ-024\n退款边界待澄清\n当前答卷 g7 · 来源 r8\n阅读答卷\n还不知道属于哪块业务？\n可以先从问题开始\n\n记录调查问题，再关联业务与材料。\n\n开始工作\n这次工作留下了什么\n\n固定调查材料 r8\n\n林予 · 09:12 · 需求、代码、测试\n\n保留取消与退款的分歧\n\n调查 Agent · 09:26 · 解释候选\n\n记录下一步核对范围\n\n林予 · 09:40 · 等待业务澄清"
+    },
+    {
+      "width": 2560,
+      "height": 1440,
+      "query": "page=graph&q=rules&answer=rules-timeout",
+      "scale": 1.6,
+      "overflow": false,
+      "geometry": [
+        [
+          223.99999618530273,
+          900
+        ],
+        [
+          1215.999984741211,
+          65.99999904632568
+        ],
+        [
+          643.9999389648438,
+          615.1093673706055
+        ],
+        [
+          302.0000457763672,
+          502.1953582763672
+        ]
+      ],
+      "text": "取消订单\n\n单业务演示 BIZ-024 · 多业务正式入口先领域／搜索，再选择业务。\n\nAI 读取范围\n继续调查\n订单管理 / 取消订单 BIZ-024\n·\n来源 r8\n事实 f12\n图谱 g7\n查看版本上下文\n新分析 R-029（r9）尚未生效，当前阅读 g7。\n\n原答卷仍可阅读；受影响命题在答案旁标明待复核，不自动替换为新规则。\n\n七问答卷\n关系图\n依据原文 →\n01\n功能目的\n未验证\n02\n规则与例外\n受影响 · 待复核\n03\n如何实现\n未验证\n04\n业务数据\n未调查 · 待核查\n05\n规则与测试\n缺少依据 · 待核查\n06\n版本与环境\n未关联 · 待核查\n07\n为什么可信\n受影响 · 待复核\n\n提示来自条目状态，\n未知也要说明原因。\n\n用户主动取消\n未验证\nD-012 · 苏禾确认\n自动取消时限\n受影响 · 待复核\n分析态 · 无人工确认\n已支付取消\n分歧待澄清\n分析态 · 无人工确认\nrules-timeout\n受影响 · 待复核\nr8：超过 30 分钟未支付，系统自动取消。\n已证实受 r9 影响 · 待复核\n\n新材料将自动取消时限从 30 分钟改为 15 分钟；分析 R-029 尚未生效，当前阅读 g7 / r8。\n\n查看对应影响项 →\n\n当前可读答卷仍为 g7，以下保留其 r8 原命题；不能把新材料中的 15 分钟静默替换进当前答卷。\n\n范围：未支付订单 / 自动取消时限\n\n当前答卷的原命题\n\n适用条件为未支付且超过 30 分钟。新材料 r9 改变了时限，当前适用性待复核。\n\n超过 30 分钟未支付，系统自动取消。\n\n订单需求.md §3.2 · r8 · 第 43 行\n\n此命题没有人工确认；D-012 不覆盖自动取消。\n\n查阅依据\n留下说明\n所选回答 · RULES-TIMEOUT\n这条回答的状态与依据\n\n未支付订单 / 自动取消时限\n\n权威\n分析态 · 无人工确认\n符合性\n新时限与实现的一致性待核查\n验证\n未关联真实执行\n新鲜度\n受 r9 已证实影响 · 待复核\n冲突\n该命题暂无已知冲突\n本条依据 · 1 项\n订单需求.md →\n意图材料 · §3.2 · r8\n\n示例评估时点：2026-10-10 09:40\n仅描述所选回答，不代表整个业务。"
+    },
+    {
+      "width": 2560,
+      "height": 1440,
+      "query": "page=overview&view=session",
+      "scale": 1.6,
+      "overflow": false,
+      "geometry": [
+        [
+          223.99999618530273,
+          900
+        ],
+        [
+          1215.999984741211,
+          65.99999904632568
+        ],
+        null,
+        [
+          302.0000457763672,
+          520.390625
+        ]
+      ],
+      "text": "工作会话\n\nWS-028 · 取消订单 / BIZ-024 · 调查中\n\n阅读业务答卷\n本次要弄清楚\n取消订单，是否意味着退款完成？\n保留调查过程\n林予\n固定调查材料\n09:12\n\n本次核对使用来源 r8，保留需求、代码与测试的精确位置。\n\n订单需求.md · OrderService.ts · 取消订单.spec.ts\n\n来源 r8 / 事实 f12 / 图谱 g7\n调查 Agent · 查看身份\n解释候选\n09:26\n\n需求允许已支付订单进入退款流程；代码在 PAID 状态直接拒绝取消。两者描述的“取消”可能不在同一范围。\n\n回到对应回答与依据 →\n林予\n下一步调查\n09:40\n\n先核对是否存在另一退款入口，再确认“取消成功”应承诺到哪一步。当前不作业务决定。\n\n林予\n演示贡献 · 待分流\n\n回归检查：先核对退款入口，再留下理由。\n\nWS-028 · 本机演示保存，未进入真实分析或答卷。\n\n把这次弄明白的留下来\n调查发现\n正式业务决定\n新增材料\n执行结果\n说明、理由或待核对的问题\n\n提交后进入证据核查与分流，尚不代表收录或人工确认。\n\n保存演示贡献\n这次工作\n目的\n排查与澄清\n关联业务\n取消订单 · BIZ-024\n参与者\n林予 / 调查 Agent\n材料\nr8 · 已冻结\n按来源继续查证\n已固定材料与缺口 →\n查看身份，不复制一份来源\n新材料可能改变什么 →\n来源 r8 → r9 · 保留旧答卷\n\n工作中的说明不自动成为人工决定。只有正式决定流程能够确认明确命题。\n\n本原型仅在此浏览器保存演示草稿。正式产品需服务端持久化、权限与冲突处理。"
+    },
+    {
+      "width": 2560,
+      "height": 1440,
+      "query": "page=impact",
+      "scale": 1.6,
+      "overflow": false,
+      "geometry": [
+        [
+          223.99999618530273,
+          900
+        ],
+        [
+          1215.999984741211,
+          65.99999904632568
+        ],
+        null,
+        [
+          302.0000457763672,
+          433.55464935302734
+        ]
+      ],
+      "text": "哪些回答，需要重新核查？\n\n变更影响 · 先保留已知依据，再聚焦受到变化影响的部分。\n\n继续调查\n当前可读答卷 已发布\n来源 r8 · 事实 f12 · 图谱 g7\n→\n新材料分析 尚未生效\n来源 r9 · 事实 f13 · 分析运行 R-029\n新分析尚未生效，当前仍阅读 g7。\n\n新运行需完成对应质量证据与发布准入。你仍可继续调查、补充说明和查看旧依据。\n\n已证实影响\n规则与例外 · 自动取消时限\n\n配置从 30 分钟改为 15 分钟，原回答中“超过 30 分钟”的适用性需要核查。\n\ncancelTimeout → 自动取消规则 → 答案 Q02\n查看原回答\n在会话中复核\n可能影响\n规则与测试 · 边界场景\n\n原测试描述包含 30 分钟边界。需要核对 15 分钟前后的断言是否仍适用，建议尚未执行。\n\n时间边界变化 → 测试规格待核查 → 答案 Q05\n查看测试依据\n影响未知\n退款分支 · 范围暂不完整\n\n当前材料尚未说明退款入口与自动取消的全部关联，无法可靠判断影响范围。\n\n继续调查未知\n有范围地复核\n变化不会抹去历史。\n\n已发布的 g7 和原依据继续保留。确认某条变化时，应说明对象、版本、范围和理由。\n\n本次没有改变\n\n现有业务身份\n历史决定与来源引用\n原执行记录及其适用范围\n\n影响建议不自动阻止代码合并或部署。分析发布准入与 F004 建议边界分别呈现。\n\n查看决定到期示例"
+    }
+  ],
+  "pageErrors": [],
+  "red": {
+    "base": "c94309d3e48e63f2ae246d4f6491ead22d9c2189",
+    "checks": 11,
+    "failed": 11,
+    "scope": "原稿影响往返、条目状态、UnknownReason与原文定位缺口"
+  },
+  "limitations": [
+    "Static synthetic fixture only; no backend, real authorization or publication.",
+    "1440 master only; no mobile or complete accessible reflow.",
+    "Graph is a fixed one-hop illustration.",
+    "Offline single file verified via HTTP, not all file:// browser policies."
+  ],
+  "screenshots": [
+    {
+      "file": "01-overview-light.png",
+      "query": "page=overview",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "file": "02-answer-light.png",
+      "query": "page=graph&q=rules&answer=rules-paid",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "file": "03-session-light.png",
+      "query": "page=overview&view=session",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "file": "04-impact-light.png",
+      "query": "page=impact",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "file": "05-answer-dark.png",
+      "query": "page=graph&q=rules&answer=rules-paid",
+      "theme": "dark",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    },
+    {
+      "file": "06-answer-2560-light.png",
+      "query": "page=graph&q=rules&answer=rules-paid",
+      "theme": "light",
+      "width": 2560,
+      "height": 1440,
+      "deviceScaleFactor": 1
+    },
+    {
+      "file": "07-affected-answer-light.png",
+      "query": "page=graph&q=rules&answer=rules-timeout",
+      "theme": "light",
+      "width": 1440,
+      "height": 900,
+      "deviceScaleFactor": 1
+    }
+  ]
+}
