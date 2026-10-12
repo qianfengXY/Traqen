@@ -6,7 +6,9 @@ doc_kind: design-proposal
 created: 2026-10-10
 version: "0.1.1"
 updated: 2026-10-12
-status: review-proposal-not-adopted
+status: historical-review-source
+superseded_by: ../../../design/F005-layout-navigation/README.md
+incorporation_request: 0001791788552798-000613-cd93da7f
 owner: 砚砚/gpt-6-astra
 source_thread: thread_mtp1pj7vy5aeq7h3
 design_request: 0001791616725970-000567-7bf52b61
@@ -14,6 +16,8 @@ baseline_commit: 8b6cc695fbe328022ef84c670d3c537442b5e2ef
 ---
 
 # F005 · 业务工作台体验设计 v0.1.1
+
+> **2026-10-12 维护说明：** co-creator 已要求将新一版写入设计文档；本稿内容已整合至 [F005 V1.1 正式设计](../../../design/F005-layout-navigation/README.md)，[当前差异清单](../../../design/F005-layout-navigation/CHANGES.md)单独保留。以下评审正文与样稿按当时状态保留，“未替换正式规范”等表述仅描述原评审阶段，不是当前文档状态。当前要求及两项样稿限制以正式文档为准。
 
 > **独立评审稿，不替换 F005 V1.0。** 本稿根据 2026-10-10「那你先设计一版吧，然后单独列出与之前的不一样的地方」制作，承接上一轮已说明的调整范围。正式布局规范、Feature Spec、权限和接口合同均未改动。文中“应”描述本稿建议，不表示方案已经采纳或产品已经实现。
 
@@ -24,7 +28,7 @@ baseline_commit: 8b6cc695fbe328022ef84c670d3c537442b5e2ef
 - [与 F005 V1.0 的独立差异清单](CHANGES.md)：逐项列旧版、新版、理由、影响章节及承接边界。
 - [本次浏览器验证记录：50 项](assets/answer-state-verification.json)：包括条目状态、影响往返、会话、主题和缩放；仅证明样稿行为。
 - [初稿 34 项历史记录](https://github.com/qianfengXY/Traqen/blob/4487ec3ba74ffafae3c9b1ef81ba11d960297316/docs/design-reviews/F005/business-workbench-v0.1/assets/verification.json)：不作为本次条目语义修订的验收证据。
-- [现行 F005 V1.0](../../../design/F005-layout-navigation/README.md)、[F007 v0.4](../../../design/F007-function-architecture/v0.4/README.md)、[产品愿景](../../../../README.zh-CN.md)。
+- [原 F005 V1.0 快照](https://github.com/qianfengXY/Traqen/blob/f98ad8eda55db9c0b04f5855ee5182c6de5d90ea/docs/design/F005-layout-navigation/README.md)、[F007 v0.4](../../../design/F007-function-architecture/v0.4/README.md)、[产品愿景](../../../../README.zh-CN.md)。
 
 ## 1. 阅读这份设计
 

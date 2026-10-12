@@ -5,13 +5,17 @@ topics: [design-delta, layout, navigation, business-answers, work-sessions]
 doc_kind: design-comparison
 created: 2026-10-10
 updated: 2026-10-12
-status: review-proposal-not-adopted
+status: historical-review-source
+superseded_by: ../../../design/F005-layout-navigation/README.md
+incorporation_request: 0001791788552798-000613-cd93da7f
 baseline_commit: 8b6cc695fbe328022ef84c670d3c537442b5e2ef
 ---
 
 # 与 F005 V1.0 不一样的地方
 
-本表独立于设计正文，便于只看变化。比较对象是[现行 F005 V1.0](../../../design/F005-layout-navigation/README.md)，**不是旧 V2.1 探索稿**。新版是[业务工作台 v0.1.1 评审稿](README.md)，尚未替换正式规范。
+> **2026-10-12 维护说明：** co-creator 已要求将新一版写入设计文档；本稿内容已整合至 [F005 V1.1 正式设计](../../../design/F005-layout-navigation/README.md)，[当前差异清单](../../../design/F005-layout-navigation/CHANGES.md)单独保留。以下评审正文与样稿按当时状态保留，“未替换正式规范”等表述仅描述原评审阶段，不是当前文档状态。当前要求及两项样稿限制以正式文档为准。
+
+本表独立于设计正文，便于只看变化。比较对象是[原 F005 V1.0 快照](https://github.com/qianfengXY/Traqen/blob/f98ad8eda55db9c0b04f5855ee5182c6de5d90ea/docs/design/F005-layout-navigation/README.md)，**不是旧 V2.1 探索稿**。新版是[业务工作台 v0.1.1 评审稿](README.md)，尚未替换正式规范。
 
 ## 1. 实质变化
 
