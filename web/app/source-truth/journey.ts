@@ -9,7 +9,7 @@ export function draftFromVersion(version: Pick<FrozenVersion, "id" | "components
   }) };
 }
 
-export const sourceStations = ["添加来源", "确认范围", "来源预检", "枚举材料", "冻结清单", "采集校验", "复核缺口", "冻结包"] as const;
+export const sourceStations = ["添加来源", "配置范围", "自动预检", "枚举材料", "冻结清单", "采集与校验", "核对与缺口", "冻结来源包"] as const;
 export type SourceRunState = { status: string; station: number; abandoned?: boolean; progress?: { waitingFor?: string | null } };
 export function sourceJourney(run: SourceRunState | null, draftRevision: number, confirmation: boolean, selected: number | null = null) {
   const current = run ? run.status === "REVIEW_REQUIRED" && confirmation ? 8 : run.station : draftRevision ? 2 : 1;

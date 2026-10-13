@@ -1,3 +1,5 @@
+import { sourceReferenceParams, type SourceReference } from "./source-truth/context.ts";
+
 export const pageRoutes = {
   overview: "overview", workspace: "sources", feature: "evidence", graph: "graph",
   review: "review", impact: "impact", templates: "templates", settings: "settings",
@@ -11,9 +13,10 @@ export function readProductRoute(search: string): { view: ProductView; workspace
   return { view, workspaceId: params.get("workspace") };
 }
 
-export function productHref(view: ProductView, workspaceId: string | null) {
+export function productHref(view: ProductView, workspaceId: string | null, source?: Partial<SourceReference>) {
   const params = new URLSearchParams({ page: view === "not-found" ? "unknown" : pageRoutes[view] });
   if (workspaceId !== null) params.set("workspace", workspaceId);
+  if (view === "workspace" && source && source.workspaceId === workspaceId) for (const [key, value] of sourceReferenceParams(source)) params.set(key, value);
   return `/?${params}`;
 }
 

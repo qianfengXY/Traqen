@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { canonicalEncode, decodePathBytes, manifestEntry, orderedArrayDigest, byteCount } from "./identity.js";
 import { fail, requireValue } from "./errors.js";
+import { contentAvailabilitySql } from "./content-state.js";
 
 const values = (context) => [context.workspaceId, context.runId, context.sourceId];
 const manifestRecord = (row) => ({ id: row.id, kind: row.kind, fileCount: String(row.file_count), directoryCount: String(row.directory_count), knownBytes: String(row.known_bytes), shardCount: row.shard_count });
@@ -93,6 +94,20 @@ export class SourceMaterialRepository {
       count(*) FILTER (WHERE disposition IS NULL)::text AS pending
       FROM source_truth_entry WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3`, values(context));
     return { fileCount: rows[0].files, directoryCount: rows[0].directories, knownBytes: rows[0].bytes, pendingCount: rows[0].pending };
+  }
+
+  // A read projection, never part of component identity. Multiple Gap records
+  // may describe one file; accepting them cannot turn missing bytes VERIFIED.
+  async fileCoverage(context, tx = this.db) {
+    context = await this.readContext(context, tx);
+    const { rows } = await tx.query(`WITH files AS (SELECT (${contentAvailabilitySql()}) AS availability
+        FROM source_truth_entry WHERE workspace_id=$1 AND run_id=$2 AND source_id=$3 AND entry->>'kind'<>'DIRECTORY')
+      SELECT count(*)::text AS total,
+      count(*) FILTER (WHERE availability='VERIFIED')::text AS verified,
+      count(*) FILTER (WHERE availability='MISSING')::text AS missing,
+      count(*) FILTER (WHERE availability='PENDING')::text AS pending
+      FROM files`, values(context));
+    return rows[0];
   }
 
   async closeEnumeration(context, { fileCount, directoryCount, beforeClose }) {

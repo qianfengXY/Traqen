@@ -4,6 +4,7 @@ import { publicRun, sourceBody, sourceBytes, sourceFailure, sourceJson } from ".
 import { SourceQueryService } from "./query-service.js";
 import { SourceSnapshotReader } from "./admission-service.js";
 import { SourceStagingService } from "./staging-service.js";
+import { acceptCandidateGap } from "./confirmation-service.js";
 
 export function createSourceTruthHttpHandler({ services, authenticate, allowedOrigins = [] }) {
   const { repository, capture, publication, admission, renewal, delta, materials, upload, blobs, policy } = services;
@@ -27,7 +28,8 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       else if (!queryOnly && !route.endsWith("/cancel")) await services.ensureReady?.();
       const json = (result, status = 200) => sourceJson(response, status, result, id);
       const page = { limit: Number(url.searchParams.get("limit") ?? 100), cursor: url.searchParams.get("cursor") };
-      const inventoryPage = { ...page, query: url.searchParams.get("query"), disposition: url.searchParams.get("disposition"), componentId: url.searchParams.get("componentId") };
+      const inventoryPage = { ...page, query: url.searchParams.get("query"), disposition: url.searchParams.get("disposition"), componentId: url.searchParams.get("componentId"), availability: url.searchParams.get("availability"), pathBytes: url.searchParams.get("pathBytes") };
+      const gapPage = { ...page, componentId: url.searchParams.get("componentId"), pathBytes: url.searchParams.get("pathBytes") };
       if (action === "GET" && route === "") {
         const draft = await repository.getDraft(actor, workspaceId);
         const active = await repository.withWorkspace(actor, workspaceId, false, (tx) => repository.activeRun(tx, workspaceId));
@@ -56,14 +58,15 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       else if (route === "renewals" && action === "POST") json(await renewal.issue(actor, workspaceId, await sourceBody(request)));
       else {
         const runMatch = /^runs\/([^/]+)(?:\/(.*))?$/.exec(route);
-        const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|gap-history|inventory-history|file-history|receipts)$/.exec(route);
+        const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|gap-history|inventory-history|file-history|receipts|receipt)$/.exec(route);
         if (versionMatch && action === "GET") {
           const reference = { bundleId: versionMatch[1], receiptId: url.searchParams.get("receiptId") };
           if (versionMatch[2] === "inventory") json(await admission.inventory(actor, workspaceId, reference, inventoryPage));
           else if (versionMatch[2] === "receipts") json(await queries.receipts(actor, workspaceId, reference.bundleId, page));
+          else if (versionMatch[2] === "receipt") json((await inspection.records(actor, workspaceId, reference)).receipt);
           else if (versionMatch[2] === "inventory-history") json(await inspection.inventory(actor, workspaceId, reference, inventoryPage));
           else if (versionMatch[2] === "gaps") json(await admission.inheritedGaps(actor, workspaceId, reference, page));
-          else if (versionMatch[2] === "gap-history") json(await queries.gaps(actor, workspaceId, { bundleId: reference.bundleId }, page));
+          else if (versionMatch[2] === "gap-history") json(await queries.gaps(actor, workspaceId, reference, gapPage));
           else await sourceBytes(response, (versionMatch[2] === "file-history" ? inspection : admission).readFile(actor, workspaceId, reference, { componentId: url.searchParams.get("componentId"), pathBytes: url.searchParams.get("pathBytes") }), id);
         } else if (runMatch) {
           const runId = decodeURIComponent(runMatch[1]);
@@ -74,11 +77,12 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
           else if (tail === "view" && action === "GET") json(await queries.run(actor, workspaceId, runId));
           else if (tail === "staging-release" && action === "GET") json(await staging.inspect(actor, workspaceId, runId));
           else if (tail === "staging-release" && action === "POST") json(await staging.release(actor, workspaceId, runId, await sourceBody(request)));
-          else if (tail === "gaps" && action === "GET") json(await queries.gaps(actor, workspaceId, { runId }, page));
+          else if (tail === "gaps" && action === "GET") json(await queries.gaps(actor, workspaceId, { runId }, gapPage));
           else if (tail === "advance" && action === "POST") { await sourceBody(request); json(publicRun(await capture.advance(actor, workspaceId, runId))); }
           else if (tail === "reconcile-restore" && action === "POST") { await sourceBody(request); const resumed = await capture.reconcileRestore(actor, workspaceId, runId); services.dispatch?.(); json(publicRun(resumed)); }
           else if (tail === "cancel" && action === "POST") { await sourceBody(request); json(publicRun(await repository.cancel(actor, workspaceId, runId))); }
           else if (tail === "result" && action === "GET") json(await publication.result(actor, workspaceId, runId));
+          else if (tail === "gap-acceptances" && action === "POST") json(await acceptCandidateGap(repository, actor, { workspaceId, runId }, await sourceBody(request)));
           else if (tail === "confirm" && action === "POST") json(await publication.confirm(actor, { workspaceId, runId }, await sourceBody(request)));
           else if (tail === "seal" && action === "POST") {
             const input = await sourceBody(request);

@@ -83,7 +83,14 @@
 .st-tabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
 .st-tabs button { border: 0; border-radius: 8px; padding: 8px 12px; background: var(--surface-muted); color: var(--muted); cursor: pointer; }
 .st-tabs button.selected { background: var(--accent-subtle); color: var(--accent); }
+.st-identity-card { padding: 16px; border: 1px solid var(--line); border-radius: 10px; }
+.st-identity-component { display: contents; }
 .st-renewal { margin-top: 18px; padding: 14px; border: 1px solid var(--warning); border-radius: 10px; }
 .st-renewal summary { cursor: pointer; }
+.st-material-inspector { margin-top: 24px; border-color: var(--accent); }
+.st-side .st-material-inspector { margin-top: 0; }
+.st-usage-context { display: grid; gap: 18px; }
+.st-original { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; line-height: 1.8; max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-muted); padding: 16px; border: 1px solid var(--line); border-radius: 9px; }
+.st-workbench [hidden] { display: none !important; }
 @media (max-width: 1180px) { .st-grid { grid-template-columns: minmax(0, 1fr); } .st-side { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 760px) { .st-workbench { padding: 20px 18px 32px; } .st-workbench h1 { font-size: 28px; } .st-heading, .st-metro-head, .st-frozen-summary { flex-direction: column; align-items: flex-start; } .st-source-cards, .st-side, .st-history-columns { grid-template-columns: minmax(0, 1fr); } .st-metrics { grid-template-columns: repeat(2, 1fr); } .st-panel { padding: 20px; } .st-rail { padding-bottom: 14px; } .st-workbench .button, .st-link, .st-tabs button { min-height: 44px; } }

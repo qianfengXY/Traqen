@@ -1,7 +1,8 @@
 import { canonicalEncode, decodePathBytes, structureDigest } from "./identity.js";
 import { requireValue, fail } from "./errors.js";
-import { assertAcceptance } from "./confirmation-service.js";
+import { assertAcceptance, assertIndividualAcceptance } from "./confirmation-service.js";
 import { inventoryOptions, inventoryResult } from "./inventory-query.js";
+import { contentAvailabilitySql } from "./content-state.js";
 
 function pageOptions({ limit = 100, cursor = null } = {}) {
   requireValue(Number.isInteger(limit) && limit > 0 && limit <= 1000, "SOURCE_INVALID_INPUT", "分页大小必须为 1～1000", { status: 400 });
@@ -55,12 +56,13 @@ export class SourceSnapshotReader {
       && row.bundle.identity.gapSetId === row.receipt.gapSetId && row.confirmation.gapSetId === row.receipt.gapSetId
       && row.bundle.counts.gapCount === row.receipt.gapCount && row.confirmation.gapCount === row.receipt.gapCount,
     "SOURCE_RECEIPT_CORRUPT", "包、确认或凭据之间的绑定校验失败");
+    await assertIndividualAcceptance(tx, workspaceId, row.confirmation_id, row.confirmation);
     return row;
   }
 
   async inventory(actor, workspaceId, reference, options) {
     const selected = inventoryOptions(options, { workspaceId, bundleId: reference?.bundleId ?? null, receiptId: reference?.receiptId ?? null });
-    const { limit, after, queryBytes, disposition, componentId } = selected;
+    const { limit, after, queryBytes, disposition, componentId, availability, exactPath } = selected;
     return this.repository.withWorkspace(actor, workspaceId, false, async (tx) => {
       await this.records(actor, workspaceId, reference, tx);
       const from = `FROM source_truth_bundle_component b
@@ -68,12 +70,14 @@ export class SourceSnapshotReader {
         JOIN source_truth_entry e ON e.workspace_id=c.workspace_id AND e.run_id=c.run_id AND e.source_id=c.source_id
         WHERE b.workspace_id=$1 AND b.bundle_id=$2 AND position($3::bytea IN e.path_bytes)>0
         AND ($4::text IS NULL OR COALESCE(e.disposition->>'disposition','PENDING')=$4)
-        AND ($5::text IS NULL OR c.id=$5)`;
-      const parameters = [workspaceId, reference.bundleId, queryBytes, disposition, componentId];
+        AND ($5::text IS NULL OR c.id=$5)
+        AND ($6::text IS NULL OR (${contentAvailabilitySql("e.entry", "e.disposition")})=$6)
+        AND ($7::bytea IS NULL OR e.path_bytes=$7)`;
+      const parameters = [workspaceId, reference.bundleId, queryBytes, disposition, componentId, availability, exactPath];
       const count = (await tx.query(`SELECT count(*)::text AS n ${from}`, parameters)).rows[0].n;
       const { rows } = await tx.query(`SELECT c.id AS component_id,e.entry,e.disposition ${from}
-        AND ($6::text IS NULL OR c.id>$6 OR (c.id=$6 AND e.path_bytes>$7))
-        ORDER BY c.id,e.path_bytes LIMIT $8`, [...parameters, after?.componentId ?? null, after?.path ?? null, limit + 1]);
+        AND ($8::text IS NULL OR c.id>$8 OR (c.id=$8 AND e.path_bytes>$9))
+        ORDER BY c.id,e.path_bytes LIMIT $10`, [...parameters, after?.componentId ?? null, after?.path ?? null, limit + 1]);
       return inventoryResult(rows, selected, count);
     });
   }

@@ -64,13 +64,26 @@ const catalogueQueries = [
   `SELECT jsonb_build_object('type','MEMBER','workspaceId',r.workspace_id,'bundleId',r.bundle_id,'receiptId',r.id,'confirmationId',r.confirmation_id,
     'receipt',r.payload,'confirmation',c.payload) AS record FROM source_truth_receipt r JOIN source_truth_confirmation c ON c.workspace_id=r.workspace_id AND c.id=r.confirmation_id
     ORDER BY r.workspace_id,r.bundle_id,r.id`,
+  `SELECT jsonb_build_object('type','GAP_ACCEPTANCE','workspaceId',workspace_id,'id',id,'sequence',sequence::text,
+    'runId',run_id,'candidateId',candidate_id,'gapSetId',gap_set_id,'componentId',component_id,'gapKey',gap_key,
+    'actorId',actor_id,'reason',reason,'expiresAt',expires_at,'acceptedAt',accepted_at) AS record
+    FROM source_truth_gap_acceptance ORDER BY workspace_id,id`,
+  `SELECT jsonb_build_object('type','CONFIRMATION_GAP_ACCEPTANCE','workspaceId',workspace_id,
+    'confirmationId',confirmation_id,'acceptanceId',acceptance_id) AS record
+    FROM source_truth_confirmation_gap_acceptance ORDER BY workspace_id,confirmation_id,acceptance_id`,
 ];
 
 // The same deterministic bounded stream is used at the exported database
 // waterline and after restore. Membership and checkpoints must match exactly,
 // not merely exist as a subset in an unrelated dump.
 export async function* databaseCatalogue(tx) {
+  const schema = (await tx.query("SELECT to_regclass('source_truth_gap_acceptance') AS decisions,to_regclass('source_truth_confirmation_gap_acceptance') AS bindings")).rows[0];
+  requireValue(Boolean(schema.decisions) === Boolean(schema.bindings), "SOURCE_BACKUP_CORRUPT", "逐项接受记录与确认绑定的数据库结构不完整");
   for (let i = 0; i < catalogueQueries.length; i++) {
+    // A pre-0038 authenticated archive has neither table and must retain its
+    // original catalogue bytes. A missing table in a newer archive cannot pass
+    // the exact waterline digest, so this is not a missing-evidence bypass.
+    if (i >= 4 && !schema.decisions) continue;
     const name = `f001_catalogue_${i}`;
     await tx.query(`DECLARE ${name} NO SCROLL CURSOR FOR ${catalogueQueries[i]}`);
     try {

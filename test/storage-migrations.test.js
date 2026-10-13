@@ -71,6 +71,7 @@ async function migratedDatabase() {
     "0035_f001_paired_backup",
     "0036_f001_renewal_execution",
     "0037_f001_staging_disposition",
+    "0038_f001_gap_acceptance",
   ]);
   return database;
 }
@@ -510,6 +511,8 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "global_account_revision",
     "model_replacement_failure_diagnostic",
     "source_slice_worker_credential_use",
+    "source_truth_gap_acceptance",
+    "source_truth_confirmation_gap_acceptance",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }

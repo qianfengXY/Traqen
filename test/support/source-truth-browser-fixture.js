@@ -64,5 +64,9 @@ export async function browserFixture(t) {
     return response.json();
   };
   return { root, names, source, gapCommit, token, readerToken, apiBase, webOrigin, read,
+    setSourceAccess: async (workspace, actorId, role) => {
+      if (!names[workspace] || !["owner", "reader"].includes(actorId) || !["READ", "MAINTAIN", "REVOKED"].includes(role)) throw new Error("Unknown isolated fixture grant");
+      await repository.provision(workspace, { tenantId: "tenant", grants: [{ actorId, role }], requestedBy: "owner" });
+    },
     failNextGitCapture: (workspace) => { if (!names[workspace]) throw new Error("Unknown fixture Workspace"); failWorkspace = workspace; } };
 }

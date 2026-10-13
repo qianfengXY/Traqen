@@ -20,6 +20,36 @@ export class SourceTruthClient {
     this.signal = controller.signal;
     return controller;
   }
+  async preview(route: string, maxBytes = 65536, actionSignal?: AbortSignal): Promise<{ text: string | null; truncated: boolean; bytes: number }> {
+    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 65536) throw new SourceClientError("原文预览大小必须为 1～65536 字节");
+    const signal = AbortSignal.any([AbortSignal.timeout(15000), ...[this.signal, actionSignal].filter((value): value is AbortSignal => Boolean(value))]);
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const response = await fetch(this.base + route, { method: "GET", credentials: "omit", cache: "no-store", redirect: "error", signal,
+        headers: { authorization: `Bearer ${this.token}` } });
+      if (!response.ok) {
+        const result = await response.json().catch(() => null);
+        throw new SourceClientError(result?.error?.message ?? "原始材料读取失败", result?.error?.code ?? "SOURCE_HTTP_ERROR", response.status);
+      }
+      if (!response.body || response.headers.get("content-type")?.split(";")[0] !== "application/octet-stream") throw new SourceClientError("响应不是原始来源文件；不会作为正文展示");
+      reader = response.body.getReader();
+      const bytes = new Uint8Array(maxBytes);
+      let length = 0, truncated = false;
+      while (true) {
+        signal.throwIfAborted();
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        const take = Math.min(chunk.value.length, maxBytes - length);
+        bytes.set(chunk.value.subarray(0, take), length); length += take;
+        if (take < chunk.value.length) { truncated = true; break; }
+      }
+      signal.throwIfAborted();
+      const content = bytes.subarray(0, length);
+      let text: string | null = null;
+      try { if (!content.includes(0)) text = new TextDecoder("utf-8", { fatal: true }).decode(content, { stream: truncated }); } catch { /* Non-text material remains downloadable, never executed. */ }
+      return { text, truncated, bytes: length };
+    } finally { await reader?.cancel().catch(() => {}); reader?.releaseLock(); }
+  }
   async download(route: string, destination: { write(bytes: Uint8Array): Promise<void>; close(): Promise<void>; abort(): Promise<void> }) {
     const signal = this.signal;
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;

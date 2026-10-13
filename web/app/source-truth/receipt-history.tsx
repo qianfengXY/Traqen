@@ -33,6 +33,7 @@ export function BackupCoverage({ client, bundleId, receiptId }: { client: Source
   };
   const label = { COVERED: "本次核验：该包及该凭据已被完整备份覆盖", NOT_COVERED: "没有覆盖这对包与凭据的完成证明", NOT_CONFIGURED: "尚未配置配套备份，没有覆盖证明", UNAVAILABLE: "目标不可读或校验失败，当前无法证明备份覆盖" }[proof?.status ?? ""];
   return <section><h3>配套备份覆盖</h3><p>独立核对所选 Bundle + Receipt，不由历史 READY 推定，也不启动备份或分析任务。</p><button className="button" disabled={busy} onClick={() => void check()}>{busy ? "正在核验目标完成证明和引用字节…" : "核验这一对包与凭据的备份"}</button>
+    {!proof && <p>备份覆盖：尚未核验</p>}
     {error && <p role="alert" className="st-callout danger">{error}</p>}{proof && <div className={`st-callout ${proof.status === "COVERED" ? "" : "warning"}`}><p>{label ?? "备份状态未确认"}</p>{proof.verifiedAt && <p>核验时间：{proof.verifiedAt}；恢复水位：{proof.waterline}；备份：{proof.backupId}。该证明不覆盖水位后的新凭据。</p>}</div>}
   </section>;
 }

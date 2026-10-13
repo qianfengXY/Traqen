@@ -53,8 +53,9 @@ test("ships only the server-owned understanding path after Web cutover", async (
     readFile(new URL("../app/understanding-graph-client.ts", import.meta.url), "utf8"),
   ]);
   assert.match(page, /<TraqenProduct \/>/);
-  assert.match(product, /<SourceTruthWorkbench key=\{activeWorkspace\.id\}/,
-    "the source entry must mount the workspace-bound eight-station snapshot workbench");
+  assert.match(product, /<SourceTruthWorkbench key=\{`\$\{activeWorkspace\.id\}:\$\{sourceEntry\?\.bundleId/,
+    "the source entry must stay Workspace-bound and separate fixed references from the capture workbench");
+  assert.match(product, /workspaceId=\{activeWorkspace\.id\}[\s\S]*entryContext=\{sourceEntry\}/);
   assert.doesNotMatch(product, /registerServerWorkspaceSource|startServerWorkspaceUnderstanding|controlServerWorkspaceUnderstanding|openStartConfirmation|startConfirmation/,
     "the superseded raw-source analysis entry and its unreachable confirmation must not survive cutover");
   assert.doesNotMatch(product, /resolveServerWorkspaceExecutionProfile/);

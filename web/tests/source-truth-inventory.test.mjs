@@ -5,7 +5,7 @@ import { inventoryRoute } from "../app/source-truth/inventory.ts";
 
 test("inventory query preserves the exact historical receipt and sends literal search/filter state on every bounded page", () => {
   const route = "/bundles/frozen/inventory-history?receiptId=receipt%2B1";
-  const filter = { query: "订单% &x", componentId: "a".repeat(64), disposition: "VERIFIED" };
+  const filter = { query: "订单% &x", componentId: "a".repeat(64), disposition: "VERIFIED", availability: "MISSING", pathBytes: "ZXhhY3Q" };
   for (const cursor of [null, "page-token"]) {
     const url = new URL(inventoryRoute(route, filter, cursor), "http://isolated.invalid");
     assert.equal(url.pathname, "/bundles/frozen/inventory-history");
@@ -13,17 +13,20 @@ test("inventory query preserves the exact historical receipt and sends literal s
     assert.equal(url.searchParams.get("query"), filter.query);
     assert.equal(url.searchParams.get("componentId"), filter.componentId);
     assert.equal(url.searchParams.get("disposition"), filter.disposition);
+    assert.equal(url.searchParams.get("availability"), "MISSING", "stored-pointer audit and body availability are independent");
+    assert.equal(url.searchParams.get("pathBytes"), "ZXhhY3Q");
     assert.equal(url.searchParams.get("limit"), "100");
     assert.equal(url.searchParams.get("cursor"), cursor);
   }
-  const cleared = new URL(inventoryRoute(route, { query: "", componentId: "", disposition: "" }, null), "http://isolated.invalid");
-  for (const key of ["query", "componentId", "disposition", "cursor"]) assert.equal(cleared.searchParams.has(key), false);
+  const cleared = new URL(inventoryRoute(route, { query: "", componentId: "", disposition: "", availability: "", pathBytes: "" }, null), "http://isolated.invalid");
+  for (const key of ["query", "componentId", "disposition", "availability", "pathBytes", "cursor"]) assert.equal(cleared.searchParams.has(key), false);
 });
 
 test("live and historical material views expose accessible search and component-aware results without local page filtering", async () => {
   const source = await readFile(new URL("../app/source-truth/evidence-view.tsx", import.meta.url), "utf8");
   assert.match(source, /type="search"/, "path search must be available in the real material table");
   assert.match(source, /组件筛选/); assert.match(source, /处置筛选/);
+  assert.match(source, /内容状态筛选/);
   assert.match(source, /inventoryRoute\(/);
   assert.match(source, /matchedCount/);
   assert.doesNotMatch(source, /page\.items\.filter\(/, "the current page cannot stand in for a full inventory search");

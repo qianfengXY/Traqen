@@ -4,18 +4,18 @@ import type { DraftInput, FrozenVersion, SourceInput } from "./types.ts";
 
 const createSource = (kind: SourceInput["kind"]): SourceInput => ({ sourceId: crypto.randomUUID(), kind, mode: "UPDATE", label: kind === "GIT" ? "Git 源码" : "本机目录", ...(kind === "GIT" ? { url: "", ref: "HEAD", root: null, credentialRef: null } : {}) });
 
-export function SourceForm({ input, versions, disabled, gitEnabled, onChange, onPickDirectory, directoryName }: {
-  input: DraftInput; versions: FrozenVersion[]; disabled: boolean; gitEnabled: boolean; onChange: (input: DraftInput) => void; onPickDirectory: () => void; directoryName: string | null;
+export function SourceForm({ input, versions, disabled, gitEnabled, onChange, onPickDirectory, directoryName, stage = 2 }: {
+  input: DraftInput; versions: FrozenVersion[]; disabled: boolean; gitEnabled: boolean; onChange: (input: DraftInput) => void; onPickDirectory: () => void; directoryName: string | null; stage?: 1 | 2;
 }) {
   const selectedVersion = versions.find((version) => version.id === input.baselineBundleId);
   const changeSource = (kind: SourceInput["kind"], source: SourceInput) => onChange({ ...input, sources: input.sources.map((item) => item.kind === kind ? source : item) });
   return <div className="st-source-form">
-    <label>版本基线<select disabled={disabled} value={input.baselineBundleId ?? ""} onChange={(event) => onChange({ baselineBundleId: event.target.value || null, sources: input.sources.map((source) => source.mode === "REUSE" ? createSource(source.kind) : source) })}>
+    {stage === 2 && <><label>版本基线<select disabled={disabled} value={input.baselineBundleId ?? ""} onChange={(event) => onChange({ baselineBundleId: event.target.value || null, sources: input.sources.map((source) => source.mode === "REUSE" ? createSource(source.kind) : source) })}>
       <option value="">不设基线 · 首次或全量新版本</option>
       {input.baselineBundleId && !selectedVersion && <option value={input.baselineBundleId}>已锁定基线 {input.baselineBundleId.slice(0, 12)}（不在当前历史页）</option>}
       {versions.map((version) => <option key={version.id} value={version.id}>{new Date(version.publishedAt).toLocaleString("zh-CN")} · {version.id.slice(0, 12)}</option>)}
     </select></label>
-    <p className="st-muted">全量、增量都得到逻辑完整的新包。增量只传缺少的字节，不要求复制全部旧材料；目录的新增、修改和删除仍需完整核对。</p>
+    <p className="st-muted">全量、增量都得到逻辑完整的新包。增量只传缺少的字节，不要求复制全部旧材料；目录的新增、修改和删除仍需完整核对。</p></>}
     <div className="st-source-cards">{(["GIT", "DIRECTORY_UPLOAD"] as const).map((kind) => {
       const source = input.sources.find((source) => source.kind === kind);
       const previous = selectedVersion?.components.find((component) => component.kind === kind);
@@ -32,7 +32,7 @@ export function SourceForm({ input, versions, disabled, gitEnabled, onChange, on
           {source.mode === "REUSE" ? <p className="st-callout">沿用组件 <code>{source.componentId}</code>。无需重新选择目录或上传。</p> : kind === "GIT" ? <>
             <label>仓库 HTTPS 地址<input type="url" disabled={disabled} value={source.url ?? ""} placeholder="https://git.example.com/team/system.git" onChange={(event) => changeSource(kind, { ...source, url: event.target.value })} /></label>
             <label>版本或分支<input disabled={disabled} value={source.ref ?? "HEAD"} onChange={(event) => changeSource(kind, { ...source, ref: event.target.value })} /></label>
-            <label>目录根（留空代表全仓库）<input disabled={disabled} value={source.root ?? source.scope?.root ?? ""} placeholder="例如 services/orders" onChange={(event) => changeSource(kind, { ...source, root: event.target.value || null, scope: undefined })} /></label>
+            {stage === 2 && <label>目录根（留空代表全仓库）<input disabled={disabled} value={source.root ?? source.scope?.root ?? ""} placeholder="例如 services/orders" onChange={(event) => changeSource(kind, { ...source, root: event.target.value || null, scope: undefined })} /></label>}
             <label>已登记的只读连接引用（可选）<input disabled={disabled} value={source.credentialRef ?? ""} placeholder="连接引用，不是密码或 Token" onChange={(event) => changeSource(kind, { ...source, credentialRef: event.target.value || null })} /></label>
             {!disabled && <button className="st-link" type="button" onClick={() => changeSource(kind, createSource(kind))}>登记另一个 Git 仓库</button>}
           </> : <>

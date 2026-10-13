@@ -213,7 +213,7 @@ export class SourceBackupService {
     for await (const _ of this.targetBlobs.readBlob(scopeForDump(payload.id), payload.databaseArchive)) { /* authenticated bounded read */ }
     let objects = 0n, members = 0n, checkpoints = 0n, included = false;
     for await (const row of catalogueLines(catalogue)) {
-      requireValue(["OBJECT", "MEMBER", "MANIFEST", "CHECKPOINT"].includes(row.type), "SOURCE_BACKUP_CORRUPT", "备份清单包含未知类型");
+      requireValue(["OBJECT", "MEMBER", "MANIFEST", "CHECKPOINT", "GAP_ACCEPTANCE", "CONFIRMATION_GAP_ACCEPTANCE"].includes(row.type), "SOURCE_BACKUP_CORRUPT", "备份清单包含未知类型");
       if (row.type === "OBJECT") { for await (const _ of objectBytes(this.targetBlobs, row)) {} objects++; }
       if (row.type === "CHECKPOINT") checkpoints++;
       if (row.type === "MEMBER") {

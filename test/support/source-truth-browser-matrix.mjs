@@ -1,3 +1,4 @@
+import { startSource, openSourceVersion, acceptSourceGaps } from "./source-truth-browser-controls.mjs";
 // Browser UI acceptance with real PostgreSQL/HTTPS Git and browser OPFS handles.
 // OPFS exercises native FileSystemHandle reads, NOT the operating-system picker.
 import assert from "node:assert/strict";
@@ -53,36 +54,29 @@ try {
     window.showDirectoryPicker = async () => root;
   }, { name, count, version });
   const start = async () => {
-    await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).click(); await station(2);
-    await page.getByRole("button", { name: "确认范围并开始", exact: true }).click();
+    await startSource(page, station);
   };
   const review = async (gaps = false) => {
     await station(7);
-    assert.equal(await page.getByRole("button", { name: "确认清单与缺口", exact: true }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "冻结来源包", exact: true }).isDisabled(), true);
     if (gaps) {
-      // After a remount, textarea child text contains the prior value. Match
-      // its accessible name, not the implicit label's value-bearing full text.
-      await page.getByRole("textbox", { name: "接受全部非阻断缺口的理由", exact: true }).fill("浏览器试点明确接受未取得的 LFS 外部正文");
-      const date = new Date(Date.now() + 3600000);
-      const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-      await page.locator('.st-current input[type="datetime-local"]').fill(local);
+      await acceptSourceGaps(page, "浏览器试点明确接受未取得的 LFS 外部正文");
     }
     await page.getByRole("checkbox", { name: /^我已核对完整清单/ }).check();
-    await page.getByRole("button", { name: "确认清单与缺口", exact: true }).click(); await station(8);
   };
   const seal = async (workspace) => {
-    await page.getByRole("button", { name: "冻结包", exact: true }).click();
-    await page.getByRole("heading", { name: "冻结包已建立", exact: true }).waitFor({ timeout: 45000 });
+    await page.getByRole("button", { name: "冻结来源包", exact: true }).click();
+    await page.getByRole("heading", { name: "来源包已冻结", exact: true }).waitFor({ timeout: 45000 });
     const history = await f.read(workspace, "/history/bundles?limit=50");
     return history.items[0];
   };
   await connect("directory"); await station(1);
-  assert.equal(await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "继续配置范围", exact: true }).isDisabled(), true);
   assert.equal(await page.locator(".st-source-card").count(), 2);
   const beforePreview = mutations.length;
   for (let i = 2; i <= 8; i++) {
     await page.getByRole("button", { name: new RegExp(`^第 ${i} 站`) }).click();
-    assert.equal(await page.getByRole("button", { name: "冻结包", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "冻结来源包", exact: true }).count(), 0);
   }
   assert.equal(mutations.length, beforePreview);
   await page.getByRole("button", { name: "回到当前 · 第 1 站", exact: true }).click();
@@ -112,30 +106,30 @@ try {
   const d1 = await seal("directory"); await page.unroute(/\/runs\/[^/]+\/seal$/);
   assert.equal((await f.read("directory", "/history/bundles?limit=50")).items.length, 1);
   assert.equal((await f.read("directory", "/history/receipts?limit=50")).items.length, 1);
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
-  await page.getByRole("button", { name: "完整材料清单", exact: true }).click();
-  await page.locator(".st-version-view tbody tr").first().waitFor();
-  assert.equal(await page.locator(".st-version-view tbody tr").count(), 100);
+  await openSourceVersion(page);
+  await page.getByRole("tab", { name: "材料清单", exact: true }).click();
+  await page.locator(".st-version-view tbody tr:visible").first().waitFor();
+  assert.equal(await page.locator(".st-version-view tbody tr:visible").count(), 100);
   await page.locator(".st-version-view").getByRole("button", { name: "下一页", exact: true }).click();
-  await page.waitForFunction(() => document.querySelectorAll(".st-version-view tbody tr").length === 6);
+  await page.waitForFunction(() => document.querySelectorAll(".st-version-view [role=tabpanel]:not([hidden]) tbody tr").length === 6);
   const inventoryView = page.locator(".st-version-view");
   const beforeSearch = mutations.length;
   await inventoryView.getByLabel("路径搜索", { exact: true }).fill("file-104");
   await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 1 项 · 本页 1 项", { exact: true }).waitFor();
-  assert.ok((await inventoryView.locator("tbody").innerText()).includes("file-104.txt"));
+  assert.ok((await inventoryView.locator("tbody:visible").innerText()).includes("file-104.txt"));
   await inventoryView.getByRole("button", { name: "清除筛选", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 106 项 · 本页 100 项", { exact: true }).waitFor();
   await inventoryView.getByRole("combobox", { name: "处置筛选", exact: true }).selectOption("METADATA");
   await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 1 项 · 本页 1 项", { exact: true }).waitFor();
-  assert.ok((await inventoryView.locator("tbody").innerText()).includes("empty"));
+  assert.ok((await inventoryView.locator("tbody:visible").innerText()).includes("empty"));
   assert.equal(mutations.length, beforeSearch, "search and clearing filters are reads only");
   await page.screenshot({ path: path.join(evidenceDirectory, "directory-inventory-filter.png"), fullPage: true });
   results.push({ case: "directory", run: paused.id, bundle: d1.id, files: 105, emptyDirectories: 1, refreshResumedSameRun: true, responseLossRecoveredOneReceipt: lost, inventoryPages: [100, 6], mobileCurrentVisible: true });
   await save();
 
-  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(1);
+  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(2);
   assert.equal(await page.getByRole("combobox", { name: "版本基线", exact: true }).inputValue(), d1.id);
   await page.getByRole("combobox", { name: "本版处理", exact: true }).selectOption("UPDATE");
   await picker("directory-v1", 105, 2);
@@ -167,7 +161,7 @@ try {
   await start(); await review(true); const combined = await seal("combined");
   assert.equal(combined.components.length, 2); assert.equal(combined.latestReceipt.status, "READY_WITH_ACCEPTED_GAPS");
   // Completion describes the run; the immutable Receipt describes accepted gaps.
-  const frozenResult = page.locator(".st-current .st-callout").filter({ has: page.getByRole("heading", { name: "冻结包已建立", exact: true }) });
+  const frozenResult = page.locator(".st-current .st-callout").filter({ has: page.getByRole("heading", { name: "来源包已冻结", exact: true }) });
   assert.equal(await frozenResult.count(), 1);
   assert.match(await frozenResult.getAttribute("class"), /\bwarning\b/);
   assert.equal(await frozenResult.getByText("READY_WITH_ACCEPTED_GAPS", { exact: true }).count(), 1);
@@ -175,8 +169,8 @@ try {
   assert.notEqual(combined.latestReceipt.gapCount, "0");
   assert.equal(await page.locator(".st-heading .st-badge").innerText(), "包已冻结 · 当前准入另行核验");
   await page.screenshot({ path: path.join(evidenceDirectory, "combined-frozen-gaps.png"), fullPage: true });
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
-  await page.getByRole("button", { name: "完整材料清单", exact: true }).click();
+  await openSourceVersion(page);
+  await page.getByRole("tab", { name: "材料清单", exact: true }).click();
   await inventoryView.getByLabel("路径搜索", { exact: true }).fill("README.md");
   await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 2 项 · 本页 2 项", { exact: true }).waitFor();
@@ -184,13 +178,13 @@ try {
     await inventoryView.getByRole("combobox", { name: "组件筛选", exact: true }).selectOption(component.id);
     await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
     await inventoryView.getByText("当前筛选匹配 1 项 · 本页 1 项", { exact: true }).waitFor();
-    assert.ok((await inventoryView.locator("tbody").innerText()).includes(component.kind));
+    assert.ok((await inventoryView.locator("tbody:visible").innerText()).includes(component.kind));
   }
   await page.screenshot({ path: path.join(evidenceDirectory, "combined-inventory-components.png"), fullPage: true });
   results.push({ case: "combined", bundle: combined.id, status: combined.latestReceipt.status, gapCount: combined.latestReceipt.gapCount, independentComponents: 2 });
   await save();
 
-  await page.getByRole("button", { name: "凭据与准入", exact: true }).click();
+  await page.getByRole("tab", { name: "Receipt", exact: true }).click();
   const oldReceiptHistory = await f.read("combined", `/bundles/${combined.id}/receipts?limit=20`);
   assert.equal(oldReceiptHistory.items.length, 1);
   await page.locator(".st-renewal summary").click();
@@ -220,9 +214,9 @@ try {
   await page.getByText("当前成员为只读权限，可查看历史与证据，不能创建任务、上传、确认或冻结。", { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "创建新版本", exact: true }).isDisabled(), true);
   assert.equal(await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).count(), 0);
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
+  await openSourceVersion(page);
   assert.equal(await page.locator(".st-renewal").count(), 0);
-  await page.getByRole("button", { name: "完整材料清单", exact: true }).click();
+  await page.getByRole("tab", { name: "材料清单", exact: true }).click();
   await inventoryView.getByLabel("路径搜索", { exact: true }).fill("README.md");
   await inventoryView.getByRole("button", { name: "搜索清单", exact: true }).click();
   await inventoryView.getByText("当前筛选匹配 2 项 · 本页 2 项", { exact: true }).waitFor();
@@ -230,14 +224,14 @@ try {
   results.push({ case: "read-only", canSearchHistory: true, noMutation: true, cannotRenewOrCreate: true }); await save();
 
   await connect("combined");
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
-  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(1);
+  await openSourceVersion(page);
+  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(2);
   await page.getByRole("checkbox", { name: "上传目录", exact: true }).uncheck();
   await start(); await review(true); const gitOnly = await seal("combined");
   assert.equal(gitOnly.components.length, 1); assert.equal(gitOnly.components[0].kind, "GIT");
   const removedDirectory = combined.components.find((component) => component.kind === "DIRECTORY_UPLOAD");
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").first().click();
-  await page.getByRole("button", { name: "文件级版本差异", exact: true }).click();
+  await openSourceVersion(page);
+  await page.getByRole("tab", { name: "版本历史", exact: true }).click();
   const baselineSelect = inventoryView.getByRole("combobox", { name: "从哪个冻结包比较", exact: true });
   const sourceSelect = inventoryView.getByRole("combobox", { name: "来源", exact: true });
   const compareButton = inventoryView.getByRole("button", { name: "比较文件级变化", exact: true });
@@ -248,21 +242,21 @@ try {
   assert.match(await sourceSelect.locator("option:checked").innerText(), /来源已移除（仅基线）/);
   await compareButton.click();
   await inventoryView.getByText(/无法逐项对比：SOURCE_REMOVED/).waitFor();
-  assert.equal(await inventoryView.locator("tbody tr").count(), 0);
+  assert.equal(await inventoryView.locator("tbody tr:visible").count(), 0);
   await page.screenshot({ path: path.join(evidenceDirectory, "delta-removed-source.png"), fullPage: true });
   await baselineSelect.selectOption("");
   assert.equal(await sourceSelect.inputValue(), gitOnly.components[0].sourceId);
   assert.equal(await sourceSelect.locator("option").count(), 1);
   assert.equal(await compareButton.isDisabled(), true);
   assert.equal(await inventoryView.getByText(/无法逐项对比：SOURCE_REMOVED/).count(), 0);
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: combined.id.slice(0, 12) }).click();
-  await page.getByRole("button", { name: "文件级版本差异", exact: true }).click();
+  await openSourceVersion(page, combined.id);
+  await page.getByRole("tab", { name: "版本历史", exact: true }).click();
   await baselineSelect.selectOption(gitOnly.id);
   await sourceSelect.selectOption(removedDirectory.sourceId);
   assert.match(await sourceSelect.locator("option:checked").innerText(), /来源新增（仅目标）/);
   await compareButton.click();
   await inventoryView.getByText(/无法逐项对比：SOURCE_ADDED/).waitFor();
-  assert.equal(await inventoryView.locator("tbody tr").count(), 0);
+  assert.equal(await inventoryView.locator("tbody tr:visible").count(), 0);
   assert.equal(mutations.length, beforeComparison, "version comparison and selection changes are GET-only");
   const finalHistory = await f.read("combined", "/history/bundles?limit=50");
   assert.deepEqual(finalHistory.items.find((item) => item.id === gitOnly.id), gitOnly);
@@ -276,12 +270,13 @@ try {
   await page.getByRole("checkbox", { name: "Git 仓库", exact: true }).check();
   await page.getByLabel("仓库 HTTPS 地址", { exact: true }).fill(f.source.url);
   await page.getByLabel("版本或分支", { exact: true }).fill(f.source.commitA);
+  await page.getByRole("button", { name: "继续配置范围", exact: true }).click(); await station(2);
   await page.getByLabel("目录根（留空代表全仓库）", { exact: true }).fill("missing-root");
   await start();
   await page.waitForFunction(() => document.querySelector(".st-heading .st-badge")?.textContent?.includes("阻断"), null, { timeout: 30000 });
   assert.equal((await f.read("blocked", "/history/bundles?limit=50")).items.length, 0);
   assert.equal((await f.read("blocked", "/history/receipts?limit=50")).items.length, 0);
-  assert.equal(await page.getByRole("button", { name: "冻结包", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "冻结来源包", exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "确认清单与缺口", exact: true }).count(), 0);
   results.push({ case: "blocked-root", bundles: 0, receipts: 0, noAcceptBypass: true });
   await recoveryJourneys({ f, page, station, connect, picker, start, review, seal, mutations, evidenceDirectory,

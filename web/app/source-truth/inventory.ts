@@ -1,4 +1,4 @@
-export type InventoryFilter = { query: string; componentId: string; disposition: string };
+export type InventoryFilter = { query: string; componentId: string; disposition: string; availability?: string; pathBytes?: string };
 
 export function inventoryRoute(route: string, filter: InventoryFilter, cursor: string | null) {
   const [pathname, search = ""] = route.split("?", 2);

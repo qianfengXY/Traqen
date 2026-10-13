@@ -1,3 +1,4 @@
+import { startSource, openSourceVersion, acceptSourceGaps } from "./source-truth-browser-controls.mjs";
 // B-13 small-fixture UI boundaries. Native OPFS handles, not an OS picker test.
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -54,19 +55,18 @@ try {
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
     await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
   };
-  const start = async () => { await button("保存来源，确认范围").click(); await station(2); await button("确认范围并开始").click(); };
+  const start = () => startSource(page, station);
   const seal = async (workspace, emptyGit = false) => {
     await station(7);
     if (emptyGit) {
       await page.locator('.st-source-line').getByText('已确认空 Git 版本，0 个文件', { exact: true }).waitFor({ timeout: 1500 });
       await screenshot(`${workspace}-empty-review`);
     } else assert.equal(await page.getByText('已确认空 Git 版本，0 个文件', { exact: true }).count(), 0);
-    assert.equal(await button("确认清单与缺口").isDisabled(), true);
+    assert.equal(await button("冻结来源包").isDisabled(), true);
     await page.getByRole("checkbox", { name: /^我已核对完整清单/ }).check();
-    await button("确认清单与缺口").click(); await station(8);
+    await button("冻结来源包").click();
+    await page.getByRole("heading", { name: "来源包已冻结", exact: true }).waitFor({ timeout: 45000 });
     if (emptyGit) await page.locator('.st-source-line').getByText('已确认空 Git 版本，0 个文件', { exact: true }).waitFor({ timeout: 1500 });
-    await button("冻结包").click();
-    await page.getByRole("heading", { name: "冻结包已建立", exact: true }).waitFor({ timeout: 45000 });
     return (await f.read(workspace, "/history/bundles?limit=50")).items[0];
   };
   const gitInput = async (commit) => {
@@ -74,8 +74,8 @@ try {
     await page.getByLabel("版本或分支", { exact: true }).fill(commit);
   };
   const selectVersion = async (version) => {
-    await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: version.id.slice(0, 12) }).click();
-    await page.locator(".st-version-view").getByRole("heading", { name: `冻结包 ${version.id.slice(0, 12)}…`, exact: true }).waitFor();
+    await openSourceVersion(page, version.id);
+    await page.locator(".st-version-view").getByRole("heading", { name: `来源包已冻结 · ${version.id.slice(0, 12)}…`, exact: true }).waitFor();
   };
   const assertEmptyGit = async (workspace, version) => {
     assert.equal(version.counts.fileCount, "0"); assert.equal(version.counts.directoryCount, "0");
@@ -88,7 +88,7 @@ try {
     await identities.getByText(version.components[0].manifestId, { exact: true }).waitFor();
     await identities.getByText('全仓库', { exact: true }).waitFor();
     await page.getByText(/本次核验通过；凭据/).waitFor();
-    await button("完整材料清单").click();
+    await page.getByRole("tab", { name: "材料清单", exact: true }).click();
     await page.locator(".st-version-view").getByText("当前筛选匹配 0 项 · 本页 0 项", { exact: true }).waitFor();
     const inventory = await f.read(workspace, `/bundles/${version.id}/inventory-history?receiptId=${version.latestReceipt.id}&limit=100`);
     assert.equal(inventory.matchedCount, "0"); assert.deepEqual(inventory.items, []); assert.equal(inventory.nextCursor, null);
@@ -98,7 +98,7 @@ try {
   await page.getByRole("checkbox", { name: "Git 仓库", exact: true }).check();
   await gitInput(f.source.commitA); await start(); const original = await seal("git");
   assert.equal(original.counts.fileCount, "2"); assert.equal(original.counts.directoryCount, "1");
-  await button("创建新版本").click(); await station(1);
+  await button("创建新版本").click(); await station(2);
   await page.getByRole("combobox", { name: "本版处理", exact: true }).selectOption("UPDATE");
   await gitInput(emptyCommit); await start(); const empty = await seal("git", true);
   await assertEmptyGit("git", empty);
@@ -114,11 +114,11 @@ try {
   assert.equal(deleted.length, 3);
   assert.ok(deleted.every((row) => row.change === "DELETED" && row.before.bundleId === original.id && row.after === null));
   assert.deepEqual(deleted.map((row) => Buffer.from(row.pathBytes, "base64url").toString()), ["README.md", "src", "src/orders.js"]);
-  await button("文件级版本差异").click();
+  await page.getByRole("tab", { name: "版本历史", exact: true }).click();
   await page.getByRole("combobox", { name: "从哪个冻结包比较", exact: true }).selectOption(original.id);
   await button("比较文件级变化").click();
   await page.getByText("added 0 · modified 0 · deleted 3 · unchanged 0（文件与目录条目）", { exact: true }).waitFor();
-  assert.equal(await page.locator(".st-version-view tbody tr").count(), 3);
+  assert.equal(await page.locator(".st-version-view tbody tr:visible").count(), 3);
   assert.deepEqual(await f.read("git", `/bundles/${original.id}`), original);
   await screenshot("git-full-deletion");
   await record({ case: "git-full-deletion", from: original.id, to: empty.id, commit: emptyCommit, fileCount: "0", directoryCount: "0", deletedEntries: 3, deltaPages: 3, originalUnchanged: true, explicitEmptyNoticeAtReviewSealAndHistory: true });
@@ -138,7 +138,7 @@ try {
   const assertNoEmptyDirectoryPublication = async (expectedBundles) => {
     await page.getByText("所选目录必须含至少一个文件；全部删除不能发布为空目录版本", { exact: true }).waitFor();
     assert.equal(await page.getByText('已确认空 Git 版本，0 个文件', { exact: true }).count(), 0);
-    assert.equal(await button("确认清单与缺口").count(), 0); assert.equal(await button("冻结包").count(), 0);
+    assert.equal(await button("确认清单与缺口").count(), 0); assert.equal(await button("冻结来源包").count(), 0);
     assert.equal((await f.read("directory", "/history/bundles?limit=50")).items.length, expectedBundles);
     assert.equal((await f.read("directory", "/history/receipts?limit=50")).items.length, expectedBundles);
     const run = (await f.read("directory")).activeRun;
@@ -156,7 +156,7 @@ try {
   await picker("one-zero-byte-file", true); await button("重新选择目录并继续").click();
   const directory = await seal("directory"); assert.equal(directory.counts.fileCount, "1");
   assert.equal((await f.read("directory", `/runs/${rejectedFirst.id}/view`)).run.status, "SUCCEEDED");
-  await button("创建新版本").click(); await station(1);
+  await button("创建新版本").click(); await station(2);
   await page.getByRole("combobox", { name: "本版处理", exact: true }).selectOption("UPDATE");
   await picker("replacement-empty", false);
   await button("重新选择目录").click(); await start();

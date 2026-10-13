@@ -1,3 +1,4 @@
+import { startSource, openSourceVersion, acceptSourceGaps } from "./source-truth-browser-controls.mjs";
 // Full browser enumeration of 50k directory files beside an exact reused 50k Git
 // component. OPFS is real browser storage, NOT the OS directory picker. Only a
 // fresh copy of a cold, identified test database and blob store receives writes.
@@ -127,8 +128,8 @@ try {
   await page.waitForSelector(".connection-button.healthy"); await page.locator(".diagnostic-drawer header button").click();
   await page.getByLabel("切换工作区", { exact: true }).selectOption({ label: "Workspace" });
     await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: base.id.slice(0, 12) }).click();
-  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(1);
+  await openSourceVersion(page, base.id);
+  await page.getByRole("button", { name: "从选中的冻结包创建新版本", exact: true }).click(); await station(2);
   assert.equal(await page.getByRole("combobox", { name: "版本基线", exact: true }).inputValue(), base.id);
   const gitCard = page.locator(".st-source-card").filter({ has: page.getByRole("checkbox", { name: "Git 仓库", exact: true }) });
   const directoryCard = page.locator(".st-source-card").filter({ has: page.getByRole("checkbox", { name: "上传目录", exact: true }) });
@@ -158,8 +159,7 @@ try {
   assert.equal(report.localFixture.fileCount, 50000);
   await directoryCard.getByRole("button", { name: "选择本机目录", exact: true }).click();
   await stage("browser-full-enumeration-and-incremental-capture", async () => {
-    await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).click(); await station(2);
-    await page.getByRole("button", { name: "确认范围并开始", exact: true }).click();
+    await startSource(page, station);
     await page.waitForFunction(() => document.querySelector('.st-rail [aria-current="step"]')?.getAttribute("data-station") === "7"
       || Boolean(document.querySelector('.st-workbench .st-callout.danger[role="alert"], .st-heading .st-badge.danger')), null, { timeout: 900000 });
     assert.equal(await page.locator('.st-workbench .st-callout.danger[role="alert"], .st-heading .st-badge.danger').count(), 0, "capture failed; inspect retained page diagnostics");
@@ -177,13 +177,12 @@ try {
   assert.equal(detail.candidate.fileCount, "100000"); assert.equal(detail.candidate.gapCount, "0"); assert.equal(detail.result, null);
   assert.equal(detail.sources.find((source) => source.kind === "GIT").mode, "REUSE");
   assert.equal(detail.sources.find((source) => source.kind === "DIRECTORY_UPLOAD").manifestId, report.closedManifest.manifestId);
-  assert.equal(await page.getByRole("button", { name: "确认清单与缺口", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "冻结来源包", exact: true }).isDisabled(), true);
   await page.screenshot({ path: path.join(evidenceDirectory, "100k-browser-review.png"), fullPage: true });
   await stage("explicit-confirm-and-freeze", async () => {
     await page.getByRole("checkbox", { name: /^我已核对完整清单/ }).check();
-    await page.getByRole("button", { name: "确认清单与缺口", exact: true }).click(); await station(8);
-    await page.getByRole("button", { name: "冻结包", exact: true }).click();
-    await page.getByRole("heading", { name: "冻结包已建立", exact: true }).waitFor({ timeout: 300000 });
+    await page.getByRole("button", { name: "冻结来源包", exact: true }).click();
+    await page.getByRole("heading", { name: "来源包已冻结", exact: true }).waitFor({ timeout: 300000 });
   });
   const history = await f.read("/history/bundles?limit=50"); assert.equal(history.items.length, 4);
   const next = history.items.find((item) => !bundleIds.includes(item.id)); assert.ok(next);
@@ -193,14 +192,14 @@ try {
   assert.notEqual(directory.id, previousDirectory.id); assert.equal(directory.fileCount, "50000"); assert.equal(directory.manifestId, report.closedManifest.manifestId);
   for (const item of prior.items) assert.deepEqual(await f.read(`/bundles/${item.id}`), item);
   await f.assertPriorHistoryUnchanged();
-  await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: next.id.slice(0, 12) }).click();
+  await openSourceVersion(page, next.id);
   const view = page.locator(".st-version-view");
-  await view.getByRole("button", { name: "文件级版本差异", exact: true }).click();
+  await view.getByRole("tab", { name: "版本历史", exact: true }).click();
   await view.getByRole("combobox", { name: "从哪个冻结包比较", exact: true }).selectOption(base.id);
   await view.getByRole("combobox", { name: "来源", exact: true }).selectOption(previousDirectory.sourceId);
   await view.getByRole("button", { name: "比较文件级变化", exact: true }).click();
   await view.getByText(/added 0 · modified 1 · deleted 0/).waitFor();
-  assert.equal(await view.locator("tbody tr").count(), 1); assert.match(await view.locator("tbody").innerText(), /f000003\.txt/);
+  assert.equal(await view.locator("tbody tr:visible").count(), 1); assert.match(await view.locator("tbody:visible").innerText(), /f000003\.txt/);
   await view.scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(evidenceDirectory, "100k-browser-delta.png") });
   assert.equal(network.runCreates, 1); assert.equal(network.confirmations, 1); assert.equal(network.seals, 1);
   assert.deepEqual(network.otherWrites, []); assert.deepEqual(issues, []); assert.deepEqual(pageErrors, []);

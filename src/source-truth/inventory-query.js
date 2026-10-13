@@ -6,11 +6,19 @@ import { fail, requireValue } from "./errors.js";
 export function inventoryOptions(input = {}, binding) {
   const { limit = 100, cursor = null } = input;
   const query = input.query ?? "", disposition = input.disposition || null, componentId = input.componentId || null;
+  const availability = input.availability || null;
+  const pathBytes = input.pathBytes || null;
+  let exactPath = null;
+  if (pathBytes !== null) {
+    try { exactPath = decodePathBytes(pathBytes); }
+    catch { fail("SOURCE_INVALID_INPUT", "精确材料路径定位无效", { status: 400 }); }
+  }
   requireValue(Number.isInteger(limit) && limit > 0 && limit <= 1000, "SOURCE_INVALID_INPUT", "分页大小必须为 1～1000", { status: 400 });
   requireValue(typeof query === "string" && query.isWellFormed() && Buffer.byteLength(query) <= 256 && !/[\u0000-\u001f\u007f]/.test(query), "SOURCE_INVALID_INPUT", "路径搜索须为不超过 256 UTF-8 字节的文本", { status: 400 });
   requireValue(disposition === null || ["PENDING", "VERIFIED", "METADATA", "EXTERNAL_GAP"].includes(disposition), "SOURCE_INVALID_INPUT", "处置筛选无效", { status: 400 });
+  requireValue(availability === null || ["PENDING", "VERIFIED", "METADATA", "MISSING"].includes(availability), "SOURCE_INVALID_INPUT", "内容状态筛选无效", { status: 400 });
   requireValue(componentId === null || (binding.bundleId && typeof componentId === "string" && /^[a-f0-9]{64}$/.test(componentId)), "SOURCE_INVALID_INPUT", "组件筛选无效", { status: 400 });
-  const queryId = createHash("sha256").update(canonicalEncode({ binding, query, disposition, componentId })).digest("hex");
+  const queryId = createHash("sha256").update(canonicalEncode({ binding, query, disposition, componentId, availability, pathBytes })).digest("hex");
   let after = null;
   if (cursor !== null) {
     try {
@@ -20,7 +28,7 @@ export function inventoryOptions(input = {}, binding) {
       after.path = decodePathBytes(after.pathBytes);
     } catch { fail("SOURCE_INVALID_INPUT", "分页定位符与当前版本、来源或筛选不符，请回到首页", { status: 400 }); }
   }
-  return { limit, after, queryId, queryBytes: Buffer.from(query), disposition, componentId };
+  return { limit, after, queryId, queryBytes: Buffer.from(query), disposition, componentId, availability, exactPath };
 }
 
 export function inventoryResult(rows, options, matchedCount) {

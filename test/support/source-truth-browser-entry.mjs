@@ -69,7 +69,7 @@ try {
   await page.getByRole("heading", { name: "来源访问尚未就绪", exact: true }).waitFor();
   assert.equal(requests, 2);
   assert.equal(await page.getByText("正在验证来源访问权限和存储状态…", { exact: true }).count(), 0);
-  assert.equal(await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "继续配置范围", exact: true }).count(), 0);
   const list = await fetch(`${f.apiBase}/v1/workspaces?userId=WEB-OPERATOR`, { headers: { "x-traqen-api-token": f.token } });
   assert.equal(list.status, 200);
   const created = (await list.json()).workspaces.filter((item) => item.name === "Entry verification only");
@@ -82,7 +82,7 @@ try {
   await page.getByLabel("切换工作区", { exact: true }).selectOption("directory");
   await page.locator(".nav-button").filter({ hasText: "来源快照" }).click();
   await page.getByRole("heading", { name: "快照旅程", exact: true }).waitFor();
-  assert.equal(await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).isDisabled(), true);
+  assert.equal(await page.getByRole("button", { name: "继续配置范围", exact: true }).isDisabled(), true);
   for (const width of [320, 390, 768, 1280, 1440, 1600, 1920, 2560]) {
     await page.setViewportSize({ width, height: 900 });
     await page.locator(".st-heading").scrollIntoViewIfNeeded();
@@ -91,9 +91,9 @@ try {
     await page.screenshot({ path: path.join(evidenceDirectory, `sources-${width}.png`) });
   }
   await page.setViewportSize({ width: 1280, height: 900 });
-  const step = page.getByRole("button", { name: "第 2 站 确认范围（只读预览）", exact: true });
+  const step = page.getByRole("button", { name: "第 2 站 配置范围（只读预览）", exact: true });
   await step.focus(); await page.keyboard.press("Enter");
-  assert.equal(await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "继续配置范围", exact: true }).count(), 0);
   await page.getByRole("button", { name: "回到当前 · 第 1 站", exact: true }).click();
   assert.equal((await f.read("directory")).activeRun, null);
   for (const theme of ["light", "dark"]) {

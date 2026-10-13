@@ -1,3 +1,4 @@
+import { startSource, openSourceVersion, acceptSourceGaps } from "./source-truth-browser-controls.mjs";
 // Read-only UI load against three COMPLETE captured 100k-file versions.
 // This does not test browser capture, the native picker, or disaster deployment.
 import assert from "node:assert/strict";
@@ -50,14 +51,14 @@ try {
   };
   const view = () => page.locator(".st-version-view");
   const selectVersion = async (id) => {
-    await page.locator(".st-history-columns > div").first().locator(".st-history-row").filter({ hasText: id.slice(0, 12) }).click();
-    await view().getByRole("heading", { name: `冻结包 ${id.slice(0, 12)}…`, exact: true }).waitFor();
-    await view().getByRole("button", { name: "完整材料清单", exact: true }).click();
-    await view().locator("tbody tr").first().waitFor();
+    await openSourceVersion(page, id);
+    await view().getByRole("heading", { name: `来源包已冻结 · ${id.slice(0, 12)}…`, exact: true }).waitFor();
+    await view().getByRole("tab", { name: "材料清单", exact: true }).click();
+    await view().locator("tbody tr:visible").first().waitFor();
   };
   const measure = async (name, since) => {
     const value = await page.evaluate(() => ({ domNodes: document.querySelectorAll("*").length,
-      renderedRows: document.querySelectorAll(".st-version-view tbody tr").length,
+      renderedRows: document.querySelectorAll(".st-version-view [role=tabpanel]:not([hidden]) tbody tr").length,
       browserHeapBytes: performance.memory?.usedJSHeapSize ?? null }));
     assert.ok(value.renderedRows <= 100, "a bounded page must not render the entire 100k inventory");
     assert.ok(value.domNodes < 5000, "history UI DOM must stay bounded");
@@ -75,14 +76,14 @@ try {
     await selectVersion(id);
     const version = originalHistory.items.find((item) => item.id === id), entries = Number(version.counts.fileCount) + Number(version.counts.directoryCount);
     await view().getByText(`当前筛选匹配 ${entries} 项 · 本页 100 项`, { exact: true }).waitFor();
-    assert.equal(await view().locator("tbody tr").count(), 100);
-    const firstPath = await view().locator("tbody tr").first().innerText();
+    assert.equal(await view().locator("tbody tr:visible").count(), 100);
+    const firstPath = await view().locator("tbody tr:visible").first().innerText();
     const nextPage = page.waitForResponse((response) => response.url().includes("/inventory-history?") && new URL(response.url()).searchParams.has("cursor"));
     await view().getByRole("button", { name: "下一页", exact: true }).click(); await nextPage;
     await page.waitForFunction((previous) => document.querySelector(".st-version-view tbody tr")?.innerText !== previous, firstPath);
-    assert.equal(await view().locator("tbody tr").count(), 100);
+    assert.equal(await view().locator("tbody tr:visible").count(), 100);
     await search("f049999.txt", 1);
-    assert.ok((await view().locator("tbody").innerText()).includes("f049999.txt"));
+    assert.ok((await view().locator("tbody:visible").innerText()).includes("f049999.txt"));
     await measure(`100k-version-${bundleIds.indexOf(id) + 1}-page-and-tail-search`, since);
   }
   await search("new-document.txt", 1);
@@ -99,14 +100,14 @@ try {
     await view().getByRole("button", { name: "搜索清单", exact: true }).click();
     await view().getByText(`当前筛选匹配 ${count} 项 · 本页 100 项`, { exact: true }).waitFor();
   }
-  await view().getByRole("button", { name: "文件级版本差异", exact: true }).click();
+  await view().getByRole("tab", { name: "版本历史", exact: true }).click();
   await view().getByRole("combobox", { name: "从哪个冻结包比较", exact: true }).selectOption(bundleIds[1]);
   await view().getByRole("combobox", { name: "来源", exact: true }).selectOption("directory");
   const deltaStart = performance.now();
   await view().getByRole("button", { name: "比较文件级变化", exact: true }).click();
   await view().getByText(/added 1 · modified 1 · deleted 1/).waitFor();
-  assert.equal(await view().locator("tbody tr").count(), 3);
-  const differences = await view().locator("tbody").innerText();
+  assert.equal(await view().locator("tbody tr:visible").count(), 3);
+  const differences = await view().locator("tbody:visible").innerText();
   for (const word of ["f000002.txt", "f000003.txt", "new-document.txt", "DELETED", "MODIFIED", "ADDED"]) assert.ok(differences.includes(word));
   await measure("100k-complete-version-delta", deltaStart);
   await view().scrollIntoViewIfNeeded(); await page.screenshot({ path: path.join(evidenceDirectory, "100k-version-delta.png") });

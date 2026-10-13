@@ -4,7 +4,7 @@ import { sourceJourney, sourceStations } from "../app/source-truth/journey.ts";
 
 test("all eight stations share one workbench; browsing a future or past station never grants execution", () => {
   assert.equal(sourceStations.length, 8);
-  assert.equal(sourceStations[7], "冻结包");
+  assert.deepEqual(sourceStations, ["添加来源", "配置范围", "自动预检", "枚举材料", "冻结清单", "采集与校验", "核对与缺口", "冻结来源包"]);
   assert.equal(sourceJourney(null, 0, false).current, 1);
   assert.equal(sourceJourney(null, 1, false).action, "START");
   const review = { status: "REVIEW_REQUIRED", station: 7 };

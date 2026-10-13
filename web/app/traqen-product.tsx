@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
 import { desktopScale, productHref, readProductRoute, subscribeProductRoute, writeProductRoute, type ProductView } from "./product-navigation";
 import { NavigationIcon } from "./navigation-icon";
@@ -8,6 +8,7 @@ import "./product-shell.css";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { SourceTruthWorkbench } from "./source-truth/workbench";
+import { sourceEntryFromSearch, type SourceEntryContext } from "./source-truth/context";
 import { WorkspaceConnection, connectionIssue, type ConnectionIssue } from "./workspace-connection";
 import { createDefaultChildSlots } from "./capability-roster";
 import { F006SettingsCenter } from "./f006-settings-center";
@@ -157,6 +158,10 @@ function ServerOwnedProduct() {
   const routeSearch = useSyncExternalStore(subscribeProductRoute, () => window.location.search, () => "");
   const route = readProductRoute(routeSearch);
   const view = route.view;
+  const routeSourceEntry = useMemo(() => sourceEntryFromSearch(routeSearch), [routeSearch]);
+  const [rememberedSourceEntry, setRememberedSourceEntry] = useState<SourceEntryContext | undefined>();
+  if (view === "workspace" && rememberedSourceEntry !== routeSourceEntry) setRememberedSourceEntry(routeSourceEntry);
+  const sourceEntry = view === "workspace" ? routeSourceEntry : rememberedSourceEntry;
   const sourceDirty = useRef(false);
   const setView = useCallback((next: View) => {
     writeProductRoute(next, readProductRoute(window.location.search).workspaceId);
@@ -1068,7 +1073,7 @@ function ServerOwnedProduct() {
       <div id="product-content" tabIndex={-1}>
         {(view === "graph" || view === "review") && <nav className="page-subnav" aria-label="业务图谱视图">{([["graph", "图谱"], ["review", "待确认问题"]] as const).map(([key, label]) => <a key={key} href={productHref(key, route.workspaceId)} aria-current={view === key ? "page" : undefined} onClick={event => { event.preventDefault(); setView(key); }}>{label}{key === "review" && openReviewCount > 0 ? ` · ${openReviewCount}` : ""}</a>)}</nav>}
         {renderView()}
-        {health === "healthy" && activeWorkspace && (view === "workspace" || visitedSource === activeWorkspace.id) && <div hidden={view !== "workspace"}><SourceTruthWorkbench key={activeWorkspace.id} apiBase={apiBase} apiToken={apiToken} workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onDirtyChange={onSourceDirty} /></div>}
+        {health === "healthy" && activeWorkspace && (view === "workspace" || visitedSource === activeWorkspace.id) && <div hidden={view !== "workspace"}><SourceTruthWorkbench key={`${activeWorkspace.id}:${sourceEntry?.bundleId ?? "standalone"}:${sourceEntry?.receiptId ?? ""}`} apiBase={apiBase} apiToken={apiToken} workspaceId={activeWorkspace.id} workspaceName={activeWorkspace.name} onDirtyChange={onSourceDirty} entryContext={sourceEntry} /></div>}
       </div>
     </div>
     {diagnosticsOpen && <div className="drawer-backdrop" onMouseDown={() => setDiagnosticsOpen(false)}><aside className="diagnostic-drawer" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Deployment diagnostics</p><h2>{t("部署诊断", "Deployment diagnostics")}</h2></div><button onClick={() => setDiagnosticsOpen(false)}>×</button></header><p>{t("这些信息用于部署与故障诊断，不属于产品主导航。", "These settings are deployment diagnostics and are not primary product navigation.")}</p><label>{t("API 地址", "API base")}<input value={apiBase} onChange={(event) => setApiBase(event.currentTarget.value)} /></label><label>{t("API token（仅当前页面内存）", "API token (page memory only)")}<input type="password" value={apiToken} onChange={(event) => setApiToken(event.currentTarget.value)} autoComplete="off" /></label><dl><dt>Connection Health</dt><dd>{health}</dd><dt>Workspace ID</dt><dd>{activeWorkspace?.id ?? "—"}</dd><dt>GraphRevision ID</dt><dd>{displayRevision?.id ?? "—"}</dd></dl><button className="button primary" disabled={health === "checking"} onClick={() => { if (leaveGuard()) void reconnect(false); }}>{t("重新连接并刷新", "Reconnect and refresh")}</button></aside></div>}

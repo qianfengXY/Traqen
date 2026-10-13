@@ -82,6 +82,10 @@ test("B-01/05 HTTP directory journey streams original bytes and publishes only a
   assert.equal(published.status, 200);
   assert.equal(published.body.receipt.status, "READY");
   const reference = { bundleId: published.body.bundle.id, receiptId: published.body.receipt.id };
+  const exactReceipt = await f.call(`/bundles/${reference.bundleId}/receipt?receiptId=${reference.receiptId}`, "GET", undefined, readerToken);
+  assert.equal(exactReceipt.status, 200);
+  assert.equal(exactReceipt.body.id, reference.receiptId);
+  assert.equal((await f.call(`/bundles/${reference.bundleId}/receipt?receiptId=not-the-receipt`)).status, 404);
   const admitted = await f.call("/admission", "POST", reference, readerToken);
   assert.equal(admitted.status, 200);
   assert.equal(admitted.body.fileCount, "1");

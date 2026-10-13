@@ -1,6 +1,7 @@
 // Small real-browser failure/recovery journeys; never a scale acceptance.
 import assert from "node:assert/strict";
 import path from "node:path";
+import { acceptSourceGaps } from "./source-truth-browser-controls.mjs";
 
 export async function recoveryJourneys({ f, page, station, connect, picker, start, review, seal, mutations,
   evidenceDirectory, directoryBaseline, gitBaseline, record }) {
@@ -12,7 +13,7 @@ export async function recoveryJourneys({ f, page, station, connect, picker, star
   };
 
   await connect("directory");
-  await button("创建新版本").click(); await station(1);
+  await button("创建新版本").click(); await station(2);
   await start(); await station(7);
   const cancelled = (await f.read("directory")).activeRun;
   const beforeDismiss = mutations.length;
@@ -26,16 +27,16 @@ export async function recoveryJourneys({ f, page, station, connect, picker, star
   assert.equal((await f.read("directory", `/runs/${cancelled.id}/view`)).run.status, "CANCELLED");
   assert.equal((await f.read("directory")).activeRun, null);
   assert.deepEqual(await f.read("directory", `/bundles/${directoryBaseline.id}`), directoryBaseline);
-  assert.equal(await button("冻结包").count(), 0);
+  assert.equal(await button("冻结来源包").count(), 0);
   await screenshot("cancelled-preserves-baseline");
   await button("编辑来源，创建新尝试").click(); await station(1);
   assert.equal(await button("确认清单与缺口").count(), 0);
-  assert.equal(await button("冻结包").count(), 0);
+  assert.equal(await button("冻结来源包").count(), 0);
   await record({ case: "cancel-before-freeze", run: cancelled.id, dismissNoMutation: true,
     terminalAuditRetained: true, baselineUnchanged: true, editingRestartsAtOne: true });
 
   await connect("git");
-  await button("创建新版本").click(); await station(1);
+  await button("创建新版本").click(); await station(2);
   await page.getByRole("combobox", { name: "本版处理", exact: true }).selectOption("UPDATE");
   f.failNextGitCapture("git");
   await start();
@@ -93,16 +94,14 @@ export async function recoveryJourneys({ f, page, station, connect, picker, star
   await start(); await station(7);
   const expiring = (await f.read("expiry")).activeRun;
   const candidate = (await f.read("expiry", `/runs/${expiring.id}/view`)).candidate;
-  await page.getByRole("textbox", { name: "接受全部非阻断缺口的理由", exact: true }).fill("只接受到本次明确的短期限，不允许自动延期");
   const deadline = new Date(Date.now() + 8000);
-  await page.getByLabel("接受失效时间（浏览器本地时间）", { exact: true })
-    .fill(new Date(deadline.getTime() - deadline.getTimezoneOffset() * 60000).toISOString().slice(0, 19));
+  await acceptSourceGaps(page, "只接受到本次明确的短期限，不允许自动延期", deadline);
   await page.getByRole("checkbox", { name: /^我已核对完整清单/ }).check();
-  await button("确认清单与缺口").click(); await station(8);
-  const accepted = (await f.read("expiry", `/runs/${expiring.id}/view`)).confirmation;
-  assert.equal(accepted.currentlyValid, true);
+  let accepted;
   const expiryRoute = new RegExp(`/runs/${expiring.id}/seal$`);
   await page.route(expiryRoute, async (route) => {
+    accepted = (await f.read("expiry", `/runs/${expiring.id}/view`)).confirmation;
+    assert.equal(accepted.currentlyValid, true);
     // Delay only transport, until the real server says this exact acceptance
     // has expired. No clock override or mutable confirmation fixture.
     const end = Date.now() + 15000;
@@ -113,7 +112,7 @@ export async function recoveryJourneys({ f, page, station, connect, picker, star
     await route.continue();
   });
   const rejected = page.waitForResponse((response) => expiryRoute.test(response.url()) && response.request().method() === "POST");
-  await button("冻结包").click();
+  await button("冻结来源包").click();
   const expiredResponse = await rejected;
   assert.equal(expiredResponse.status(), 409);
   assert.equal((await expiredResponse.json()).error.code, "SOURCE_ACCEPTANCE_EXPIRED");
@@ -121,13 +120,13 @@ export async function recoveryJourneys({ f, page, station, connect, picker, star
   const expired = await f.read("expiry", `/runs/${expiring.id}/view`);
   assert.equal(expired.confirmation.id, accepted.id); assert.equal(expired.confirmation.expiresAt, accepted.expiresAt);
   assert.equal(expired.confirmation.currentlyValid, false); assert.deepEqual(expired.candidate, candidate);
-  assert.equal(await button("确认清单与缺口").isDisabled(), true);
+  assert.equal(await button("冻结来源包").isDisabled(), true);
   await screenshot("expired-acceptance-returns-review");
   const beforeRenewedConfirmation = mutations.length;
   await review(true); const renewed = await seal("expiry");
   assert.equal(renewed.id, candidate.id); assert.equal(renewed.latestReceipt.status, "READY_WITH_ACCEPTED_GAPS");
   assert.notEqual(renewed.latestReceipt.confirmationId, accepted.id);
-  assert.ok(mutations.slice(beforeRenewedConfirmation).every(({ url }) => /\/(confirm|seal)$/.test(url)), "renewed acceptance cannot recapture or create another run");
+  assert.ok(mutations.slice(beforeRenewedConfirmation).every(({ url }) => /\/(gap-acceptances|confirm|seal)$/.test(url)), "renewed acceptance cannot recapture or create another run");
   await record({ case: "acceptance-expires-before-seal", run: expiring.id, expiredConfirmation: accepted.id,
     serverRejected: "SOURCE_ACCEPTANCE_EXPIRED", noPublicationAtExpiry: true, sameCandidateWithoutRecapture: true, explicitNewConfirmation: true });
 }

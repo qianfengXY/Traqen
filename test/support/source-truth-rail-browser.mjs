@@ -37,8 +37,8 @@ try {
     });
     await page.getByRole("checkbox", { name: "上传目录", exact: true }).check();
     await page.getByRole("button", { name: "选择本机目录", exact: true }).click();
-    await page.getByRole("button", { name: "保存来源，确认范围", exact: true }).click();
-    await page.getByRole("button", { name: "确认范围并开始", exact: true }).click();
+    await page.getByRole("button", { name: "继续配置范围", exact: true }).click();
+    await page.getByRole("button", { name: "确认范围并运行预检", exact: true }).click();
     await page.waitForFunction(() => document.querySelector('.st-rail button[aria-current="step"]')?.getAttribute("aria-label")?.startsWith("第 7 站"), null, { timeout: 30000 });
   }
   const visible = () => page.evaluate(() => {
@@ -66,7 +66,7 @@ try {
 
   const priorMutations = mutations.length;
   await page.getByRole("button", { name: /^第 8 站/ }).click();
-  assert.equal(await page.getByRole("button", { name: "冻结包", exact: true }).count(), 0, "future preview cannot seal");
+  assert.equal(await page.getByRole("button", { name: "冻结来源包", exact: true }).count(), 0, "future preview cannot seal");
   await page.getByRole("button", { name: "回到当前节点", exact: true }).click();
   assert.equal((await visible()).visible, true, "footer return must also reveal the current station");
   await page.setViewportSize({ width: 1280, height: 900 });

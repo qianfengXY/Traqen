@@ -15,6 +15,9 @@ test("private review view is readable but has no public receipt; history and Gap
   assert.equal(detail.candidate.id, candidate.id);
   assert.equal(detail.result, null);
   assert.equal(detail.sources[0].summary.fileCount, "1");
+  assert.deepEqual(detail.sources[0].fileCoverage, { total: "1", verified: "0", missing: "1", pending: "0" }, "verified pointer bytes do not prove the external body was obtained");
+  assert.equal((await query.inventory(reader, "workspace", f.context.runId, f.context.sourceId, { availability: "VERIFIED" })).matchedCount, "0", "body-status filtering is not physical-pointer verification");
+  assert.equal((await query.inventory(reader, "workspace", f.context.runId, f.context.sourceId, { availability: "MISSING" })).matchedCount, "1");
   assert.equal(JSON.stringify(detail).includes("gitSnapshot"), false);
   assert.equal(Object.hasOwn(detail.run, "generation"), false);
   assert.equal((await query.history(reader, "workspace", "runs", { limit: 1 })).items.length, 1);
@@ -29,6 +32,13 @@ test("private review view is readable but has no public receipt; history and Gap
   assert.equal(frozen.items[0].id, result.bundle.id);
   assert.equal(frozen.items[0].latestReceipt.status, "READY_WITH_ACCEPTED_GAPS");
   assert.equal(frozen.items[0].currentAdmission, "NOT_CHECKED");
+  assert.equal(frozen.items[0].publishedBy, owner.actorId, "freezing identity comes from the first publication, not the viewing member");
+  assert.deepEqual(frozen.items[0].components[0].fileCoverage, { total: "1", verified: "0", missing: "1", pending: "0" });
+  const inspection = new (await import("../src/source-truth/admission-service.js")).SourceSnapshotReader(f.repository, f.candidates);
+  const reference = { bundleId: result.bundle.id, receiptId: result.receipt.id };
+  assert.equal((await inspection.inventory(reader, "workspace", reference, { availability: "VERIFIED" })).matchedCount, "0");
+  assert.equal((await inspection.inventory(reader, "workspace", reference, { availability: "MISSING" })).matchedCount, "1");
+  await assert.rejects(inspection.inventory(reader, "workspace", reference, { availability: "INVALID" }), { code: "SOURCE_INVALID_INPUT" });
   assert.equal((await query.gaps(reader, "workspace", { bundleId: result.bundle.id })).items[0].gapKey, gaps.items[0].gapKey);
   await assert.rejects(query.run(reader, "other-workspace", f.context.runId), { code: "SOURCE_FORBIDDEN" });
   await assert.rejects(query.history(reader, "workspace", "bundles", { cursor: "invalid" }), { code: "SOURCE_INVALID_INPUT" });

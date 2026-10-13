@@ -15,6 +15,8 @@ import { SourceRenewalService } from "../src/source-truth/renewal-service.js";
 import { SourceUploadService } from "../src/source-truth/upload-service.js";
 import { SourceBackupService } from "../src/source-truth/backup-service.js";
 import { pathBytes } from "../src/source-truth/identity.js";
+import { acceptCandidateGap } from "../src/source-truth/confirmation-service.js";
+import { SourceQueryService } from "../src/source-truth/query-service.js";
 
 async function unfinishedDirectory(f) {
   const bytes = Buffer.from("first-tail");
@@ -47,8 +49,10 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   const candidate = await f.candidates.prepare(f.context);
   await f.advance("RECONCILING", "REVIEW_REQUIRED");
   const publication = new SourcePublicationService(f.repository, f.candidates);
-  const confirmation = await publication.confirm(owner, f.context, { candidateId: candidate.id, gapSetId: candidate.gapSetId,
-    reason: "备份测试明确接受外部缺口", expiresAt: new Date(Date.now() + 60000).toISOString() });
+  const gap = (await new SourceQueryService(f.repository, f.materials).gaps(reader, "workspace", { runId: f.context.runId })).items[0];
+  const accepted = await acceptCandidateGap(f.repository, owner, f.context, { candidateId: candidate.id, gapSetId: candidate.gapSetId,
+    componentId: gap.componentId, gapKey: gap.gapKey, reason: "备份测试明确接受此外部缺口", expiresAt: new Date(Date.now() + 60000).toISOString() });
+  const confirmation = await publication.confirm(owner, f.context, { candidateId: candidate.id, gapSetId: candidate.gapSetId, useGapAcceptances: true });
   const result = await publication.seal(owner, f.context, { confirmationId: confirmation.id, clientToken: "before-backup" });
   const pendingRenewalService = new SourceRenewalService(f.repository, f.candidates, { beforeCommit() { throw new Error("interrupted before backup"); } });
   const pendingRenewal = await pendingRenewalService.confirm(owner, "workspace", { bundleId: result.bundle.id, receiptId: result.receipt.id,
@@ -94,6 +98,8 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   assert.equal(restored.backupId, completed.id);
   assert.equal((await destination.db.query("SELECT restore_ready FROM source_truth_workspace WHERE workspace_id='workspace'")).rows[0].restore_ready, true);
   const recovered = sourceTruthServices({ repository: new SourceTruthRepository(destination.db), blobs: targetBlobs, policy: { id: "policy-v1" } });
+  assert.equal((await destination.db.query("SELECT reason FROM source_truth_gap_acceptance WHERE id=$1", [accepted.id])).rows[0].reason, accepted.reason);
+  assert.equal((await destination.db.query("SELECT acceptance_id FROM source_truth_confirmation_gap_acceptance WHERE confirmation_id=$1", [confirmation.id])).rows[0].acceptance_id, accepted.id);
   const restoredRenewal = await recovered.renewal.latest(owner, "workspace", reference);
   assert.equal(restoredRenewal.operation.requiresAction, true, "restored pending requests need explicit reconciliation, not automatic signing after rollback");
   assert.equal(restoredRenewal.operation.diagnostic.code, "SOURCE_RESTORE_RECONCILIATION_REQUIRED");

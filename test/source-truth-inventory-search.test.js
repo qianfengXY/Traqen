@@ -66,11 +66,15 @@ test("B-09/10 inventory searches all rows, filters exact components and binds ev
   assert.equal(new Set(seen.map((r) => `${r.componentId}:${r.entry.pathBytes}`)).size, 4);
   const selected = await inspection.inventory(reader, "workspace", reference, { query: "orders", componentId: seen[0].componentId });
   assert.equal(selected.matchedCount, "2"); assert.ok(selected.items.every((r) => r.componentId === seen[0].componentId));
+  const exact = await inspection.inventory(reader, "workspace", reference, { pathBytes: pathBytes("c-orders"), componentId: seen[0].componentId });
+  assert.equal(exact.matchedCount, "1"); assert.equal(exact.items[0].entry.pathBytes, pathBytes("c-orders"));
+  assert.equal((await inspection.inventory(reader, "workspace", reference, { pathBytes: pathBytes("orders") })).matchedCount, "0", "exact location cannot fall back to a substring match");
+  assert.equal((await inspection.inventory(reader, "workspace", reference, { pathBytes: pathBytes(Buffer.from([120, 255, 46, 115, 113, 108])) })).matchedCount, "1", "non-UTF8 exact path bytes are preserved");
   assert.equal((await inspection.inventory(reader, "workspace", reference, { query: "%" })).matchedCount, "2", "query is a literal byte substring, not a SQL wildcard");
   assert.equal((await inspection.inventory(reader, "workspace", reference, { query: "订单" })).matchedCount, "2");
   assert.equal((await inspection.inventory(reader, "workspace", reference, { query: ".sql" })).matchedCount, "1", "non-UTF8 Git paths remain searchable without unsafe text conversion");
   assert.equal((await inspection.inventory(reader, "workspace", reference, { disposition: "PENDING" })).matchedCount, "0");
-  for (const delta of [{ query: "other" }, { disposition: "METADATA" }, { componentId: seen[0].componentId }]) {
+  for (const delta of [{ query: "other" }, { disposition: "METADATA" }, { componentId: seen[0].componentId }, { pathBytes: pathBytes("c-orders") }]) {
     await assert.rejects(inspection.inventory(reader, "workspace", reference, { query: "orders", disposition: "VERIFIED", cursor: first.nextCursor, ...delta }), { code: "SOURCE_INVALID_INPUT" });
   }
   await assert.rejects(inspection.inventory(reader, "workspace", { ...reference, receiptId: "other" }, { query: "orders", disposition: "VERIFIED", cursor: first.nextCursor }), { code: "SOURCE_INVALID_INPUT" });
@@ -84,6 +88,8 @@ test("B-09 live inventory filters pending material without changing the unfilter
   const f = await fixture(t), context = f.contexts[0];
   const first = await f.queries.inventory(reader, "workspace", context.runId, "D", { query: "orders", disposition: "PENDING", limit: 1 });
   assert.equal(first.matchedCount, "2"); assert.equal(first.items[0].entry.pathBytes, pathBytes("b-orders"));
+  const exact = await f.queries.inventory(reader, "workspace", context.runId, "D", { pathBytes: pathBytes("c-orders") });
+  assert.equal(exact.matchedCount, "1"); assert.equal(exact.items[0].entry.pathBytes, pathBytes("c-orders"));
   const last = await f.queries.inventory(reader, "workspace", context.runId, "D", { query: "orders", disposition: "PENDING", cursor: first.nextCursor });
   assert.equal(last.nextCursor, null); assert.equal(last.items[0].entry.pathBytes, pathBytes("c-orders"));
   await assert.rejects(f.queries.inventory(reader, "workspace", context.runId, "G", { query: "orders", disposition: "PENDING", cursor: first.nextCursor }), { code: "SOURCE_INVALID_INPUT" });
