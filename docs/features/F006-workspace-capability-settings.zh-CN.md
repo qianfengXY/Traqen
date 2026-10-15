@@ -2,11 +2,11 @@
 
 ---
 feature_ids: [F006]
-related_features: [F001, F003, F005]
+related_features: [F001, F003, F005, F008]
 topics: [settings, workspace, cli, oauth, api-key, models, skills, mcp, agents, runtime-isolation, frontend]
 doc_kind: spec
 created: 2026-07-31
-updated: 2026-09-17
+updated: 2026-10-15
 description: 全局能力资产与 Workspace 范围内 Agent 配置，并通过草稿到生效版本固定运行快照。
 description_source: human
 description_author: cat-4v94tazw
@@ -52,6 +52,8 @@ Agent 实际能力 = Workspace 生效能力 ∩ Agent 显式授权
 ```
 
 全局资产不会隐式授予 Agent。全局 inactive、删除或管理员置为不可用的 Skill/MCP 是上限，Workspace 不可重新启用。
+
+**谁可以修改（F008 衔接）：** 全局设置限系统管理员或持有“全局配置”资格的账号；Workspace 设置与 Agent 配置限该空间的 Owner 或维护成员，查看成员只读。设置中心里的“账号”指模型供应商账号，与 F008 的人员账号分开命名。F008 不改变上面的能力推导；建空间审批不附带资源范围配置，按空间限制模型或预算需作为本 Feature 的独立变更讨论。详见 [F008 设计](../design/F008-unified-login-space-permissions/README.md) §3.2、§6.10（co-creator 授权 `0001792034005352-001470-1a04a00f`）。
 
 ## 3. 全局设置
 
