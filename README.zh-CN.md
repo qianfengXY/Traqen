@@ -335,7 +335,7 @@ Reverse Skill 框架切片添加：
 
 产品有效性指标切片添加了 Snapshot 绑定仪表板和 API 用于高价值有效链率、Claim 确认、确认规则 TestSpec 覆盖范围、有意义的断言、Evidence 新鲜度、TraceGap type/severity/owner 和每 Feature 层的存在。每个比率都保留其分子和分母，每个 Feature 都保留其独立的信任维度，并且需要外部纵向、CI/CD 或缺陷数据的指标明确不可用，而不是估计。 `HIGH_VALUE_FEATURE_IDS` 可选择缩小北极星数量；如果没有它，所有受管理的 Features 都将包括在内。
 
-开发服务器仍然仅限本地并使用内存存储。生产进程需要 PostgreSQL 和全局 API token。Decision 审核、候选审核、TestSpec 批准和业务流程确认路由在没有配置审核人身份时会失败关闭。可以使用旧式 `REVIEWER_ID`/`REVIEWER_ROLE` 和可选 `REVIEWER_BEARER_TOKEN`，也可以通过 `REVIEWER_IDENTITIES_JSON` 配置多个 token 绑定的参与者/角色身份；默认禁止直接创建 Decision，除非显式设置 `ALLOW_DIRECT_DECISIONS=true`，否则必须使用审核案例 API。Decision 提议人、批准人、业务、合规、Break-glass、生命周期角色和最大紧急时长均可独立配置。实现再分析具有独立的 `IMPLEMENTATION_REVIEWER_*` 边界。设置 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 以接收匹配 Runner 的签名 Bundle，设置 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 以接收 Scanner 签名 Fact Bundle，并设置 `SKILL_PUBLISHER=TRAQEN` 与 `SKILL_PUBLISHER_SHARED_SECRET` 以注册 Skill。HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。只有签名目标策略显式允许操作与路由、绑定全部 Snapshot 组件、指定可信 fixture 与 cleanup 协议，且 Runner 具有匹配本地处理器时，CONTROLLED_WRITE 才能启用。DELETE、破坏性执行、任务自带命令/SQL/fixture 代码、外部副作用和跨域重定向始终被阻止。已配置的分析 Agent 模型适配器只接收有界证据并通过服务端解析密钥；第三方 Skills、隔离 Skill Worker、更多确定性语言 AST 适配器与 OpenAPI YAML 提取仍在仓库控制的 MVP 范围之外。
+开发服务器仍然仅限本地并使用内存存储。生产进程需要 PostgreSQL 和全局 API token。Decision 审核、候选审核、TestSpec 批准和业务流程确认路由在没有配置审核人身份时会失败关闭。可以使用旧式 `REVIEWER_ID`/`REVIEWER_ROLE` 和可选 `REVIEWER_BEARER_TOKEN`，也可以通过 `REVIEWER_IDENTITIES_JSON` 配置多个 token 绑定的参与者/角色身份；默认禁止直接创建 Decision，除非显式设置 `ALLOW_DIRECT_DECISIONS=true`，否则必须使用审核案例 API。Decision 提议人、批准人、业务、合规、Break-glass、生命周期角色和最大紧急时长均可独立配置。实现再分析具有独立的 `IMPLEMENTATION_REVIEWER_*` 边界。F008 已确认将以账号和空间授权取代这些审核持有人配置，尚未实施，见下文“持久化部署与高级接口”。设置 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 以接收匹配 Runner 的签名 Bundle，设置 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 以接收 Scanner 签名 Fact Bundle，并设置 `SKILL_PUBLISHER=TRAQEN` 与 `SKILL_PUBLISHER_SHARED_SECRET` 以注册 Skill。HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。只有签名目标策略显式允许操作与路由、绑定全部 Snapshot 组件、指定可信 fixture 与 cleanup 协议，且 Runner 具有匹配本地处理器时，CONTROLLED_WRITE 才能启用。DELETE、破坏性执行、任务自带命令/SQL/fixture 代码、外部副作用和跨域重定向始终被阻止。已配置的分析 Agent 模型适配器只接收有界证据并通过服务端解析密钥；第三方 Skills、隔离 Skill Worker、更多确定性语言 AST 适配器与 OpenAPI YAML 提取仍在仓库控制的 MVP 范围之外。
 
 </details>
 
@@ -387,6 +387,8 @@ npm run dev
 <summary>展开生产配置、质量门 CLI 与 API 导航</summary>
 
 通过 `npm run api:serve` 启动生产 API，默认绑定到 `0.0.0.0:3000`，需要 `DATABASE_URL` 和 `API_BEARER_TOKEN`。先为目标部署配置隔离的数据存储、来源目录、备份和授权，不要把开发实验指向生产数据。默认 `POSTGRES_SSL=require` 会校验证书；`no-verify` 或 `disable` 仅适用于明确评估过风险的受控环境。`CORS_ALLOWED_ORIGINS` 是逗号分隔的精确来源允许列表。启动时，进程连接 PostgreSQL、验证并应用挂起迁移，因此不是无副作用的连接检查。
+
+**F008 已确认、尚未实施的变化：** 浏览器将改为账号登录与服务端会话，不再在页面中粘贴部署令牌；`API_BEARER_TOKEN` 不再作为普通业务接口的通用身份，程序调用（含 quality-gate CLI）改用程序身份；`REVIEWER_*` 与 `IMPLEMENTATION_REVIEWER_*` 中的审核持有人绑定改由空间授权管理，缺少专用凭据时的固定身份回退将移除。上线前本节描述的现行配置继续有效。详见 [F008 设计](docs/design/F008-unified-login-space-permissions/README.md)。
 
 通过 `POST /v1/projects` 创建初始边界，通过 `POST /v1/projects/{projectId}/snapshots` 注册不可变执行上下文，并通过 `Authorization: Bearer ...` 或 `x-traqen-api-token` 发送 API 令牌。API 和产品 UI 可以通过 `GET /v1/projects/{projectId}/features` 和 `GET /v1/projects/{projectId}/snapshots` 发现资源；Snapshot 结果按最新优先排列。完整路径与字段见 [OpenAPI 合同](contracts/openapi.json)。
 

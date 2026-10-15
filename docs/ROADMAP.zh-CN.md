@@ -1,11 +1,11 @@
 > 语言：**简体中文** · [English](ROADMAP.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F006]
+feature_ids: [F001, F002, F003, F004, F006, F008]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-08-30
+updated: 2026-10-15
 ---
 
 # Traqen Feature 路线图
@@ -28,6 +28,7 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 | F003 | P1 | Agent 候选与审阅后的业务功能树 | spec | TBD | operator 已确认的重构 | [F003](design/F003-traceability-graph/README.md) |
 | F004 | P0 | 变更影响分析 | spec | TBD | operator 已确认的重构 | [F004](features/F004-change-impact-analysis.zh-CN.md) |
 | F006 | P2 | Workspace 能力设置 | spec | TBD | operator 已授权的[设计收敛](../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.zh-CN.md) | [F006](features/F006-workspace-capability-settings.zh-CN.md) |
+| F008 | P2 | 统一登录与空间权限 | spec | TBD | co-creator 已确认的[设计 V1.0](design/F008-unified-login-space-permissions/README.md) | [F008](features/F008-unified-login-space-permissions.md) |
 
 ## 交付波次
 
