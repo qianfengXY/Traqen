@@ -2,6 +2,14 @@ import { SourceSliceStatus, createSourceSlice } from "../domain/index.js";
 
 const secretPattern = /(?:api[_-]?key|token|password|secret)\s*[:=]\s*["']?[^"'\s]+/gi;
 
+// These buffers are encoded from UTF-8 text. Round both boundaries inward:
+// partial characters must neither manufacture U+FFFD nor read outside a selector.
+function completeUtf8Window(bytes, start, end) {
+  while (start < end && (bytes[start] & 0xc0) === 0x80) start += 1;
+  while (end > start && end < bytes.length && (bytes[end] & 0xc0) === 0x80) end -= 1;
+  return bytes.subarray(start, end);
+}
+
 export class SourceSliceBroker {
   constructor({ artifactResolver, auditSink = async () => {}, clock = () => new Date() }) {
     if (typeof artifactResolver !== "function") throw new TypeError("artifactResolver is required");
@@ -60,7 +68,9 @@ export class SourceSliceBroker {
         omittedReasons.push("SOURCE_SLICE_BUDGET_EXCEEDED");
         continue;
       }
-      let redactedText = bytes.subarray(selector.startByte, cappedEnd).toString("utf8");
+      const textBytes = completeUtf8Window(bytes, selector.startByte, cappedEnd);
+      if (textBytes.length < cappedEnd - selector.startByte) truncated = true;
+      let redactedText = textBytes.toString("utf8");
       redactedText = redactedText.replace(secretPattern, (match) => {
         redactions.push({
           kind: "SECRET_PATTERN",
@@ -71,7 +81,7 @@ export class SourceSliceBroker {
       });
       const redactedBytes = Buffer.from(redactedText);
       if (redactedBytes.length > remainingBytes) {
-        redactedText = redactedBytes.subarray(0, remainingBytes).toString("utf8");
+        redactedText = completeUtf8Window(redactedBytes, 0, remainingBytes).toString("utf8");
         truncated = true;
       }
       remainingBytes -= Buffer.byteLength(redactedText);
