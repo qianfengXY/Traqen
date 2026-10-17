@@ -1,5 +1,6 @@
 "use client";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { subscribeProductRoute } from "./product-navigation";
 import { authCall, prepareLogin, setSessionProof, type AuthSession, IdentityError } from "./auth-client";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { desktopScale } from "./product-navigation";
@@ -119,6 +120,7 @@ export function IdentityProvider({ children }: { children: ReactNode }) {
     channel.current?.postMessage("changed");
   };
   const logout = async () => {
+    await authCall("/v1/me/position", "PUT", {position:"/"+window.location.search}).catch(() => {});
     await authCall("/v1/auth/logout", "POST", {});
     setSessionProof("");
     setSession(null);
@@ -146,6 +148,7 @@ function AuthenticationScreen({
   onReady: () => Promise<void>;
   onRetry: () => Promise<void>;
 }) {
+  const destinationSearch = useSyncExternalStore(subscribeProductRoute, () => window.location.search, () => "");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [setup, setSetup] = useState<{ secret: string; recoveryCodes: string[]; uri: string } | null>(null),
@@ -269,6 +272,8 @@ function AuthenticationScreen({
         <section className="auth-card" aria-labelledby="auth-title">
           <p className="eyebrow">TRAQEN ACCOUNT</p>
           <h2 id="auth-title">{title}</h2>
+          {new URLSearchParams(destinationSearch).has("page") &&
+            <p>登录以继续：{({sources:"来源快照",graph:"业务图谱",evidence:"证据与版本",review:"待确认问题",settings:"设置中心",overview:"工作空间",impact:"影响分析"} as Record<string,string>)[new URLSearchParams(destinationSearch).get("page") ?? ""] ?? "目标页面"}</p>}
           {(error || issue) && (
             <p className="auth-notice" role="alert">
               {error || issue}

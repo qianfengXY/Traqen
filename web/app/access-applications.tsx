@@ -106,6 +106,7 @@ export function Applications({
   busy,
   refresh,
   accountId,
+  applicationId,
 }: {
   items: AccessApplication[];
   context: AccessContext;
@@ -114,9 +115,11 @@ export function Applications({
   busy: boolean;
   refresh: () => Promise<void>;
   accountId: string;
+  applicationId?: string;
 }) {
-  const [selected, setSelected] = useState<AccessApplication | null>(null),
-    [roles, setRoles] = useState<string[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(applicationId ?? null);
+  const selected = items.find(item => item.id === selectedId) ?? null;
+  const [roles, setRoles] = useState<string[]>(selected?.requestedRoles ?? []);
   const decide = (approve: boolean, reason: string) => {
     if (!selected) return;
     void run(async () => {
@@ -127,7 +130,7 @@ export function Applications({
         version: selected.version,
       });
       await refresh();
-      setSelected(null);
+      if (!applicationId) setSelectedId(null);
     });
   };
   return (
@@ -165,11 +168,11 @@ export function Applications({
                     {item.decisionReason && <small>原因：{item.decisionReason}</small>}
                   </td>
                   <td className="actions">
-                    {pending && item.status === "PENDING" ? (
+                    {pending && item.canDecide && item.status === "PENDING" ? (
                       <button
                         className="button"
                         onClick={() => {
-                          setSelected(item);
+                          setSelectedId(item.id);
                           setRoles(item.requestedRoles);
                         }}
                       >
@@ -213,8 +216,10 @@ export function Applications({
       <aside className="panel">
         {selected ? (
           <>
-            <h2>处理申请</h2>
+            <h2>{selected.status === "PENDING" && selected.canDecide ? "处理申请" : "申请详情"}</h2>
+            <p>{statusLabel(selected.status)}{selected.decisionReason ? ` · ${selected.decisionReason}` : ""}</p>
             <p>{selected.reason}</p>
+            {selected.status === "PENDING" && selected.canDecide && <>
             {selected.kind === "JOIN" && (
               <RolePicker
                 manager={context.canAdmin || context.spaces.find((space) => space.id === selected.workspaceId)?.canOwn}
@@ -247,11 +252,12 @@ export function Applications({
                 拒绝并记录原因
               </button>
             </form>
+            </>}
           </>
         ) : (
           <>
             <h2>申请详情</h2>
-            <p>选择一条申请查看详情。历史通过记录不会覆盖后来撤销的权限。</p>
+            <p>{applicationId ? "这条申请不存在或当前账号无权查看。" : "选择一条申请查看详情。历史通过记录不会覆盖后来撤销的权限。"}</p>
           </>
         )}
       </aside>

@@ -28,10 +28,12 @@ const emptyContext: AccessContext = { spaces: [], reviewRoles: [], canAdmin: fal
 export function AccessCenter({
   view,
   workspaceId,
+  applicationId,
   onWorkspace,
 }: {
   view: string;
   workspaceId?: string;
+  applicationId?: string;
   onWorkspace: (id: string) => void;
 }) {
   const { session } = useIdentity();
@@ -76,6 +78,7 @@ export function AccessCenter({
         if (version === request.current) setSpaces(r.spaces);
       } else if (["applications", "pending"].includes(view)) {
         const params = new URLSearchParams();
+        if (applicationId) params.set("applicationId", applicationId);
         if (view === "pending") params.set("pending", "true");
         if (view === "pending" && workspaceId) params.set("workspaceId", workspaceId);
         const r = await authCall<{ applications: AccessApplication[] }>(`/v1/access/applications?${params}`);
@@ -106,7 +109,7 @@ export function AccessCenter({
         setLoading(false);
       }
     }
-  }, [view, workspaceId]);
+  }, [view, workspaceId, applicationId]);
   useEffect(() => {
     const timer = setTimeout(() => void reload(), 0);
     return () => {
@@ -284,6 +287,7 @@ export function AccessCenter({
         busy={busy}
         refresh={reload}
         accountId={session.account.id}
+        applicationId={applicationId}
       />
     );
   else if (["accounts", "admins"].includes(view))
@@ -366,7 +370,7 @@ export function AccessCenter({
           <button className="button" disabled={busy || loading} onClick={() => void reload()}>
             刷新状态
           </button>
-          {view === "spaces" && (
+          {view === "spaces" && spaces.length > 0 && (
             <button className="button primary" onClick={() => openAccess("create")}>
               申请创建空间
             </button>
@@ -418,6 +422,7 @@ function Notifications() {
       id: string;
       type: string;
       workspaceId?: string;
+      applicationId?: string;
       targetName?: string;
       roles?: string[];
       actualRoles?: string[];
@@ -454,17 +459,17 @@ function Notifications() {
         <ul>
           {items
             .slice()
-            .reverse()
+            .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
             .map((item) => (
               <li key={item.id}>
                 <b>{title(item.type)}</b> · {item.targetName ?? ""}{" "}
                 {(item.roles ?? item.actualRoles)?.map(roleLabel).join("、")}
                 <small>{new Date(item.createdAt).toLocaleString()}</small>
-                {item.workspaceId && (
+                {(item.applicationId || item.workspaceId) && (
                   <button
                     className="button"
                     onClick={() =>
-                      openAccess(item.type === "OWNER_TRANSFER_REQUESTED" ? "info" : "applications", item.workspaceId)
+                      openAccess(item.type === "OWNER_TRANSFER_REQUESTED" ? "info" : item.applicationId ? "pending" : "applications", item.workspaceId, item.applicationId)
                     }
                   >
                     查看相关记录

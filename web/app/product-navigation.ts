@@ -21,7 +21,13 @@ export function productHref(view: ProductView, workspaceId: string | null, sourc
 }
 
 export function writeProductRoute(view: ProductView, workspaceId: string | null, replace = false) {
-  const href = productHref(view, workspaceId);
+  let href = productHref(view, workspaceId);
+  const prior = readProductRoute(location.search);
+  if (prior.workspaceId === workspaceId && ["graph", "feature"].includes(prior.view) && ["graph", "feature"].includes(view)) {
+    const next = new URL(href, location.origin), params = new URLSearchParams(location.search);
+    for (const key of ["revision", "objectId"]) if (params.has(key)) next.searchParams.set(key, params.get(key)!);
+    href = next.pathname + next.search;
+  }
   if (`${location.pathname}${location.search}` === href) return;
   window.history[replace ? "replaceState" : "pushState"](null, "", href);
   window.dispatchEvent(new Event("traqen:navigate"));

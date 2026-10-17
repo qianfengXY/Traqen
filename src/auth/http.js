@@ -266,6 +266,7 @@ export class AuthHttp {
         applications: await this.service.applications(raw, {
           pending: url.searchParams.get("pending") === "true",
           workspaceId: url.searchParams.get("workspaceId"),
+          applicationId: url.searchParams.get("applicationId"),
         }),
       };
     else if (method === "POST" && path === "/v1/access/applications") result = await this.service.apply(raw, input);

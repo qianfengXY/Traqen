@@ -83,14 +83,17 @@ export async function prepareLogin() {
   const response = await authCall<{ csrfToken: string }>("/v1/auth/csrf");
   setSessionProof(response.csrfToken);
 }
-export function openAccess(view: string, workspaceId?: string) {
-  const url = new URL(window.location.href);
+export function openAccess(view: string, workspaceId?: string, applicationId?: string) {
+  const url = new URL("/", window.location.origin);
   url.searchParams.set(
     "page",
     ["security", "applications", "spaces", "directory"].includes(view) ? "overview" : "settings",
   );
   url.searchParams.set("view", view);
   if (workspaceId !== undefined) url.searchParams.set("workspace", workspaceId);
+  const entry = new URLSearchParams(window.location.search).get("entry");
+  if (view === "join" && entry) url.searchParams.set("entry", entry);
+  if (applicationId) url.searchParams.set("applicationId", applicationId);
   window.history.pushState(null, "", url.pathname + url.search);
   window.dispatchEvent(new Event("traqen:navigate"));
 }

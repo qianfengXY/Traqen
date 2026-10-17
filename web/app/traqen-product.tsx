@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 
 import { desktopScale, productHref, readProductRoute, subscribeProductRoute, writeProductRoute, type ProductView } from "./product-navigation";
+import { graphAtPosition, writeWorkPosition, workPosition } from "./work-position";
+import { WorkspaceDestination } from "./workspace-destination";
 import { NavigationIcon } from "./navigation-icon";
 import "./product-shell.css";
 import { IdentityProvider, useIdentity } from "./auth-session";
 import { type AccessContext } from "./access-types";
 import { AccountMenu, AccessCenter } from "./access-center";
-import { API_BASE, authCall, openAccess, setReviewRole } from "./auth-client";
+import { API_BASE, authCall, openAccess, sessionFetch, setReviewRole } from "./auth-client";
 
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
 import { SourceTruthWorkbench } from "./source-truth/workbench";
@@ -174,8 +176,9 @@ function ServerOwnedProduct() {
     writeProductRoute(next, readProductRoute(window.location.search).workspaceId);
   }, []);
   useEffect(() => {
-    const timer = window.setTimeout(() => { void authCall("/v1/me/position", "PUT", { position: "/" + window.location.search }).catch(() => {}); }, 500);
-    return () => window.clearTimeout(timer);
+    const save = () => { void sessionFetch(`${API_BASE}/v1/me/position`, {method:"PUT",keepalive:true,headers:{"content-type":"application/json"},body:JSON.stringify({position:"/"+window.location.search})}).catch(() => {}); };
+    save(); window.addEventListener("pagehide", save);
+    return () => window.removeEventListener("pagehide", save);
   }, [routeSearch]);
   const [scale, setScale] = useState(1);
   const [visitedSource, setVisitedSource] = useState<string | null>(null);
@@ -207,6 +210,8 @@ function ServerOwnedProduct() {
   const [revisions, setRevisions] = useState<GraphRevision[]>([]);
   const [historical, setHistorical] = useState(false);
   const [focusedNodeId, setFocusedNodeId] = useState("");
+  const [positionError, setPositionError] = useState("");
+  const focusNode = (id: string) => { setFocusedNodeId(id); writeWorkPosition({ objectId: id, revision: displayRevision?.id ?? null }); };
   const [featureHistory, setFeatureHistory] = useState<FeatureUnderstandingHistory | null>(null);
   const [featureTraceability, setFeatureTraceability] = useState<FeatureTraceability | null>(null);
   const [boundedGraph, setBoundedGraph] = useState<FeatureGraphProjection | null>(null);
@@ -278,10 +283,17 @@ function ServerOwnedProduct() {
     if (staleWorkspaceRequestResponse(requestContext, contextRef.current, revisionRequestVersion, revisionRequestRef.current)) return;
     if (graphResult.status === "fulfilled" && revisionRequestVersion === revisionRequestRef.current) {
       setCurrent(graphResult.value);
-      setArtifact(graphResult.value?.graphArtifact ?? null);
-      setDisplayRevision(graphResult.value?.revision ?? null);
-      setHistorical(false);
-      setFocusedNodeId((existing) => existing || graphResult.value?.graphArtifact.nodes[0]?.id || "");
+      try {
+        const restored = await graphAtPosition(window.location.search, graphResult.value,
+          revision => getGraphRevision(apiBase, apiToken, workspace.id, revision));
+        if (staleWorkspaceRequestResponse(requestContext, contextRef.current, revisionRequestVersion, revisionRequestRef.current)) return;
+        setArtifact(restored.selected?.graphArtifact ?? null);
+        setDisplayRevision(restored.selected?.revision ?? null);
+        setHistorical(restored.historical); setFocusedNodeId(restored.focusedId); setPositionError("");
+        if (restored.selected && ["feature", "graph", "impact"].includes(readProductRoute(window.location.search).view) && !workPosition(window.location.search).revision) writeWorkPosition({revision:restored.selected.revision.id,objectId:restored.focusedId || null});
+      } catch (error) { if (staleWorkspaceRequestResponse(requestContext, contextRef.current, revisionRequestVersion, revisionRequestRef.current)) return; setArtifact(null); setDisplayRevision(null); setFocusedNodeId(""); setPositionError(messageOf(error, "原位置无法读取")); }
+    } else if (graphResult.status === "rejected" && (workPosition(window.location.search).revision || workPosition(window.location.search).objectId)) {
+      setArtifact(null); setDisplayRevision(null); setPositionError("指定图谱版本无法读取，请核对原链接、当前权限与连接状态；不会改用最新版本。");
     }
     if (revisionResult.status === "fulfilled") setRevisions(revisionResult.value);
     if (jobResult.status === "fulfilled") {
@@ -343,6 +355,7 @@ function ServerOwnedProduct() {
     contextRef.current = nextContext;
 
     setActiveWorkspace(workspace);
+    setPositionError("");
     chooseReviewRole(""); setReviewRole("");
     if (!preserveView) writeProductRoute(readProductRoute(window.location.search).view, workspace?.id ?? "");
     setJob(null);
@@ -613,6 +626,8 @@ function ServerOwnedProduct() {
 
   async function selectRevision(revisionId: string) {
     if (!activeWorkspace) return;
+    writeWorkPosition({ revision: revisionId === "current" ? null : revisionId, objectId: null });
+    setPositionError("");
     const requestContext = { ...contextRef.current };
     const workspaceId = activeWorkspace.id;
     const requestVersion = revisionRequestRef.current + 1;
@@ -635,6 +650,7 @@ function ServerOwnedProduct() {
       setFocusedNodeId(result.graphArtifact.nodes[0]?.id ?? "");
     } catch (error) {
       if (!staleWorkspaceRequestResponse(requestContext, contextRef.current, requestVersion, revisionRequestRef.current)) {
+        setArtifact(null); setDisplayRevision(null); setPositionError("指定图谱版本无法读取，请核对原链接与当前权限；不会改用最新版本。");
         notify(messageOf(error, t("历史版本加载失败", "Unable to load historical revision")), "error");
       }
     } finally {
@@ -990,7 +1006,7 @@ function ServerOwnedProduct() {
   };
   const renderView = () => {
     if (session.restrictedRestore && !accessView) return <AccessCenter view="all" onWorkspace={id => openAccess("members", id)} />;
-    if (accessView) return <AccessCenter key={`${accessView}:${route.workspaceId ?? ""}`} view={accessView} workspaceId={route.workspaceId ?? undefined} onWorkspace={id => { writeProductRoute("overview", id); void reconnect(false); }} />;
+    if (accessView) return <AccessCenter key={`${accessView}:${route.workspaceId ?? ""}:${new URLSearchParams(routeSearch).get("applicationId") ?? ""}`} view={accessView} workspaceId={route.workspaceId ?? undefined} applicationId={new URLSearchParams(routeSearch).get("applicationId") ?? undefined} onWorkspace={id => { writeProductRoute("overview", id); void reconnect(false); }} />;
     if (view === "not-found") return <section className="destination-state panel"><h1>无法识别这个页面</h1><p>链接中的页面入口不存在。请选择左侧导航，工作区与历史记录没有改变。</p><a className="button" href={productHref("overview", route.workspaceId)} onClick={(event) => { event.preventDefault(); setView("overview"); }}>返回工作区概览</a></section>;
     if (health !== "healthy") return <section className="panel destination-state"><h1>{health === "checking" ? "正在读取空间" : "连接暂不可用"}</h1><p>{entryIssue === "forbidden" ? "当前账号无权读取，请检查空间授权。" : "请重新读取状态；不会重发已提交操作。"}</p><button className="button" onClick={() => void reconnect(true)}>重试读取</button></section>;
 
@@ -1037,15 +1053,16 @@ function ServerOwnedProduct() {
     />;
     if (view === "templates") return <GlobalCapabilityTemplateLibrary t={t} templates={globalCapabilityTemplates} working={working} onSave={(input) => void saveGlobalTemplate(input)} />;
     if (!activeWorkspace) {
-      return <>{route.workspaceId && <section className="panel destination-state"><h1>无法访问此空间</h1><p>链接目标可能不可用或当前账号未获授权。请通过目录或管理者的申请入口申请；不会切换到其他空间。</p><button className="button" onClick={() => openAccess("directory")}>浏览可申请空间</button></section>}<AccessCenter view="spaces" onWorkspace={id => { writeProductRoute("overview", id); void reconnect(false); }} /></>;
+      return <>{route.workspaceId && <WorkspaceDestination workspaceId={route.workspaceId} />}<AccessCenter view="spaces" onWorkspace={id => { writeProductRoute("overview", id); void reconnect(false); }} /></>;
 
     }
     const workspace = activeWorkspace;
+    if (positionError && ["feature", "graph", "impact"].includes(view)) return <section className="panel destination-state"><h1>原工作位置无法恢复</h1><p role="alert">{positionError}</p><button className="button" onClick={() => { writeWorkPosition({revision:null,objectId:null}); void refreshWorkspaceReads(workspace, {...contextRef.current}); }}>查看当前发布结果</button></section>;
     if (["feature", "graph", "impact"].includes(view) && !artifact) return <section className="destination-state panel"><h1>{t(selectedModule.zh, selectedModule.en)}</h1><p>{selectedModule.description}</p><h2>{t("当前没有可读取的发布结果", "No published result is available to read")}</h2><p>{t("此工作区尚未生成结果，或结果读取暂时不可用。来源冻结本身不会自动启动技术提取、业务调查或影响分析。", "Results have not been generated or cannot currently be read. Freezing a source does not automatically run extraction, investigation, or impact analysis.")}</p><div className="heading-actions"><button className="button primary" onClick={() => setView("workspace")}>{t("查看来源快照", "Open source snapshots")}</button><button className="button" onClick={() => { setSettingsScope("workspace"); setView("settings"); }}>{t("检查工作区能力配置", "Check Workspace capabilities")}</button><button className="button" onClick={() => { if (leaveGuard()) void refreshWorkspaceReads(workspace, { ...contextRef.current }); }}>{t("重新读取结果", "Retry reading results")}</button></div></section>;
     if (view === "overview") return <WorkspaceOverview t={t} workspace={workspace} current={current} job={job} reviewCount={openReviewCount} impactCount={impactActionCount} configValid={Boolean(profileRevisionId)} onNavigate={(next) => setView(next as View)} />;
     if (view === "workspace") return null;
-    if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={setFocusedNodeId} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
-    if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={setFocusedNodeId} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
+    if (view === "feature") return <FeatureExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} selectedId={focusedNodeId} history={featureHistory} traceability={featureTraceability} graph={boundedGraph} loading={traceabilityLoading} error={traceabilityError} working={working} onSelectRevision={(id) => void selectRevision(id)} onSelectNode={focusNode} onOpenGraph={() => setView("graph")} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
+    if (view === "graph") return <GraphExplorer t={t} workspaceId={workspace.id} artifact={artifact} revision={displayRevision} revisions={revisions} historical={historical} focusedId={focusedNodeId} graph={boundedGraph} path={graphPath} loading={traceabilityLoading} error={traceabilityError} working={working} onFocus={focusNode} onSelectRevision={(id) => void selectRevision(id)} onLoadGraph={(depth, graphView) => void loadBoundedGraph(depth, graphView)} onQueryPath={(targetId, graphView) => void explainGraphPath(targetId, graphView)} onResolveEvidence={resolveEvidence} onReanalyzeHistorical={(availability) => void reanalyzeHistoricalRevision(availability)} />;
     if (view === "review") return <ReviewWorkspace t={t} items={reviewItems} selectedIds={selectedReviewIds} setSelectedIds={setSelectedReviewIds} outcome={reviewOutcome} setOutcome={setReviewOutcome} rationale={reviewRationale} setRationale={setReviewRationale} working={working} onRefresh={() => void refreshReviewQueue()} onDecide={() => void submitReviewDecision()} />;
     if (view === "impact") return <ImpactWorkspace t={t} artifact={current?.graphArtifact ?? null} impact={impact} revision={current?.revision ?? null} />;
     return <CapabilitySettings t={t} models={globalModels} globalTemplates={globalCapabilityTemplates} catalog={effectiveCatalog} draft={capabilityDraft} draftInput={currentCapabilityDraftInput(capabilityDraft?.revision ?? 0)} profile={executionProfile} profileHistory={profileHistory} mainModel={mainModel} setMainModel={setMainModel} mainRolePolicy={mainRolePolicy} setMainRolePolicy={setMainRolePolicy} mainSkillNames={mainSkillNames} setMainSkillNames={setMainSkillNames} mainMcpNames={mainMcpNames} setMainMcpNames={setMainMcpNames} childSlots={childSlots} setChildSlots={setChildSlots} importedKeys={importedKeys} setImportedKeys={setImportedKeys} disabledKeys={disabledKeys} setDisabledKeys={setDisabledKeys} dependencyNotes={dependencyNotes} setDependencyNotes={setDependencyNotes} conventionNotes={conventionNotes} setConventionNotes={setConventionNotes} securityNotes={securityNotes} setSecurityNotes={setSecurityNotes} security={securityBoundary} setSecurity={setSecurityBoundary} recoveryReady={capabilitySettingsReady} working={working} draftConflict={capabilityDraftConflict} onSaveProject={upsertProjectCapability} onDeleteProject={(kind, name, version) => void removeProjectCapability(kind, name, version)} onSave={() => void saveCapabilities()} onRetryDraftConflict={() => void retryCapabilityDraft()} onUseCurrentDraft={() => void adoptCurrentCapabilityDraft(0)} onResolve={(input) => void resolveCapabilities(input)} />;

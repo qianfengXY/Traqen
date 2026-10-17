@@ -21,6 +21,7 @@ export type AccessContext = {
   canGlobalConfig: boolean;
 };
 export type AccessApplication = {
+  canDecide?: boolean;
   id: string;
   accountId: string;
   requesterName?: string;

@@ -16,11 +16,13 @@ type Delta = Page<Difference> & { comparable: boolean; reason?: string; counts: 
 type RenewalState = { confirmation: Confirmation; operation: { id: string; status: string; requiresAction?: boolean; retryAfter?: string | null;
   diagnostic?: { code: string; message: string; recovery: string } | null } | null; result: { receipt: Receipt } | null };
 
-export function SourceVersionView({ client, version, versions, writable, onChanged, fixedReceiptId, fixedComponentId, entryContext, associationService }: { client: SourceTruthClient; version: FrozenVersion; versions: FrozenVersion[]; writable: boolean; onChanged: () => Promise<void>; fixedReceiptId?: string; fixedComponentId?: string; entryContext?: SourceEntryContext; associationService?: SourceAssociationService }) {
+export function SourceVersionView({ client, version, versions, writable, onChanged, fixedReceiptId, selectedReceiptId, onReceiptSelected, fixedComponentId, entryContext, associationService }: { client: SourceTruthClient; version: FrozenVersion; versions: FrozenVersion[]; writable: boolean; onChanged: () => Promise<void>; fixedReceiptId?: string; selectedReceiptId?: string; onReceiptSelected?: (id: string) => void; fixedComponentId?: string; entryContext?: SourceEntryContext; associationService?: SourceAssociationService }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [admission, setAdmission] = useState<{ receiptId: string; gapCount: string; inheritedGapSet: { count: string } } | null>(null);
   const [reason, setReason] = useState(""), [expires, setExpires] = useState(""), [accepted, setAccepted] = useState(false);
-  const [receipt, setReceipt] = useState<Receipt | null>(fixedReceiptId ? null : version.latestReceipt);
+  const requestedReceiptId = fixedReceiptId ?? selectedReceiptId;
+  const [storedReceipt, setReceipt] = useState<Receipt | null>(requestedReceiptId ? null : version.latestReceipt);
+  const receipt = requestedReceiptId && storedReceipt?.id !== requestedReceiptId ? null : storedReceipt;
   const tabsId = useId();
   const canRenew = writable && !fixedReceiptId;
   const [tab, setTab] = useState<string>(entryContext?.tab ?? "inventory"), [from, setFrom] = useState(""), [sourceId, setSourceId] = useState(version.components[0]?.sourceId ?? "");
@@ -33,13 +35,13 @@ export function SourceVersionView({ client, version, versions, writable, onChang
   const alive = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
-    if (!fixedReceiptId) return;
+    if (!requestedReceiptId) { if (version.latestReceipt) onReceiptSelected?.(version.latestReceipt.id); return; }
     let active = true;
-    client.request<Receipt>(`/bundles/${version.id}/receipt?receiptId=${encodeURIComponent(fixedReceiptId)}`)
+    client.request<Receipt>(`/bundles/${version.id}/receipt?receiptId=${encodeURIComponent(requestedReceiptId)}`)
       .then(value => { if (active && !client.signal?.aborted) setReceipt(value); })
       .catch(error => { if (active && !client.signal?.aborted) { setReceipt(null); setError(error.message); } });
     return () => { active = false; };
-  }, [client, version.id, fixedReceiptId]);
+  }, [client, version.id, requestedReceiptId, version.latestReceipt, onReceiptSelected]);
   const request = async (work: () => Promise<void>) => {
     setBusy(true); setError("");
     try { await work(); } catch (error) { if (alive.current && !client.signal?.aborted) { setError((error as Error).message); setAdmission(null); } }
@@ -51,7 +53,7 @@ export function SourceVersionView({ client, version, versions, writable, onChang
     const value = await client.request<Delta>(`/delta?${params}`);
     if (alive.current && !client.signal?.aborted) setDelta(value);
   });
-  const selectReceipt = (value: Receipt) => { setInspecting(false); setReceipt(value); setRenewal(null); setRenewalChecked(false); setAccepted(false); setAdmission(null); setError(""); };
+  const selectReceipt = (value: Receipt) => { setInspecting(false); setReceipt(value); onReceiptSelected?.(value.id); setRenewal(null); setRenewalChecked(false); setAccepted(false); setAdmission(null); setError(""); };
   const issued = async (value: Receipt) => { if (!alive.current || client.signal?.aborted) return; selectReceipt(value); await onChanged(); };
   const recover = () => request(async () => {
     const value = await client.request<RenewalState | null>(`/renewal-status?bundleId=${version.id}&receiptId=${encodeURIComponent(receipt!.id)}`);

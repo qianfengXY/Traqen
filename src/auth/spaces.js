@@ -240,11 +240,13 @@ export class SpaceService extends AccountService {
           .filter((a) => a.admin && a.status === "ACTIVE")
           .map((a) => a.id);
   }
-  async applications(raw, { pending = false, workspaceId = null } = {}) {
+  async applications(raw, { pending = false, workspaceId = null, applicationId = null } = {}) {
     const s = await this.repository.read(),
       { account } = sessionIn(s, raw, this.clock());
     return Object.values(s.applications)
       .filter((a) => {
+        if (applicationId) return a.id === applicationId &&
+          (a.accountId === account.id || account.admin || this.approvers(s, a).includes(account.id));
         if (workspaceId && a.workspaceId !== workspaceId) return false;
         if (!pending) return a.accountId === account.id;
         if (a.status !== "PENDING") return false;
@@ -252,6 +254,7 @@ export class SpaceService extends AccountService {
       })
       .map((a) => ({
         ...a,
+        canDecide: !!account.admin || this.approvers(s, a).includes(account.id),
         requesterName: s.accounts[a.accountId]?.displayName ?? a.accountId,
         spaceName: s.spaces[a.workspaceId]?.name ?? a.name ?? "",
         ...(a.decidedBy ? { decisionName: s.accounts[a.decidedBy]?.displayName ?? a.decidedBy } : {}),

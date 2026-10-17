@@ -5051,6 +5051,32 @@
     "/v1/access/applications": {
       "get": {
         "operationId": "listAccessApplications",
+        "parameters": [
+          {
+            "name": "pending",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "List currently actionable applications for this approver."
+          },
+          {
+            "name": "workspaceId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional workspace scope for the pending list."
+          },
+          {
+            "name": "applicationId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Resolve one exact application, including processed history, for its applicant or a current authorized approver. Unavailable and unauthorized IDs both return an empty list. Each result exposes canDecide for current eligibility; mutation authority is rechecked."
+          }
+        ],
         "summary": "Own application history; pending=true requires current approval eligibility",
         "tags": [
           "F008 identity and space access"

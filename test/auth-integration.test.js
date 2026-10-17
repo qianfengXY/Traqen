@@ -39,6 +39,10 @@ test('real HTTP composition isolates identities, preserves application decisions
  const directory=await alice.call('/v1/access/directory');assert.deepEqual(Object.keys(directory.body.spaces[0]).sort(),['id','name','ownerName']);
  const join=await alice.call('/v1/access/applications','POST',{kind:'JOIN',workspaceId:id,roles:['MAINTAIN'],reason:'Read only is sufficient',operationId:'join'});assert.equal(join.status,200);
  const granted=await admin.call(`/v1/access/applications/${join.body.id}/decide`,'POST',{approve:true,roles:['READ'],version:1});assert.deepEqual(granted.body.actualRoles,['READ']);
+ const exact=await admin.call(`/v1/access/applications?pending=true&applicationId=${join.body.id}`);
+ assert.equal(exact.body.applications.length,1);assert.equal(exact.body.applications[0].id,join.body.id);assert.equal(exact.body.applications[0].status,'APPROVED');
+ assert.equal(exact.body.applications[0].canDecide,true);
+ assert.deepEqual((await alice.call(`/v1/access/applications?applicationId=${create.body.id}`)).body.applications,[],'a link cannot expose another applicant reason');
  assert.equal((await alice.call('/v1/workspaces')).body.workspaces[0].id,id);
  assert.equal((await alice.call(`/v1/workspaces/${id}`)).status,200);
  const catalog=await alice.call(`/v1/workspaces/${id}/settings-catalog`);assert.equal(catalog.status,200);assert.deepEqual(catalog.body.models,[]);assert.equal((await alice.call('/v1/global-accounts')).status,403);

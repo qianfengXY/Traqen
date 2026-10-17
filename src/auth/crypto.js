@@ -111,6 +111,8 @@ const routeKeys = new Set([
   "workspaceId",
   "version",
   "revision",
+  "objectId",
+  "entry",
   "receiptId",
   "bundleId",
   "sourceId",

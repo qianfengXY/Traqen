@@ -697,7 +697,7 @@ export function FeatureExplorer({
     history?.historicalAvailability ??
     null;
   useEffect(() => {
-    if (visible.length > 0 && !visible.some(({ id }) => id === selectedId))
+    if (visible.length > 0 && !selectedId)
       onSelectNode(visible[0].id);
   }, [mode, onSelectNode, selectedId, visible]);
   const tabLabels: Record<FeatureDetailTab, string> = {
@@ -1304,7 +1304,7 @@ export function GraphExplorer({
   const [graphView, setGraphView] =
     useState<FeatureGraphProjection["view"]>("traceability");
   const [targetId, setTargetId] = useState("");
-  const [selectedNodeId, setSelectedNodeId] = useState(focusedId);
+  const selectedNodeId = focusedId;
   const [selectedEdgeId, setSelectedEdgeId] = useState("");
   const [resolvedEvidence, setResolvedEvidence] =
     useState<ResolvedGraphEvidence | null>(null);
@@ -1594,7 +1594,6 @@ export function GraphExplorer({
                           setResolvedEvidence(null);
                           setResolverError("");
                           setSelectedEdgeId(edge.id);
-                          setSelectedNodeId("");
                         }}
                       >
                         {edge.type}
@@ -1615,7 +1614,6 @@ export function GraphExplorer({
                         onClick={() => {
                           setResolvedEvidence(null);
                           setResolverError("");
-                          setSelectedNodeId(node.id);
                           setSelectedEdgeId("");
                           onFocus(node.id);
                         }}
@@ -1826,7 +1824,6 @@ export function GraphExplorer({
                             <button
                               onClick={() => {
                                 setSelectedEdgeId(edge.id);
-                                setSelectedNodeId("");
                               }}
                             >
                               {edge.id}
