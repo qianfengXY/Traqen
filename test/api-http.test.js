@@ -2339,6 +2339,8 @@ test("browser product origins are explicit and preflight never grants an unknown
   });
   assert.equal(preflight.status, 204);
   assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /authorization/);
+  assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /x-traqen-csrf/);
+  assert.match(preflight.headers.get("access-control-allow-headers") ?? "", /x-traqen-review-role/);
   assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /DELETE/);
   assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /PUT/);
   assert.match(preflight.headers.get("access-control-allow-methods") ?? "", /PATCH/);

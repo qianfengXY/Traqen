@@ -14,6 +14,8 @@ async function setup(t){
 test('explicit migration preserves canonical historical identities and rejects D3 conflicts atomically',async t=>{
  const {db,service,account,session}=await setup(t);
  const inventory=await service.inventory();assert.ok(inventory.principals.some(p=>p.id==='owner'));
+ assert.equal(await service.canonicalActor('unmapped'),null);
+ assert.equal(await service.canonicalActor(account.id),account.id);
  await assert.rejects(service.migrate({bindings:[],owners:[],grants:[]}),e=>e.code==='AUTH_MIGRATION_CONFIRMATION_REQUIRED');
  await service.migrate({confirmed:true,requestedBy:'DEPLOYMENT',bindings:[{principalId:'owner',accountId:account.id}],owners:[{workspaceId:'workspace',accountId:account.id}],grants:[{workspaceId:'workspace',accountId:account.id,roles:['approver']}]});
  assert.equal(await service.canonicalActor('owner'),account.id);await service.authorizeActor('owner','workspace','approver');

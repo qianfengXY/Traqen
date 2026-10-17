@@ -1566,12 +1566,19 @@ export class TraceabilityApplication {
       throw new ReviewAuthorizationError(`Role ${actorRole} cannot perform Decision lifecycle action ${event.action}`);
     }
     if (event.action === "APPROVE") {
-      if (await this.#actorIdentityResolver(actorId) === await this.#actorIdentityResolver(stored.reviewCase.proposerId)) {
+      const [actorIdentity, proposerIdentity] = await Promise.all([
+        this.#actorIdentityResolver(actorId),
+        this.#actorIdentityResolver(stored.reviewCase.proposerId),
+      ]);
+      if (!actorIdentity || !proposerIdentity) {
+        throw new ReviewAuthorizationError("Complete the proposer and approver identity mapping before approval");
+      }
+      if (actorIdentity === proposerIdentity) {
         throw new ReviewAuthorizationError("The proposer cannot approve their own governed Decision");
       }
       const lastReopenIndex = stored.events.findLastIndex((item) => item.action === "REOPEN");
       if (
-        (await Promise.all(stored.events.slice(lastReopenIndex + 1).filter(item => item.action === "APPROVE").map(item => this.#actorIdentityResolver(item.actorId)))).includes(await this.#actorIdentityResolver(actorId)) &&
+        (await Promise.all(stored.events.slice(lastReopenIndex + 1).filter(item => item.action === "APPROVE").map(item => this.#actorIdentityResolver(item.actorId)))).includes(actorIdentity) &&
         current.status === "PENDING"
       ) {
         throw new PersistenceConflictError(`Actor ${actorId} already approved this active review round`);

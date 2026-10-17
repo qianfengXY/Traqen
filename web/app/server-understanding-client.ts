@@ -42,10 +42,9 @@ export class ServerUnderstandingApiError extends Error {
   }
 }
 
-function headers(apiToken: string, json = false) {
+function headers(_apiToken: string, json = false) {
   return {
     ...(json ? { "content-type": "application/json" } : {}),
-    ...(apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {}),
   };
 }
 

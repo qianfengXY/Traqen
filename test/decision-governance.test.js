@@ -19,13 +19,14 @@ const governancePolicy = {
   maxBreakGlassMinutes: 60,
 };
 
-async function fixture() {
+async function fixture({ actorIdentityResolver } = {}) {
   now = Date.parse("2026-07-15T09:00:00.000Z");
   const store = new MemoryTraceabilityStore();
   let reviewer = { actorId: "PROPOSER-001", actorRole: "business-owner" };
   const application = new TraceabilityApplication({
     store,
     clock,
+    actorIdentityResolver,
     reviewerResolver: () => reviewer,
     reviewPolicyResolver: () => ({ decisionGovernance: governancePolicy }),
   });
@@ -79,6 +80,54 @@ function caseInput(overrides = {}) {
     ...overrides,
   };
 }
+
+test("unmapped historical proposers block approval until identity mapping establishes independence", async () => {
+  const identities = new Map([["APPROVER-001", "ACCOUNT-1"], ["APPROVER-002", "ACCOUNT-2"]]);
+  const { application, become } = await fixture({ actorIdentityResolver: id => identities.get(id) ?? null });
+  await application.createDecisionReviewCase("PROJECT-001", caseInput());
+  become("APPROVER-001", "business-owner");
+  const approve = id => application.appendDecisionReviewEvent("PROJECT-001", "DECISION-CASE-001", {
+    id, action: "APPROVE", rationale: "Review migrated proposal.",
+  });
+  await assert.rejects(approve("UNMAPPED-PROPOSER"), /identity mapping/i);
+  assert.equal((await application.getDecisionReviewCase("PROJECT-001", "DECISION-CASE-001")).events.length, 0);
+
+  identities.set("PROPOSER-001", "ACCOUNT-1");
+  await assert.rejects(approve("SAME-PERSON"), /proposer cannot approve/i);
+  identities.set("PROPOSER-001", "ACCOUNT-PROPOSER");
+  identities.delete("APPROVER-001");
+  await assert.rejects(approve("UNMAPPED-APPROVER"), /identity mapping/i);
+  identities.set("APPROVER-001", "ACCOUNT-1");
+  assert.equal((await approve("FIRST-INDEPENDENT")).evaluation.status, "PENDING");
+
+  become("APPROVER-002", "compliance-owner");
+  identities.set("APPROVER-002", "ACCOUNT-1");
+  await assert.rejects(approve("SAME-PERSON-OTHER-PRINCIPAL"), /already approved/i);
+  identities.set("APPROVER-002", "ACCOUNT-2");
+  const completed = await approve("SECOND-INDEPENDENT");
+  assert.equal(completed.evaluation.status, "APPROVED");
+  assert.equal(completed.evaluation.approvalActorCount, 2);
+  assert.equal(completed.decisions.length, 1);
+});
+
+test("canonical evaluation ignores unresolved historical approvals and fails closed on an unresolved proposer", () => {
+  const reviewCase = createDecisionReviewCase({ ...caseInput(), proposerId: "PROPOSER-001", proposerRole: "business-owner" }, clock);
+  const approvals = ["HISTORICAL-1", "HISTORICAL-2", "CURRENT-1"].map((actorId, i) => ({
+    id: `E${i}`, caseId: reviewCase.id, action: "APPROVE", actorId,
+    actorRole: "business-owner", rationale: "Historical approval", createdAt: "2026-07-15T09:01:00.000Z",
+  }));
+  const actorIdentityMap = { "PROPOSER-001": "ACCOUNT-P", "HISTORICAL-1": null, "CURRENT-1": "ACCOUNT-1" };
+  const evaluated = evaluateDecisionReviewCase(reviewCase, approvals, { ...governancePolicy, actorIdentityMap }, clock);
+  assert.equal(evaluated.status, "PENDING");
+  assert.equal(evaluated.approvalActorCount, 1);
+  assert.equal(evaluated.observedApprovalActorCount, 1);
+  assert.deepEqual(evaluated.ignoredApprovalEventIds, ["E0", "E1"]);
+  const missingProposer = evaluateDecisionReviewCase(reviewCase, approvals, {
+    ...governancePolicy, actorIdentityMap: { "HISTORICAL-1": "ACCOUNT-2", "CURRENT-1": "ACCOUNT-1" },
+  }, clock);
+  assert.equal(missingProposer.approvalActorCount, 0);
+  assert.equal(missingProposer.mayMaterializeDecision, false);
+});
 
 test("HIGH Decisions require distinct proposer and dual approvers, then materialize append-only authority", async () => {
   const { application, become } = await fixture();

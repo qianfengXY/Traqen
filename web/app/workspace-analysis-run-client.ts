@@ -130,10 +130,9 @@ export function workspaceRunSubscriptionBeforeStart(
   };
 }
 
-function apiHeaders(apiToken: string, json = false) {
+function apiHeaders(_apiToken: string, json = false) {
   return {
     ...(json ? { "content-type": "application/json" } : {}),
-    ...(apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {}),
   };
 }
 

@@ -231,10 +231,6 @@ export type ResolvedGraphEvidence = {
   };
 };
 
-function headers(apiToken: string): Record<string, string> {
-  return apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {};
-}
-
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json() as T & { error?: { message?: string } };
   if (!response.ok) throw new Error(body.error?.message ?? `API returned ${response.status}`);
@@ -244,7 +240,7 @@ async function json<T>(response: Response): Promise<T> {
 export async function getCurrentUnderstandingGraph(apiBase: string, apiToken: string, projectId: string) {
   const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/graph/current`, {
     method: "GET",
-    headers: headers(apiToken),
+    headers: {},
   });
   if (response.status === 404) return null;
   return json<CurrentUnderstandingGraph>(response);
@@ -253,7 +249,7 @@ export async function getCurrentUnderstandingGraph(apiBase: string, apiToken: st
 export async function listGraphRevisions(apiBase: string, apiToken: string, projectId: string) {
   const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/graph/revisions`, {
     method: "GET",
-    headers: headers(apiToken),
+    headers: {},
   });
   return (await json<{ revisions: GraphRevision[] }>(response)).revisions;
 }
@@ -266,7 +262,7 @@ export async function getGraphRevision(
 ) {
   const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/graph/revisions/${encodeURIComponent(revisionId)}`, {
     method: "GET",
-    headers: headers(apiToken),
+    headers: {},
   });
   return json<{ revision: GraphRevision; graphArtifact: CurrentUnderstandingGraph["graphArtifact"] }>(response);
 }
@@ -279,7 +275,7 @@ export async function getUnderstandingChangeImpact(
 ) {
   const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/changes/${encodeURIComponent(changeSetId)}/impact`, {
     method: "GET",
-    headers: headers(apiToken),
+    headers: {},
   });
   if (response.status === 404) return null;
   return json<Record<string, unknown>>(response);
@@ -293,7 +289,7 @@ export async function getUnderstandingTraceChain(
 ) {
   const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/graph/traces/${encodeURIComponent(traceChainId)}`, {
     method: "GET",
-    headers: headers(apiToken),
+    headers: {},
   });
   if (response.status === 404) return null;
   return json<CurrentUnderstandingGraph["graphArtifact"]["traceChains"][number]>(response);
@@ -311,7 +307,7 @@ export async function getFeatureUnderstandingHistory(
   if (options.graphRevisionId) query.set("graphRevisionId", options.graphRevisionId);
   const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/history${query.size ? `?${query}` : ""}`,
-    { method: "GET", headers: headers(apiToken) },
+    { method: "GET", headers: {} },
   );
   if (response.status === 404) return null;
   return json<FeatureUnderstandingHistory>(response);
@@ -330,7 +326,7 @@ export async function getFeatureTraceability(
   if (options.graphRevisionId) query.set("graphRevisionId", options.graphRevisionId);
   const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/traceability?${query}`,
-    { method: "GET", headers: headers(apiToken) },
+    { method: "GET", headers: {} },
   );
   if (response.status === 404) return null;
   return json<FeatureTraceability>(response);
@@ -354,7 +350,7 @@ export async function getFeatureGraph(
   for (const relation of options.relations ?? []) query.append("relation", relation);
   const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/graph?${query}`,
-    { method: "GET", headers: headers(apiToken) },
+    { method: "GET", headers: {} },
   );
   if (response.status === 404) return null;
   return json<FeatureGraphProjection>(response);
@@ -371,7 +367,7 @@ export async function queryFeatureGraphPath(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(projectId)}/features/${encodeURIComponent(featureId)}/graph/paths/query`,
     {
       method: "POST",
-      headers: { "content-type": "application/json", ...headers(apiToken) },
+      headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     },
   );
@@ -387,7 +383,7 @@ export async function resolveGraphEvidence(
   if (!resolver.startsWith("/v1/")) throw new Error("Evidence resolver must be a server-owned /v1 path");
   const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}${resolver}`, {
     method: "GET",
-    headers: headers(apiToken),
+    headers: {},
   });
   return json<ResolvedGraphEvidence>(response);
 }

@@ -19,11 +19,8 @@ export type CurrentWorkspaceContext = {
   contextVersion: number;
 };
 
-function headers(apiToken: string, extra: Record<string, string> = {}) {
-  return {
-    ...extra,
-    ...(apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {}),
-  };
+function headers(_apiToken: string, extra: Record<string, string> = {}) {
+  return extra;
 }
 
 export class WorkspaceApiError extends Error {

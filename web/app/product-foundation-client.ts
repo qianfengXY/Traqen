@@ -195,12 +195,9 @@ export type ReviewQueueItem = {
   [key: string]: unknown;
 };
 
-function headers(apiToken: string, json = false, reviewerToken = false) {
-  const token = apiToken.trim();
+function headers(_apiToken: string, json = false) {
   return {
     ...(json ? { "content-type": "application/json" } : {}),
-    ...(token ? { "x-traqen-api-token": token } : {}),
-    ...(reviewerToken && token ? { authorization: `Bearer ${token}` } : {}),
   };
 }
 
@@ -458,7 +455,7 @@ export async function decideWorkspaceReviewBatch(
 ) {
   const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/review-decisions/batch`, {
     method: "POST",
-    headers: headers(apiToken, true, true),
+    headers: headers(apiToken, true),
     body: JSON.stringify(input),
   });
   return parseJson<Record<string, unknown>>(response);

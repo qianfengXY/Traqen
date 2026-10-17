@@ -196,7 +196,8 @@ export class OperationsService extends SpaceService {
   }
   async canonicalActor(actorId) {
     const s = await this.repository.read();
-    return s.bindings[actorId]?.accountId ?? actorId;
+    const accountId = s.bindings[actorId]?.accountId ?? actorId;
+    return s.accounts[accountId]?.id ?? null;
   }
   async globalAccess(raw, tx = null) {
     const s = await this.repository.read(tx ?? this.repository.database),

@@ -255,7 +255,7 @@ function applyCors(request, response, allowedOrigins) {
   response.setHeader("access-control-allow-methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   response.setHeader(
     "access-control-allow-headers",
-    "authorization, content-type, x-request-id, x-traqen-api-token",
+    "authorization, content-type, x-request-id, x-traqen-api-token, x-traqen-csrf, x-traqen-review-role",
   );
   response.setHeader("access-control-expose-headers", "x-request-id");
   response.setHeader("vary", "Origin");
