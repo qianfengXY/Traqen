@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
+import { sourceDatabase } from './support/source-truth-database.js';
+import { AuthRepository } from '../src/auth/repository.js';
+import { AuthService } from '../src/auth/service.js';
+import { AuthHttp } from '../src/auth/http.js';
+import { contextualDatabase } from '../src/auth/database.js';
+import { totp } from '../src/auth/crypto.js';
+import { SourceTruthRepository } from '../src/source-truth/repository.js';
+import { createTraceabilityHttpServer } from '../src/api/http-server.js';
+import { createSourceTruthHttpHandler } from '../src/source-truth/http-handler.js';
+import { SourceMaterialRepository } from '../src/source-truth/material-repository.js';
+import { SourceTruthBlobStore } from '../src/source-truth/blob-store.js';
+import { SourceUploadService } from '../src/source-truth/upload-service.js';
+import { SourceCandidateService } from '../src/source-truth/candidate-service.js';
+import { SourceCaptureService } from '../src/source-truth/capture-service.js';
+import { capturePolicy } from '../src/source-truth/policy.js';
+import { SourceTruthClient } from '../web/app/source-truth/client.ts';
+import {setSessionProof} from '../web/app/auth-client.ts';
+
+test('the real F001 handler uses the main session and authoritative grants, including worker revocation and restore fencing',async t=>{
+ const {db}=await sourceDatabase(t),database=contextualDatabase(db);let now=1800000000000;
+ const service=new AuthService({repository:new AuthRepository(database),key:Buffer.alloc(32,9),clock:()=>now});
+ const account=await service.initialize({login:'admin',displayName:'Admin',password:'password1'}),pending=await service.login({login:'admin',password:'password1'}),enrollment=await service.beginTotp(pending.token);
+ const admin=await service.confirmTotp(pending.token,totp(enrollment.secret,now));
+ const created=await service.createAccount(admin.token,{login:'reader',displayName:'Reader'});await service.setPassword({credential:created.credential,password:'password1'});const reader=await service.login({login:'reader',password:'password1'});
+ await service.migrate({bindings:[{principalId:'owner',accountId:account.id},{principalId:'reader',accountId:created.account.id}],owners:[{workspaceId:'workspace',accountId:account.id}],grants:[{workspaceId:'workspace',accountId:created.account.id,roles:['READ']}],confirmed:true,requestedBy:'DEPLOYMENT'});
+ // Migration deliberately revokes old sessions; fresh callers must sign in again.
+ now+=30001;const p=await service.login({login:'admin',password:'password1'});const ownerSession=await service.secondFactor(p.token,totp(enrollment.secret,now));const readerSession=await service.login({login:'reader',password:'password1'});
+ const repository=new SourceTruthRepository(database,{identityService:service}),policy=capturePolicy(),materials=new SourceMaterialRepository(repository,policy);
+ const root=await mkdtemp(path.join(tmpdir(),'traqen-unified-source-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const blobs=await SourceTruthBlobStore.open({root,keyVersion:'test',keys:{test:Buffer.alloc(32,10)}}),upload=new SourceUploadService(repository,materials,blobs),candidates=new SourceCandidateService(repository,materials,blobs);
+ const capture=new SourceCaptureService({repository,policy,materials,blobs,upload,candidates});
+ const origins=[];const source=createSourceTruthHttpHandler({allowedOrigins:origins,services:{repository,policy,materials,blobs,upload,candidates,capture},authenticate:()=>{throw new Error('A second source token must never be requested');}});
+ const http=new AuthHttp({service,origin:'http://127.0.0.1:54321',development:true}),server=createTraceabilityHttpServer({application:{},auth:http,sourceTruthHandler:source});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>{server.close(resolve);server.closeAllConnections();}));
+ const base=`http://127.0.0.1:${server.address().port}`;http.origin=base;http.host=new URL(base).host;origins.push(base);
+ let session=ownerSession;const realFetch=globalThis.fetch;
+ t.mock.method(globalThis,'fetch',(url,options={})=>{const headers=new Headers(options.headers);assert.equal(headers.has('authorization'),false);headers.set('cookie',`${http.cookieName}=${session.token}`);if(!['GET','HEAD'].includes(options.method??'GET'))headers.set('origin',base);return realFetch(url,{...options,headers});});
+ setSessionProof(http.csrfFor(session.token));t.after(()=>setSessionProof(''));
+ const client=new SourceTruthClient(base,'','workspace');const overview=await client.request();assert.equal(overview.actor.actorId,'owner');assert.equal(overview.role,'MAINTAIN');
+ const draft=await client.request('/draft','PUT',{expectedRevision:0,input:{sources:[{sourceId:'docs',kind:'DIRECTORY_UPLOAD',mode:'UPDATE',label:'Documents'}],baselineBundleId:null}});assert.equal(draft.revision,1);
+ session=readerSession;setSessionProof(http.csrfFor(session.token));assert.equal((await client.request()).role,'READ');await assert.rejects(client.request('/draft','PUT',{expectedRevision:1,input:{sources:[],baselineBundleId:null}}),e=>e.status===403);
+ await service.grant(ownerSession.token,'workspace',{accountId:created.account.id,roles:[]});await assert.rejects(client.request(),e=>e.status===403);await assert.rejects(service.authorizeActor('reader','workspace','READ'),e=>e.code==='AUTH_FORBIDDEN');
+ await service.enterRecovery({requestedBy:'DEPLOYMENT'});await assert.rejects(client.request(),e=>e.code==='AUTH_SESSION_REVOKED');
+});

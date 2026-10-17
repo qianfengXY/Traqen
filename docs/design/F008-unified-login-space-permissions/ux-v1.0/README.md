@@ -4,7 +4,8 @@ related_features: [F005, F006]
 topics: [ux, authentication, permissions, page-design, design-fixture]
 doc_kind: design-proposal
 created: 2026-10-17
-status: awaiting-operator-visual-confirmation
+status: operator-approved
+visual_confirmation: 0001792229386746-000019-c817c572
 layout_baseline: F005-V1.1
 source_thread: thread_mv7ika5a02jrsca7
 authorization: 0001792227333546-000009-1b602840
@@ -12,7 +13,7 @@ authorization: 0001792227333546-000009-1b602840
 
 # F008 · 页面设计与效果图 v1.0
 
-本附件将 F008 已确认的功能合同展开为页面设计。co-creator 于 `0001792226979532-000006-471be03a` 要求先补齐页面设计再开发，并于 `0001792227333546-000009-1b602840` 明确要求“你把效果图放到设计文档里面”。页面方案的完整补充清单在前一条作者消息 `0001792226981298-000007-fd3ee6b1`。本次授权制作并写入效果图；**页面样稿仍待 co-creator 视觉确认，不代表功能实现或批准恢复开发**。
+本附件将 F008 已确认的功能合同展开为页面设计。co-creator 于 `0001792226979532-000006-471be03a` 要求先补齐页面设计再开发，并于 `0001792227333546-000009-1b602840` 明确要求“你把效果图放到设计文档里面”。页面方案的完整补充清单在前一条作者消息 `0001792226981298-000007-fd3ee6b1`。本次授权制作并写入效果图；co-creator 已于 `0001792229386746-000019-c817c572` 查看效果并确认恢复开发；**样稿是已确认的设计资产，不代表功能实现或验收通过**。
 
 [返回功能与架构设计正文](../README.md#5-前端设计遵循-f005-v11) · [打开设计样稿](assets/index.html) · [渲染记录](assets/verification.json)
 

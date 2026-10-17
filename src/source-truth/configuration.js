@@ -41,7 +41,7 @@ export async function privateSourceFile(filename, { maximum = 1048576, forbidden
   } finally { await file?.close(); }
 }
 
-export async function readSourceTruthConfiguration(filename) {
+export async function readSourceTruthConfiguration(filename, { unifiedAuthentication = false } = {}) {
   const file = await privateSourceFile(filename);
   let config;
   try { config = JSON.parse(file.bytes.toString("utf8")); } catch { throw new SourceTruthError("SOURCE_CONFIGURATION_INVALID", "来源配置不是有效 JSON", { status: 503 }); }
@@ -60,7 +60,8 @@ export async function readSourceTruthConfiguration(filename) {
     && ["MANUAL", "INTERVAL"].includes(config.backup.mode)
     && (config.backup.mode === "MANUAL" || (Number.isSafeInteger(config.backup.intervalMs) && config.backup.intervalMs >= 60000)),
   "SOURCE_CONFIGURATION_INVALID", "备份须明确选择人工触发或已配置周期，不默认设置保留删除期限", { status: 503 });
-  sourceTruthAuthenticator(config.members); // Validate before opening any service.
+  if (unifiedAuthentication && config.members === undefined) config.members=[];
+  if (!unifiedAuthentication || config.members.length) sourceTruthAuthenticator(config.members); // Validate before opening any service.
   capturePolicy({ ...config.resources, gitTargets: config.git.targets });
   gitCacheBudget(config.storage.root, { maxCacheBytes: config.resources.maxGitCacheBytes, maxPackBytes: config.resources.maxPackBytes, minFreeBytes: config.storage.minFreeBytes });
   return config;
@@ -103,7 +104,7 @@ async function storageConfiguration(config) {
   return { root, backupRoot, forbiddenRoots, keyVersion, keys, recoveryKeys };
 }
 
-export async function createSourceTruthRuntime({ configuration: config, connectionString, connection: suppliedConnection, ssl, host = "127.0.0.1" }) {
+export async function createSourceTruthRuntime({ configuration: config, connectionString, connection: suppliedConnection, ssl, host = "127.0.0.1", identityService = null }) {
   requireValue(["127.0.0.1", "::1"].includes(host), "SOURCE_TRANSPORT_PROTECTION_REQUIRED", "来源 API 必须绑定本机并经受保护的入口提供服务，不能直接公开明文凭据通道", { status: 503 });
   const storage = await storageConfiguration(config);
   const max = config.resources.poolConnections ?? 8;
@@ -118,7 +119,7 @@ export async function createSourceTruthRuntime({ configuration: config, connecti
   try {
     const database = await postgres.prove(pool);
     await verifyProtectedVolume(database.data);
-    const repository = new SourceTruthRepository(pool);
+    const repository = new SourceTruthRepository(pool, { identityService });
     for (const member of config.members) {
       const exists = (await pool.query("SELECT 1 FROM principal WHERE id=$1 AND tenant_id=$2 AND principal_type='USER'", [member.actorId, member.tenantId])).rows[0];
       requireValue(exists, "SOURCE_AUTH_CONFIGURATION_REQUIRED", "来源成员须由部署管理员登记为同租户的人类成员，不能冒用 Agent 身份", { status: 503 });
@@ -160,7 +161,7 @@ export async function createSourceTruthRuntime({ configuration: config, connecti
     await services.ensureReady();
     worker = new SourceTruthWorker(services, { maxConcurrent: config.resources.workerConcurrency ?? 2 });
     services.dispatch = () => worker.dispatch();
-    const sourceTruthHandler = createSourceTruthHttpHandler({ services, authenticate: sourceTruthAuthenticator(config.members), allowedOrigins: config.origins });
+    const sourceTruthHandler = createSourceTruthHttpHandler({ services, authenticate: identityService ? () => { throw new Error("Unified identity context is required"); } : sourceTruthAuthenticator(config.members), allowedOrigins: config.origins });
     if (services.backup) await services.backup.recoverAbandoned().catch((error) => { if (error.code !== "SOURCE_BACKUP_BUSY") throw error; });
     return { services, sourceTruthHandler, worker, pool, configuration: config,
       start() {

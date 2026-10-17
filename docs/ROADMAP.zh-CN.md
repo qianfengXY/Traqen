@@ -28,7 +28,7 @@ Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期�
 | F003 | P1 | Agent 候选与审阅后的业务功能树 | spec | TBD | operator 已确认的重构 | [F003](design/F003-traceability-graph/README.md) |
 | F004 | P0 | 变更影响分析 | spec | TBD | operator 已确认的重构 | [F004](features/F004-change-impact-analysis.zh-CN.md) |
 | F006 | P2 | Workspace 能力设置 | spec | TBD | operator 已授权的[设计收敛](../feature-discussions/2026-08-28-F006-workspace-capability-settings-design/README.zh-CN.md) | [F006](features/F006-workspace-capability-settings.zh-CN.md) |
-| F008 | P2 | 统一登录与空间权限 | spec | TBD | 功能合同已确认的[设计 V1.2](design/F008-unified-login-space-permissions/README.md)；正文已嵌入效果图，页面样稿待视觉确认 | [F008](features/F008-unified-login-space-permissions.md) |
+| F008 | P2 | 统一登录与空间权限 | implementation | 搬砖工 | 功能合同已确认的[设计 V1.2](design/F008-unified-login-space-permissions/README.md)；正文已嵌入效果图，co-creator 已确认页面方向并恢复完整开发；A+B 验收进行中 | [F008](features/F008-unified-login-space-permissions.md) |
 
 ## 交付波次
 

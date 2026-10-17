@@ -124,7 +124,10 @@ export function evaluateDecisionReviewCase(reviewCase, events, policy = {}, cloc
     DecisionReviewAction.DISPUTE,
   ].includes(event.action));
   const approvals = activeEvents.filter((event) => event.action === DecisionReviewAction.APPROVE);
-  const approvalActors = new Set(approvals.map((event) => event.actorId));
+  // A supplied map is authoritative: unresolved legacy principals cannot prove independence.
+  const identity = id => policy.actorIdentityMap ? policy.actorIdentityMap[id] ?? null : id;
+  const proposerIdentity = identity(reviewCase.proposerId);
+  const approvalActors = new Set(approvals.map((event) => identity(event.actorId)).filter(Boolean));
   const approvalRoles = new Set(approvals.map((event) => event.actorRole));
   const requirements = {
     minimumApprovals: reviewCase.approvalMode === DecisionApprovalMode.DUAL ||
@@ -142,9 +145,10 @@ export function evaluateDecisionReviewCase(reviewCase, events, policy = {}, cloc
     allowedRoles = configuredRoles(policy, "breakGlassRoles");
   }
   const validApprovals = approvals.filter(
-    (event) => event.actorId !== reviewCase.proposerId && allowedRoles.has(event.actorRole),
+    (event) => proposerIdentity && identity(event.actorId) &&
+      identity(event.actorId) !== proposerIdentity && allowedRoles.has(event.actorRole),
   );
-  const distinctValidActors = new Set(validApprovals.map((event) => event.actorId));
+  const distinctValidActors = new Set(validApprovals.map((event) => identity(event.actorId)));
   const roleGroupsSatisfied = requirements.requiredRoleGroups.every((roles) =>
     roles.some((role) => validApprovals.some((event) => event.actorRole === role)));
   const approvalSatisfied = distinctValidActors.size >= requirements.minimumApprovals && roleGroupsSatisfied;

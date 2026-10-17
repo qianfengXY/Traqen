@@ -1,3 +1,4 @@
+import { sessionFetch } from "../auth-client.ts";
 export class SourceClientError extends Error {
   code: string;
   status: number;
@@ -25,7 +26,7 @@ export class SourceTruthClient {
     const signal = AbortSignal.any([AbortSignal.timeout(15000), ...[this.signal, actionSignal].filter((value): value is AbortSignal => Boolean(value))]);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
-      const response = await fetch(this.base + route, { method: "GET", credentials: "omit", cache: "no-store", redirect: "error", signal,
+      const response = await sessionFetch(this.base + route, { method: "GET", credentials: "omit", cache: "no-store", redirect: "error", signal,
         headers: { authorization: `Bearer ${this.token}` } });
       if (!response.ok) {
         const result = await response.json().catch(() => null);
@@ -55,7 +56,7 @@ export class SourceTruthClient {
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       signal?.throwIfAborted();
-      const response = await fetch(this.base + route, { method: "GET", credentials: "omit", cache: "no-store", redirect: "error", signal, headers: { authorization: `Bearer ${this.token}` } });
+      const response = await sessionFetch(this.base + route, { method: "GET", credentials: "omit", cache: "no-store", redirect: "error", signal, headers: { authorization: `Bearer ${this.token}` } });
       if (!response.ok) {
         const result = await response.json().catch(() => null);
         throw new SourceClientError(result?.error?.message ?? "原始文件读取未完成", result?.error?.code ?? "SOURCE_HTTP_ERROR", response.status, result?.error?.requestId ?? null);
@@ -82,7 +83,7 @@ export class SourceTruthClient {
     signal?.throwIfAborted();
     let response: Response;
     try {
-      response = await fetch(this.base + route, { method, credentials: "omit", cache: "no-store", redirect: "error", signal,
+      response = await sessionFetch(this.base + route, { method, credentials: "omit", cache: "no-store", redirect: "error", signal,
         headers: { authorization: `Bearer ${this.token}`, ...(body === undefined ? {} : { "content-type": body instanceof Blob ? "application/octet-stream" : "application/json" }) },
         body: body === undefined ? undefined : body instanceof Blob ? body : JSON.stringify(body) });
     } catch {

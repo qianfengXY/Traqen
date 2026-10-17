@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://traqen.dev/contracts/identity.schema.json",
+  "$defs": {
+    "PersonAccount": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "login": {
+          "type": "string",
+          "minLength": 1
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "ACTIVE",
+            "DISABLED"
+          ]
+        },
+        "admin": {
+          "type": "boolean"
+        },
+        "adminPending": {
+          "type": "boolean"
+        },
+        "globalConfig": {
+          "type": "boolean"
+        },
+        "mfaEnabled": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "HUMAN",
+            "PROGRAM"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "login",
+        "displayName",
+        "status",
+        "admin",
+        "adminPending",
+        "globalConfig",
+        "mfaEnabled",
+        "kind"
+      ],
+      "additionalProperties": false
+    },
+    "AuthSession": {
+      "type": "object",
+      "properties": {
+        "account": {
+          "$ref": "./identity.schema.json#/$defs/PersonAccount"
+        },
+        "session": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "device": {
+              "type": "string"
+            },
+            "expiresAt": {
+              "type": "number"
+            },
+            "phase": {
+              "enum": [
+                "AUTHENTICATED",
+                "MFA_REQUIRED",
+                "MFA_ENROLLMENT_REQUIRED"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "phase",
+            "expiresAt"
+          ],
+          "additionalProperties": false
+        },
+        "position": {
+          "type": "string"
+        },
+        "csrfToken": {
+          "type": "string",
+          "minLength": 1
+        },
+        "restrictedRestore": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "account",
+        "session",
+        "position",
+        "csrfToken"
+      ],
+      "additionalProperties": false
+    },
+    "LoginRequest": {
+      "type": "object",
+      "properties": {
+        "login": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "password": {
+          "type": "string",
+          "minLength": 1
+        },
+        "remember": {
+          "type": "boolean"
+        },
+        "device": {
+          "type": "string",
+          "maxLength": 160
+        }
+      },
+      "required": [
+        "login",
+        "password"
+      ],
+      "additionalProperties": false
+    },
+    "PasswordCredentialRequest": {
+      "type": "object",
+      "properties": {
+        "credential": {
+          "type": "string",
+          "minLength": 1
+        },
+        "password": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 1024
+        }
+      },
+      "required": [
+        "credential",
+        "password"
+      ],
+      "additionalProperties": false
+    },
+    "ApplicationRequest": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "enum": [
+            "CREATE",
+            "JOIN"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entry": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "reason",
+        "operationId"
+      ],
+      "additionalProperties": false
+    },
+    "AccessApplication": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "accountId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "requestedRoles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "actualRoles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "status": {
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "WITHDRAWN"
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "createdAt": {
+          "type": "number"
+        },
+        "decidedAt": {
+          "type": "number"
+        },
+        "decidedBy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "decisionReason": {
+          "type": "string"
+        },
+        "requesterName": {
+          "type": "string"
+        },
+        "spaceName": {
+          "type": "string"
+        },
+        "decisionName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "accountId",
+        "kind",
+        "workspaceId",
+        "requestedRoles",
+        "status",
+        "version",
+        "reason",
+        "createdAt"
+      ],
+      "additionalProperties": false
+    },
+    "DecisionRequest": {
+      "type": "object",
+      "properties": {
+        "approve": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reason": {
+          "type": "string",
+          "maxLength": 2000
+        }
+      },
+      "required": [
+        "approve",
+        "version"
+      ],
+      "additionalProperties": false
+    },
+    "GrantRequest": {
+      "type": "object",
+      "properties": {
+        "accountId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "accountId",
+        "roles"
+      ],
+      "additionalProperties": false
+    },
+    "CreatePersonRequest": {
+      "type": "object",
+      "properties": {
+        "login": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [
+        "login",
+        "displayName"
+      ],
+      "additionalProperties": false
+    },
+    "AccountPatch": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "enum": [
+            "ACTIVE",
+            "DISABLED"
+          ]
+        },
+        "admin": {
+          "type": "boolean"
+        },
+        "globalConfig": {
+          "type": "boolean"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "ProgramRequest": {
+      "type": "object",
+      "properties": {
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "READ",
+              "MAINTAIN"
+            ]
+          }
+        },
+        "workspaceIds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "expiresAt": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "displayName",
+        "operations",
+        "workspaceIds",
+        "expiresAt"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { identityContext } from "../auth/context.js";
 import { randomUUID } from "node:crypto";
 import { requireValue, SourceTruthError } from "./errors.js";
 import { publicRun, sourceBody, sourceBytes, sourceFailure, sourceJson } from "./http-io.js";
@@ -17,7 +18,7 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
     if (!match) return false;
     try {
       requireValue(!request.headers.origin || allowedOrigins.includes(request.headers.origin), "SOURCE_ORIGIN_FORBIDDEN", "该页面来源未获授权", { status: 403 });
-      const actor = authenticate(request);
+      const actor = identityContext()?.sourceActor ?? authenticate(request);
       const workspaceId = decodeURIComponent(match[1]);
       requireValue(workspaceId.length > 0 && workspaceId.length <= 256 && !/[\u0000-\u001f\u007f]/.test(workspaceId), "SOURCE_INVALID_INPUT", "Workspace 定位符无效", { status: 400 });
       const route = match[2] ?? "";

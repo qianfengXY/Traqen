@@ -7,8 +7,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 export function localDevelopmentConfig(env = {}) {
-  const apiPort = 3100;
-  const webPort = 3000;
+  const apiPort = Number(env.TRAQEN_API_PORT ?? 3100);
+  const webPort = Number(env.TRAQEN_WEB_PORT ?? 3000);
+  for (const port of [apiPort,webPort]) if (!Number.isInteger(port) || port < 1 || port > 65535 || [3003,3004,6399].includes(port)) throw new Error('Invalid or reserved development port');
+  if (apiPort === webPort) throw new Error('API and Web require separate ports');
   const allowedOrigins = new Set([
     "http://127.0.0.1:3000",
     "http://localhost:3000",
@@ -76,6 +78,9 @@ export async function startDevelopment({ env = process.env, root = repositoryRoo
         PORT: String(config.apiPort),
         CORS_ALLOWED_ORIGINS: config.corsAllowedOrigins,
         TRAQEN_DEVELOPMENT_SOURCE_ROOT: root,
+        TRAQEN_AUTH_DEVELOPMENT: 'true',
+        TRAQEN_AUTH_DEVELOPMENT_DATA: env.TRAQEN_AUTH_DEVELOPMENT_DATA ?? path.join(root, '.traqen-dev/identity'),
+        TRAQEN_PUBLIC_ORIGIN: config.webUrl,
       },
       stdio: "inherit",
     }),
@@ -87,6 +92,8 @@ export async function startDevelopment({ env = process.env, root = repositoryRoo
         TRAQEN_WEB_PORT: String(config.webPort),
         WRANGLER_LOG_PATH: env.WRANGLER_LOG_PATH ?? ".wrangler/wrangler.log",
         NEXT_PUBLIC_TRAQEN_DEV_SOURCE_ROOT: root,
+        NEXT_PUBLIC_TRAQEN_API_BASE: '/api',
+        TRAQEN_API_PROXY_TARGET: config.apiUrl,
       },
       stdio: "inherit",
     }),

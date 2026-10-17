@@ -1,3 +1,4 @@
+import { sessionFetch } from "./auth-client.ts";
 export type GlobalModelProfile = {
   id: string;
   profileId: string;
@@ -194,12 +195,9 @@ export type ReviewQueueItem = {
   [key: string]: unknown;
 };
 
-function headers(apiToken: string, json = false, reviewerToken = false) {
-  const token = apiToken.trim();
+function headers(_apiToken: string, json = false) {
   return {
     ...(json ? { "content-type": "application/json" } : {}),
-    ...(token ? { "x-traqen-api-token": token } : {}),
-    ...(reviewerToken && token ? { authorization: `Bearer ${token}` } : {}),
   };
 }
 
@@ -217,59 +215,59 @@ function base(apiBase: string) {
 }
 
 export async function getConnectionHealth(apiBase: string, signal?: AbortSignal) {
-  const response = await fetch(`${base(apiBase)}/health`, { method: "GET", signal });
+  const response = await sessionFetch(`${base(apiBase)}/health`, { method: "GET", signal });
   if (!response.ok) throw new Error(`Traqen API returned ${response.status}`);
   return response.json() as Promise<Record<string, unknown>>;
 }
 
 export async function listGlobalModels(apiBase: string, apiToken: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models`, { method: "GET", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models`, { method: "GET", headers: headers(apiToken) });
   return (await parseJson<{ models: GlobalModelProfile[] }>(response)).models;
 }
 
 export async function listGlobalCliModels(apiBase: string, apiToken: string, signal?: AbortSignal) {
-  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, { method: "GET", headers: headers(apiToken), signal });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-cli-models`, { method: "GET", headers: headers(apiToken), signal });
   return (await parseJson<{ models: GlobalModelProfile[] }>(response, signal)).models;
 }
 
 export async function listGlobalAccounts(apiBase: string, apiToken: string, signal?: AbortSignal) {
-  const response = await fetch(`${base(apiBase)}/v1/global-accounts`, { method: "GET", headers: headers(apiToken), signal });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-accounts`, { method: "GET", headers: headers(apiToken), signal });
   return (await parseJson<{ accounts: GlobalAccount[] }>(response, signal)).accounts;
 }
 
 export async function saveGlobalAccount(apiBase: string, apiToken: string, input: Record<string, unknown>) {
-  const response = await fetch(`${base(apiBase)}/v1/global-accounts`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-accounts`, {
     method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input),
   });
   return parseJson<GlobalAccount>(response);
 }
 
 export async function recheckGlobalAccount(apiBase: string, apiToken: string, accountId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-accounts/${encodeURIComponent(accountId)}/recheck`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-accounts/${encodeURIComponent(accountId)}/recheck`, {
     method: "POST", headers: headers(apiToken, true), body: JSON.stringify({}),
   });
   return parseJson<GlobalAccount>(response);
 }
 
 export async function listGlobalCapabilities(apiBase: string, apiToken: string, signal?: AbortSignal) {
-  const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, { method: "GET", headers: headers(apiToken), signal });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-capabilities`, { method: "GET", headers: headers(apiToken), signal });
   return (await parseJson<{ capabilities: GlobalCapability[] }>(response, signal)).capabilities;
 }
 
 export async function listWorkspaceExecutableSkills(apiBase: string, apiToken: string, signal?: AbortSignal) {
-  const response = await fetch(`${base(apiBase)}/v1/workspace-executable-skills`, { method: "GET", headers: headers(apiToken), signal });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspace-executable-skills`, { method: "GET", headers: headers(apiToken), signal });
   return (await parseJson<{ skills: WorkspaceExecutableSkill[] }>(response, signal)).skills;
 }
 
 export async function saveGlobalCapability(apiBase: string, apiToken: string, input: Record<string, unknown>) {
-  const response = await fetch(`${base(apiBase)}/v1/global-capabilities`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-capabilities`, {
     method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input),
   });
   return parseJson<GlobalCapability>(response);
 }
 
 export async function getGlobalCapabilityImpact(apiBase: string, apiToken: string, kind: "SKILL" | "MCP", normalizedName: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-capabilities/${kind}/${encodeURIComponent(normalizedName)}/impact`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-capabilities/${kind}/${encodeURIComponent(normalizedName)}/impact`, {
     method: "GET", headers: headers(apiToken),
   });
   return parseJson<GlobalCapabilityImpact>(response);
@@ -282,21 +280,21 @@ export async function setGlobalCapabilityLifecycle(
   normalizedName: string,
   input: { expectedVersion: number; lifecycle: "ACTIVE" | "INACTIVE" | "DELETED"; confirmation?: string },
 ) {
-  const response = await fetch(`${base(apiBase)}/v1/global-capabilities/${kind}/${encodeURIComponent(normalizedName)}/lifecycle`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-capabilities/${kind}/${encodeURIComponent(normalizedName)}/lifecycle`, {
     method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input),
   });
   return parseJson<GlobalCapability>(response);
 }
 
 export async function createGlobalCliModel(apiBase: string, apiToken: string, input: Record<string, unknown>) {
-  const response = await fetch(`${base(apiBase)}/v1/global-cli-models`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-cli-models`, {
     method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input),
   });
   return parseJson<GlobalModelProfile>(response);
 }
 
 export async function listGlobalCapabilityTemplates(apiBase: string, apiToken: string, signal?: AbortSignal) {
-  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, { method: "GET", headers: headers(apiToken), signal });
+  const response = await sessionFetch(`${base(apiBase)}/v1/capability-templates`, { method: "GET", headers: headers(apiToken), signal });
   return (await parseJson<{ templates: GlobalCapabilityTemplate[] }>(response, signal)).templates;
 }
 
@@ -307,7 +305,7 @@ export async function saveGlobalCapabilityTemplate(apiBase: string, apiToken: st
   manifest: Record<string, unknown>;
   credentialHandleIds?: string[];
 }) {
-  const response = await fetch(`${base(apiBase)}/v1/capability-templates`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/capability-templates`, {
     method: "POST",
     headers: headers(apiToken, true),
     body: JSON.stringify(input),
@@ -316,17 +314,17 @@ export async function saveGlobalCapabilityTemplate(apiBase: string, apiToken: st
 }
 
 export async function createGlobalModel(apiBase: string, apiToken: string, input: Record<string, unknown>) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models`, { method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models`, { method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input) });
   return parseJson<Record<string, unknown>>(response);
 }
 
 export async function getGlobalModel(apiBase: string, apiToken: string, profileId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}`, { method: "GET", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}`, { method: "GET", headers: headers(apiToken) });
   return parseJson<GlobalModelProfile>(response);
 }
 
 export async function updateGlobalModel(apiBase: string, apiToken: string, profileId: string, input: Record<string, unknown>) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}`, { method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}`, { method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input) });
   return parseJson<GlobalModelProfile>(response);
 }
 
@@ -340,12 +338,12 @@ export async function loadWorkspaceCapabilitySettings(apiBase: string, apiToken:
 }
 
 export async function verifyGlobalModel(apiBase: string, apiToken: string, profileId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
   return parseJson<Record<string, unknown>>(response);
 }
 
 export async function verifyGlobalCliModel(apiBase: string, apiToken: string, profileId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-cli-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-cli-models/${encodeURIComponent(profileId)}/verify`, { method: "POST", headers: headers(apiToken) });
   return parseJson<Record<string, unknown>>(response);
 }
 
@@ -356,7 +354,7 @@ export type GlobalModelUsage = {
 };
 
 export async function getGlobalModelUsage(apiBase: string, apiToken: string, profileId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/usage`, { method: "GET", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/usage`, { method: "GET", headers: headers(apiToken) });
   return parseJson<GlobalModelUsage>(response);
 }
 
@@ -371,63 +369,63 @@ export type ModelReplacementPlan = {
 };
 
 export async function createGlobalModelReplacementPlan(apiBase: string, apiToken: string, profileId: string, replacementProfileId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/replacement-plans`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/replacement-plans`, {
     method: "POST", headers: headers(apiToken, true), body: JSON.stringify({ replacementProfileId }),
   });
   return parseJson<ModelReplacementPlan>(response);
 }
 
 export async function applyGlobalModelReplacementPlan(apiBase: string, apiToken: string, profileId: string, planId: string, expectedVersion: number) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/replacement-plans/${encodeURIComponent(planId)}/apply`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/replacement-plans/${encodeURIComponent(planId)}/apply`, {
     method: "POST", headers: headers(apiToken, true), body: JSON.stringify({ expectedVersion }),
   });
   return parseJson<{ plan: ModelReplacementPlan; workspaces: Array<{ workspaceId: string }> }>(response);
 }
 
 export async function retireGlobalModel(apiBase: string, apiToken: string, profileId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/retire`, { method: "POST", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/global-models/${encodeURIComponent(profileId)}/retire`, { method: "POST", headers: headers(apiToken) });
   return parseJson<GlobalModelProfile>(response);
 }
 
 export async function getEffectiveCapabilities(apiBase: string, apiToken: string, workspaceId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capabilities/effective`, { method: "GET", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capabilities/effective`, { method: "GET", headers: headers(apiToken) });
   return parseJson<EffectiveCapabilityCatalog>(response);
 }
 
 export async function saveProjectCapability(apiBase: string, apiToken: string, workspaceId: string, input: { kind: "SKILL" | "MCP"; normalizedName: string; expectedVersion: number; manifest: Record<string, unknown>; credentialHandleIds?: string[] }) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/project-capabilities`, { method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/project-capabilities`, { method: "POST", headers: headers(apiToken, true), body: JSON.stringify(input) });
   return parseJson<Record<string, unknown>>(response);
 }
 
 export async function deleteProjectCapability(apiBase: string, apiToken: string, workspaceId: string, kind: "SKILL" | "MCP", normalizedName: string, expectedVersion: number) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/project-capabilities/${kind}/${encodeURIComponent(normalizedName)}?expectedVersion=${expectedVersion}`, { method: "DELETE", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/project-capabilities/${kind}/${encodeURIComponent(normalizedName)}?expectedVersion=${expectedVersion}`, { method: "DELETE", headers: headers(apiToken) });
   return parseJson<Record<string, unknown>>(response);
 }
 
 export async function getWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft`, { method: "GET", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft`, { method: "GET", headers: headers(apiToken) });
   return (await parseJson<{ draft: WorkspaceCapabilityDraft | null }>(response)).draft;
 }
 
 export async function saveWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string, input: WorkspaceCapabilityDraftSaveInput) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft`, {
     method: "PUT", headers: headers(apiToken, true), body: JSON.stringify(input),
   });
   return parseJson<WorkspaceCapabilityDraft>(response);
 }
 
 export async function validateWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft/validate`, { method: "POST", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft/validate`, { method: "POST", headers: headers(apiToken) });
   return parseJson<{ validation: { valid: boolean; errors: Array<{ field: string; code: string; message: string }> } }>(response);
 }
 
 export async function activateWorkspaceCapabilityDraft(apiBase: string, apiToken: string, workspaceId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft/activate`, { method: "POST", headers: headers(apiToken) });
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/capability-draft/activate`, { method: "POST", headers: headers(apiToken) });
   return parseJson<ExecutionProfile>(response);
 }
 
 export async function listWorkspaceExecutionProfiles(apiBase: string, apiToken: string, workspaceId: string) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/execution-profile-revisions`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/execution-profile-revisions`, {
     method: "GET",
     headers: headers(apiToken),
   });
@@ -442,7 +440,7 @@ export async function getWorkspaceReviewQueue(
 ) {
   const query = new URLSearchParams(Object.entries(filters).filter(([, value]) => value));
   const suffix = query.size ? `?${query}` : "";
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/review-queue${suffix}`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/review-queue${suffix}`, {
     method: "GET",
     headers: headers(apiToken),
   });
@@ -455,9 +453,9 @@ export async function decideWorkspaceReviewBatch(
   workspaceId: string,
   input: { itemIds: string[]; outcome: string; rationale: string; edits?: Record<string, unknown> },
 ) {
-  const response = await fetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/review-decisions/batch`, {
+  const response = await sessionFetch(`${base(apiBase)}/v1/workspaces/${encodeURIComponent(workspaceId)}/review-decisions/batch`, {
     method: "POST",
-    headers: headers(apiToken, true, true),
+    headers: headers(apiToken, true),
     body: JSON.stringify(input),
   });
   return parseJson<Record<string, unknown>>(response);

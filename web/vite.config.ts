@@ -53,6 +53,7 @@ export default defineConfig(async () => {
     server: {
       host: process.env.TRAQEN_WEB_HOST ?? "127.0.0.1",
       port: Number(process.env.TRAQEN_WEB_PORT ?? 3000),
+      proxy: { '/api': { target: process.env.TRAQEN_API_PROXY_TARGET ?? 'http://127.0.0.1:3100', changeOrigin: false, rewrite: (value: string) => value.replace(/^\/api/, '') } },
       // The self-Workspace intentionally renders repository-backed design and
       // source files from ../docs and ../src. Vite otherwise treats web/ as
       // the filesystem boundary on standalone Windows clones and rejects the

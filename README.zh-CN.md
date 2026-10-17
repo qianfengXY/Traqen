@@ -135,6 +135,7 @@ Traqen 从以下七个基础问题组织业务理解，而不是从文件目录�
 | F003 业务调查与追溯图谱 | 将原材料、技术事实、Agent 调查与人工判断组织成可共同使用的认识 | [功能 V2.0 与 UX](docs/design/F003-traceability-graph/README.md)；功能设计已发布，UX v0.2 仍待讨论；分析态不等于人工确认 |
 | F004 变更影响分析 | 找到可能受影响的业务与重验证范围 | [Feature Spec](docs/features/F004-change-impact-analysis.zh-CN.md)；首版提供建议，不自动阻止合并或部署 |
 | F005 整体布局与导航 | 让同一块业务的材料、解释与工作入口可理解、可操作 | [设计规范 V1.0](docs/design/F005-layout-navigation/README.md)；设计发布不代表所有页面已落地 |
+| F008 统一登录与空间权限 | 回到自己的工作位置，让访问和审核对应真实账号 | [功能与架构 V1.2](docs/design/F008-unified-login-space-permissions/README.md)；双主题页面已确认，实施状态见 [Feature 入口](docs/features/F008-unified-login-space-permissions.md) |
 | F006 工作空间能力配置 | 管理模型、Skill、团队、授权与生效配置 | [功能与 UX V1.0](docs/design/F006-workspace-capability-settings/README.md)；一个 Main、至少一个 Child；MCP 暂停，跨功能启动接线不因本页而视为完成 |
 
 [F007 整体架构 v0.3.2](docs/design/F007-function-architecture/README.md)把这些能力放到业务、系统、应用、数据和部署五个视角中，**仍是讨论稿，不代表整体方案或首期范围已批准**。
@@ -173,7 +174,7 @@ PostgreSQL 存储片添加：
 - 稳定的错误包络、请求相关 ID、JSON 媒体检查和正文限制；
 - OpenAPI 3.1 合同；
 - 由内存中仅附加存储支持的开发服务器；
-- PostgreSQL 生产流程，具有校验和保护的自动迁移、全局 API 令牌身份验证、TLS 策略和正常关闭。
+- PostgreSQL 生产流程，具有校验和保护的自动迁移、账号会话与空间授权、TLS 策略和正常关闭。
 
 治理切片添加：
 
@@ -313,7 +314,7 @@ Reverse Skill 框架切片添加：
 - 稳定的未来 Agent 边界：Agent 只能消费已批准、版本固定的 TestSpec，并回传结构化步骤、断言、Evidence、Runner 身份与证明数据；Agent 不得改写业务确认，也不能自行决定最终可信状态；
 - 明确的 TraceGap 所有权、经过验证的语句级人工审核流程以及 API 支持的 Snapshot 历史记录与变更影响修复指南的比较；
 - 由本仓库真实设计、源码、配置契约、测试和结果支撑的 Traqen `SELF WORKSPACE` 投影，以及加载服务端派生 Feature 追溯 API 的连接面板；客户端不会重新解释可信状态；
-- 仅保存在页面内存中并通过 `x-traqen-api-token` 发送的 API 令牌字段，使审阅者授权凭证保持独立；
+- 统一账号会话、同源防伪校验、每次显式选择的空间审核角色；页面不再要求粘贴部署或来源成员令牌；
 - 用于将浏览器产品连接到 Traqen API 的显式 CORS 来源允许列表。
 
 内置参考导频切片添加了：
@@ -335,7 +336,7 @@ Reverse Skill 框架切片添加：
 
 产品有效性指标切片添加了 Snapshot 绑定仪表板和 API 用于高价值有效链率、Claim 确认、确认规则 TestSpec 覆盖范围、有意义的断言、Evidence 新鲜度、TraceGap type/severity/owner 和每 Feature 层的存在。每个比率都保留其分子和分母，每个 Feature 都保留其独立的信任维度，并且需要外部纵向、CI/CD 或缺陷数据的指标明确不可用，而不是估计。 `HIGH_VALUE_FEATURE_IDS` 可选择缩小北极星数量；如果没有它，所有受管理的 Features 都将包括在内。
 
-开发服务器仍然仅限本地并使用内存存储。生产进程需要 PostgreSQL 和全局 API token。Decision 审核、候选审核、TestSpec 批准和业务流程确认路由在没有配置审核人身份时会失败关闭。可以使用旧式 `REVIEWER_ID`/`REVIEWER_ROLE` 和可选 `REVIEWER_BEARER_TOKEN`，也可以通过 `REVIEWER_IDENTITIES_JSON` 配置多个 token 绑定的参与者/角色身份；默认禁止直接创建 Decision，除非显式设置 `ALLOW_DIRECT_DECISIONS=true`，否则必须使用审核案例 API。Decision 提议人、批准人、业务、合规、Break-glass、生命周期角色和最大紧急时长均可独立配置。实现再分析具有独立的 `IMPLEMENTATION_REVIEWER_*` 边界。F008 已确认将以账号和空间授权取代这些审核持有人配置，尚未实施，见下文“持久化部署与高级接口”。设置 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 以接收匹配 Runner 的签名 Bundle，设置 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 以接收 Scanner 签名 Fact Bundle，并设置 `SKILL_PUBLISHER=TRAQEN` 与 `SKILL_PUBLISHER_SHARED_SECRET` 以注册 Skill。HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。只有签名目标策略显式允许操作与路由、绑定全部 Snapshot 组件、指定可信 fixture 与 cleanup 协议，且 Runner 具有匹配本地处理器时，CONTROLLED_WRITE 才能启用。DELETE、破坏性执行、任务自带命令/SQL/fixture 代码、外部副作用和跨域重定向始终被阻止。已配置的分析 Agent 模型适配器只接收有界证据并通过服务端解析密钥；第三方 Skills、隔离 Skill Worker、更多确定性语言 AST 适配器与 OpenAPI YAML 提取仍在仓库控制的 MVP 范围之外。
+开发服务器使用隔离的本地持久化数据；生产进程使用 PostgreSQL。浏览器通过账号、会话 Cookie 与防伪令牌访问，空间授权决定可见内容及操作。审核人来自当前账号，每次审核必须显式选择已获授的目标空间审核角色；`REVIEWER_*`、`IMPLEMENTATION_REVIEWER_*` 中的旧持有人绑定不再提供业务身份。Decision 提议、批准、业务、合规、Break-glass、生命周期等角色集合仍可按实例策略配置，业务组与合规组在同一空间内互斥。默认直接创建 Decision 关闭，使用审核案例 API。设置 `RUNNER_ID` 和 `RUNNER_SHARED_SECRET` 以接收匹配 Runner 的签名 Bundle，设置 `SCANNER_ID` 和 `SCANNER_SHARED_SECRET` 以接收 Scanner 签名 Fact Bundle，并设置 `SKILL_PUBLISHER=TRAQEN` 与 `SKILL_PUBLISHER_SHARED_SECRET` 以注册 Skill。HMAC 是本地 MVP 信任机制，不能替代企业工作负载身份和 mTLS。只有签名目标策略显式允许操作与路由、绑定全部 Snapshot 组件、指定可信 fixture 与 cleanup 协议，且 Runner 具有匹配本地处理器时，CONTROLLED_WRITE 才能启用。DELETE、破坏性执行、任务自带命令/SQL/fixture 代码、外部副作用和跨域重定向始终被阻止。已配置的分析 Agent 模型适配器只接收有界证据并通过服务端解析密钥；第三方 Skills、隔离 Skill Worker、更多确定性语言 AST 适配器与 OpenAPI YAML 提取仍在仓库控制的 MVP 范围之外。
 
 </details>
 
@@ -355,11 +356,19 @@ npm run setup
 npm run dev
 ```
 
-打开 `http://127.0.0.1:3000` 即可访问页面。该命令会在 `http://127.0.0.1:3100` 启动内存 API，自动配置精确的本地 CORS 来源，并在按下 `Ctrl+C` 时一起关闭两个进程。它不会启用生产凭据，也不会弱化任何治理边界。
+打开 `http://127.0.0.1:3000` 即可访问页面。该命令会在 `http://127.0.0.1:3100` 启动 API，使用同源 `/api` 代理，并在按下 `Ctrl+C` 时一起关闭两个进程。账号、会话、空间与历史保存在 Git 忽略的 `.traqen-dev/identity/`，开发密钥为独立私有文件，浏览器使用独立的开发 Cookie。可通过 `TRAQEN_WEB_PORT`、`TRAQEN_API_PORT` 修改端口，通过 `TRAQEN_AUTH_DEVELOPMENT_DATA` 指定专用数据目录；不要使用 Clowder AI 预留的 3003、3004。
 
-干净启动的开发运行时是完全隔离且自包含的：它会注册无需密钥的 `traqen-local-reference-analyzer` 能力模板，将当前检出的仓库预填为允许访问的源码根目录，并把每次 Snapshot 存入新建的临时目录。在界面中创建 Workspace，保存并解析默认能力配置，然后注册预填的源码目录并启动分析；首次运行将以 `FULL` 模式完成全部七个阶段，并发布本地 Current Graph，无需外部模型凭据。
+首次使用先停止开发服务，在同一个数据目录初始化管理员，再运行 `npm run dev`：
 
-该参考分析器具有证据边界且结果确定，但它生成的审核与等价记录均标记为 `LOCAL_DEVELOPMENT_REFERENCE_ONLY`；这些记录不是生产证据，也不能通过环境变量启用。开发 API 使用内存存储，重启后不能依赖它保留工作空间与历史；重要工作应使用配置了持久化与备份的部署，而不是将演示状态当作长期资产。`npm run api:serve` 仍使用默认拒绝不完整证据的 PostgreSQL 生产引导，在发布前继续要求独立审核的测量与等价证据。
+```bash
+TRAQEN_AUTH_DEVELOPMENT=true node src/cli/auth.js initialize --login admin --name 管理员
+```
+
+密码在终端隐藏输入，至少 8 个字符，不要求定期更换。首次登录必须绑定验证器并保存一次性恢复码。后续人员由管理员在“设置中心 → 人员账号”开通，通过一次性链接本人设置密码；开通账号不会附带空间权限。每个人可申请创建或加入空间，按批准的实际角色进入。
+
+开发运行时是隔离且自包含的：它会注册无需密钥的 `traqen-local-reference-analyzer` 能力模板，将当前检出的仓库预填为允许访问的源码根目录，并把每次 Snapshot 存入该隔离数据目录。申请创建 Workspace 并获管理员批准后，保存并解析默认能力配置，再注册预填的源码目录并启动分析；首次运行将以 `FULL` 模式完成全部七个阶段，并发布本地 Current Graph，无需外部模型凭据。
+
+该参考分析器具有证据边界且结果确定，但它生成的审核与等价记录均标记为 `LOCAL_DEVELOPMENT_REFERENCE_ONLY`；这些记录不是生产证据，也不能通过环境变量启用。开发数据会在重启后保留；PGlite 数据目录同时只由一个进程打开，执行终端管理命令前先停止开发服务。重要工作仍应使用配置了持久化与备份的部署。`npm run api:serve` 仍使用默认拒绝不完整证据的 PostgreSQL 生产引导，在发布前继续要求独立审核的测量与等价证据。
 
 ### 常用命令
 
@@ -379,18 +388,20 @@ npm run dev
 
 单独开发 API 路径要求 Node.js 20 或更高版本；完整 Web 环境仍要求 22.13 或更高版本。单独 API 的默认端口与 Web 相同，不要同时按默认端口启动；需要两者时优先使用 `npm run dev`。
 
-开发 API 仍然只绑定本机回环地址并使用内存存储。它不是生产认证边界，不得暴露到本地开发环境之外；除非配置了受信任的本地审核者，否则治理审核操作仍会安全失败。
+开发 API 只绑定本机回环地址；HTTP 与开发 Cookie 只用于本机隔离环境。审核操作仍要求当前账号有明确授予的空间审核角色；本地参考分析证据不能用于生产发布。
 
 ### 持久化部署与高级接口
 
 <details>
 <summary>展开生产配置、质量门 CLI 与 API 导航</summary>
 
-通过 `npm run api:serve` 启动生产 API，默认绑定到 `0.0.0.0:3000`，需要 `DATABASE_URL` 和 `API_BEARER_TOKEN`。先为目标部署配置隔离的数据存储、来源目录、备份和授权，不要把开发实验指向生产数据。默认 `POSTGRES_SSL=require` 会校验证书；`no-verify` 或 `disable` 仅适用于明确评估过风险的受控环境。`CORS_ALLOWED_ORIGINS` 是逗号分隔的精确来源允许列表。启动时，进程连接 PostgreSQL、验证并应用挂起迁移，因此不是无副作用的连接检查。
+通过 `npm run api:serve` 启动生产 API，默认绑定 `127.0.0.1:3000`，由同源 HTTPS 网关转发浏览器 `/api` 请求，并保留公网 `Host`。需要 `DATABASE_URL`、精确 HTTPS `TRAQEN_PUBLIC_ORIGIN` 和 `TRAQEN_AUTH_KEY_FILE`（绝对路径、当前部署用户所有、权限 0600、恰好 32 个随机字节）。部署密钥独立于数据库，必须与备份一起按部署职责保管。`POSTGRES_SSL=require` 默认校验证书；`no-verify` 或 `disable` 仅用于明确受控的环境。启动及终端命令会验证并应用迁移，不是无副作用的连接检查。首次部署可用 `node src/cli/auth.js initialize --login admin --name 管理员` 初始化，再由首位管理员完成 MFA。自动部署可用 `TRAQEN_AUTH_PASSWORD_FILE` 指向 0600 私有文件，密码不能放在命令行参数。生产入口拒绝开发认证模式和非回环监听。
 
-**F008 已确认、尚未实施的变化：** 浏览器将改为账号登录与服务端会话，不再在页面中粘贴部署令牌；`API_BEARER_TOKEN` 不再作为普通业务接口的通用身份，程序调用（含 quality-gate CLI）改用程序身份；`REVIEWER_*` 与 `IMPLEMENTATION_REVIEWER_*` 中的审核持有人绑定改由空间授权管理，缺少专用凭据时的固定身份回退将移除。上线前本节描述的现行配置继续有效。详见 [F008 设计](docs/design/F008-unified-login-space-permissions/README.md)。
+浏览器使用 `__Host-traqen_session`（Secure、HttpOnly、Path=/）和同源防伪校验；所有 Cookie 写请求必须带精确 Origin 与 `x-traqen-csrf`。`CORS_ALLOWED_ORIGINS` 不能代替这项验证。若需按公网来源地址限速，设置 `TRAQEN_AUTH_TRUSTED_PROXIES` 为直接网关 IP 列表，并让网关覆盖、清除外部同名头后提供 `x-traqen-client-ip`；不信任浏览器上报地址。默认仍有账号限速和登录并发上限。
 
-通过 `POST /v1/projects` 创建初始边界，通过 `POST /v1/projects/{projectId}/snapshots` 注册不可变执行上下文，并通过 `Authorization: Bearer ...` 或 `x-traqen-api-token` 发送 API 令牌。API 和产品 UI 可以通过 `GET /v1/projects/{projectId}/features` 和 `GET /v1/projects/{projectId}/snapshots` 发现资源；Snapshot 结果按最新优先排列。完整路径与字段见 [OpenAPI 合同](contracts/openapi.json)。
+`API_BEARER_TOKEN`、`TRAQEN_API_TOKEN`、`x-traqen-api-token` 不再通行普通业务接口。程序由系统管理员创建，凭据仅显示一次；还需空间管理者授予对应空间角色。程序使用 `Authorization: Bearer tp_…`，同时受空间、操作、到期和撤销状态限制，不能执行业务批准。Runner、Scanner 和任务工作凭据仍须通过原有签名校验，并显式映射到有效程序身份；网页会话不能代替这些证明。
+
+空间通过“申请创建 → 系统管理员审批”建立，直接 `POST /v1/projects` 和 `POST /v1/workspaces` 不再创建空间。加入与角色申请由目标空间 Owner／权限管理员审批；系统管理员读取业务内容前需显式取得角色，管理者可见介入记录。完整路径与字段见 [OpenAPI 合同](contracts/openapi.json)，迁移与恢复步骤见 [F008 实施与运维说明](docs/design/F008-unified-login-space-permissions/implementation.md)。
 
 对已经存在的项目与 ChangeSet 查询质量门，将示例 ID 替换为实际 ID，并按下文配置凭据：
 
@@ -398,7 +409,7 @@ npm run dev
 npm run quality-gate -- --base-url http://127.0.0.1:3100 --project PROJECT-001 --change-set CHANGESET-001
 ```
 
-`QUALITY_GATE_MODE` 默认为 `ADVISORY`，可以设置为 `MANUAL_APPROVAL` 或 `ENFORCED`。 `HIGH_RISK_FEATURE_IDS`、`FIXED_HIGH_RISK_TEST_SPEC_IDS` 和 `CONSERVATIVE_REGRESSION_TEST_SPEC_IDS` 是逗号分隔的策略输入。质量门CLI从`TRAQEN_API_TOKEN`（或`API_BEARER_TOKEN`）读取其凭证，对于pass/advisory警告返回0，对于强制失败返回1，当需要手动批准时返回2，对于API/配置失败返回3。
+`QUALITY_GATE_MODE` 默认为 `ADVISORY`，可以设置为 `MANUAL_APPROVAL` 或 `ENFORCED`。 `HIGH_RISK_FEATURE_IDS`、`FIXED_HIGH_RISK_TEST_SPEC_IDS` 和 `CONSERVATIVE_REGRESSION_TEST_SPEC_IDS` 是逗号分隔的策略输入。质量门 CLI 从 `TRAQEN_PROGRAM_TOKEN` 读取程序凭据，对于pass/advisory警告返回0，对于强制失败返回1，当需要手动批准时返回2，对于API/配置失败返回3。
 
 评估另一个跟踪链输入：
 
@@ -417,7 +428,7 @@ node src/cli/scan-facts.js --root . --project PROJECT-001 \
 
 Fact API 接受 `POST /v1/projects/{projectId}/fact-scans` 处的签名包，并从 `GET /v1/projects/{projectId}/facts` 返回过滤后的一跳图。其 `type`、`predicate`、`q`、`snapshotManifestId` 和 `limit` 查询参数是可选的。
 
-通过 `/v1/workspaces` 创建并切换聚合根。服务端源码分析需要配置 `TRAQEN_ALLOWED_WORKSPACE_ROOTS`、`SOURCE_SNAPSHOT_ROOT` 与高熵的 `SOURCE_SLICE_WORKER_CREDENTIAL_SECRET`，先通过 `/source-registrations` 注册允许访问的根目录，再启动 `/workspace-analysis-jobs`。通过 HTTP 读取 SourceSlice 必须同时具备普通 API 身份与服务端为具体 Project、Snapshot、Run、WorkUnit、选定 Producer 和 Policy 签发的短时一次性 Worker 凭据；调用方自报的 Service Identity 不受信任。作业会持久化完整清单、不可变 Snapshot、静态 Facts、固定的 `WorkspaceExecutionProfileRevision`、发给一个或多个子槽位（默认两个）的相同密封批次、彼此隔离的子结果、固定 Main 对账结果、对账账本、经审核的评估、图谱修订以及原子当前头。生产发布默认拒绝不完整证据：需配置 `UNDERSTANDING_TRUTH_SET_PATH`、`UNDERSTANDING_TRUTH_SET_REVIEWER_ID`、`UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH` 和 `UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH`。审核测量逐项标识被检查的 Anchor、Candidate、关系与 Gap，并绑定到精确的持久化语义输出摘要、生产输入、Snapshot、Run、Truth Set 和独立评审人。等价证据标识已持久化且终态完成的重放与 FULL Run、其不可变语义面记录、固定 Policy/Profile 以及不同的实现作者和 Runner；服务端重新加载、散列两个语义面后再比较。缺失、过期、自审、不存在、篡改或不等价的证据均不能移动 `CurrentGraphHead`。Web 产品现仅调用服务端 SourceRegistration、WorkspaceAnalysisJob 与 CurrentGraph 路径；旧本地 Scanner/Model 模块仅作为非权威兼容代码保留，不再被产品入口导入。详见 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md)。
+通过空间申请审批建立聚合根，经 `/v1/workspaces` 读取和切换自己的空间。服务端源码分析需要配置 `TRAQEN_ALLOWED_WORKSPACE_ROOTS`、`SOURCE_SNAPSHOT_ROOT` 与高熵的 `SOURCE_SLICE_WORKER_CREDENTIAL_SECRET`，先通过 `/source-registrations` 注册允许访问的根目录，再启动 `/workspace-analysis-jobs`。通过 HTTP 读取 SourceSlice 必须同时具备普通 API 身份与服务端为具体 Project、Snapshot、Run、WorkUnit、选定 Producer 和 Policy 签发的短时一次性 Worker 凭据；调用方自报的 Service Identity 不受信任。作业会持久化完整清单、不可变 Snapshot、静态 Facts、固定的 `WorkspaceExecutionProfileRevision`、发给一个或多个子槽位（默认两个）的相同密封批次、彼此隔离的子结果、固定 Main 对账结果、对账账本、经审核的评估、图谱修订以及原子当前头。生产发布默认拒绝不完整证据：需配置 `UNDERSTANDING_TRUTH_SET_PATH`、`UNDERSTANDING_TRUTH_SET_REVIEWER_ID`、`UNDERSTANDING_REVIEWED_MEASUREMENTS_PATH` 和 `UNDERSTANDING_EQUIVALENCE_EVIDENCE_PATH`。审核测量逐项标识被检查的 Anchor、Candidate、关系与 Gap，并绑定到精确的持久化语义输出摘要、生产输入、Snapshot、Run、Truth Set 和独立评审人。等价证据标识已持久化且终态完成的重放与 FULL Run、其不可变语义面记录、固定 Policy/Profile 以及不同的实现作者和 Runner；服务端重新加载、散列两个语义面后再比较。缺失、过期、自审、不存在、篡改或不等价的证据均不能移动 `CurrentGraphHead`。Web 产品现仅调用服务端 SourceRegistration、WorkspaceAnalysisJob 与 CurrentGraph 路径；旧本地 Scanner/Model 模块仅作为非权威兼容代码保留，不再被产品入口导入。详见 [F001](docs/features/F001-legacy-system-understanding.zh-CN.md) 与 [F006](docs/features/F006-workspace-capability-settings.zh-CN.md)。
 
 `npm run pilot:order-submit` 是可复制的存储库内 MVP 证明。它仅使用合成数据以及真实飞行员使用的相同通用Scanner、Skill、审查、TestSpec、Runner、Evidence、影响和修复路径； Traqen 核心中不存在特定于订单的行为。
 

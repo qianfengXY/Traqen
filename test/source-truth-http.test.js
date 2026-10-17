@@ -154,6 +154,14 @@ test("HTTP staging disposition requires explicit maintain authority and remains 
 
 test("browser transfer protocol closes a complete directory, sends bytes once and stops for the human at station 7", async (t) => {
   const f = await fixture(t);
+  // This transport-only F001 fixture still models its original server-bound
+  // member authenticator. Cookie composition is covered by auth-source-integration.
+  const networkFetch = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", (url, options = {}) => {
+    const headers = new Headers(options.headers);
+    if (String(url).startsWith(f.base) && !headers.has("authorization")) headers.set("authorization", `Bearer ${token}`);
+    return networkFetch(url, { ...options, headers });
+  });
   const input = { sources: [{ sourceId: "docs", kind: "DIRECTORY_UPLOAD", mode: "UPDATE", label: "目录" }], baselineBundleId: null };
   await f.call("/draft", "PUT", { expectedRevision: 0, input });
   const run = (await f.call("/runs", "POST", { draftRevision: 1 })).body;

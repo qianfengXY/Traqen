@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { contextualDatabase } from "../../auth/database.js";
 
 import { assertEvaluationPublicationReady, canonicalJson, contentId, deepFreeze } from "../../domain/index.js";
 import { TraceabilityStore } from "../traceability-store.js";
@@ -147,10 +148,14 @@ export class PostgresTraceabilityStore extends TraceabilityStore {
     if (typeof database?.exec !== "function" || typeof database?.query !== "function") {
       throw new TypeError("database must provide exec(sql) and query(sql, params?) methods");
     }
-    this.#database = database;
+    this.#database = typeof database.transaction === "function" ? contextualDatabase(database) : database;
   }
 
   async #transaction(work) {
+    if (typeof this.#database.transaction === "function") {
+      try { return await this.#database.transaction(work); }
+      catch (error) { throw normalizePersistenceError(error); }
+    }
     await this.#database.exec("BEGIN");
     try {
       const result = await work();

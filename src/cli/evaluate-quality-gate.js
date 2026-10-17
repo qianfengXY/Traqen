@@ -13,13 +13,14 @@ function argument(name) {
 const baseUrl = argument("base-url").replace(/\/$/, "");
 const projectId = argument("project");
 const changeSetId = argument("change-set");
-const token = process.env.TRAQEN_API_TOKEN ?? process.env.API_BEARER_TOKEN ?? "";
-const headers = token ? { "x-traqen-api-token": token, accept: "application/json" } : { accept: "application/json" };
+const token = process.env.TRAQEN_PROGRAM_TOKEN ?? "";
+const headers = token ? { authorization: `Bearer ${token}`, accept: "application/json" } : { accept: "application/json" };
 
 try {
+  if(!token)throw new Error("TRAQEN_PROGRAM_TOKEN is required; shared deployment tokens no longer authorize CI");
   const response = await fetch(
     `${baseUrl}/v1/projects/${encodeURIComponent(projectId)}/change-sets/${encodeURIComponent(changeSetId)}/continuous-protection`,
-    { headers },
+    { headers, signal: AbortSignal.timeout(15000) },
   );
   const body = await response.json();
   if (!response.ok) throw new Error(body?.error?.message ?? `Traqen API returned ${response.status}`);

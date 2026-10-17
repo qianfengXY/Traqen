@@ -9,7 +9,8 @@ import test from "node:test";
 import { createConfiguredApplication } from "../src/api/application-bootstrap.js";
 import { createIsolatedDevelopmentApplication } from "../src/api/development-bootstrap.js";
 import { AnalysisModelRegistry } from "../src/analysis/index.js";
-import { MemoryTraceabilityStore } from "../src/storage/index.js";
+import { MemoryTraceabilityStore, PostgresTraceabilityStore, applyMigrations } from "../src/storage/index.js";
+import { PGlite } from "@electric-sql/pglite";
 
 function fakeCodexSpawn(calls) {
   return (executable, args, options) => {
@@ -329,4 +330,15 @@ test("environment variables cannot enable local reference publication in the pro
       TRAQEN_DEVELOPMENT_REFERENCE_MODE: "true",
     },
   }), /requires Truth Set, reviewed measurement, and equivalence evidence paths/);
+});
+
+test('development bootstrap can reopen a persistent store without replacing its immutable reference template',async t=>{
+ const root=await mkdtemp(path.join(os.tmpdir(),'traqen-development-reopen-'));t.after(()=>rm(root,{recursive:true,force:true}));
+ const database=await PGlite.create();t.after(()=>database.close());
+ await applyMigrations(database,new URL('../db/migrations/',import.meta.url).pathname);
+ const store=new PostgresTraceabilityStore(database);
+ const first=await createIsolatedDevelopmentApplication({sourceRoot:root,snapshotRoot:path.join(root,'snapshots'),store});
+ const original=await first.application.listCapabilityTemplates();
+ const reopened=await createIsolatedDevelopmentApplication({sourceRoot:root,snapshotRoot:path.join(root,'snapshots'),store:new PostgresTraceabilityStore(database)});
+ assert.deepEqual(await reopened.application.listCapabilityTemplates(),original);
 });

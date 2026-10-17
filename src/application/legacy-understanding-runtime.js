@@ -1,4 +1,5 @@
 import { realpath } from "node:fs/promises";
+import { authContext, identityContext } from "../auth/context.js";
 import os from "node:os";
 import path from "node:path";
 
@@ -408,6 +409,7 @@ export class LegacyUnderstandingRuntime {
 
   constructor({
     store,
+    identityService = null,
     allowlistedRoots,
     snapshotRoot,
     sourceSliceBroker,
@@ -428,6 +430,7 @@ export class LegacyUnderstandingRuntime {
       throw new TypeError("allowlistedRoots and snapshotRoot are required");
     }
     this.store = store;
+    this.identityService = identityService;
     this.allowlistedRoots = allowlistedRoots.map((root) => path.resolve(root));
     this.sourceSliceBroker = sourceSliceBroker;
     this.clock = clock;
@@ -456,6 +459,7 @@ export class LegacyUnderstandingRuntime {
     this.runner = new WorkspaceAnalysisJobRunner({
       store,
       clock,
+      authorizeInitiator: identityService ? job => identityService.authorizeActor(job.initiatorAccountId,job.projectId,'MAINTAIN') : null,
       handlers: {
         [WorkspaceAnalysisPhase.SOURCE_SCAN]: (job) => this.#sourceScan(job),
         [WorkspaceAnalysisPhase.FACT_COMMIT]: (job) => this.#factCommit(job),
@@ -630,6 +634,7 @@ export class LegacyUnderstandingRuntime {
       throw new TypeError("an immutable Workspace-scoped WorkspaceExecutionProfileRevision is required");
     }
     const job = await this.runner.start({
+      ...(this.identityService ? {initiatorAccountId:identityContext()?.accountId} : {}),
       id: jobId,
       projectId: input.projectId,
       sourceRegistrationId: input.sourceRegistrationId,
@@ -651,6 +656,11 @@ export class LegacyUnderstandingRuntime {
   }
 
   async #run(job) {
+    if (this.identityService) return authContext.run({...identityContext(),system:false,accountId:job.initiatorAccountId,actorId:job.initiatorAccountId,workspaceId:job.projectId,workerAccountId:job.initiatorAccountId,operation:'MAINTAIN'},()=>this.#runAuthorized(job));
+    return this.#runAuthorized(job);
+  }
+
+  async #runAuthorized(job) {
     const controller = new AbortController();
     this.#controllers.set(job.id, controller);
     try {

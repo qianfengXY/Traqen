@@ -1,3 +1,4 @@
+import { sessionFetch } from "./auth-client.ts";
 import {
   localWorkspaceDerivedId,
   type LocalModelClassification,
@@ -129,10 +130,9 @@ export function workspaceRunSubscriptionBeforeStart(
   };
 }
 
-function apiHeaders(apiToken: string, json = false) {
+function apiHeaders(_apiToken: string, json = false) {
   return {
     ...(json ? { "content-type": "application/json" } : {}),
-    ...(apiToken.trim() ? { "x-traqen-api-token": apiToken.trim() } : {}),
   };
 }
 
@@ -202,10 +202,10 @@ export async function ensureWorkspaceProject(
   projectId: string,
 ) {
   const projectUrl = `${baseUrl(apiBase)}/v1/projects/${encodeURIComponent(projectId)}`;
-  const current = await fetch(projectUrl, { headers: apiHeaders(apiToken) });
+  const current = await sessionFetch(projectUrl, { headers: apiHeaders(apiToken) });
   if (current.ok) return responseJson<Record<string, unknown>>(current);
   if (current.status !== 404) return responseJson<Record<string, unknown>>(current);
-  const created = await fetch(`${baseUrl(apiBase)}/v1/projects`, {
+  const created = await sessionFetch(`${baseUrl(apiBase)}/v1/projects`, {
     method: "POST",
     headers: apiHeaders(apiToken, true),
     body: JSON.stringify({
@@ -228,7 +228,7 @@ export async function ingestWorkspaceObservations(
   projectId: string,
   input: WorkspaceObservationRequest,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${baseUrl(apiBase)}/v1/projects/${encodeURIComponent(projectId)}/workspace-observations`,
     {
       method: "POST",
@@ -252,7 +252,7 @@ export async function startWorkspaceAnalysisRun(
     baselineRunId?: string | null;
   },
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${baseUrl(apiBase)}/v1/projects/${encodeURIComponent(input.projectId)}/analysis-runs`,
     {
       method: "POST",
@@ -285,7 +285,7 @@ export async function getWorkspaceAnalysisRun(
   projectId: string,
   runId: string,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${baseUrl(apiBase)}/v1/projects/${encodeURIComponent(projectId)}/analysis-runs/${encodeURIComponent(runId)}`,
     { headers: apiHeaders(apiToken) },
   );
@@ -299,7 +299,7 @@ async function mutateWorkspaceAnalysisRun(
   runId: string,
   action: "pause" | "resume",
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${baseUrl(apiBase)}/v1/projects/${encodeURIComponent(projectId)}/analysis-runs/${encodeURIComponent(runId)}/${action}`,
     {
       method: "POST",

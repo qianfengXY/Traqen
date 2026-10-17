@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { subscribeProductRoute } from "../product-navigation.ts";
+import { workPosition, writeWorkPosition } from "../work-position.ts";
 import { SourceClientError, SourceTruthClient } from "./client.ts";
 import { freezeReviewedCandidate } from "./freeze.ts";
 import { draftFromVersion, sourceJourney, sourceStations } from "./journey.ts";
@@ -37,27 +39,27 @@ const emptyInput: DraftInput = { sources: [], baselineBundleId: null };
 const short = (value: string | null | undefined) => value ? `${value.slice(0, 12)}…` : "—";
 
 export function SourceAccessState({ error }: { error: Error | null }) {
-  return error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "来源权限需要管理员绑定到当前成员和 Workspace。创建 Workspace 或持有通用 API Token 不会自动获得该权限。" : "请核对上方成员访问令牌与服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>;
+  return error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "请向本空间 Owner 或权限管理员申请查看或维护权限。" : "请核对当前账号和服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>;
 }
 
 export function SourceTruthWorkbench({ apiBase, apiToken, workspaceId, workspaceName, onDirtyChange, entryContext, associationService }: { apiBase: string; apiToken: string; workspaceId: string; workspaceName: string; onDirtyChange?: (dirty: boolean) => void; entryContext?: SourceEntryContext; associationService?: SourceAssociationService }) {
-  const [credential, setCredential] = useState(apiToken);
-  const [credentialInput, setCredentialInput] = useState(apiToken);
-  const [identityVersion, setIdentityVersion] = useState(0);
-  const referenceClient = useMemo(() => new SourceTruthClient(apiBase, credential, workspaceId), [apiBase, credential, workspaceId]);
+  const referenceClient = useMemo(() => new SourceTruthClient(apiBase, "", workspaceId), [apiBase, workspaceId]);
   return <section className="st-workbench" aria-label="来源快照工作台">
-    <details className="st-auth"><summary>来源快照成员身份</summary><p>由服务端绑定成员与 Workspace 权限；通用 API Token 不自动获得来源材料权限。</p><div className="st-actions"><label>成员访问令牌（仅本页内存）<input type="password" autoComplete="off" value={credentialInput} onChange={(event) => setCredentialInput(event.target.value)} /></label><button className="button" onClick={() => { setCredential(credentialInput); setIdentityVersion((version) => version + 1); }}>验证并连接</button></div></details>
-    {entryContext?.mode === "REFERENCE" ? <FixedSourceReference key={identityVersion} client={referenceClient} context={entryContext} workspaceId={workspaceId} /> : <>
+    {entryContext?.mode === "REFERENCE" ? <FixedSourceReference client={referenceClient} context={entryContext} workspaceId={workspaceId} /> : <>
       {entryContext && <SourceEntryBanner context={entryContext} />}
-      <SourceWorkspaceSession key={`${apiBase}:${workspaceId}:${identityVersion}`} apiBase={apiBase} token={credential} workspaceId={workspaceId} workspaceName={workspaceName} onDirtyChange={onDirtyChange} entryContext={entryContext} associationService={associationService} />
+      <SourceWorkspaceSession key={`${apiBase}:${workspaceId}`} apiBase={apiBase} token="" workspaceId={workspaceId} workspaceName={workspaceName} onDirtyChange={onDirtyChange} entryContext={entryContext} associationService={associationService} />
     </>}
   </section>;
 }
 
 function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, onDirtyChange, entryContext, associationService }: { apiBase: string; token: string; workspaceId: string; workspaceName: string; onDirtyChange?: (dirty: boolean) => void; entryContext?: SourceEntryContext; associationService?: SourceAssociationService }) {
+  const routeSearch = useSyncExternalStore(subscribeProductRoute, () => window.location.search, () => "");
+  const position = workPosition(routeSearch);
   const client = useMemo(() => new SourceTruthClient(apiBase, token, workspaceId), [apiBase, token, workspaceId]);
   const [overview, setOverview] = useState<SourceOverview | null>(null);
-  const [detail, setDetail] = useState<RunDetail | null>(null);
+  const [storedDetail, setDetail] = useState<RunDetail | null>(null);
+  const detail = position.runId && storedDetail?.run.id !== position.runId ? null : storedDetail;
+  const receiptSelected = useCallback((id: string) => writeWorkPosition({receiptId:id}), []);
   const [versions, setVersions] = useState<Page<FrozenVersion>>({ items: [], nextCursor: null });
   const [latestVersion, setLatestVersion] = useState<FrozenVersion | null>(null);
   const [runs, setRuns] = useState<Page<SourceRun>>({ items: [], nextCursor: null });
@@ -71,14 +73,17 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
   const [transferring, setTransferring] = useState(false), [cancelling, setCancelling] = useState(false);
   const [directoryName, setDirectoryName] = useState<string | null>(null);
   const [confirmationChecked, setConfirmationChecked] = useState(false), [gapsAccepted, setGapsAccepted] = useState(false), [acceptedCount, setAcceptedCount] = useState("0");
-  const [versionId, setVersionId] = useState<string | null>(null);
-  const [overviewTab, setOverviewTab] = useState<SourceOverviewTab>("versions"), [showVersion, setShowVersion] = useState(false);
+  const versionId = position.bundleId;
+  const setVersionId = (id: string | null) => writeWorkPosition({ bundleId: id, receiptId: null });
+  const [overviewTab, setOverviewTab] = useState<SourceOverviewTab>("versions");
+  const showVersion = Boolean(versionId);
+  const setShowVersion = (show: boolean) => { if (!show) setVersionId(null); };
   const overviewId = useId();
   const [loadedFrozen, setFrozen] = useState<FrozenVersion | null>(null);
   const [readRevision, setReadRevision] = useState(0);
   const frozen = loadedFrozen?.id === versionId ? loadedFrozen : null;
   const selectVersion = (id: string | null) => { setFrozen(null); setVersionId(id); setShowVersion(Boolean(id)); };
-  const selectedRun = useRef<string | null>(null), sequence = useRef(0), hydrated = useRef(false), inFlight = useRef(false);
+  const sequence = useRef(0), hydrated = useRef(false), inFlight = useRef(false);
   const historyCursor = useRef<{ bundles: string | null; runs: string | null }>({ bundles: null, runs: null });
   const directory = useRef<DirectoryHandle | null>(null), transferController = useRef<AbortController | null>(null);
   const readController = useRef<AbortController | null>(null);
@@ -105,7 +110,8 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     const [data, versionPage, runPage] = await Promise.all([client.request<SourceOverview>(), client.request<Page<FrozenVersion>>(`/history/bundles?limit=50${historyCursor.current.bundles ? `&cursor=${historyCursor.current.bundles}` : ""}`), client.request<Page<SourceRun>>(`/history/runs?limit=50${historyCursor.current.runs ? `&cursor=${historyCursor.current.runs}` : ""}`)]);
-    const runId = selectedRun.current === "NEW" ? null : selectedRun.current ?? data.activeRun?.id ?? runPage.items[0]?.id;
+    const selected = workPosition(window.location.search).runId;
+    const runId = selected === "NEW" ? null : selected ?? data.activeRun?.id ?? runPage.items[0]?.id;
     const current = runId ? await client.request<RunDetail>(`/runs/${encodeURIComponent(runId)}/view`) : null;
     if (client.signal?.aborted || request !== sequence.current) return;
     setOverview(data); setVersions(versionPage); setRuns(runPage); setDetail(current);
@@ -120,6 +126,9 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
     const stop = observeSourceReads(refresh, { signal: controller.signal, onError: reportFailure });
     return () => { stop(); controller.abort(); transferController.current?.abort(); };
   }, [refresh, client, reportFailure, readRevision]);
+  useEffect(() => {
+    if (position.runId) void refresh().catch(reportFailure);
+  }, [position.runId, refresh, reportFailure]);
 
   const run = detail?.run ?? null;
   const journey = sourceJourney(run, inputStage === 1 ? 0 : inputStage === 2 ? 1 : editing ? 0 : overview?.draft?.revision ?? 0, Boolean(detail?.confirmation) && detail?.confirmation?.currentlyValid !== false && !reviewAgain, selectedStation);
@@ -186,7 +195,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
   };
   const newDraft = (base?: FrozenVersion) => {
     if (base) { setForm(draftFromVersion(base)); setBaselineVersion(base); }
-    selectedRun.current = "NEW"; setDetail(null); setEditing(true); setInputStage(base ? 2 : 1); setSelectedStation(null); setVersionId(null); setFrozen(null); setShowVersion(false); setOverviewTab("versions"); setReviewAgain(false); setConfirmationChecked(false);
+    writeWorkPosition({runId:"NEW",bundleId:null,receiptId:null}); setDetail(null); setEditing(true); setInputStage(base ? 2 : 1); setSelectedStation(null); setVersionId(null); setFrozen(null); setShowVersion(false); setOverviewTab("versions"); setReviewAgain(false); setConfirmationChecked(false);
   };
   const saveDraft = async (nextStage: 1 | 2) => {
     await client.request("/draft", "PUT", { expectedRevision: overview?.draft?.revision ?? 0, input: form });
@@ -210,7 +219,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
           revision = saved.revision; setEditing(false);
         }
         const created = await client.request<SourceRun>("/runs", "POST", { draftRevision: revision });
-        selectedRun.current = created.id; setSelectedStation(null); await refresh();
+        writeWorkPosition({runId:created.id,bundleId:null,receiptId:null}); setSelectedStation(null); await refresh();
         const active = await client.request<SourceRun>(`/runs/${created.id}/advance`, "POST", {}); await refresh();
         if (active.status === "WAITING_FOR_CLIENT" && directory.current) await sendDirectory(active.id, active.input, directory.current);
       });
@@ -233,7 +242,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
       });
       case "RETRY": return void attempt(async () => {
         const created = await client.request<SourceRun>("/runs", "POST", { draftRevision: run!.draftRevision, retryOf: run!.id });
-        selectedRun.current = created.id; setSelectedStation(null); await client.request(`/runs/${created.id}/advance`, "POST", {});
+        writeWorkPosition({runId:created.id,bundleId:null,receiptId:null}); setSelectedStation(null); await client.request(`/runs/${created.id}/advance`, "POST", {});
       });
       case "EDIT": return newDraft();
       case "NEW_VERSION": return void attempt(async () => {
@@ -303,12 +312,12 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
       </section></div>
       <section id={`${overviewId}-materials-panel`} role="tabpanel" aria-labelledby={`${overviewId}-materials`} hidden={overviewTab !== "materials"} className="st-panel"><h2>材料清单</h2><p>先明确选择冻结版本和 Receipt，再读取完整材料清单；不会把最近版本作为固定引用的替代。</p>{versionId ? <button className="button" onClick={() => setShowVersion(true)}>继续查看已选版本 {short(versionId)}</button> : <p>尚未选择版本。</p>}<button className="st-link" onClick={() => setOverviewTab("versions")}>到版本页选择来源包</button></section>
       <section id={`${overviewId}-captures-panel`} role="tabpanel" aria-labelledby={`${overviewId}-captures`} hidden={overviewTab !== "captures"} className="st-panel st-history"><h2>采集记录</h2><p>进行中、失败、取消与成功尝试均保留，不是冻结版本列表。</p>
-        {runs.items.map(item => <button className={`st-history-row ${run?.id === item.id ? "selected" : ""}`} key={item.id} disabled={busy} onClick={() => { selectedRun.current = item.id; setSelectedStation(null); setReviewAgain(false); setProgress(null); setOverviewTab("versions"); void attempt(refresh); }}><strong>{short(item.id)}</strong><span>{item.status} · 第 {item.station} 站</span><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small></button>)}{!runs.items.length && <p>尚无采集任务；保存草稿不会创建任务。</p>}{runs.nextCursor && <button className="st-link" onClick={() => void attempt(async () => { historyCursor.current.runs = runs.nextCursor; await refresh(); })}>更早的任务</button>}
+        {runs.items.map(item => <button className={`st-history-row ${run?.id === item.id ? "selected" : ""}`} key={item.id} disabled={busy} onClick={() => { writeWorkPosition({runId:item.id,bundleId:null,receiptId:null}); setSelectedStation(null); setReviewAgain(false); setProgress(null); setOverviewTab("versions"); void attempt(refresh); }}><strong>{short(item.id)}</strong><span>{item.status} · 第 {item.station} 站</span><small>{new Date(item.createdAt).toLocaleString("zh-CN")}</small></button>)}{!runs.items.length && <p>尚无采集任务；保存草稿不会创建任务。</p>}{runs.nextCursor && <button className="st-link" onClick={() => void attempt(async () => { historyCursor.current.runs = runs.nextCursor; await refresh(); })}>更早的任务</button>}
       </section></div>
       <section hidden={!showVersion} aria-label="明确选定的冻结版本"><div className="st-actions"><button className="button" onClick={() => { setShowVersion(false); requestAnimationFrame(() => document.getElementById(`${overviewId}-${overviewTab}`)?.focus({ preventScroll: true })); }}>返回来源总览</button>
         {writable && !overview.activeRun && <button className="button" disabled={busy || !frozen} onClick={() => { if (frozen) newDraft(frozen); }}>从选中的冻结包创建新版本</button>}</div>
-        {versionId && !frozen && <p role="status">正在核对所选冻结包；不会改用最新版本。</p>}
-        {frozen && <SourceVersionView key={frozen.id} client={client} version={frozen} versions={versions.items} writable={Boolean(writable)} onChanged={refresh} entryContext={entryContext} associationService={associationService} />}
+        {versionId && !frozen && <p role="status">{error ? "所选冻结包无法读取，请核对原链接与当前权限；不会改用最新版本。" : "正在核对所选冻结包；不会改用最新版本。"}</p>}
+        {frozen && <SourceVersionView key={frozen.id} client={client} version={frozen} versions={versions.items} writable={Boolean(writable)} onChanged={refresh} selectedReceiptId={position.receiptId ?? undefined} onReceiptSelected={receiptSelected} entryContext={entryContext} associationService={associationService} />}
       </section>
     </>}
   </>;

@@ -1,3 +1,4 @@
+import { authenticationRestoreFenceSql } from '../auth/recovery-fence.js';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { constants } from "node:fs";
 import { open, mkdtemp, readdir, lstat, unlink } from "node:fs/promises";
@@ -299,7 +300,8 @@ export class SourceBackupService {
       try {
         // psql --single-transaction makes the imported schema/data and closed
         // restoration gate visible in one commit, with no ready=true window.
-        await writeAll(file, Buffer.from(`\nUPDATE public.source_truth_workspace SET restore_ready=false,backup_barrier=true;
+        await writeAll(file, Buffer.from(`\n${authenticationRestoreFenceSql}
+          UPDATE public.source_truth_workspace SET restore_ready=false,backup_barrier=true;
           UPDATE public.source_truth_run SET generation=generation+1,lease_until=NULL,worker_id=NULL,
             progress=progress || jsonb_build_object('restoredPriorStatus',status,'waitingFor','RESTORE_RECONCILIATION'),status='WAITING_FOR_CLIENT'
             WHERE status NOT IN ('SUCCEEDED','BLOCKED','FAILED_RETRYABLE','CANCELLED');

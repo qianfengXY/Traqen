@@ -44,7 +44,7 @@ test("understanding graph client uses GET-only current, revision, and Feature hi
     assert.equal((await getUnderstandingTraceChain("http://api/", "token", "P", "T1")).id, "T1");
     assert.equal((await getFeatureUnderstandingHistory("http://api/", "token", "P", "F1")).feature.id, "F1");
     assert.ok(calls.every(({ options }) => options.method === "GET"));
-    assert.ok(calls.every(({ options }) => options.headers["x-traqen-api-token"] === "token"));
+    assert.ok(calls.every(({ options }) => options.credentials === "same-origin" && !options.headers["x-traqen-api-token"]));
   } finally {
     globalThis.fetch = originalFetch;
   }

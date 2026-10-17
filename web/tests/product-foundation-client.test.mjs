@@ -152,8 +152,8 @@ test("product foundation client keeps reads GET-only and mutations explicit", as
     assert.deepEqual(calls.slice(0, 5).map(({ options }) => options.method), ["GET", "GET", "GET", "GET", "GET"]);
     assert.deepEqual(calls.slice(5).map(({ options }) => options.method), ["PUT", "POST", "POST"]);
     assert.match(calls[3].url, /W%201\/review-queue\?status=OPEN$/);
-    assert.equal(calls[7].options.headers.authorization, "Bearer secret");
-    assert.equal(calls[7].options.headers["x-traqen-api-token"], "secret");
+    assert.equal(calls[7].options.headers.authorization, undefined);
+    assert.equal(calls[7].options.headers["x-traqen-api-token"], undefined);
   } finally {
     globalThis.fetch = originalFetch;
   }

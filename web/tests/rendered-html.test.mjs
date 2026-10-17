@@ -13,35 +13,15 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the Traqen proof-chain product surface", async () => {
+test("server rendering keeps every business surface behind the identity check", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
   assert.match(html, /<title>Traqen · 可追溯质量工作台<\/title>/i);
-  for (const text of [
-    "工作区概览",
-    "来源快照",
-    "技术证据",
-    "业务图谱",
-    "变更影响",
-    "设置中心",
-    "先验证访问身份",
-    "中文",
-    "English",
-  ]) {
-    assert.match(html, new RegExp(text));
-  }
-  for (const text of ["Connection Health", "部署诊断", "切换工作区"]) {
-    assert.match(html, new RegExp(text));
-  }
-  assert.doesNotMatch(html, /API 地址.*API token/s);
-  assert.doesNotMatch(html, /创建第一个 Workspace|FULL 分析/);
-  assert.match(html, /<section[^>]*class="workspace-connection panel"[^>]*aria-labelledby="workspace-connection-title"/);
-  assert.match(html, /<h1 id="workspace-connection-title">工作区概览<\/h1>/);
-  assert.doesNotMatch(html, /<section class="onboarding panel">/,
-    "SSR has no authenticated list; a sidebar tooltip is not an empty-state rendering");
-  assert.doesNotMatch(html, /webkitdirectory|兼容导入|浏览器扫描|SELF WORKSPACE|codex-preview/i);
+  assert.match(html, /auth-card/);
+  assert.match(html, /正在检查登录状态/);
+  assert.doesNotMatch(html, /class="sidebar"|id="workspace-switcher"|WEB-OPERATOR|workspace-access-token/);
 });
 
 test("ships only the server-owned understanding path after Web cutover", async () => {
@@ -62,7 +42,8 @@ test("ships only the server-owned understanding path after Web cutover", async (
   assert.match(product, /startHistoricalRevisionReanalysis/);
   assert.match(product, /getServerWorkspaceUnderstanding/);
   assert.match(product, /listServerWorkspaceUnderstandingJobs/);
-  assert.match(product, /traqen\.activeWorkspaceId/);
+  assert.doesNotMatch(product, /localStorage\.(getItem|setItem)\("traqen\.activeWorkspaceId"/);
+  assert.match(product, /\/v1\/me\/position/);
   assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "RUNNING"\)/);
   assert.match(product, /availableJobs\.find\(\(\{ status \}\) => status === "PAUSED"\)/);
   assert.match(surfaces, /jobs\.map\(\(item\)/);

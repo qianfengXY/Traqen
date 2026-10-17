@@ -11,8 +11,8 @@ test("source client keeps principal claims out of requests, does not retry write
   assert.equal(calls.length, 1);
   assert.match(calls[0].url, /workspaces\/workspace%2Fone\/source-truth\/draft$/);
   assert.equal(calls[0].options.redirect, "error");
-  assert.equal(calls[0].options.credentials, "omit");
-  assert.equal(calls[0].options.headers.authorization, "Bearer memory-token");
+  assert.equal(calls[0].options.credentials, "same-origin");
+  assert.equal(calls[0].options.headers.authorization, undefined);
   assert.deepEqual(JSON.parse(calls[0].options.body), { expectedRevision: 1, input: {} });
   controller.abort();
   await assert.rejects(client.request(), { name: "AbortError" });
@@ -29,7 +29,7 @@ test("historical raw files stream to an explicitly selected destination without 
   const client = new SourceTruthClient("https://api", "token", "w");
   t.mock.method(globalThis, "fetch", async (_url, options) => {
     assert.equal(options.redirect, "error");
-    assert.equal(options.headers.authorization, "Bearer token");
+    assert.equal(options.headers.authorization, undefined);
     return new Response(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array([1, 2])); controller.enqueue(new Uint8Array([3])); controller.close(); } }), { headers: { "content-type": "application/octet-stream" } });
   });
   const sink = { async write(chunk) { chunks.push(...chunk); events.push("write"); }, async close() { events.push("close"); }, async abort() { events.push("abort"); } };
