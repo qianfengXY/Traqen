@@ -1,0 +1,2750 @@
+{
+  "feature": "F008",
+  "kind": "design-fixture-rendering",
+  "generatedAt": "2026-10-17T09:12:06.154Z",
+  "baseCommit": "c04cf83d5747e011b5c0af1528d3cc334bb3d937",
+  "layoutBaseline": "F005 V1.1",
+  "browser": "153.0.8010.12",
+  "sourceFiles": {
+    "index.html": "cfaa14ab4d1db6bd2ddb1c4fceff802b833443c826c9a8b9e2d4662932805b9d",
+    "style.css": "b87a8afa87ef08854e5b540f28a3c826eac2bf22e342c9058a2be8ffed893c71",
+    "app.js": "033c2db1fb1b70611506797cf30222b31a7bca5d30742b72a1276edae41b1b23",
+    "render.mjs": "5a71dc08f1b05ea241c809ab2a8b2c4d07a271393e03505660ac8a7cde150cf3",
+    "../../../../design-reviews/F005/business-workbench-v0.1/assets/style.css": "9c67ec1e6c21b4ed664765c196a83c6660393c84ad20e08a2d45c0720e926e4e"
+  },
+  "fixtureBoundary": "Static design scenes. No authentication, permissions, approvals or backend execution is verified.",
+  "captures": [
+    {
+      "id": "01",
+      "scene": "login",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "01-login-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "a965e686f76891dfc5894f829089ce3d47dcad692b98760e26c16b2826342ce9",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 181,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "02",
+      "scene": "mfa",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "02-mfa-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "cfe3d8286d3ebcdc25e9621a5d2127333719523909d8cc4a4b1631ba080f90c2",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 221.59375,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "03",
+      "scene": "enrollment",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "03-enrollment-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "fc138b181a2b73f6a135374a5f14f0c1c6d78dad8a6de8c9cbae51704069d25b",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 469,
+          "y": 181,
+          "width": 502,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "04",
+      "scene": "recovery-code",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "04-recovery-code-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "b710fe2f720e73e780c04facfb2e165f2331d4752ffc2b4f9885f4951816dec8",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 181,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "05",
+      "scene": "password",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "05-password-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "0649eac29ddf342df30e296073842aa757cc743ce0fb8f3ae0b20f0f2c4f83ac",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 181,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "06",
+      "scene": "zero",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "06-zero-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "33c0fe7cc6c2fc3425d1716eaa5182cbfea6c6aa1ab74c8f4a71e130d3b71f1f",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 312,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "07",
+      "scene": "spaces",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "07-spaces-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2f9a82543e44cdcbb5daad35c27d101f2395da42f2aaa9f760f5aa84baf3a756",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 195,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "08",
+      "scene": "directory",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "08-directory-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "163f4d332528431cbdbd474e642a2c9aa274bee7228daa9ac5455bc213fb2ec9",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 329.265625,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "09",
+      "scene": "create",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "09-create-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2c15029770976d8865f4ce924cb82b940dd6c48ed5eea2dd546a1e3f83f36c49",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 329.265625,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "10",
+      "scene": "join",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "10-join-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "55b861fe8b1e7706c4adfe8112a7333b330116b7310fab54d3775e5bc970e1f4",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 286,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "11",
+      "scene": "applications",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "11-applications-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "76ef0555cdfc4d929f38dd1679518cc1733df01d7bdf86c5fce33c97dbc37920",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 429,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "12",
+      "scene": "approval",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "12-approval-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "5b20666def99d7705d2bef8c15c0634c8163351a48ff347ce4a3c8f7b581cb26",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 286,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "13",
+      "scene": "create-approval",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "13-create-approval-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "27d891686f6bc696628977b52257c4721e348e06c55f60494571437de244f638",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 251.265625,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "14",
+      "scene": "members",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "14-members-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2bd3fb5448426ef058aa0ff4ee20bc45abc05ca9af746fd1adb3f7fc0d444357",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 221,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "15",
+      "scene": "role-edit",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "15-role-edit-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2b484f560f1d5afa1fb8f71e239861fb43d0130530783facb812bbf407ef9fa5",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 221,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 235.4375,
+          "width": 520,
+          "height": 429.125
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "16",
+      "scene": "space-info",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "16-space-info-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "e607f171cd67eece45f69434c312529df2dca9fb673a5524f0d24ddd5ae9cea1",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 329.265625,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "17",
+      "scene": "owner-transfer",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "17-owner-transfer-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "b355b5b3b8517a83be000ec6975a86efe95ea7c472443f7fef260f48cea71670",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 329.265625,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 266.671875,
+          "width": 520,
+          "height": 366.65625
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "18",
+      "scene": "delete-space",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "18-delete-space-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ebc84372567869cd0d5d107ad3e538ab50cbf5d8b9fd92541cf7bbe5a43fc8fd",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 329.265625,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 300.234375,
+          "width": 520,
+          "height": 299.515625
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "19",
+      "scene": "interventions",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "19-interventions-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "28bc5dc5d19f8a56a67f720c4bdbc4be1575ced80176a45b00891cc7a0d60ed9",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 351,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "20",
+      "scene": "all-spaces",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "20-all-spaces-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "8bd01c3690c278e92f2a21eed2b82eb85656bb8382e350d2cc1b9ee3c7e282fc",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 403,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "21",
+      "scene": "accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "21-accounts-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "9e19003b32b262e926be848366f6b25ea1000b2fdc7cd2a0958559dbfc017265",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 312,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "22",
+      "scene": "account-create",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "22-account-create-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "5139bf857bf105fc88db196c6f9c2149e3a2c6ff0cc55aad4ea2386b5afdfa5f",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 312,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 216.828125,
+          "width": 520,
+          "height": 466.328125
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "23",
+      "scene": "account-recovery",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "23-account-recovery-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "43a1ba8ba1221b47ff3dccf70fe0a41d35ec279961520251665020347d363195",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 312,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 263.078125,
+          "width": 520,
+          "height": 373.84375
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "24",
+      "scene": "admins",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "24-admins-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "53ce6632bd75b08cc73c7546ef0774bbe743ff71f9746273ca631d1f634f40cb",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 384,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "25",
+      "scene": "programs",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "25-programs-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "45e3f6787b29ce358d8ec4e573631d71369f19cc1eb9840435ebc70b531df726",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 422.796875,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "26",
+      "scene": "security",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "26-security-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "e00fec2ea7e184ee26be38b423303861c7d14affc104da0fa25b65ef0ea60e09",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 288,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "27",
+      "scene": "account-menu",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "27-account-menu-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "1d95145c71d6db7d3a582ab71b3f5910f2a164069805175a09dd2b6879ff5f33",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 288,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "28",
+      "scene": "reauth",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "28-reauth-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "2fa9b92e9c53107b4bb4066f77ee307dd1ed76b0fa6408a4f56b302da05e1a50",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 255.234375,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 268.625,
+          "width": 520,
+          "height": 362.75
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "29",
+      "scene": "change-password",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "29-change-password-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "b91993c93025d93e3c93c3193a1dcfbbced8568da1cbc182a203932deeb0f032",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 197.390625,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "30",
+      "scene": "denied",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "30-denied-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "bd3e9a9b799de7e36fa60f63d23bf93fd7d4b309bd70df090ead47a61493f446",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 320,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "31",
+      "scene": "secret-unavailable",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "31-secret-unavailable-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "8a0a88961383f43e24b45e27d4dc7abe3a4fa6754854a93e68d60c3f105e44aa",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 390,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "32",
+      "scene": "expired",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "32-expired-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "e18dbca7a58affcb401aa40046b87ad6c47715bfd08cc65abdc73ed52871cf26",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 1152,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 297.21875,
+          "width": 520,
+          "height": 305.5625
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "33",
+      "scene": "uninitialized",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "33-uninitialized-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ebe6e6411c50973236ac7dbcb8d1eb48ea0ced54ded28949f1f8733a44c8dbea",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 253,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "34",
+      "scene": "recovering",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "34-recovering-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "37d61e1892bc61bac2abb8ef780321effcf6187eff6e607ab65079ceb7225359",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 253,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "35",
+      "scene": "disabled",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "35-disabled-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "0242bb8a31237750c426a5d296c6263d2ef3f09442e42296fb1a8e51df4c4bac",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 253,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "36",
+      "scene": "errors",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "36-errors-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "0d35f16ee63370ebb86a2ab9df748fd715be1f6a1b356621a388edc059ecec83",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 364,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "37",
+      "scene": "review-role",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "37-review-role-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "8dc517be5521b7f403995967c4c057fd1ca1fb36850fa3b855e2e7eeae4b9036",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 260,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "38",
+      "scene": "admin-intervene",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "38-admin-intervene-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "c04977e779d08666f533d51e9698b93fc22ae2c4d858cf165370a860742620c8",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 403,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 243.546875,
+          "width": 520,
+          "height": 412.890625
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "39",
+      "scene": "resources",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "39-resources-light.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "ec679bd88704e737c34b6906e29586c00c4c18cba6731259ac3b8a3efeee51b6",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 428.765625,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "01",
+      "scene": "login",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "01-login-dark.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "c3ddcfaabf507cdeed3a5a287314f78c02f70bb692980e5214a54441533af2b6",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1440,
+          "height": 818
+        },
+        "heading": {
+          "x": 533,
+          "y": 181,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "dark"
+      }
+    },
+    {
+      "id": "12",
+      "scene": "approval",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "12-approval-dark.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "03753e0deadff36824d2c172452c2c92742a6909e78a6c131c8d35698ac18749",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 286,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "dark"
+      }
+    },
+    {
+      "id": "14",
+      "scene": "members",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "14-members-dark.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "e5ed220a6e64a7e69910a25191c7f6885a8987f3aee1c3f859528925ce0d2fcc",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 221,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "dark"
+      }
+    },
+    {
+      "id": "21",
+      "scene": "accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "21-accounts-dark.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "fce8e9407a4aab69fcfa9105f183783adee0cab202f3271a8f935530d4d5101a",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 312,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "dark"
+      }
+    },
+    {
+      "id": "32",
+      "scene": "expired",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "file": "32-expired-dark.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "5de47286f54ca7a598f090209e8975690e5e7ca4755cb00f2ea1793babbffe86",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1216,
+          "height": 834
+        },
+        "heading": {
+          "x": 256,
+          "y": 98,
+          "width": 1152,
+          "height": 40
+        },
+        "dialog": {
+          "x": 460,
+          "y": 297.21875,
+          "width": 520,
+          "height": 305.5625
+        },
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "dark"
+      }
+    },
+    {
+      "id": "14",
+      "scene": "members",
+      "theme": "light",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "file": "14-members-light-2560.png",
+      "logicalCanvas": {
+        "width": 1440,
+        "height": 900
+      },
+      "scale": 1.6,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "1f5b399cc45bc79a26bc66e58539c51366222eb90b82909fd24aaae9ffcade36",
+      "geometry": {
+        "scale": 1.6,
+        "canvas": {
+          "width": 1440,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 223.99999618530273,
+          "height": 900
+        },
+        "main": {
+          "x": 223.99999618530273,
+          "y": 65.99999904632568,
+          "width": 1215.999984741211,
+          "height": 834.0000152587891
+        },
+        "heading": {
+          "x": 255.99998474121094,
+          "y": 98.00000190734863,
+          "width": 221.0000228881836,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "01",
+      "scene": "login",
+      "theme": "light",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "file": "01-login-light-1280.png",
+      "logicalCanvas": {
+        "width": 1280,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "d0cd47f2da1dfe701d983d080bac14aedb86a0e060b00f8591a8157dfbd2f364",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1280,
+          "height": 900
+        },
+        "sidebar": null,
+        "main": {
+          "x": 0,
+          "y": 82,
+          "width": 1280,
+          "height": 818
+        },
+        "heading": {
+          "x": 453,
+          "y": 155,
+          "width": 374,
+          "height": 38
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    },
+    {
+      "id": "12",
+      "scene": "approval",
+      "theme": "light",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "file": "12-approval-light-1280.png",
+      "logicalCanvas": {
+        "width": 1280,
+        "height": 900
+      },
+      "scale": 1,
+      "browserZoom": 1,
+      "deviceScaleFactor": 1,
+      "sha256": "d9c77b1d80912aea21ef59aa2d5d5ae0ae913b75369bbc4875aec0a75587ee27",
+      "geometry": {
+        "scale": 1,
+        "canvas": {
+          "width": 1280,
+          "height": 900
+        },
+        "sidebar": {
+          "x": 0,
+          "y": 0,
+          "width": 224,
+          "height": 900
+        },
+        "main": {
+          "x": 224,
+          "y": 66,
+          "width": 1056,
+          "height": 834
+        },
+        "heading": {
+          "x": 248,
+          "y": 90,
+          "width": 286,
+          "height": 40
+        },
+        "dialog": null,
+        "h1": 1,
+        "overflow": [],
+        "hasDesignLabel": true,
+        "theme": "light"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "scene": "login",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "mfa",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "enrollment",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "recovery-code",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "password",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "zero",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "spaces",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "directory",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "create",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "join",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "applications",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "approval",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "create-approval",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "members",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "role-edit",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "space-info",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "owner-transfer",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "delete-space",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "interventions",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "all-spaces",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "accounts",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "account-create",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "account-recovery",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "admins",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "programs",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "security",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "account-menu",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "reauth",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "change-password",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "denied",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "secret-unavailable",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "expired",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "uninitialized",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "recovering",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "disabled",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "errors",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "review-role",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "admin-intervene",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "resources",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "login",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "approval",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "members",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "accounts",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "expired",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "members",
+      "theme": "light",
+      "viewport": {
+        "width": 2560,
+        "height": 1440
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "login",
+      "theme": "light",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "scene": "approval",
+      "theme": "light",
+      "viewport": {
+        "width": 1280,
+        "height": 800
+      },
+      "check": "single-heading/theme/fixture-label/no-surface-overflow/sidebar-width",
+      "pass": true
+    },
+    {
+      "check": "members normalized layout 1440 / 2560 identical",
+      "pass": true
+    },
+    {
+      "check": "theme switch preserves unsent form input in the same document",
+      "pass": true
+    }
+  ],
+  "pageErrors": []
+}
