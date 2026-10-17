@@ -19,11 +19,12 @@ const WorkspaceAnalysisPurpose = Object.freeze({
 });
 
 export class WorkspaceAnalysisJobRunner {
-  constructor({ store, handlers, clock = () => new Date() }) {
+  constructor({ store, handlers, clock = () => new Date(), authorizeInitiator = null }) {
     if (!store) throw new TypeError("store is required");
     this.store = store;
     this.handlers = handlers ?? {};
     this.clock = clock;
+    this.authorizeInitiator = authorizeInitiator;
   }
 
   async start(input) {
@@ -57,6 +58,7 @@ export class WorkspaceAnalysisJobRunner {
     }
     const identity = {
       projectId: input.projectId,
+      ...(input.initiatorAccountId ? {initiatorAccountId:input.initiatorAccountId} : {}),
       sourceRegistrationId: input.sourceRegistrationId,
       snapshotManifestId: input.snapshotManifestId,
       requestedMode: input.requestedMode,
@@ -167,6 +169,7 @@ export class WorkspaceAnalysisJobRunner {
         return this.#persist(paused);
       }
       const handler = this.handlers[phase];
+      await this.authorizeInitiator?.(state);
       if (typeof handler !== "function") throw new TypeError(`No handler configured for ${phase}`);
       const output = await handler(deepFreeze(structuredClone(state)), { signal });
       const latestAfterPhase = await this.get(state.projectId, state.id);

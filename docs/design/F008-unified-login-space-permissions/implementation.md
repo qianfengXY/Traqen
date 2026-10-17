@@ -1,0 +1,90 @@
+---
+feature_ids: [F008]
+related_features: [F001, F005, F006]
+topics: [authentication, authorization, operations, migration, recovery]
+doc_kind: implementation-guide
+created: 2026-10-17
+source_thread: thread_mv7ika5a02jrsca7
+authorization: 0001792229386746-000019-c817c572
+---
+
+# F008 · 实施与运维说明
+
+本说明对应[已确认设计 V1.2](README.md)，记录实际入口、迁移与恢复操作。页面图片仍是设计资产；实现验证以真实服务与浏览器流程为准。原开发委托和页面确认分别为 `0001792225908694-000002-c3d50e64`、`0001792229386746-000019-c817c572`。
+
+## 接线
+
+- `src/auth/` 提供持久账号、一次性凭据、会话、MFA、空间授权、申请、通知、程序身份和恢复服务。迁移 `0039_f008_identity.sql` 建立账号记录与授权审计；原来源授权表保留为迁移资料，运行时视图从当前统一授权派生。
+- HTTP 入口在业务及 F001 分发前核验会话、Host、Origin 与 CSRF；调用者身份由服务端上下文产生。工作空间、项目、来源、配置、证据与工作流继续执行对象所属空间和操作权限检查。旧 `userId`、`actorId` 等调用者字段被拒绝。
+- 存储入口在同一事务内按项目、授权控制行顺序加锁，重新核验当前账号、空间状态和角色；撤权与最终发布串行。后台任务持久记录原发起账号，每阶段重新检查，不借用服务器身份；浏览器退出不改变原任务归属。
+- F001 使用同一浏览器 Cookie；不再要求来源成员 Token。Runner／Scanner 的原签名以及任务凭据保持必要条件，还需映射当前有效程序账号或原任务发起账号。程序身份不能批准人的业务决定。
+- Web 通过统一的 `sessionFetch` 携带 Cookie 和 CSRF；刷新、账号切换、会话失效后清空旧内容。服务端保存每账号的合法内部位置；审核每次显式选择角色，业务组／合规组互斥。重新登录只恢复读取，不自动重发审批、上传或分析写操作。
+- F005 两种主题和逻辑母版共用同一 DOM；账号入口位于侧栏底部，空间、申请和管理页面沿用既有一级导航。空间成员只读模型选择目录不要求全局配置资格；修改全局模型与账号仍需专门资格。
+
+## 首次部署
+
+生产采用 PostgreSQL 和同源 HTTPS 网关。环境配置与本机隔离开发步骤见 [README](../../../README.zh-CN.md#快速启动)。首次管理员只从终端初始化：
+
+```bash
+node src/cli/auth.js initialize --login admin --name 管理员
+```
+
+密码隐藏输入；自动化仅通过 `TRAQEN_AUTH_PASSWORD_FILE` 指向部署用户私有的 0600 文件。密码至少 8 个字符，不要求定期更换。首次登录绑定验证器并保存恢复码后，管理员资格才生效。账号开通／恢复链接只显示一次、本人使用；通知与审计不存明文凭据。
+
+默认会话绝对有效期 12 小时、闲置 2 小时；记住设备为 30 天、闲置 7 天。只有明确用户活动延长闲置期限，状态轮询不续期。账号与授权记录默认持久保存；登录失败短时计数窗口不等于用户资料 TTL。近期验证有效期 10 分钟，修改密码、MFA、管理员资格和程序凭据等敏感操作需要近期验证。
+
+## 旧实例切换
+
+在维护窗口停止旧入口和旧 Worker；备份数据库、来源对象及部署密钥。下面的命令读取与初始化同一数据库，不应指向不相关生产实例。终端与服务使用相同实例角色策略配置。
+
+1. `node src/cli/auth.js inventory` 列出历史 principal、空间、来源授权和未完成来源任务，以及新账号／程序范围；不输出密码、会话或程序凭据。
+2. 初始化并绑定可信管理员，为实际人员创建账号，为实际 Runner／Scanner／CI 创建程序身份。不要按显示名合并账号，不从历史来源 READ 自动推断其他功能角色。
+3. 明确核对 principal 到账号、每个空间 Owner、需要保留的空间角色。停止、重试或明确迁移旧任务；没有可信发起账号的旧任务不能继续发布。
+4. 把经部署者确认的映射存入 0600 私有 JSON 文件，执行：
+
+```bash
+node src/cli/auth.js migrate --mapping-file /absolute/private/f008-mapping.json
+```
+
+映射字段如下；用实际 ID 替换占位值。`confirmed` 表示部署者已完成核对，不由系统自动补成 true：
+
+```json
+{
+  "confirmed": true,
+  "bindings": [{"principalId": "OLD-PRINCIPAL", "accountId": "ACCOUNT-ID"}],
+  "owners": [{"workspaceId": "WORKSPACE-ID", "accountId": "OWNER-ACCOUNT-ID", "visibility": "DISCOVERABLE"}],
+  "grants": [{"workspaceId": "WORKSPACE-ID", "accountId": "MEMBER-ACCOUNT-ID", "roles": ["READ"]}]
+}
+```
+
+同一历史身份不得绑定不同账号；已迁移空间不会被重复映射覆盖。业务与合规组冲突必须解决后再切换。迁移提升会话代数，旧会话失效，用户重新登录。旧部署 API Token、来源成员凭据及环境变量审核持有人不会作为认证失败后的回退。
+
+CI 的质量门 CLI 从 `TRAQEN_PROGRAM_TOKEN` 读取程序凭据；程序还须持有目标空间 READ 及凭据声明的 READ 操作。凭据过期、撤销或轮换后，旧凭据失效。通过系统管理页创建程序、通过空间成员管理授予角色；签名工具的 principal 绑定通过上述终端映射完成。
+
+## 备份恢复与全部管理员失效
+
+F001 实际恢复事务会设置受限恢复状态并提升会话代数，包括尚无身份表的旧归档；后续身份迁移不会重新开放初始化。旧会话、一次性设置／恢复凭据及未完成 MFA 绑定失效，只有终端确认的可信恢复管理员可以进入管理面。
+
+如果事故未经过备份恢复，但全部管理员不可用，先进入受限状态：
+
+```bash
+node src/cli/auth.js recover
+node src/cli/auth.js inventory
+node src/cli/auth.js trust-recovery-admin --account-id EXISTING-HUMAN-ACCOUNT-ID
+```
+
+最后一条命令隐藏输入新密码，并撤销该账号旧会话及 MFA；网页登录后重新绑定 MFA。恢复前不存在任何账号的旧归档，可用 `trust-recovery-admin --login recovery-admin --name 恢复管理员` 明确新建可信恢复账号。存在同名账号时必须给确切 account ID，不自动合并。
+
+可信管理员复核人员、停用状态、系统资格、Owner 和空间授权；F001 所有工作空间必须完成来源完整性检查，`restore_ready` 为真且没有备份屏障。恢复业务访问仍需部署终端明确确认：
+
+```bash
+TRAQEN_AUTH_RECOVERY_REVIEWED=true node src/cli/auth.js finish-recovery
+```
+
+缺少可信管理员的有效 MFA、部署者核对确认或 F001 完整性证据都会拒绝开放。恢复不会覆盖既有审计，也不会自动重启采集或分析。
+
+## 验证范围
+
+自动检查覆盖真实 PostgreSQL 语义迁移、服务与 HTTP 组合、F001 同会话接线、程序与人员权限边界、撤权和任务发布、旧归档恢复、CSRF／重放与限速、前端客户端及构建。浏览器按真实管理员和普通成员走初始化、开通、密码设置、申请、降级审批、进入空间、撤权、退出及双主题和不同视口；设计样稿的静态渲染检查不计入这些功能证据。
+
+此变更不执行真实部署数据库迁移、不接触生产用户数据；目标部署应按上述维护窗口完成账号与历史身份映射后开放。生产所需的外部模型、来源存储、网关及独立业务证据继续由各自的部署配置提供。

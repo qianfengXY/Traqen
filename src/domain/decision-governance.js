@@ -124,7 +124,8 @@ export function evaluateDecisionReviewCase(reviewCase, events, policy = {}, cloc
     DecisionReviewAction.DISPUTE,
   ].includes(event.action));
   const approvals = activeEvents.filter((event) => event.action === DecisionReviewAction.APPROVE);
-  const approvalActors = new Set(approvals.map((event) => event.actorId));
+  const identity = id => policy.actorIdentityMap?.[id] ?? id;
+  const approvalActors = new Set(approvals.map((event) => identity(event.actorId)));
   const approvalRoles = new Set(approvals.map((event) => event.actorRole));
   const requirements = {
     minimumApprovals: reviewCase.approvalMode === DecisionApprovalMode.DUAL ||
@@ -142,9 +143,9 @@ export function evaluateDecisionReviewCase(reviewCase, events, policy = {}, cloc
     allowedRoles = configuredRoles(policy, "breakGlassRoles");
   }
   const validApprovals = approvals.filter(
-    (event) => event.actorId !== reviewCase.proposerId && allowedRoles.has(event.actorRole),
+    (event) => identity(event.actorId) !== identity(reviewCase.proposerId) && allowedRoles.has(event.actorRole),
   );
-  const distinctValidActors = new Set(validApprovals.map((event) => event.actorId));
+  const distinctValidActors = new Set(validApprovals.map((event) => identity(event.actorId)));
   const roleGroupsSatisfied = requirements.requiredRoleGroups.every((roles) =>
     roles.some((role) => validApprovals.some((event) => event.actorRole === role)));
   const approvalSatisfied = distinctValidActors.size >= requirements.minimumApprovals && roleGroupsSatisfied;

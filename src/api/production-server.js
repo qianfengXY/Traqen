@@ -1,3 +1,8 @@
+import pg from "pg";
+import { authRuntime } from "../auth/runtime.js";
+import { contextualDatabase } from "../auth/database.js";
+import { authorizedStore } from "../auth/authorized-store.js";
+import { authContext } from "../auth/context.js";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
@@ -23,21 +28,21 @@ function postgresSsl(value = "require") {
   throw new Error("POSTGRES_SSL must be require, no-verify, or disable");
 }
 
-const host = process.env.HOST ?? "0.0.0.0";
+if (process.env.TRAQEN_AUTH_DEVELOPMENT === 'true') throw new Error('Use the isolated development entry for HTTP development; production requires HTTPS authentication');
+const host = process.env.HOST ?? "127.0.0.1";
+if (!["127.0.0.1","::1","localhost"].includes(host)) throw new Error("Authentication API must bind loopback behind the configured same-origin HTTPS gateway");
 const port = Number(process.env.PORT ?? 3000);
 if (!Number.isInteger(port) || port < 0 || port > 65535) {
   throw new Error("PORT must be an integer between 0 and 65535");
 }
-const apiBearerToken = requiredEnvironment("API_BEARER_TOKEN");
+
 // Parse private Source Truth settings before constructing any runtime. A typo or
 // insecure config is a startup failure, not a silently absent persistence layer.
 const sourceConfiguration = process.env.SOURCE_TRUTH_CONFIG
-  ? await readSourceTruthConfiguration(process.env.SOURCE_TRUTH_CONFIG).catch((error) => { throw new Error(`${error.code ?? "SOURCE_CONFIGURATION_INVALID"}: 来源快照私有配置未通过校验`); })
+  ? await readSourceTruthConfiguration(process.env.SOURCE_TRUTH_CONFIG,{unifiedAuthentication:true}).catch((error) => { throw new Error(`${error.code ?? "SOURCE_CONFIGURATION_INVALID"}: 来源快照私有配置未通过校验`); })
   : null;
-const database = await connectPostgresDatabase({
-  connectionString: requiredEnvironment("DATABASE_URL"),
-  ssl: postgresSsl(process.env.POSTGRES_SSL),
-});
+const pool = new pg.Pool({ connectionString: requiredEnvironment("DATABASE_URL"), ssl: postgresSsl(process.env.POSTGRES_SSL) });
+const database = contextualDatabase(pool);
 const migrationsDirectory = fileURLToPath(new URL("../../db/migrations", import.meta.url));
 try {
   await applyMigrations(database, migrationsDirectory);
@@ -45,21 +50,25 @@ try {
   await database.close().catch(() => {});
   throw error;
 }
-const configuredApplication = createConfiguredApplication({
-  store: new PostgresTraceabilityStore(database),
+const identity = await authRuntime(database);
+const bootstrap = {active:true};
+const configuredApplication = authContext.run({ system: true }, () => createConfiguredApplication({
+  store: authorizedStore(new PostgresTraceabilityStore(database), identity.service, database, {bootstrap}),
+  identityService: identity.service,
   env: process.env,
-});
+}));
 await configuredApplication.ready;
+bootstrap.active = false;
 const { application, corsAllowedOrigins } = configuredApplication;
 let sourceRuntime = null;
 try {
   if (sourceConfiguration) sourceRuntime = await createSourceTruthRuntime({ configuration: sourceConfiguration,
-    connectionString: requiredEnvironment("DATABASE_URL"), ssl: postgresSsl(process.env.POSTGRES_SSL), host });
+    connectionString: requiredEnvironment("DATABASE_URL"), ssl: postgresSsl(process.env.POSTGRES_SSL), host, identityService: identity.service });
 } catch (error) {
   await database.close();
   throw new Error(`${error.code ?? "SOURCE_CONFIGURATION_INVALID"}: 来源快照部署条件未通过校验；未开放服务`);
 }
-const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, apiBearerToken, sourceTruthHandler: sourceRuntime?.sourceTruthHandler,
+const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, auth: identity.http, sourceTruthHandler: sourceRuntime?.sourceTruthHandler,
   sourceTruthAllowedOrigins: sourceConfiguration?.origins });
 
 server.listen(port, host, () => {

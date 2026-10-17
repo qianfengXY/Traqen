@@ -7,3 +7,7 @@ coverage/
 
 # Local-only branch review records. Publish validated findings as Issues instead.
 /.review-local/
+
+# Isolated local authentication development data, never production or repository content.
+.traqen-dev/
+*.tsbuildinfo

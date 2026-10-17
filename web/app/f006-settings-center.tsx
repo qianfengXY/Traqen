@@ -28,6 +28,8 @@ type LifecycleTarget = { capability: GlobalCapability; lifecycle: "INACTIVE" | "
 type Props = {
   t: T;
   scope: Scope;
+  canGlobalConfig?: boolean;
+  readOnly?: boolean;
   setScope: (scope: Scope) => void;
   workspace: Workspace | null;
   accounts: GlobalAccount[];
@@ -155,7 +157,7 @@ export function F006SettingsCenter(props: Props) {
       })();
 
   useEffect(() => {
-    if (!edited || edited === savedEdited || !recoveryReady || working || autosaveStatus === "ERROR" || props.draftConflict || autosaveInFlight.current) return;
+    if (!edited || edited === savedEdited || !recoveryReady || working || props.readOnly || autosaveStatus === "ERROR" || props.draftConflict || autosaveInFlight.current) return;
     const editRevision = edited;
     const timer = window.setTimeout(() => {
       autosaveInFlight.current = true;
@@ -170,7 +172,7 @@ export function F006SettingsCenter(props: Props) {
       }).catch(() => setAutosaveStatus("ERROR")).finally(() => { autosaveInFlight.current = false; });
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [autosaveAttempt, autosaveStatus, edited, onAutoSave, props.draftConflict, recoveryReady, savedEdited, working]);
+  }, [autosaveAttempt, autosaveStatus, edited, onAutoSave, props.draftConflict, props.readOnly, recoveryReady, savedEdited, working]);
 
   function markEdited() {
     setEdited((value) => value + 1);
@@ -305,12 +307,13 @@ export function F006SettingsCenter(props: Props) {
   if (props.scope === "chooser") return <section className="f006-settings-center">
     <header className="f006-heading"><p className="eyebrow">Settings center</p><h1>{props.t("设置中心", "Settings center")}</h1><p>{props.t("全局资产定义“有什么可用”；Workspace 配置定义“谁在此项目中使用什么”。", "Global assets define what is available; a Workspace decides who uses it here.")}</p></header>
     <div className="f006-scope-grid">
-      <button className="f006-scope-card global" onClick={() => props.setScope("global")}><span>◉</span><strong>{props.t("全局设置", "Global settings")}</strong><small>{props.t("账号、CLI 模型、Skill 与 MCP", "Accounts, CLI models, Skills and MCPs")}</small><i>→</i></button>
+      {props.canGlobalConfig !== false && <button className="f006-scope-card global" onClick={() => props.setScope("global")}><span>◉</span><strong>{props.t("全局设置", "Global settings")}</strong><small>{props.t("账号、CLI 模型、Skill 与 MCP", "Accounts, CLI models, Skills and MCPs")}</small><i>→</i></button>}
       <button className="f006-scope-card workspace" disabled={!props.workspace} onClick={() => props.setScope("workspace")}><span>⌂</span><strong>{props.t("项目设置", "Workspace settings")}</strong><small>{props.workspace ? props.workspace.name : props.t("请先选择一个 Workspace", "Select a Workspace first")}</small><i>→</i></button>
     </div>
     <div className="f006-start-path"><b>{props.t("首次配置路径", "First-run path")}</b><span>{props.t("添加账号 → 创建 CLI 模型 → 启用能力 → 组建 Agent 团队", "Add account → create a CLI model → enable capabilities → assemble an Agent team")}</span></div>
   </section>;
 
+  if (props.scope === "global" && props.canGlobalConfig === false) return <section className="panel"><h1>无全局配置资格</h1><p>全局配置由系统管理员或持有该资格的账号管理。</p></section>;
   if (props.scope === "global") return <section className="f006-settings-center">
     <header className="f006-heading f006-heading-row"><div><p className="eyebrow">Global scope</p><h1>{props.t("全局设置", "Global settings")}</h1><p>{props.t("这里的资产可被所有 Workspace 使用；它们不会自动授予任何 Agent。", "Assets here can be used by every Workspace; they are never granted to an Agent automatically.")}</p></div><button className="button ghost" onClick={() => props.setScope("chooser")}>{props.t("返回设置中心", "Back to settings")}</button></header>
     <div className="f006-global-shell">
@@ -329,13 +332,13 @@ export function F006SettingsCenter(props: Props) {
 
   if (!props.workspace) return <section className="f006-settings-center"><header className="f006-heading"><p className="eyebrow">Workspace scope</p><h1>{props.t("先选择项目", "Select a Workspace")}</h1><p>{props.t("选择或创建 Workspace 后，才能配置 Agent 团队和项目能力。", "Choose or create a Workspace before configuring its Agent team and capabilities.")}</p></header><button className="button" onClick={() => props.setScope("chooser")}>{props.t("返回设置中心", "Back to settings")}</button></section>;
 
-  return <section className="f006-settings-center">
+  return <section className="f006-settings-center" data-readonly={props.readOnly}>
     <header className="f006-heading f006-heading-row"><div><p className="eyebrow">Workspace scope · {props.workspace.name}</p><h1>{props.t("项目设置", "Workspace settings")}</h1><p>{props.t("草稿会自动保存；只有“应用配置”才会创建下一次运行使用的不可变版本。", "Edits are saved as a draft automatically. Apply creates the immutable version used by the next run.")}</p></div><button className="button ghost" onClick={() => props.setScope("chooser")}>{props.t("切换范围", "Change scope")}</button></header>
     {props.draftConflict && <div className="f006-draft-conflict" role="alert"><div><b>{props.t("草稿已在其他位置更新", "The draft changed elsewhere")}</b><span>{props.t("本地编辑仍被保留。先选择重试自己的版本，或采用服务器的新版本。", "Your edits are retained. Retry your version or adopt the newer server draft.")}</span></div><div><button className="button" disabled={props.working} onClick={() => { void props.onRetryDraftConflict().then(acknowledgeRecoveredDraft); }}>{props.t("重试我的草稿", "Retry my draft")}</button><button className="button" disabled={props.working} onClick={() => { void props.onUseCurrentDraft(edited).then(acknowledgeRecoveredDraft); }}>{props.t("采用服务器草稿", "Use server draft")}</button></div></div>}
-    <div className={`f006-readiness ${readiness.tone}`}><div><b>{readiness.title}</b><span>{readiness.detail}</span></div><div className="f006-readiness-actions"><small>{autosaveStatus === "SAVING" ? props.t("正在保存草稿", "Saving draft") : autosaveStatus === "SAVED" ? props.t("草稿已保存", "Draft saved") : props.draft ? `${props.t("草稿版本", "Draft")} r${props.draft.revision}` : props.t("新草稿", "New draft")}</small>{autosaveStatus === "ERROR" && <button className="button" disabled={props.working} onClick={() => { setAutosaveStatus("IDLE"); setAutosaveAttempt((value) => value + 1); }}>{props.t("重试保存", "Retry save")}</button>}<button className="button primary" disabled={props.working || !props.recoveryReady || readiness.tone === "danger" || props.draftConflict || edited !== savedEdited} onClick={props.onApply}>{props.t("应用配置", "Apply configuration")}</button></div></div>
+    <div className={`f006-readiness ${readiness.tone}`}><div><b>{readiness.title}</b><span>{readiness.detail}</span></div><div className="f006-readiness-actions"><small>{autosaveStatus === "SAVING" ? props.t("正在保存草稿", "Saving draft") : autosaveStatus === "SAVED" ? props.t("草稿已保存", "Draft saved") : props.draft ? `${props.t("草稿版本", "Draft")} r${props.draft.revision}` : props.t("新草稿", "New draft")}</small>{autosaveStatus === "ERROR" && <button className="button" disabled={props.working} onClick={() => { setAutosaveStatus("IDLE"); setAutosaveAttempt((value) => value + 1); }}>{props.t("重试保存", "Retry save")}</button>}<button className="button primary" disabled={props.working || props.readOnly || !props.recoveryReady || readiness.tone === "danger" || props.draftConflict || edited !== savedEdited} onClick={props.onApply}>{props.t("应用配置", "Apply configuration")}</button></div></div>
     <div className="f006-tabs" role="tablist"><button className={workspacePage === "agents" ? "active" : ""} onClick={() => setWorkspacePage("agents")}>{props.t("Agent 设置", "Agent settings")}</button><button className={workspacePage === "capabilities" ? "active" : ""} onClick={() => setWorkspacePage("capabilities")}>{props.t("能力管理", "Capabilities")}</button></div>
-    {workspacePage === "agents" && <AgentSettings {...props} selected={selected} selectedAgentId={selectedAgentId} setSelectedAgentId={setSelectedAgentId} agentDrawerOpen={agentDrawerOpen} setAgentDrawerOpen={setAgentDrawerOpen} availableModels={availableModels} effectiveCapabilities={effectiveCapabilities} unavailableCapabilities={unavailableCapabilities} onModelChange={changeSelectedModel} onToggleGrant={toggleGrant} onAddChild={() => { props.setChildSlots(addChildSlot(props.childSlots, { model: "", skillNames: [], mcpNames: [] })); markEdited(); }} onRemoveChild={(id) => { props.setChildSlots(removeChildSlot(props.childSlots, id)); if (selectedAgentId === id) setSelectedAgentId("MAIN"); markEdited(); }} />}
-    {workspacePage === "capabilities" && <WorkspaceCapabilities {...props} localKind={localKind} setLocalKind={setLocalKind} localName={localName} setLocalName={setLocalName} skillKey={localSkillKey} setSkillKey={setLocalSkillKey} onToggle={toggleWorkspaceCapability} onOpenAgentSettings={(agentId) => { setWorkspacePage("agents"); setSelectedAgentId(agentId); setAgentDrawerOpen(true); }} onAddLocal={() => { const normalizedName = localName.trim().toLowerCase(); if (!normalizedName || (localKind === "SKILL" && !selectedLocalSkill)) return; props.onSaveLocalCapability({ kind: localKind, normalizedName, expectedVersion: 0, manifest: { description: `${props.workspace?.name ?? "Workspace"} local capability`, ...(localKind === "SKILL" ? { adapterId: selectedLocalSkill!.id, version: selectedLocalSkill!.version } : {}) } }); setLocalName(""); }} />}
+    {workspacePage === "agents" && <AgentSettings {...props} working={props.working || props.readOnly === true} selected={selected} selectedAgentId={selectedAgentId} setSelectedAgentId={setSelectedAgentId} agentDrawerOpen={agentDrawerOpen} setAgentDrawerOpen={setAgentDrawerOpen} availableModels={availableModels} effectiveCapabilities={effectiveCapabilities} unavailableCapabilities={unavailableCapabilities} onModelChange={changeSelectedModel} onToggleGrant={toggleGrant} onAddChild={() => { props.setChildSlots(addChildSlot(props.childSlots, { model: "", skillNames: [], mcpNames: [] })); markEdited(); }} onRemoveChild={(id) => { props.setChildSlots(removeChildSlot(props.childSlots, id)); if (selectedAgentId === id) setSelectedAgentId("MAIN"); markEdited(); }} />}
+    {workspacePage === "capabilities" && <WorkspaceCapabilities {...props} working={props.working || props.readOnly === true} localKind={localKind} setLocalKind={setLocalKind} localName={localName} setLocalName={setLocalName} skillKey={localSkillKey} setSkillKey={setLocalSkillKey} onToggle={toggleWorkspaceCapability} onOpenAgentSettings={(agentId) => { setWorkspacePage("agents"); setSelectedAgentId(agentId); setAgentDrawerOpen(true); }} onAddLocal={() => { const normalizedName = localName.trim().toLowerCase(); if (!normalizedName || (localKind === "SKILL" && !selectedLocalSkill)) return; props.onSaveLocalCapability({ kind: localKind, normalizedName, expectedVersion: 0, manifest: { description: `${props.workspace?.name ?? "Workspace"} local capability`, ...(localKind === "SKILL" ? { adapterId: selectedLocalSkill!.id, version: selectedLocalSkill!.version } : {}) } }); setLocalName(""); }} />}
   </section>;
 }
 

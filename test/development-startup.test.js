@@ -61,3 +61,9 @@ test("local development reports a single setup action when dependencies are abse
   ]);
   assert.deepEqual(missingDevelopmentDependencies(root), []);
 });
+
+test('isolated feature previews can select distinct ports without using reserved runtime ports',()=>{
+ const config=localDevelopmentConfig({TRAQEN_API_PORT:'5179',TRAQEN_WEB_PORT:'5178'});
+ assert.equal(config.apiPort,5179);assert.equal(config.webPort,5178);
+ assert.throws(()=>localDevelopmentConfig({TRAQEN_WEB_PORT:'3003'}),/reserved/);
+});

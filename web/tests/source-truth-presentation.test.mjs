@@ -54,7 +54,7 @@ test("rendered source access failures explain permission binding without an empt
     assert.match(html, /<h2>来源访问尚未就绪<\/h2>/);
     assert.match(html, /不代表没有材料或任务/);
     assert.doesNotMatch(html, /role="status"|保存来源，确认范围/);
-    if (error.status === 403) assert.match(html, /来源权限需要管理员绑定到当前成员和 Workspace/);
+    if (error.status === 403) assert.match(html, /请向本空间 Owner 或权限管理员申请查看或维护权限/);
     else assert.match(html, /不会重复创建任务，也不会修改既有版本/);
   }
 });

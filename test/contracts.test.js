@@ -98,8 +98,8 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   assert.deepEqual(lifecycleRequest.required, ["expectedVersion", "lifecycle"]);
   assert.equal(lifecycleRequest.properties.confirmation.type, "string");
   assert.equal(contract.paths["/v1/workspaces"].post.operationId, "createWorkspace");
-  assert.equal(contract.paths["/v1/workspaces"].post.responses["409"].$ref, "#/components/responses/Conflict",
-    "Workspace creation conflicts are unrelated to the Active Execution Profile head");
+  assert.equal(contract.paths["/v1/workspaces"].post.responses["403"].description, "AUTH_APPLICATION_REQUIRED",
+    "Direct creation is retired; authenticated people submit space applications");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}"].patch.operationId, "renameWorkspace");
   assert.equal(contract.paths["/v1/workspaces/{workspaceId}/execution-profile-revisions"].post, undefined);
   assert.equal(
@@ -112,7 +112,7 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
   );
   const workspaceOperations = [
     ["/v1/workspaces", "get", "200", false],
-    ["/v1/workspaces", "post", "201", true],
+    ["/v1/access/applications", "post", "200", true],
     ["/v1/workspaces/{workspaceId}", "get", "200", false],
     ["/v1/workspaces/{workspaceId}", "patch", "200", true],
     ["/v1/workspaces/{workspaceId}/view-preference", "put", "200", true],
@@ -188,7 +188,7 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     contract.paths["/v1/projects/{projectId}/decision-review-cases/{caseId}/events"].post.operationId,
     "appendDecisionReviewEvent",
   );
-  assert.equal(contract.components.securitySchemes.ApiToken.name, "x-traqen-api-token");
+  assert.equal(contract.components.securitySchemes.CookieSession.name, "__Host-traqen_session");
   assert.equal(
     contract.paths["/v1/trace-chains/evaluate"].post.operationId,
     "evaluateTraceChain",
@@ -340,7 +340,6 @@ test("OpenAPI contract exposes the implemented trace-chain routes", async () => 
     "x-traqen-worker-credential",
   );
   assert.deepEqual(sourceSliceOperation.security[0], {
-    ApiToken: [],
     SourceSliceWorkerCredential: [],
   });
   assert.ok(contract.paths["/v1/projects/{projectId}/graph/current"].get.responses["200"].content["application/json"].schema);

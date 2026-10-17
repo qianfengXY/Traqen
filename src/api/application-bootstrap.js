@@ -1,3 +1,4 @@
+import { identityContext } from "../auth/context.js";
 import { readFileSync } from "node:fs";
 
 import { TraceabilityApplication } from "../application/traceability-application.js";
@@ -48,6 +49,7 @@ export function createConfiguredApplication({
   env = process.env,
   workspaceMcpExecutor = null,
   developmentUnderstanding = null,
+  identityService = null,
   analysisModelRegistry: injectedAnalysisModelRegistry = null,
 }) {
   if (!store) throw new TypeError("store is required");
@@ -58,9 +60,9 @@ export function createConfiguredApplication({
   const skillPublisher = env.SKILL_PUBLISHER ?? null;
   const skillPublisherSharedSecret = env.SKILL_PUBLISHER_SHARED_SECRET ?? null;
   const reviewerId = env.REVIEWER_ID ?? null;
-  const reviewerRole = env.REVIEWER_ROLE ?? "business-owner";
+  const reviewerRole = identityService ? "business-owner" : env.REVIEWER_ROLE ?? "business-owner";
   const reviewerBearerToken = env.REVIEWER_BEARER_TOKEN ?? null;
-  const configuredReviewers = reviewerDirectory(env.REVIEWER_IDENTITIES_JSON);
+  const configuredReviewers = identityService ? [] : reviewerDirectory(env.REVIEWER_IDENTITIES_JSON);
   const implementationReviewerId = env.IMPLEMENTATION_REVIEWER_ID ?? null;
   const implementationReviewerRole = env.IMPLEMENTATION_REVIEWER_ROLE ?? "developer";
   const implementationReviewerBearerToken = env.IMPLEMENTATION_REVIEWER_BEARER_TOKEN ?? null;
@@ -129,6 +131,7 @@ export function createConfiguredApplication({
   const legacyUnderstandingRuntime = sourceSliceBroker && allowedWorkspaceRoots.length > 0
     ? new LegacyUnderstandingRuntime({
       store,
+      identityService,
       sourceSliceBroker,
       snapshotRoot: env.SOURCE_SNAPSHOT_ROOT,
       allowlistedRoots: allowedWorkspaceRoots,
@@ -376,7 +379,10 @@ export function createConfiguredApplication({
     sourceSliceBroker,
     sourceSliceWorkerCredentialService,
     legacyUnderstandingRuntime,
+    executionAuthorization: identityService ? input => identityService.executionIdentity(input) : null,
+    actorIdentityResolver: identityService ? actorId => identityService.canonicalActor(actorId) : null,
     reviewerResolver: (_projectId, context) => {
+      if (identityService) return identityService.reviewer(_projectId, identityContext()?.raw, identityContext()?.reviewRole);
       if (configuredReviewers.length > 0) {
         const matched = configuredReviewers.find((entry) => context.authorization === `Bearer ${entry.token}`);
         return matched ? { actorId: matched.actorId, actorRole: matched.actorRole } : null;
@@ -386,6 +392,7 @@ export function createConfiguredApplication({
       return { actorId: reviewerId, actorRole: reviewerRole };
     },
     implementationReviewerResolver: (_projectId, context) => {
+      if (identityService) return identityService.reviewer(_projectId, identityContext()?.raw, identityContext()?.reviewRole);
       if (!implementationReviewerId) return null;
       if (
         implementationReviewerBearerToken &&
@@ -393,7 +400,7 @@ export function createConfiguredApplication({
       ) return null;
       return { actorId: implementationReviewerId, actorRole: implementationReviewerRole };
     },
-    implementationPolicyResolver: () => ({ allowedRoles: [implementationReviewerRole] }),
+    implementationPolicyResolver: () => ({ allowedRoles: identityService ? identityService.policy.implementationRoles : [implementationReviewerRole] }),
     continuousProtectionPolicyResolver: () => ({
       mode: qualityGateMode,
       highRiskFeatureIds: commaSeparated(env.HIGH_RISK_FEATURE_IDS),
@@ -406,7 +413,7 @@ export function createConfiguredApplication({
     },
     reviewPolicyResolver: () => ({
       requireDecisionReviewCases: env.ALLOW_DIRECT_DECISIONS !== "true",
-      allowedRoles: [reviewerRole],
+      allowedRoles: identityService ? identityService.policy.claimReviewRoles : [reviewerRole],
       allowedOutcomes: ["CONFIRMED", "EXCEPTION_RECORDED", "REJECTED", "INSUFFICIENT_EVIDENCE", "DEFERRED"],
       allowedDecisionTypes: [
         "CONFIRMED",
@@ -416,9 +423,9 @@ export function createConfiguredApplication({
         "DEFERRED",
         "DEPRECATED",
       ],
-      allowedTestSpecApproverRoles: [reviewerRole],
-      allowedProcessModelRoles: [reviewerRole],
-      allowedFeatureGovernanceRoles: [reviewerRole],
+      allowedTestSpecApproverRoles: identityService ? commaSeparated(env.TEST_SPEC_APPROVER_ROLES,"business-owner") : [reviewerRole],
+      allowedProcessModelRoles: identityService ? commaSeparated(env.PROCESS_MODEL_ROLES,"business-owner") : [reviewerRole],
+      allowedFeatureGovernanceRoles: identityService ? commaSeparated(env.FEATURE_GOVERNANCE_ROLES,"business-owner") : [reviewerRole],
       allowedEvidenceLifecycleRoles: commaSeparated(env.EVIDENCE_LIFECYCLE_ROLES, reviewerRole),
       decisionGovernance: {
         proposerRoles: commaSeparated(env.DECISION_PROPOSER_ROLES, reviewerRole),

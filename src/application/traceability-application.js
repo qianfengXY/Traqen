@@ -555,6 +555,8 @@ export class TraceabilityApplication {
   #skillPolicyResolver;
   #reverseOrchestrator;
   #reviewerResolver;
+  #actorIdentityResolver;
+  #executionAuthorization;
   #reviewPolicyResolver;
   #implementationReviewerResolver;
   #implementationPolicyResolver;
@@ -582,6 +584,8 @@ export class TraceabilityApplication {
     skillPolicyResolver = () => ({}),
     reverseOrchestrator = null,
     reviewerResolver = () => null,
+    actorIdentityResolver = null,
+    executionAuthorization = null,
     reviewPolicyResolver = () => ({ allowedRoles: [], allowedOutcomes: [] }),
     implementationReviewerResolver = () => null,
     implementationPolicyResolver = () => ({ allowedRoles: [] }),
@@ -632,6 +636,8 @@ export class TraceabilityApplication {
     this.#skillPolicyResolver = skillPolicyResolver;
     this.#reverseOrchestrator = reverseOrchestrator;
     this.#reviewerResolver = reviewerResolver;
+    this.#actorIdentityResolver = actorIdentityResolver ?? (async id => id);
+    this.#executionAuthorization = executionAuthorization;
     this.#reviewPolicyResolver = reviewPolicyResolver;
     this.#implementationReviewerResolver = implementationReviewerResolver;
     this.#implementationPolicyResolver = implementationPolicyResolver;
@@ -816,11 +822,11 @@ export class TraceabilityApplication {
     return this.#workspaceFoundation.setGlobalCapabilityLifecycle(kind, normalizedName, input);
   }
 
-  async #syncGlobalModelLifecycles() {
+  async #syncGlobalModelLifecycles({readOnly=false}={}) {
     if (!this.#analysisModelRegistry) return;
     this.#analysisModelRegistry.refreshCredentialHandles?.();
     let durableProfiles = await this.#store.listGlobalModelProfileRevisions();
-    if (durableProfiles.profiles.length === 0) {
+    if (!readOnly && durableProfiles.profiles.length === 0) {
       for (const profile of this.#analysisModelRegistry.list()) {
         await this.#store.ensureGlobalModelProfileRevision(profile);
       }
@@ -828,27 +834,27 @@ export class TraceabilityApplication {
     }
     if (durableProfiles.profiles.length > 0) this.#analysisModelRegistry.replaceDurableProfiles?.(durableProfiles);
     await Promise.all(this.#analysisModelRegistry.list().map(async (profile) => {
-      await this.#store.ensureGlobalModelProfileRevision(profile);
+      if(!readOnly) await this.#store.ensureGlobalModelProfileRevision(profile);
       const durable = await this.#store.getGlobalModelLifecycle(profile.id);
       if (durable) this.#analysisModelRegistry.applyDurableLifecycle(profile.id, durable.lifecycle);
     }));
   }
 
-  async #globalModelProfiles() {
+  async #globalModelProfiles(options) {
     if (!this.#analysisModelRegistry) return [];
-    await this.#syncGlobalModelLifecycles();
+    await this.#syncGlobalModelLifecycles(options);
     return this.#analysisModelRegistry.list().map((profile) => Object.freeze(this.#globalModelProfile(profile)));
   }
 
   // Account records are server-only eligibility context.  They must not be added to
   // the legacy public GlobalModelProfile contract simply because F006 needs them.
   async #f006ModelProfiles() {
-    const profiles = await this.#globalModelProfiles();
+    const profiles = await this.#globalModelProfiles({readOnly:!!this.#executionAuthorization});
     return this.#withF006AccountContext(profiles);
   }
 
   async #f006ModelProfileRevisions() {
-    await this.#syncGlobalModelLifecycles();
+    await this.#syncGlobalModelLifecycles({readOnly:!!this.#executionAuthorization});
     const { revisions } = await this.#store.listGlobalModelProfileRevisions();
     return this.#withF006AccountContext(revisions.map((profile) => this.#globalModelProfile(profile)));
   }
@@ -897,6 +903,16 @@ export class TraceabilityApplication {
 
   async listGlobalModelProfiles() {
     return this.#globalModelProfiles();
+  }
+
+  async workspaceSettingsCatalog(workspaceId) {
+    const foundation=await this.#store.getProjectFoundation(workspaceId);
+    if(!foundation)return null;
+    const candidates=await this.#f006ModelProfiles();
+    const eligible=candidates.filter(model=>model.transport==='CLI'&&model.lifecycle==='ACTIVE'&&model.readiness==='READY'&&model.account?.lifecycle==='ACTIVE');
+    const models=eligible.map(({account:_account,credentialHandleId:_credential,endpoint:_endpoint,executablePath:_path,...safe})=>safe);
+    const accounts=[...new Map(eligible.map(model=>{const {secretRefId:_secret,...safe}=model.account;return [safe.accountId,safe];})).values()];
+    return {models,accounts};
   }
 
   async listGlobalCliModelProfiles() {
@@ -1498,12 +1514,18 @@ export class TraceabilityApplication {
     return stored ? this.#decisionReviewView(projectId, stored) : null;
   }
 
+  async #evaluateReview(reviewCase, events, policy) {
+    const ids = [...new Set([reviewCase.proposerId, ...events.map(event => event.actorId)])];
+    const actorIdentityMap = Object.fromEntries(await Promise.all(ids.map(async id => [id, await this.#actorIdentityResolver(id)])));
+    return evaluateDecisionReviewCase(reviewCase, events, { ...policy, actorIdentityMap }, this.#clock);
+  }
+
   async #decisionReviewView(projectId, stored) {
     const policy = (await this.#reviewPolicyResolver(projectId, { reviewCase: stored.reviewCase }))
       ?.decisionGovernance ?? {};
     return deepFreeze({
       ...stored,
-      evaluation: evaluateDecisionReviewCase(stored.reviewCase, stored.events, policy, this.#clock),
+      evaluation: await this.#evaluateReview(stored.reviewCase, stored.events, policy),
     });
   }
 
@@ -1527,7 +1549,7 @@ export class TraceabilityApplication {
       reviewCase: stored.reviewCase,
       decisionReviewEventInput: input,
     }))?.decisionGovernance ?? {};
-    const current = evaluateDecisionReviewCase(stored.reviewCase, stored.events, policy, this.#clock);
+    const current = await this.#evaluateReview(stored.reviewCase, stored.events, policy);
     const event = createDecisionReviewEvent({ ...input, caseId, actorId, actorRole }, this.#clock);
     const lifecycleRoles = new Set(policy.lifecycleRoles ?? []);
     const approvalRoles = new Set(
@@ -1544,12 +1566,12 @@ export class TraceabilityApplication {
       throw new ReviewAuthorizationError(`Role ${actorRole} cannot perform Decision lifecycle action ${event.action}`);
     }
     if (event.action === "APPROVE") {
-      if (actorId === stored.reviewCase.proposerId) {
+      if (await this.#actorIdentityResolver(actorId) === await this.#actorIdentityResolver(stored.reviewCase.proposerId)) {
         throw new ReviewAuthorizationError("The proposer cannot approve their own governed Decision");
       }
       const lastReopenIndex = stored.events.findLastIndex((item) => item.action === "REOPEN");
       if (
-        stored.events.slice(lastReopenIndex + 1).some((item) => item.action === "APPROVE" && item.actorId === actorId) &&
+        (await Promise.all(stored.events.slice(lastReopenIndex + 1).filter(item => item.action === "APPROVE").map(item => this.#actorIdentityResolver(item.actorId)))).includes(await this.#actorIdentityResolver(actorId)) &&
         current.status === "PENDING"
       ) {
         throw new PersistenceConflictError(`Actor ${actorId} already approved this active review round`);
@@ -1571,7 +1593,7 @@ export class TraceabilityApplication {
     ) {
       throw new PersistenceConflictError("POST_REVIEW is only valid for an approved Break-glass case");
     }
-    const next = evaluateDecisionReviewCase(stored.reviewCase, [...stored.events, event], policy, this.#clock);
+    const next = await this.#evaluateReview(stored.reviewCase, [...stored.events, event], policy);
     if (event.action === "APPROVE" && next.ignoredApprovalEventIds.includes(event.id)) {
       throw new ReviewAuthorizationError("This approval does not satisfy the configured role and separation policy");
     }
@@ -1892,6 +1914,7 @@ export class TraceabilityApplication {
       throw new RunnerAttestationError("Runner attestation is missing, unknown, or invalid");
     }
 
+    await this.#executionAuthorization?.({actorId:normalized.execution.runner.id,projectId});
     const testSpec = await this.#store.getTestSpec(
       projectId,
       normalized.execution.testSpecId,
@@ -2041,6 +2064,7 @@ export class TraceabilityApplication {
     ) {
       throw new ScannerAttestationError("Scanner attestation is missing, unknown, or invalid");
     }
+    await this.#executionAuthorization?.({actorId:normalized.extractor.id,projectId});
     const snapshotManifest = await this.#store.getSnapshotManifest(projectId, normalized.snapshotManifestId);
     if (!snapshotManifest) {
       throw new PersistenceConflictError(
@@ -3640,6 +3664,7 @@ export class TraceabilityApplication {
         ? error
         : new SourceSliceWorkerAuthenticationError("Worker credential is invalid");
     }
+    await this.#executionAuthorization?.({projectId,claims});
     const workUnit = (await this.#store.listUnderstandingRecords(projectId, "WORK_UNIT"))
       .find((record) => record.analysisRunId === request.analysisRunId
         && (record.workUnitId ?? record.id) === request.workUnitId);

@@ -77,7 +77,7 @@ test("F006 settings keeps creation-only guards separate from lifecycle controls 
 test("F006 settings stops autosave after a failed conflict and requires an explicit retry", async () => {
   const source = await readFile(new URL("../app/f006-settings-center.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /if \(!edited \|\| edited === savedEdited \|\| !recoveryReady \|\| working \|\| autosaveStatus === "ERROR" \|\| props\.draftConflict \|\| autosaveInFlight\.current\) return/,
+  assert.match(source, /if \(!edited \|\| edited === savedEdited \|\| !recoveryReady \|\| working \|\| props\.readOnly \|\| autosaveStatus === "ERROR" \|\| props\.draftConflict \|\| autosaveInFlight\.current\) return/,
     "a failed autosave must become a terminal state until the operator chooses to retry");
   assert.match(source, /setAutosaveStatus\("IDLE"\)[\s\S]*setAutosaveAttempt/,
     "Retry save must explicitly re-arm autosave instead of an unrelated rerender retrying forever");

@@ -8,14 +8,34 @@
       "type": "object",
       "required": ["id", "workspaceId", "tenantId", "name", "lifecycleState", "lifecycleVersion", "createdAt", "updatedAt", "deletionRequestedAt", "deletedAt", "hidden"],
       "properties": {
-        "id": { "$ref": "#/$defs/Id" }, "workspaceId": { "$ref": "#/$defs/Id" },
-        "tenantId": { "$ref": "#/$defs/Id" }, "name": { "$ref": "#/$defs/Id" },
+        "id": { "$ref": "#/$defs/Id" },
+        "workspaceId": { "$ref": "#/$defs/Id" },
+        "tenantId": { "$ref": "#/$defs/Id" },
+        "name": { "$ref": "#/$defs/Id" },
         "lifecycleState": { "enum": ["ACTIVE", "DELETION_REQUESTED", "DELETED"] },
         "lifecycleVersion": { "type": "integer", "minimum": 1 },
-        "createdAt": { "$ref": "#/$defs/Timestamp" }, "updatedAt": { "$ref": "#/$defs/Timestamp" },
+        "createdAt": { "$ref": "#/$defs/Timestamp" },
+        "updatedAt": { "$ref": "#/$defs/Timestamp" },
         "deletionRequestedAt": { "oneOf": [{ "$ref": "#/$defs/Timestamp" }, { "type": "null" }] },
         "deletedAt": { "oneOf": [{ "$ref": "#/$defs/Timestamp" }, { "type": "null" }] },
-        "hidden": { "type": "boolean" }
+        "hidden": { "type": "boolean" },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reviewRoles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "canManage": {
+          "type": "boolean"
+        }
       },
       "additionalProperties": false
     },
@@ -40,17 +60,23 @@
       ]
     },
     "WorkspaceRenameRequest": {
-      "type": "object", "required": ["name", "actorId"],
-      "properties": { "name": { "$ref": "#/$defs/Id" }, "actorId": { "$ref": "#/$defs/Id" } },
+      "type": "object", "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/Id" }
+      },
       "additionalProperties": false
     },
     "WorkspaceActorRequest": {
-      "type": "object", "required": ["actorId"],
-      "properties": { "actorId": { "$ref": "#/$defs/Id" } }, "additionalProperties": false
+      "type": "object", "required": [],
+      "properties": {
+
+      }, "additionalProperties": false
     },
     "WorkspacePreferenceRequest": {
-      "type": "object", "required": ["userId", "hidden"],
-      "properties": { "userId": { "$ref": "#/$defs/Id" }, "hidden": { "type": "boolean" } },
+      "type": "object", "required": ["hidden"],
+      "properties": {
+        "hidden": { "type": "boolean" }
+      },
       "additionalProperties": false
     },
     "WorkspacePreference": {

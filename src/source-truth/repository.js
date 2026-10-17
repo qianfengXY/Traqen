@@ -40,13 +40,16 @@ export async function transaction(database, work) {
 }
 
 export class SourceTruthRepository {
-  constructor(database) {
+  constructor(database, { identityService = null } = {}) {
+    this.identityService = identityService;
     if (typeof database?.query !== "function") throw new TypeError("database is required");
     this.database = database;
   }
 
   // Deployment/admin boundary, deliberately not exposed as a user HTTP action.
   async provision(workspaceId, { tenantId, grants, requestedBy }) {
+    const unified = await this.database.query("SELECT initialized FROM auth_control WHERE singleton");
+    requireValue(!unified.rows[0]?.initialized, "SOURCE_UNIFIED_AUTH_REQUIRED", "请通过统一空间授权服务管理成员", { status: 409 });
     return transaction(this.database, async (tx) => {
       const { rows } = await tx.query("SELECT tenant_id FROM project WHERE id=$1 FOR UPDATE", [workspaceId]);
       requireValue(rows[0]?.tenant_id === tenantId, "SOURCE_FORBIDDEN", "Workspace 租户边界不匹配", { status: 403 });
@@ -56,8 +59,8 @@ export class SourceTruthRepository {
         requireValue(["READ", "MAINTAIN", "REVOKED"].includes(grant.role), "SOURCE_INVALID_GRANT", "成员权限无效", { status: 400 });
         const member = await tx.query("SELECT id FROM principal WHERE id=$1 AND tenant_id=$2 AND principal_type='USER'", [grant.actorId, tenantId]);
         requireValue(member.rows.length === 1, "SOURCE_FORBIDDEN", "成员不属于此租户", { status: 403 });
-        await tx.query(`INSERT INTO source_truth_access (workspace_id,actor_id,role) VALUES ($1,$2,$3)
-          ON CONFLICT (workspace_id,actor_id) DO UPDATE SET role=EXCLUDED.role,revision=source_truth_access.revision+1`, [workspaceId, grant.actorId, grant.role]);
+        await tx.query(`INSERT INTO source_truth_access_legacy (workspace_id,actor_id,role) VALUES ($1,$2,$3)
+          ON CONFLICT (workspace_id,actor_id) DO UPDATE SET role=EXCLUDED.role,revision=source_truth_access_legacy.revision+1`, [workspaceId, grant.actorId, grant.role]);
         if (requestedBy) await this.audit(tx, workspaceId, null, requestedBy, "ADMIN_GRANT_CHANGED", { memberId: grant.actorId, role: grant.role });
       }
     });
@@ -65,6 +68,10 @@ export class SourceTruthRepository {
 
   async authorize(actor, workspaceId, maintain = false, tx = this.database) {
     requireValue(actor?.actorId && actor?.tenantId, "SOURCE_AUTHENTICATION_REQUIRED", "请先认证身份", { status: 401 });
+    if (this.identityService) {
+      try { await this.identityService.authorizeActor(actor.actorId, workspaceId, maintain ? "MAINTAIN" : "READ", tx); }
+      catch (error) { fail(error.code ?? "SOURCE_FORBIDDEN", error.message, { status: error.status ?? 403 }); }
+    }
     const { rows } = await tx.query(`SELECT a.role,w.tenant_id,w.draft_revision,w.backup_barrier,w.restore_ready
       FROM source_truth_workspace w JOIN source_truth_access a USING(workspace_id)
       JOIN project p ON p.id=w.workspace_id AND p.tenant_id=w.tenant_id

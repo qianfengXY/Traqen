@@ -112,3 +112,13 @@ test("a cancellation persisted while a phase is running cannot be overwritten by
   });
   assert.equal((await runner.get("P", job.id)).status, "CANCELLED");
 });
+
+test('every resumed phase checks the persisted initiating account before it can run or publish',async()=>{
+ const store=new MemoryTraceabilityStore();let allowed=true;const phases=[];
+ const handlers=Object.fromEntries(Object.values(WorkspaceAnalysisPhase).slice(0,-1).map(phase=>[phase,async()=>{phases.push(phase);if(phase==='SOURCE_SCAN')allowed=false;return {phase};}]));
+ const runner=new WorkspaceAnalysisJobRunner({store,handlers,authorizeInitiator:async job=>{assert.equal(job.initiatorAccountId,'ACCOUNT-A');if(!allowed)throw new Error('initiator revoked');}});
+ const job=await runner.start({projectId:'P',sourceRegistrationId:'SOURCE',snapshotManifestId:'S',requestedMode:'FULL',policyDigest:'POLICY',workspaceExecutionProfileRevisionId:'PROFILE',initiatorAccountId:'ACCOUNT-A'});
+ await assert.rejects(runner.run(job),/initiator revoked/);assert.deepEqual(phases,['SOURCE_SCAN']);
+ const reopened=new WorkspaceAnalysisJobRunner({store,handlers,authorizeInitiator:async job=>{assert.equal(job.initiatorAccountId,'ACCOUNT-A');throw new Error('initiator revoked');}});
+ await assert.rejects(reopened.run(await reopened.get('P',job.id)),/initiator revoked/);assert.deepEqual(phases,['SOURCE_SCAN']);
+});

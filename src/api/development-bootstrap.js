@@ -171,6 +171,7 @@ export async function createIsolatedDevelopmentApplication({
   store = new MemoryTraceabilityStore(),
   env = {},
   analysisModelRegistry = null,
+  identityService = null,
   useConfiguredModelProducers = false,
 } = {}) {
   if (typeof sourceRoot !== "string" || sourceRoot.trim() === "") {
@@ -197,6 +198,7 @@ export async function createIsolatedDevelopmentApplication({
   };
   const configured = createConfiguredApplication({
     store,
+    identityService,
     env: {
       ...env,
       SOURCE_SNAPSHOT_ROOT: isolatedSnapshotRoot,
@@ -207,7 +209,10 @@ export async function createIsolatedDevelopmentApplication({
     analysisModelRegistry,
   });
   await configured.ready;
-  await configured.application.registerCapabilityTemplate({
+  const referenceRegistered = (await configured.application.listCapabilityTemplates()).some(
+    template => template.kind === "MODEL" && template.logicalName === DEVELOPMENT_MODEL,
+  );
+  if (!referenceRegistered) await configured.application.registerCapabilityTemplate({
     kind: "MODEL",
     logicalName: DEVELOPMENT_MODEL,
     revision: 1,

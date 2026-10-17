@@ -1,3 +1,4 @@
+import { sessionFetch } from "./auth-client.ts";
 export type ServerUnderstandingJob = {
   id: string;
   projectId: string;
@@ -62,7 +63,7 @@ export async function registerServerWorkspaceSource(
   workspaceId: string,
   rootPath: string,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/source-registrations`,
     {
       method: "POST",
@@ -83,7 +84,7 @@ export async function startServerWorkspaceUnderstanding(
     expectedWorkspaceExecutionProfileRevisionId: string;
   },
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs`,
     {
       method: "POST",
@@ -100,7 +101,7 @@ export async function startHistoricalRevisionReanalysis(
   workspaceId: string,
   graphRevisionId: string,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/graph/revisions/${encodeURIComponent(graphRevisionId)}/reanalysis-jobs`,
     {
       method: "POST",
@@ -117,7 +118,7 @@ export async function getServerWorkspaceUnderstanding(
   workspaceId: string,
   jobId: string,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs/${encodeURIComponent(jobId)}`,
     { headers: headers(apiToken) },
   );
@@ -129,7 +130,7 @@ export async function listServerWorkspaceUnderstandingJobs(
   apiToken: string,
   workspaceId: string,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs`,
     { headers: headers(apiToken) },
   );
@@ -143,7 +144,7 @@ export async function controlServerWorkspaceUnderstanding(
   jobId: string,
   action: "pause" | "resume" | "cancel",
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/projects/${encodeURIComponent(workspaceId)}/workspace-analysis-jobs/${encodeURIComponent(jobId)}/${action}`,
     { method: "POST", headers: headers(apiToken) },
   );

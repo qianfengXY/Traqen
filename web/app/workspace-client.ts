@@ -1,4 +1,6 @@
+import { sessionFetch } from "./auth-client.ts";
 export type Workspace = {
+  roles?: string[]; reviewRoles?: string[]; canManage?: boolean;
   id: string;
   workspaceId: string;
   tenantId: string;
@@ -42,8 +44,8 @@ async function json<T>(response: Response, signal?: AbortSignal): Promise<T> {
 }
 
 export async function listWorkspaces(apiBase: string, apiToken: string, userId: string, signal?: AbortSignal) {
-  const response = await fetch(
-    `${apiBase.replace(/\/$/, "")}/v1/workspaces?userId=${encodeURIComponent(userId)}`,
+  const response = await sessionFetch(
+    `${apiBase.replace(/\/$/, "")}/v1/workspaces`,
     { method: "GET", headers: headers(apiToken), signal },
   );
   return (await json<{ workspaces: Workspace[] }>(response, signal)).workspaces;
@@ -54,7 +56,7 @@ export async function createWorkspace(
   apiToken: string,
   input: { id: string; name: string; userId: string },
 ) {
-  const response = await fetch(`${apiBase.replace(/\/$/, "")}/v1/workspaces`, {
+  const response = await sessionFetch(`${apiBase.replace(/\/$/, "")}/v1/workspaces`, {
     method: "POST",
     headers: headers(apiToken, { "content-type": "application/json" }),
     body: JSON.stringify(input),
@@ -69,12 +71,12 @@ export async function setWorkspaceVisibility(
   userId: string,
   hidden: boolean,
 ) {
-  const response = await fetch(
+  const response = await sessionFetch(
     `${apiBase.replace(/\/$/, "")}/v1/workspaces/${encodeURIComponent(workspaceId)}/view-preference`,
     {
       method: "PUT",
       headers: headers(apiToken, { "content-type": "application/json" }),
-      body: JSON.stringify({ userId, hidden }),
+      body: JSON.stringify({ hidden }),
     },
   );
   return json<{ workspaceId: string; userId: string; hidden: boolean; version: number }>(response);

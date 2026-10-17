@@ -37,19 +37,15 @@ const emptyInput: DraftInput = { sources: [], baselineBundleId: null };
 const short = (value: string | null | undefined) => value ? `${value.slice(0, 12)}…` : "—";
 
 export function SourceAccessState({ error }: { error: Error | null }) {
-  return error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "来源权限需要管理员绑定到当前成员和 Workspace。创建 Workspace 或持有通用 API Token 不会自动获得该权限。" : "请核对上方成员访问令牌与服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>;
+  return error ? <section className="st-panel st-access-state"><h2>来源访问尚未就绪</h2><p>当前无法读取此 Workspace 的来源记录，不代表没有材料或任务。</p><p>{error instanceof SourceClientError && error.status === 403 ? "请向本空间 Owner 或权限管理员申请查看或维护权限。" : "请核对当前账号和服务状态，再查询最新状态。不会重复创建任务，也不会修改既有版本。"}</p></section> : <p className="st-panel" role="status">正在验证来源访问权限和存储状态…</p>;
 }
 
 export function SourceTruthWorkbench({ apiBase, apiToken, workspaceId, workspaceName, onDirtyChange, entryContext, associationService }: { apiBase: string; apiToken: string; workspaceId: string; workspaceName: string; onDirtyChange?: (dirty: boolean) => void; entryContext?: SourceEntryContext; associationService?: SourceAssociationService }) {
-  const [credential, setCredential] = useState(apiToken);
-  const [credentialInput, setCredentialInput] = useState(apiToken);
-  const [identityVersion, setIdentityVersion] = useState(0);
-  const referenceClient = useMemo(() => new SourceTruthClient(apiBase, credential, workspaceId), [apiBase, credential, workspaceId]);
+  const referenceClient = useMemo(() => new SourceTruthClient(apiBase, "", workspaceId), [apiBase, workspaceId]);
   return <section className="st-workbench" aria-label="来源快照工作台">
-    <details className="st-auth"><summary>来源快照成员身份</summary><p>由服务端绑定成员与 Workspace 权限；通用 API Token 不自动获得来源材料权限。</p><div className="st-actions"><label>成员访问令牌（仅本页内存）<input type="password" autoComplete="off" value={credentialInput} onChange={(event) => setCredentialInput(event.target.value)} /></label><button className="button" onClick={() => { setCredential(credentialInput); setIdentityVersion((version) => version + 1); }}>验证并连接</button></div></details>
-    {entryContext?.mode === "REFERENCE" ? <FixedSourceReference key={identityVersion} client={referenceClient} context={entryContext} workspaceId={workspaceId} /> : <>
+    {entryContext?.mode === "REFERENCE" ? <FixedSourceReference client={referenceClient} context={entryContext} workspaceId={workspaceId} /> : <>
       {entryContext && <SourceEntryBanner context={entryContext} />}
-      <SourceWorkspaceSession key={`${apiBase}:${workspaceId}:${identityVersion}`} apiBase={apiBase} token={credential} workspaceId={workspaceId} workspaceName={workspaceName} onDirtyChange={onDirtyChange} entryContext={entryContext} associationService={associationService} />
+      <SourceWorkspaceSession key={`${apiBase}:${workspaceId}`} apiBase={apiBase} token="" workspaceId={workspaceId} workspaceName={workspaceName} onDirtyChange={onDirtyChange} entryContext={entryContext} associationService={associationService} />
     </>}
   </section>;
 }

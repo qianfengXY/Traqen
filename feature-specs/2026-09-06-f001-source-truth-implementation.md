@@ -1,6 +1,6 @@
 ---
 feature_ids: [F001]
-related_features: [F002, F003, F004, F005, F006]
+related_features: [F002, F003, F004, F005, F006, F008]
 topics: [implementation-plan, source-truth, persistence, lifecycle, recovery, frontend, security]
 doc_kind: implementation-plan
 created: 2026-09-06
@@ -167,6 +167,8 @@ RED：同盘/未封闭/缺密钥/损坏拒绝，旧备份不覆盖新 Receipt；
 验证：`node --test test/source-truth-backup.test.js`；再对隔离 PostgreSQL 与独立验收卷实际备份/恢复，登记配置与实测结果。覆盖 INV-09/10/11。
 
 ### 任务 9：认证 HTTP 与部署入口
+
+**F008 接线（2026-10-17）：** 生产主入口在 F001 handler 之前验证统一会话、Host、Origin 与 CSRF，直接传入可信成员身份；来源页面不再填写第二张成员 Token。来源读取、下载、写入及 Worker 最终发布均复核当前统一账号与空间授权；`source_truth_access` 由统一授权派生为只读视图，旧表仅保留供显式迁移。实际备份恢复事务重新施加 F008 受限状态并作废旧会话／一次性凭据，终端可信管理员、授权复核和 F001 完整性检查全部完成后才开放。参见 [F008 实施说明](../docs/design/F008-unified-login-space-permissions/implementation.md)与 `test/auth-source-integration.test.js`；本接线不改变 F001 范围或宣称其整体验收完成。
 
 创建 `src/source-truth/http-handler.js`、`configuration.js`；修改 `src/api/http-server.js`、`production-server.js`，必要时新建隔离 Source Truth 开发入口，保留旧参考启动器说明；测试 `test/source-truth-http.test.js`、`test/source-truth-configuration.test.js`。
 

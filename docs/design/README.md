@@ -20,7 +20,7 @@ status: active
 | F004 | [变更影响分析](../features/F004-change-impact-analysis.zh-CN.md) | 尚未有已确认的替代设计。 |
 | F005 | [整体布局与导航设计规范 V1.1](F005-layout-navigation/README.md) | 保留统一母版、双主题及基础组件；纳入已审业务工作台 v0.1.1，含七问答卷、会话、四类回写、回答级状态与影响、7 张图及[17 项差异](F005-layout-navigation/CHANGES.md)。文档发布不表示产品全部实现或 Feature 完成。 |
 | F006 | [功能与 UX 设计 V1.0](F006-workspace-capability-settings/README.md)与[Feature 入口](../features/F006-workspace-capability-settings.zh-CN.md) | 三层配置范围、草稿到生效版本、F005 桌面双主题 UX；MCP 暂停，F003 启动接线未完成。文档发布不等于效果图或 Feature 完成。 |
-| F008 | [统一登录与空间权限：功能与架构设计 V1.2](F008-unified-login-space-permissions/README.md)与[Feature 入口](../features/F008-unified-login-space-permissions.md) | 2026-10-15 co-creator 按推荐确认完整方案（含 D1–D3）；2026-10-16 补充确认密码至少 8 个字符、不要求定期更换。账号与会话、系统管理员、空间权限与申请审批、统一授权、程序身份、迁移与受限恢复；页面遵循 F005 V1.1。2026-10-17 按指令在正文嵌入页面效果图，增加[逐页设计与全部场景](F008-unified-login-space-permissions/ux-v1.0/README.md)；功能合同已确认，页面样稿待视觉确认，未交付产品功能。 |
+| F008 | [统一登录与空间权限：功能与架构设计 V1.2](F008-unified-login-space-permissions/README.md)与[Feature 入口](../features/F008-unified-login-space-permissions.md) | 2026-10-15 co-creator 按推荐确认完整方案（含 D1–D3）；2026-10-16 补充确认密码至少 8 个字符、不要求定期更换。账号与会话、系统管理员、空间权限与申请审批、统一授权、程序身份、迁移与受限恢复；页面遵循 F005 V1.1。2026-10-17 按指令在正文嵌入页面效果图，增加[逐页设计与全部场景](F008-unified-login-space-permissions/ux-v1.0/README.md)；功能合同与页面视觉已确认，按原授权恢复开发；实施状态见 Feature 入口，样稿仍不作为功能验收证据。 |
 
 ## 发布规则
 

@@ -22,7 +22,7 @@ test("material preview is bounded, plain text, and uses current source authentic
   let cancelled = false;
   t.mock.method(globalThis, "fetch", async (url, options) => {
     assert.match(url, /file-history/);
-    assert.equal(options.headers.authorization, "Bearer current-token");
+    assert.equal(options.headers.authorization, undefined);
     assert.equal(options.redirect, "error");
     return new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("<script>never execute</script>")); }, cancel() { cancelled = true; } }),
       { headers: { "content-type": "application/octet-stream" } });

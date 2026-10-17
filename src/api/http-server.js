@@ -1,4 +1,6 @@
 import { createServer } from "node:http";
+import { AuthError } from "../auth/errors.js";
+import { identityContext } from "../auth/context.js";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import { AnalysisModelConnectionError } from "../analysis/index.js";
 import {
@@ -56,6 +58,9 @@ function writeNdjson(response, value) {
 }
 
 function readJson(request, maxBodyBytes) {
+  // IncomingMessage emits in its socket's context, which predates auth.run.
+  // Capture the trusted request identity before attaching those listeners.
+  const identity = identityContext();
   return new Promise((resolve, reject) => {
     const chunks = [];
     let bytes = 0;
@@ -80,9 +85,18 @@ function readJson(request, maxBodyBytes) {
         return;
       }
       try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")));
-      } catch {
-        reject(new HttpError(400, "INVALID_JSON", "Request body is not valid JSON"));
+        const input = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (identity && !identity.signed) {
+          for (const field of ["actorId", "userId", "tenant", "tenantId", "organization", "organizationId", "principals"]) {
+            if (Object.hasOwn(input, field)) throw new AuthError(400, "AUTH_CALLER_FIELD_REJECTED", `调用者字段 ${field} 由服务端确定`);
+          }
+          const pathname = new URL(request.url, "http://localhost").pathname;
+          if (/\/(request-deletion|cancel-deletion|complete-deletion)$/.test(pathname) || request.method === "PATCH" && /^\/v1\/workspaces\/[^/]+$/.test(pathname)) input.actorId = identity.actorId;
+          if (pathname.endsWith("/view-preference")) input.userId = identity.accountId;
+        }
+        resolve(input);
+      } catch (error) {
+        reject(error instanceof AuthError ? error : new HttpError(400, "INVALID_JSON", "Request body is not valid JSON"));
       }
     });
   });
@@ -141,7 +155,7 @@ function boundedQueryInteger(url, name, fallback, maximum) {
 }
 
 function errorResponse(error, id) {
-  if (error instanceof HttpError) {
+  if (error instanceof HttpError || error instanceof AuthError) {
     return {
       status: error.status,
       body: { error: { code: error.code, message: error.message, requestId: id, details: error.details } },
@@ -262,6 +276,8 @@ export function createTraceabilityHttpHandler({
   apiBearerToken = null,
   sourceTruthHandler = null,
   sourceTruthAllowedOrigins = [],
+  auth = null,
+  onInternalError = null,
 }) {
   if (!application) throw new TypeError("application is required");
   if (apiBearerToken !== null && (typeof apiBearerToken !== "string" || apiBearerToken === "")) {
@@ -270,7 +286,7 @@ export function createTraceabilityHttpHandler({
   const allowedOrigins = normalizeCorsOrigins(corsAllowedOrigins);
   const sourceOrigins = normalizeCorsOrigins(sourceTruthAllowedOrigins);
 
-  return async function traceabilityHttpHandler(request, response) {
+  const handler = async function traceabilityHttpHandler(request, response) {
     const id = requestId(request);
     try {
       const url = new URL(request.url, "http://localhost");
@@ -295,7 +311,7 @@ export function createTraceabilityHttpHandler({
         if (await sourceTruthHandler(request, response, id)) return;
       }
 
-      if (apiBearerToken !== null) {
+      if (!auth && apiBearerToken !== null) {
         const apiTokenHeader = request.headers["x-traqen-api-token"];
         const apiAuthorized =
           (typeof apiTokenHeader === "string" && bearerAuthorized(`Bearer ${apiTokenHeader}`, apiBearerToken)) ||
@@ -305,10 +321,16 @@ export function createTraceabilityHttpHandler({
         }
       }
 
+      if (auth && (url.searchParams.has("userId") || request.headers["x-traqen-user-id"])) throw new AuthError(400,"AUTH_CALLER_FIELD_REJECTED","调用者身份由服务端确定");
       if (request.method === "GET" && url.pathname === "/v1/workspaces") {
-        const userId = url.searchParams.get("userId") ?? request.headers["x-traqen-user-id"] ?? null;
+        const userId = identityContext()?.accountId ?? url.searchParams.get("userId") ?? request.headers["x-traqen-user-id"] ?? null;
         const includeDeleted = url.searchParams.get("includeDeleted") === "true";
-        sendJson(response, 200, { workspaces: await application.listWorkspaces(userId, { includeDeleted }) }, id);
+        let workspaces = await application.listWorkspaces(userId, { includeDeleted });
+        if (auth) {
+          const allowed = new Map((await auth.service.listSpaces(identityContext().raw)).map(space => [space.id,space]));
+          workspaces = workspaces.filter(space => allowed.has(space.id)).map(space => ({...space,roles:allowed.get(space.id).roles,reviewRoles:allowed.get(space.id).roles.filter(role=>auth.service.policy.reviewRoles.includes(role)),canManage:allowed.get(space.id).roles.some(role=>['OWNER','PERMISSION_ADMIN'].includes(role))||(!!identityContext().accountId&&(allowed.get(space.id).ownerId===identityContext().accountId))}));
+        }
+        sendJson(response, 200, { workspaces }, id);
         return;
       }
 
@@ -334,7 +356,7 @@ export function createTraceabilityHttpHandler({
         const workspaceId = decodePathSegment(workspaceMatch[1]);
         const workspace = await application.getWorkspace(
           workspaceId,
-          url.searchParams.get("userId") ?? request.headers["x-traqen-user-id"] ?? null,
+          identityContext()?.accountId ?? url.searchParams.get("userId") ?? request.headers["x-traqen-user-id"] ?? null,
         );
         if (!workspace) throw new HttpError(404, "WORKSPACE_NOT_FOUND", "Workspace was not found");
         sendJson(response, 200, workspace, id);
@@ -366,6 +388,9 @@ export function createTraceabilityHttpHandler({
         sendJson(response, 200, workspace, id);
         return;
       }
+
+      const settingsCatalogMatch=/^\/v1\/workspaces\/([^/]+)\/settings-catalog$/.exec(url.pathname);
+      if(request.method==='GET'&&settingsCatalogMatch){const catalog=await application.workspaceSettingsCatalog(decodePathSegment(settingsCatalogMatch[1]));if(!catalog)throw new HttpError(404,'WORKSPACE_NOT_FOUND','Workspace was not found');sendJson(response,200,catalog,id);return;}
 
       const workspaceVisibilityMatch = /^\/v1\/workspaces\/([^/]+)\/view-preference$/.exec(url.pathname);
       if (request.method === "PUT" && workspaceVisibilityMatch) {
@@ -1553,8 +1578,16 @@ export function createTraceabilityHttpHandler({
       throw new HttpError(404, "ROUTE_NOT_FOUND", "Route was not found");
     } catch (error) {
       const failure = errorResponse(error, id);
+      if (failure.status === 500) onInternalError?.(error,id);
       sendJson(response, failure.status, failure.body, id);
     }
+  };
+  if (!auth) return handler;
+  return async (request, response) => {
+    try {
+      const identity = await auth.prepare(request, response);
+      if (identity) return await auth.run(identity, () => handler(request, response));
+    } catch (error) { const result = errorResponse(error, requestId(request)); if(result.status===500)onInternalError?.(error,requestId(request));sendJson(response, result.status, result.body, requestId(request)); }
   };
 }
 

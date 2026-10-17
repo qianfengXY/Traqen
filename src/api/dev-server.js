@@ -2,7 +2,7 @@ import process from "node:process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createIsolatedDevelopmentApplication } from "./development-bootstrap.js";
+import { authenticatedDevelopmentApplication } from "../auth/development.js";
 import { createTraceabilityHttpServer } from "./http-server.js";
 
 const host = process.env.HOST ?? "127.0.0.1";
@@ -13,25 +13,26 @@ if (!Number.isInteger(port) || port < 0 || port > 65535) {
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const sourceRoot = process.env.TRAQEN_DEVELOPMENT_SOURCE_ROOT ?? repositoryRoot;
-const { application, corsAllowedOrigins, development } = await createIsolatedDevelopmentApplication({
-  sourceRoot,
-  env: process.env,
-});
-const server = createTraceabilityHttpServer({ application, corsAllowedOrigins });
+if (!['127.0.0.1','::1','localhost'].includes(host)) throw new Error('The development instance must bind a loopback host');
+const runtime = await authenticatedDevelopmentApplication({...process.env,TRAQEN_AUTH_DEVELOPMENT:'true'});
+const { application, corsAllowedOrigins } = runtime;
+const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, auth: runtime.identity.http,
+ onInternalError:(error,requestId)=>process.stderr.write(JSON.stringify({requestId,type:error.constructor.name,code:error.code,constraint:error.constraint,frames:error.stack?.split('\n').slice(1,5)})+'\n') });
 
 server.listen(port, host, () => {
   const address = server.address();
   process.stdout.write(`Traqen development API listening on http://${host}:${address.port}\n`);
-  process.stdout.write(`Isolated reference analysis source allowlist: ${development.sourceRoot}\n`);
-  process.stdout.write("This in-memory reference bootstrap is local-development-only and is not production evidence.\n");
+  process.stdout.write(`Isolated reference analysis source allowlist: ${sourceRoot}\n`);
+  process.stdout.write("This isolated development instance uses local data only; it is not production evidence.\n");
 });
 
 function shutdown(signal) {
-  server.close((error) => {
+  server.close(async (error) => {
     if (error) {
       process.stderr.write(`${error.stack ?? error.message}\n`);
       process.exitCode = 1;
     }
+    await runtime.database?.close();
     process.stdout.write(`Traqen development API stopped after ${signal}\n`);
   });
 }
