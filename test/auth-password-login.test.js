@@ -95,6 +95,21 @@ test('terminal recovery no longer requires enrollment, while trust, confirmation
   assert.equal((await service.authenticate(session.token)).restrictedRestore, false);
 });
 
+test('program identities cannot acquire person privileges or replace the last human administrator', async t => {
+  const { service, repo } = await fixture(t);
+  await initialize(service);
+  const admin = await login(service);
+  const request = await service.apply(admin.token, { kind: 'CREATE', name: 'Automation', reason: 'Worker', operationId: 'automation' });
+  const space = await service.decide(admin.token, request.id, { approve: true, version: 1 });
+  const program = await service.createProgram(admin.token, { displayName: 'Worker', operations: ['READ'], workspaceIds: [space.workspaceId], expiresAt: 1800000100000 });
+  await assert.rejects(service.updateAccount(admin.token, program.account.id, { admin: true, globalConfig: true }), e => e.code === 'AUTH_ACCOUNT_NOT_FOUND');
+  await assert.rejects(service.recoverAccount(admin.token, program.account.id), e => e.code === 'AUTH_ACCOUNT_NOT_FOUND');
+  assert.equal((await repo.read()).accounts[program.account.id].admin, false);
+  // Even imported invalid program flags never count as another usable administrator.
+  await repo.change(s => { s.accounts[program.account.id].admin = true; });
+  await assert.rejects(service.updateAccount(admin.token, admin.account.id, { admin: false }), e => e.code === 'AUTH_LAST_ADMIN');
+});
+
 test('upgrade removes obsolete factors and pending enrollments without changing passwords, sessions or demoted privileges', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'traqen-f008-before-password-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -105,6 +120,7 @@ test('upgrade removes obsolete factors and pending enrollments without changing 
   await repo.change(s => {
     Object.assign(s.accounts[account.id], { admin: false, adminRequested: true, totp: { recoveryCodes: ['digest'] } });
     s.accounts.demoted = { id: 'demoted', login: 'demoted', kind: 'HUMAN', status: 'ACTIVE', admin: false, adminRequested: false, totp: {} };
+    s.accounts.program = { id: 'program', login: 'program', kind: 'PROGRAM', status: 'ACTIVE', admin: false, adminRequested: true };
     s.sessions.pending = { accountId: account.id, phase: 'MFA_ENROLLMENT_REQUIRED', enrollment: { secret: {}, recoveryCodes: ['digest'] } };
     s.sessions.active = { accountId: account.id, phase: 'AUTHENTICATED', revoked: false };
   });
@@ -113,6 +129,7 @@ test('upgrade removes obsolete factors and pending enrollments without changing 
   assert.equal(state.accounts[account.id].admin, true);
   assert.deepEqual(state.accounts[account.id].password, password);
   assert.equal(state.accounts.demoted.admin, false);
+  assert.equal(state.accounts.program.admin, false);
   for (const account of Object.values(state.accounts)) {
     assert.equal('totp' in account, false);
     assert.equal('adminRequested' in account, false);

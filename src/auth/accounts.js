@@ -243,7 +243,7 @@ export class AccountService {
     return this.repository.change((s) => {
       const { account } = sessionIn(s, raw, this.clock(), { admin: true, recent: true });
       const target = s.accounts[targetId];
-      demand(target, "AUTH_ACCOUNT_NOT_FOUND", "账号不存在", 404);
+      demand(target?.kind === "HUMAN", "AUTH_ACCOUNT_NOT_FOUND", "人员账号不存在", 404);
       revokeAccountSessions(s, targetId);
       for (const c of Object.values(s.credentials)) if (c.accountId === targetId) c.used = true;
       const credential = token();
@@ -262,7 +262,7 @@ export class AccountService {
     if (!target.admin || target.status !== "ACTIVE") return;
     if (patch.status === "DISABLED" || patch.admin === false)
       demand(
-        Object.values(s.accounts).some((a) => a.id !== target.id && a.admin && a.status === "ACTIVE"),
+        Object.values(s.accounts).some((a) => a.id !== target.id && a.kind === "HUMAN" && a.admin && a.status === "ACTIVE"),
         "AUTH_LAST_ADMIN",
         "不能停用或移除最后一位有效系统管理员",
         409,
@@ -276,7 +276,7 @@ export class AccountService {
     return this.repository.change((s) => {
       const { account } = sessionIn(s, raw, this.clock(), { admin: true, recent: true }),
         target = s.accounts[id];
-      demand(target, "AUTH_ACCOUNT_NOT_FOUND", "账号不存在", 404);
+      demand(target?.kind === "HUMAN", "AUTH_ACCOUNT_NOT_FOUND", "人员账号不存在", 404);
       demand(
         Object.keys(patch).every((k) => ["status", "admin", "globalConfig", "displayName"].includes(k)),
         "AUTH_INVALID_INPUT",

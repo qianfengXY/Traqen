@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFile } from 'node:fs/promises';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { PGlite } from '@electric-sql/pglite';
 import { applyMigrations, PostgresTraceabilityStore } from '../src/storage/index.js';
 import { contextualDatabase } from '../src/auth/database.js';
@@ -29,7 +31,12 @@ async function fixture(t){
 }
 test('real HTTP composition isolates identities, preserves application decisions and protects every workspace alias',async t=>{
  const f=await fixture(t),admin=await f.admin();
- assert.equal((await admin.call('/v1/auth/session')).body.session.phase,'AUTHENTICATED');
+ const sessionBody=(await admin.call('/v1/auth/session')).body;
+ assert.equal(sessionBody.session.phase,'AUTHENTICATED');
+ const identity=JSON.parse(await readFile(new URL('../contracts/identity.schema.json',import.meta.url),'utf8'));
+ const validateSession=new Ajv2020().addSchema(identity).compile({$ref:identity.$id+'#/$defs/AuthSession'});
+ assert.equal(validateSession(sessionBody),true,JSON.stringify(validateSession.errors));
+ assert.equal(validateSession({...sessionBody,session:{...sessionBody.session,phase:'MFA_REQUIRED'}}),false,'retired partial login states are not published');
  for(const endpoint of ['begin','confirm','verify']) {
   const retired=await admin.call(`/v1/auth/totp/${endpoint}`,'POST',{code:'retired-recovery-code'});
   assert.equal(retired.status,404);assert.equal(retired.body.error.code,'AUTH_ROUTE_NOT_FOUND');
