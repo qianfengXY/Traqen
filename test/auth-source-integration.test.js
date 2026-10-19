@@ -8,7 +8,6 @@ import { AuthRepository } from '../src/auth/repository.js';
 import { AuthService } from '../src/auth/service.js';
 import { AuthHttp } from '../src/auth/http.js';
 import { contextualDatabase } from '../src/auth/database.js';
-import { totp } from '../src/auth/crypto.js';
 import { SourceTruthRepository } from '../src/source-truth/repository.js';
 import { createTraceabilityHttpServer } from '../src/api/http-server.js';
 import { createSourceTruthHttpHandler } from '../src/source-truth/http-handler.js';
@@ -24,12 +23,12 @@ import {setSessionProof} from '../web/app/auth-client.ts';
 test('the real F001 handler uses the main session and authoritative grants, including worker revocation and restore fencing',async t=>{
  const {db}=await sourceDatabase(t),database=contextualDatabase(db);let now=1800000000000;
  const service=new AuthService({repository:new AuthRepository(database),key:Buffer.alloc(32,9),clock:()=>now});
- const account=await service.initialize({login:'admin',displayName:'Admin',password:'password1'}),pending=await service.login({login:'admin',password:'password1'}),enrollment=await service.beginTotp(pending.token);
- const admin=await service.confirmTotp(pending.token,totp(enrollment.secret,now));
+ const account=await service.initialize({login:'admin',displayName:'Admin',password:'password1'});
+ const admin=await service.login({login:'admin',password:'password1'});
  const created=await service.createAccount(admin.token,{login:'reader',displayName:'Reader'});await service.setPassword({credential:created.credential,password:'password1'});const reader=await service.login({login:'reader',password:'password1'});
  await service.migrate({bindings:[{principalId:'owner',accountId:account.id},{principalId:'reader',accountId:created.account.id}],owners:[{workspaceId:'workspace',accountId:account.id}],grants:[{workspaceId:'workspace',accountId:created.account.id,roles:['READ']}],confirmed:true,requestedBy:'DEPLOYMENT'});
  // Migration deliberately revokes old sessions; fresh callers must sign in again.
- now+=30001;const p=await service.login({login:'admin',password:'password1'});const ownerSession=await service.secondFactor(p.token,totp(enrollment.secret,now));const readerSession=await service.login({login:'reader',password:'password1'});
+ now+=30001;const ownerSession=await service.login({login:'admin',password:'password1'});const readerSession=await service.login({login:'reader',password:'password1'});
  const repository=new SourceTruthRepository(database,{identityService:service}),policy=capturePolicy(),materials=new SourceMaterialRepository(repository,policy);
  const root=await mkdtemp(path.join(tmpdir(),'traqen-unified-source-'));t.after(()=>rm(root,{recursive:true,force:true}));
  const blobs=await SourceTruthBlobStore.open({root,keyVersion:'test',keys:{test:Buffer.alloc(32,10)}}),upload=new SourceUploadService(repository,materials,blobs),candidates=new SourceCandidateService(repository,materials,blobs);

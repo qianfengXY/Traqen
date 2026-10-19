@@ -233,16 +233,11 @@ export class AuthHttp {
     const input = writeMethods.has(method) ? await body(request) : {};
     let result;
     if (method === "GET" && path === "/v1/auth/session")
-      result = { ...(await this.service.authenticate(raw, { pending: true })), csrfToken: this.csrfFor(raw) };
+      result = { ...(await this.service.authenticate(raw)), csrfToken: this.csrfFor(raw) };
     else if (method === "POST" && path === "/v1/auth/logout") {
       result = await this.service.logout(raw);
       this.cookie(response, this.cookieName, "", { maxAge: 0 });
     } else if (method === "POST" && path === "/v1/auth/activity") result = await this.service.activity(raw);
-    else if (method === "POST" && path === "/v1/auth/totp/begin") result = await this.service.beginTotp(raw);
-    else if (method === "POST" && path === "/v1/auth/totp/confirm")
-      result = await this.sessionResponse(response, await this.service.confirmTotp(raw, input.code));
-    else if (method === "POST" && path === "/v1/auth/totp/verify")
-      result = await this.sessionResponse(response, await this.service.secondFactor(raw, input.code));
     else if (method === "POST" && path === "/v1/auth/reauthenticate")
       result = await this.sessionResponse(response, await this.service.reauthenticate(raw, input));
     else if (method === "POST" && path === "/v1/auth/password")

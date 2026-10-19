@@ -1,14 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  hashPassword,
-  verifyPassword,
-  newTotpSecret,
-  sealSecret,
-  openSecret,
-  verifyTotp,
-  token,
-  digest,
-} from "./crypto.js";
+import { hashPassword, verifyPassword, token, digest } from "./crypto.js";
 import { AuthError, demand } from "./errors.js";
 import {
   publicAccount,
@@ -62,8 +53,7 @@ export class AccountService {
         displayName: validText(displayName, 120),
         password: passwordRecord,
         status: "ACTIVE",
-        adminRequested: true,
-        admin: false,
+        admin: true,
         globalConfig: false,
         kind: "HUMAN",
       };
@@ -114,13 +104,13 @@ export class AccountService {
       }
       if (s.control.recovery && !account.recoveryAdmin)
         return { error: new AuthError(503, "AUTH_RECOVERY_REQUIRED", "实例正在恢复检查，暂不开放登录") };
-      const phase = account.totp
-        ? "MFA_REQUIRED"
-        : account.adminRequested
-          ? "MFA_ENROLLMENT_REQUIRED"
-          : "AUTHENTICATED";
-      const result = createSession(s, account, now, { remember, device, phase });
-      audit(s, account.id, "LOGIN_PASSWORD_VERIFIED");
+      // Old restored archives may still contain a previously granted, pending
+      // administrator. Activate that existing grant only after password verification.
+      if (account.adminRequested === true) account.admin = true;
+      delete account.adminRequested;
+      delete account.totp;
+      const result = createSession(s, account, now, { remember, device });
+      audit(s, account.id, "LOGIN_COMPLETED");
       return result;
     });
     if (result.error) throw result.error;
@@ -138,7 +128,7 @@ export class AccountService {
   }
   async logout(raw) {
     return this.repository.change((s) => {
-      const { session, account } = sessionIn(s, raw, this.clock(), { pending: true });
+      const { session, account } = sessionIn(s, raw, this.clock());
       session.revoked = true;
       audit(s, account.id, "SESSION_REVOKED");
       return { ok: true };
@@ -176,71 +166,7 @@ export class AccountService {
       return { ok: true };
     });
   }
-  async beginTotp(raw) {
-    return this.repository.change((s) => {
-      const { session, account } = sessionIn(s, raw, this.clock(), { pending: true });
-      if (account.totp) sessionIn(s, raw, this.clock(), { recent: true });
-      demand(!account.totp || this.clock() - session.verifiedAt <= 600000, "AUTH_REAUTH_REQUIRED", "请重新验证身份");
-      const secret = newTotpSecret(),
-        recoveryCodes = Array.from({ length: 10 }, () => token().slice(0, 16));
-      session.enrollment = {
-        secret: sealSecret(secret, this.key),
-        recoveryCodes: recoveryCodes.map(digest),
-        expiresAt: this.clock() + 600000,
-      };
-      return {
-        secret,
-        recoveryCodes,
-        uri: `otpauth://totp/Traqen:${encodeURIComponent(account.login)}?secret=${secret}&issuer=Traqen&digits=6&period=30`,
-      };
-    });
-  }
-  async confirmTotp(raw, code) {
-    return this.repository.change((s) => {
-      const { session, account } = sessionIn(s, raw, this.clock(), { pending: true });
-      const enrollment = session.enrollment;
-      demand(enrollment && this.clock() < enrollment.expiresAt, "AUTH_ENROLLMENT_EXPIRED", "请重新开始绑定", 409);
-      const counter = verifyTotp(openSecret(enrollment.secret, this.key), code, this.clock());
-      demand(counter !== null, "AUTH_INVALID_OTP", "验证码不正确或已使用", 401);
-      account.totp = { secret: enrollment.secret, lastCounter: counter, recoveryCodes: enrollment.recoveryCodes };
-      if (account.adminRequested) account.admin = true;
-      delete session.enrollment;
-      revokeAccountSessions(s, account.id);
-      audit(s, account.id, "MFA_ENABLED");
-      return rotateSession(s, session, account, this.clock());
-    });
-  }
-  verifySecondFactor(account, code) {
-    if (!account.totp) return false;
-    const recovery = digest(typeof code === "string" ? code : "");
-    const index = account.totp.recoveryCodes.indexOf(recovery);
-    if (index >= 0) {
-      account.totp.recoveryCodes.splice(index, 1);
-      return true;
-    }
-    const counter = verifyTotp(openSecret(account.totp.secret, this.key), code, this.clock(), account.totp.lastCounter);
-    if (counter === null) return false;
-    account.totp.lastCounter = counter;
-    return true;
-  }
-  async secondFactor(raw, code) {
-    const result = await this.repository.change((s) => {
-      const { session, account } = sessionIn(s, raw, this.clock(), { pending: true });
-      demand(session.phase === "MFA_REQUIRED", "AUTH_INVALID_STATE", "不在两步验证阶段", 409);
-      session.failedOtp = (session.failedOtp ?? 0) + 1;
-      if (session.failedOtp > 10) {
-        session.revoked = true;
-        return { error: new AuthError(429, "AUTH_RATE_LIMITED", "请重新登录后再试") };
-      }
-      if (!this.verifySecondFactor(account, code))
-        return { error: new AuthError(401, "AUTH_INVALID_OTP", "验证码不正确或已使用") };
-      audit(s, account.id, "LOGIN_COMPLETED");
-      return rotateSession(s, session, account, this.clock());
-    });
-    if (result.error) throw result.error;
-    return result;
-  }
-  async reauthenticate(raw, { password, code }) {
+  async reauthenticate(raw, { password }) {
     const result = await this.repository.change(async (s) => {
       const { account, session } = sessionIn(s, raw, this.clock());
       session.failedReauth = (session.failedReauth ?? 0) + 1;
@@ -248,10 +174,7 @@ export class AccountService {
         session.revoked = true;
         return { error: new AuthError(429, "AUTH_RATE_LIMITED", "请重新登录") };
       }
-      if (
-        !(await verifyPassword(password, account.password)) ||
-        (account.totp && !this.verifySecondFactor(account, code))
-      )
+      if (!(await verifyPassword(password, account.password)))
         return { error: failure() };
       audit(s, account.id, "IDENTITY_REVERIFIED");
       return rotateSession(s, session, account, this.clock());
@@ -281,7 +204,6 @@ export class AccountService {
         displayName: validText(displayName, 120),
         status: "PENDING",
         admin: false,
-        adminRequested: false,
         globalConfig: false,
         kind: "HUMAN",
       };
@@ -317,16 +239,11 @@ export class AccountService {
       return { ok: true };
     });
   }
-  async recoverAccount(raw, targetId, { resetTotp = false } = {}) {
+  async recoverAccount(raw, targetId) {
     return this.repository.change((s) => {
       const { account } = sessionIn(s, raw, this.clock(), { admin: true, recent: true });
       const target = s.accounts[targetId];
       demand(target, "AUTH_ACCOUNT_NOT_FOUND", "账号不存在", 404);
-      if (resetTotp) {
-        this.protectLastAdmin(s, target, { admin: false });
-        delete target.totp;
-        target.admin = false;
-      }
       revokeAccountSessions(s, targetId);
       for (const c of Object.values(s.credentials)) if (c.accountId === targetId) c.used = true;
       const credential = token();
@@ -336,7 +253,7 @@ export class AccountService {
         expiresAt: this.clock() + 900000,
         used: false,
       };
-      audit(s, account.id, "ACCOUNT_RECOVERY_ISSUED", { target: targetId, resetTotp });
+      audit(s, account.id, "ACCOUNT_RECOVERY_ISSUED", { target: targetId });
       this.notifyAdmins(s, "ACCOUNT_RECOVERY", { target: targetId });
       return { credential };
     });
@@ -345,7 +262,7 @@ export class AccountService {
     if (!target.admin || target.status !== "ACTIVE") return;
     if (patch.status === "DISABLED" || patch.admin === false)
       demand(
-        Object.values(s.accounts).some((a) => a.id !== target.id && a.admin && a.status === "ACTIVE" && a.totp),
+        Object.values(s.accounts).some((a) => a.id !== target.id && a.admin && a.status === "ACTIVE"),
         "AUTH_LAST_ADMIN",
         "不能停用或移除最后一位有效系统管理员",
         409,
@@ -378,8 +295,8 @@ export class AccountService {
           demand(typeof patch[field] === "boolean", "AUTH_INVALID_INPUT", "资格值必须为布尔值", 400);
       this.protectLastAdmin(s, target, patch);
       if (patch.admin !== undefined) {
-        target.adminRequested = patch.admin;
-        target.admin = patch.admin && !!target.totp;
+        target.admin = patch.admin;
+        delete target.adminRequested;
       }
       for (const field of ["status", "globalConfig", "displayName"])
         if (patch[field] !== undefined)

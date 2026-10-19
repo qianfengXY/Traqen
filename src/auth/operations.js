@@ -350,8 +350,8 @@ export class OperationsService extends SpaceService {
       account.status = "ACTIVE";
       account.password = record;
       account.recoveryAdmin = true;
-      account.admin = false;
-      account.adminRequested = true;
+      account.admin = true;
+      delete account.adminRequested;
       delete account.totp;
       revokeAccountSessions(s, accountId);
       audit(s, requestedBy, "RECOVERY_ADMIN_CONFIRMED", { target: accountId });
@@ -362,9 +362,9 @@ export class OperationsService extends SpaceService {
     return this.repository.change(async (s, tx) => {
       demand(s.control.recovery && confirmed, "AUTH_RECOVERY_CONFIRMATION_REQUIRED", "需要确认已复核账号与授权", 409);
       demand(
-        Object.values(s.accounts).some((a) => a.recoveryAdmin && a.admin && a.status === "ACTIVE" && a.totp),
+        Object.values(s.accounts).some((a) => a.recoveryAdmin && a.admin && a.status === "ACTIVE" && a.password),
         "AUTH_RECOVERY_ADMIN_REQUIRED",
-        "可信恢复管理员尚未完成两步验证",
+        "请先在部署终端确认可信恢复管理员并设置密码",
         409,
       );
       demand(

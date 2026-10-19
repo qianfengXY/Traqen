@@ -4,9 +4,7 @@ export type Person = {
   displayName: string;
   status: string;
   admin: boolean;
-  adminPending: boolean;
   globalConfig: boolean;
-  mfaEnabled: boolean;
   kind: string;
 };
 export type AuthSession = {

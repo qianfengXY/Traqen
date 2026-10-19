@@ -364,7 +364,7 @@ npm run dev
 TRAQEN_AUTH_DEVELOPMENT=true node src/cli/auth.js initialize --login admin --name 管理员
 ```
 
-密码在终端隐藏输入，至少 8 个字符，不要求定期更换。首次登录必须绑定验证器并保存一次性恢复码。后续人员由管理员在“设置中心 → 人员账号”开通，通过一次性链接本人设置密码；开通账号不会附带空间权限。每个人可申请创建或加入空间，按批准的实际角色进入。
+密码在终端隐藏输入，至少 8 个字符，不要求定期更换。初始化完成后使用账号密码登录，无需验证码或一次性恢复码。后续人员由管理员在“设置中心 → 人员账号”开通，通过一次性链接本人设置密码；开通账号不会附带空间权限。每个人可申请创建或加入空间，按批准的实际角色进入。
 
 开发运行时是隔离且自包含的：它会注册无需密钥的 `traqen-local-reference-analyzer` 能力模板，将当前检出的仓库预填为允许访问的源码根目录，并把每次 Snapshot 存入该隔离数据目录。申请创建 Workspace 并获管理员批准后，保存并解析默认能力配置，再注册预填的源码目录并启动分析；首次运行将以 `FULL` 模式完成全部七个阶段，并发布本地 Current Graph，无需外部模型凭据。
 
@@ -395,7 +395,7 @@ TRAQEN_AUTH_DEVELOPMENT=true node src/cli/auth.js initialize --login admin --nam
 <details>
 <summary>展开生产配置、质量门 CLI 与 API 导航</summary>
 
-通过 `npm run api:serve` 启动生产 API，默认绑定 `127.0.0.1:3000`，由同源 HTTPS 网关转发浏览器 `/api` 请求，并保留公网 `Host`。需要 `DATABASE_URL`、精确 HTTPS `TRAQEN_PUBLIC_ORIGIN` 和 `TRAQEN_AUTH_KEY_FILE`（绝对路径、当前部署用户所有、权限 0600、恰好 32 个随机字节）。部署密钥独立于数据库，必须与备份一起按部署职责保管。`POSTGRES_SSL=require` 默认校验证书；`no-verify` 或 `disable` 仅用于明确受控的环境。启动及终端命令会验证并应用迁移，不是无副作用的连接检查。首次部署可用 `node src/cli/auth.js initialize --login admin --name 管理员` 初始化，再由首位管理员完成 MFA。自动部署可用 `TRAQEN_AUTH_PASSWORD_FILE` 指向 0600 私有文件，密码不能放在命令行参数。生产入口拒绝开发认证模式和非回环监听。
+通过 `npm run api:serve` 启动生产 API，默认绑定 `127.0.0.1:3000`，由同源 HTTPS 网关转发浏览器 `/api` 请求，并保留公网 `Host`。需要 `DATABASE_URL`、精确 HTTPS `TRAQEN_PUBLIC_ORIGIN` 和 `TRAQEN_AUTH_KEY_FILE`（绝对路径、当前部署用户所有、权限 0600、恰好 32 个随机字节）。部署密钥独立于数据库，必须与备份一起按部署职责保管。`POSTGRES_SSL=require` 默认校验证书；`no-verify` 或 `disable` 仅用于明确受控的环境。启动及终端命令会验证并应用迁移，不是无副作用的连接检查。首次部署可用 `node src/cli/auth.js initialize --login admin --name 管理员` 初始化，首位管理员使用初始化的账号密码登录。自动部署可用 `TRAQEN_AUTH_PASSWORD_FILE` 指向 0600 私有文件，密码不能放在命令行参数。生产入口拒绝开发认证模式和非回环监听。
 
 浏览器使用 `__Host-traqen_session`（Secure、HttpOnly、Path=/）和同源防伪校验；所有 Cookie 写请求必须带精确 Origin 与 `x-traqen-csrf`。`CORS_ALLOWED_ORIGINS` 不能代替这项验证。若需按公网来源地址限速，设置 `TRAQEN_AUTH_TRUSTED_PROXIES` 为直接网关 IP 列表，并让网关覆盖、清除外部同名头后提供 `x-traqen-client-ip`；不信任浏览器上报地址。默认仍有账号限速和登录并发上限。
 

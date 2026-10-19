@@ -10,7 +10,6 @@ import { authorizedStore } from '../src/auth/authorized-store.js';
 import { authContext } from '../src/auth/context.js';
 import { createConfiguredApplication } from '../src/api/application-bootstrap.js';
 import { createTraceabilityHttpServer } from '../src/api/http-server.js';
-import { totp } from '../src/auth/crypto.js';
 async function fixture(t){
  const db=await PGlite.create();t.after(()=>db.close());const database=contextualDatabase(db);
  await applyMigrations(database,new URL('../db/migrations/',import.meta.url).pathname);
@@ -25,11 +24,17 @@ async function fixture(t){
   for(const cookie of response.headers.getSetCookie()){const [key,value]=cookie.split(';')[0].split('=');jar[key]=value;}
   const result=await response.json();if(result.csrfToken)csrf=result.csrfToken;return {status:response.status,body:result};
  },async login(login,password='password1'){await this.call('/v1/auth/csrf');const r=await this.call('/v1/auth/login','POST',{login,password});assert.equal(r.status,200);return r.body;}};}
- async function admin(){await service.initialize({login:'admin',displayName:'Admin',password:'password1'});const c=client();await c.login('admin');const setup=(await c.call('/v1/auth/totp/begin','POST',{})).body;const verified=await c.call('/v1/auth/totp/confirm','POST',{code:totp(setup.secret,now)});assert.equal(verified.status,200);return c;}
+ async function admin(){await service.initialize({login:'admin',displayName:'Admin',password:'password1'});const c=client();assert.equal((await c.login('admin')).state,'AUTHENTICATED');return c;}
  return {service,base,client,admin,advance:ms=>{now+=ms;}};
 }
 test('real HTTP composition isolates identities, preserves application decisions and protects every workspace alias',async t=>{
  const f=await fixture(t),admin=await f.admin();
+ assert.equal((await admin.call('/v1/auth/session')).body.session.phase,'AUTHENTICATED');
+ for(const endpoint of ['begin','confirm','verify']) {
+  const retired=await admin.call(`/v1/auth/totp/${endpoint}`,'POST',{code:'retired-recovery-code'});
+  assert.equal(retired.status,404);assert.equal(retired.body.error.code,'AUTH_ROUTE_NOT_FOUND');
+ }
+ assert.equal((await admin.call('/v1/auth/reauthenticate','POST',{password:'password1'})).status,200);
  const create=await admin.call('/v1/access/applications','POST',{kind:'CREATE',name:'Orders',reason:'Team work',operationId:'orders'});assert.equal(create.status,200);
  const approved=await admin.call(`/v1/access/applications/${create.body.id}/decide`,'POST',{approve:true,version:1});assert.equal(approved.status,200);const id=approved.body.workspaceId;
  assert.equal((await admin.call('/v1/access/applications','POST',{kind:'CREATE',name:'Orders',reason:'Duplicate',operationId:'orders-again'})).status,409);
