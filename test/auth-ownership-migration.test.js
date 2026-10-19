@@ -4,11 +4,10 @@ import {sourceDatabase} from './support/source-truth-database.js';
 import {AuthRepository} from '../src/auth/repository.js';
 import {AuthService} from '../src/auth/service.js';
 import {authPolicy} from '../src/auth/runtime.js';
-import {totp} from '../src/auth/crypto.js';
 async function setup(t){
  const {db}=await sourceDatabase(t),repository=new AuthRepository(db),now=1800000000000;
  const service=new AuthService({repository,key:Buffer.alloc(32,2),clock:()=>now,policy:authPolicy({DECISION_BUSINESS_ROLES:'approver',DECISION_COMPLIANCE_ROLES:'auditor'})});
- const account=await service.initialize({login:'admin',displayName:'Admin',password:'password1'}),pending=await service.login({login:'admin',password:'password1'}),enrollment=await service.beginTotp(pending.token),session=await service.confirmTotp(pending.token,totp(enrollment.secret,now));
+ const account=await service.initialize({login:'admin',displayName:'Admin',password:'password1'}),session=await service.login({login:'admin',password:'password1'});
  return {db,repository,service,account,session};
 }
 test('explicit migration preserves canonical historical identities and rejects D3 conflicts atomically',async t=>{

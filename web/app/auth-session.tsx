@@ -151,7 +151,6 @@ function AuthenticationScreen({
   const destinationSearch = useSyncExternalStore(subscribeProductRoute, () => window.location.search, () => "");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [setup, setSetup] = useState<{ secret: string; recoveryCodes: string[]; uri: string } | null>(null),
     [scale, setScale] = useState(1),
     [passwordDone, setPasswordDone] = useState(false);
   const [credential, setCredential] = useState<string | null>(null);
@@ -197,17 +196,6 @@ function AuthenticationScreen({
       await onReady();
     });
   };
-  const verify = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    await run(async () => {
-      await authCall(setup ? "/v1/auth/totp/confirm" : "/v1/auth/totp/verify", "POST", {
-        code: String(form.get("code")).trim(),
-      });
-      setSetup(null);
-      await onReady();
-    });
-  };
   const setPassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -219,26 +207,20 @@ function AuthenticationScreen({
       setPasswordDone(true);
     });
   };
-  const enrol = state === "MFA_ENROLLMENT_REQUIRED",
-    mfa = state === "MFA_REQUIRED";
   const title =
     credential && !passwordDone
       ? "设置或恢复密码"
-      : enrol
-        ? "绑定两步验证"
-        : mfa
-          ? "完成两步验证"
-          : state === "UNINITIALIZED"
-            ? "先完成部署设置"
-            : state === "RECOVERY"
-              ? "实例恢复检查中"
-              : state === "DISABLED"
-                ? "账号已停用"
-                : state === "ERROR"
-                  ? "暂时无法连接"
-                  : state === "CHECKING"
-                    ? "正在检查登录状态"
-                    : "欢迎回到 Traqen";
+      : state === "UNINITIALIZED"
+        ? "先完成部署设置"
+        : state === "RECOVERY"
+          ? "实例恢复检查中"
+          : state === "DISABLED"
+            ? "账号已停用"
+            : state === "ERROR"
+              ? "暂时无法连接"
+              : state === "CHECKING"
+                ? "正在检查登录状态"
+                : "欢迎回到 Traqen";
   return (
     <div className="auth-frame" style={{ "--desktop-scale": scale } as React.CSSProperties}>
       <main className="auth-canvas">
@@ -295,55 +277,6 @@ function AuthenticationScreen({
                 保存密码
               </button>
             </form>
-          ) : enrol || mfa ? (
-            <>
-              {enrol && !setup ? (
-                <>
-                  <p>系统管理员必须完成验证器绑定后才能进入管理面。</p>
-                  <button
-                    className="button primary"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        setSetup(await authCall("/v1/auth/totp/begin", "POST", {}));
-                      })
-                    }
-                  >
-                    开始绑定
-                  </button>
-                </>
-              ) : (
-                <>
-                  {setup && (
-                    <>
-                      <p>在验证器中输入设置密钥：</p>
-                      <code className="auth-secret">{setup.secret}</code>
-                      <p>将下列一次性恢复码保存到安全位置，离开后不再显示。</p>
-                      <div className="auth-codes">
-                        {setup.recoveryCodes.map((code) => (
-                          <code key={code}>{code}</code>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  <form onSubmit={verify}>
-                    <label>
-                      {setup ? "验证器中的 6 位验证码" : "验证码或一次性恢复码"}
-                      <input name="code" autoComplete="one-time-code" required />
-                    </label>
-                    {setup && (
-                      <label className="check">
-                        <input type="checkbox" required />
-                        我已妥善保存恢复码
-                      </label>
-                    )}
-                    <button className="button primary" disabled={busy}>
-                      {busy ? "验证中…" : "验证并继续"}
-                    </button>
-                  </form>
-                </>
-              )}
-            </>
           ) : ["LOGIN", "DISABLED"].includes(state) ? (
             <form onSubmit={login}>
               <label>

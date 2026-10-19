@@ -4,7 +4,6 @@ import { PGlite } from "@electric-sql/pglite";
 import { applyMigrations } from "../src/storage/postgres/migrations.js";
 import { AuthRepository } from "../src/auth/repository.js";
 import { AuthService } from "../src/auth/service.js";
-import { totp } from "../src/auth/crypto.js";
 const migrations = new URL('../db/migrations/',import.meta.url).pathname;
 async function fixture(t) {
  const db = await PGlite.create(); t.after(()=>db.close()); await applyMigrations(db,migrations);
@@ -14,13 +13,11 @@ async function fixture(t) {
 }
 async function admin(service,now) {
  const account=await service.initialize({login:'admin',displayName:'Admin',password:'password1'});
- const pending=await service.login({login:'admin',password:'password1'});
- assert.equal(pending.state,'MFA_ENROLLMENT_REQUIRED');
- const setup=await service.beginTotp(pending.token);
- const session=await service.confirmTotp(pending.token,totp(setup.secret,now()));
- return {account,session,recoveryCodes:setup.recoveryCodes};
+ const session=await service.login({login:'admin',password:'password1'});
+ assert.equal(session.state,'AUTHENTICATED');
+ return {account,session};
 }
-test('bootstrap is one-shot; mandatory MFA precedes admin access; sessions survive service recreation',async t=>{
+test('bootstrap is one-shot; terminal initialization activates admin access; sessions survive service recreation',async t=>{
  const {repo,service,now}=await fixture(t);
  const {session}=await admin(service,now);
  await assert.rejects(service.initialize({login:'other',displayName:'Other',password:'password2'}),e=>e.code==='AUTH_ALREADY_INITIALIZED');
@@ -50,7 +47,7 @@ test('account onboarding gives no spaces; approvals create exactly once and role
  await service.decide(alice.token,join.id,{approve:true,roles:['READ'],version:1});
  await assert.rejects(service.authorize(bob.token,first.workspaceId,'READ'),e=>e.code==='AUTH_FORBIDDEN');
 });
-test('pending administrators, D3 conflicts, privilege self-escalation and the last administrator are protected',async t=>{
+test('administrator roles, D3 conflicts, privilege self-escalation and the last administrator are protected',async t=>{
  const {service,now}=await fixture(t); const {session}=await admin(service,now);
  await assert.rejects(service.updateAccount(session.token,session.account.id,{status:'DISABLED'}),e=>e.code==='AUTH_LAST_ADMIN');
  const r=await service.apply(session.token,{kind:'CREATE',name:'Roles',reason:'Roles',operationId:'roles'});
@@ -72,18 +69,12 @@ test('program credentials are scoped, rotate atomically and cannot participate i
  await service.authorize(rotated.credential,approved.workspaceId,'READ');
  assert.equal((await service.listPrograms(session.token)).length,1,'rotation keeps one management row per program identity');
 });
-test('TOTP and recovery codes cannot replay; a restored instance invalidates old sessions and credentials',async t=>{
- const {service,now,advance}=await fixture(t);const {session,recoveryCodes}=await admin(service,now);
- const pending=await service.login({login:'admin',password:'password1'});
- await assert.rejects(service.secondFactor(pending.token,totp((await service.beginTotp(session.token)).secret,now())),e=>e.code==='AUTH_INVALID_OTP');
- const logged=await service.secondFactor(pending.token,recoveryCodes[0]);
- const another=await service.login({login:'admin',password:'password1'});
- await assert.rejects(service.secondFactor(another.token,recoveryCodes[0]),e=>e.code==='AUTH_INVALID_OTP');
+test('a restored instance invalidates old sessions and credentials',async t=>{
+ const {service,now}=await fixture(t);const {session}=await admin(service,now);
  await service.enterRecovery({requestedBy:'DEPLOYMENT'});
- await assert.rejects(service.authenticate(logged.token),e=>e.code==='AUTH_SESSION_REVOKED');
+ await assert.rejects(service.authenticate(session.token),e=>e.code==='AUTH_SESSION_REVOKED');
  await assert.rejects(service.initialize({login:'new',displayName:'New',password:'password4'}),e=>e.code==='AUTH_ALREADY_INITIALIZED');
  await assert.rejects(service.login({login:'admin',password:'password1'}),e=>e.code==='AUTH_RECOVERY_REQUIRED');
- advance(30001);
 });
 test('idle expiry ignores polling; restoring per-account positions drops external destinations',async t=>{
  const {service,now,advance}=await fixture(t);const {session}=await admin(service,now);
@@ -92,12 +83,6 @@ test('idle expiry ignores polling; restoring per-account positions drops externa
  await service.savePosition(session.token,'//evil.test');assert.equal((await service.authenticate(session.token)).position,'/');
  advance(7200001);
  await assert.rejects(service.authenticate(session.token),e=>e.code==='AUTH_SESSION_EXPIRED');
-});
-
-test('an existing second factor cannot be replaced from a password-only pending session',async t=>{
- const {service,now}=await fixture(t);await admin(service,now);
- const pending=await service.login({login:'admin',password:'password1'});
- await assert.rejects(service.beginTotp(pending.token),e=>e.code==='MFA_REQUIRED');
 });
 
 test('permission managers cannot approve manager promotion or assign roles to themselves',async t=>{
@@ -140,8 +125,7 @@ test('restoring an account-empty backup uses explicit terminal recovery without 
  const {service,now}=await fixture(t);await service.enterRecovery({requestedBy:'DEPLOYMENT'});
  const account=await service.trustRecoveryAdmin({login:'recovery-admin',displayName:'Recovery administrator',password:'password1',requestedBy:'DEPLOYMENT'});
  await assert.rejects(service.initialize({login:'hijack',displayName:'Hijack',password:'password1'}),e=>e.code==='AUTH_ALREADY_INITIALIZED');
- const pending=await service.login({login:'recovery-admin',password:'password1'});assert.equal(pending.state,'MFA_ENROLLMENT_REQUIRED');
- const setup=await service.beginTotp(pending.token),session=await service.confirmTotp(pending.token,totp(setup.secret,now()));
+ const session=await service.login({login:'recovery-admin',password:'password1'});assert.equal(session.state,'AUTHENTICATED');
  assert.equal((await service.authenticate(session.token)).restrictedRestore,true);
  await service.finishRecovery({requestedBy:'DEPLOYMENT',confirmed:true});assert.equal((await service.authenticate(session.token)).restrictedRestore,false);assert.equal(session.account.id,account.id);
 });
@@ -151,8 +135,8 @@ test('administrator self-grants through ordinary member management remain derive
  async function person(login){const created=await service.createAccount(first.session.token,{login,displayName:login});await service.setPassword({credential:created.credential,password:'password1'});return {account:created.account,session:await service.login({login,password:'password1'})};}
  const owner=await person('owner');const request=await service.apply(owner.session.token,{kind:'CREATE',name:'Independent owner',reason:'Team',operationId:'independent'});const space=await service.decide(first.session.token,request.id,{approve:true,version:1});
  await service.grant(first.session.token,space.workspaceId,{accountId:first.account.id,roles:['READ']});
- const second=await person('second-admin');await service.updateAccount(first.session.token,second.account.id,{admin:true});const pending=await service.login({login:'second-admin',password:'password1'});const setup=await service.beginTotp(pending.token),secondSession=await service.confirmTotp(pending.token,totp(setup.secret,now()));
- await service.updateAccount(secondSession.token,first.account.id,{admin:false});const relogin=await service.login({login:'admin',password:'password1'}),ordinary=await service.secondFactor(relogin.token,first.recoveryCodes[0]);
+ const second=await person('second-admin');await service.updateAccount(first.session.token,second.account.id,{admin:true});const secondSession=await service.login({login:'second-admin',password:'password1'});
+ await service.updateAccount(secondSession.token,first.account.id,{admin:false});const ordinary=await service.login({login:'admin',password:'password1'});
  await assert.rejects(service.authorize(ordinary.token,space.workspaceId,'READ'),e=>e.code==='AUTH_FORBIDDEN');
  assert.equal((await service.authorize(owner.session.token,space.workspaceId,'READ')).owner,true);
 });

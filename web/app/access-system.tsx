@@ -33,7 +33,7 @@ export function Personnel({
       <div className="f008-grid">
         <section className="panel">
           <h2>{admins ? "系统管理员" : "人员账号"}</h2>
-          <p>账号开通不附带空间权限；新系统管理员完成两步验证后才生效。</p>
+          <p>首位系统管理员由部署终端初始化；账号开通不附带空间权限。</p>
           <table>
             <thead>
               <tr>
@@ -45,7 +45,7 @@ export function Personnel({
             </thead>
             <tbody>
               {accounts
-                .filter((person) => person.kind === "HUMAN" && (!admins || person.admin || person.adminPending))
+                .filter((person) => person.kind === "HUMAN" && (!admins || person.admin))
                 .map((person) => (
                   <tr key={person.id}>
                     <td>
@@ -54,7 +54,7 @@ export function Personnel({
                     </td>
                     <td>{statusLabel(person.status)}</td>
                     <td>
-                      {person.admin ? "系统管理员" : person.adminPending ? "待绑定两步验证" : "普通成员"}
+                      {person.admin ? "系统管理员" : "普通成员"}
                       {person.globalConfig && <small>全局配置</small>}
                     </td>
                     <td>
@@ -129,7 +129,7 @@ export function Personnel({
               </label>
             )}
             <label className="check">
-              <input name="admin" type="checkbox" defaultChecked={selected.admin || selected.adminPending} />
+              <input name="admin" type="checkbox" defaultChecked={selected.admin} />
               系统管理员
             </label>
             <label className="check">
@@ -145,12 +145,11 @@ export function Personnel({
             className="f008-form"
             onSubmit={(event) => {
               event.preventDefault();
-              const form = new FormData(event.currentTarget);
               void run(async () => {
                 const result = await authCall<{ credential: string }>(
                   `/v1/admin/accounts/${selected.id}/recover`,
                   "POST",
-                  { resetTotp: form.get("resetTotp") === "on" },
+                  {},
                 );
                 showCredential(result.credential);
                 await refresh();
@@ -158,10 +157,6 @@ export function Personnel({
             }}
           >
             <h3>账号恢复</h3>
-            <label className="check">
-              <input name="resetTotp" type="checkbox" />
-              同时重置两步验证
-            </label>
             <p>恢复链接 15 分钟内单次有效，原会话和旧恢复凭据将撤销。</p>
             <button className="button danger" disabled={busy}>
               生成恢复链接

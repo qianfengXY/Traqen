@@ -35,7 +35,7 @@ export function actorIn(s, raw, now, options = {}) {
 export function spaceAccess(s, actor, workspaceId, operation) {
   const space = s.spaces[workspaceId],
     roles = rolesIn(s, actor.account.id, workspaceId);
-  const admin = actor.account.admin && !!actor.account.totp;
+  const admin = !!actor.account.admin;
   const manager = roles.includes("OWNER") || roles.includes("PERMISSION_ADMIN") || admin;
   const allowed =
     operation === "MANAGE"

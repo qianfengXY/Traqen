@@ -7,9 +7,7 @@ export const publicAccount = (a) => ({
   displayName: a.displayName,
   status: a.status,
   admin: !!a.admin,
-  adminPending: !!a.adminRequested && !a.admin,
   globalConfig: !!a.globalConfig,
-  mfaEnabled: !!a.totp,
   kind: a.kind ?? "HUMAN",
 });
 export const audit = (s, actorId, type, extra = {}) => s.audit.push({ actorId, type, ...extra });
@@ -17,7 +15,7 @@ export function notify(s, accountId, type, extra = {}) {
   const id = randomUUID();
   s.notifications[id] = { id, accountId, type, read: false, createdAt: new Date().toISOString(), ...extra };
 }
-export function sessionIn(s, raw, now, { pending = false, recent = false, admin = false } = {}) {
+export function sessionIn(s, raw, now, { recent = false, admin = false } = {}) {
   demand(s.control.initialized, "AUTH_NOT_INITIALIZED", "请在部署终端完成初始化", 503);
   const session = s.sessions[digest(raw ?? "")];
   demand(session, "AUTH_REQUIRED", "请先登录", 401);
@@ -36,7 +34,7 @@ export function sessionIn(s, raw, now, { pending = false, recent = false, admin 
     401,
   );
   demand(!s.control.recovery || account.recoveryAdmin, "AUTH_RECOVERY_REQUIRED", "实例正在恢复检查，暂不开放登录", 503);
-  if (!pending) demand(session.phase === "AUTHENTICATED", session.phase, "请完成两步验证", 403);
+  demand(session.phase === "AUTHENTICATED", "AUTH_SESSION_REVOKED", "请重新使用账号密码登录", 401);
   if (recent)
     demand(
       session.phase === "AUTHENTICATED" && now - session.verifiedAt <= 600000,
@@ -46,20 +44,20 @@ export function sessionIn(s, raw, now, { pending = false, recent = false, admin 
     );
   if (admin)
     demand(
-      account.admin && account.totp && session.phase === "AUTHENTICATED",
+      account.admin && session.phase === "AUTHENTICATED",
       "AUTH_ADMIN_REQUIRED",
-      "需要系统管理员资格与两步验证",
+      "需要系统管理员资格",
       403,
     );
   return { session, account };
 }
-export function createSession(s, account, now, { remember = false, device = "浏览器", phase = "AUTHENTICATED" } = {}) {
+export function createSession(s, account, now, { remember = false, device = "浏览器" } = {}) {
   const raw = token(),
     id = digest(raw);
   s.sessions[id] = {
     id,
     accountId: account.id,
-    phase,
+    phase: "AUTHENTICATED",
     device: String(device).slice(0, 160),
     createdAt: now,
     lastActivity: now,
@@ -69,7 +67,7 @@ export function createSession(s, account, now, { remember = false, device = "浏
     epoch: Number(s.control.epoch),
     revoked: false,
   };
-  return { token: raw, state: phase, account: publicAccount(account), session: s.sessions[id] };
+  return { token: raw, state: "AUTHENTICATED", account: publicAccount(account), session: s.sessions[id] };
 }
 export function rotateSession(s, session, account, now) {
   session.revoked = true;

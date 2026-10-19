@@ -73,6 +73,7 @@ async function migratedDatabase() {
     "0037_f001_staging_disposition",
     "0038_f001_gap_acceptance",
     "0039_f008_identity",
+    "0040_f008_password_login",
   ]);
   return database;
 }

@@ -27,13 +27,7 @@
         "admin": {
           "type": "boolean"
         },
-        "adminPending": {
-          "type": "boolean"
-        },
         "globalConfig": {
-          "type": "boolean"
-        },
-        "mfaEnabled": {
           "type": "boolean"
         },
         "kind": {
@@ -49,9 +43,7 @@
         "displayName",
         "status",
         "admin",
-        "adminPending",
         "globalConfig",
-        "mfaEnabled",
         "kind"
       ],
       "additionalProperties": false
@@ -77,9 +69,7 @@
             },
             "phase": {
               "enum": [
-                "AUTHENTICATED",
-                "MFA_REQUIRED",
-                "MFA_ENROLLMENT_REQUIRED"
+                "AUTHENTICATED"
               ]
             }
           },
