@@ -1,0 +1,31 @@
+export type FactRecord = { kind: string; id: string; payload: {
+  materialId?: string; objectId?: string; factId?: string; componentId?: string; displayPath?: string | null; pathBytes?: string;
+  kind?: string; name?: string; predicate?: string; subjectId?: string; targetId?: string; value?: unknown;
+  basis?: string; evidenceIds?: string[]; premiseFactIds?: string[]; ruleRef?: unknown; mediaType?: string;
+  contentAvailable?: boolean; contentDigest?: string; code?: string; capability?: string; origin?: string;
+  anchor?: { kind: string; lineStart?: number; lineEnd?: number; [key: string]: unknown };
+  [key: string]: unknown;
+} };
+export type RecordDetail = { record: FactRecord; references: (FactRecord & { role: string })[] };
+export type RecordPage = { items: FactRecord[]; nextCursor: string | null };
+export type Profile = { id: string; name?: string | null; startable: boolean; capabilityIds: string[]; ruleVersions: string[]; configDigest?: string;
+  extractionLimits: { maxBytes: number; maxRecords: number }; redactionPolicyRevision: string };
+export type FactVersion = { graphVersionId: string; runId: string; scopeId: string; profileId: string; bundleId: string; recordDigest: string; publishedAt: string };
+export type Scope = { scopeId: string; label: string | null; status: string; revision: number; graphVersionId?: string | null; requestOwned?: boolean; diagnostic?: { code?: string } | null };
+export type Run = { id: string; profileId: string; sourceInput: { bundleId: string; receiptId: string }; scopes: Scope[]; status?: string; createdAt: string };
+export type FactsOverview = { profiles: Profile[]; versions: FactVersion[]; activeRuns: Run[]; consumer: { configured: boolean; code: string | null } };
+export type Coverage = { scopeId: string; declaredCapabilities: string[]; counts: Record<string, number>;
+  items: { materialId: string; capabilityId: string; status: string; recordIds: string[]; gapIds: string[]; diagnostic?: unknown }[] };
+export type Manifest = { graphVersionId: string; bundleId: string; runId: string; scopeId: string; profileId: string;
+  recordDigest: string; publishedAt: string; counts: Record<string, number>; rules: unknown; scope: unknown; shards: unknown; vocabulary: unknown; verification: unknown };
+export type LocalGraph = { nodes: FactRecord[]; edges: { factId: string; subjectId: string; targetId: string; predicate: string; evidenceIds: string[] }[];
+  truncated: boolean; root: { kind: string; id: string }; depth: number; limit: number };
+export type EvidenceRequest = { id: string; operationId: string; cancelOperationId?: string | null; investigationId: string; baseVersionId: string; revision: number; status: string;
+  outcome: string | null; result: { graphVersionId?: string; code?: string; [key: string]: unknown } | null; diagnostic?: unknown; createdAt: string };
+export type InvestigationContext = { workspaceId: string; investigationId: string; baseVersionId: string; state: "RUNNING";
+  budget: { maxMaterials: number; maxBytes: number; maxRuleApplications: number; maximumAttempts: number; deadline: string };
+  usage: { materials: number; bytes: number; ruleApplications: number; attempts: number }; allowedCapabilities: string[] };
+export type RequestSummary = Pick<EvidenceRequest, "id" | "investigationId" | "baseVersionId" | "revision" | "status" | "outcome" | "createdAt">
+  & { questionSummary: string | null; scope: { factRefs: string[]; materialRefs: string[] } | null; updatedAt: string };
+export type RequestPage = { items: RequestSummary[]; nextCursor: string | null };
+export type Replay = { id: string; operationId: string; cancelOperationId?: string | null; graphVersionId: string; status: string; revision: number; originalDigest?: string; candidateDigest?: string; diagnostic?: unknown };

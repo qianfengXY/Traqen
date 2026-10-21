@@ -43,7 +43,7 @@
 .f005-shell :disabled { color: var(--disabled); opacity: .7; cursor: not-allowed; }
 .skip-link { position: absolute; top: -100px; left: 16px; z-index: 500; padding: 12px; color: var(--on-accent); background: var(--accent); }
 .skip-link:focus { top: 8px; }
-.destination-state { margin-bottom: 24px; }
+.destination-state { margin-bottom: 24px; padding: 24px; }
 .destination-state h1 { margin: 0 0 12px; }
 .destination-state p { color: var(--muted); max-width: 70ch; }
 .page-subnav { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }

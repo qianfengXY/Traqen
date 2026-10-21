@@ -44,11 +44,26 @@ export async function isolatedPostgres(t, { binaries = process.env.F001_TEST_PG_
     if (child && child.exitCode === null) { child.kill("SIGINT"); await exit; }
     child = null;
   }
+  async function crash() {
+    // PostgreSQL immediate shutdown aborts active transactions and forces WAL
+    // recovery at the next start. Signal only the child this fixture spawned;
+    // never resolve a PID from a port, service name or another cluster.
+    if (!child || child.exitCode !== null) throw new Error("No owned PostgreSQL child is running");
+    child.kill("SIGQUIT");
+    await exit;
+    child = null;
+    // Keep client pools until callers have observed/released interrupted work.
+    // restart()/stop() closes them after the failed transaction has unwound.
+  }
   t.after(stop);
   await start();
   function pool(database = "postgres") {
     const result = new pg.Pool(connection(database));
     result.exec = (sql) => result.query(sql);
+    // An immediate-shutdown test can disconnect a checked-out transaction
+    // while its JS barrier is held. Its next query still rejects, but the
+    // client's asynchronous error event must not escape the owned fixture.
+    result.on("connect", client => client.on("error", () => {}));
     result.on("error", () => {}); // Restart tests deliberately disconnect idle clients.
     pools.add(result);
     return result;
@@ -59,6 +74,6 @@ export async function isolatedPostgres(t, { binaries = process.env.F001_TEST_PG_
     const db = pool(name);
     return { name, ...(seed ? await seedSourceDatabase(db) : { db }) };
   }
-  return { root, data, socket, bin, env, connection, pool, createDatabase, stop, start,
+  return { root, data, socket, bin, env, connection, pool, createDatabase, stop, start, crash,
     async restart() { await stop(); await start(); } };
 }

@@ -92,6 +92,7 @@ test("real PostgreSQL B-05/08/11 multi-connection, atomic publication and restar
   });
   await t.test("batched dispositions are invisible before commit and reject a preceding concurrent revocation", async () => {
     const { db, repository } = await cluster.createDatabase();
+    assert.equal((await db.query("SELECT initialized FROM auth_control WHERE singleton")).rows[0].initialized, false, "this owned race fixture explicitly uses pre-migration legacy grants");
     const source = { sourceId: "D", kind: "DIRECTORY_UPLOAD", scope: { kind: "UPLOADED_DIRECTORY" }, nativeIdentity: null };
     await repository.saveDraft(owner, "workspace", { expectedRevision: 0, input: { sources: [source] } });
     const run = await repository.startRun(owner, "workspace", { draftRevision: 1, policyRevisionId: "v1" });
@@ -125,7 +126,7 @@ test("real PostgreSQL B-05/08/11 multi-connection, atomic publication and restar
     const revoking = transaction(db, async (tx) => {
       // Same project-first fence as the provision operation; only isolated test data.
       await tx.query("SELECT id FROM project WHERE id='workspace' FOR UPDATE");
-      await tx.query("UPDATE source_truth_access SET role='REVOKED' WHERE workspace_id='workspace' AND actor_id='owner'");
+      await tx.query("UPDATE source_truth_access_legacy SET role='REVOKED' WHERE workspace_id='workspace' AND actor_id='owner'");
       revokeEnter(); await revokeBlocked;
     });
     await revokeEntered;

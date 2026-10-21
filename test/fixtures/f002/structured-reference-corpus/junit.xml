@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="suite">
+ <testcase name="read😀" id="untrusted-id" sourceBundleId="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" command="node --test" environment="isolated-declaration" producer="untrusted" testedVersion="revision-1"/>
+ <!-- <testcase name="fake"/> -->
+</testsuite>

@@ -1,0 +1,2 @@
+<!DOCTYPE testsuite [<!ENTITY payload SYSTEM "file:///not-to-be-read">]>
+<testsuite><testcase name="&payload;"/></testsuite>

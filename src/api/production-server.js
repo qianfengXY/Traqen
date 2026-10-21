@@ -1,5 +1,7 @@
 import pg from "pg";
-import { authRuntime } from "../auth/runtime.js";
+import { authRuntime, privateFile } from "../auth/runtime.js";
+import { createHmac } from "node:crypto";
+import { createF002Runtime } from "../deterministic-facts/runtime.js";
 import { contextualDatabase } from "../auth/database.js";
 import { authorizedStore } from "../auth/authorized-store.js";
 import { authContext } from "../auth/context.js";
@@ -68,11 +70,30 @@ try {
   await database.close();
   throw new Error(`${error.code ?? "SOURCE_CONFIGURATION_INVALID"}: 来源快照部署条件未通过校验；未开放服务`);
 }
+let deterministicFactsRuntime;
+await initializeFacts();
 const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, auth: identity.http, sourceTruthHandler: sourceRuntime?.sourceTruthHandler,
-  sourceTruthAllowedOrigins: sourceConfiguration?.origins });
+  sourceTruthAllowedOrigins: sourceConfiguration?.origins,
+  deterministicFactsHandler: deterministicFactsRuntime?.deterministicFactsHandler,
+  deterministicFactsAllowedOrigins: sourceConfiguration?.origins });
+
+async function initializeFacts() {
+  if (!sourceRuntime) return null;
+  try {
+    const key = await privateFile(process.env.TRAQEN_AUTH_KEY_FILE, { maximum: 32 });
+    const cursorSecret = createHmac("sha256", key).update("Traqen.F002.Cursor.v1").digest("hex");
+    deterministicFactsRuntime = await createF002Runtime({ sourceRuntime, cursorSecret });
+    return deterministicFactsRuntime;
+  } catch (error) {
+    await sourceRuntime.close().catch(() => {});
+    await database.close().catch(() => {});
+    throw new Error(`${error.code ?? "F002_CONFIGURATION_INVALID"}: 技术证据服务配置未通过校验；未开放服务`);
+  }
+}
 
 server.listen(port, host, () => {
   sourceRuntime?.start();
+  void deterministicFactsRuntime?.start();
   const address = server.address();
   process.stdout.write(`Traqen API listening on http://${host}:${address.port}\n`);
 });
@@ -83,6 +104,7 @@ async function shutdown(signal) {
   shuttingDown = true;
   const closed = new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   server.closeAllConnections();
+  await deterministicFactsRuntime?.close();
   await sourceRuntime?.close();
   await closed;
   await database.close();

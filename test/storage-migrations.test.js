@@ -74,6 +74,13 @@ async function migratedDatabase() {
     "0038_f001_gap_acceptance",
     "0039_f008_identity",
     "0040_f008_password_login",
+    "0041_f002_deterministic_facts",
+    "0042_f002_publication",
+    "0043_f002_requests",
+    "0044_f002_replay_diagnostic",
+    "0045_f002_request_execution",
+    "0046_f002_replay_lifecycle",
+    "0047_f002_request_budget_lifecycle",
   ]);
   return database;
 }

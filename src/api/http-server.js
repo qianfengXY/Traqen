@@ -276,6 +276,8 @@ export function createTraceabilityHttpHandler({
   apiBearerToken = null,
   sourceTruthHandler = null,
   sourceTruthAllowedOrigins = [],
+  deterministicFactsHandler = null,
+  deterministicFactsAllowedOrigins = [],
   auth = null,
   onInternalError = null,
 }) {
@@ -285,13 +287,15 @@ export function createTraceabilityHttpHandler({
   }
   const allowedOrigins = normalizeCorsOrigins(corsAllowedOrigins);
   const sourceOrigins = normalizeCorsOrigins(sourceTruthAllowedOrigins);
+  const factsOrigins = normalizeCorsOrigins(deterministicFactsAllowedOrigins);
 
   const handler = async function traceabilityHttpHandler(request, response) {
     const id = requestId(request);
     try {
       const url = new URL(request.url, "http://localhost");
       const sourceRequest = /^\/v1\/workspaces\/[^/]+\/source-truth(?:\/|$)/.test(url.pathname);
-      applyCors(request, response, sourceRequest ? sourceOrigins : allowedOrigins);
+      const factsRequest = /^\/v1\/workspaces\/[^/]+\/deterministic-facts(?:\/|$)/.test(url.pathname);
+      applyCors(request, response, sourceRequest ? sourceOrigins : factsRequest ? factsOrigins : allowedOrigins);
 
       if (request.method === "OPTIONS") {
         response.writeHead(204, { "cache-control": "no-store", "x-request-id": id });
@@ -309,6 +313,11 @@ export function createTraceabilityHttpHandler({
       if (sourceRequest) {
         if (!sourceTruthHandler) throw new HttpError(503, "SOURCE_TRUTH_NOT_CONFIGURED", "来源快照持久化服务尚未安全配置");
         if (await sourceTruthHandler(request, response, id)) return;
+      }
+
+      if (factsRequest) {
+        if (!deterministicFactsHandler) throw new HttpError(503, "F002_NOT_CONFIGURED", "技术证据持久化服务尚未安全配置");
+        if (await deterministicFactsHandler(request, response, id)) return;
       }
 
       if (!auth && apiBearerToken !== null) {

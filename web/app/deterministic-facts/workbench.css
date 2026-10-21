@@ -1,0 +1,111 @@
+/* Keep the existing global theme action reachable throughout the F002 route,
+   including its loading/empty/access-denied states and native browser zoom. */
+.f005-shell[data-product-view="feature"] .theme-switch { display: inline-flex; }
+/* Typography follows the browser's root font preference, independently of
+   the fixed desktop canvas. These values retain the existing 16px-root sizes.
+   Shared shell rules remain unchanged on every other product route. */
+.f005-shell[data-product-view="feature"] { font-size: .8125rem; }
+.f005-shell[data-product-view="feature"] .brand { font-size: 1.375rem; }
+.f005-shell[data-product-view="feature"] .brand-mark { font-size: .875rem; }
+.f005-shell[data-product-view="feature"] :is(.workspace-label, .sidebar-note, .connection-button, .identity-chip, .theme-switch select, .language-switch button, .toast-message) { font-size: .6875rem; }
+.f005-shell[data-product-view="feature"] .workspace-tools button { font-size: .75rem; }
+.f005-shell[data-product-view="feature"] :is(.nav-button, .button) { font-size: .8125rem; }
+.f005-shell[data-product-view="feature"] h1 { font-size: 2rem; line-height: 2.5rem; }
+.f005-shell[data-product-view="feature"] h2 { line-height: 1.75rem; }
+.f005-shell[data-product-view="feature"] .eyebrow { font-size: .625rem; }
+.f005-shell[data-product-view="feature"] .workspace-connection small { font-size: .75rem; }
+.f005-shell[data-product-view="feature"] .toast-message button { font-size: 1rem; }
+.f005-shell[data-product-view="feature"] :is(.onboarding-steps span, .onboarding-form label, .diagnostic-drawer label, .diagnostic-drawer > p) { font-size: .625rem; }
+.f005-shell[data-product-view="feature"] :is(.onboarding-form input, .diagnostic-drawer input) { font-size: .75rem; }
+.f005-shell[data-product-view="feature"] :is(.onboarding-form small, .diagnostic-drawer dl) { font-size: .5625rem; }
+.f005-shell[data-product-view="feature"] .diagnostic-drawer > header button { font-size: 1.4375rem; }
+.f002-workbench { padding-bottom: 32px; color: var(--ink); }
+.f002-auth { margin-bottom: 20px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+.f002-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; margin-bottom: 24px; }
+.f002-heading h1 { margin: 4px 0 12px; }
+.f002-heading p, .f002-caption, .f002-empty { color: var(--muted); }
+.f002-actions { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; }
+.f002-workbench label { display: grid; gap: 8px; font-size: .8125rem; }
+.f002-workbench input:not([type=checkbox]), .f002-workbench textarea, .f002-workbench select { min-width: 0; width: 100%; padding: 9px 12px; min-height: 36px; border: 1px solid var(--control); border-radius: 9px; background: var(--panel); color: var(--ink); }
+.f002-context { display: grid; grid-template-columns: 1fr 1.4fr 1fr; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 20px; gap: 20px; }
+.f002-context > div { display: grid; align-content: start; gap: 8px; min-width: 0; }
+.f002-workbench small { display: block; font-size: .75rem; line-height: 1.125rem; color: var(--muted); }
+.f002-workbench .f002-field-error { color: var(--danger); }
+.f002-notice { padding: 14px 16px; color: var(--warning); background: var(--warning-subtle); border: 1px solid var(--warning); border-radius: 9px; line-height: 1.5rem; }
+/* Fixed references remain complete and wrap within the panel at native zoom. */
+.f002-panel { padding: 24px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); margin: 20px 0; overflow-wrap: anywhere; }
+.f002-tabs { display: flex; flex-wrap: wrap; gap: 24px; border-bottom: 1px solid var(--line); margin: 24px 0; }
+.f002-tabs a { padding: 12px 0; text-decoration: none; color: var(--muted); }
+.f002-tabs a[aria-current=page] { color: var(--ink); font-weight: 600; border-bottom: 2px solid var(--accent); }
+.f002-search { max-width: 620px; }
+.f002-caption { margin: 8px 0 20px; font-size: .75rem; }
+.f002-browser-grid { display: grid; grid-template-columns: 224px minmax(0,1fr) 302px; gap: 16px; align-items: start; }
+.f002-browser-grid.f002-inspector-closed { grid-template-columns: 224px minmax(0,1fr); }
+.f002-directory, .f002-detail, .f002-reading, .f002-records { min-width: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); padding: 16px; }
+.f002-main-reading { display: grid; gap: 16px; min-width: 0; }
+.f002-workbench h2 { margin: 0 0 16px; font-size: 1.25rem; line-height: 1.75rem; }
+.f002-workbench h3 { font-size: .9375rem; line-height: 1.5rem; margin: 20px 0 12px; }
+.f002-directory ul { list-style: none; margin: 0 0 16px; padding: 0; }
+.f002-directory-tree ul { padding-inline-start: 12px; border-inline-start: 1px solid var(--line); }
+.f002-directory-tree summary { padding: 8px 4px; overflow-wrap: anywhere; }
+.f002-directory-tree > li { margin-bottom: 12px; }
+.f002-directory { max-height: 560px; overflow: auto; }
+.f002-detail { --f002-detail-padding: 16px; padding: var(--f002-detail-padding); max-height: 560px; overflow: auto; }
+/* These panes own persisted offsets. Native layout anchoring emits scroll
+   events and must not overwrite the user's position during grid reflow. */
+.f002-directory, .f002-detail, .f002-relation-list, .f002-gap-list { overflow-anchor: none; }
+/* Cover the scrollport's top padding without shifting its content or saved
+   scroll coordinates: added header padding and negative margin cancel. */
+.f002-detail > header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px; position: sticky; top: calc(-1 * var(--f002-detail-padding)); margin-top: calc(-1 * var(--f002-detail-padding)); padding-top: var(--f002-detail-padding); z-index: 1; background: var(--panel); padding-bottom: 12px; }
+.f002-detail > header h2 { margin: 0; }
+.f002-directory li button, .f002-ref { display: block; width: 100%; text-align: left; min-height: 52px; border: 1px solid transparent; padding: 10px; border-radius: 9px; background: transparent; color: var(--ink); overflow-wrap: anywhere; cursor: pointer; }
+.f002-directory li button:hover, .f002-ref:hover { background: var(--surface-muted); }
+.f002-directory button[aria-current=true], .f002-ref[aria-current=true] { background: var(--accent-subtle); border-color: var(--accent); }
+.f002-reading header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; }
+.f002-reading h2 { overflow-wrap: anywhere; }
+.f002-digests { font-size: .75rem; line-height: 1.125rem; margin: 16px 0; }
+.f002-digests dt { color: var(--muted); margin-top: 8px; }
+.f002-digests dd, .f002-id { margin: 4px 0; overflow-wrap: anywhere; }
+.f002-code { overflow: auto; max-height: 380px; background: var(--code-bg); border: 1px solid var(--line); border-radius: 9px; padding: 12px 0; line-height: 1.5rem; }
+.f002-code > div { display: flex; align-items: flex-start; min-height: 24px; }
+.f002-code > div.selected { background: var(--accent-subtle); outline: 1px solid var(--accent); }
+.f002-code button { flex: 0 0 44px; border: 0; background: transparent; color: var(--muted); font-size: .75rem; line-height: 1.5rem; cursor: pointer; }
+.f002-code code { white-space: pre; font-size: .8125rem; padding-right: 12px; }
+.f002-code.wrap code { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+.f002-image-scroll { overflow: auto; max-height: 420px; margin-top: 12px; }
+.f002-table { width: 100%; border-collapse: collapse; font-size: .8125rem; }
+.f002-table th { text-align: left; color: var(--muted); font-weight: 500; }
+.f002-table th, .f002-table td { border-bottom: 1px solid var(--line); padding: 12px 8px; overflow-wrap: anywhere; }
+.f002-table tr[aria-selected=true] { background: var(--accent-subtle); }
+.f002-relation-list, .f002-gap-list, .f002-coverage-list { max-height: 400px; overflow: auto; }
+.f002-relations svg { display: block; width: 100%; }
+.f002-relations svg text { font-size: .75rem; }
+.f002-relations svg [role=button] { cursor: pointer; }
+.f002-relations svg g.selected > path:not(.f002-edge-hit), .f002-relations svg g[role=button]:focus-visible > path:not(.f002-edge-hit) { stroke: var(--accent); stroke-width: 4; }
+.f002-relations svg g[role=button]:focus-visible > circle { stroke: var(--focus); stroke-width: 4; }
+.f002-record-link { background: transparent; border: 0; color: var(--accent); text-align: left; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.f002-detail pre, .f002-delivery pre, .f002-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; line-height: 1.25rem; max-height: 420px; overflow: auto; background: var(--code-bg); padding: 12px; border-radius: 9px; }
+.f002-detail pre { max-height: none; overflow: visible; }
+.f002-explanation { overflow-wrap: anywhere; }
+.f002-explanation p, .f002-explanation li { font-size: .8125rem; line-height: 1.375rem; }
+.f002-explanation ul { padding-inline-start: 20px; }
+.f002-counts { display: flex; flex-wrap: wrap; gap: 16px; }
+.f002-counts > div { padding: 12px 16px; background: var(--surface-muted); border-radius: 9px; }
+.f002-counts dt { font-size: .75rem; color: var(--muted); }
+.f002-counts dd { font-size: 1.25rem; margin: 4px 0 0; }
+.f002-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+.f002-material-picker { border-block: 1px solid var(--line); padding-block: 12px; }
+.f002-material-picker ul { list-style: none; padding: 8px; max-height: 320px; overflow: auto; }
+.f002-workbench fieldset { border: 1px solid var(--line); border-radius: 9px; margin: 16px 0; padding: 16px; }
+.f002-workbench fieldset label { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+.f002-scope { display: grid; gap: 12px; border-top: 1px solid var(--line); padding: 16px 0; }
+.f002-workbench svg { max-width: 100%; min-height: 240px; background: var(--code-bg); border-radius: 9px; }
+.f002-workbench :is(button,a,input,textarea,select,summary,[tabindex]):focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.f002-workbench summary { cursor: pointer; font-weight: 600; }
+@media (max-width: 1439px), (max-height: 899px) {
+  .f002-browser-grid, .f002-browser-grid.f002-inspector-closed { grid-template-columns: minmax(0,1fr); }
+  .f002-context { grid-template-columns: minmax(0,1fr); }
+  .f002-heading { flex-direction: column; }
+  .f002-form-grid { grid-template-columns: minmax(0,1fr); }
+  .f002-directory { max-height: none; }
+}

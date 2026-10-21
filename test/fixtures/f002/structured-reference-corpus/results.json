@@ -1,0 +1,5 @@
+{
+ "tests":[
+  {"name":"read😀","status":"PASS","testId":"untrusted-id","sourceBundleId":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","command":"node --test","environment":"isolated-declaration","producer":"untrusted","testedVersion":"revision-1"}
+ ]
+}

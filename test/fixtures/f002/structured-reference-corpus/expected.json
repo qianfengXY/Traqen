@@ -1,0 +1,109 @@
+{
+  "provenance":"Hand-authored from the source declarations by 搬砖工/gpt-6.1-sol; never generated from extractor output. Exact relation sets below claim bounded fixture completeness only, not language/program completeness.",
+  "cases":[
+    {
+      "name":"JavaScript lexical imports, shadowing and unique Express contract",
+      "sources":[{"file":"routes.js","path":"src/routes.js"},{"file":"service.js","path":"src/service.js"},{"file":"api.json","path":"src/api.json"}],
+      "relationPredicates":["staticCalls","handlesRoute","matchesEndpointContract"],
+      "relations":[
+        {"from":{"path":"src/routes.js","kind":"FUNCTION","name":"handle"},"predicate":"staticCalls","to":{"path":"src/service.js","kind":"FUNCTION","name":"lookup"},"basis":"DERIVED","premises":5,"line":4,"source":"fetch()"},
+        {"from":{"path":"src/routes.js","kind":"FUNCTION","name":"handle"},"predicate":"handlesRoute","to":{"path":"src/routes.js","kind":"ROUTE","name":"GET /records/:key"},"basis":"DERIVED","premises":5,"line":6},
+        {"from":{"path":"src/api.json","kind":"OPENAPI_OPERATION","name":"GET /records/{id}"},"predicate":"matchesEndpointContract","to":{"path":"src/routes.js","kind":"ROUTE","name":"GET /records/:key"},"basis":"DERIVED","premises":4,"premiseFacts":[["httpMethod","DECLARED"],["path","DECLARED"],["httpMethod","DECLARED"],["effectivePath","DERIVED"]],"line":3}
+      ],
+      "counts":[{"path":"src/routes.js","kind":"ROUTE","count":1}],
+      "properties":[{"object":{"path":"src/routes.js","kind":"ROUTE","name":"GET /records/:key"},"predicate":"effectivePath","value":{"datatype":"string","value":"/records/:key"},"basis":"DERIVED"}]
+    },
+    {
+      "name":"Java unique explicit import has twenty declared premises",
+      "sources":[{"file":"Caller.java","path":"src/Caller.java"},{"file":"Helper.java","path":"src/Helper.java"}],
+      "relationPredicates":["staticCalls"],
+      "relations":[{"from":{"path":"src/Caller.java","kind":"JAVA_METHOD","name":"Caller#run"},"predicate":"staticCalls","to":{"path":"src/Helper.java","kind":"JAVA_METHOD","name":"Helper#read"},"basis":"DERIVED","premises":20,"line":4,"source":"Helper.read()"}]
+    },
+    {
+      "name":"Java lexical receiver shadow never becomes an imported target",
+      "sources":[{"file":"Shadow.java","path":"src/Shadow.java"},{"file":"Helper.java","path":"src/Helper.java"}],
+      "relationPredicates":["staticCalls"],"relations":[],"gapCodes":["JAVA_BINDING_UNSUPPORTED"]
+    },
+    {
+      "name":"Java duplicate qualified declaration keeps ambiguity instead of a first match",
+      "sources":[{"file":"Caller.java","path":"src/Caller.java"},{"file":"Helper.java","path":"src/Helper.java"},{"file":"Helper.java","path":"copy/Helper.java"}],
+      "relationPredicates":["staticCalls"],"relations":[],"gapCodes":["JAVA_BINDING_AMBIGUOUS"],
+      "candidateCounts":[{"code":"JAVA_BINDING_AMBIGUOUS","count":2}]
+    },
+    {
+      "name":"Java target cannot be borrowed from a different component",
+      "sources":[{"file":"Caller.java","path":"src/Caller.java"},{"file":"Helper.java","path":"src/Helper.java","component":"other"}],
+      "relationPredicates":["staticCalls"],"relations":[],"gapCodes":["JAVA_BINDING_UNRESOLVED"]
+    },
+    {
+      "name":"Spring literal mapping has an exact method and unique component contract",
+      "sources":[{"file":"Controller.java","path":"src/Controller.java"},{"file":"api.json","path":"src/api.json"}],
+      "relationPredicates":["handlesRoute","matchesEndpointContract"],
+      "relations":[
+        {"from":{"path":"src/Controller.java","kind":"JAVA_METHOD","name":"Records#read"},"predicate":"handlesRoute","to":{"path":"src/Controller.java","kind":"ROUTE","name":"GET /records/{id}"},"basis":"DERIVED","premises":4,"premiseFacts":[["name","DECLARED"],["annotationType","DERIVED"],["hasInheritance","DECLARED"],["annotationType","DERIVED"]],"line":7},
+        {"from":{"path":"src/api.json","kind":"OPENAPI_OPERATION","name":"GET /records/{id}"},"predicate":"matchesEndpointContract","to":{"path":"src/Controller.java","kind":"ROUTE","name":"GET /records/{id}"},"basis":"DERIVED","premises":4,"premiseFacts":[["httpMethod","DECLARED"],["path","DECLARED"],["httpMethod","DERIVED"],["path","DERIVED"]],"line":3}
+      ]
+    },
+    {
+      "name":"Repeated endpoint declarations cannot pick a source by ordering",
+      "sources":[{"file":"routes.js","path":"src/routes.js"},{"file":"routes.js","path":"src/second-routes.js"},{"file":"service.js","path":"src/service.js"},{"file":"api.json","path":"src/api.json"}],
+      "relationPredicates":["matchesEndpointContract"],"relations":[],"gapCodes":["ENDPOINT_CONTRACT_AMBIGUOUS"],
+      "candidateCounts":[{"code":"ENDPOINT_CONTRACT_AMBIGUOUS","count":2}]
+    },
+    {
+      "name":"Markdown original paragraphs and explicit chapter/image references exclude fences and escapes",
+      "sources":[{"file":"note.md","path":"docs/note.md"},{"file":"image.bin","path":"docs/image.bin"}],
+      "relationPredicates":["refersTo"],
+      "relations":[
+        {"from":{"path":"docs/note.md","kind":"DOCUMENT_LINK","name":"chapter"},"predicate":"refersTo","to":{"path":"docs/note.md","kind":"DOCUMENT_SECTION","name":"Child"},"basis":"DERIVED","premises":2,"line":7},
+        {"from":{"path":"docs/note.md","kind":"DOCUMENT_IMAGE","name":"图😀"},"predicate":"refersTo","to":{"path":"docs/image.bin","name":"docs/image.bin"},"basis":"DERIVED","premises":1,"line":8}
+      ],
+      "counts":[{"path":"docs/note.md","kind":"DOCUMENT_SECTION","count":2},{"path":"docs/note.md","kind":"DOCUMENT_IMAGE","count":1}],
+      "absentNames":["Fake heading","fake"],"gapCodes":["DOCUMENT_LINK_OUT_OF_SCOPE"],
+      "properties":[{"object":{"path":"docs/note.md","kind":"DOCUMENT_PARAGRAPH","line":3},"predicate":"literalValue","value":{"datatype":"string","value":"原文😀 第一行\n第二行"},"basis":"DECLARED","line":3,"endLine":4,"source":"原文😀 第一行\n第二行"}]
+    },
+    {
+      "name":"Typed JSON and logical Properties/dotenv strings retire known secret values",
+      "sources":[{"file":"config.json","path":"config/data.json"},{"file":"app.properties","path":"config/app.properties"},{"file":".env.sample","path":"config/.env.sample"}],
+      "relationPredicates":["staticCalls","refersTo"],"relations":[],
+      "forbiddenStrings":["CORPUS_JSON_SECRET","CORPUS_PROPERTIES_SECRET","CORPUS_ENV_SECRET"],
+      "properties":[
+        {"object":{"path":"config/data.json","kind":"JSON_VALUE","name":"port"},"predicate":"literalValue","value":{"datatype":"integer","value":7},"basis":"DECLARED","pointer":"/根😀/port","line":2,"source":"7"},
+        {"object":{"path":"config/data.json","kind":"JSON_VALUE","name":"empty"},"predicate":"literalValue","value":{"datatype":"null","value":null},"basis":"DECLARED","pointer":"/根😀/empty","line":2,"source":"null"},
+        {"object":{"path":"config/app.properties","kind":"CONFIG_KEY","name":"title"},"predicate":"literalValue","value":{"datatype":"string","value":"根😀尾"},"basis":"DECLARED","line":1,"endLine":2},
+        {"object":{"path":"config/.env.sample","kind":"CONFIG_KEY","name":"title"},"predicate":"literalValue","value":{"datatype":"string","value":"根😀\n尾"},"basis":"DECLARED","line":1,"endLine":2}
+      ]
+    },
+    {
+      "name":"Node and JUnit test assets declare assertions and subjects, not execution",
+      "sources":[{"file":"assets.js","path":"test/assets.js"},{"file":"Assets.java","path":"test/Assets.java"}],
+      "relationPredicates":["hasAssertion","refersTo"],
+      "relations":[
+        {"from":{"path":"test/assets.js","kind":"TEST_CASE","name":"reads😀"},"predicate":"hasAssertion","to":{"path":"test/assets.js","kind":"TEST_ASSERTION","name":"strictEqual"},"basis":"DERIVED","premises":2,"premiseFacts":[["testFramework","DERIVED"],["testFramework","DERIVED"]],"line":4},
+        {"from":{"path":"test/assets.js","kind":"TEST_CASE","name":"reads😀"},"predicate":"refersTo","to":{"path":"test/assets.js","kind":"FUNCTION","name":"subject"},"basis":"DERIVED","premises":2,"premiseFacts":[["testFramework","DERIVED"],["staticCalls","DERIVED"]],"line":4},
+        {"from":{"path":"test/Assets.java","kind":"TEST_CASE","name":"read"},"predicate":"hasAssertion","to":{"path":"test/Assets.java","kind":"TEST_ASSERTION","name":"assertEquals"},"basis":"DERIVED","premises":2,"premiseFacts":[["testFramework","DERIVED"],["testFramework","DERIVED"]],"line":4},
+        {"from":{"path":"test/Assets.java","kind":"TEST_CASE","name":"read"},"predicate":"refersTo","to":{"path":"test/Assets.java","kind":"JAVA_METHOD","name":"Assets#subject"},"basis":"DERIVED","premises":2,"premiseFacts":[["testFramework","DERIVED"],["staticCalls","DERIVED"]],"line":4}
+      ],
+      "counts":[{"path":"test/assets.js","kind":"TEST_CASE","count":1},{"path":"test/Assets.java","kind":"TEST_CASE","count":1}],
+      "absentNames":["fake"],"absentPredicates":["reportsResult"]
+    },
+    {
+      "name":"Reports retain six untrusted identity claims, exact outcomes and mandatory execution limitations",
+      "sources":[{"file":"results.json","path":"reports/results.json"},{"file":"junit.xml","path":"reports/junit.xml"}],
+      "relationPredicates":["staticCalls","refersTo","matchesEndpointContract"],"relations":[],
+      "counts":[{"path":"reports/results.json","kind":"TEST_RESULT","count":1},{"path":"reports/junit.xml","kind":"TEST_RESULT","count":1}],
+      "absentNames":["fake"],"gapCodes":["EXECUTION_BINDING_MISSING","REPORT_SOURCE_BINDING_MISMATCH"],
+      "properties":[
+        {"object":{"path":"reports/results.json","kind":"TEST_RESULT","name":"read😀"},"predicate":"reportsResult","value":{"datatype":"string","value":"PASS"},"basis":"DECLARED","premises":0,"line":3},
+        {"object":{"path":"reports/junit.xml","kind":"TEST_RESULT","name":"read😀"},"predicate":"reportsResult","value":{"datatype":"string","value":"PASS"},"basis":"DERIVED","premises":2,"line":3}
+      ],
+      "reportIdentity":{"names":["reportTestId","reportSourceBundleId","reportCommand","reportEnvironment","reportProducer","reportTestedVersion"],"values":["untrusted-id","dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","node --test","isolated-declaration","untrusted","revision-1"]}
+    },
+    {
+      "name":"DTD/entity XML has no salvaged testcase or Fact",
+      "sources":[{"file":"unsafe.xml","path":"reports/unsafe.xml"}],
+      "relationPredicates":["staticCalls","refersTo"],"relations":[],"gapCodes":["JUNIT_XML_UNSAFE"],"factCount":0,
+      "counts":[{"path":"reports/unsafe.xml","kind":"TEST_RESULT","count":0}]
+    }
+  ]
+}

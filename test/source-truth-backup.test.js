@@ -17,6 +17,7 @@ import { SourceBackupService } from "../src/source-truth/backup-service.js";
 import { pathBytes } from "../src/source-truth/identity.js";
 import { acceptCandidateGap } from "../src/source-truth/confirmation-service.js";
 import { SourceQueryService } from "../src/source-truth/query-service.js";
+import { recoverSourceFixtureIdentity } from "./support/source-truth-recovery-identity.js";
 
 async function unfinishedDirectory(f) {
   const bytes = Buffer.from("first-tail");
@@ -98,6 +99,8 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
   assert.equal(restored.backupId, completed.id);
   assert.equal((await destination.db.query("SELECT restore_ready FROM source_truth_workspace WHERE workspace_id='workspace'")).rows[0].restore_ready, true);
   const recovered = sourceTruthServices({ repository: new SourceTruthRepository(destination.db), blobs: targetBlobs, policy: { id: "policy-v1" } });
+  await assert.rejects(recovered.repository.authorize(owner, "workspace"), { code: "SOURCE_FORBIDDEN" }, "restoring bytes does not reopen the legacy identity gate");
+  await recoverSourceFixtureIdentity(destination.db);
   assert.equal((await destination.db.query("SELECT reason FROM source_truth_gap_acceptance WHERE id=$1", [accepted.id])).rows[0].reason, accepted.reason);
   assert.equal((await destination.db.query("SELECT acceptance_id FROM source_truth_confirmation_gap_acceptance WHERE confirmation_id=$1", [confirmation.id])).rows[0].acceptance_id, accepted.id);
   const restoredRenewal = await recovered.renewal.latest(owner, "workspace", reference);
@@ -127,7 +130,8 @@ test("real PostgreSQL B-12 paired backup, exact Receipt waterline, isolated rest
     postgres: { binDirectory: cluster.bin, connection: cluster.connection(failedTarget.name) }, requestedBy: "fixture-admin" }), /injected restored-volume failure/);
   assert.equal((await failedTarget.db.query("SELECT restore_ready FROM source_truth_workspace WHERE workspace_id='workspace'")).rows[0].restore_ready, false);
   const failedServices = sourceTruthServices({ repository: new SourceTruthRepository(failedTarget.db), blobs: failedBlobs, policy: { id: "policy-v1" } });
-  await assert.rejects(failedServices.admission.qualify(reader, "workspace", reference), { code: "SOURCE_RESTORE_UNVERIFIED" });
+  await assert.rejects(failedServices.admission.qualify(reader, "workspace", reference), { code: "SOURCE_FORBIDDEN" });
+  await assert.rejects(recoverSourceFixtureIdentity(failedTarget.db), { code: "AUTH_SOURCE_RESTORE_UNVERIFIED" });
   const backupBytes = services.backup.targetBlobs;
   const filename = await backupBytes.location({ tenantId: "tenant", workspaceId: "workspace" }, "blobs", f.digest);
   const handle = await open(filename, "r+");

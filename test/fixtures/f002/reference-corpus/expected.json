@@ -1,0 +1,9 @@
+{
+  "mustContainNames": ["saveOrder", "submitOrder", "shadowed", "POST /orders", "Orders", "orders.enabled"],
+  "mustNotContainNames": ["This is an example, not a document section", "do-not-index-me"],
+  "relations": [
+    {"predicate": "staticCalls", "subject": "submitOrder", "target": "saveOrder"},
+    {"predicate": "handlesRoute", "subject": "submitOrder", "target": "POST /orders"},
+    {"predicate": "refersTo", "subject": "docs/orders.md", "target": "config/orders.properties"}
+  ]
+}
