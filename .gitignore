@@ -3,6 +3,7 @@ node_modules
 coverage/
 .env
 .env.*
+!test/fixtures/f002/structured-reference-corpus/.env.sample
 !.env.example
 
 # Local-only branch review records. Publish validated findings as Issues instead.
