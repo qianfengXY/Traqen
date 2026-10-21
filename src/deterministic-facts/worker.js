@@ -6,23 +6,40 @@ import { assembleCanonicalOutput } from "./output-assembly.js";
 import { F002PublicationService } from "./publication-service.js";
 import { capabilityForMaterialKind } from "./rules.js";
 import { loadFrozenMaterials } from "./source-materials.js";
+import { createParserDeadline } from "./parser-deadline.js";
+import { maintainLease } from "./lease.js";
 
-function workerParse(input, { timeoutMs }) {
+function workerParse(input, { timeoutMs, onProgress = null, signal = null }) {
   return new Promise((resolve, reject) => {
-    const parser = new Worker(new URL("./parser-worker.js", import.meta.url));
-    let settled = false;
+    signal?.throwIfAborted();
+    if (onProgress !== null && typeof onProgress !== "function") throw new TypeError("parser progress observer must be a function");
+    let settled = false, deadline, parser;
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timeout);
-      parser.terminate().catch(() => {});
+      signal?.removeEventListener("abort", aborted);
+      deadline?.stop();
+      parser?.terminate().catch(() => {});
       callback(value);
     };
-    const timeout = setTimeout(() => finish(reject, new F002Error("F002_PARSE_TIMEOUT", "解析超过固定运行预算", { status: 503 })), timeoutMs);
+    const aborted = () => finish(reject, signal.reason);
+    signal?.addEventListener("abort", aborted, { once: true });
+    deadline = createParserDeadline({ materialCount: input.materials.length, timeoutMs,
+      onTimeout: reason => finish(reject, new F002Error("F002_PARSE_TIMEOUT", reason === "wall" ? "解析超过固定总运行预算" : "解析工作单元超过固定运行预算", { status: 503 })) });
+    try { parser = new Worker(new URL("./parser-worker.js", import.meta.url)); }
+    catch (error) { finish(reject, error); return; }
     parser.once("error", (error) => finish(reject, error));
+    parser.once("exit", () => { if (!settled) finish(reject, new F002Error("F002_PARSE_RUNTIME_FAILURE", "解析进程未返回完整结果", { status: 503 })); });
     parser.on("message", (message) => {
-      if (message?.type === "RESULT") finish(resolve, message.result);
-      else if (message?.type === "ERROR") finish(reject, new F002Error("F002_PARSE_RUNTIME_FAILURE", message.message, { status: 503 }));
+      if (message?.type === "PROGRESS") {
+        if (deadline.progress(message.progress) && onProgress) {
+          try { onProgress(message.progress); } catch (error) { finish(reject, error); }
+        }
+      } else if (message?.type === "RESULT") {
+        if (deadline.complete()) finish(resolve, message.result);
+        else finish(reject, new F002Error("F002_PARSE_RUNTIME_FAILURE", "解析进度未覆盖完整范围", { status: 503 }));
+      }
+      else if (message?.type === "ERROR") finish(reject, new F002Error(message.code === "F002_SCOPE_RECORD_BUDGET_TOO_SMALL" ? message.code : "F002_PARSE_RUNTIME_FAILURE", message.message, { status: message.code === "F002_SCOPE_RECORD_BUDGET_TOO_SMALL" ? 422 : 503 }));
     });
     parser.postMessage({ type: "COMPILE", input });
   });
@@ -99,24 +116,7 @@ async function recordBatches(repository, actor, input) {
 // A lease fences ownership, not the total source-reading/parse duration. Renew
 // only the live generation through the same current ACL and request-owner gate.
 function maintainScopeLease(repository, actor, input) {
-  let stopped = false, failure = null, timer, pending = Promise.resolve();
-  const schedule = () => {
-    timer = setTimeout(() => {
-      pending = Promise.resolve().then(() => repository.renewScopeLease(actor, input))
-        .then(() => { failure = null; })
-        .catch(error => { failure = error; })
-        // Retry only recognized transport/transaction interruptions. Every
-        // attempt still passes the database live-lease/generation/ACL fence;
-        // expiry or authorization loss is terminal, never resurrected.
-        .then(() => { if (!stopped && (!failure || /^(?:08\w{3}|ECONNRESET|ETIMEDOUT|EPIPE|57P01|40001|40P01)$/.test(failure.code ?? ""))) schedule(); });
-    }, Math.max(1, Math.floor(input.leaseMs / 3)));
-    timer.unref();
-  };
-  schedule();
-  return {
-    assertActive() { if (failure) throw failure; },
-    async stop() { stopped = true; clearTimeout(timer); await pending; },
-  };
+  return maintainLease(() => repository.renewScopeLease(actor, input), input.leaseMs);
 }
 
 export class F002Worker {
@@ -145,13 +145,17 @@ export class F002Worker {
       const run = await this.repository.getRun(actor, workspaceId, runId);
       const profile = await this.repository.getProfile(actor, workspaceId, run.profileId);
       const scope = await this.repository.getScope(actor, workspaceId, runId, scopeId);
-      const sourceMaterials = materials ?? await this.#readFrozenMaterials(actor, workspaceId, run, scope, profile);
+      const sourceMaterials = materials ?? await loadFrozenMaterials(this.admission, actor, workspaceId, run, scope, profile, { signal: lease.signal });
       lease.assertActive();
       const items = scopeItemsForMaterials({ workspaceId, bundleId: run.sourceInput.bundleId, profile, sourceMaterials });
       await recordBatches(this.repository, actor, { workspaceId, runId, scopeId, generation: claimed.generation, items });
-      const compiled = await boundedParse(this.parse, { workspaceId, bundleId: run.sourceInput.bundleId, profile, materials: sourceMaterials }, timeoutMs);
+      const input = { workspaceId, bundleId: run.sourceInput.bundleId, profile, materials: sourceMaterials };
+      // Native parser progress comes only from completed deterministic units,
+      // with the same per-unit deadline plus an independent 20-minute ceiling.
+      // Injected parsers without that protocol retain the original total bound.
+      const compiled = this.parse === workerParse ? await workerParse(input, { timeoutMs, signal: lease.signal }) : await boundedParse(this.parse, input, timeoutMs);
       lease.assertActive();
-      const { result: completedResult, records } = await assembleCanonicalOutput({ admission: this.admission, actor, workspaceId, run, sourceMaterials, compiled });
+      const { result: completedResult, records } = await assembleCanonicalOutput({ admission: this.admission, actor, workspaceId, run, sourceMaterials, compiled, profile });
       await this.publication.prepare(actor, workspaceId, runId, scopeId, { generation: claimed.generation, records });
       const completedItems = scopeItemsForMaterials({ workspaceId, bundleId: run.sourceInput.bundleId, profile, sourceMaterials, result: completedResult, records });
       await recordBatches(this.repository, actor, { workspaceId, runId, scopeId, generation: claimed.generation, items: completedItems });
@@ -167,9 +171,6 @@ export class F002Worker {
     }
   }
 
-  async #readFrozenMaterials(actor, workspaceId, run, scope, profile) {
-    return loadFrozenMaterials(this.admission, actor, workspaceId, run, scope, profile);
-  }
 }
 
 export { workerParse };

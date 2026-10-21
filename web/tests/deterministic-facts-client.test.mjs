@@ -6,6 +6,19 @@ import { EvidenceTransport } from "../app/deterministic-facts/transport.ts";
 
 const version = "a".repeat(64), material = "b".repeat(64);
 
+test("F002 export only offers a complete version-bound response and rejects stream failure or member abort", async t => {
+  const headers = { "content-type": "application/json", "x-f002-export-version": version };
+  const client = new DeterministicFactsClient("https://api", "ignored", "w");
+  t.mock.method(globalThis, "fetch", async () => new Response("complete", { headers }));
+  assert.equal(await (await client.exportVersion(version)).text(), "complete");
+  t.mock.method(globalThis, "fetch", async () => new Response("wrong", { headers: { ...headers, "x-f002-export-version": material } }));
+  await assert.rejects(client.exportVersion(version), { code: "F002_EXPORT_INCOMPLETE" });
+  t.mock.method(globalThis, "fetch", async () => new Response(new ReadableStream({ start(controller) { controller.error(new Error("stream interrupted")); } }), { headers }));
+  await assert.rejects(client.exportVersion(version), /stream interrupted/);
+  const aborted = new AbortController(); aborted.abort();
+  await assert.rejects(client.withSignal(aborted.signal).exportVersion(version), { name: "AbortError" });
+});
+
 test("F002 client binds Workspace/member identity and does not automatically retry mutations", async (t) => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => { calls.push({ url, options }); throw new TypeError("lost connection"); });

@@ -5,6 +5,22 @@ import { createF002Runtime, F002ExecutionService, standardF002Profile, structure
 import { SourceAdmissionService } from "../src/source-truth/admission-service.js";
 import { owner, sourceDatabase } from "./support/source-truth-database.js";
 import { F002Repository } from "../src/deterministic-facts/repository.js";
+import { F002ReplayExecutionService } from "../src/deterministic-facts/replay-service.js";
+import { F002RequestExecutionService } from "../src/deterministic-facts/request-service.js";
+
+for (const kind of ["scope", "replay", "request"]) test(`F002 ${kind} polling survives a failed queue scan and retries from durable state`, async () => {
+  let scans = 0, executions = 0;
+  const scan = async () => { if (++scans === 1) throw Object.assign(new Error("owned pool timeout"), { code: "ETIMEDOUT" });
+    return [{ workspaceId: "workspace", runId: "run", scopeId: "scope", replayId: "replay", requestId: "request", actorId: owner.actorId, status: "QUEUED" }]; };
+  const execute = async () => { executions++; };
+  const executor = kind === "scope" ? new F002ExecutionService({ repository: { findRunnableScopes: scan }, worker: { run: execute }, members: [owner] })
+    : kind === "replay" ? new F002ReplayExecutionService({ replays: { findRunnable: scan, execute }, members: [owner] })
+      : new F002RequestExecutionService({ repository: { findRunnableRequests: scan }, requests: { execute }, members: [owner] });
+  await assert.doesNotReject(executor.dispatch(), "a timer callback must not produce an unhandled rejection before claiming any job");
+  assert.equal(executions, 0);
+  await executor.dispatch(); assert.equal(executions, 1);
+  await executor.close();
+});
 
 test("F002 leaves failed scopes stopped until an explicit retry while recovering interrupted leases", async t => {
   const { db, repository: source } = await sourceDatabase(t);

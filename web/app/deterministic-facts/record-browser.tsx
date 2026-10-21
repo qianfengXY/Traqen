@@ -14,12 +14,13 @@ import { useEvidenceView, useInspectorControls } from "./use-view-state.ts";
 import type { Coverage, FactRecord, RecordDetail, RecordPage } from "./types.ts";
 import { boundedTextRange } from "./text-window.ts";
 import { sourceAnchorTextRange } from "./source-anchor.ts";
+import { materialCoverage, materialRecords } from "./coverage.ts";
 
 const short = (value: string) => `${value.slice(0, 12)}…`;
 const statusLabels: Record<string, string> = { DONE: "该能力已完成", NOT_APPLICABLE: "该能力不适用", UNSUPPORTED: "该能力不支持", PARSE_FAILED: "解析失败", PENDING: "待处理", RUNNING: "处理中" };
 
-function useRecords(client: DeterministicFactsClient, versionId: string, name: string, accessLost: (error: Error) => void) {
-  const route = `/versions/${versionId}/${name}?limit=100`;
+function useRecords(client: DeterministicFactsClient, versionId: string, name: string, accessLost: (error: Error) => void, query = "") {
+  const route = `/versions/${versionId}/${name}?limit=100${query ? `&q=${encodeURIComponent(query)}` : ""}`;
   const load = useCallback((bound: DeterministicFactsClient) => bound.request<RecordPage>(route), [route]);
   const resource = useEvidenceResource(client, route, load, accessLost);
   const [paginationError, setPaginationError] = useState<{ route: string; error: Error } | null>(null), [busy, setBusy] = useState(false);
@@ -28,7 +29,7 @@ function useRecords(client: DeterministicFactsClient, versionId: string, name: s
     if (!page?.nextCursor || busy) return;
     setBusy(true);
     try {
-      const next = await client.request<RecordPage>(`/versions/${versionId}/${name}?limit=100&cursor=${encodeURIComponent(page.nextCursor)}`);
+      const next = await client.request<RecordPage>(`${route}&cursor=${encodeURIComponent(page.nextCursor)}`);
       if (!client.signal?.aborted) resource.update(current => ({ items: [...current.items, ...next.items], nextCursor: next.nextCursor }));
     } catch (error) { if (error instanceof FactsClientError && [401, 403].includes(error.status)) accessLost(error); else if (!client.signal?.aborted) setPaginationError({ route, error: error as Error }); }
     finally { if (!client.signal?.aborted) setBusy(false); }
@@ -44,15 +45,16 @@ function RecordList({ records, selectedId, select, query = "" }: { records: Fact
 
 export function RecordBrowser({ client, context, actorId, navigate, accessLost }: { client: DeterministicFactsClient; context: EvidenceLocation; actorId: string; navigate: (next: EvidenceLocation) => void; accessLost: (error: Error) => void }) {
   const versionId = context.graphVersionId!;
-  const materials = useRecords(client, versionId, "materials", accessLost);
+  const view = useEvidenceView({ workspaceId: context.workspaceId, graphVersionId: versionId, actorId, authorized: true, recordId: context.recordId, recordKind: context.kind, graphRootId: context.graphRootId });
+  const materials = useRecords(client, versionId, "materials", accessLost, view.materialPathQuery);
   const records = useRecords(client, versionId, "objects", accessLost);
   const relations = useRecords(client, versionId, "relations", accessLost);
   const facts = useRecords(client, versionId, "facts", accessLost);
-  const coverageRoute = `/versions/${versionId}/coverage`;
-  const loadCoverage = useCallback(async (bound: DeterministicFactsClient) => (await bound.request<{ coverage: Coverage }>(coverageRoute)).coverage, [coverageRoute]);
+  const coverageIds = (materials.page?.items ?? []).map(material => material.id).sort().join(",");
+  const coverageRoute = `/versions/${versionId}/coverage?materialIds=${coverageIds}`;
+  const loadCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, versionId, coverageIds ? coverageIds.split(",") : []), [versionId, coverageIds]);
   const coverageResource = useEvidenceResource(client, coverageRoute, loadCoverage, accessLost);
   const coverage = coverageResource.data;
-  const view = useEvidenceView({ workspaceId: context.workspaceId, graphVersionId: versionId, actorId, authorized: true, recordId: context.recordId, recordKind: context.kind, graphRootId: context.graphRootId });
   const { reopenRef, autoFocus, close, open } = useInspectorControls(view);
   const { query, materialType, processingStatus, directoryScrollTop } = view;
   const directory = useRef<HTMLElement>(null);
@@ -109,12 +111,13 @@ export function RecordBrowser({ client, context, actorId, navigate, accessLost }
   const materialTypes = [...new Set([materialType, ...(materials.page?.items ?? []).map(item => item.payload.kind)].filter((kind): kind is string => typeof kind === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(kind)))].sort();
   return <>
     {back && context.tab !== "relations" && <button className="button" onClick={returnRelation}>返回原关系与列表位置</button>}
-    <div className="f002-actions"><label className="f002-search">在已加载材料／对象／事实中筛选<input value={query} maxLength={512} onChange={event => view.update({ query: event.target.value, directoryScrollTop: 0 })} placeholder="名称、符号、路径、谓词或完整 ID" /></label>
+    <div className="f002-actions"><label className="f002-search">在整个固定范围检索材料路径<input aria-label="在整个固定范围检索材料路径" value={view.materialPathQuery} maxLength={512} onChange={event => view.update({ materialPathQuery: event.target.value, directoryScrollTop: 0 })} placeholder="例如 scripts/android-native-ci.mjs" /></label>
+      <label className="f002-search">在已加载材料／对象／事实中筛选<input value={query} maxLength={512} onChange={event => view.update({ query: event.target.value, directoryScrollTop: 0 })} placeholder="名称、符号、路径、谓词或完整 ID" /></label>
       <label>材料登记类型<select aria-label="材料类型筛选" value={materialType} disabled={!materials.page} onChange={event => view.update({ materialType: event.target.value, directoryScrollTop: 0 })}><option value="">全部已加载类型</option>{materialTypes.map(kind => <option key={kind} value={kind}>{kind}</option>)}</select></label>
       <label>任一能力的实际处置<select aria-label="能力处置状态筛选" value={processingStatus} disabled={!coverage} onChange={event => view.update({ processingStatus: event.target.value, directoryScrollTop: 0 })}><option value="">全部处置状态</option>{dispositionStates.map(status => <option key={status} value={status}>{statusLabels[status]} · {status}</option>)}</select></label>
-      <button className="button" disabled={!query && !materialType && !processingStatus} onClick={() => view.update({ query: "", materialType: "", processingStatus: "", directoryScrollTop: 0 })}>清除筛选</button>
+      <button className="button" disabled={!view.materialPathQuery && !query && !materialType && !processingStatus} onClick={() => view.update({ materialPathQuery: "", query: "", materialType: "", processingStatus: "", directoryScrollTop: 0 })}>清除筛选</button>
       {!view.inspectorOpen && <button className="button" ref={reopenRef} aria-label="重开依据面板" onClick={open}>重开依据面板</button>}</div>
-    <p className="f002-caption">文本检索仅作用于当前获准的已加载页；类型与处置筛选只作用于材料目录。状态来自各项已声明能力，同一材料可匹配多种处置；DONE 不证明完整理解。短编号可能命中多个候选，需明确选择；筛选不更换固定阅读引用。偏好仅按已验证成员和固定版本保存，不保存正文。</p>
+    <p className="f002-caption">材料路径在整个固定范围查询，并有界分页；名称、符号、谓词、类型与处置筛选只作用于已加载页，条件叠加。状态来自各项已声明能力，同一材料可匹配多种处置；DONE 不证明完整理解。短编号可能命中多个候选，需明确选择；筛选不更换固定阅读引用。偏好仅按已验证成员和固定版本保存，不保存正文。</p>
     {coverageResource.error ? <p className="f002-notice" role="alert">处置记录最新读取未完成：{coverageResource.error.message}。{coverage ? "保留本固定版本最后可信的处置。" : "状态未确认，不从可读性、类型或零事实推断；已选状态仍保留。"}<button className="button" onClick={coverageResource.retry}>重试处置记录</button></p> : !coverage && <p className="f002-caption" role="status">正在读取本固定版本的能力处置；未确认前保留筛选，不猜测处理状态。</p>}
     {view.error && <p className="f002-notice" role="status">{view.error}</p>}
     <div className={`f002-browser-grid${view.inspectorOpen ? "" : " f002-inspector-closed"}`}><aside className="f002-directory" ref={directory} onScroll={event => view.update({ directoryScrollTop: event.currentTarget.scrollTop })}><h2>材料目录</h2>{materials.error ? <p role="alert">目录不可用：{materials.error.message}<button className="button" onClick={materials.retry}>重试目录</button></p> : !materials.page ? <p role="status">读取获准目录…</p> : <>
@@ -138,11 +141,20 @@ export function RecordBrowser({ client, context, actorId, navigate, accessLost }
 
 export function CoverageView({ client, context, actorId, navigate, accessLost }: { client: DeterministicFactsClient; context: EvidenceLocation; actorId: string; navigate: (next: EvidenceLocation) => void; accessLost: (error: Error) => void }) {
   const gaps = useRecords(client, context.graphVersionId!, "gaps", accessLost);
-  const materials = useRecords(client, context.graphVersionId!, "materials", accessLost);
-  const route = `/versions/${context.graphVersionId}/coverage`;
+  const [position, setPosition] = useState<{ versionId: string; cursor: string | null } | null>(null);
+  const cursor = position && position.versionId === context.graphVersionId ? position.cursor : null;
+  const setCursor = (next: string | null) => setPosition({ versionId: context.graphVersionId!, cursor: next });
+  const route = `/versions/${context.graphVersionId}/coverage?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   const load = useCallback(async (bound: DeterministicFactsClient) => (await bound.request<{ coverage: Coverage }>(route)).coverage, [route]);
   const resource = useEvidenceResource(client, route, load, accessLost);
   const coverage = resource.data, error = resource.error;
+  const referencedIds = [...new Set([
+    ...(coverage?.items ?? []).map(item => item.materialId),
+    ...(gaps.page?.items ?? []).flatMap(gap => typeof gap.payload.materialId === "string" ? [gap.payload.materialId] : []),
+  ])].sort().join(",");
+  const loadMaterials = useCallback((bound: DeterministicFactsClient) => materialRecords(bound, context.graphVersionId!, referencedIds ? referencedIds.split(",") : []), [context.graphVersionId, referencedIds]);
+  const materialResource = useEvidenceResource(client, `${context.graphVersionId}/referenced-materials/${referencedIds}`, loadMaterials, accessLost);
+  const materials = { page: materialResource.data, error: materialResource.error, retry: materialResource.retry };
   const view = useEvidenceView({ workspaceId: context.workspaceId, graphVersionId: context.graphVersionId!, actorId, authorized: true, recordId: context.recordId, recordKind: context.kind });
   const { reopenRef, autoFocus, close, open } = useInspectorControls(view);
   const list = useRef<HTMLDivElement>(null);
@@ -153,7 +165,10 @@ export function CoverageView({ client, context, actorId, navigate, accessLost }:
   const filters = view.gapFilters;
   const updateFilter = (patch: Partial<typeof filters>) => view.update({ gapFilters: { ...filters, ...patch }, gapScrollTop: 0 });
   const materialById = new Map((materials.page?.items ?? []).map(record => [record.id, record]));
-  const filtered = filterEvidenceGaps(gaps.page?.items ?? [], filters, materials.page?.items ?? [], coverage);
+  const gapMaterialIds = [...new Set((gaps.page?.items ?? []).flatMap(gap => typeof gap.payload.materialId === "string" ? [gap.payload.materialId] : []))].sort().join(",");
+  const loadGapCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, context.graphVersionId!, gapMaterialIds ? gapMaterialIds.split(",") : []), [context.graphVersionId, gapMaterialIds]);
+  const gapCoverage = useEvidenceResource(client, `${context.graphVersionId}/gap-coverage/${gapMaterialIds}`, loadGapCoverage, accessLost);
+  const filtered = filterEvidenceGaps(gaps.page?.items ?? [], filters, materials.page?.items ?? [], gapCoverage.data);
   const codes = [...new Set([filters.code, ...(gaps.page?.items ?? []).map(gap => gap.payload.code)].filter(Boolean))];
   const materialTypes = [...new Set([filters.materialType, ...(materials.page?.items ?? []).map(material => material.payload.kind)].filter(Boolean))];
   const select = (record: FactRecord, line?: number) => {
@@ -170,23 +185,26 @@ export function CoverageView({ client, context, actorId, navigate, accessLost }:
     {!coverage ? <p role="status">读取固定范围覆盖…</p> : <>
       <dl className="f002-counts">{Object.entries(coverage.counts).map(([status, count]) => <div key={status}><dt>{status}</dt><dd>{count}</dd></div>)}</dl>
       <p>已声明能力：{coverage.declaredCapabilities.join("、")}</p>
+      <p>全范围 {coverage.totalItems ?? Object.values(coverage.counts).reduce((sum, count) => sum + count, 0)} 个材料×能力工作项；下表仅显示当前页 {coverage.items.length} 项，非完整清单。</p>
       <div className="f002-coverage-list"><table className="f002-table"><thead><tr><th scope="col">材料</th><th scope="col">能力</th><th scope="col">实际处置</th><th scope="col">未知／恢复依据</th></tr></thead><tbody>{coverage.items.map(item => <tr key={`${item.materialId}:${item.capabilityId}`}>
         <td><button className="f002-record-link" onClick={() => select(materialById.get(item.materialId) ?? { kind: "MATERIAL", id: item.materialId, payload: {} })}>{materialById.get(item.materialId)?.payload.displayPath ?? item.materialId}</button></td>
         <td>{item.capabilityId}</td><td>{item.status}</td><td>{item.diagnostic ? JSON.stringify(item.diagnostic) : "无额外诊断；不推断业务结论"}</td></tr>)}</tbody></table></div>
+      <div className="f002-actions"><button className="button" disabled={!cursor} onClick={() => setCursor(null)}>回到覆盖首页</button><button className="button" disabled={!coverage.nextCursor} onClick={() => setCursor(coverage.nextCursor ?? null)}>覆盖下一页</button></div>
     </>}
     <h3>F001 继承缺口与 F002 技术限制</h3>
+    {gapCoverage.error && <p role="alert">当前缺口的能力处置读取未完成：{gapCoverage.error.message}<button className="button" onClick={gapCoverage.retry}>重读缺口处置</button></p>}
     <div className="f002-actions">
       <label>缺口检索<input aria-label="缺口检索" maxLength={512} value={filters.query} onChange={event => updateFilter({ query: event.target.value })} /></label>
       <label>限制原因<select aria-label="缺口原因筛选" value={filters.code} onChange={event => updateFilter({ code: event.target.value })}><option value="">全部已加载原因</option>{codes.map(code => <option key={code}>{code}</option>)}</select></label>
       <label>发现来源<select aria-label="缺口来源筛选" value={filters.origin} onChange={event => updateFilter({ origin: event.target.value })}><option value="">全部来源</option><option value="F001">F001 继承限制</option><option value="F002">F002 技术发现</option></select></label>
       <label>受影响材料类型<select aria-label="缺口材料类型筛选" value={filters.materialType} onChange={event => updateFilter({ materialType: event.target.value })}><option value="">全部已加载类型</option>{materialTypes.map(kind => <option key={kind}>{kind}</option>)}</select></label>
-      <label>对应能力的实际处置<select aria-label="缺口处置状态筛选" disabled={!coverage} value={filters.status} onChange={event => updateFilter({ status: event.target.value })}><option value="">全部状态</option>{dispositionStates.map(status => <option key={status}>{status}</option>)}</select></label>
+      <label>对应能力的实际处置<select aria-label="缺口处置状态筛选" disabled={!gapCoverage.data} value={filters.status} onChange={event => updateFilter({ status: event.target.value })}><option value="">全部状态</option>{dispositionStates.map(status => <option key={status}>{status}</option>)}</select></label>
       <button className="button" disabled={!Object.values(filters).some(Boolean)} onClick={() => view.update({ gapFilters: emptyGapFilters(), gapScrollTop: 0 })}>清除缺口筛选</button>
     </div>
     {materials.error && <p role="alert">材料类型读取未完成，保留已选条件：{materials.error.message}<button className="button" onClick={materials.retry}>重试本版本材料目录</button></p>}
     {gaps.error ? <p role="alert">缺口读取未完成：{gaps.error.message}<button className="button" onClick={gaps.retry}>重试本版本缺口</button></p> : !gaps.page ? <p role="status">读取缺口…</p> : <>
       <div className="f002-gap-list" ref={list} onScroll={event => view.update({ gapScrollTop: event.currentTarget.scrollTop })}>
-        {!filtered.length ? <p className="f002-empty" role="status">{filters.status && !coverage ? "对应能力处置尚未确认；没有静默清除筛选。" : "没有匹配缺口；保留条件与当前选择，零 Gap 不证明没有遗漏。"}</p>
+        {!filtered.length ? <p className="f002-empty" role="status">{filters.status && !gapCoverage.data ? "对应能力处置尚未确认；没有静默清除筛选。" : "当前已加载页没有匹配缺口；保留条件与当前选择，零 Gap 不证明没有遗漏。"}</p>
           : <table className="f002-table"><thead><tr><th scope="col">原因与发现来源</th><th scope="col">受影响材料／能力</th><th scope="col">精确定位</th></tr></thead><tbody>{filtered.map(gap => {
             const material = materialById.get(gap.payload.materialId ?? "");
             return <tr key={gap.id} data-gap-id={gap.id} aria-selected={gap.id === context.recordId}><td><button className="f002-record-link" onClick={() => select(gap)}>{gap.payload.code ?? "原因未说明"}</button><small>{gap.payload.origin === "F001" ? "F001 继承限制" : gap.payload.origin === "F002" ? "F002 技术发现" : "发现来源未确认"}</small></td>
@@ -194,7 +212,6 @@ export function CoverageView({ client, context, actorId, navigate, accessLost }:
           })}</tbody></table>}
       </div>
       {gaps.page.nextCursor && <button className="button" disabled={gaps.busy} onClick={() => void gaps.more()}>加载更多缺口</button>}
-      {materials.page?.nextCursor && <button className="button" disabled={materials.busy} onClick={() => void materials.more()}>加载更多受影响材料</button>}
     </>}
     {view.inspectorOpen && <RecordDetailPanel client={client} context={context} select={select} accessLost={accessLost} scrollTop={view.inspectorScrollTop} onScroll={inspectorScrollTop => view.update({ inspectorScrollTop })} onClose={close} autoFocus={autoFocus} />}
   </section>;

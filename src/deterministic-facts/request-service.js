@@ -628,7 +628,12 @@ export class F002RequestExecutionService {
   async start() { if (!this.timer) { this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs); this.timer.unref(); } await this.dispatch(); }
   async close() { if (this.timer) clearInterval(this.timer); this.timer = null; await Promise.allSettled(this.running.values()); }
   async enqueue(request) { return this.#schedule({ workspaceId: request.workspaceId, requestId: request.id, actorId: request.actorId, status: request.status }); }
-  async dispatch() { await Promise.all((await this.repository.findRunnableRequests({ limit: this.maxConcurrent * 4 })).map((request) => this.#schedule(request))); }
+  async dispatch() {
+    let runnable;
+    try { runnable = await this.repository.findRunnableRequests({ limit: this.maxConcurrent * 4 }); }
+    catch { return; } // Unclaimed durable work remains available to the next poll.
+    await Promise.all(runnable.map((request) => this.#schedule(request)));
+  }
   #schedule(request) {
     if (!request?.workspaceId || !request?.requestId || !["QUEUED", "RUNNING"].includes(request.status)) return Promise.resolve();
     const key = `${request.workspaceId}\u0000${request.requestId}`;

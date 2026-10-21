@@ -37,12 +37,11 @@ function recordId(value) {
   return value;
 }
 
-function referencesFor(record, byKey) {
+function referenceKeys(record) {
   const refs = [];
   const add = (role, kind, id) => {
     if (!id) return;
-    const target = byKey.get(`${kind}\u0000${id}`);
-    if (target) refs.push({ role, kind, id, payload: target.payload });
+    refs.push({ role, kind, id });
   };
   if (record.kind === "OBJECT") {
     add("material", "MATERIAL", record.payload.materialId);
@@ -60,6 +59,19 @@ function referencesFor(record, byKey) {
     add("object", "OBJECT", record.payload.objectId);
   }
   return refs;
+}
+
+function referencesFor(record, byKey) {
+  return referenceKeys(record).flatMap(ref => {
+    const target = byKey.get(`${ref.kind}\u0000${ref.id}`);
+    return target ? [{ ...ref, payload: target.payload }] : [];
+  });
+}
+
+async function versionVocabulary(tx, workspaceId, graphVersionId, profile) {
+  const predicates = (await tx.query(`SELECT DISTINCT payload->>'predicate' AS predicate FROM f002_record
+    WHERE workspace_id=$1 AND graph_version_id=$2 AND kind='FACT'`, [workspaceId, graphVersionId])).rows;
+  return vocabularyFor({ profile, records: predicates.map(row => ({ kind: "FACT", payload: { predicate: row.predicate } })) });
 }
 
 export class F002QueryService {
@@ -110,7 +122,7 @@ export class F002QueryService {
         JOIN f002_scope s ON s.workspace_id=f.workspace_id AND s.run_id=f.run_id AND s.scope_id=f.scope_id
         WHERE f.workspace_id=$1 AND f.graph_version_id=$2`, [workspaceId, graphVersionId])).rows[0];
       requireF002(factSet, "F002_VERSION_NOT_FOUND", "事实集版本不存在", { status: 404 });
-      const recordRows = (await tx.query("SELECT kind,id,payload FROM f002_record WHERE workspace_id=$1 AND graph_version_id=$2 ORDER BY kind,id", [workspaceId, graphVersionId])).rows;
+      const recordRows = (await tx.query("SELECT kind,id FROM f002_record WHERE workspace_id=$1 AND graph_version_id=$2 ORDER BY kind,id", [workspaceId, graphVersionId])).rows;
       const counts = Object.fromEntries(recordRows.reduce((result, row) => result.set(row.kind, (result.get(row.kind) ?? 0) + 1), new Map()));
       const shards = Object.fromEntries([...new Set(recordRows.map((row) => row.kind))].sort(compareUtf8).map((kind) => {
         const ids = recordRows.filter((row) => row.kind === kind).map((row) => row.id).sort(compareUtf8);
@@ -118,7 +130,7 @@ export class F002QueryService {
       }));
       const profile = (await tx.query("SELECT payload FROM f002_profile WHERE id=$1", [factSet.profile_id])).rows[0]?.payload;
       requireF002(profile, "F002_PROFILE_UNAVAILABLE", "事实集能力配置不存在", { status: 409 });
-      const vocabulary = vocabularyFor({ profile, records: recordRows });
+      const vocabulary = await versionVocabulary(tx, workspaceId, graphVersionId, profile);
       return { graphVersionId, runId: factSet.run_id, scopeId: factSet.scope_id, profileId: factSet.profile_id, bundleId: factSet.bundle_id,
         recordDigest: factSet.record_digest, scope: { selections: factSet.selections, status: factSet.scope_status },
         publicationBindingId: canonicalDigest("PUBLICATION_BINDING", { workspaceId, runId: factSet.run_id, scopeId: factSet.scope_id, bundleId: factSet.bundle_id }),
@@ -127,21 +139,35 @@ export class F002QueryService {
     });
   }
 
-  async coverage(actor, workspaceId, graphVersionId) {
-    requireVersionId(graphVersionId);
+  async coverage(actor, workspaceId, graphVersionId, { limit = 100, cursor = null, materialIds = [] } = {}) {
+    requireVersionId(graphVersionId); boundedLimit(limit);
+    requireF002(Array.isArray(materialIds) && materialIds.length <= 100 && materialIds.every(id => typeof id === "string" && /^[a-f0-9]{64}$/.test(id)),
+      "F002_RECORD_INVALID", "覆盖材料筛选必须是至多100个精确材料身份", { status: 422 });
+    const selected = [...new Set(materialIds)].sort();
+    const binding = { route: "coverage", workspaceId, graphVersionId, kind: canonicalDigest("COVERAGE_FILTER", { materialIds: selected }) };
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => {
+      const marker = cursor === null ? null : this.#cursor(cursor, binding);
       const factSet = (await tx.query(`SELECT f.run_id,f.scope_id,profile.payload AS profile_payload
         FROM f002_fact_set f JOIN f002_profile profile ON profile.id=f.profile_id
         WHERE f.workspace_id=$1 AND f.graph_version_id=$2`, [workspaceId, graphVersionId])).rows[0];
       requireF002(factSet, "F002_VERSION_NOT_FOUND", "事实集版本不存在", { status: 404 });
+      // Sealed dispositions are immutable. Carry server-signed totals with the
+      // cursor rather than re-counting the entire denominator on every page.
+      const counts = marker?.counts ?? Object.fromEntries(coverageStates.map(status => [status, 0]));
+      if (!marker?.counts) for (const row of (await tx.query(`SELECT status,count(*)::integer AS count FROM f002_scope_item
+        WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 GROUP BY status`, [workspaceId, factSet.run_id, factSet.scope_id])).rows) counts[row.status] = row.count;
+      const values = [workspaceId, factSet.run_id, factSet.scope_id], conditions = ["workspace_id=$1", "run_id=$2", "scope_id=$3"];
+      if (selected.length) { values.push(selected); conditions.push(`material_id=ANY($${values.length}::text[])`); }
+      if (marker) { values.push(marker.kind, marker.id); conditions.push(`(material_id,capability_id)>($${values.length - 1},$${values.length})`); }
+      values.push(limit + 1);
       const rows = (await tx.query(`SELECT material_id,capability_id,status,record_ids,gap_ids,diagnostic
-        FROM f002_scope_item WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3`, [workspaceId, factSet.run_id, factSet.scope_id])).rows
+        FROM f002_scope_item WHERE ${conditions.join(" AND ")} ORDER BY material_id,capability_id LIMIT $${values.length}`, values)).rows
         .map((row) => ({ materialId: row.material_id, capabilityId: row.capability_id, status: row.status,
-          recordIds: row.record_ids, gapIds: row.gap_ids, diagnostic: row.diagnostic ?? null }))
-        .sort((left, right) => compareUtf8(left.materialId, right.materialId) || compareUtf8(left.capabilityId, right.capabilityId));
-      const counts = Object.fromEntries(coverageStates.map((status) => [status, 0]));
-      for (const row of rows) counts[row.status] = (counts[row.status] ?? 0) + 1;
-      return { scopeId: factSet.scope_id, declaredCapabilities: [...factSet.profile_payload.capabilityIds], counts, items: rows };
+          recordIds: row.record_ids, gapIds: row.gap_ids, diagnostic: row.diagnostic ?? null }));
+      const items = rows.slice(0, limit), last = items.at(-1);
+      return { scopeId: factSet.scope_id, declaredCapabilities: [...factSet.profile_payload.capabilityIds], counts,
+        totalItems: Object.values(counts).reduce((sum, count) => sum + count, 0), items,
+        nextCursor: rows.length > limit ? this.#sign({ ...binding, last: { kind: last.materialId, id: last.capabilityId, counts } }) : null };
     });
   }
 
@@ -151,10 +177,14 @@ export class F002QueryService {
     return this.#page(actor, workspaceId, graphVersionId, { route: "records", kind, limit, cursor });
   }
 
-  async collection(actor, workspaceId, graphVersionId, name, { limit = 100, cursor = null } = {}) {
+  async collection(actor, workspaceId, graphVersionId, name, { limit = 100, cursor = null, query = "", materialIds = [] } = {}) {
     requireVersionId(graphVersionId); boundedLimit(limit);
     const definition = collections.get(collectionName(name));
-    return this.#page(actor, workspaceId, graphVersionId, { route: name, kind: definition.kind, limit, cursor, relationsOnly: definition.relationsOnly ?? false });
+    requireF002(typeof query === "string" && query.length <= 512 && !/[\u0000-\u001f\u007f]/.test(query)
+      && Array.isArray(materialIds) && materialIds.length <= 100 && materialIds.every(id => typeof id === "string" && /^[a-f0-9]{64}$/.test(id))
+      && (name === "materials" || (!query && materialIds.length === 0)), "F002_QUERY_INVALID", "材料路径或精确身份筛选无效", { status: 422 });
+    return this.#page(actor, workspaceId, graphVersionId, { route: name, kind: definition.kind, limit, cursor, query,
+      materialIds: [...new Set(materialIds)].sort(), relationsOnly: definition.relationsOnly ?? false });
   }
 
   async vocabulary(actor, workspaceId, graphVersionId) {
@@ -164,8 +194,7 @@ export class F002QueryService {
         JOIN f002_profile profile ON profile.id=fact_set.profile_id
         WHERE fact_set.workspace_id=$1 AND fact_set.graph_version_id=$2`, [workspaceId, graphVersionId])).rows[0];
       requireF002(version, "F002_VERSION_NOT_FOUND", "事实集版本不存在", { status: 404 });
-      const records = (await tx.query("SELECT kind,id,payload FROM f002_record WHERE workspace_id=$1 AND graph_version_id=$2 ORDER BY kind,id", [workspaceId, graphVersionId])).rows;
-      return vocabularyFor({ profile: version.profile, records });
+      return versionVocabulary(tx, workspaceId, graphVersionId, version.profile);
     });
   }
 
@@ -174,7 +203,10 @@ export class F002QueryService {
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => {
       const row = (await tx.query("SELECT kind,id,payload FROM f002_record WHERE workspace_id=$1 AND graph_version_id=$2 AND kind=$3 AND id=$4", [workspaceId, graphVersionId, kind, id])).rows[0];
       requireF002(row, "F002_RECORD_NOT_FOUND", "记录不存在于当前事实集", { status: 404 });
-      const records = (await tx.query("SELECT kind,id,payload FROM f002_record WHERE workspace_id=$1 AND graph_version_id=$2", [workspaceId, graphVersionId])).rows;
+      const keys = referenceKeys(row);
+      const records = keys.length ? (await tx.query(`SELECT kind,id,payload FROM f002_record
+        WHERE workspace_id=$1 AND graph_version_id=$2 AND kind=ANY($3::text[]) AND id=ANY($4::text[])`,
+      [workspaceId, graphVersionId, [...new Set(keys.map(ref => ref.kind))], [...new Set(keys.map(ref => ref.id))]])).rows : [];
       const byKey = new Map(records.map((record) => [`${record.kind}\u0000${record.id}`, record]));
       return { record: row, references: referencesFor(row, byKey) };
     });
@@ -238,23 +270,26 @@ export class F002QueryService {
     });
   }
 
-  async #page(actor, workspaceId, graphVersionId, { route, kind, limit, cursor, relationsOnly = false }) {
+  async #page(actor, workspaceId, graphVersionId, { route, kind, limit, cursor, relationsOnly = false, query = "", materialIds = [] }) {
+    const cursorRoute = query || materialIds.length ? `${route}:${canonicalDigest("MATERIAL_QUERY", { query, materialIds })}` : route;
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => {
       // Authenticate the requested Workspace before interpreting caller-supplied
       // cursor state, so a foreign cursor cannot distinguish its version/filter.
-      const marker = cursor === null ? null : this.#cursor(cursor, { route, workspaceId, graphVersionId, kind });
+      const marker = cursor === null ? null : this.#cursor(cursor, { route: cursorRoute, workspaceId, graphVersionId, kind });
       const version = (await tx.query("SELECT 1 FROM f002_fact_set WHERE workspace_id=$1 AND graph_version_id=$2", [workspaceId, graphVersionId])).rows[0];
       requireF002(version, "F002_VERSION_NOT_FOUND", "事实集版本不存在", { status: 404 });
       const values = [workspaceId, graphVersionId], conditions = ["workspace_id=$1", "graph_version_id=$2"];
       if (kind !== null) { values.push(kind); conditions.push(`kind=$${values.length}`); }
       if (relationsOnly) conditions.push("payload->>'kind'='RELATION'");
+      if (query) { values.push(query); conditions.push(`strpos(lower(COALESCE(payload->>'displayPath','')),lower($${values.length}))>0`); }
+      if (materialIds.length) { values.push(materialIds); conditions.push(`id=ANY($${values.length}::text[])`); }
       if (marker) { values.push(marker.kind, marker.id); conditions.push(`(kind,id)>($${values.length - 1},$${values.length})`); }
       values.push(limit + 1);
       const rows = (await tx.query(`SELECT kind,id,payload FROM f002_record WHERE ${conditions.join(" AND ")}
         ORDER BY kind,id LIMIT $${values.length}`, values)).rows;
       const items = rows.slice(0, limit).map((record) => ({ kind: record.kind, id: record.id, payload: record.payload }));
       const last = items.at(-1);
-      return { items, nextCursor: rows.length > items.length ? this.#sign({ route, workspaceId, graphVersionId, kind, last: { kind: last.kind, id: last.id } }) : null };
+      return { items, nextCursor: rows.length > items.length ? this.#sign({ route: cursorRoute, workspaceId, graphVersionId, kind, last: { kind: last.kind, id: last.id } }) : null };
     });
   }
 

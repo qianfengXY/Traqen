@@ -66,16 +66,97 @@ test("F002 page queries push the cursor, relation filter and row bound into Post
   assert.deepEqual(await queries.collection(owner, "workspace", "e".repeat(64), "relations", { limit: 2 }), { items: [], nextCursor: null });
 });
 
+test("F002 material paths search the entire fixed version and exact material lookup never silently ignores its filter", async t => {
+  const { repository, sealed, verified } = await publishedFixture(t);
+  const queries = new F002QueryService(repository, { cursorSecret: "whole-material-query-test" });
+  const absent = await queries.collection(owner, "workspace", sealed.graphVersionId, "materials", { query: "a-file-that-is-not-here" });
+  assert.deepEqual(absent.items, []);
+  assert.deepEqual((await queries.collection(owner, "workspace", sealed.graphVersionId, "materials", { materialIds: ["0".repeat(64)] })).items, []);
+  assert.deepEqual((await queries.collection(owner, "workspace", sealed.graphVersionId, "materials", { materialIds: [verified.materialId] })).items.map(item => item.id), [verified.materialId]);
+  assert.equal((await queries.collection(owner, "workspace", sealed.graphVersionId, "materials", { query: "%" })).items.length, 0, "percent is literal text, not a SQL wildcard");
+  await assert.rejects(queries.collection(owner, "workspace", sealed.graphVersionId, "materials", { query: "x".repeat(513) }), { code: "F002_QUERY_INVALID" });
+});
+
+test("F002 material path and exact-ID pagination keeps SQL bounds and signs the complete filter", async () => {
+  const ids = ["1".repeat(64), "2".repeat(64), "3".repeat(64)];
+  const queries = new F002QueryService({ withAuthorizedWorkspace: async (_actor, _workspace, work) => work({ query: async (sql, values) => {
+    if (sql.includes("FROM f002_fact_set")) return { rows: [{}] };
+    assert.match(sql, /strpos\(lower\(COALESCE\(payload->>'displayPath'/);
+    assert.match(sql, /id=ANY\(\$\d+::text\[\]\)/);
+    assert.match(sql, /ORDER BY kind,id LIMIT \$\d+/);
+    assert.ok(values.includes("scripts/%_"), "query is a bound literal value, never interpolated SQL");
+    assert.ok(values.some(value => Array.isArray(value) && JSON.stringify(value) === JSON.stringify(ids)));
+    assert.equal(values.at(-1), 3);
+    const marker = sql.includes("(kind,id)>") ? values.at(-2) : "";
+    return { rows: ids.filter(id => id > marker).slice(0, 3).map(id => ({ kind: "MATERIAL", id, payload: { displayPath: "scripts/%_file.mjs" } })) };
+  } }) }, { cursorSecret: "material-query-bound-pagination" });
+  const options = { limit: 2, query: "scripts/%_", materialIds: ids };
+  const first = await queries.collection(owner, "workspace", "a".repeat(64), "materials", options);
+  assert.equal(first.items.length, 2); assert.ok(first.nextCursor);
+  const second = await queries.collection(owner, "workspace", "a".repeat(64), "materials", { ...options, materialIds: [...ids].reverse(), cursor: first.nextCursor });
+  assert.deepEqual(second.items.map(item => item.id), [ids[2]]);
+  assert.equal(second.nextCursor, null);
+  for (const changed of [{ query: "scripts/" }, { materialIds: ids.slice(1) }]) {
+    await assert.rejects(queries.collection(owner, "workspace", "a".repeat(64), "materials", { ...options, ...changed, cursor: first.nextCursor }), { code: "F002_CURSOR_INVALID" });
+  }
+});
+
+test("F002 record detail fetches only its exact direct references, not every full record in a large version", async () => {
+  const fact = { kind: "FACT", id: "a".repeat(64), payload: { kind: "PROPERTY", subjectId: "b".repeat(64), evidenceIds: ["c".repeat(64)], premiseFactIds: [] } };
+  const references = [{ kind: "OBJECT", id: fact.payload.subjectId, payload: {} }, { kind: "EVIDENCE", id: fact.payload.evidenceIds[0], payload: {} }];
+  let reads = 0;
+  const queries = new F002QueryService({ withAuthorizedWorkspace: async (_actor, _workspace, work) => work({ query: async (sql, values) => {
+    if (++reads === 1) return { rows: [fact] };
+    assert.match(sql, /id=ANY\(/, "detail must not materialize the whole fixed version");
+    assert.deepEqual(values.slice(0, 2), ["workspace", "e".repeat(64)]);
+    return { rows: references };
+  } }) }, { cursorSecret: "bounded-record-reference-test" });
+  const detail = await queries.record(owner, "workspace", "e".repeat(64), "FACT", fact.id);
+  assert.deepEqual(detail.references.map(ref => ref.role), ["subject", "evidence"]);
+});
+
 test("F002 coverage exposes the sealed material × capability denominator and dispositions", async (t) => {
   const { repository, sealed, verified } = await publishedFixture(t);
   const queries = new F002QueryService(repository, { cursorSecret: "query-test-secret" });
   const coverage = await queries.coverage(owner, "workspace", sealed.graphVersionId);
   assert.deepEqual(coverage, {
+    totalItems: 1, nextCursor: null,
     scopeId: sealed.scopeId,
     declaredCapabilities: ["javascript"],
     counts: { DONE: 1, NOT_APPLICABLE: 0, UNSUPPORTED: 0, PARSE_FAILED: 0, PENDING: 0, RUNNING: 0 },
     items: [{ materialId: verified.materialId, capabilityId: "javascript", status: "DONE", recordIds: [], gapIds: [], diagnostic: null }],
   });
+});
+
+test("F002 coverage pages keep global counts, exact material filters and cursor identity without materializing the denominator", async t => {
+  const { repository, sealed, verified } = await publishedFixture(t);
+  const queries = new F002QueryService(repository, { cursorSecret: "query-test-secret" });
+  await assert.rejects(queries.coverage(owner, "workspace", sealed.graphVersionId, { limit: 501 }), { code: "F002_PAGE_INVALID" });
+  const filtered = await queries.coverage(owner, "workspace", sealed.graphVersionId, { materialIds: ["0".repeat(64)], limit: 1 });
+  assert.equal(filtered.items.length, 0);
+  assert.equal(filtered.counts.DONE, 1, "global denominator is independent of this material page");
+  const page = await queries.coverage(owner, "workspace", sealed.graphVersionId, { materialIds: [verified.materialId], limit: 1 });
+  assert.equal(page.items.length, 1);
+  assert.equal(page.nextCursor, null);
+});
+
+test("F002 coverage keyset pagination is SQL-bounded and signed totals cannot cross a material filter", async () => {
+  const ids = ["1".repeat(64), "2".repeat(64), "3".repeat(64)];
+  let aggregations = 0;
+  const queries = new F002QueryService({ withAuthorizedWorkspace: async (_actor, _workspace, work) => work({ query: async (sql, values) => {
+    if (sql.includes("FROM f002_fact_set")) return { rows: [{ run_id: "run", scope_id: "scope", profile_payload: { capabilityIds: ["inventory"] } }] };
+    if (sql.includes("GROUP BY status")) { aggregations++; return { rows: [{ status: "DONE", count: 718572 }] }; }
+    assert.match(sql, /ORDER BY material_id,capability_id LIMIT \$\d+/);
+    assert.ok(values.at(-1) <= 501);
+    const marker = sql.includes("(material_id,capability_id)>") ? values.at(-3) : "";
+    return { rows: ids.filter(id => id > marker).slice(0, values.at(-1)).map(material_id => ({ material_id, capability_id: "inventory", status: "DONE", record_ids: [], gap_ids: [] })) };
+  } }) }, { cursorSecret: "coverage-pagination-test" });
+  const first = await queries.coverage(owner, "workspace", "a".repeat(64), { limit: 2 });
+  assert.equal(first.items.length, 2); assert.ok(first.nextCursor); assert.equal(first.totalItems, 718572);
+  const next = await queries.coverage(owner, "workspace", "a".repeat(64), { limit: 2, cursor: first.nextCursor });
+  assert.deepEqual(next.items.map(item => item.materialId), [ids[2]]);
+  assert.equal(next.nextCursor, null); assert.equal(aggregations, 1);
+  await assert.rejects(queries.coverage(owner, "workspace", "a".repeat(64), { cursor: first.nextCursor, materialIds: [ids[0]] }), { code: "F002_CURSOR_INVALID" });
 });
 
 test("F002 exports typed five-part records, vocabulary, evidence detail, and a bounded local graph", async (t) => {

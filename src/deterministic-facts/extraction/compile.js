@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isUtf8 } from "node:buffer";
 import path from "node:path";
 
 import { parse as parseJavaScript } from "acorn";
@@ -27,43 +28,24 @@ import { extractDocumentStructure, resolveDocumentLinks } from "./document-struc
 import { extractJavaScriptTests, resolveTestReferences } from "./test-assets.js";
 import { extractJunitReports } from "./test-reports.js";
 import { resolveEndpointContracts } from "./endpoint-contracts.js";
+import { createTextAnchor } from "./text-anchor.js";
+import { F002Error } from "../errors.js";
 
 registerDynamicLanguage({ java: javaLanguage });
 
 const httpMethods = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
 import { containsPrivateKey, isSensitiveKey } from "../sensitive-content.js";
+// These comparison inputs are validated lowercase hexadecimal identities.
+// Their native lexical order is exactly their UTF-8 byte order.
+const idCompare = (left, right) => left < right ? -1 : left > right ? 1 : 0;
 const byteCompare = (left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+class ScopeRecordLimit extends Error {}
 
 function utf8Text(bytes) {
-  const text = Buffer.from(bytes).toString("utf8");
-  return Buffer.from(text, "utf8").equals(Buffer.from(bytes)) ? text : null;
-}
-
-function textAnchor(text, start, end) {
-  const position = (index) => {
-    const before = text.slice(0, index);
-    let line = 1, lineStart = 0;
-    for (let offset = 0; offset < before.length; offset += 1) {
-      if (before[offset] === "\r") {
-        if (before[offset + 1] === "\n") offset += 1;
-        line += 1; lineStart = offset + 1;
-      } else if (before[offset] === "\n") {
-        line += 1; lineStart = offset + 1;
-      }
-    }
-    return { line, column: [...text.slice(lineStart, index)].length + 1 };
-  };
-  const first = position(start), last = position(end);
-  return {
-    kind: "TEXT",
-    byteStart: Buffer.byteLength(text.slice(0, start), "utf8"),
-    byteEnd: Buffer.byteLength(text.slice(0, end), "utf8"),
-    lineStart: first.line,
-    columnStart: first.column,
-    lineEnd: last.line,
-    columnEnd: last.column,
-  };
+  // Validate the original byte sequence without three additional full-file
+  // Buffer copies. Keep BOMs and literal source text; never repair bad UTF-8.
+  return isUtf8(bytes) ? bytes.toString("utf8") : null;
 }
 
 function mediaKind(displayPath, mediaType, limits) {
@@ -151,7 +133,17 @@ function imageAnchor(bytes, contentDigest) {
   return { kind: "BINARY", digest: contentDigest };
 }
 
-export function compileDeterministicFacts({ workspaceId, bundleId, profile, materials, ruleRegistry = installedF002Rules }) {
+export function compileDeterministicFacts(input) {
+  const steps = compileDeterministicFactSteps(input);
+  let step;
+  do { step = steps.next(); } while (!step.done);
+  return step.value;
+}
+
+// Synchronous callers consume the same generator to completion; the parser
+// worker reports completed units to its parent watchdog. No partition changes
+// the scope, rule set, cross-material resolution, identities or final output.
+export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile, materials, ruleRegistry = installedF002Rules }) {
   if (typeof workspaceId !== "string" || !/^[a-f0-9]{64}$/.test(bundleId) || !/^[a-f0-9]{64}$/.test(profile?.id ?? "") || !Array.isArray(materials)) {
     throw new TypeError("compileDeterministicFacts requires Workspace, Bundle, profile, and materials");
   }
@@ -159,12 +151,43 @@ export function compileDeterministicFacts({ workspaceId, bundleId, profile, mate
     throw new TypeError("compileDeterministicFacts requires a server rule registry");
   }
   ruleRegistry.assertProfile(profile);
+  const progress = (phase, completed) => ({ phase, completed, total: materials.length });
+  yield progress("NORMALIZE", 0);
   const objects = [], evidence = [], facts = [], gaps = [], objectById = new Map(), materialByLocation = new Map(), linkCandidates = [], jsExports = [], jsImportedCalls = [];
   const structuredObjects = new Map(), evidenceIdsSeen = new Set(), factIdsSeen = new Set(), gapIdsSeen = new Set();
   const documentLinks = [], documentSections = [], javascriptModules = [], testReferences = [];
+  const bounded = profile.extractionLimits?.scopeRecordBudget === "atomic-material-v1";
+  const recordLimit = profile.extractionLimits?.maxRecords;
+  // Reserve catalog + root + one local limitation for EVERY material and one
+  // whole-scope relation limitation. No input silently disappears when detail
+  // extraction reaches the bound. The versioned @3 profile opts into this;
+  // historical profiles and replay output keep their original semantics.
+  const reserved = materials.length * 3 + 1;
+  if (bounded && (!Number.isSafeInteger(recordLimit) || recordLimit < 1 || recordLimit > 500_000)) throw new TypeError("invalid scope record budget");
+  if (bounded && reserved > recordLimit) throw new F002Error("F002_SCOPE_RECORD_BUDGET_TOO_SMALL", "当前记录预算不足以保留完整材料目录与限制；请按范围提取", { status: 422 });
+  let extraRecords = 0;
+  const gapCounts = new Map();
+  const charge = () => { if (bounded && extraRecords >= recordLimit - reserved) throw new ScopeRecordLimit(); extraRecords++; };
+  const arrays = [objects, evidence, facts, gaps, linkCandidates, jsExports, jsImportedCalls, documentLinks, documentSections, javascriptModules, testReferences];
+  const snapshot = () => ({ lengths: arrays.map(array => array.length), extraRecords });
+  const rollback = before => {
+    for (let i = objects.length - 1; i >= before.lengths[0]; i--) {
+      const object = objects[i]; objectById.delete(object.objectId);
+      const group = structuredObjects.get(object.materialId);
+      if (group?.at(-1)?.objectId === object.objectId) group.pop();
+    }
+    for (const [array, index, seen, field] of [[evidence, 1, evidenceIdsSeen, "evidenceId"], [facts, 2, factIdsSeen, "factId"], [gaps, 3, gapIdsSeen, "gapId"]]) {
+      for (let i = before.lengths[index]; i < array.length; i++) seen.delete(array[i][field]);
+    }
+    for (let i = before.lengths[3]; i < gaps.length; i++) {
+      const id = gaps[i].materialId; gapCounts.set(id, gapCounts.get(id) - 1);
+    }
+    arrays.forEach((array, index) => { array.length = before.lengths[index]; }); extraRecords = before.extraRecords;
+  };
   const addObject = (material, kind, name, anchor) => {
     const objectId = createObjectId({ materialId: material.materialId, objectKind: kind, anchor });
     if (!objectById.has(objectId)) {
+      if (kind !== "MATERIAL") charge();
       const object = { objectId, materialId: material.materialId, kind, name, anchor,
         ...(material.ruleRef?.version === "2" && material.root ? { parentId: material.root.objectId } : {}) };
       objects.push(object); objectById.set(objectId, object);
@@ -177,7 +200,7 @@ export function compileDeterministicFacts({ workspaceId, bundleId, profile, mate
   };
   const addEvidence = (material, anchor, evidenceKind) => {
     const evidenceId = createEvidenceId({ materialId: material.materialId, contentDigest: material.contentDigest, anchor, evidenceKind });
-    if (!evidenceIdsSeen.has(evidenceId)) { evidenceIdsSeen.add(evidenceId); evidence.push({ evidenceId, materialId: material.materialId, contentDigest: material.contentDigest, anchor, evidenceKind }); }
+    if (!evidenceIdsSeen.has(evidenceId)) { charge(); evidenceIdsSeen.add(evidenceId); evidence.push({ evidenceId, materialId: material.materialId, contentDigest: material.contentDigest, anchor, evidenceKind }); }
     return evidenceId;
   };
   const addFact = ({ subject, predicate, target = null, value = null, basis = "DECLARED", material, anchor, evidenceKind = "SOURCE_TEXT", premiseFactIds = [] }) => {
@@ -185,6 +208,7 @@ export function compileDeterministicFacts({ workspaceId, bundleId, profile, mate
     const ruleRef = material.ruleRef;
     const factId = createFactId({ subjectId: subject.objectId, predicate, ...(target ? { targetId: target.objectId } : { typedValue: value }), basis, evidenceIds, ruleRef, premiseFactIds });
     if (!factIdsSeen.has(factId)) {
+      charge();
       factIdsSeen.add(factId);
       facts.push({ factId, kind: target ? "RELATION" : "PROPERTY", subjectId: subject.objectId, predicate,
         ...(target ? { targetId: target.objectId } : { value }), basis, evidenceIds, ruleRef, premiseFactIds });
@@ -194,7 +218,11 @@ export function compileDeterministicFacts({ workspaceId, bundleId, profile, mate
   const addGap = (material, capability, code, anchor = null, extraReason = {}) => {
     const reason = { category: code, ...extraReason };
     const gapId = createGapId({ origin: "F002", materialId: material.materialId, capability, code, location: anchor, reason });
-    if (!gapIdsSeen.has(gapId)) { gapIdsSeen.add(gapId); gaps.push({ gapId, origin: "F002", materialId: material.materialId, capability, code, anchor, reason }); }
+    if (!gapIdsSeen.has(gapId)) {
+      if (gapCounts.get(material.materialId)) charge();
+      gapCounts.set(material.materialId, (gapCounts.get(material.materialId) ?? 0) + 1);
+      gapIdsSeen.add(gapId); gaps.push({ gapId, origin: "F002", materialId: material.materialId, capability, code, anchor, reason });
+    }
   };
   const normalized = materials.map((input) => {
     const bytes = Buffer.from(input.bytes ?? []);
@@ -206,88 +234,122 @@ export function compileDeterministicFacts({ workspaceId, bundleId, profile, mate
     const kind = displayPath ? mediaKind(displayPath, input.mediaType ?? "application/octet-stream", profile.extractionLimits) : "UNSUPPORTED";
     return { ...input, bytes, rawPath, displayPath, suppliedContentDigest: input.contentDigest ?? null, contentAvailable, contentDigest, materialId,
       kind, ruleRef: ruleRegistry.materialRule(profile, kind) };
-  }).sort((left, right) => Buffer.compare(Buffer.from(left.componentId, "ascii"), Buffer.from(right.componentId, "ascii")) || Buffer.compare(left.rawPath, right.rawPath));
+  }).sort((left, right) => idCompare(left.componentId, right.componentId) || Buffer.compare(left.rawPath, right.rawPath));
 
+  let completed = 0;
+  yield progress("MATERIALS", completed);
   for (const material of normalized) {
     const rootAnchor = { kind: "BINARY", digest: material.contentDigest };
     material.root = addObject(material, "MATERIAL", material.displayPath ?? "[non-utf8-path]", rootAnchor);
     materialByLocation.set(`${material.componentId}\u0000${material.displayPath ?? ""}`, material);
-    if (!material.contentAvailable) {
-      addGap(material, "source", material.unavailableCode ?? "SOURCE_CONTENT_UNAVAILABLE");
-      continue;
-    }
-    if (material.contentDigest !== inputDigest(material)) {
-      addGap(material, "inventory", "CONTENT_DIGEST_MISMATCH");
-      continue;
-    }
-    const text = utf8Text(material.bytes);
-    if (containsPrivateKey(text)) {
-      addGap(material, material.kind.toLowerCase(), "PRIVATE_KEY_MATERIAL_RESTRICTED");
-      continue;
-    }
-    if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML"].includes(material.kind) && text === null) {
-      addGap(material, material.kind.toLowerCase(), "TEXT_ENCODING_UNSUPPORTED");
-      continue;
-    }
-    if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML", "IMAGE"].includes(material.kind) && material.ruleRef === null) {
-      addGap(material, material.kind.toLowerCase(), "RULE_CAPABILITY_UNAVAILABLE");
-      continue;
-    }
-    if (material.kind === "JAVASCRIPT") extractJavaScript({ material, text, addObject, addFact, addGap, jsExports, jsImportedCalls, limits: profile.extractionLimits ?? {}, javascriptModules, testReferences });
-    else if (material.kind === "JAVA") extractJava({ material, text, addObject, addFact, addGap, limits: profile.extractionLimits ?? {}, testReferences });
-    else if (material.kind === "MARKDOWN") {
-      if (material.ruleRef.version === "2" && profile.extractionLimits?.documentSyntax === "static-document-v1") extractDocumentStructure({ material, text,
-        limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap, documentLinks, documentSections });
-      else extractMarkdown({ material, text, addObject, addFact, addGap, linkCandidates });
-    }
-    else if (material.kind === "JSON") {
-      if (material.ruleRef.version === "2") extractJsonStructure({ material: { ...material, reportBundleId: bundleId }, text, limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap });
-      else extractJson({ material, text, addObject, addFact, addGap });
-    }
-    else if (material.kind === "YAML") extractYaml({ material, text, addObject, addFact, addGap });
-    else if (material.kind === "PROPERTIES") {
-      if (material.ruleRef.version === "2") extractPropertyStructure({ material, text, limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap });
-      else extractProperties({ material, text, addObject, addFact });
-    }
-    else if (material.kind === "JUNIT_XML") {
-      if (material.ruleRef.version === "2" && profile.extractionLimits?.testReports === "literal-reports-v1") extractJunitReports({ material: { ...material, reportBundleId: bundleId }, text, limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap });
-      else extractJunitXml({ material, text, addObject, addFact, addGap });
-    }
-    else if (material.kind === "IMAGE") addEvidence(material, imageAnchor(material.bytes, material.contentDigest), "IMAGE_METADATA");
-    else addGap(material, "format", "FORMAT_UNSUPPORTED");
-    if (material.ruleRef?.version === "2") for (const child of structuredObjects.get(material.materialId) ?? []) {
-      if (child.parentId) addFact({ subject: objectById.get(child.parentId), predicate: "contains", target: child, material, anchor: child.anchor });
-    }
+    const before = snapshot();
+    try {
+      if (!material.contentAvailable) {
+        addGap(material, "source", material.unavailableCode ?? "SOURCE_CONTENT_UNAVAILABLE");
+        continue;
+      }
+      if (material.contentDigest !== inputDigest(material)) {
+        addGap(material, "inventory", "CONTENT_DIGEST_MISMATCH");
+        continue;
+      }
+      const text = utf8Text(material.bytes);
+      const anchor = createTextAnchor(text);
+      const textAnchor = (_text, start, end) => anchor(start, end);
+      if (containsPrivateKey(text)) {
+        addGap(material, material.kind.toLowerCase(), "PRIVATE_KEY_MATERIAL_RESTRICTED");
+        continue;
+      }
+      if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML"].includes(material.kind) && text === null) {
+        addGap(material, material.kind.toLowerCase(), "TEXT_ENCODING_UNSUPPORTED");
+        continue;
+      }
+      if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML", "IMAGE"].includes(material.kind) && material.ruleRef === null) {
+        addGap(material, material.kind.toLowerCase(), "RULE_CAPABILITY_UNAVAILABLE");
+        continue;
+      }
+      if (material.kind === "JAVASCRIPT") extractJavaScript({ material, text, textAnchor, addObject, addFact, addGap, jsExports, jsImportedCalls, limits: profile.extractionLimits ?? {}, javascriptModules, testReferences });
+      else if (material.kind === "JAVA") extractJava({ material, text, textAnchor, addObject, addFact, addGap, limits: profile.extractionLimits ?? {}, testReferences });
+      else if (material.kind === "MARKDOWN") {
+        if (material.ruleRef.version === "2" && profile.extractionLimits?.documentSyntax === "static-document-v1") extractDocumentStructure({ material, text,
+          limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap, documentLinks, documentSections });
+        else extractMarkdown({ material, text, textAnchor, addObject, addFact, addGap, linkCandidates });
+      }
+      else if (material.kind === "JSON") {
+        if (material.ruleRef.version === "2") extractJsonStructure({ material: { ...material, reportBundleId: bundleId }, text, limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap });
+        else extractJson({ material, text, textAnchor, addObject, addFact, addGap });
+      }
+      else if (material.kind === "YAML") extractYaml({ material, text, textAnchor, addObject, addFact, addGap });
+      else if (material.kind === "PROPERTIES") {
+        if (material.ruleRef.version === "2") extractPropertyStructure({ material, text, limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap });
+        else extractProperties({ material, text, textAnchor, addObject, addFact });
+      }
+      else if (material.kind === "JUNIT_XML") {
+        if (material.ruleRef.version === "2" && profile.extractionLimits?.testReports === "literal-reports-v1") extractJunitReports({ material: { ...material, reportBundleId: bundleId }, text, limits: profile.extractionLimits, textAnchor, addObject, addFact, addGap });
+        else extractJunitXml({ material, text, textAnchor, addObject, addFact, addGap });
+      }
+      else if (material.kind === "IMAGE") addEvidence(material, imageAnchor(material.bytes, material.contentDigest), "IMAGE_METADATA");
+      else addGap(material, "format", "FORMAT_UNSUPPORTED");
+      if (material.ruleRef?.version === "2") for (const child of structuredObjects.get(material.materialId) ?? []) {
+        if (child.parentId) addFact({ subject: objectById.get(child.parentId), predicate: "contains", target: child, material, anchor: child.anchor });
+      }
+    } catch (error) {
+      if (!(error instanceof ScopeRecordLimit)) throw error;
+      rollback(before);
+      addGap(material, "records", "SCOPE_RECORD_LIMIT", null, { limit: recordLimit, policy: "atomic-material-v1" });
+    } finally { yield progress("MATERIALS", ++completed); }
   }
-  for (const link of linkCandidates) {
-    if (link.target.startsWith("/") || /^[a-z]+:/i.test(link.target)) { addGap(link.material, "markdown", "DOCUMENT_LINK_OUT_OF_SCOPE", link.anchor); continue; }
-    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(link.material.displayPath), link.target));
-    if (resolved === ".." || resolved.startsWith("../")) { addGap(link.material, "markdown", "DOCUMENT_LINK_OUT_OF_SCOPE", link.anchor); continue; }
-    const target = materialByLocation.get(`${link.material.componentId}\u0000${resolved}`);
-    if (!target) { addGap(link.material, "markdown", "DOCUMENT_LINK_UNRESOLVED", link.anchor); continue; }
-    addFact({ subject: link.material.root, predicate: "refersTo", target: target.root, material: link.material, anchor: link.anchor });
+  const relationshipPhases = ["DOCUMENT_LINKS", "JAVASCRIPT_MODULES", "JAVA_BINDINGS", "TEST_REFERENCES", "ENDPOINT_CONTRACTS"];
+  let relationshipPhase = 0;
+  const nextRelationship = () => progress(relationshipPhases[relationshipPhase++], completed);
+  const beforeRelationships = snapshot();
+  try {
+    yield nextRelationship();
+    for (const link of linkCandidates) {
+      if (link.target.startsWith("/") || /^[a-z]+:/i.test(link.target)) { addGap(link.material, "markdown", "DOCUMENT_LINK_OUT_OF_SCOPE", link.anchor); continue; }
+      const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(link.material.displayPath), link.target));
+      if (resolved === ".." || resolved.startsWith("../")) { addGap(link.material, "markdown", "DOCUMENT_LINK_OUT_OF_SCOPE", link.anchor); continue; }
+      const target = materialByLocation.get(`${link.material.componentId}\u0000${resolved}`);
+      if (!target) { addGap(link.material, "markdown", "DOCUMENT_LINK_UNRESOLVED", link.anchor); continue; }
+      addFact({ subject: link.material.root, predicate: "refersTo", target: target.root, material: link.material, anchor: link.anchor });
+    }
+    resolveDocumentLinks({ documentLinks, documentSections, materialByLocation, addFact, addGap });
+    yield nextRelationship();
+    resolveJavaScriptModules({ modules: javascriptModules, materialByLocation, addFact, addGap });
+    const exportIndex = new Map(jsExports.map((item) => [`${item.material.componentId}\u0000${item.material.displayPath}\u0000${item.exportedName}`, item.object]));
+    for (const call of jsImportedCalls) {
+      const base = path.posix.normalize(path.posix.join(path.posix.dirname(call.material.displayPath), call.specifier));
+      const candidates = [base, `${base}.js`, `${base}.mjs`, `${base}.cjs`, `${base}/index.js`];
+      const target = candidates.map((candidate) => exportIndex.get(`${call.material.componentId}\u0000${candidate}\u0000${call.importedName}`)).find(Boolean);
+      if (target) addFact({ subject: call.caller, predicate: "staticCalls", target, material: call.material, anchor: call.anchor, basis: "DERIVED" });
+      else addGap(call.material, "javascript", "JAVASCRIPT_IMPORT_UNRESOLVED", call.anchor);
+    }
+    yield nextRelationship();
+    resolveJavaBindings({ objects, facts, materialById: new Map(normalized.map(m => [m.materialId,m])), limits: profile.extractionLimits, addFact, addGap });
+    yield nextRelationship();
+    resolveTestReferences({ references: testReferences, facts, objects, evidence, addFact });
+    yield nextRelationship();
+    resolveEndpointContracts({ objects, facts, materialById: new Map(normalized.map(m => [m.materialId, m])), limits: profile.extractionLimits, addFact, addGap });
+  } catch (error) {
+    if (!(error instanceof ScopeRecordLimit)) throw error;
+    rollback(beforeRelationships);
+    const reason = { category: "SCOPE_RECORD_LIMIT", limit: recordLimit, policy: "atomic-material-v1", stage: "CROSS_MATERIAL_RELATIONS" };
+    const gapId = createGapId({ origin: "F002", capability: "records", code: "SCOPE_RECORD_LIMIT", reason });
+    gaps.push({ gapId, origin: "F002", materialId: null, objectId: null, capability: "records", code: "SCOPE_RECORD_LIMIT", anchor: null, reason });
+    while (relationshipPhase < relationshipPhases.length) yield nextRelationship();
   }
-  resolveDocumentLinks({ documentLinks, documentSections, materialByLocation, addFact, addGap });
-  resolveJavaScriptModules({ modules: javascriptModules, materialByLocation, addFact, addGap });
-  const exportIndex = new Map(jsExports.map((item) => [`${item.material.componentId}\u0000${item.material.displayPath}\u0000${item.exportedName}`, item.object]));
-  for (const call of jsImportedCalls) {
-    const base = path.posix.normalize(path.posix.join(path.posix.dirname(call.material.displayPath), call.specifier));
-    const candidates = [base, `${base}.js`, `${base}.mjs`, `${base}.cjs`, `${base}/index.js`];
-    const target = candidates.map((candidate) => exportIndex.get(`${call.material.componentId}\u0000${candidate}\u0000${call.importedName}`)).find(Boolean);
-    if (target) addFact({ subject: call.caller, predicate: "staticCalls", target, material: call.material, anchor: call.anchor, basis: "DERIVED" });
-    else addGap(call.material, "javascript", "JAVASCRIPT_IMPORT_UNRESOLVED", call.anchor);
-  }
-  const order = (field) => (left, right) => byteCompare(left[field], right[field]);
-  resolveJavaBindings({ objects, facts, materialById: new Map(normalized.map(m => [m.materialId,m])), limits: profile.extractionLimits, addFact, addGap });
-  resolveTestReferences({ references: testReferences, facts, objects, evidence, addFact });
-  resolveEndpointContracts({ objects, facts, materialById: new Map(normalized.map(m => [m.materialId, m])), limits: profile.extractionLimits, addFact, addGap });
+  const order = (field) => (left, right) => idCompare(left[field], right[field]);
+  yield progress("SORT_OBJECTS", completed); objects.sort(order("objectId"));
+  yield progress("SORT_EVIDENCE", completed); evidence.sort(order("evidenceId"));
+  yield progress("SORT_FACTS", completed); facts.sort(order("factId"));
+  yield progress("SORT_GAPS", completed); gaps.sort(order("gapId"));
+  yield progress("RESULT", completed);
   return { materials: normalized.map(({ bytes, rawPath, root, ...material }) => ({ ...material, rootObjectId: root.objectId })),
-    objects: objects.sort(order("objectId")), evidence: evidence.sort(order("evidenceId")), facts: facts.sort(order("factId")), gaps: gaps.sort(order("gapId")) };
+    objects, evidence, facts, gaps };
 }
 
 function inputDigest(material) { return material.suppliedContentDigest ?? digest(material.bytes); }
 
-function extractJavaScript({ material, text, addObject, addFact, addGap, jsExports, jsImportedCalls, limits, javascriptModules, testReferences }) {
+function extractJavaScript({ material, text, textAnchor, addObject, addFact, addGap, jsExports, jsImportedCalls, limits, javascriptModules, testReferences }) {
   let ast;
   try { ast = parseJavaScript(text, { ecmaVersion: "latest", sourceType: "module", locations: false }); }
   catch {
@@ -393,7 +455,7 @@ function extractJavaScript({ material, text, addObject, addFact, addGap, jsExpor
   });
 }
 
-function extractMarkdown({ material, text, addObject, addFact, linkCandidates }) {
+function extractMarkdown({ material, text, textAnchor, addObject, addFact, linkCandidates }) {
   let fenced = false;
   const structured = material.ruleRef.version === "2", sections = [];
   let fence = null;
@@ -421,7 +483,7 @@ function extractMarkdown({ material, text, addObject, addFact, linkCandidates })
   }
 }
 
-function extractProperties({ material, text, addObject, addFact }) {
+function extractProperties({ material, text, textAnchor, addObject, addFact }) {
   for (const line of lineEntries(text)) {
     const match = /^\s*([^#!\s][^:=\s]*)\s*[:=]/.exec(line.text);
     if (!match) continue;
@@ -431,7 +493,7 @@ function extractProperties({ material, text, addObject, addFact }) {
   }
 }
 
-function extractYaml({ material, text, addObject, addFact, addGap }) {
+function extractYaml({ material, text, textAnchor, addObject, addFact, addGap }) {
   const parents = [];
   for (const line of lineEntries(text)) {
     if (/^\s*(?:---|\.\.\.|[?&*!]|[^#]*\s[&*!][\w-]+)/.test(line.text) || /[|>]/.test(line.text)) {
@@ -450,7 +512,7 @@ function extractYaml({ material, text, addObject, addFact, addGap }) {
   }
 }
 
-function extractJson({ material, text, addObject, addFact, addGap }) {
+function extractJson({ material, text, textAnchor, addObject, addFact, addGap }) {
   let value;
   try { value = JSON.parse(text); }
   catch { addGap(material, "json", "JSON_PARSE_FAILED"); return; }
@@ -476,7 +538,7 @@ function extractJson({ material, text, addObject, addFact, addGap }) {
   }
 }
 
-function extractJunitXml({ material, text, addObject, addFact, addGap }) {
+function extractJunitXml({ material, text, textAnchor, addObject, addFact, addGap }) {
   if (/<!\s*(?:DOCTYPE|ENTITY)/i.test(text)) { addGap(material, "junit", "JUNIT_XML_UNSAFE"); return; }
   for (const match of text.matchAll(/<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g)) {
     const attribute = (name) => new RegExp(`\\b${name}=["']([^"']*)["']`).exec(match[1])?.[1] ?? null;
@@ -489,7 +551,7 @@ function extractJunitXml({ material, text, addObject, addFact, addGap }) {
   }
 }
 
-function extractJava({ material, text, addObject, addFact, addGap, limits, testReferences }) {
+function extractJava({ material, text, textAnchor, addObject, addFact, addGap, limits, testReferences }) {
   let root;
   try { root = parseJava("java", text).root(); }
   catch { addGap(material, "java", "JAVA_PARSE_FAILED"); return; }

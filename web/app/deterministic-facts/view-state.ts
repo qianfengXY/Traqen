@@ -6,11 +6,11 @@ import { boundedRelationFilters, boundedGapFilters, boundedGraphViewport, emptyR
 
 type Storage = { getItem: (key: string) => string | null; setItem: (key: string, value: string) => void };
 export type ViewIdentity = { workspaceId: string; actorId: string; graphVersionId: string; authorized: boolean; recordId?: string; recordKind?: string; graphRootId?: string };
-export type EvidenceView = EvidenceFilters & { directoryScrollTop: number; readingLine: number; readingLineEnd: number; readingWindowLine: number; inspectorOpen: boolean; inspectorScrollTop: number;
+export type EvidenceView = EvidenceFilters & { materialPathQuery: string; directoryScrollTop: number; readingLine: number; readingLineEnd: number; readingWindowLine: number; inspectorOpen: boolean; inspectorScrollTop: number;
   relationFilters: RelationFilters; relationScrollTop: number; graphRootId: string | null; graphViewport: GraphViewport; gapFilters: GapFilters; gapScrollTop: number; expandedDirectory: string[] };
-type OptionalFields = "materialType" | "processingStatus" | "readingLineEnd" | "readingWindowLine" | "inspectorOpen" | "inspectorScrollTop" | "relationFilters" | "relationScrollTop" | "graphRootId" | "graphViewport" | "gapFilters" | "gapScrollTop" | "expandedDirectory";
+type OptionalFields = "materialPathQuery" | "materialType" | "processingStatus" | "readingLineEnd" | "readingWindowLine" | "inspectorOpen" | "inspectorScrollTop" | "relationFilters" | "relationScrollTop" | "graphRootId" | "graphViewport" | "gapFilters" | "gapScrollTop" | "expandedDirectory";
 type ViewInput = Omit<EvidenceView, OptionalFields> & Partial<Pick<EvidenceView, OptionalFields>>;
-export const emptyEvidenceView = (): EvidenceView => ({ query: "", materialType: "", processingStatus: "", directoryScrollTop: 0, readingLine: 1, readingLineEnd: 1, readingWindowLine: 1, inspectorOpen: true, inspectorScrollTop: 0,
+export const emptyEvidenceView = (): EvidenceView => ({ query: "", materialPathQuery: "", materialType: "", processingStatus: "", directoryScrollTop: 0, readingLine: 1, readingLineEnd: 1, readingWindowLine: 1, inspectorOpen: true, inspectorScrollTop: 0,
   relationFilters: emptyRelationFilters(), relationScrollTop: 0, graphRootId: null, graphViewport: emptyGraphViewport(), gapFilters: emptyGapFilters(), gapScrollTop: 0, expandedDirectory: [] });
 
 function storageKey(context: ViewIdentity) {
@@ -23,6 +23,8 @@ function storageKey(context: ViewIdentity) {
 
 function bounded(metadata: ViewInput): EvidenceView {
   const filters = boundedEvidenceFilters(metadata);
+  const materialPathQuery = metadata.materialPathQuery === undefined ? "" : metadata.materialPathQuery;
+  if (typeof materialPathQuery !== "string" || materialPathQuery.length > 512 || /[\u0000-\u001f\u007f]/.test(materialPathQuery)) throw new Error("材料路径查询无效或超出边界");
   const { readingLineEnd = metadata.readingLine, readingWindowLine = metadata.readingLine } = metadata;
   boundedTextRange(metadata.readingLine, readingLineEnd); boundedTextRange(readingWindowLine);
   const { inspectorOpen = true, inspectorScrollTop = 0 } = metadata;
@@ -32,7 +34,7 @@ function bounded(metadata: ViewInput): EvidenceView {
   if (typeof inspectorOpen !== "boolean" || !Number.isFinite(inspectorScrollTop) || inspectorScrollTop < 0 || inspectorScrollTop > 10_000_000) throw new Error("面板恢复元数据无效或超出边界");
   if (!Number.isFinite(metadata.directoryScrollTop) || metadata.directoryScrollTop < 0 || metadata.directoryScrollTop > 10_000_000
     || !Number.isInteger(metadata.readingLine) || metadata.readingLine < 1 || metadata.readingLine > 10_000_000) throw new Error("阅读恢复元数据无效或超出边界");
-  return { ...filters, directoryScrollTop: metadata.directoryScrollTop, readingLine: metadata.readingLine, readingLineEnd, readingWindowLine, inspectorOpen, inspectorScrollTop,
+  return { ...filters, materialPathQuery, directoryScrollTop: metadata.directoryScrollTop, readingLine: metadata.readingLine, readingLineEnd, readingWindowLine, inspectorOpen, inspectorScrollTop,
     relationFilters: boundedRelationFilters(metadata.relationFilters), relationScrollTop, graphRootId, graphViewport: boundedGraphViewport(metadata.graphViewport),
     gapFilters: boundedGapFilters(metadata.gapFilters), gapScrollTop, expandedDirectory: boundedDirectoryExpansion(metadata.expandedDirectory) };
 }

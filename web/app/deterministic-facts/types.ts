@@ -8,13 +8,14 @@ export type FactRecord = { kind: string; id: string; payload: {
 } };
 export type RecordDetail = { record: FactRecord; references: (FactRecord & { role: string })[] };
 export type RecordPage = { items: FactRecord[]; nextCursor: string | null };
-export type Profile = { id: string; name?: string | null; startable: boolean; capabilityIds: string[]; ruleVersions: string[]; configDigest?: string;
-  extractionLimits: { maxBytes: number; maxRecords: number }; redactionPolicyRevision: string };
+export type Profile = { id: string; name?: string | null; startable: boolean; recommended?: boolean; capabilityIds: string[]; ruleVersions: string[]; configDigest?: string;
+  extractionLimits: { maxBytes: number; maxRecords: number; scopeRecordBudget?: string }; redactionPolicyRevision: string };
 export type FactVersion = { graphVersionId: string; runId: string; scopeId: string; profileId: string; bundleId: string; recordDigest: string; publishedAt: string };
 export type Scope = { scopeId: string; label: string | null; status: string; revision: number; graphVersionId?: string | null; requestOwned?: boolean; diagnostic?: { code?: string } | null };
 export type Run = { id: string; profileId: string; sourceInput: { bundleId: string; receiptId: string }; scopes: Scope[]; status?: string; createdAt: string };
 export type FactsOverview = { profiles: Profile[]; versions: FactVersion[]; activeRuns: Run[]; consumer: { configured: boolean; code: string | null } };
 export type Coverage = { scopeId: string; declaredCapabilities: string[]; counts: Record<string, number>;
+  totalItems?: number; nextCursor?: string | null;
   items: { materialId: string; capabilityId: string; status: string; recordIds: string[]; gapIds: string[]; diagnostic?: unknown }[] };
 export type Manifest = { graphVersionId: string; bundleId: string; runId: string; scopeId: string; profileId: string;
   recordDigest: string; publishedAt: string; counts: Record<string, number>; rules: unknown; scope: unknown; shards: unknown; vocabulary: unknown; verification: unknown };

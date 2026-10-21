@@ -1,5 +1,6 @@
 import { createGapId, createMaterialId } from "./identity.js";
 import { requireF002 } from "./errors.js";
+import { assertScopeRecordBudget } from "./verification.js";
 
 // Initial analysis and replay must construct their canonical output from the
 // same frozen inputs. In particular, F001 limitations are evidence in their
@@ -17,6 +18,7 @@ export function canonicalRecords(result) {
 
 export async function inheritedGapRecords(admission, actor, workspaceId, run, sourceMaterials) {
   const expectedCount = String(run.sourceInput?.inheritedGapSet?.count ?? "0");
+  requireF002(/^(0|[1-9][0-9]*)$/.test(expectedCount), "F002_INHERITED_GAPS_INVALID", "已准入继承 Gap 总数无效", { status: 409 });
   if (typeof admission?.inheritedGaps !== "function") {
     requireF002(expectedCount === "0", "F002_INHERITED_GAPS_UNAVAILABLE", "已准入来源没有完整继承 Gap 读取能力", { status: 503 });
     return [];
@@ -55,13 +57,16 @@ export async function inheritedGapRecords(admission, actor, workspaceId, run, so
     requireF002(!cursor || !seenCursors.has(cursor), "F002_INHERITED_GAPS_INVALID", "继承 Gap 分页循环", { status: 409 });
     if (cursor) seenCursors.add(cursor);
   } while (cursor);
+  requireF002(BigInt(seenGaps.size) === BigInt(expectedCount), "F002_INHERITED_GAPS_INVALID", "继承 Gap 清单未对应已准入的完整总数", { status: 409 });
   return records;
 }
 
-export async function assembleCanonicalOutput({ admission, actor, workspaceId, run, sourceMaterials, compiled }) {
+export async function assembleCanonicalOutput({ admission, actor, workspaceId, run, sourceMaterials, compiled, profile }) {
   const result = {
     ...compiled,
     gaps: [...(compiled.gaps ?? []), ...await inheritedGapRecords(admission, actor, workspaceId, run, sourceMaterials)],
   };
-  return { result, records: canonicalRecords(result) };
+  const records = canonicalRecords(result);
+  assertScopeRecordBudget(profile, records.length);
+  return { result, records };
 }

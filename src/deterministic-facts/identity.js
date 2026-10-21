@@ -29,9 +29,17 @@ function normalRecord(value, field) {
   return JSON.parse(canonicalEncode(value));
 }
 
+function recordShape(value, field) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) throw new TypeError(`${field} must be an object`);
+  return value;
+}
+
 export function canonicalDigest(domain, payload) {
   requireString(domain, "domain");
-  return createHash("sha256").update(canonicalEncode({ domain: `F002.${domain}`, version: 1, payload: normalRecord(payload, "payload") }), "utf8").digest("hex");
+  // One strict canonical traversal is sufficient. Encoding, parsing, then
+  // re-encoding every nested identity doubles work for each immutable record;
+  // the same strict encoder already rejects every non-JSON input here.
+  return createHash("sha256").update(canonicalEncode({ domain: `F002.${domain}`, version: 1, payload: recordShape(payload, "payload") }), "utf8").digest("hex");
 }
 
 function identity(domain, payload) {
@@ -44,11 +52,11 @@ export function createMaterialId({ workspaceId, bundleId, componentId, pathBytes
 }
 
 export function createObjectId({ materialId, objectKind, anchor }) {
-  return identity("OBJECT", { materialId: requireHexId(materialId, "materialId"), objectKind: requireString(objectKind, "objectKind"), anchor: normalRecord(anchor, "anchor") });
+  return identity("OBJECT", { materialId: requireHexId(materialId, "materialId"), objectKind: requireString(objectKind, "objectKind"), anchor: recordShape(anchor, "anchor") });
 }
 
 export function createEvidenceId({ materialId, contentDigest, anchor, evidenceKind }) {
-  return identity("EVIDENCE", { materialId: requireHexId(materialId, "materialId"), contentDigest: requireHexId(contentDigest, "contentDigest"), anchor: normalRecord(anchor, "anchor"), evidenceKind: requireString(evidenceKind, "evidenceKind") });
+  return identity("EVIDENCE", { materialId: requireHexId(materialId, "materialId"), contentDigest: requireHexId(contentDigest, "contentDigest"), anchor: recordShape(anchor, "anchor"), evidenceKind: requireString(evidenceKind, "evidenceKind") });
 }
 
 export function createFactId({ subjectId, predicate, typedValue, targetId, basis = "DECLARED", evidenceIds = [], ruleRef = null, premiseFactIds = [] }) {
@@ -57,14 +65,14 @@ export function createFactId({ subjectId, predicate, typedValue, targetId, basis
   }
   return identity("FACT", {
     subjectId: requireString(subjectId, "subjectId"), predicate: requireString(predicate, "predicate"),
-    ...(typedValue === undefined || typedValue === null ? { targetId: requireString(targetId, "targetId") } : { typedValue: normalRecord(typedValue, "typedValue") }),
+    ...(typedValue === undefined || typedValue === null ? { targetId: requireString(targetId, "targetId") } : { typedValue: recordShape(typedValue, "typedValue") }),
     basis: requireString(basis, "basis"), evidenceIds: sortedStrings(evidenceIds, "evidenceIds"),
-    ruleRef: ruleRef === null ? null : normalRecord(ruleRef, "ruleRef"), premiseFactIds: sortedStrings(premiseFactIds, "premiseFactIds"),
+    ruleRef: ruleRef === null ? null : recordShape(ruleRef, "ruleRef"), premiseFactIds: sortedStrings(premiseFactIds, "premiseFactIds"),
   });
 }
 
 export function createGapId({ origin, scopeId = null, materialId = null, objectId = null, capability, code, location = null, reason }) {
-  return identity("GAP", { origin: requireString(origin, "origin"), scopeId, materialId, objectId, capability: requireString(capability, "capability"), code: requireString(code, "code"), location, reason: normalRecord(reason, "reason") });
+  return identity("GAP", { origin: requireString(origin, "origin"), scopeId, materialId, objectId, capability: requireString(capability, "capability"), code: requireString(code, "code"), location, reason: recordShape(reason, "reason") });
 }
 
 function selector(input) {

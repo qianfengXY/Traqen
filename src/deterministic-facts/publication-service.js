@@ -43,24 +43,45 @@ export class F002PublicationService {
 
   async prepare(actor, workspaceId, runId, scopeId, { generation, records }) {
     requireF002(Number.isInteger(generation) && generation > 0, "F002_STALE_SCOPE_WORKER", "缺少当前范围执行代次", { status: 409 });
-    return this.repository.withMaintainedWorkspace(actor, workspaceId, async (tx) => {
+    const run = await this.repository.withMaintainedWorkspace(actor, workspaceId, async tx => {
+      const row = (await tx.query("SELECT source_input FROM f002_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
+      requireF002(row, "F002_RUN_NOT_FOUND", "运行不存在", { status: 404 });
+      return row;
+    });
+    // Validate the complete closure before writing, but never hold the shared
+    // Workspace/scope locks for the entire large preparation. Prepared rows
+    // remain invisible; every batch rechecks current ACL, generation and lease.
+    const canonicalRecords = normalizeCanonicalRecords(records, { workspaceId, bundleId: run.source_input.bundleId });
+    const withLiveScope = callback => this.repository.withMaintainedWorkspace(actor, workspaceId, async tx => {
       const scope = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
       requireF002(scope && scope.status === "RUNNING" && scope.generation === generation && scope.lease_live,
         "F002_STALE_SCOPE_WORKER", "执行权或任务状态已变化");
-      const run = (await tx.query("SELECT source_input FROM f002_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
-      requireF002(run, "F002_RUN_NOT_FOUND", "运行不存在", { status: 404 });
-      const canonicalRecords = normalizeCanonicalRecords(records, { workspaceId, bundleId: run.source_input.bundleId });
-      for (const record of canonicalRecords) {
-        const existing = (await tx.query(`SELECT payload FROM f002_prepared_record WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3
-          AND kind=$4 AND id=$5 FOR UPDATE`, [workspaceId, runId, scopeId, record.kind, record.id])).rows[0];
-        if (existing) {
-          requireF002(canonicalDigest("RECORD", { kind: record.kind, id: record.id, payload: existing.payload })
-            === canonicalDigest("RECORD", record), "F002_PREPARED_RECORD_CONFLICT", "准备记录身份已绑定不同内容");
-          continue;
+      return callback(tx);
+    });
+    for (let offset = 0; offset < canonicalRecords.length; offset += 500) {
+      await withLiveScope(async tx => {
+        const batch = canonicalRecords.slice(offset, offset + 500);
+        const stored = (await tx.query(`SELECT prepared.kind,prepared.id,prepared.payload FROM f002_prepared_record prepared
+          JOIN jsonb_array_elements($4::jsonb) input ON prepared.kind=(input->>'kind') AND prepared.id=(input->>'id')
+          WHERE prepared.workspace_id=$1 AND prepared.run_id=$2 AND prepared.scope_id=$3
+          ORDER BY prepared.kind,prepared.id FOR UPDATE OF prepared`, [workspaceId, runId, scopeId, JSON.stringify(batch)])).rows;
+        const byKey = new Map(stored.map(record => [JSON.stringify([record.kind, record.id]), record]));
+        const writable = [];
+        for (const record of batch) {
+          const existing = byKey.get(JSON.stringify([record.kind, record.id]));
+          if (existing) {
+            requireF002(canonicalDigest("RECORD", { kind: record.kind, id: record.id, payload: existing.payload })
+              === canonicalDigest("RECORD", record), "F002_PREPARED_RECORD_CONFLICT", "准备记录身份已绑定不同内容");
+            continue;
+          }
+          writable.push(record);
         }
-        await tx.query(`INSERT INTO f002_prepared_record (workspace_id,run_id,scope_id,generation,kind,id,payload)
-          VALUES ($1,$2,$3,$4,$5,$6,$7)`, [workspaceId, runId, scopeId, generation, record.kind, record.id, JSON.stringify(record.payload)]);
-      }
+        if (writable.length) await tx.query(`INSERT INTO f002_prepared_record (workspace_id,run_id,scope_id,generation,kind,id,payload)
+          SELECT $1,$2,$3,$4,input->>'kind',input->>'id',input->'payload'
+          FROM jsonb_array_elements($5::jsonb) input`, [workspaceId, runId, scopeId, generation, JSON.stringify(writable)]);
+      });
+    }
+    return withLiveScope(async tx => {
       await tx.query("INSERT INTO f002_event (workspace_id,run_id,scope_id,actor_id,event_type,payload) VALUES ($1,$2,$3,$4,$5,$6)",
         [workspaceId, runId, scopeId, actor.actorId, "RECORDS_PREPARED", JSON.stringify({ generation, recordCount: canonicalRecords.length })]);
       return { generation, recordCount: canonicalRecords.length };
@@ -128,8 +149,9 @@ export class F002PublicationService {
         ON CONFLICT (workspace_id,graph_version_id) DO NOTHING
         RETURNING run_id,scope_id,profile_id,bundle_id,record_digest`, [workspaceId, publication.graphVersionId, runId, scopeId, run.profile_id, run.source_input.bundleId, revision, publication.recordDigest])).rows[0];
       if (inserted) {
-        for (const record of publication.records) await tx.query("INSERT INTO f002_record (workspace_id,graph_version_id,kind,id,payload) VALUES ($1,$2,$3,$4,$5)",
-          [workspaceId, publication.graphVersionId, record.kind, record.id, JSON.stringify(record.payload)]);
+        for (let offset = 0; offset < publication.records.length; offset += 500) await tx.query(`INSERT INTO f002_record (workspace_id,graph_version_id,kind,id,payload)
+          SELECT $1,$2,input->>'kind',input->>'id',input->'payload' FROM jsonb_array_elements($3::jsonb) input`,
+          [workspaceId, publication.graphVersionId, JSON.stringify(publication.records.slice(offset, offset + 500))]);
       } else {
         const canonical = (await tx.query(`SELECT profile_id,bundle_id,record_digest FROM f002_fact_set
           WHERE workspace_id=$1 AND graph_version_id=$2 FOR UPDATE`, [workspaceId, publication.graphVersionId])).rows[0];

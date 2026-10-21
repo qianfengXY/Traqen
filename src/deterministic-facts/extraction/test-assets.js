@@ -124,8 +124,14 @@ export function extractJavaTests({ material, text, limits, types, methods, annot
 }
 
 export function resolveTestReferences({ references, facts, objects, evidence, addFact }) {
+  if (!references.length) return;
   const byId = new Map(objects.map(o => [o.objectId, o])), sources = new Map(evidence.map(e => [e.evidenceId, e]));
-  for (const r of references) for (const f of facts.filter(f => f.predicate === "staticCalls" && f.subjectId === r.caller?.objectId)) {
+  const byCaller = new Map();
+  for (const fact of facts) if (fact.predicate === "staticCalls") {
+    if (!byCaller.has(fact.subjectId)) byCaller.set(fact.subjectId, []);
+    byCaller.get(fact.subjectId).push(fact);
+  }
+  for (const r of references) for (const f of byCaller.get(r.caller?.objectId) ?? []) {
     const e = f.evidenceIds.map(id => sources.get(id)).find(e => e.materialId === r.material.materialId && e.anchor.kind === "TEXT"
       && e.anchor.byteStart >= r.anchor.byteStart && e.anchor.byteEnd <= r.anchor.byteEnd);
     if (e) addFact({ subject: r.testcase, predicate: "refersTo", target: byId.get(f.targetId), material: r.material, anchor: e.anchor, basis: "DERIVED", premiseFactIds: [r.framework, f.factId] });

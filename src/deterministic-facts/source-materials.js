@@ -25,15 +25,17 @@ function maximumMaterials(profile) {
 // F001 remains the only source-byte owner. Both initial processing and replay
 // use this one loader so their selector, digest, byte and availability rules
 // cannot drift apart.
-export async function loadFrozenMaterials(admission, actor, workspaceId, run, scope, profile) {
+export async function loadFrozenMaterials(admission, actor, workspaceId, run, scope, profile, { signal } = {}) {
   const materials = [];
   const seen = new Set();
   let cursor = null;
   const maxBytes = maximumBytes(profile);
   const maxMaterials = maximumMaterials(profile);
   do {
+    signal?.throwIfAborted();
     const page = await admission.inventory(actor, workspaceId, run.id, { limit: 1000, cursor });
     for (const item of page.items) {
+      signal?.throwIfAborted();
       if (!selectedByScope(scope.selections, item.componentId, item.entry.pathBytes)) continue;
       const key = `${item.componentId}\u0000${item.entry.pathBytes}`;
       requireF002(!seen.has(key), "F002_INVENTORY_DUPLICATE", "冻结材料清单包含重复条目", { status: 409 });
@@ -53,6 +55,7 @@ export async function loadFrozenMaterials(admission, actor, workspaceId, run, sc
       const chunks = [];
       let total = 0;
       for await (const chunk of admission.readFile(actor, workspaceId, run.id, { componentId: item.componentId, pathBytes: item.entry.pathBytes })) {
+        signal?.throwIfAborted();
         total += chunk.length;
         requireF002(total <= maxBytes, "F002_SOURCE_READ_LIMIT", "来源字节超出固定解析上限", { status: 409 });
         chunks.push(Buffer.from(chunk));

@@ -6,8 +6,9 @@ import { evidenceReference, type EvidenceLocation } from "./model.ts";
 import { evidenceRecordTitle as title } from "./search.ts";
 import { useEvidenceResource } from "./use-resource.ts";
 import { EvidenceExplanation } from "./evidence-explanation.tsx";
-import type { Coverage, FactRecord, Manifest, RecordDetail, RecordPage } from "./types.ts";
+import type { FactRecord, Manifest, RecordDetail, RecordPage } from "./types.ts";
 import { isEvidenceShortcut } from "./keyboard.ts";
+import { materialCoverage } from "./coverage.ts";
 
 export function RecordDetailPanel({ client, context, select, accessLost, scrollTop, onScroll, onClose, autoFocus, onEndpoint }: {
   client: DeterministicFactsClient; context: EvidenceLocation; select: (record: FactRecord, line?: number) => void;
@@ -21,10 +22,12 @@ export function RecordDetailPanel({ client, context, select, accessLost, scrollT
   const versionRoute = context.recordId && context.graphVersionId ? `/versions/${context.graphVersionId}` : "";
   const loadManifest = useCallback(async (bound: DeterministicFactsClient) => versionRoute ? (await bound.request<{ manifest: Manifest }>(`${versionRoute}/manifest`)).manifest : null, [versionRoute]);
   const loadGaps = useCallback((bound: DeterministicFactsClient) => versionRoute ? bound.request<RecordPage>(`${versionRoute}/gaps?limit=100`) : Promise.resolve(null), [versionRoute]);
-  const loadCoverage = useCallback(async (bound: DeterministicFactsClient) => versionRoute ? (await bound.request<{ coverage: Coverage }>(`${versionRoute}/coverage`)).coverage : null, [versionRoute]);
+  const coverageIds = [...new Set([resource.data?.record, ...(resource.data?.references ?? [])]
+    .flatMap(record => record ? [record.kind === "MATERIAL" ? record.id : record.payload.materialId].filter((id): id is string => typeof id === "string") : []))].sort().join(",");
+  const loadCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, context.graphVersionId!, coverageIds ? coverageIds.split(",") : []), [context.graphVersionId, coverageIds]);
   const manifest = useEvidenceResource(client, `${versionRoute}/manifest`, loadManifest, accessLost);
   const gaps = useEvidenceResource(client, `${versionRoute}/gaps?limit=100`, loadGaps, accessLost);
-  const coverage = useEvidenceResource(client, `${versionRoute}/coverage`, loadCoverage, accessLost);
+  const coverage = useEvidenceResource(client, `${versionRoute}/coverage?materialIds=${coverageIds}`, loadCoverage, accessLost);
   const detail = resource.data, error = resource.error;
   const panel = useRef<HTMLElement>(null), heading = useRef<HTMLHeadingElement>(null);
   const [notice, setNotice] = useState<{ id: string; message: string } | null>(null);

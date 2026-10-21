@@ -74,6 +74,21 @@ export class DeterministicFactsClient {
     return result as T;
   }
 
+  async exportVersion(graphVersionId: string): Promise<Blob> {
+    if (!digestPattern.test(graphVersionId)) throw new FactsClientError("导出必须引用精确事实集", "F002_REFERENCE_INVALID");
+    const response = await this.response(`/versions/${graphVersionId}/export`, "GET");
+    if (response.headers.get("content-type")?.split(";")[0].trim() !== "application/json"
+      || response.headers.get("x-f002-export-version") !== graphVersionId) {
+      await response.body?.cancel();
+      throw new FactsClientError("未收到固定版本导出响应", "F002_EXPORT_INCOMPLETE");
+    }
+    // Browser-native Blob consumption avoids a giant JSON string/object graph.
+    // A destroyed/truncated HTTP stream rejects before any download is offered.
+    const blob = await response.blob();
+    this.signal?.throwIfAborted();
+    return blob;
+  }
+
   async material(graphVersionId: string, materialId: string): Promise<DisplayMaterial> {
     if (!digestPattern.test(graphVersionId) || !digestPattern.test(materialId)) throw new FactsClientError("材料必须引用精确事实集和材料 ID", "F002_REFERENCE_INVALID");
     const signal = this.signal;

@@ -118,6 +118,12 @@ export function structuredF002Profile() {
   return { ...config, configDigest: createProfileConfigDigest(config), id: createProfileId(config), name: "structure-js-java-markdown-json-properties-dotenv-v2", startable: true };
 }
 
+export function boundedF002Profile() {
+  const { id: _id, configDigest: _digest, name: _name, startable: _startable, ...previous } = structuredF002Profile();
+  const config = { ...previous, version: "3", extractionLimits: { ...previous.extractionLimits, scopeRecordBudget: "atomic-material-v1" } };
+  return { ...config, configDigest: createProfileConfigDigest(config), id: createProfileId(config), name: "bounded-structure-v3", startable: true, recommended: true };
+}
+
 // F002 deliberately shares F001's authoritative pool, member authenticator,
 // source reader and browser origin allow-list. It owns only its new tables and
 // services; it neither opens a second source connection nor accepts a legacy
@@ -144,6 +150,8 @@ export async function createF002Runtime({ sourceRuntime, cursorSecret, consumerR
   await repository.registerProfile(profile);
   const structuredProfile = structuredF002Profile();
   await repository.registerProfile(structuredProfile);
+  const boundedProfile = boundedF002Profile();
+  await repository.registerProfile(boundedProfile);
   const admission = new F002AdmissionService(repository, sourceRuntime.services.admission);
   const publication = new F002PublicationService(repository);
   const queries = new F002QueryService(repository, { cursorSecret });
@@ -162,7 +170,7 @@ export async function createF002Runtime({ sourceRuntime, cursorSecret, consumerR
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) }) : null;
   const executor = new F002ExecutionService({ repository, worker, members: sourceRuntime.configuration.members, resolveActor,
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) });
-  const services = { repository, admission, publication, queries, materials, requests, replays, replayExecutor, worker, executor, requestExecutor, profile, structuredProfile };
+  const services = { repository, admission, publication, queries, materials, requests, replays, replayExecutor, worker, executor, requestExecutor, profile, structuredProfile, boundedProfile };
   return { services, start: async () => { await executor.start(); await replayExecutor.start(); if (requestExecutor) await requestExecutor.start(); }, close: async () => { if (requestExecutor) await requestExecutor.close(); await replayExecutor.close(); await executor.close(); }, deterministicFactsHandler: createF002HttpHandler({
     services,
     authenticate: sourceRepository.identityService ? () => { throw new F002Error("F002_AUTHENTICATION_REQUIRED", "请先登录当前工作区", { status: 401 }); }

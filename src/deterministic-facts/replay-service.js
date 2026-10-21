@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { compileDeterministicFacts } from "./extraction/compile.js";
+import { workerParse } from "./worker.js";
+import { maintainLease } from "./lease.js";
 import { canonicalDigest } from "./identity.js";
 import { F002Error, requireF002 } from "./errors.js";
 import { assembleCanonicalOutput } from "./output-assembly.js";
@@ -50,7 +51,7 @@ function rowResult(row) {
 // created before its first F001 read, then a fenced worker reconstructs the
 // original immutable run context and recompiles its exact historical profile.
 export class F002ReplayService {
-  constructor(repository, { admission, compile = compileDeterministicFacts, ruleRegistry = installedF002Rules } = {}) {
+  constructor(repository, { admission, compile = workerParse, ruleRegistry = installedF002Rules } = {}) {
     if (typeof repository?.withMaintainedWorkspace !== "function" || typeof repository?.withAuthorizedWorkspace !== "function") {
       throw new TypeError("F002 replay requires an authorized repository");
     }
@@ -107,15 +108,25 @@ export class F002ReplayService {
       return rows[0];
     });
     if (terminalStates.has(claimed.status)) return rowResult(claimed);
+    const lease = maintainLease(() => this.repository.withMaintainedWorkspace(actor, workspaceId, async tx => {
+      const renewed = (await tx.query(`UPDATE f002_replay SET lease_until=clock_timestamp()+($5::integer * interval '1 millisecond'),updated_at=clock_timestamp()
+        WHERE workspace_id=$1 AND id=$2 AND generation=$3 AND worker_id=$4 AND status='RUNNING' AND lease_until>clock_timestamp() RETURNING id`,
+      [workspaceId, claimed.id, claimed.generation, workerId, leaseMs])).rows[0];
+      requireF002(renewed, "F002_STALE_REPLAY_WORKER", "重放执行权或状态已变化", { status: 409 });
+    }), leaseMs);
     try {
       const context = await this.repository.withMaintainedWorkspace(actor, workspaceId, (tx) => this.#context(tx, workspaceId, claimed.graph_version_id));
       this.ruleRegistry.assertProfile(context.profile_payload);
       const profile = { ...context.profile_payload, startable: context.startable };
       const run = { id: context.run_id, sourceInput: context.source_input };
       const scope = { scopeId: context.scope_id, selections: context.selections };
-      const materials = await loadFrozenMaterials(this.admission, actor, workspaceId, run, scope, profile);
-      const compiled = await this.compile({ workspaceId, bundleId: context.bundle_id, profile, materials, ruleRegistry: this.ruleRegistry });
-      const { records: assembled } = await assembleCanonicalOutput({ admission: this.admission, actor, workspaceId, run, sourceMaterials: materials, compiled });
+      const materials = await loadFrozenMaterials(this.admission, actor, workspaceId, run, scope, profile, { signal: lease.signal });
+      lease.assertActive();
+      const input = { workspaceId, bundleId: context.bundle_id, profile, materials };
+      const compiled = this.compile === workerParse ? await workerParse(input, { timeoutMs: 10_000, signal: lease.signal })
+        : await this.compile({ ...input, ruleRegistry: this.ruleRegistry });
+      lease.assertActive();
+      const { records: assembled } = await assembleCanonicalOutput({ admission: this.admission, actor, workspaceId, run, sourceMaterials: materials, compiled, profile });
       const records = normalizeCanonicalRecords(assembled,
         { workspaceId, bundleId: context.bundle_id });
       const candidateDigest = canonicalDigest("FACT_SET_RECORDS", { records });
@@ -127,7 +138,7 @@ export class F002ReplayService {
         candidateDigest: canonicalDigest("REPLAY_FAILURE", { graphVersionId: claimed.graph_version_id, reason: diagnostic(error) }),
         diagnostic: diagnostic(error),
       });
-    }
+    } finally { await lease.stop(); }
   }
 
   async cancel(actor, workspaceId, id, { revision, operationId: cancelOperationId } = {}) {
@@ -224,7 +235,14 @@ export class F002ReplayExecutionService {
   async start() { if (!this.timer) { this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs); this.timer.unref(); } await this.dispatch(); }
   async close() { if (this.timer) clearInterval(this.timer); this.timer = null; await Promise.allSettled(this.running.values()); }
   async enqueue(replay) { return this.#schedule(replay); }
-  async dispatch() { await Promise.all((await this.replays.findRunnable({ limit: this.maxConcurrent * 4 })).map((replay) => this.#schedule(replay))); }
+  async dispatch() {
+    let runnable;
+    // No job has been claimed if the scan fails. Leave its durable state
+    // untouched and allow the next bounded poll to recover it.
+    try { runnable = await this.replays.findRunnable({ limit: this.maxConcurrent * 4 }); }
+    catch { return; }
+    await Promise.all(runnable.map((replay) => this.#schedule(replay)));
+  }
 
   #schedule(replay) {
     if (!replay?.workspaceId || !replay?.replayId || !runnableStates.has(replay.status)) return Promise.resolve();

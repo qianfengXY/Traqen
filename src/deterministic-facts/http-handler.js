@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { identityContext } from "../auth/context.js";
+import { once } from "node:events";
+import { exportFactSet } from "./export.js";
 
 import { F002Error } from "./errors.js";
 import { SourceTruthError } from "../source-truth/errors.js";
@@ -173,10 +175,26 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
         else if (version) {
           const [, graphVersionId, tail = ""] = version;
           if (request.method === "GET" && tail === "manifest") json(response, 200, { manifest: await queries.manifest(actor, workspaceId, graphVersionId) }, requestId);
-          else if (request.method === "GET" && tail === "coverage") json(response, 200, { coverage: await queries.coverage(actor, workspaceId, graphVersionId) }, requestId);
+          else if (request.method === "GET" && tail === "export") {
+            const controller = new AbortController();
+            const closed = () => controller.abort();
+            response.once("close", closed);
+            try {
+              for await (const chunk of exportFactSet(queries, actor, workspaceId, graphVersionId, { signal: controller.signal })) {
+                if (!response.headersSent) response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store",
+                  "x-content-type-options": "nosniff", "x-request-id": requestId, "x-f002-export-version": graphVersionId,
+                  "content-disposition": `attachment; filename="f002-${graphVersionId}.json"` });
+                if (!response.write(chunk)) await once(response, "drain", { signal: controller.signal });
+              }
+              response.end();
+            } finally { response.off("close", closed); }
+          }
+          else if (request.method === "GET" && tail === "coverage") json(response, 200, { coverage: await queries.coverage(actor, workspaceId, graphVersionId,
+            { limit: limit(url), cursor: url.searchParams.get("cursor"), materialIds: url.searchParams.get("materialIds")?.split(",") ?? [] }) }, requestId);
           else if (request.method === "GET" && tail === "records") json(response, 200, await queries.records(actor, workspaceId, graphVersionId, { kind: url.searchParams.get("kind"), limit: limit(url), cursor: url.searchParams.get("cursor") }), requestId);
           else if (request.method === "GET" && ["materials", "objects", "facts", "relations", "gaps"].includes(tail)) {
-            json(response, 200, await queries.collection(actor, workspaceId, graphVersionId, tail, { limit: limit(url), cursor: url.searchParams.get("cursor") }), requestId);
+            json(response, 200, await queries.collection(actor, workspaceId, graphVersionId, tail, { limit: limit(url), cursor: url.searchParams.get("cursor"),
+              query: url.searchParams.get("q") ?? "", materialIds: url.searchParams.get("materialIds")?.split(",") ?? [] }), requestId);
           }
           else if (request.method === "GET" && tail === "vocabulary") json(response, 200, { vocabulary: await queries.vocabulary(actor, workspaceId, graphVersionId) }, requestId);
           else if (request.method === "GET" && tail === "graph") {

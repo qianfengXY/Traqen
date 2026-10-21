@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import { setTimeout as pause } from "node:timers/promises";
 
 import { F002PublicationService } from "../src/deterministic-facts/publication-service.js";
 import { F002ReplayService } from "../src/deterministic-facts/replay-service.js";
@@ -12,6 +13,7 @@ import { loadFrozenMaterials } from "../src/deterministic-facts/source-materials
 import { normalizeCanonicalRecords } from "../src/deterministic-facts/verification.js";
 import { owner, reader, sourceDatabase } from "./support/source-truth-database.js";
 import { verifiedF002Records } from "./support/f002-records.js";
+import { canonicalRecords } from "../src/deterministic-facts/output-assembly.js";
 
 const componentId = "a".repeat(64);
 const bundleId = "b".repeat(64);
@@ -58,6 +60,42 @@ function replayAdmission({ path, source = "export function evidence() {}\n" }) {
     async *readFile() { yield bytes; },
   };
 }
+
+test("F002 preparation and sealing use bounded record batches without weakening immutable retry conflicts", async t => {
+  const { db, repository: sources } = await sourceDatabase(t);
+  let preparationQueries = 0, sealedInserts = 0;
+  const observed = { query: db.query.bind(db), transaction: work => db.transaction(tx => work({ query: (sql, values) => {
+    if (/\bf002_prepared_record\b/.test(sql)) preparationQueries++;
+    if (/INSERT INTO f002_record\b/.test(sql)) sealedInserts++;
+    return tx.query(sql, values);
+  } })) };
+  const repository = new F002Repository(observed, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });
+  const configured = profile(); await repository.registerProfile(configured);
+  const run = await repository.createAdmittedRun(owner, "workspace", { operationId: "bounded-publication", sourceInput: sourceInput(), profile: configured,
+    scopes: [{ selections: [{ kind: "COMPONENT", componentId }] }] });
+  const scopeId = run.scopes[0].scopeId;
+  const claim = await repository.claimScope(owner, "workspace", run.id, scopeId, { workerId: "batch-publication", leaseMs: 60_000 });
+  const result = compileDeterministicFacts({ workspaceId: "workspace", bundleId, profile: configured, materials: Array.from({ length: 200 }, (_, i) => ({
+    componentId, pathBytes: Buffer.from(`file-${i}.unknown`).toString("base64url"), bytes: Buffer.from("fixed source"), mediaType: "application/octet-stream" })) });
+  const records = canonicalRecords(result); assert.equal(records.length, 600);
+  const publisher = new F002PublicationService(repository);
+  await publisher.prepare(owner, "workspace", run.id, scopeId, { generation: claim.generation, records });
+  assert.ok(preparationQueries <= 4, `600 records issued ${preparationQueries} prepared SQL statements`);
+  preparationQueries = 0;
+  await publisher.prepare(owner, "workspace", run.id, scopeId, { generation: claim.generation, records });
+  assert.ok(preparationQueries <= 2, "same records retry reads each batch without rewriting immutable payloads");
+  // An extra payload field preserves a valid content identity but differs from
+  // the prior immutable payload; the entire preparation must reject it.
+  const changed = records.map((record, index) => index ? record : { ...record, payload: { ...record.payload, extraObservation: "different" } });
+  await assert.rejects(publisher.prepare(owner, "workspace", run.id, scopeId, { generation: claim.generation, records: changed }), { code: "F002_PREPARED_RECORD_CONFLICT" });
+  await repository.recordScopeItems(owner, { workspaceId: "workspace", runId: run.id, scopeId, generation: claim.generation,
+    items: result.materials.map(material => ({ materialId: material.materialId, capabilityId: "javascript", status: "UNSUPPORTED" })) });
+  const ready = await repository.readyToSeal(owner, { workspaceId: "workspace", runId: run.id, scopeId, generation: claim.generation });
+  const sealed = await publisher.publish(owner, "workspace", run.id, scopeId, { revision: ready.revision, operationId: "bounded-seal" });
+  assert.ok(sealedInserts <= 2, `600 records issued ${sealedInserts} sealed INSERTs`);
+  assert.equal((await db.query("SELECT count(*)::integer AS total FROM f002_record WHERE graph_version_id=$1", [sealed.graphVersionId])).rows[0].total, records.length);
+  assert.equal((await publisher.publish(owner, "workspace", run.id, scopeId, { revision: ready.revision, operationId: "bounded-seal" })).graphVersionId, sealed.graphVersionId);
+});
 
 test("F002 does not publish a scope while any declared work item is pending", async (t) => {
   const { publisher, run } = await fixture(t);
@@ -176,6 +214,21 @@ test("F002 accepts a durable ReplayRun before any frozen source bytes are read",
   assert.deepEqual(persisted.rows, [{ status: "RUNNING", generation: 1 }]);
   releaseRead();
   assert.equal((await pending).status, "MATCH");
+});
+
+test("F002 replay renews its live generation through slow source reads without changing the fixed digest", async t => {
+  const { repository, publisher, run } = await fixture(t);
+  const scope = run.scopes.find(candidate => candidate.label === "A");
+  const ready = await prepareScope(repository, run, scope, [{ materialId: "material-1", capabilityId: "javascript", status: "DONE" }]);
+  const published = await publisher.publish(owner, "workspace", run.id, scope.scopeId, { revision: ready.scope.revision, operationId: "seal-slow-replay" });
+  const admission = replayAdmission({ path: `src/${scope.label}.js` });
+  const read = admission.readFile;
+  admission.readFile = async function*(...args) { await pause(2500); yield* read(...args); };
+  const replays = new F002ReplayService(repository, { admission });
+  const accepted = await replays.submit(owner, "workspace", published.graphVersionId, { operationId: "slow-replay" });
+  const result = await replays.execute(owner, "workspace", accepted.id, { workerId: "slow-replay", leaseMs: 2000 });
+  assert.equal(result.status, "MATCH");
+  assert.equal(result.generation, 1);
 });
 
 test("F002 replay cancellation fences a late source worker and an expired claim recovers", async (t) => {

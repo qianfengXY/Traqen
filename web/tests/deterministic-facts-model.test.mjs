@@ -128,14 +128,14 @@ test("F002 view metadata survives tab/refresh without persisting credentials or 
   model.rememberEvidenceView(storage, context, { query: "orders", directoryScrollTop: 123, readingLine: 401,
     sourceBytes: "NEVER_PERSIST", apiToken: "NEVER_PERSIST", returnedFacts: "NEVER_PERSIST" });
   assert.equal([...storage.values.values()].some(value => value.includes("NEVER_PERSIST")), false);
-  assert.deepEqual(model.restoreEvidenceView(storage, context), { query: "orders", materialType: "", processingStatus: "", directoryScrollTop: 123, readingLine: 401, readingLineEnd: 401, readingWindowLine: 401, inspectorOpen: true, inspectorScrollTop: 0, ...traversalDefaults });
+  assert.deepEqual(model.restoreEvidenceView(storage, context), { query: "orders", materialPathQuery: "", materialType: "", processingStatus: "", directoryScrollTop: 123, readingLine: 401, readingLineEnd: 401, readingWindowLine: 401, inspectorOpen: true, inspectorScrollTop: 0, ...traversalDefaults });
 });
 
 test("F002 cannot restore view metadata before current authorization or across identity/version", () => {
   assert.equal(typeof model.rememberEvidenceView, "function");
   const storage = memoryStorage(), context = { workspaceId: "w", actorId: "member-1", graphVersionId, authorized: true };
   model.rememberEvidenceView(storage, context, { query: "orders", directoryScrollTop: 123, readingLine: 401 });
-  const empty = { query: "", materialType: "", processingStatus: "", directoryScrollTop: 0, readingLine: 1, readingLineEnd: 1, readingWindowLine: 1, inspectorOpen: true, inspectorScrollTop: 0, ...traversalDefaults };
+  const empty = { query: "", materialPathQuery: "", materialType: "", processingStatus: "", directoryScrollTop: 0, readingLine: 1, readingLineEnd: 1, readingWindowLine: 1, inspectorOpen: true, inspectorScrollTop: 0, ...traversalDefaults };
   assert.deepEqual(model.restoreEvidenceView(storage, { ...context, authorized: false }), empty);
   assert.deepEqual(model.restoreEvidenceView(storage, { ...context, actorId: "member-2" }), empty);
   assert.deepEqual(model.restoreEvidenceView(storage, { ...context, graphVersionId: "c".repeat(64) }), empty);

@@ -23,6 +23,35 @@ const sourceInput = { workspaceId: "workspace", bundleId, sourceBundleSnapshotId
 const profileInput = { version: "1", schemaVersion: 1, capabilityIds: ["javascript"], ruleVersions: ["javascript@1"], canonicalizationVersion: "1", extractionLimits: { maxBytes: 1024, maxRecords: 10 }, redactionPolicyRevision: "policy-v1" };
 const profile = { ...profileInput, id: createProfileId(profileInput), startable: true };
 
+test("F002 large preparation releases workspace locks between bounded batches so its live lease can renew", async t => {
+  const { db, repository: sources } = await sourceDatabase(t);
+  const insertsPerTransaction = [];
+  const observed = { query: db.query.bind(db), transaction: work => db.transaction(async tx => {
+    let inserts = 0;
+    const result = await work({ query: (sql, values) => {
+      if (/INSERT INTO f002_prepared_record\b/.test(sql)) {
+        inserts++;
+        assert.ok(JSON.parse(values.at(-1)).length <= 500);
+      }
+      return tx.query(sql, values);
+    } });
+    if (inserts) insertsPerTransaction.push(inserts);
+    return result;
+  }) };
+  const repository = new F002Repository(observed, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });
+  await repository.registerProfile(profile);
+  const run = await repository.createAdmittedRun(owner, "workspace", { operationId: "large-preparation-lease", sourceInput, profile,
+    scopes: [{ selections: [{ kind: "COMPONENT", componentId }] }] });
+  const ready = await new F002Worker(repository).run(owner, "workspace", run.id, run.scopes[0].scopeId, {
+    workerId: "bounded-preparation", leaseMs: 60000, materials: Array.from({ length: 200 }, (_, index) => ({ componentId,
+      pathBytes: Buffer.from(`file-${index}.unknown`).toString("base64url"), bytes: Buffer.from("fixed"), mediaType: "application/octet-stream" })),
+  });
+  assert.equal(ready.status, "READY_TO_SEAL");
+  assert.equal(ready.generation, 1);
+  assert.deepEqual(insertsPerTransaction, [1, 1], "a single long transaction must not retain the renewal locks across batches");
+  assert.equal((await db.query("SELECT count(*)::integer AS n FROM f002_prepared_record WHERE run_id=$1", [run.id])).rows[0].n, 600);
+});
+
 function profileWithCapabilities(capabilityIds) {
   const input = {
     ...profileInput,
@@ -167,7 +196,7 @@ test("F002 retains a consumed F001 Gap with its F001 origin instead of relabelin
   const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx) => sources.authorize(actor, workspaceId, false, tx) });
   await repository.registerProfile(profile);
   const run = await repository.createAdmittedRun(owner, "workspace", {
-    operationId: "inherited-gap-run", sourceInput, profile, scopes: [{ selections: [{ kind: "COMPONENT", componentId }] }],
+    operationId: "inherited-gap-run", sourceInput: { ...sourceInput, inheritedGapSet: { ...sourceInput.inheritedGapSet, count: "1" } }, profile, scopes: [{ selections: [{ kind: "COMPONENT", componentId }] }],
   });
   const pathBytes = Buffer.from("src/external.js", "utf8").toString("base64url");
   const bytes = Buffer.from("export function external() {}\n", "utf8");

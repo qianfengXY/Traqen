@@ -4,12 +4,13 @@ import { useCallback, useState } from "react";
 import { DeterministicFactsClient, FactsClientError, isDefiniteWriteRejection } from "./client.ts";
 import { SourceTruthClient } from "../source-truth/client.ts";
 import type { FrozenVersion, Page } from "../source-truth/types.ts";
-import type { FactVersion, Manifest, Profile, RecordPage, Replay, Run, Scope } from "./types.ts";
+import type { FactVersion, Manifest, Profile, Replay, Run, Scope } from "./types.ts";
 import { useEvidenceResource } from "./use-resource.ts";
 import { useOperationJournal } from "./use-operation-journal.ts";
 import type { OperationEnvelope, PendingOperation } from "./operations.ts";
 import { isEvidenceShortcut } from "./keyboard.ts";
 import { extractionScopes, type ExtractionKind } from "./delivery-input.ts";
+import { currentScopeCheck, storeScopeCheck, scopeExplanation, defaultProfileId, type ScopeCheck, type ScopeChecks } from "./delivery-state.ts";
 
 const short = (id: string) => `${id.slice(0, 12)}…`;
 
@@ -19,14 +20,14 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
   refresh: () => Promise<void>; onAccessLost: (error: Error) => void;
 }) {
   const journal = useOperationJournal({ workspaceId, actorId, namespace: "delivery" });
-  const sourceId = journal.draft.sourceId ?? "", profileId = journal.draft.profileId ?? profiles.find(profile => profile.startable)?.id ?? "";
+  const sourceId = journal.draft.sourceId ?? "", profileId = journal.draft.profileId ?? defaultProfileId(profiles);
   const components = journal.draft.components ?? [], separate = journal.draft.separate ?? false, pending = journal.pending;
   const scopeKind = journal.draft.scopeKind ?? "COMPONENT", scopePath = journal.draft.scopePath ?? "";
   let selectionsError = "";
   try { if (components.length) extractionScopes(components, separate, scopeKind, scopePath); }
   catch (error) { selectionsError = (error as Error).message; }
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
-  const [error, setError] = useState<Error | null>(null), [checks, setChecks] = useState<Record<string, { ready: boolean; blockers: unknown[] }>>({});
+  const [error, setError] = useState<Error | null>(null), [checks, setChecks] = useState<ScopeChecks>({});
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
   const report = (error: unknown) => {
     if (client.signal?.aborted) return;
@@ -90,26 +91,15 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     } finally { if (!client.signal?.aborted) setBusy(false); }
   };
   const check = async (runId: string, scope: Scope) => {
-    try { const result = await client.request<{ check: { ready: boolean; blockers: unknown[] } }>(`/runs/${runId}/scopes/${scope.scopeId}/check`, "POST", {}); if (!client.signal?.aborted) setChecks(current => ({ ...current, [scope.scopeId]: result.check })); } catch (error) { report(error); }
+    try { const result = await client.request<{ check: ScopeCheck }>(`/runs/${runId}/scopes/${scope.scopeId}/check`, "POST", {}); if (!client.signal?.aborted) setChecks(current => storeScopeCheck(current, runId, scope.scopeId, result.check)); } catch (error) { report(error); }
   };
   const exportVersion = async () => {
     if (!versionId || !manifest || busy) return;
     setBusy(true); setError(null);
     try {
-      const records = []; let cursor: string | null = null;
-      const seen = new Set<string>();
-      do {
-        const page: RecordPage = await client.request(`/versions/${versionId}/records?limit=500${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-        records.push(...page.items); cursor = page.nextCursor;
-        if (cursor && seen.has(cursor)) throw new Error("导出分页未前进；不生成不完整交付。");
-        if (cursor) seen.add(cursor);
-        if (records.length > 100_000) throw new Error("交付超过本页导出预算；不保存截断文件。");
-      } while (cursor);
-      const coverage = await client.request(`/versions/${versionId}/coverage`);
+      const blob = await client.exportVersion(versionId);
       client.signal?.throwIfAborted();
-      const url = URL.createObjectURL(new Blob([JSON.stringify({ schemaVersion: 1, workspaceId, graphVersionId: versionId, manifest, vocabulary: manifest.vocabulary,
-        objects: records.filter(record => record.kind === "OBJECT" || record.kind === "MATERIAL"), facts: records.filter(record => record.kind === "FACT"),
-        evidence: records.filter(record => record.kind === "EVIDENCE"), gaps: records.filter(record => record.kind === "GAP"), coverage }, null, 2)], { type: "application/json" }));
+      const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = `f002-${versionId}.json`; anchor.click(); URL.revokeObjectURL(url);
       setNotice("已生成固定版本五部分交付 JSON；不包含材料原始字节，不自动采用为业务结论。");
     } catch (error) { report(error); }
@@ -130,12 +120,13 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     <section className="f002-panel"><h2>活动范围与真实恢复状态</h2><p>只显示最近至多 100 个活动运行；查询指定运行可恢复更早记录。A 已封存不要求 B 完成。</p>
       <label>按运行 ID 回查<input onKeyDown={event => { if (isEvidenceShortcut(event.nativeEvent, ["Enter"])) { const id = event.currentTarget.value.trim(); if (/^[A-Za-z0-9_-]{1,128}$/.test(id)) void client.request<{ run: Run }>(`/runs/${id}`).then(value => { if (!client.signal?.aborted) setSelectedRun(value.run); }).catch(report); } }} placeholder="输入持久 Run ID 后按 Enter" /></label>
       {displayedRuns.map(run => <article key={run.id}><h3>运行 {run.id}</h3>{run.scopes.map(scope => <div className="f002-scope" key={scope.scopeId}><b>{scope.label ?? short(scope.scopeId)}</b><span>{scope.status} · revision {scope.revision}</span><code>{scope.diagnostic?.code ?? "无额外诊断"}</code>
+        <p>{scopeExplanation(scope, currentScopeCheck(checks, run.id, scope))}</p>
         {scope.graphVersionId && <button className="button" onClick={() => onVersion(scope.graphVersionId!)}>查看独立封存版本</button>}
         {scope.requestOwned ? <p>此范围由取证请求持久拥有，通用入口不能重试、取消或封存。</p> : <div className="f002-actions"><button className="button" disabled={busy} onClick={() => void check(run.id, scope)}>查看封存条件</button>
           {scope.status === "FAILED_RETRYABLE" && <button className="button" disabled={commandsBlocked} onClick={() => void send(`/runs/${run.id}/retry`, { scopeId: scope.scopeId, revision: scope.revision }, "范围重试")}>重试原范围</button>}
           {["QUEUED", "RUNNING", "READY_TO_SEAL", "FAILED_RETRYABLE", "BLOCKED"].includes(scope.status) && <button className="button" disabled={commandsBlocked} onClick={() => { if (window.confirm("取消此范围会围栏阻止迟到 worker 发布；其他范围和已封存历史不变。")) void send(`/runs/${run.id}/cancel`, { scopeId: scope.scopeId, revision: scope.revision }, "范围取消"); }}>取消此范围</button>}
-          {scope.status === "READY_TO_SEAL" && <button className="button primary" disabled={commandsBlocked || !checks[scope.scopeId]?.ready} onClick={() => void send(`/runs/${run.id}/scopes/${scope.scopeId}/seal`, { revision: scope.revision }, "独立范围封存")}>封存此范围</button>}</div>}
-        {checks[scope.scopeId] && <pre>{JSON.stringify(checks[scope.scopeId], null, 2)}</pre>}</div>)}</article>)}
+          {scope.status === "READY_TO_SEAL" && <button className="button primary" disabled={commandsBlocked || !currentScopeCheck(checks, run.id, scope)?.ready} onClick={() => void send(`/runs/${run.id}/scopes/${scope.scopeId}/seal`, { revision: scope.revision }, "独立范围封存")}>封存此范围</button>}</div>}
+        {currentScopeCheck(checks, run.id, scope) && <details><summary>原始封存检查与工作项计数</summary><pre>{JSON.stringify(currentScopeCheck(checks, run.id, scope), null, 2)}</pre></details>}</div>)}</article>)}
       {!displayedRuns.length && <p>当前未读到活动运行；不代表历史事实集或材料不存在。</p>}</section>
     <section className="f002-panel"><h2>版本与五部分交付</h2>{versions.map(version => <button className="f002-ref" key={version.graphVersionId} aria-current={versionId === version.graphVersionId ? "true" : undefined} onClick={() => onVersion(version.graphVersionId)}>{version.publishedAt} · {short(version.graphVersionId)}<small>来源 {short(version.bundleId)} · 独立范围 {short(version.scopeId)}</small></button>)}
       {manifest && <><dl className="f002-counts">{Object.entries(manifest.counts).map(([kind, count]) => <div key={kind}><dt>{kind}</dt><dd>{count}</dd></div>)}</dl><details><summary>固定规则、分片摘要与封存闭包</summary><pre>{JSON.stringify(manifest, null, 2)}</pre></details><div className="f002-actions"><button className="button" disabled={busy} onClick={() => void exportVersion()}>导出五部分交付</button><button className="button" disabled={commandsBlocked} onClick={() => void send(`/versions/${versionId}/replays`, {}, "固定规则重放")}>启动真实重放</button></div></>}

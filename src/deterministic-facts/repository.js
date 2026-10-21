@@ -258,9 +258,19 @@ export class F002Repository {
       const scope = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
       requireF002(scope && scope.status === "RUNNING" && scope.generation === generation && scope.lease_live,
         "F002_STALE_SCOPE_WORKER", "执行权或任务状态已变化");
+      // The scope lock serializes writers of this denominator. Read and write
+      // the bounded batch as sets; a 60k-material scope must not issue millions
+      // of round trips. Validate every immutable terminal result before writes.
+      const stored = (await tx.query(`SELECT item.* FROM f002_scope_item item
+        JOIN jsonb_array_elements($4::jsonb) input
+          ON item.material_id=(input->>'materialId') AND item.capability_id=(input->>'capabilityId')
+        WHERE item.workspace_id=$1 AND item.run_id=$2 AND item.scope_id=$3
+        ORDER BY item.material_id,item.capability_id FOR UPDATE OF item`,
+      [workspaceId, runId, scopeId, JSON.stringify(normalized)])).rows;
+      const byKey = new Map(stored.map(item => [JSON.stringify([item.material_id, item.capability_id]), item]));
+      const writable = [];
       for (const item of normalized) {
-        const existing = (await tx.query(`SELECT * FROM f002_scope_item WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3
-          AND material_id=$4 AND capability_id=$5 FOR UPDATE`, [workspaceId, runId, scopeId, item.materialId, item.capabilityId])).rows[0];
+        const existing = byKey.get(JSON.stringify([item.materialId, item.capabilityId]));
         if (existing && terminalScopeItemStates.has(existing.status)) {
           // A recovered worker re-declares the fixed work denominator before it
           // knows which crash window it is resuming from. That declaration must
@@ -272,13 +282,15 @@ export class F002Repository {
             "F002_SCOPE_ITEM_CONFLICT", "终态工作项不能被不同输出覆盖");
           continue;
         }
-        await tx.query(`INSERT INTO f002_scope_item (workspace_id,run_id,scope_id,material_id,capability_id,generation,status,record_ids,gap_ids,diagnostic)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        writable.push(item);
+      }
+      if (writable.length) await tx.query(`INSERT INTO f002_scope_item (workspace_id,run_id,scope_id,material_id,capability_id,generation,status,record_ids,gap_ids,diagnostic)
+          SELECT $1,$2,$3,input->>'materialId',input->>'capabilityId',$4,input->>'status',input->'recordIds',input->'gapIds',input->'diagnostic'
+          FROM jsonb_array_elements($5::jsonb) input
           ON CONFLICT (workspace_id,run_id,scope_id,material_id,capability_id) DO UPDATE SET
             generation=EXCLUDED.generation,status=EXCLUDED.status,record_ids=EXCLUDED.record_ids,gap_ids=EXCLUDED.gap_ids,
             diagnostic=EXCLUDED.diagnostic,updated_at=clock_timestamp()`,
-        [workspaceId, runId, scopeId, item.materialId, item.capabilityId, generation, item.status, JSON.stringify(item.recordIds), JSON.stringify(item.gapIds), JSON.stringify(item.diagnostic)]);
-      }
+        [workspaceId, runId, scopeId, generation, JSON.stringify(writable)]);
       await this.#event(tx, workspaceId, runId, scopeId, actor.actorId, "SCOPE_ITEMS_RECORDED", { generation, count: normalized.length });
       return normalized;
     }, { maintain: true });

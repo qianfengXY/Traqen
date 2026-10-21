@@ -88,6 +88,12 @@ test("F002 HTTP reads use only bound source-member identity, not the legacy shar
   const records = await call(`/versions/${sealed.graphVersionId}/records?limit=10`);
   assert.equal(records.status, 200);
   assert.ok(records.body.items.some((item) => item.id === verified.factIds[0]));
+  const exported = await call(`/versions/${sealed.graphVersionId}/export`);
+  assert.equal(exported.status, 200);
+  assert.equal(exported.body.graphVersionId, sealed.graphVersionId);
+  assert.equal(exported.body.completion.status, "COMPLETE");
+  assert.equal(exported.body.objects.length + exported.body.facts.length + exported.body.evidence.length + exported.body.gaps.length, verified.records.length);
+  assert.equal(exported.body.coverage.items.length, 1);
   const materials = await call(`/versions/${sealed.graphVersionId}/materials?limit=10`);
   assert.equal(materials.status, 200);
   assert.deepEqual(materials.body.items.map((item) => item.kind), ["MATERIAL"]);

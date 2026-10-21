@@ -410,8 +410,15 @@ function validateClosure(records, { profile = null, bundleId = null } = {}) {
   }
 }
 
+export function assertScopeRecordBudget(profile, count) {
+  if (profile?.extractionLimits?.scopeRecordBudget !== "atomic-material-v1") return;
+  requireF002(Number.isSafeInteger(profile.extractionLimits.maxRecords) && count <= profile.extractionLimits.maxRecords,
+    "F002_SCOPE_RECORD_BUDGET_TOO_SMALL", "完整材料目录及全部来源缺口超过固定配置的范围记录上限；请缩小范围或选择另一个已批准配置", { status: 422 });
+}
+
 export function normalizeCanonicalRecords(records, context = {}) {
   requireF002(Array.isArray(records) && records.length <= 500_000, "F002_RECORDS_INVALID", "规范记录列表无效", { status: 422 });
+  assertScopeRecordBudget(context.profile, records.length);
   const normalized = records.map((record) => validateRecord(record, context)).sort((left, right) => utf8Compare(left.kind, right.kind) || utf8Compare(left.id, right.id));
   for (let index = 1; index < normalized.length; index += 1) {
     requireF002(normalized[index - 1].kind !== normalized[index].kind || normalized[index - 1].id !== normalized[index].id,

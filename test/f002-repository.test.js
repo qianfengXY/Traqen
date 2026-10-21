@@ -49,6 +49,38 @@ function runInput(overrides = {}) {
   };
 }
 
+test("F002 declares complete 500-item batches with constant SQL while preserving terminal results and atomic conflicts", async t => {
+  const { db, repository: sources } = await sourceDatabase(t);
+  let itemQueries = 0;
+  const observed = { query: db.query.bind(db), transaction: work => db.transaction(tx => work({ query: (sql, values) => {
+    if (/\bf002_scope_item\b/.test(sql)) itemQueries++;
+    return tx.query(sql, values);
+  } })) };
+  const repository = new F002Repository(observed, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });
+  await repository.registerProfile(profile());
+  const run = await repository.createAdmittedRun(owner, "workspace", runInput());
+  const scopeId = run.scopes[0].scopeId;
+  const claim = await repository.claimScope(owner, "workspace", run.id, scopeId, { workerId: "batch-worker", leaseMs: 60_000 });
+  const input = { workspaceId: "workspace", runId: run.id, scopeId, generation: claim.generation };
+  const items = Array.from({ length: 500 }, (_, index) => ({ materialId: `material-${index >>> 1}`, capabilityId: index % 2 ? "javascript" : "inventory", status: "PENDING" }));
+  await repository.recordScopeItems(owner, { ...input, items });
+  assert.ok(itemQueries <= 2, `500-item declaration issued ${itemQueries} item SQL queries instead of a bounded read+write`);
+  const complete = items.map((item, i) => ({ ...item, status: "DONE", recordIds: [`record-${i}`, `record-${i}`], gapIds: [] }));
+  itemQueries = 0;
+  await repository.recordScopeItems(owner, { ...input, items: complete });
+  assert.ok(itemQueries <= 2);
+  itemQueries = 0;
+  await repository.recordScopeItems(owner, { ...input, items });
+  assert.ok(itemQueries <= 2);
+  const rows = (await db.query("SELECT * FROM f002_scope_item WHERE run_id=$1 ORDER BY material_id,capability_id", [run.id])).rows;
+  assert.equal(rows.length, 500); assert.ok(rows.every(row => row.status === "DONE" && row.record_ids.length === 1));
+  await assert.rejects(repository.recordScopeItems(owner, { ...input, items: [{ materialId: "new-material", capabilityId: "inventory", status: "PENDING" },
+    { ...complete.at(-1), recordIds: ["different-terminal-record"] }] }), { code: "F002_SCOPE_ITEM_CONFLICT" });
+  assert.equal((await db.query("SELECT count(*)::integer AS total FROM f002_scope_item WHERE run_id=$1", [run.id])).rows[0].total, 500);
+  await assert.rejects(repository.recordScopeItems(owner, { ...input, generation: claim.generation + 1, items: [items[0]] }), { code: "F002_STALE_SCOPE_WORKER" });
+  await assert.rejects(repository.recordScopeItems(reader, { ...input, items: [items[0]] }), { code: "SOURCE_FORBIDDEN" });
+});
+
 test("F002 direct claims cannot bypass explicit retry of FAILED_RETRYABLE scopes", async t => {
   const { db, repository: sources } = await sourceDatabase(t);
   const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });

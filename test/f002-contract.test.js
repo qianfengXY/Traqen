@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createHash } from "node:crypto";
+import { canonicalEncode } from "../src/source-truth/identity.js";
 
 import {
   canonicalDigest,
@@ -16,6 +18,20 @@ const bundleId = "a".repeat(64);
 const componentA = "b".repeat(64);
 const componentB = "c".repeat(64);
 const profileId = "d".repeat(64);
+
+test("F002 identity optimization preserves canonical bytes and the strict non-JSON rejection boundary", () => {
+  const values = [{ z: "😀", a: { "10": -0, "2": null }, items: [false, 1.25, "中"] }, Object.assign(Object.create(null), { alpha: true })];
+  for (const payload of values) {
+    const old = createHash("sha256").update(canonicalEncode({ domain: "F002.TEST", version: 1, payload: JSON.parse(canonicalEncode(payload)) })).digest("hex");
+    assert.equal(canonicalDigest("TEST", payload), old);
+  }
+  for (const value of [undefined, NaN, Infinity, 1n, new Date(), () => {}, Symbol("not-json"), "\ud800"]) {
+    assert.throws(() => canonicalDigest("TEST", { value }), TypeError);
+  }
+  const sparse = new Array(2), augmented = [1]; augmented.extra = 2;
+  for (const value of [sparse, augmented, { [Symbol("hidden")]: true }]) assert.throws(() => canonicalDigest("TEST", { value }), TypeError);
+  for (const payload of [null, [], "not-a-record", 1]) assert.throws(() => canonicalDigest("TEST", payload), TypeError);
+});
 
 test("F002 identities exclude runtime observations and retain Workspace/component boundaries", () => {
   const basis = {
