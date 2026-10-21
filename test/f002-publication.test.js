@@ -180,7 +180,18 @@ test("F002 replay recompiles the fixed source rather than accepting client recor
   await repository.database.query("UPDATE f002_profile SET startable=false WHERE id=$1", [profile().id]);
   const historical = await replays.replay(owner, "workspace", published.graphVersionId);
   assert.equal(historical.status, "MATCH", "stopping new starts must not remove an installed historical rule implementation");
-  const unavailable = await new F002ReplayService(repository, { admission: replayAdmission({ path }), ruleRegistry: new F002RuleRegistry({ ruleVersions: [] }) })
+  const customRegistry = new F002RuleRegistry();
+  let customCompilations = 0;
+  const custom = new F002ReplayService(repository, { admission: replayAdmission({ path }), ruleRegistry: customRegistry,
+    compile: input => {
+      assert.equal(input.ruleRegistry, customRegistry, "validation and compilation must share the injected registry");
+      customCompilations++;
+      return compileDeterministicFacts(input);
+    } });
+  assert.equal((await custom.replay(owner, "workspace", published.graphVersionId)).status, "MATCH");
+  assert.equal(customCompilations, 1, "the custom compiler must actually recompile the fixed source");
+  const unavailable = await new F002ReplayService(repository, { admission: replayAdmission({ path }), compile: compileDeterministicFacts,
+    ruleRegistry: new F002RuleRegistry({ ruleVersions: [] }) })
     .replay(owner, "workspace", published.graphVersionId);
   assert.equal(unavailable.status, "FAILED");
   assert.equal(unavailable.diagnostic.code, "RULE_VERSION_UNAVAILABLE");

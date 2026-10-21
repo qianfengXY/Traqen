@@ -58,6 +58,11 @@ export class F002ReplayService {
     if (!admission || typeof admission.inventory !== "function" || typeof admission.readFile !== "function") throw new TypeError("F002 replay requires admitted source reads");
     if (typeof compile !== "function") throw new TypeError("F002 replay compiler must be a function");
     if (!ruleRegistry || typeof ruleRegistry.assertProfile !== "function") throw new TypeError("F002 replay requires a server rule registry");
+    // The native worker owns its installed registry; executable registries
+    // cannot cross its structured-clone boundary. Never silently substitute it.
+    if (compile === workerParse && ruleRegistry !== installedF002Rules) {
+      throw new TypeError("F002 replay custom rule registry requires a custom compiler");
+    }
     this.repository = repository;
     this.admission = admission;
     this.compile = compile;
