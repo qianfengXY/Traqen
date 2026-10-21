@@ -145,7 +145,7 @@ test("F002 controlled dotenv presentation uses current policy on an old worker-s
     { content, entryPath: ".env.production", operationId: "material-dotenv-old-profile" });
   assert.equal(material.payload.mediaType, "application/octet-stream");
   assert.equal((await source.db.query("SELECT count(*)::integer AS count FROM f002_record WHERE graph_version_id=$1 AND kind='FACT'", [graphVersionId])).rows[0].count, 0);
-  assert.equal(result.mediaType, "text/plain"); assert.equal(result.policyRevision, "policy-v3-format-aware");
+  assert.equal(result.mediaType, "text/plain"); assert.equal(result.policyRevision, "policy-v4-private-key-boundaries");
   assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION");
   for (const marker of ["FIRST_DOTENV_SENTINEL", "SECOND_DOTENV_SENTINEL"]) assert.equal(result.bytes.includes(marker), false);
   assert.ok(result.bytes.includes("PORT=8080")); assert.equal(result.bytes.toString().split("\r\n").length, content.split("\r\n").length);
@@ -157,7 +157,7 @@ test("F002 controlled dotenv presentation refuses malformed or non-UTF8 sources 
     const { result } = await readWorkerSealedMaterial(t,
       { content, entryPath: `.env.${suffix}`, operationId: `material-dotenv-${suffix}` });
     assert.equal(result.transform, "CONFIG_SECRET_PRESENTATION_REFUSAL");
-    assert.equal(result.policyRevision, "policy-v3-format-aware"); assert.equal(result.mediaType, "text/plain");
+    assert.equal(result.policyRevision, "policy-v4-private-key-boundaries"); assert.equal(result.mediaType, "text/plain");
     assert.equal(result.bytes.includes("FIRST_DOTENV_SENTINEL"), false);
   }
 });
@@ -165,7 +165,7 @@ test("F002 controlled dotenv presentation refuses malformed or non-UTF8 sources 
 test("F002 controlled dotenv presentation protects a known filename under a non-UTF8 admitted parent directory", async t => {
   const { result } = await readWorkerSealedMaterial(t, { content: 'export API_TOKEN="FIRST_DOTENV_SENTINEL\nSECOND_DOTENV_SENTINEL"\n',
     entryPath: Buffer.from([0xff, 47, ...Buffer.from(".env.prod")]), directoryPaths: [Buffer.from([0xff])], operationId: "material-dotenv-opaque-path" });
-  assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION"); assert.equal(result.policyRevision, "policy-v3-format-aware");
+  assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION"); assert.equal(result.policyRevision, "policy-v4-private-key-boundaries");
   assert.equal(result.bytes.includes("FIRST_DOTENV_SENTINEL"), false); assert.equal(result.bytes.includes("SECOND_DOTENV_SENTINEL"), false);
 });
 

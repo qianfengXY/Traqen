@@ -8,7 +8,7 @@ const compareUtf8 = (left, right) => Buffer.compare(Buffer.from(left, "utf8"), B
 const coverageStates = ["DONE", "NOT_APPLICABLE", "UNSUPPORTED", "PARSE_FAILED", "PENDING", "RUNNING"];
 const collections = new Map([
   ["materials", { kind: "MATERIAL" }], ["objects", { kind: "OBJECT" }], ["facts", { kind: "FACT" }],
-  ["relations", { kind: "FACT", predicate: (record) => record.payload.kind === "RELATION" }], ["gaps", { kind: "GAP" }],
+  ["relations", { kind: "FACT", relationsOnly: true }], ["gaps", { kind: "GAP" }],
 ]);
 
 function requireVersionId(graphVersionId) {
@@ -154,7 +154,7 @@ export class F002QueryService {
   async collection(actor, workspaceId, graphVersionId, name, { limit = 100, cursor = null } = {}) {
     requireVersionId(graphVersionId); boundedLimit(limit);
     const definition = collections.get(collectionName(name));
-    return this.#page(actor, workspaceId, graphVersionId, { route: name, kind: definition.kind, limit, cursor, predicate: definition.predicate ?? null });
+    return this.#page(actor, workspaceId, graphVersionId, { route: name, kind: definition.kind, limit, cursor, relationsOnly: definition.relationsOnly ?? false });
   }
 
   async vocabulary(actor, workspaceId, graphVersionId) {
@@ -238,16 +238,20 @@ export class F002QueryService {
     });
   }
 
-  async #page(actor, workspaceId, graphVersionId, { route, kind, limit, cursor, predicate = null }) {
+  async #page(actor, workspaceId, graphVersionId, { route, kind, limit, cursor, relationsOnly = false }) {
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => {
       // Authenticate the requested Workspace before interpreting caller-supplied
       // cursor state, so a foreign cursor cannot distinguish its version/filter.
       const marker = cursor === null ? null : this.#cursor(cursor, { route, workspaceId, graphVersionId, kind });
       const version = (await tx.query("SELECT 1 FROM f002_fact_set WHERE workspace_id=$1 AND graph_version_id=$2", [workspaceId, graphVersionId])).rows[0];
       requireF002(version, "F002_VERSION_NOT_FOUND", "事实集版本不存在", { status: 404 });
-      const rows = (await tx.query(`SELECT kind,id,payload FROM f002_record WHERE workspace_id=$1 AND graph_version_id=$2
-        ${kind === null ? "" : "AND kind=$3"}`, kind === null ? [workspaceId, graphVersionId] : [workspaceId, graphVersionId, kind])).rows
-        .filter((record) => !predicate || predicate(record)).sort(recordOrder).filter((record) => !marker || recordOrder(record, marker) > 0);
+      const values = [workspaceId, graphVersionId], conditions = ["workspace_id=$1", "graph_version_id=$2"];
+      if (kind !== null) { values.push(kind); conditions.push(`kind=$${values.length}`); }
+      if (relationsOnly) conditions.push("payload->>'kind'='RELATION'");
+      if (marker) { values.push(marker.kind, marker.id); conditions.push(`(kind,id)>($${values.length - 1},$${values.length})`); }
+      values.push(limit + 1);
+      const rows = (await tx.query(`SELECT kind,id,payload FROM f002_record WHERE ${conditions.join(" AND ")}
+        ORDER BY kind,id LIMIT $${values.length}`, values)).rows;
       const items = rows.slice(0, limit).map((record) => ({ kind: record.kind, id: record.id, payload: record.payload }));
       const last = items.at(-1);
       return { items, nextCursor: rows.length > items.length ? this.#sign({ route, workspaceId, graphVersionId, kind, last: { kind: last.kind, id: last.id } }) : null };

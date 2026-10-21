@@ -81,6 +81,7 @@ async function migratedDatabase() {
     "0045_f002_request_execution",
     "0046_f002_replay_lifecycle",
     "0047_f002_request_budget_lifecycle",
+    "0048_f002_request_scope_index",
   ]);
   return database;
 }

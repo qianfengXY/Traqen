@@ -48,6 +48,24 @@ test("F002 keeps an active slow worker leased through parsing without changing i
   assert.equal(ready.leaseUntil, null);
 });
 
+test("F002 a transient lease transport failure can recover before expiry without reviving a stale worker", async t => {
+  const { db, repository: sources } = await sourceDatabase(t);
+  const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });
+  await repository.registerProfile(profile);
+  const run = await repository.createAdmittedRun(owner, "workspace", { operationId: "transient-worker", sourceInput, profile, scopes: [{ selections: [{ kind: "COMPONENT", componentId }] }] });
+  const renew = repository.renewScopeLease.bind(repository); let calls = 0;
+  t.mock.method(repository, "renewScopeLease", async (...args) => {
+    if (++calls === 1) throw Object.assign(new Error("synthetic connection reset"), { code: "ECONNRESET" });
+    return renew(...args);
+  });
+  const worker = new F002Worker(repository, { parse: async input => { await pause(2500); return compileDeterministicFacts(input); } });
+  const ready = await worker.run(owner, "workspace", run.id, run.scopes[0].scopeId, { workerId: "transient-worker", leaseMs: 2000, timeoutMs: 10_000,
+    materials: [{ componentId, pathBytes: Buffer.from("slow.js").toString("base64url"), bytes: Buffer.from("export function slowEvidence() {}\n"), mediaType: "text/javascript" }] });
+  assert.equal(ready.status, "READY_TO_SEAL");
+  assert.ok(calls >= 2);
+  assert.equal(ready.generation, 1);
+});
+
 test("F002 parser timeout leaves declared scope work pending and fails retryably without manufacturing a Gap", async (t) => {
   const { db, repository: sources } = await sourceDatabase(t);
   const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx) => sources.authorize(actor, workspaceId, false, tx) });
@@ -196,6 +214,8 @@ test("F002 recovery preserves terminal work after a ready-to-seal failure and aw
   });
   assert.equal(failed.status, "FAILED_RETRYABLE");
   assert.equal((await db.query("SELECT status FROM f002_scope_item WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3", ["workspace", run.id, scope.scopeId])).rows[0].status, "DONE");
+  const failedScope = await repository.getScope(owner, "workspace", run.id, scope.scopeId);
+  await repository.retryScope(owner, "workspace", run.id, scope.scopeId, { revision: failedScope.revision, operationId: "retry-recovery" });
   const recovered = await worker.run(owner, "workspace", run.id, scope.scopeId, {
     workerId: "recover-worker", leaseMs: 60_000, timeoutMs: 10_000, materials,
   });

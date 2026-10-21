@@ -45,7 +45,7 @@ test("F002 runtime reuses the configured F001 authority and installs an immutabl
   assert.deepEqual(await runtime.services.repository.getProfile(owner, "workspace", structuredF002Profile().id), structuredF002Profile());
   assert.deepEqual(runtime.services.structuredProfile, structuredF002Profile());
   assert.equal(profile.redactionPolicyRevision, "policy-v1", "historic extraction profile stays immutable");
-  assert.equal(runtime.services.materials.policyRevision, "policy-v3-format-aware", "current READ policy is not an old extraction revision");
+  assert.equal(runtime.services.materials.policyRevision, "policy-v4-private-key-boundaries", "current READ policy is not an old extraction revision");
   await assert.rejects(runtime.services.requests.submit(owner, "workspace", {
     operationId: "no-consumer", investigationId: "investigation", baseVersionId: "a".repeat(64), requestKind: "LOOKUP", question: "Where?", factRefs: ["f"], materialRefs: [], requestedCapabilities: [],
   }), { code: "F002_CONSUMER_UNAVAILABLE" });

@@ -1,7 +1,7 @@
 import { escapeJsonPointer, JsonSyntaxError, parseJsonSyntax, validJsonPointer } from "./json-syntax.js";
 import { extractReportMetadata, reportFieldProblem, reportFields, reportStatuses } from "./test-reports.js";
+import { containsPrivateKey, isSensitiveKey } from "../sensitive-content.js";
 
-const sensitiveKey = /(?:password|secret|token|api[_-]?key)/i;
 const methods = new Set(["get", "post", "put", "patch", "delete", "head", "options", "trace"]);
 const field = (node, key) => node?.type === "object" ? node.children.find(child => child.key === key) : undefined;
 const textField = (node, key) => { const child = field(node, key); return child?.type === "string" ? child.value : null; };
@@ -67,7 +67,7 @@ export function extractJsonStructure({ material, text, limits, textAnchor, addOb
     return node.type === "object" ? "JSON_OBJECT" : node.type === "array" ? "JSON_ARRAY" : "JSON_VALUE";
   };
   const visit = (node, parent, segments) => {
-    if (node.key !== undefined && sensitiveKey.test(node.key)) {
+    if (isSensitiveKey(node.key) || containsPrivateKey(node.value)) {
       // Neither the secret subtree nor its decoded names/pointers are indexed.
       addGap(material, "json", "JSON_SENSITIVE_SUBTREE_RESTRICTED", textAnchor(text, node.keyStart ?? node.start, node.keyEnd ?? node.start)); return;
     }

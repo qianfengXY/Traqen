@@ -20,6 +20,18 @@ const profileInput = { version: "1", schemaVersion: 1, capabilityIds: ["javascri
 const profile = { ...profileInput, id: createProfileId(profileInput), startable: true };
 const sourceInput = { workspaceId: "workspace", bundleId, sourceBundleSnapshotId: bundleId, receiptId: "receipt-1", receiptStatus: "READY", confirmationId: "confirmation-1", acceptanceRecordIds: [], receiptValidUntil: null, qualifiedAt: "2026-09-17T00:00:00.000Z", inventoryId: "inventory-1", inventoryDigest: "inventory-1", policyRevisionId: "policy-v1", inheritedGapSet: { id: "gaps-1", count: "0", consumption: "ALL_PAGES_REQUIRED" } };
 
+test("F002 HTTP never exposes an internal exception merely carrying code and status fields", async t => {
+  const handler = createF002HttpHandler({ services: { repository: {}, admission: {}, publication: {}, queries: {
+    profiles: async () => { throw Object.assign(new Error("SYNTHETIC_DATABASE_DETAIL"), { code: "INTERNAL_DB_ERROR", status: 409 }); },
+  }, materials: {}, requests: {}, replays: {} }, authenticate: async () => owner });
+  const server = createTraceabilityHttpServer({ application: {}, apiBearerToken: "legacy-api-token", deterministicFactsHandler: handler });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/workspaces/workspace/deterministic-facts/profiles`);
+  assert.equal(response.status, 500);
+  assert.equal(JSON.stringify(await response.json()).includes("SYNTHETIC_DATABASE_DETAIL"), false);
+});
+
 test("F002 investigation boundary and request list HTTP reads bind member identity and exact query references", async t => {
   const calls = [], version = "a".repeat(64);
   let denied = false;

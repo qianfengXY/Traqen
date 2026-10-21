@@ -2,11 +2,11 @@
 // No environment lookup, interpolation, shell evaluation or property winner.
 // https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Properties.html#load(java.io.Reader)
 import { DotenvSyntaxError, isDotenvPath, parseDotenvDeclarations } from "./dotenv-syntax.js";
+import { containsPrivateKey, isSensitiveKey } from "../sensitive-content.js";
 export class ConfigSyntaxError extends Error {
   constructor(code, start, end) { super(code); this.code = code; this.start = start; this.end = end; }
 }
 const whitespace = char => char === " " || char === "\t" || char === "\f";
-const sensitive = /(?:password|secret|token|api[_-]?key)/i;
 
 function naturalLines(text) {
   const lines = []; let start = 0;
@@ -93,7 +93,7 @@ export function extractPropertyStructure({ material, text, limits, textAnchor, a
   const seen = new Set();
   for (const entry of entries) {
     const anchor = textAnchor(text, entry.keyStart, entry.keyEnd);
-    if (sensitive.test(entry.key)) { addGap(material, "properties", "CONFIG_SENSITIVE_DECLARATION_RESTRICTED", anchor); continue; }
+    if (isSensitiveKey(entry.key) || containsPrivateKey(entry.value)) { addGap(material, "properties", "CONFIG_SENSITIVE_DECLARATION_RESTRICTED", anchor); continue; }
     if (seen.has(entry.key)) addGap(material, "properties", "CONFIG_DUPLICATE_KEY", anchor);
     seen.add(entry.key);
     const object = addObject(material, "CONFIG_KEY", entry.key, anchor);

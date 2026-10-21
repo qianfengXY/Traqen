@@ -1,4 +1,5 @@
 import { Composer, Lexer, Parser, isAlias, isMap, isScalar, isSeq } from "yaml";
+import { containsPrivateKey } from "./sensitive-content.js";
 
 // Bound concrete syntax before the library's recursive semantic composer.
 // Never call toJS/resolve aliases, construct custom tags, or reserialize source.
@@ -52,6 +53,7 @@ export function redactYamlPresentation(text, sensitiveKey, { explicit = false, j
     while (pending.length) {
       const node = pending.pop();
       if (!node) continue;
+      if (isScalar(node) && containsPrivateKey(node.value)) return refusal;
       if (isAlias(node) || (node.tag && !tags.has(node.tag))) return refusal;
       if (isMap(node)) {
         const keys = new Set();

@@ -224,9 +224,9 @@ export class F002RequestDerivationService {
       scopes: [{ label: `request:${requestId}`, selections: plan.selections }],
       afterCreate: async (tx, created) => {
         const scope = created.scopes[0];
-        const requestRow = (await tx.query("SELECT * FROM f002_request WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, requestId])).rows[0];
+        const requestRow = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_request WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, requestId])).rows[0];
         requireF002(requestRow && requestRow.state === "RUNNING" && requestRow.generation === requestGeneration
-          && new Date(requestRow.lease_until).getTime() > Date.now(),
+          && requestRow.lease_live,
         "F002_STALE_REQUEST_WORKER", "取证请求已停止，不能创建补提范围", { status: 409 });
         await tx.query(`UPDATE f002_request SET derived_run_id=$3,derived_scope_id=$4
           WHERE workspace_id=$1 AND id=$2 AND state='RUNNING' AND generation=$5`,
@@ -419,8 +419,8 @@ export class F002RequestService {
       };
       binding = await assertRequestActive();
       const reserved = await this.repository.withMaintainedWorkspace(actor, workspaceId, async (tx) => {
-        const row = (await tx.query("SELECT * FROM f002_request WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, requestId])).rows[0];
-        requireF002(row && row.state === "RUNNING" && row.generation === claimed.generation && new Date(row.lease_until).getTime() > Date.now(),
+        const row = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_request WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, requestId])).rows[0];
+        requireF002(row && row.state === "RUNNING" && row.generation === claimed.generation && row.lease_live,
           "F002_STALE_REQUEST_WORKER", "取证执行权或状态已变化", { status: 409 });
         const reservation = await this.#reserve(tx, row, binding, plan?.usage ?? emptyUsage());
         if (reservation !== true) {
@@ -440,8 +440,8 @@ export class F002RequestService {
         : await this.#deriveResult(actor, workspaceId, requestId, request, plan, { workerId, leaseMs, requestGeneration: claimed.generation, assertRequestActive });
       binding = await assertRequestActive();
       return this.repository.withMaintainedWorkspace(actor, workspaceId, async (tx) => {
-        const row = (await tx.query("SELECT * FROM f002_request WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, requestId])).rows[0];
-        requireF002(row && row.state === "RUNNING" && row.generation === claimed.generation && new Date(row.lease_until).getTime() > Date.now(),
+        const row = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_request WHERE workspace_id=$1 AND id=$2 FOR UPDATE", [workspaceId, requestId])).rows[0];
+        requireF002(row && row.state === "RUNNING" && row.generation === claimed.generation && row.lease_live,
           "F002_STALE_REQUEST_WORKER", "取证执行权或状态已变化", { status: 409 });
         const completed = (await tx.query(`UPDATE f002_request SET state='COMPLETED',revision=revision+1,outcome=$4,result=$5,completed_at=clock_timestamp(),lease_until=NULL
           WHERE workspace_id=$1 AND id=$2 AND state='RUNNING' AND generation=$3 RETURNING *`, [workspaceId, requestId, claimed.generation, result.outcome, JSON.stringify(result.result)])).rows[0];

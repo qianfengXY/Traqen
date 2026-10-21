@@ -51,6 +51,19 @@ test("F002 version queries expose only sealed records with a Workspace/version-b
   assert.deepEqual([...first.items, ...second.items].map((item) => `${item.kind}:${item.id}`), expected);
   await assert.rejects(queries.records(owner, "workspace", sealed.graphVersionId, { limit: 10, cursor: `${first.nextCursor.slice(0, -1)}x` }), { code: "F002_CURSOR_INVALID" });
   await assert.rejects(queries.records(owner, "workspace2", sealed.graphVersionId, { limit: 10, cursor: first.nextCursor }), { code: "SOURCE_FORBIDDEN" });
+  await assert.rejects(queries.records(owner, "workspace", sealed.graphVersionId, { limit: 501 }), { code: "F002_PAGE_INVALID" });
+});
+
+test("F002 page queries push the cursor, relation filter and row bound into PostgreSQL", async () => {
+  const queries = new F002QueryService({ withAuthorizedWorkspace: async (_actor, _workspace, callback) => callback({ query: async (sql, values) => {
+    if (sql.includes("FROM f002_fact_set")) return { rows: [{}] };
+    assert.match(sql, /ORDER BY.*kind.*id/s);
+    assert.match(sql, /LIMIT \$\d+/);
+    assert.equal(values.at(-1), 3, "limit + one lookahead, never the whole FactSet");
+    assert.match(sql, /payload\s*->>\s*'kind'\s*=\s*'RELATION'/);
+    return { rows: [] };
+  } }) }, { cursorSecret: "query-bounded-materialization" });
+  assert.deepEqual(await queries.collection(owner, "workspace", "e".repeat(64), "relations", { limit: 2 }), { items: [], nextCursor: null });
 });
 
 test("F002 coverage exposes the sealed material × capability denominator and dispositions", async (t) => {

@@ -1,11 +1,11 @@
 import { JunitSyntaxError, parseJunitSyntax } from "./junit-syntax.js";
+import { isRestrictedText } from "../sensitive-content.js";
 
 export const reportFields = new Map([["testId", "reportTestId"], ["sourceBundleId", "reportSourceBundleId"], ["command", "reportCommand"], ["environment", "reportEnvironment"], ["producer", "reportProducer"], ["testedVersion", "reportTestedVersion"]]);
-export const reportSensitive = /(?:password|secret|token|api[_-]?key)/i;
 export const reportStatuses = new Set(["PASS", "FAIL", "SKIP", "ERROR"]);
 export function reportFieldProblem(value, limits = {}) {
   if (typeof value !== "string" || !value.length || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value)) return "REPORT_FIELD_INVALID";
-  if (reportSensitive.test(value)) return "REPORT_FIELD_RESTRICTED";
+  if (isRestrictedText(value)) return "REPORT_FIELD_RESTRICTED";
   if (Buffer.byteLength(value) > (limits.maxReportFieldBytes ?? 4096)) return "REPORT_FIELD_LIMIT";
   return null;
 }

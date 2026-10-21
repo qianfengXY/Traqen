@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 import { DotenvSyntaxError, isDotenvPathBytes, parseDotenvDeclarations } from "./extraction/dotenv-syntax.js";
 import { redactYamlPresentation } from "./yaml-presentation.js";
+import { containsPrivateKey, isSensitiveKey } from "./sensitive-content.js";
 
-export const CURRENT_DISPLAY_POLICY_REVISION = "policy-v3-format-aware";
-
-const sensitiveProperty = /(?:password|secret|token|api[_-]?key)/i;
+export const CURRENT_DISPLAY_POLICY_REVISION = "policy-v4-private-key-boundaries";
 
 export function displayFormatForPathBytes(rawPath) {
   if (isDotenvPathBytes(rawPath)) return "DOTENV";
@@ -139,7 +138,7 @@ function redactProperties(text) {
     const line = lines[index];
     const logical = logicalPropertyLine(lines, index);
     const assignment = propertyAssignment(logical.content);
-    if (!assignment || !sensitiveProperty.test(decodePropertyKey(assignment.key))) {
+    if (!assignment || !isSensitiveKey(decodePropertyKey(assignment.key))) {
       for (let current = index; current < logical.end; current += 1) output += lines[current].content + lines[current].ending;
       index = logical.end;
       continue;
@@ -175,7 +174,7 @@ function redactDotenv(text, revision) {
     if (!(error instanceof DotenvSyntaxError)) throw error;
     return refusedSensitivePresentation(revision);
   }
-  const spans = entries.filter(entry => sensitiveProperty.test(entry.key) && entry.contentEnd > entry.contentStart);
+  const spans = entries.filter(entry => isSensitiveKey(entry.key) && entry.contentEnd > entry.contentStart);
   let output = text;
   for (const entry of spans.reverse()) {
     // Physical separators survive unchanged; source bytes and canonical anchor
@@ -191,8 +190,9 @@ export function redactDisplayBytes(bytes, { revision = CURRENT_DISPLAY_POLICY_RE
   // Explicit null means ordinary material, not permission to guess YAML from
   // Markdown/code prose. AUTO remains the conservative legacy helper mode;
   // it is not selectable by an HTTP client.
-  if (format === null) return { bytes: Buffer.from(bytes), redacted: false, transform: null, policyRevision: revision };
   const text = utf8(bytes);
+  if (containsPrivateKey(text) || containsPrivateKey(Buffer.from(bytes).toString("latin1"))) return refusedSensitivePresentation(revision);
+  if (format === null) return { bytes: Buffer.from(bytes), redacted: false, transform: null, policyRevision: revision };
   if (format === "DOTENV") return text === null ? refusedSensitivePresentation(revision) : redactDotenv(text, revision);
   if (text === null) return format !== "AUTO" ? refusedSensitivePresentation(revision)
     : { bytes: Buffer.from(bytes), redacted: false, transform: null, policyRevision: revision };
@@ -207,7 +207,7 @@ export function redactDisplayBytes(bytes, { revision = CURRENT_DISPLAY_POLICY_RE
     try { JSON.parse(text); json = true; }
     catch { if (format === "JSON") return refusedSensitivePresentation(revision); }
   }
-  const yaml = redactYamlPresentation(text, key => sensitiveProperty.test(key), { explicit: format === "YAML" || json, json });
+  const yaml = redactYamlPresentation(text, isSensitiveKey, { explicit: format === "YAML" || json, json });
   if (yaml.refused) return refusedSensitivePresentation(revision);
   const result = yaml.applicable ? yaml : redactProperties(text);
   return { bytes: Buffer.from(result.text), redacted: result.redacted,

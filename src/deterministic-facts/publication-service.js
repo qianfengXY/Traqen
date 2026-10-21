@@ -26,8 +26,9 @@ function assertRequestDeadline(request) {
   requireF002(deadline > Date.now(), "F002_REQUEST_BUDGET_DEADLINE_EXCEEDED", "调查预算截止已过，不能发布补提事实集", { status: 409 });
 }
 
-async function assertRequestOwnerActive(owner, guard) {
-  requireF002(owner.state === "RUNNING" && new Date(owner.lease_until).getTime() > Date.now(),
+async function assertRequestOwnerActive(tx, workspaceId, owner, guard) {
+  const live = (await tx.query("SELECT lease_until>clock_timestamp() AS lease_live FROM f002_request WHERE workspace_id=$1 AND id=$2", [workspaceId, owner.id])).rows[0];
+  requireF002(owner.state === "RUNNING" && live?.lease_live,
     "F002_STALE_REQUEST_WORKER", "取证请求已停止，不能发布补提事实集", { status: 409 });
   assertRequestDeadline(owner);
   await guard.revalidate();
@@ -43,8 +44,8 @@ export class F002PublicationService {
   async prepare(actor, workspaceId, runId, scopeId, { generation, records }) {
     requireF002(Number.isInteger(generation) && generation > 0, "F002_STALE_SCOPE_WORKER", "缺少当前范围执行代次", { status: 409 });
     return this.repository.withMaintainedWorkspace(actor, workspaceId, async (tx) => {
-      const scope = (await tx.query("SELECT * FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
-      requireF002(scope && scope.status === "RUNNING" && scope.generation === generation && new Date(scope.lease_until).getTime() > Date.now(),
+      const scope = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
+      requireF002(scope && scope.status === "RUNNING" && scope.generation === generation && scope.lease_live,
         "F002_STALE_SCOPE_WORKER", "执行权或任务状态已变化");
       const run = (await tx.query("SELECT source_input FROM f002_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
       requireF002(run, "F002_RUN_NOT_FOUND", "运行不存在", { status: 404 });
@@ -94,13 +95,13 @@ export class F002PublicationService {
       if (owner) {
         requireF002(guard && guard.requestId === owner.id && guard.generation === owner.generation,
           "F002_REQUEST_GUARD_REQUIRED", "补提范围只能由其当前取证请求封存", { status: 409 });
-        await assertRequestOwnerActive(owner, guard);
+        await assertRequestOwnerActive(tx, workspaceId, owner, guard);
       } else {
         requireF002(!guard, "F002_REQUEST_GUARD_INVALID", "普通范围不能附带取证请求围栏", { status: 409 });
       }
       const scope = (await tx.query("SELECT * FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
       requireF002(scope, "F002_SCOPE_NOT_FOUND", "范围不存在", { status: 404 });
-      if (owner) await assertRequestOwnerActive(owner, guard);
+      if (owner) await assertRequestOwnerActive(tx, workspaceId, owner, guard);
       const run = (await tx.query("SELECT * FROM f002_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
       requireF002(run, "F002_RUN_NOT_FOUND", "运行不存在", { status: 404 });
       const profile = (await tx.query("SELECT payload FROM f002_profile WHERE id=$1", [run.profile_id])).rows[0]?.payload;
@@ -121,7 +122,7 @@ export class F002PublicationService {
       requireF002(scope.status === "READY_TO_SEAL" && scope.revision === revision, "F002_SCOPE_REVISION_CONFLICT", "范围修订或状态已变化");
       const existing = (await tx.query("SELECT * FROM f002_fact_set WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
       requireF002(!existing, "F002_SCOPE_REVISION_CONFLICT", "范围已经发布事实集");
-      if (owner) await assertRequestOwnerActive(owner, guard);
+      if (owner) await assertRequestOwnerActive(tx, workspaceId, owner, guard);
       const inserted = (await tx.query(`INSERT INTO f002_fact_set (workspace_id,graph_version_id,run_id,scope_id,profile_id,bundle_id,scope_revision,record_digest)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         ON CONFLICT (workspace_id,graph_version_id) DO NOTHING
@@ -135,7 +136,7 @@ export class F002PublicationService {
         requireF002(canonical && canonical.profile_id === run.profile_id && canonical.bundle_id === run.source_input.bundleId
           && canonical.record_digest === publication.recordDigest, "F002_FACT_SET_CONFLICT", "规范事实集身份与已封存内容不一致", { status: 409 });
       }
-      if (owner) await assertRequestOwnerActive(owner, guard);
+      if (owner) await assertRequestOwnerActive(tx, workspaceId, owner, guard);
       const sealed = owner
         ? (await tx.query(`UPDATE f002_scope AS scope SET status='SEALED',revision=scope.revision+1,seal_operation_id=$4,graph_version_id=$5,updated_at=clock_timestamp()
             FROM f002_request AS request

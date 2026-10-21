@@ -103,8 +103,12 @@ function maintainScopeLease(repository, actor, input) {
   const schedule = () => {
     timer = setTimeout(() => {
       pending = Promise.resolve().then(() => repository.renewScopeLease(actor, input))
+        .then(() => { failure = null; })
         .catch(error => { failure = error; })
-        .then(() => { if (!stopped && !failure) schedule(); });
+        // Retry only recognized transport/transaction interruptions. Every
+        // attempt still passes the database live-lease/generation/ACL fence;
+        // expiry or authorization loss is terminal, never resurrected.
+        .then(() => { if (!stopped && (!failure || /^(?:08\w{3}|ECONNRESET|ETIMEDOUT|EPIPE|57P01|40001|40P01)$/.test(failure.code ?? ""))) schedule(); });
     }, Math.max(1, Math.floor(input.leaseMs / 3)));
     timer.unref();
   };

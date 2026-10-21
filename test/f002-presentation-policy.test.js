@@ -10,7 +10,7 @@ const refused = result => {
 };
 
 test("format-aware current presentation has a distinct auditable policy revision", () => {
-  assert.equal(CURRENT_DISPLAY_POLICY_REVISION, "policy-v3-format-aware");
+  assert.equal(CURRENT_DISPLAY_POLICY_REVISION, "policy-v4-private-key-boundaries");
 });
 
 test("known presentation formats use the exact admitted filename bytes, including opaque parents", () => {

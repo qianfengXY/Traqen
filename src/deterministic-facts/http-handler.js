@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { identityContext } from "../auth/context.js";
 
 import { F002Error } from "./errors.js";
+import { SourceTruthError } from "../source-truth/errors.js";
+import { AuthError } from "../auth/errors.js";
 
 const responseWorkspace = new WeakMap();
 
@@ -29,7 +31,7 @@ async function body(request, maximum = 1024 * 1024) {
 
 function failure(response, error, requestId) {
   if (response.headersSent) { response.destroy(); return; }
-  const known = error instanceof F002Error || (typeof error?.code === "string" && Number.isInteger(error?.status));
+  const known = error instanceof F002Error || error instanceof SourceTruthError || error instanceof AuthError;
   json(response, known ? error.status : 500, { error: { code: known ? error.code : "F002_INTERNAL_ERROR",
     message: known ? error.message : "技术证据服务暂时不可用", requestId } }, requestId);
 }

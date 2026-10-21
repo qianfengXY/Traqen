@@ -31,7 +31,7 @@ import { resolveEndpointContracts } from "./endpoint-contracts.js";
 registerDynamicLanguage({ java: javaLanguage });
 
 const httpMethods = new Set(["get", "post", "put", "patch", "delete", "head", "options"]);
-const secretKey = /(?:password|secret|token|api[_-]?key)/i;
+import { containsPrivateKey, isSensitiveKey } from "../sensitive-content.js";
 const byteCompare = (left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -221,6 +221,10 @@ export function compileDeterministicFacts({ workspaceId, bundleId, profile, mate
       continue;
     }
     const text = utf8Text(material.bytes);
+    if (containsPrivateKey(text)) {
+      addGap(material, material.kind.toLowerCase(), "PRIVATE_KEY_MATERIAL_RESTRICTED");
+      continue;
+    }
     if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML"].includes(material.kind) && text === null) {
       addGap(material, material.kind.toLowerCase(), "TEXT_ENCODING_UNSUPPORTED");
       continue;
@@ -423,7 +427,7 @@ function extractProperties({ material, text, addObject, addFact }) {
     if (!match) continue;
     const key = match[1];
     const config = addObject(material, "CONFIG_KEY", key, textAnchor(text, line.start + match.index, line.start + match.index + key.length));
-    addFact({ subject: config, predicate: "name", value: { datatype: "string", value: secretKey.test(key) ? "[REDACTED_KEY]" : key }, material, anchor: config.anchor });
+    addFact({ subject: config, predicate: "name", value: { datatype: "string", value: isSensitiveKey(key) ? "[REDACTED_KEY]" : key }, material, anchor: config.anchor });
   }
 }
 
@@ -441,7 +445,7 @@ function extractYaml({ material, text, addObject, addFact, addGap }) {
     const key = [...parents.map((item) => item.key), match[2]].join(".");
     const keyStart = line.start + match[1].length;
     const config = addObject(material, "CONFIG_KEY", key, textAnchor(text, keyStart, keyStart + match[2].length));
-    addFact({ subject: config, predicate: "name", value: { datatype: "string", value: secretKey.test(key) ? "[REDACTED_KEY]" : key }, material, anchor: config.anchor });
+    addFact({ subject: config, predicate: "name", value: { datatype: "string", value: isSensitiveKey(key) ? "[REDACTED_KEY]" : key }, material, anchor: config.anchor });
     if (match[3] === "") parents.push({ indent, key: match[2] });
   }
 }

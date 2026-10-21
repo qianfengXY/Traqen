@@ -1,5 +1,6 @@
 import { canonicalDigest } from "./identity.js";
 import { requireF002 } from "./errors.js";
+import { isRestrictedText } from "./sensitive-content.js";
 
 export const reportPredicates = new Set(["reportOutcomeMarker", "reportTestId", "reportSourceBundleId", "reportCommand", "reportEnvironment", "reportProducer", "reportTestedVersion"]);
 const jsonField = new Map([["testName", "name"], ["reportsResult", "status"], ["reportTestId", "testId"], ["reportSourceBundleId", "sourceBundleId"], ["reportCommand", "command"], ["reportEnvironment", "environment"], ["reportProducer", "producer"], ["reportTestedVersion", "testedVersion"]]);
@@ -34,7 +35,7 @@ export function verifyReports({ objects, materials, facts, evidence, gaps, profi
       const anchors = f.evidenceIds.map(id => evidence.get(id)); check(anchors.length === 1 && anchors[0].materialId === o.materialId, "报告属性缺少同材料唯一定位");
       if (f !== result || !xml) check(f.basis === "DECLARED" && f.premiseFactIds.length === 0, "报告字段不能提升为执行证明");
       if (f.predicate !== "reportOutcomeMarker") check(f.value.value.length > 0 && Buffer.byteLength(f.value.value) <= (profile.extractionLimits.maxReportFieldBytes ?? 4096)
-        && !/(?:password|secret|token|api[_-]?key)/i.test(f.value.value) && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(f.value.value), "报告字段受限或预算越界");
+        && !isRestrictedText(f.value.value) && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(f.value.value), "报告字段受限或预算越界");
       if (!xml) check(jsonField.has(f.predicate) && anchors[0].anchor.kind === "JSON_POINTER" && anchors[0].anchor.pointer === `${o.anchor.pointer}/${jsonField.get(f.predicate)}`, "JSON 报告字段没有精确指针");
       if (f.predicate === "reportSourceBundleId") {
         check(/^[a-f0-9]{64}$/.test(f.value.value), "报告来源声明身份格式无效");

@@ -26,6 +26,25 @@ async function prepareReady(repository, publisher, run, scope) {
   return { scope: await repository.readyToSeal(owner, { workspaceId: "workspace", runId: run.id, scopeId: scope.scopeId, generation: claimed.generation }), records: verified.records };
 }
 
+test("F002 native database leases ignore an offset application clock in both directions", { skip: !process.env.F001_TEST_PG_BIN, timeout: 120000 }, async t => {
+  const cluster = await isolatedPostgres(t), { db, repository: sources } = await cluster.createDatabase();
+  const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx) => sources.authorize(actor, workspaceId, false, tx) });
+  await repository.registerProfile(profile);
+  const run = await repository.createAdmittedRun(owner, "workspace", { operationId: "native-clock", sourceInput, profile, scopes: [{ selections: [{ kind: "COMPONENT", componentId }] }] });
+  const scopeId = run.scopes[0].scopeId;
+  const claimed = await repository.claimScope(owner, "workspace", run.id, scopeId, { workerId: "clock-worker", leaseMs: 60_000 });
+  const input = { workspaceId: "workspace", runId: run.id, scopeId, generation: claimed.generation, items: [] };
+  const actualNow = Date.now();
+  const clock = t.mock.method(Date, "now", () => actualNow + 86400000);
+  await repository.recordScopeItems(owner, input);
+  await new F002PublicationService(repository).prepare(owner, "workspace", run.id, scopeId, { generation: claimed.generation, records: [] });
+  clock.mock.mockImplementation(() => actualNow - 86400000);
+  await db.query("UPDATE f002_scope SET lease_until=clock_timestamp()-interval '1 second' WHERE run_id=$1 AND scope_id=$2", [run.id, scopeId]);
+  await assert.rejects(repository.recordScopeItems(owner, input), { code: "F002_STALE_SCOPE_WORKER" });
+  await assert.rejects(new F002PublicationService(repository).prepare(owner, "workspace", run.id, scopeId, { generation: claimed.generation, records: [] }), { code: "F002_STALE_SCOPE_WORKER" });
+  clock.mock.restore();
+});
+
 test("F002 real PostgreSQL serializes scope seals and preserves atomic recovery across restart", { skip: !process.env.F001_TEST_PG_BIN, timeout: 120000 }, async (t) => {
   const cluster = await isolatedPostgres(t);
   const initial = await cluster.createDatabase();

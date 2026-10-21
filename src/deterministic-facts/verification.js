@@ -18,6 +18,7 @@ import { testAssetPredicates, verifyTestAssets } from "./test-verification.js";
 import { reportPredicates, verifyReports } from "./report-verification.js";
 import { verifyEndpointContracts } from "./endpoint-verification.js";
 import { verifyJavaBindings } from "./java-binding-verification.js";
+import { containsPrivateKey } from "./sensitive-content.js";
 
 const identifier = /^[a-f0-9]{64}$/;
 const utf8Compare = (left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
@@ -79,6 +80,7 @@ function validateRecord(record, { workspaceId, bundleId, profile = null }) {
   checked(payload && typeof payload === "object" && !Array.isArray(payload), "F002_RECORD_SCHEMA_INVALID", "记录载荷无效");
   try { canonicalDigest("RECORD", { kind: record.kind, id: record.id, payload }); }
   catch { checked(false, "F002_RECORD_SCHEMA_INVALID", "记录载荷不是规范值"); }
+  checked(!containsPrivateKey(JSON.stringify(payload)), "F002_RECORD_SENSITIVE", "私钥材料不能进入封存记录");
   if (record.kind === "MATERIAL") {
     checked(payload.materialId === record.id && typeof payload.componentId === "string" && typeof payload.pathBytes === "string"
       && typeof payload.mediaType === "string" && typeof payload.contentAvailable === "boolean" && typeof payload.kind === "string"

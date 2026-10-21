@@ -49,6 +49,26 @@ function runInput(overrides = {}) {
   };
 }
 
+test("F002 direct claims cannot bypass explicit retry of FAILED_RETRYABLE scopes", async t => {
+  const { db, repository: sources } = await sourceDatabase(t);
+  const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });
+  await repository.registerProfile(profile());
+  const run = await repository.createAdmittedRun(owner, "workspace", runInput());
+  const scopeId = run.scopes[0].scopeId, claim = { workerId: "retry-worker", leaseMs: 60_000 };
+  const claimed = await repository.claimScope(owner, "workspace", run.id, scopeId, claim);
+  await repository.failScope(owner, { workspaceId: "workspace", runId: run.id, scopeId, generation: claimed.generation, diagnostic: { code: "SYNTHETIC_FAILURE" } });
+  await assert.rejects(repository.claimScope(owner, "workspace", run.id, scopeId, claim), { code: "F002_SCOPE_LEASE_BUSY" });
+  const failed = await repository.getScope(owner, "workspace", run.id, scopeId);
+  await repository.retryScope(owner, "workspace", run.id, scopeId, { revision: failed.revision, operationId: "explicit-retry" });
+  assert.equal((await repository.claimScope(owner, "workspace", run.id, scopeId, claim)).generation, claimed.generation + 1);
+});
+
+test("F002 derived scope ownership has a leading Workspace/run/scope database index", async t => {
+  const { db } = await sourceDatabase(t);
+  const indexes = (await db.query("SELECT indexdef FROM pg_indexes WHERE tablename='f002_request'")).rows;
+  assert.ok(indexes.some(row => /\(workspace_id, derived_run_id, derived_scope_id\)/.test(row.indexdef)), JSON.stringify(indexes));
+});
+
 test("F002 scope lease renewal cannot resurrect expired, cancelled, replaced or unauthorized workers", async t => {
   const { db, repository: sources } = await sourceDatabase(t);
   const repository = new F002Repository(db, { authorize: (actor, workspaceId, tx, maintain) => sources.authorize(actor, workspaceId, maintain, tx) });

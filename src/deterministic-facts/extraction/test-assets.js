@@ -5,13 +5,15 @@ const assertModules = new Set(["node:assert", "node:assert/strict"]);
 const testModules = new Map([["node:test", new Set(["default", "test", "it"])], ["vitest", new Set(["test", "it"])], ["@jest/globals", new Set(["test", "it"])]]);
 const jupiter = "org.junit.jupiter.api.";
 
+import { isRestrictedText } from "../sensitive-content.js";
+
 function emitPlans({ plans, material, limits, addObject, addFact, addGap, references }) {
   if (plans.length > (limits.maxTestCases ?? 2000) || plans.reduce((n, p) => n + p.assertions.length, 0) > (limits.maxTestAssertions ?? 10_000)) {
     addGap(material, material.ruleRef.id.slice(5), "TEST_ASSET_LIMIT"); return;
   }
   const property = (object, predicate, value, anchor, basis = "DECLARED", premiseFactIds = []) => addFact({ subject: object, predicate, value: { datatype: "string", value }, material, anchor, basis, premiseFactIds });
   for (const p of plans) {
-    if (/(?:password|secret|token|api[_-]?key)/i.test(p.name)) { addGap(material, material.ruleRef.id.slice(5), "TEST_NAME_RESTRICTED", p.nameAnchor); continue; }
+    if (isRestrictedText(p.name)) { addGap(material, material.ruleRef.id.slice(5), "TEST_NAME_RESTRICTED", p.nameAnchor); continue; }
     if (Buffer.byteLength(p.name, "utf8") > (limits.maxTestNameBytes ?? 4096)) { addGap(material, material.ruleRef.id.slice(5), "TEST_NAME_LIMIT", p.nameAnchor); continue; }
     const testcase = addObject(material, "TEST_CASE", p.name, p.anchor); testcase.parentId = p.parent.objectId;
     const name = property(testcase, "testName", p.name, p.nameAnchor);

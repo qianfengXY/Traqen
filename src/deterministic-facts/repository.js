@@ -190,7 +190,7 @@ export class F002Repository {
       const request = await this.#requestScopeOwner(tx, workspaceId, runId, scopeId);
       if (request) {
         requireF002(requestId === request.id && requestGeneration === request.generation && request.state === "RUNNING"
-          && new Date(request.lease_until).getTime() > Date.now(),
+          && request.lease_live,
         "F002_REQUEST_SCOPE_OWNED", "派生范围只能由其当前取证请求执行", { status: 409 });
       } else {
         requireF002(requestId === null && requestGeneration === null, "F002_REQUEST_SCOPE_OWNED", "普通范围不能携带取证请求执行凭据", { status: 409 });
@@ -198,7 +198,7 @@ export class F002Repository {
       const { rows } = await tx.query(`UPDATE f002_scope SET status='RUNNING',generation=generation+1,revision=revision+1,worker_id=$4,
           lease_until=clock_timestamp()+($5::integer * interval '1 millisecond'),updated_at=clock_timestamp()
         WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3
-          AND (status IN ('QUEUED','FAILED_RETRYABLE') OR (status='RUNNING' AND lease_until<=clock_timestamp())) RETURNING *`, [workspaceId, runId, scopeId, workerId, leaseMs]);
+          AND (status='QUEUED' OR (status='RUNNING' AND lease_until<=clock_timestamp())) RETURNING *`, [workspaceId, runId, scopeId, workerId, leaseMs]);
       requireF002(rows.length === 1, "F002_SCOPE_LEASE_BUSY", "范围已有有效执行者或不可执行");
       await this.#event(tx, workspaceId, runId, scopeId, workerId, "SCOPE_CLAIMED", { generation: rows[0].generation });
       return scopeRow(rows[0]);
@@ -212,7 +212,7 @@ export class F002Repository {
     return this.#withWorkspace(actor, workspaceId, async tx => {
       const request = await this.#requestScopeOwner(tx, workspaceId, runId, scopeId);
       requireF002(request ? requestId === request.id && requestGeneration === request.generation && request.state === "RUNNING"
-        && new Date(request.lease_until).getTime() > Date.now() : requestId === null && requestGeneration === null,
+        && request.lease_live : requestId === null && requestGeneration === null,
       "F002_REQUEST_SCOPE_OWNED", "范围续期不能越过其取证请求执行边界", { status: 409 });
       const { rows } = await tx.query(`UPDATE f002_scope
         SET lease_until=clock_timestamp()+($6::integer * interval '1 millisecond'),updated_at=clock_timestamp()
@@ -255,8 +255,8 @@ export class F002Repository {
     requireF002(new Set(normalized.map((item) => `${item.materialId}\u0000${item.capabilityId}`)).size === normalized.length,
       "F002_SCOPE_ITEM_DUPLICATE", "同一批工作项身份重复", { status: 422 });
     return this.#withWorkspace(actor, workspaceId, async (tx) => {
-      const scope = (await tx.query("SELECT * FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
-      requireF002(scope && scope.status === "RUNNING" && scope.generation === generation && new Date(scope.lease_until).getTime() > Date.now(),
+      const scope = (await tx.query("SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
+      requireF002(scope && scope.status === "RUNNING" && scope.generation === generation && scope.lease_live,
         "F002_STALE_SCOPE_WORKER", "执行权或任务状态已变化");
       for (const item of normalized) {
         const existing = (await tx.query(`SELECT * FROM f002_scope_item WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3
@@ -360,7 +360,7 @@ export class F002Repository {
     return this.#withWorkspace(actor, workspaceId, async (tx) => {
       const owner = await this.#requestScopeOwner(tx, workspaceId, runId, scopeId);
       requireF002(owner && owner.id === requestId && owner.generation === requestGeneration && owner.state === "RUNNING"
-        && new Date(owner.lease_until).getTime() > Date.now(),
+        && owner.lease_live,
       "F002_STALE_REQUEST_WORKER", "取证请求已停止，不能修改派生范围", { status: 409 });
       const scope = (await tx.query("SELECT * FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 FOR UPDATE", [workspaceId, runId, scopeId])).rows[0];
       requireF002(scope && scope.status !== "SEALED" && scope.revision === revision, "F002_SCOPE_REVISION_CONFLICT", "范围修订或状态已变化", { status: 409 });
@@ -385,7 +385,7 @@ export class F002Repository {
   }
 
   async #requestScopeOwner(tx, workspaceId, runId, scopeId) {
-    return (await tx.query(`SELECT * FROM f002_request WHERE workspace_id=$1 AND derived_run_id=$2 AND derived_scope_id=$3 FOR UPDATE`,
+    return (await tx.query(`SELECT *,lease_until>clock_timestamp() AS lease_live FROM f002_request WHERE workspace_id=$1 AND derived_run_id=$2 AND derived_scope_id=$3 FOR UPDATE`,
       [workspaceId, runId, scopeId])).rows[0] ?? null;
   }
 

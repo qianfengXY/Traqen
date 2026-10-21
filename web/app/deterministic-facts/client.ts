@@ -48,7 +48,7 @@ export class DeterministicFactsClient {
     let response: Response;
     try {
       response = await sessionFetch(this.base + route, { method, credentials: "same-origin", cache: "no-store", redirect: "error", signal,
-        headers: { authorization: `Bearer ${this.token}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+        headers: body === undefined ? {} : { "content-type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body) });
     } catch {
       signal?.throwIfAborted();

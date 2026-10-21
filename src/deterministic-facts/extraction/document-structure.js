@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isRestrictedText } from "../sensitive-content.js";
 
 // static-document-v1: paragraphs, ATX hierarchy, simple inline link/image
 // occurrences and a fixed heading-fragment algorithm. Not a full CommonMark
@@ -8,8 +9,7 @@ import path from "node:path";
 // its literal paragraph is sensitive. Check source escapes conservatively
 // without parsing, resolving, or changing the published document bytes.
 function restricted(text) {
-  const sensitive = /(?:password|secret|token|api[_-]?key)/i;
-  if (sensitive.test(text)) return true;
+  if (isRestrictedText(text)) return true;
   const spelling = text.replace(/\\(?:\r\n|[\r\n])[ \t]*|\\(?:u([\da-fA-F]{4})|x([\da-fA-F]{2})|U([\da-fA-F]{8})|([^\r\n]))/g,
     (source, unicode, hex, wide, escaped) => {
       if (escaped !== undefined) return escaped;
@@ -18,7 +18,7 @@ function restricted(text) {
       const codePoint = Number.parseInt(digits, 16);
       return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : source;
     });
-  return sensitive.test(spelling);
+  return isRestrictedText(spelling);
 }
 const titleFragment = title => title.toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, "").trim().replace(/[ \t]+/g, "-");
 class DocumentLimit extends Error { constructor(start, end) { super("DOCUMENT_STRUCTURE_LIMIT"); this.start = start; this.end = end; } }

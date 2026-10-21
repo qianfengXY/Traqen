@@ -1,5 +1,6 @@
 import { canonicalDigest } from "./identity.js";
 import { requireF002 } from "./errors.js";
+import { isRestrictedText } from "./sensitive-content.js";
 
 export const testAssetPredicates = new Set(["registrationName", "testBody", "testFramework", "assertionName", "assertionReceiver", "hasAssertion"]);
 const assertionMethods = new Set(["ok", "equal", "notEqual", "strictEqual", "notStrictEqual", "deepEqual", "notDeepEqual", "deepStrictEqual", "notDeepStrictEqual", "throws", "doesNotThrow", "rejects", "doesNotReject", "ifError", "match", "doesNotMatch", "fail"]);
@@ -55,7 +56,7 @@ export function verifyTestAssets({ objects, facts, evidence, materials, profile 
     if (f.predicate === "testFramework") {
       const isCase = object.kind === "TEST_CASE"; check(isCase || object.kind === "TEST_ASSERTION", "测试框架主体类型无效");
       const name = property(object.objectId, isCase ? "testName" : "assertionName"), registration = property(object.objectId, isCase ? "registrationName" : "assertionReceiver");
-      if (isCase) check(!/(?:password|secret|token|api[_-]?key)/i.test(name.value.value) && Buffer.byteLength(name.value.value, "utf8") <= (profile.extractionLimits.maxTestNameBytes ?? 4096), "测试名称受限或越过固定字节预算");
+      if (isCase) check(!isRestrictedText(name.value.value) && Buffer.byteLength(name.value.value, "utf8") <= (profile.extractionLimits.maxTestNameBytes ?? 4096), "测试名称受限或越过固定字节预算");
       const body = isCase ? property(object.objectId, "testBody") : null;
       if (f.ruleRef.id === "f002-javascript") {
         const imported = jsImport(f, object), module = imported.path.value.value, symbol = imported.imported.value.value;

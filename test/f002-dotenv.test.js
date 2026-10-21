@@ -125,7 +125,7 @@ test("F002 controlled dotenv reads select syntax from canonical path bytes and a
     appendEvent: async (_actor, _workspace, _run, _scope, kind, payload) => { events.push({ kind, payload }); } };
   const admission = { readFile: async function* () { yield bytes; } };
   const result = await new F002MaterialService(repository, admission).read({ actorId: "owner" }, workspaceId, graphVersionId, materialId);
-  assert.equal(result.policyRevision, "policy-v3-format-aware"); assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION");
+  assert.equal(result.policyRevision, "policy-v4-private-key-boundaries"); assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION");
   assert.equal(result.bytes.includes("FIRST_SENTINEL"), false); assert.equal(result.bytes.includes("SECOND_SENTINEL"), false);
   assert.ok(result.bytes.includes("PORT=8080")); assert.ok(bytes.includes("FIRST_SENTINEL"));
   assert.deepEqual(events.map(event => event.kind), ["READ_INTENT", "READ_COMPLETED"]);
