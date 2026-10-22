@@ -1,0 +1,40 @@
+{
+  "document_version": "0.5",
+  "created": "2026-10-22",
+  "author": "砚砚/gpt-6-astra",
+  "source_thread": "thread_mtqkycp918zlran6",
+  "source_message": "0001792654161541-000102-67e55658",
+  "write_authorization": "0001792668620217-000104-051cd912",
+  "generation_session": "01a11a87-c80f-74f1-92ae-5e55164ae8b3",
+  "generation_method": "native-image-generation",
+  "editable_source_available": false,
+  "excluded_intermediate_generated_files": [
+    "exec-a1cfafaf-3d67-4e72-8dac-114b2e1c6dc2.png"
+  ],
+  "assets": [
+    {
+      "path": "images/0-internal-architecture.png",
+      "title": "内部架构总图",
+      "revision": "original",
+      "source_generated_file": "exec-79e9b0ad-4b03-4b6f-b6d4-182bad93ce2b.png",
+      "sha256": "490cfece1898cd2cab94792ecd7caabb621e77c0140783a02703d6b677214ecf",
+      "bytes": 1659894,
+      "width": 1448,
+      "height": 1086,
+      "mime_type": "image/png",
+      "copied_without_modification": true
+    },
+    {
+      "path": "images/1-technical-to-business.png",
+      "title": "从技术证据到业务理解",
+      "revision": "final-corrected",
+      "source_generated_file": "exec-f9118796-5e31-4bcd-9481-8b88b7f7f35f.png",
+      "sha256": "b2f53a23d5bb60bab8cb9f7d014fd543c5a04eccb689c181d03790705dfa9b3b",
+      "bytes": 1789423,
+      "width": 1448,
+      "height": 1086,
+      "mime_type": "image/png",
+      "copied_without_modification": true
+    }
+  ]
+}
