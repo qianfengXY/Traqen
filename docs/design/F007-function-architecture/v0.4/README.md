@@ -6,7 +6,8 @@ doc_kind: architecture-design-draft
 created: 2026-10-09
 updated: 2026-10-09
 version: "0.4"
-status: documented-design-with-open-items
+status: historical-reference
+superseded_by: ../v0.6/README.md
 design_author: 宪宪/claude-opus-5-5
 document_curator: 砚砚/gpt-6-astra
 source_thread: thread_mtqkycp918zlran6
@@ -17,6 +18,8 @@ previous_design: ../README.md
 ---
 
 # F007 · Traqen 整体架构与 MVP 设计 v0.4
+
+> **当前整体功能架构见 [v0.6](../v0.6/README.md)。** 本页完整保留 v0.4 的愿景、角色价值、工作回路、图稿与当时待定项；这些价值和既有约束由新版继承，本页不与新版竞争当前整体设计入口。
 
 > **本轮整体设计独立成文，原 F007 设计保留。** 本文整理宪宪的 v2.2 方案：一个中心、一条工作回路、五个架构视角，以及 MVP 至四期的依赖。co-creator 于 2026-10-09 09:52 UTC 认可本轮整体方向，并明确要求单独落盘、保留之前 F007 的设计。本文不覆盖[原 F007 v0.3.2](../README.md)，也不替换其图稿、来源或入口。
 >

@@ -6,7 +6,8 @@ doc_kind: architecture-design
 created: 2026-10-22
 updated: 2026-10-22
 version: "0.5"
-status: documented-design-with-open-items
+status: historical-reference
+superseded_by: ../v0.6/README.md
 design_author: 砚砚/gpt-6-astra
 source_thread: thread_mtqkycp918zlran6
 source_message: 0001792654161541-000102-67e55658
@@ -15,6 +16,8 @@ previous_design: ../v0.4/README.md
 ---
 
 # F007 · Traqen 内部架构重设计 v0.5
+
+> **当前整体功能架构见 [v0.6](../v0.6/README.md)。** 本页保留当时已认可的内部职责、原图和待细化项；v0.6 将三层主线与整体功能、版本、工作接续和后续实现分解集中组织。
 
 **F001 管材料，F002 通过代码和算法建立技术证据，F003 通过大模型形成有依据的业务理解。** 本文记录 co-creator 于 2026-10-22 认可的内部架构方案，重点展开业务、代码、配置、SQL 与测试之间的关联如何产生、核查与生效。
 

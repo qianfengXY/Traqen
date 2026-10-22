@@ -138,7 +138,7 @@ Traqen 从以下七个基础问题组织业务理解，而不是从文件目录�
 | F008 统一登录与空间权限 | 回到自己的工作位置，让访问和审核对应真实账号 | [功能与架构 V1.2](docs/design/F008-unified-login-space-permissions/README.md)；双主题页面已确认，实施状态见 [Feature 入口](docs/features/F008-unified-login-space-permissions.md) |
 | F006 工作空间能力配置 | 管理模型、Skill、团队、授权与生效配置 | [功能与 UX V1.0](docs/design/F006-workspace-capability-settings/README.md)；一个 Main、至少一个 Child；MCP 暂停，跨功能启动接线不因本页而视为完成 |
 
-[F007 整体架构 v0.3.2](docs/design/F007-function-architecture/README.md)把这些能力放到业务、系统、应用、数据和部署五个视角中，**仍是讨论稿，不代表整体方案或首期范围已批准**。
+[F007 整体功能与三层架构 v0.6](docs/design/F007-function-architecture/v0.6/README.md)承接“让每一块业务永远有人说得清”的愿景，以 **F001 原材料版本、F002 技术证据、F003 业务知识图谱**为主线；F003 阅读 F001 原文并参考 F002，浏览、七问和工作接续围绕这些成果展开。整体方案已确认，子功能详细设计、跨层接口和代码改造按文档中的分解落实；不以架构确认代替实现与运行验收。旧方案及图稿保留为历史参考。
 
 ## 当前实现基线
 
@@ -454,8 +454,8 @@ Reverse Skill 清单在 `POST/GET /v1/skills` 中注册和列出。有界运行�
 
 - [文档真相源导航](docs/README.md)：活动文档、语言与基线规则。
 - [已发布功能设计索引](docs/design/README.md)：F001–F006 的当前设计入口。
-- [F007 整体架构讨论稿](docs/design/F007-function-architecture/README.md)：五视角与尚未定稿的范围、接口和取舍。
-- [产品架构](docs/architecture/traqen-product-architecture.zh-CN.md)与[路线图](docs/ROADMAP.zh-CN.md)：架构背景、Feature 规格与实施轨道；与新功能设计存在差异时，按活动文档的适用范围核对。
+- [F007 整体功能与三层架构 v0.6](docs/design/F007-function-architecture/v0.6/README.md)：已确认整体主线、功能分工、版本与后续设计／实现分解；[历史入口](docs/design/F007-function-architecture/README.md)保留原方案与图稿。
+- [路线图](docs/ROADMAP.zh-CN.md)：Feature 规格与实施轨道；[原产品架构与图稿](docs/architecture/traqen-product-architecture.zh-CN.md)作为历史背景参考，当前整体方案见上述 F007 v0.6。
 - [Web 使用与开发](web/README.zh-CN.md)、[订单参考试点](examples/order-platform/README.zh-CN.md)、[OpenAPI 合同](contracts/openapi.json)。
 - [开发流程](docs/SOP.zh-CN.md)与[分支审阅政策](docs/policies/branch-review-publication-policy.zh-CN.md)。
 

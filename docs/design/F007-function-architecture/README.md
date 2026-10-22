@@ -4,9 +4,10 @@ related_features: [F001, F002, F003, F004, F005, F006]
 topics: [product-architecture, business-architecture, system-architecture, application-architecture, data-architecture, deployment-architecture]
 doc_kind: architecture-design-draft
 created: 2026-09-20
-updated: 2026-09-21
+updated: 2026-10-22
 version: "0.3.2"
-status: discussion-draft-not-final
+status: historical-reference
+superseded_by: v0.6/README.md
 owner: 砚砚/gpt-6-astra
 source_thread: thread_mtqkycp918zlran6
 write_authorization: 0001789868005959-000340-91d817d0
@@ -17,6 +18,8 @@ identifier_revision_authorization: 0001789982767773-000557-2eef7ee7
 ---
 
 # F007 · Traqen 整体架构设计
+
+> **当前整体功能架构：[v0.6 · 版本化原材料、技术证据与业务知识图谱](v0.6/README.md)。** v0.6 承接已认可的产品愿景与工作回路，明确三层职责、F003 双路输入、版本演进和后续设计／实现分解。以下正文及原图保留为 **v0.3.2 历史参考**；其“当前”“未定稿”等表述只描述当时状态。另见历史 [v0.4](v0.4/README.md) 与 [v0.5](v0.5/README.md)。
 
 > **讨论稿 v0.3.2，功能与整体方案未定稿。** 五视角结构图采用 **v5**，其中部署图修订为 **v5.1**；两张展开流程图仍为 **v1**。既有原图和图源全部保留供对照。图描述职责、关系与边界；实现证据集中在下文证据表。文档进入 main 表示可共同查阅和追踪，**不表示功能、技术选型或整体设计已获批准**。
 
@@ -523,7 +526,7 @@ v5 的应用／部署图在 `src/v5/` 内使用相同本机静态服务方法预
 
 ### 9.2 文档维护约定
 
-本页作为 **F007 当前讨论入口** 持续更新，避免将功能决策散落在聊天或临时目录。功能定稿前保持 `discussion-draft-not-final`；已有 Feature 文档仍是其已确认部分的依据。后续每轮说明修改了哪些能力、关系或合同，保留未决项；只有取得相应确认后才更新定稿状态及其他正式入口。
+以下维护约定属于 **v0.3.2 历史记录**；当前整体方案与待细化项见 [v0.6](v0.6/README.md)。本历史版本在功能定稿前保持 `discussion-draft-not-final`；既有 Feature 文档仍是其当时已确认部分的依据。
 
 | 版本 | 时间（UTC） | 本次变化 | 确认范围 |
 |---|---|---|---|

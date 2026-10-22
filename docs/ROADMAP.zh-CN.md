@@ -1,14 +1,16 @@
 > 语言：**简体中文** · [English](ROADMAP.md)
 
 ---
-feature_ids: [F001, F002, F003, F004, F006, F008]
+feature_ids: [F001, F002, F003, F004, F006, F007, F008]
 topics: [roadmap, product-modules, delivery]
 doc_kind: roadmap
 created: 2026-07-29
-updated: 2026-10-15
+updated: 2026-10-22
 ---
 
 # Traqen Feature 路线图
+
+> **当前整体方案：[F007 整体功能与三层架构 v0.6](design/F007-function-architecture/v0.6/README.md)。** 整体主线已确认；F001–F003 的既有条目保留其局部设计与交付状态，后续详细设计和实现按 F007 第 10 节分解。架构确认不自动改变各 Feature 的实施／验收状态。
 
 Traqen 使用仓库内独立的 `Fxxx` 序列跟踪工程 Feature 生命周期。
 
