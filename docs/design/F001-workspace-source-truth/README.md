@@ -6,7 +6,7 @@ related_features: [F002, F003, F004, F005, F006, F007, F008]
 topics: [workspace, source-truth, git, directory-upload, source-bundle, incremental, source-snapshot, artifact-inventory, coverage-gap, receipt, design-gate, work-context]
 doc_kind: feature-design
 created: 2026-08-30
-updated: 2026-10-15
+updated: 2026-10-22
 status: approved
 design_gate: operator-approved
 layout_baseline: F005-V1.1
@@ -130,11 +130,11 @@ r9 冻结后仍以橙色“有限制可用”及机器状态 `READY_WITH_ACCEPTE
 
 共享壳采用 F005 V1.1 的 Workspace 选择、六个功能入口及完整浅/深主题；F001 定义自己在“来源快照”中的呈现与操作，不重新设计全局导航。工作会话仍归概览、七问答卷仍归业务图谱，不新增一级入口。14/27 英寸遵从同一界面统一缩放的既有要求，不恢复两套布局。三图不同场景下的侧栏宽度、头像位置等绘图差异不定义多套壳，具体规则见 §9–10。
 
-`source-truth` ownership 边界拥有来源登记、上传/采集生命周期、组件和来源包快照、manifest、inventory、Gap/Receipt 状态、版本比较和 F002 准入；不拥有 F002 提取、F003 审阅、F004 执行/影响或 F006 设置。`SourceTruthRepository` 是唯一权威；F002 只接收 `QualifiedSourceInput`，绝不接收路径、ref、working tree、上传会话或凭据。
+`source-truth` ownership 边界拥有来源登记、上传/采集生命周期、组件和来源包快照、manifest、inventory、Gap/Receipt 状态、版本比较、受控材料读取和 F002／F003 准入；不拥有 F002 提取、F003 审阅、F004 执行/影响或 F006 设置。`SourceTruthRepository` 是唯一权威；F002／F003 的新分析只接收精确冻结引用经核验得到的 `QualifiedSourceInput`，绝不把路径、ref、working tree、上传会话或凭据当作材料版本。
 
 **会话术语约定：** 材料关联与工作接续中的“会话”（如 §9.1–9.3、§10.4.5、§12.2）指 F007 工作会话；§1–2 的浏览器/目录上传审计，以及 §6–8、§11 和 §12 试点表的来源采集、选择、上传、恢复语境中的“会话”，仍指浏览器/上传/目录选择会话（如 `DirectoryUploadSession`、`uploadId`），不是工作会话。尤其 §6 `DirectorySourceRegistration` 的“新会话显式更新该来源”，明确指新的 `DirectoryUploadSession`，不指新的工作会话，不把目录来源身份耦合到工作会话。
 
-工作会话对材料的关联是外部工作上下文中的引用，不在 F001 复制工作会话、贡献或答卷。§7.2 的采集会话/任务恢复不等于 F007 的工作会话；一个工作会话也不等于一条 `SourceCaptureRun`。原文读取与工作会话接续的页面要求不选择 F003 直接读取或经受控服务读取；O03 等联合接口、工作会话关联持久化与 API 仍由 F007 及对应 Feature 对齐，§11 既有合同不被本轮改写。
+工作会话对材料的关联是外部工作上下文中的引用，不在 F001 复制工作会话、贡献或答卷。§7.2 的采集会话/任务恢复不等于 F007 的工作会话；一个工作会话也不等于一条 `SourceCaptureRun`。2026-10-22 已确认 F003 通过 F001 的统一受控服务直接阅读冻结原文，并独立参考 F002 技术证据。工作会话关联持久化与 API 继续由对应 Feature 拥有；材料可读不表示工作关联、图谱发布或模型外发已获授权。
 
 ## 5. 总体架构
 
@@ -154,10 +154,10 @@ Workspace
                        8 原子发布组件 / 来源包 / Receipt
                        READY | READY_WITH_ACCEPTED_GAPS
                                              │
-                               SourceTruthAdmission → F002
+                               SourceTruthAdmission → F002 / F003
                     （重验当前资格；合格来源包 + inherited gaps）
                                              │
-                          选择已密封版本 → SnapshotDelta → F002
+                          选择已密封版本 → SnapshotDelta → 下游显式采用
 ```
 
 `SourceCaptureRun` 记录一次尝试、实时进度、取消、重试和 checkpoint。密封组件/来源包记录不可变证据；Receipt 记录签发时的决定，准入服务另行判断当前资格。阻断尝试保留原因与 `BLOCKED` 任务诊断，但不产生已冻结来源包，也不签发任何 Receipt。上述边界防止半成品 run 被看成来源版本，也防止重试重写历史。
@@ -312,7 +312,7 @@ seal 前接受过期 → 返回第 7 站（不重新枚举/传输）
 | `ManifestDiffer` | 比较两份密封 manifest，得出文件级 add/modify/delete。 | 推断业务影响、识别 rename 相似度或改变已密封 manifest。 |
 | `SnapshotStore` | 租户范围的 staging、内容寻址已验证 blob、manifest/inventory 分片、checkpoint 和原子 seal。 | 暴露 Draft、修改已密封历史或泄漏跨租户去重。 |
 | `CoverageAssembler` | 对账完整 inventory 和实质 Gap。 | 隐藏跳过、读取失败、脱敏限制或范围边界。 |
-| `SourceTruthAdmission` | 重验可消费性，向 F002 签发 `QualifiedSourceInput`。 | 返回 path/ref/upload/credential、遗漏 inherited Gap 或绕过 Receipt 状态。 |
+| `SourceTruthAdmission` | 重验可消费性，向 F002／F003 签发 `QualifiedSourceInput`。 | 返回 path/ref/upload/credential、遗漏 inherited Gap 或绕过 Receipt 状态。 |
 
 快速路径必须有界而非无限：固定资源池、有界队列/背压、在途字节上限、流式哈希、批量元数据写入和分片 manifest/inventory。Git 可经已提交 object 遍历和 object identity 避免重读已知 blob。目录传输可直接流入受控存储并经 checkpoint 恢复。内容复用仅限租户/Workspace，不能成为跨租户存在性查询。
 
@@ -693,7 +693,7 @@ F005 V1.1 的四类回写中，**新材料**进入 F001 接入/冻结流程；�
 
 旧 HTML 的示例目录、浏览器 tab 演示恢复、播放/跳站和异常加载控件仅用于旧设计演示，不代表真实文件采集、持久化恢复或当前产品能力。此次没有修改这些历史文件；旧图不再与新图并排作为当前八站效果图。
 
-## 11. F002 准入与 Delta 合同
+## 11. 下游准入、统一材料读取与 Delta 合同
 
 图 03 的“来源包 / Receipt / Git commit / 目录 manifest”分别对应下面的包、凭据和组件身份；“限制与接受”对应完整继承的 Gap 集，“当前使用条件”展示实时准入判断。界面以中文摘要呈现，详细技术字段在材料/Receipt 详情按需展开，不要求在结果首页一次铺开全部对象。
 
@@ -758,7 +758,27 @@ type SnapshotDeltaInput = {
 
 `receiptValidUntil` 是所绑定接受中最早的绝对到期日，无需接受时为 null；它不是数据保留 TTL，也不是绕过权限/完整性复验的承诺。F002 固化本次准入时间、确切 Receipt 及其接受记录引用，重放历史时不得静默替换成较新的 Receipt。准入时拒绝过期凭据；同包续签后必须显式使用新的凭据。内容读取仍受当前权限与完整性检查约束。
 
-F002 将来源包/Receipt/inventory/policy 身份及完整 inherited Gap 集固化在每个派生 fact 上。比较已选基线/目标时，F002 可请求 `SnapshotDeltaInput`，但不得修改、隐藏、降级或重新接受 F001 Gap。F003/F004 通过 F002 获取 F001 provenance；F004 的影响结论留在 F001 外。
+F002 将来源包/Receipt/inventory/policy 身份及完整 inherited Gap 集固化在每个派生 fact 上。比较已选基线/目标时，F002 可请求 `SnapshotDeltaInput`，但不得修改、隐藏、降级或重新接受 F001 Gap。F003 直接通过 F001 获取原文与材料 provenance，并另行参考 F002 技术证据；F004 采用两层的精确来源引用，影响结论仍留在 F001 外。
+
+### 11.1 F002／F003 共用的材料读取（2026-10-22）
+
+本次改造依据 co-creator 已确认的三层职责，以及在完整三点调整说明后作出的授权：“嗯，可以，把 F001 改造好吧”。三点分别为统一受控读取、F003 按材料版本直接查原文、各层独立记录版本采用。已有采集、冻结、恢复与身份合同保留。当前 F001 设计优先于未同步的旧 Feature Spec；ADR-0003 的消费者限制与本节同步。
+
+**职责与输入。** F001 同时服务 F002 的代码语义／算法取证和 F003 的 Agent 业务调查。两者读取同一份冻结材料，F003 不需要先有 F002 的事实集、MATERIAL 记录或解析支持。原文可读不代表模型出站许可；F008 的成员／空间授权、F006 的模型与工具许可继续各自生效。F001 不生成技术关系或业务图谱。
+
+**源材料引用。** 每份原文使用 `{workspaceId, bundleId, componentId, pathBytes, contentDigest}` 定位，`id` 为 v1 域分离结构摘要（域 `material`）；`pathBytes` 保留规范原始路径字节。引用绑定确切来源包与文件内容，不依赖 F002 的 materialId 或事实集版本。Receipt 单独记录在读取／分析绑定中，不进入材料内容身份；同包续签不制造另一份文件。原文、阅读展示副本和下游解释分别保存其引用与摘要，展示脱敏不改写原材料。
+
+**统一服务。** `SourceSnapshotReader.readMaterial(actor, workspaceId, reference, locator, {maxBytes})` 通过冻结清单按组件与路径找到原文，保留原始字节，验证长度和 SHA-256，返回 `bytes`、`originalDigest`、`sourceMaterial` 和确切 `receiptId`。默认单次最多 8 MiB，服务端可配置至 64 MiB；超过上限明确拒绝，不返回截断的完整原文。清单搜索与分页沿用版本绑定的 `inventory`；未支持语义解析不等于文件不存在。
+
+HTTP 入口为 `GET /v1/workspaces/:workspaceId/source-truth/bundles/:bundleId/material?receiptId=…&componentId=…&pathBytes=…`，返回 attachment 原始字节、no-store/nosniff 及 `x-source-material-ref`、`x-source-content-digest`、`x-source-bundle-id`、`x-source-receipt-id`。它与既有 `file` 一样需要当前 F008 身份与 READ 权限，且检查精确 Receipt、限制接受、恢复就绪和内容完整性，不接受 F002 事实集 ID 代替来源引用。不得把该原文下载端点作为不受控 inline HTML 或自动模型外发入口。
+
+**准入与续读。** 新调查先通过 F001 `qualify`，消费者在自己的持久任务中保存全部 `QualifiedSourceInput`，包括 Receipt、接受记录、服务器准入时间和完整 Gap 集引用。续读通过服务器配置的 `forAdmittedAnalysis(resolveBinding)` 查询消费者持久绑定；客户端传入的 qualifiedAt/sourceInput 不授予续读资格。已准入任务的接受过期不改写原准入事实；每次读取仍校验当前权限、恢复状态和内容完整性。普通新读取仍检查当前接受期限。F002 保留现有持久分析绑定并接入此共同读取方法；F003 可直接使用 F001 入口，其 Agent／图谱工作流由 F003 自身设计与实现，不在 F001 新建第二套分析状态源。
+
+**版本与失败。** 每次导入／Git 更新保留采集尝试；完全相同的证据可复用同一 Bundle 内容身份。变化后形成新的冻结内容版本，旧材料引用不变；F002 的证据版本、F003 的图谱修订分别显式采用输入，不因“最新”指针移动或新 Receipt 签发而自动换版。F001 的文件变化只表示材料差异，不宣称业务影响。草稿、缺失条目、错误 Receipt、越权、恢复未验证、损坏或超预算均明确失败；不自动改读其他版本。
+
+**访问记录。** F001 追加 `MATERIAL_READ_INTENT`、`MATERIAL_READ_COMPLETED`／`MATERIAL_READ_INTERRUPTED`，只记录操作者、精确材料／Receipt 引用、预算和错误码，不保存原文。成功返回前再次检查当前访问资格。F002 原有展示脱敏、展示摘要和访问事件保留；兼容入口仍按原事实集定位历史记录，但实际内容统一交 F001 读取。
+
+**验收增量。** 无 F002 事实集时从真实 F001 认证 HTTP 入口读到未支持格式的原文字节；F002 读同一材料得到相同 F001 引用并维持脱敏；错误版本／组件、跨 Workspace、撤权、恢复未验证、损坏和超预算都拒绝；同包续签保留材料 ID、旧引用和历史凭据；新材料版本不会静默替换既有分析绑定。此增量不替代 §12 的整体规模、备份和浏览器验收。
 
 ## 12. 参考试点与规模验收
 
