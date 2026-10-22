@@ -62,6 +62,14 @@ test("B-10 same-bundle renewal appends a Receipt without recapture, altering old
   assert.equal(oldReceiptPage.nextCursor, null);
   assert.equal(renewed.bundle.id, original.bundle.id);
   assert.notEqual(renewed.receipt.id, original.receipt.id);
+  const oldMaterial = await services.inspection.readMaterial(reader, "workspace", oldRef,
+    { componentId: page.items[0].componentId, pathBytes: f.entry.pathBytes });
+  const newMaterial = await admission.readMaterial(reader, "workspace", { bundleId: renewed.bundle.id, receiptId: renewed.receipt.id },
+    { componentId: page.items[0].componentId, pathBytes: f.entry.pathBytes });
+  assert.deepEqual(newMaterial.sourceMaterial, oldMaterial.sourceMaterial, "renewal must not manufacture a new material content version");
+  assert.equal(oldMaterial.receiptId, original.receipt.id);
+  assert.equal(newMaterial.receiptId, renewed.receipt.id);
+
   assert.equal(renewed.receipt.status, "READY_WITH_ACCEPTED_GAPS");
   assert.equal(renewed.receipt.gapSetId, original.receipt.gapSetId);
   assert.equal((await admission.qualify(reader, "workspace", { bundleId: renewed.bundle.id, receiptId: renewed.receipt.id })).gapCount, "1");

@@ -3,6 +3,7 @@ import { requireValue, fail } from "./errors.js";
 import { assertAcceptance, assertIndividualAcceptance } from "./confirmation-service.js";
 import { inventoryOptions, inventoryResult } from "./inventory-query.js";
 import { contentAvailabilitySql } from "./content-state.js";
+import { readSourceMaterial } from "./material-reading.js";
 
 function pageOptions({ limit = 100, cursor = null } = {}) {
   requireValue(Number.isInteger(limit) && limit > 0 && limit <= 1000, "SOURCE_INVALID_INPUT", "分页大小必须为 1～1000", { status: 400 });
@@ -33,6 +34,10 @@ export class SourceSnapshotReader {
   }
 
   async assertReadPurpose() { /* Historical inspection needs no new analysis consent. */ }
+
+  async readMaterial(actor, workspaceId, reference, locator, options) {
+    return readSourceMaterial(this, actor, workspaceId, reference, locator, options);
+  }
 
   // Integrity-only internal check, not an admission endpoint. Backup/history
   // must retain expired evidence without reauthorizing a new analysis.
@@ -117,7 +122,7 @@ export class SourceSnapshotReader {
 }
 
 export class SourceAdmissionService extends SourceSnapshotReader {
-  // Server-side F002 integration only. The resolver must load F002's durable
+  // Server-side consumer integration only. The resolver must load its durable
   // analysis binding, not echo an HTTP body or cache a prior permission result.
   // Public /admission and ordinary reads keep checking current acceptance.
   forAdmittedAnalysis(resolveBinding) {
@@ -180,14 +185,14 @@ class AdmittedSourceReader extends SourceSnapshotReader {
 
   constructor(repository, candidates, resolveBinding) {
     super(repository, candidates);
-    requireValue(typeof resolveBinding === "function", "SOURCE_ANALYSIS_RESOLVER_REQUIRED", "已准入读取必须配置可信的 F002 持久绑定查询", { status: 503 });
+    requireValue(typeof resolveBinding === "function", "SOURCE_ANALYSIS_RESOLVER_REQUIRED", "已准入读取必须配置可信的消费者持久绑定查询", { status: 503 });
     this.#resolveBinding = resolveBinding;
   }
 
   async assertReadPurpose(tx, row, { actor, workspaceId, reference }) {
     const { analysisRunId } = reference;
     requireValue(typeof analysisRunId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(analysisRunId),
-      "SOURCE_ANALYSIS_ADMISSION_REQUIRED", "需要 F002 已持久保存的分析准入绑定", { status: 400 });
+      "SOURCE_ANALYSIS_ADMISSION_REQUIRED", "需要消费者已持久保存的分析准入绑定", { status: 400 });
     const binding = await this.#resolveBinding(actor, workspaceId, analysisRunId, tx);
     requireValue(binding?.sourceInput, "SOURCE_ANALYSIS_ADMISSION_REQUIRED", "此分析没有已核验的持久准入记录");
     const input = binding.sourceInput;

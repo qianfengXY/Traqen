@@ -4,7 +4,7 @@ import { compileDeterministicFacts } from "../src/deterministic-facts/extraction
 import { canonicalRecords } from "../src/deterministic-facts/output-assembly.js";
 import { normalizeCanonicalRecords } from "../src/deterministic-facts/verification.js";
 import { standardF002Profile, structuredF002Profile } from "../src/deterministic-facts/runtime.js";
-import { redactDisplayBytes } from "../src/deterministic-facts/policy.js";
+import { digestBytes, redactDisplayBytes } from "../src/deterministic-facts/policy.js";
 import { F002MaterialService } from "../src/deterministic-facts/material-service.js";
 
 const workspaceId = "workspace", bundleId = "b".repeat(64);
@@ -123,7 +123,7 @@ test("F002 controlled dotenv reads select syntax from canonical path bytes and a
   const repository = { withAuthorizedWorkspace: async (_actor, _workspace, action) => action({ query: async () => ({ rows: [{ run_id: "run", scope_id: "scope",
     payload: { materialId, componentId: "a".repeat(64), pathBytes: Buffer.from(".env.prod").toString("base64url"), displayPath: "misleading.properties", mediaType: "application/octet-stream" } }] }) }),
     appendEvent: async (_actor, _workspace, _run, _scope, kind, payload) => { events.push({ kind, payload }); } };
-  const admission = { readFile: async function* () { yield bytes; } };
+  const admission = { readMaterial: async () => ({ bytes, originalDigest: digestBytes(bytes) }) };
   const result = await new F002MaterialService(repository, admission).read({ actorId: "owner" }, workspaceId, graphVersionId, materialId);
   assert.equal(result.policyRevision, "policy-v4-private-key-boundaries"); assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION");
   assert.equal(result.bytes.includes("FIRST_SENTINEL"), false); assert.equal(result.bytes.includes("SECOND_SENTINEL"), false);
@@ -138,7 +138,7 @@ test("F002 dotenv safety recognizes an ASCII filename even under a non-UTF8 admi
   const rawPath = Buffer.from([0xff, 47, ...Buffer.from(".env.prod")]);
   const repository = { withAuthorizedWorkspace: async (_actor, _workspace, action) => action({ query: async () => ({ rows: [{ run_id: "run", scope_id: "scope",
     payload: { materialId, componentId: "a".repeat(64), pathBytes: rawPath.toString("base64url"), mediaType: "application/octet-stream" } }] }) }), appendEvent: async () => {} };
-  const result = await new F002MaterialService(repository, { readFile: async function* () { yield bytes; } }).read({ actorId: "owner" }, workspaceId, "e".repeat(64), materialId);
+  const result = await new F002MaterialService(repository, { readMaterial: async () => ({ bytes, originalDigest: digestBytes(bytes) }) }).read({ actorId: "owner" }, workspaceId, "e".repeat(64), materialId);
   assert.equal(result.transform, "CONFIG_SECRET_VALUE_REDACTION");
   assert.equal(result.bytes.includes("FIRST_SENTINEL"), false); assert.equal(result.bytes.includes("SECOND_SENTINEL"), false);
 });

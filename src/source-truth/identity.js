@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-const domains = new Set(["manifest", "coverage", "component", "inventory", "gaps", "bundle"]);
+const domains = new Set(["material", "manifest", "coverage", "component", "inventory", "gaps", "bundle"]);
 const sourceKinds = new Set(["GIT", "DIRECTORY_UPLOAD"]);
 const decimal = /^(0|[1-9][0-9]*)$/;
 const sha256 = /^[0-9a-f]{64}$/;

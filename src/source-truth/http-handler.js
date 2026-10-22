@@ -59,10 +59,19 @@ export function createSourceTruthHttpHandler({ services, authenticate, allowedOr
       else if (route === "renewals" && action === "POST") json(await renewal.issue(actor, workspaceId, await sourceBody(request)));
       else {
         const runMatch = /^runs\/([^/]+)(?:\/(.*))?$/.exec(route);
-        const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|gap-history|inventory-history|file-history|receipts|receipt)$/.exec(route);
+        const versionMatch = /^bundles\/([a-f0-9]{64})\/(inventory|gaps|file|material|gap-history|inventory-history|file-history|receipts|receipt)$/.exec(route);
         if (versionMatch && action === "GET") {
           const reference = { bundleId: versionMatch[1], receiptId: url.searchParams.get("receiptId") };
           if (versionMatch[2] === "inventory") json(await admission.inventory(actor, workspaceId, reference, inventoryPage));
+          else if (versionMatch[2] === "material") {
+            const material = await admission.readMaterial(actor, workspaceId, reference,
+              { componentId: url.searchParams.get("componentId"), pathBytes: url.searchParams.get("pathBytes") });
+            response.writeHead(200, { "content-type": "application/octet-stream", "content-length": material.bytes.length,
+              "content-disposition": "attachment", "cache-control": "no-store", "x-content-type-options": "nosniff", "x-request-id": id,
+              "x-source-material-ref": material.sourceMaterial.id, "x-source-content-digest": material.originalDigest,
+              "x-source-bundle-id": reference.bundleId, "x-source-receipt-id": material.receiptId });
+            response.end(material.bytes);
+          }
           else if (versionMatch[2] === "receipts") json(await queries.receipts(actor, workspaceId, reference.bundleId, page));
           else if (versionMatch[2] === "receipt") json((await inspection.records(actor, workspaceId, reference)).receipt);
           else if (versionMatch[2] === "inventory-history") json(await inspection.inventory(actor, workspaceId, reference, inventoryPage));

@@ -93,6 +93,12 @@ test("F002 reads a sealed no-Fact material through F001, verifies its hash, and 
   const result = await materials.read(owner, "workspace", f.graphVersionId, f.materialId);
   assert.deepEqual(result.bytes, f.bytes);
   assert.equal(result.originalDigest, f.digest);
+  const bound = await f.repository.sourceBinding("workspace", f.run.id);
+  const direct = await f.admission.sourceAdmission.readMaterial(owner, "workspace",
+    { bundleId: bound.sourceInput.sourceBundleSnapshotId, receiptId: bound.sourceInput.receiptId },
+    { componentId: result.sourceMaterial.componentId, pathBytes: result.sourceMaterial.pathBytes });
+  assert.deepEqual(result.sourceMaterial, direct.sourceMaterial, "F002 presentation and direct business reading use one F001 material reference");
+
   assert.match(result.readableRef, /^[a-f0-9]{64}$/);
   const events = await f.db.query("SELECT event_type,payload FROM f002_event WHERE workspace_id='workspace' AND run_id=$1 ORDER BY sequence", [f.run.id]);
   assert.deepEqual(events.rows.slice(-2).map((row) => row.event_type), ["READ_INTENT", "READ_COMPLETED"]);

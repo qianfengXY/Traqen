@@ -104,6 +104,21 @@ test("B-01/05 HTTP directory journey streams original bytes and publishes only a
     assert.equal((await f.call(`${base}&disposition=PENDING`)).body.matchedCount, "0");
     assert.equal((await f.call(`${base}&componentId=invalid`)).status, 400);
   }
+  // A business reader needs no F002 fact set or material record.
+  const materialQuery = new URLSearchParams({ receiptId: reference.receiptId,
+    componentId: admitted.body.components[0].componentSnapshotId, pathBytes: entry.pathBytes });
+  const materialUrl = `${f.base}/bundles/${reference.bundleId}/material?${materialQuery}`;
+  const materialResponse = await fetch(materialUrl, { headers: { authorization: `Bearer ${readerToken}` } });
+  assert.equal(materialResponse.status, 200, "F001 exposes frozen material independently of F002");
+  assert.deepEqual(Buffer.from(await materialResponse.arrayBuffer()), content);
+  assert.match(materialResponse.headers.get("x-source-material-ref"), /^[a-f0-9]{64}$/);
+  assert.equal(materialResponse.headers.get("x-source-content-digest"), hash(content));
+  assert.equal(materialResponse.headers.get("x-source-bundle-id"), reference.bundleId);
+  assert.equal(materialResponse.headers.get("x-source-receipt-id"), reference.receiptId);
+  assert.equal(materialResponse.headers.get("cache-control"), "no-store");
+  assert.equal(materialResponse.headers.get("content-disposition"), "attachment");
+  const wrong = new URL(materialUrl); wrong.searchParams.set("receiptId", "not-this-version");
+  assert.equal((await fetch(wrong, { headers: { authorization: `Bearer ${readerToken}` } })).status, 404);
   assert.equal((await f.call(`${runPath}/result`)).body.receipt.id, reference.receiptId);
   const coverage = await f.call("/backup-coverage", "POST", reference, readerToken);
   assert.equal(coverage.status, 200);

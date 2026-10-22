@@ -90,6 +90,10 @@ export class F002AdmissionService {
     yield* this.admitted.readFile(actor, workspaceId, await this.#reference(workspaceId, runId), locator);
   }
 
+  async readMaterial(actor, workspaceId, runId, locator, options) {
+    return this.admitted.readMaterial(actor, workspaceId, await this.#reference(workspaceId, runId), locator, options);
+  }
+
   async #reference(workspaceId, runId) {
     requireF002(typeof runId === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(runId), "F002_RUN_REFERENCE_INVALID", "分析运行引用无效", { status: 422 });
     const binding = await this.repository.sourceBinding(workspaceId, runId);

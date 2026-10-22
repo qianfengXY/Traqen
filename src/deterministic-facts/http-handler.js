@@ -219,6 +219,8 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
               const result = await materials.read(actor, workspaceId, graphVersionId, content[1]);
               response.writeHead(200, { "content-type": result.mediaType, "content-length": result.bytes.length, "cache-control": "no-store", "x-content-type-options": "nosniff", "x-request-id": requestId,
                 "x-f002-readable-ref": result.readableRef, "x-f002-original-digest": result.originalDigest, "x-f002-display-digest": result.displayDigest,
+                ...(result.sourceMaterial ? { "x-source-material-ref": result.sourceMaterial.id,
+                  "x-source-bundle-id": result.sourceMaterial.bundleId, "x-source-receipt-id": result.receiptId } : {}),
                 "x-f002-redacted": String(result.redacted), "x-f002-transform": result.transform ?? "" });
               response.end(result.bytes);
             } else throw new F002Error("F002_ROUTE_NOT_FOUND", "技术证据操作不存在", { status: 404 });

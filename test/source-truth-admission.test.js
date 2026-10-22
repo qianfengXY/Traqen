@@ -178,3 +178,53 @@ test("B-05 corruption rejects current admission without rewriting the historical
   const receipt = await f.db.query("SELECT status FROM source_truth_receipt WHERE workspace_id='workspace' AND id=$1", [f.reference.receiptId]);
   assert.equal(receipt.rows[0].status, "READY");
 });
+
+
+test("F001 shared material reading has source-owned identity without F002 and preserves repeated reads", async t => {
+  const f = await fixture(t, { entryPath: "business-format.unknown", content: "业务原文\r\n原格式保留" });
+  const inventory = await f.admission.inventory(reader, "workspace", f.reference);
+  const locator = { componentId: inventory.items[0].componentId, pathBytes: f.entry.pathBytes };
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM f002_fact_set")).rows[0].n, 0);
+  const first = await f.admission.readMaterial(reader, "workspace", f.reference, locator);
+  const second = await new SourceAdmissionService(f.repository, f.candidates).readMaterial(reader, "workspace", f.reference, locator);
+  assert.deepEqual(first.bytes, f.bytes);
+  assert.equal(first.originalDigest, f.digest);
+  assert.deepEqual(first.sourceMaterial, second.sourceMaterial);
+  assert.equal(first.sourceMaterial.bundleId, f.reference.bundleId);
+  assert.equal(first.sourceMaterial.componentId, locator.componentId);
+  assert.equal(first.sourceMaterial.pathBytes, locator.pathBytes);
+  assert.equal(first.sourceMaterial.contentDigest, f.digest);
+  assert.equal(first.receiptId, f.reference.receiptId);
+  assert.match(first.sourceMaterial.id, /^[a-f0-9]{64}$/);
+  const audit = (await f.db.query("SELECT event_type,payload FROM source_truth_event WHERE event_type LIKE 'MATERIAL_READ_%' ORDER BY sequence")).rows;
+  assert.deepEqual(audit.map(row => row.event_type), ["MATERIAL_READ_INTENT", "MATERIAL_READ_COMPLETED", "MATERIAL_READ_INTENT", "MATERIAL_READ_COMPLETED"]);
+  assert.equal(JSON.stringify(audit).includes("业务原文"), false);
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM source_truth_bundle")).rows[0].n, 1);
+  assert.equal((await f.db.query("SELECT count(*)::int AS n FROM f002_fact_set")).rows[0].n, 0);
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference, locator, { maxBytes: 1 }), { code: "SOURCE_READ_BUDGET_EXCEEDED" });
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference, { ...locator, componentId: "f".repeat(64) }), { code: "SOURCE_CONTENT_UNAVAILABLE" });
+  await assert.rejects(f.admission.readMaterial(reader, "workspace2", f.reference, locator), { code: "SOURCE_FORBIDDEN" });
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference,
+    { ...locator, pathBytes: Buffer.from("../outside").toString("base64url") }), { code: "SOURCE_INVALID_INPUT" });
+  await f.db.query("UPDATE source_truth_workspace SET restore_ready=false WHERE workspace_id='workspace'");
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference, locator), { code: "SOURCE_RESTORE_UNVERIFIED" });
+  await f.db.query("UPDATE source_truth_workspace SET restore_ready=true WHERE workspace_id='workspace'");
+  await f.repository.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "reader", role: "REVOKED" }] });
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference, locator), { code: "SOURCE_FORBIDDEN" });
+});
+
+
+test("F001 material reading rechecks authorization after the last buffered chunk and rejects forged bytes", async t => {
+  const f = await fixture(t);
+  const page = await f.admission.inventory(reader, "workspace", f.reference);
+  const locator = { componentId: page.items[0].componentId, pathBytes: f.entry.pathBytes };
+  const readFile = f.admission.readFile.bind(f.admission);
+  f.admission.readFile = async function* (...args) {
+    for await (const chunk of readFile(...args)) yield chunk;
+    await f.repository.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "reader", role: "REVOKED" }] });
+  };
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference, locator), { code: "SOURCE_FORBIDDEN" });
+  await f.repository.provision("workspace", { tenantId: "tenant", grants: [{ actorId: "reader", role: "READ" }] });
+  f.admission.readFile = async function* () { yield Buffer.alloc(f.bytes.length, 120); };
+  await assert.rejects(f.admission.readMaterial(reader, "workspace", f.reference, locator), { code: "SOURCE_CONTENT_MISMATCH" });
+});

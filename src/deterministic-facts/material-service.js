@@ -31,7 +31,7 @@ function displayMediaType(mediaType, bytes) {
 export class F002MaterialService {
   constructor(repository, admission, { maxReadBytes = 8 * 1024 * 1024, policyRevision = CURRENT_DISPLAY_POLICY_REVISION } = {}) {
     if (!repository?.withAuthorizedWorkspace || !repository?.appendEvent) throw new TypeError("F002 material service requires an authorized repository");
-    if (!admission || typeof admission.readFile !== "function") throw new TypeError("F002 material service requires F001 admitted reads");
+    if (!admission || typeof admission.readMaterial !== "function") throw new TypeError("F002 material service requires F001 controlled material reads");
     if (!Number.isInteger(maxReadBytes) || maxReadBytes < 1 || maxReadBytes > 64 * 1024 * 1024) throw new TypeError("F002 maxReadBytes is invalid");
     this.repository = repository;
     this.admission = admission;
@@ -55,15 +55,10 @@ export class F002MaterialService {
     const readableRef = canonicalDigest("READABLE_REF", { workspaceId, graphVersionId, materialId });
     await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_INTENT", { graphVersionId, materialId, readableRef, policyRevision: this.policyRevision });
     try {
-      const chunks = [];
-      let total = 0;
-      for await (const chunk of this.admission.readFile(actor, workspaceId, material.runId, { componentId: material.payload.componentId, pathBytes: material.payload.pathBytes })) {
-        total += chunk.length;
-        requireF002(total <= this.maxReadBytes, "F002_READ_BUDGET_EXCEEDED", "材料内容超过受控读取上限", { status: 413 });
-        chunks.push(Buffer.from(chunk));
-      }
-      const original = Buffer.concat(chunks);
-      const originalDigest = digestBytes(original);
+      const source = await this.admission.readMaterial(actor, workspaceId, material.runId,
+        { componentId: material.payload.componentId, pathBytes: material.payload.pathBytes }, { maxBytes: this.maxReadBytes });
+      const original = source.bytes;
+      const originalDigest = source.originalDigest;
       requireF002(!material.payload.contentDigest || material.payload.contentDigest === originalDigest,
         "F002_SOURCE_CONTENT_MISMATCH", "读取到的来源字节不匹配封存材料证据", { status: 409 });
       let mediaType;
@@ -76,8 +71,10 @@ export class F002MaterialService {
       await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_COMPLETED", {
         graphVersionId, materialId, readableRef, originalDigest, displayDigest, redacted: display.redacted, policyRevision: this.policyRevision,
       });
-      return { readableRef, mediaType, bytes: display.bytes, originalDigest, displayDigest, redacted: display.redacted, transform: display.transform, policyRevision: this.policyRevision };
+      return { readableRef, mediaType, bytes: display.bytes, originalDigest, displayDigest, redacted: display.redacted,
+        transform: display.transform, policyRevision: this.policyRevision, sourceMaterial: source.sourceMaterial, receiptId: source.receiptId };
     } catch (error) {
+      if (error?.code === "SOURCE_READ_BUDGET_EXCEEDED") error = new F002Error("F002_READ_BUDGET_EXCEEDED", "材料内容超过受控读取上限", { status: 413 });
       await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_INTERRUPTED", {
         graphVersionId, materialId, readableRef, code: error?.code ?? "F002_READ_FAILED", policyRevision: this.policyRevision,
       }).catch(() => {});
