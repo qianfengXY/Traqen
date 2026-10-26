@@ -9,6 +9,7 @@ import { F002PublicationService } from "../src/deterministic-facts/publication-s
 import { F002QueryService } from "../src/deterministic-facts/queries.js";
 import { F002RequestService } from "../src/deterministic-facts/request-service.js";
 import { F002Error } from "../src/deterministic-facts/errors.js";
+import { F003Error } from "../src/business-knowledge/errors.js";
 import { F002Repository } from "../src/deterministic-facts/repository.js";
 import { sourceTruthAuthenticator } from "../src/source-truth/authentication.js";
 import { owner, sourceDatabase } from "./support/source-truth-database.js";
@@ -19,6 +20,20 @@ const componentId = "a".repeat(64), bundleId = "b".repeat(64);
 const profileInput = { version: "1", schemaVersion: 1, capabilityIds: ["javascript"], ruleVersions: ["javascript@1"], canonicalizationVersion: "1", extractionLimits: { maxBytes: 1024, maxRecords: 10 }, redactionPolicyRevision: "policy-v1" };
 const profile = { ...profileInput, id: createProfileId(profileInput), startable: true };
 const sourceInput = { workspaceId: "workspace", bundleId, sourceBundleSnapshotId: bundleId, receiptId: "receipt-1", receiptStatus: "READY", confirmationId: "confirmation-1", acceptanceRecordIds: [], receiptValidUntil: null, qualifiedAt: "2026-09-17T00:00:00.000Z", inventoryId: "inventory-1", inventoryDigest: "inventory-1", policyRevisionId: "policy-v1", inheritedGapSet: { id: "gaps-1", count: "0", consumption: "ALL_PAGES_REQUIRED" } };
+
+test("F002 retains a trusted consumer's typed denial without importing its graph runtime or exposing private details", async t => {
+  const handler = createF002HttpHandler({ services: { repository: {}, admission: {}, publication: {}, queries: {},
+    materials: {}, replays: {}, requests: { investigation: async () => {
+      throw new F003Error("F003_INVESTIGATION_FORBIDDEN", "当前调查不可读取", { status: 403, details: { private: "must-not-serialize" } });
+    } } }, authenticate: () => owner });
+  const server = createTraceabilityHttpServer({ application: {}, deterministicFactsHandler: handler });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/v1/workspaces/workspace/deterministic-facts/investigations/owned?baseVersionId=${"a".repeat(64)}`);
+  assert.equal(response.status, 403);
+  const body = await response.json(); assert.equal(body.error.code, "F003_INVESTIGATION_FORBIDDEN");
+  assert.equal(JSON.stringify(body).includes("must-not-serialize"), false);
+});
 
 test("F002 HTTP never exposes an internal exception merely carrying code and status fields", async t => {
   const handler = createF002HttpHandler({ services: { repository: {}, admission: {}, publication: {}, queries: {

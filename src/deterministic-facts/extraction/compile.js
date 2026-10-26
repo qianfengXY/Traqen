@@ -30,6 +30,8 @@ import { extractJunitReports } from "./test-reports.js";
 import { resolveEndpointContracts } from "./endpoint-contracts.js";
 import { createTextAnchor } from "./text-anchor.js";
 import { F002Error } from "../errors.js";
+import { extractProgramLogic, resolveConfigReferences, resolveTechnicalModules } from "./program-logic.js";
+import { extractStaticSql, resolveSqlReferences } from "./static-sql.js";
 
 registerDynamicLanguage({ java: javaLanguage });
 
@@ -50,6 +52,8 @@ function utf8Text(bytes) {
 
 function mediaKind(displayPath, mediaType, limits) {
   const ext = path.posix.extname(displayPath).toLowerCase();
+  if (limits?.programLogic === "bounded-syntax-v1" && [".ts", ".mts", ".cts", ".tsx"].includes(ext)) return "TYPESCRIPT";
+  if (limits?.staticSql === "literal-statements-v1" && ext === ".sql") return "SQL";
   if (limits?.dotenvSyntax === "node-static-v1" && isDotenvPath(displayPath)) return "PROPERTIES";
   if (ext === ".svg" || mediaType === "image/svg+xml") return "UNSUPPORTED";
   if ([".js", ".mjs", ".cjs"].includes(ext)) return "JAVASCRIPT";
@@ -156,6 +160,7 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
   const objects = [], evidence = [], facts = [], gaps = [], objectById = new Map(), materialByLocation = new Map(), linkCandidates = [], jsExports = [], jsImportedCalls = [];
   const structuredObjects = new Map(), evidenceIdsSeen = new Set(), factIdsSeen = new Set(), gapIdsSeen = new Set();
   const documentLinks = [], documentSections = [], javascriptModules = [], testReferences = [];
+  const sqlReferences = [], configReferences = [], technicalModules = [];
   const bounded = profile.extractionLimits?.scopeRecordBudget === "atomic-material-v1";
   const recordLimit = profile.extractionLimits?.maxRecords;
   // Reserve catalog + root + one local limitation for EVERY material and one
@@ -168,7 +173,7 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
   let extraRecords = 0;
   const gapCounts = new Map();
   const charge = () => { if (bounded && extraRecords >= recordLimit - reserved) throw new ScopeRecordLimit(); extraRecords++; };
-  const arrays = [objects, evidence, facts, gaps, linkCandidates, jsExports, jsImportedCalls, documentLinks, documentSections, javascriptModules, testReferences];
+  const arrays = [objects, evidence, facts, gaps, linkCandidates, jsExports, jsImportedCalls, documentLinks, documentSections, javascriptModules, testReferences, sqlReferences, configReferences, technicalModules];
   const snapshot = () => ({ lengths: arrays.map(array => array.length), extraRecords });
   const rollback = before => {
     for (let i = objects.length - 1; i >= before.lengths[0]; i--) {
@@ -259,11 +264,11 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
         addGap(material, material.kind.toLowerCase(), "PRIVATE_KEY_MATERIAL_RESTRICTED");
         continue;
       }
-      if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML"].includes(material.kind) && text === null) {
+      if (["JAVASCRIPT", "TYPESCRIPT", "SQL", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML"].includes(material.kind) && text === null) {
         addGap(material, material.kind.toLowerCase(), "TEXT_ENCODING_UNSUPPORTED");
         continue;
       }
-      if (["JAVASCRIPT", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML", "IMAGE"].includes(material.kind) && material.ruleRef === null) {
+      if (["JAVASCRIPT", "TYPESCRIPT", "SQL", "JAVA", "MARKDOWN", "JSON", "YAML", "PROPERTIES", "JUNIT_XML", "IMAGE"].includes(material.kind) && material.ruleRef === null) {
         addGap(material, material.kind.toLowerCase(), "RULE_CAPABILITY_UNAVAILABLE");
         continue;
       }
@@ -288,7 +293,12 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
         else extractJunitXml({ material, text, textAnchor, addObject, addFact, addGap });
       }
       else if (material.kind === "IMAGE") addEvidence(material, imageAnchor(material.bytes, material.contentDigest), "IMAGE_METADATA");
+      else if (material.kind === "SQL") extractStaticSql({ text, material, anchorFor: (start, end) => anchor(start, end), limits: profile.extractionLimits, addObject, addFact, addGap, sqlReferences });
+      else if (material.kind === "TYPESCRIPT") { /* The versioned program analysis below owns TS syntax. */ }
       else addGap(material, "format", "FORMAT_UNSUPPORTED");
+      if (profile.extractionLimits?.programLogic === "bounded-syntax-v1" && ["JAVASCRIPT", "TYPESCRIPT", "JAVA"].includes(material.kind)) {
+        extractProgramLogic({ material, text, textAnchor, limits: profile.extractionLimits, addObject, addFact, addGap, sqlReferences, configReferences, technicalModules });
+      }
       if (material.ruleRef?.version === "2") for (const child of structuredObjects.get(material.materialId) ?? []) {
         if (child.parentId) addFact({ subject: objectById.get(child.parentId), predicate: "contains", target: child, material, anchor: child.anchor });
       }
@@ -329,6 +339,11 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
     resolveTestReferences({ references: testReferences, facts, objects, evidence, addFact });
     yield nextRelationship();
     resolveEndpointContracts({ objects, facts, materialById: new Map(normalized.map(m => [m.materialId, m])), limits: profile.extractionLimits, addFact, addGap });
+    if (profile.extractionLimits?.programLogic === "bounded-syntax-v1") {
+      resolveConfigReferences({ configReferences, objects, facts, materials: normalized, addFact, addGap });
+      resolveSqlReferences({ sqlReferences, addFact, addGap });
+      resolveTechnicalModules({ technicalModules, addFact, addGap });
+    }
   } catch (error) {
     if (!(error instanceof ScopeRecordLimit)) throw error;
     rollback(beforeRelationships);

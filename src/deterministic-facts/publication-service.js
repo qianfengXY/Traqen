@@ -31,7 +31,7 @@ async function assertRequestOwnerActive(tx, workspaceId, owner, guard) {
   requireF002(owner.state === "RUNNING" && live?.lease_live,
     "F002_STALE_REQUEST_WORKER", "取证请求已停止，不能发布补提事实集", { status: 409 });
   assertRequestDeadline(owner);
-  await guard.revalidate();
+  await guard.revalidate({ tx });
   assertRequestDeadline(owner);
 }
 

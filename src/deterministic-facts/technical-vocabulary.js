@@ -1,0 +1,35 @@
+export const technicalKinds = ["LOGIC_FUNCTION", "LOGIC_BINDING", "LOGIC_REFERENCE", "LOGIC_CONDITION", "LOGIC_BRANCH", "LOGIC_CALL", "LOGIC_RETURN", "LOGIC_ARGUMENT", "SQL_STATEMENT", "SQL_TABLE", "SQL_COLUMN", "CONFIG_READ", "TEST_CASE", "TEST_ASSERTION"];
+export const technicalOnlyKinds = technicalKinds.filter(kind => !["TEST_CASE", "TEST_ASSERTION"].includes(kind));
+const relation = (domain, range, meaning) => ({ form: "RELATION", domain, range, meaning });
+const property = (domain, datatype, meaning) => ({ form: "PROPERTY", domain, valueDatatypes: [datatype], meaning });
+export const technicalPredicateDefinitions = new Map([
+  ["importSpecifier", property(["LOGIC_BINDING"], "string", "源码 import 中的显式模块说明符，不证明已加载或运行时模块解析成功。")],
+  ["importedSymbol", property(["LOGIC_BINDING"], "string", "显式导入的符号拼写；不推断别名之外的运行值。")],
+  ["exportedSymbol", property(["LOGIC_FUNCTION"], "string", "源码显式导出的函数名，不证明执行或导出对象未被外部修改。")],
+  ["testRegistration", property(["TEST_CASE"], "string", "直接 node:test 导入绑定的测试注册声明；不是执行报告。")],
+  ["declaredTestBody", relation(["TEST_CASE"], ["LOGIC_FUNCTION"], "直接指定的测试函数体；不包括内层延迟函数，不证明测试已运行。")],
+  ["declaredAssertion", relation(["TEST_CASE"], ["TEST_ASSERTION"], "该测试体中直接且导入绑定可辨的断言调用；不证明断言成立或执行。")],
+  ["syntaxKind", property(technicalKinds, "string", "固定语法解析器识别的节点种类；不是运行类型、业务含义或执行记录。")],
+  ["functionBindingKind", property(["LOGIC_BINDING"], "string", "函数声明名、函数表达式内部名或直接函数初始化器的源码角色；不证明已初始化或运行时值。")],
+  ["functionInitializationRegion", property(["LOGIC_BINDING"], "string", "函数初始化声明直接所属的程序或语句块范围；只支持同一函数内的本地源码顺序，不证明跨函数时序、可达或实际执行。")],
+  ["lexicalBindingScope", property(["LOGIC_BINDING"], "string", "JS/TS 声明所属的词法作用域种类与范围，用于最近同名绑定校验；不证明初始化、值或执行。")],
+  ["bindingFunction", relation(["LOGIC_BINDING"], ["LOGIC_FUNCTION"], "词法绑定直接声明或初始化的函数语法目标，有独立绑定角色与源码范围前提；不追踪别名、重赋值或执行。")],
+  ["callContext", relation(["LOGIC_CALL", "LOGIC_RETURN"], ["LOGIC_FUNCTION"], "直接词法函数上下文，不表示调用栈或实际执行。")],
+  ["callsDeclaration", relation(["LOGIC_CALL"], ["LOGIC_FUNCTION"], "同文件唯一词法绑定的函数声明目标；不证明运行值、动态派发或执行。")],
+  ["readsBinding", relation(["LOGIC_REFERENCE"], ["LOGIC_BINDING"], "标识符引用在语法作用域中对应的唯一声明；不证明到达定义、值、初始化完成或运行读取。")],
+  ["dependsOn", relation(["LOGIC_CONDITION", "LOGIC_CALL", "LOGIC_RETURN", "LOGIC_ARGUMENT", "LOGIC_BINDING"], ["LOGIC_REFERENCE", "CONFIG_READ"], "表达式直接包含的词法引用/配置键读取；不是值传播、别名、控制流可达或因果证明。")],
+  ["branchOutcome", property(["LOGIC_BRANCH"], "string", "if/条件表达式的 TRUE 或 FALSE 语法分支，不证明条件已满足。")],
+  ["branchCondition", relation(["LOGIC_BRANCH"], ["LOGIC_CONDITION"], "该语法分支所写条件，不计算真假或路径可达。")],
+  ["withinBranch", relation(["LOGIC_CALL", "LOGIC_RETURN"], ["LOGIC_BRANCH"], "同一直接函数中语法嵌套的分支上下文，不是完整 CFG、支配或执行证明。")],
+  ["argumentPosition", property(["LOGIC_ARGUMENT"], "integer", "实参表达式从零开始的语法位置，不做重载、展开参数或运行值推断。")],
+  ["hasArgument", relation(["LOGIC_CALL"], ["LOGIC_ARGUMENT"], "调用位置显式写出的实参表达式，含其直接词法依赖。")],
+  ["configKeyName", property(["CONFIG_READ"], "string", "源码直接写出的非敏感配置键名，不证明环境值或设置已生效。")],
+  ["matchesConfigKey", relation(["CONFIG_READ"], ["CONFIG_KEY"], "同组件唯一配置键拼写匹配；不证明加载了此文件或环境有效值。")],
+  ["sqlOperation", property(["SQL_STATEMENT"], "string", "受限静态 SQL 文本中的操作关键字，不执行 SQL，不证明数据库状态。")],
+  ["embedsSql", relation(["LOGIC_CALL"], ["SQL_STATEMENT"], "query/execute 等拼写位置包含静态 SQL 字面量；不证明接收者是数据库或已执行。")],
+  ["readsTable", relation(["SQL_STATEMENT"], ["SQL_TABLE"], "支持的静态 SELECT 的 FROM 表拼写；不证明实际数据库/schema或数据读取。")],
+  ["writesTable", relation(["SQL_STATEMENT"], ["SQL_TABLE"], "支持的静态 INSERT/UPDATE/DELETE 中的目标表拼写；不证明写入已发生。")],
+  ["declaresSqlTable", relation(["SQL_STATEMENT"], ["SQL_TABLE"], "静态 CREATE TABLE 中声明的表，不证明迁移已应用。")],
+  ["declaresSqlColumn", relation(["SQL_TABLE"], ["SQL_COLUMN"], "CREATE TABLE 直接列清单中的字段名；不推断类型、约束有效性或实际 schema。")],
+  ["matchesSqlTable", relation(["SQL_TABLE"], ["SQL_TABLE"], "同组件唯一 CREATE TABLE 与 SQL 表标识符的精确拼写匹配；不证明运行数据库身份。")],
+]);

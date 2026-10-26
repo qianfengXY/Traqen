@@ -13,13 +13,13 @@ import { F002RequestDerivationService, F002RequestExecutionService, F002RequestS
 import { F002Worker } from "./worker.js";
 import { CURRENT_DISPLAY_POLICY_REVISION } from "./policy.js";
 
-const runnableScopeStates = new Set(["QUEUED", "RUNNING"]);
+const runnableScopeStates = new Set(["QUEUED", "RUNNING", "READY_TO_SEAL"]);
 
 // A small, durable-work scheduler. Queue entries carry no source bytes or
 // client authority: every execution reuses the persisted run identity and
 // enters F002Worker, which rechecks current F001/Workspace authorization.
 export class F002ExecutionService {
-  constructor({ repository, worker, members = [], resolveActor = null, workerId = `f002-runtime-${process.pid}`, leaseMs = 60_000, pollIntervalMs = 5_000, maxConcurrent = 2 } = {}) {
+  constructor({ repository, worker, publication = null, members = [], resolveActor = null, workerId = `f002-runtime-${process.pid}`, leaseMs = 60_000, pollIntervalMs = 5_000, maxConcurrent = 2 } = {}) {
     if (typeof repository?.findRunnableScopes !== "function" || typeof worker?.run !== "function") {
       throw new TypeError("F002 execution service requires a runnable-scope repository and worker");
     }
@@ -31,6 +31,7 @@ export class F002ExecutionService {
     }
     this.repository = repository;
     this.worker = worker;
+    this.publication = publication;
     this.members = new Map(members.map((member) => [member.actorId, { actorId: member.actorId, tenantId: member.tenantId }]));
     if (resolveActor !== null && typeof resolveActor !== "function") throw new TypeError("Invalid execution actor resolver");
     this.resolveActor = resolveActor ?? (actorId => this.members.get(actorId));
@@ -40,20 +41,32 @@ export class F002ExecutionService {
     this.maxConcurrent = maxConcurrent;
     this.timer = null;
     this.running = new Map();
+    this.closed = false;
+    this.starting = null;
+    this.closing = null;
   }
 
-  async start() {
-    if (!this.timer) {
-      this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs);
-      this.timer.unref();
-    }
-    await this.dispatch();
+  start() {
+    if (this.closed) return Promise.reject(new Error("F002 execution service is closed"));
+    return this.starting ??= (async () => {
+      // Readiness verifies the durable queue, not completion of recovered work.
+      // Jobs keep their existing tracking/ACL/lease and shutdown-drain boundary.
+      await this.dispatch({ waitForWork: false, propagateScanError: true });
+      if (!this.closed && !this.timer) {
+        this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs);
+        this.timer.unref();
+      }
+    })();
   }
 
-  async close() {
+  close() {
+    this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    await Promise.allSettled(this.running.values());
+    return this.closing ??= (async () => {
+      await this.starting?.catch(() => {});
+      await Promise.allSettled(this.running.values());
+    })();
   }
 
   async enqueue(run) {
@@ -63,23 +76,52 @@ export class F002ExecutionService {
     await Promise.all(refs.map((ref) => this.#schedule(ref)));
   }
 
-  async dispatch() {
+  async dispatch({ waitForWork = true, propagateScanError = false } = {}) {
+    if (this.closed) return;
     let scopes;
     try { scopes = await this.repository.findRunnableScopes({ limit: this.maxConcurrent * 4 }); }
-    catch { return; }
-    await Promise.all((scopes ?? []).map((scope) => this.#schedule(scope)));
+    catch (error) { if (propagateScanError) throw error; return; }
+    const tasks = (scopes ?? []).map((scope) => this.#schedule(scope));
+    if (waitForWork) await Promise.all(tasks);
   }
 
   #schedule(scope) {
-    if (!scope?.workspaceId || !scope?.runId || !scope?.scopeId || !runnableScopeStates.has(scope.status)) return Promise.resolve();
+    if (this.closed || !scope?.workspaceId || !scope?.runId || !scope?.scopeId || !runnableScopeStates.has(scope.status)) return Promise.resolve();
     const key = `${scope.workspaceId}\u0000${scope.runId}\u0000${scope.scopeId}`;
     if (this.running.has(key)) return this.running.get(key);
     if (this.running.size >= this.maxConcurrent) return Promise.resolve();
     const task = Promise.resolve().then(async () => {
       const actor = await this.resolveActor(scope.actorId, scope.workspaceId);
-      if (actor) await this.worker.run(actor, scope.workspaceId, scope.runId, scope.scopeId, {
+      if (this.closed || !actor) return;
+      if (scope.status !== "READY_TO_SEAL") await this.worker.run(actor, scope.workspaceId, scope.runId, scope.scopeId, {
         workerId: this.workerId, leaseMs: this.leaseMs,
       });
+      if (!this.publication) return;
+      const run = await this.repository.getRun(actor, scope.workspaceId, scope.runId);
+      const profile = await this.repository.getProfile(actor, scope.workspaceId, run.profileId);
+      if (profile.extractionLimits?.automaticPublication !== "closed-scope-v1") return;
+      const ready = run.scopes.find(candidate => candidate.scopeId === scope.scopeId);
+      if (ready?.status !== "READY_TO_SEAL") return;
+      const check = await this.publication.check(actor, scope.workspaceId, scope.runId, scope.scopeId);
+      if (!check.ready) {
+        await this.repository.blockAutomaticPublication(actor, scope.workspaceId, scope.runId, scope.scopeId, {
+          revision: ready.revision, code: "F002_AUTOMATIC_PUBLICATION_INCOMPLETE",
+        });
+        return;
+      }
+      // Stable after crash, duplicate dispatch and lost response. Publication
+      // still independently enforces current ACL, closure and C03 ownership.
+      try {
+        await this.publication.publish(actor, scope.workspaceId, scope.runId, scope.scopeId, {
+          revision: ready.revision, operationId: `auto-${scope.runId}-${scope.scopeId}`,
+        });
+      } catch (error) {
+        // Parser/closure faults are visible terminal blockers. Transport faults
+        // remain restartable; race/cancel/ACL errors must not overwrite state.
+        if (error instanceof F002Error && error.status === 422 && error.code.startsWith("F002_")) {
+          await this.repository.blockAutomaticPublication(actor, scope.workspaceId, scope.runId, scope.scopeId, { revision: ready.revision, code: error.code });
+        } else throw error;
+      }
     }).catch(() => {
       // Worker persists retryable diagnostics once it owns the lease. A lost
       // lease or an unavailable member remains recoverable on the next scan.
@@ -124,6 +166,17 @@ export function boundedF002Profile() {
   return { ...config, configDigest: createProfileConfigDigest(config), id: createProfileId(config), name: "bounded-structure-v3", startable: true, recommended: true };
 }
 
+export function technicalF002Profile() {
+  const previous = boundedF002Profile();
+  const config = { ...previous, version: "4", capabilityIds: [...previous.capabilityIds, "typescript", "sql", "program-logic"],
+    ruleVersions: [...previous.ruleVersions, "typescript@2", "sql@1", "program-logic@1"],
+    extractionLimits: { ...previous.extractionLimits, programLogic: "bounded-syntax-v1", functionBindings: "initializer-proof-v1",
+      functionInitialization: "local-sequence-v1", maxProgramNodes: 20_000,
+      staticSql: "literal-statements-v1", maxSqlTokens: 20_000, automaticPublication: "closed-scope-v1" } };
+  for (const key of ["id", "configDigest", "name", "startable", "recommended"]) delete config[key];
+  return { ...config, configDigest: createProfileConfigDigest(config), id: createProfileId(config), name: "technical-v4", startable: true, recommended: true };
+}
+
 // F002 deliberately shares F001's authoritative pool, member authenticator,
 // source reader and browser origin allow-list. It owns only its new tables and
 // services; it neither opens a second source connection nor accepts a legacy
@@ -152,9 +205,11 @@ export async function createF002Runtime({ sourceRuntime, cursorSecret, consumerR
   await repository.registerProfile(structuredProfile);
   const boundedProfile = boundedF002Profile();
   await repository.registerProfile(boundedProfile);
+  const technicalProfile = technicalF002Profile();
+  await repository.registerProfile(technicalProfile);
   const admission = new F002AdmissionService(repository, sourceRuntime.services.admission);
   const publication = new F002PublicationService(repository);
-  const queries = new F002QueryService(repository, { cursorSecret });
+  const queries = new F002QueryService(repository, { cursorSecret, preferredProfileId: technicalProfile.id });
   // Current READ policy is distinct from the sealed extraction profile. Old
   // canonical records/replay remain immutable while present-day disclosure is safe.
   const materials = new F002MaterialService(repository, admission, { policyRevision: CURRENT_DISPLAY_POLICY_REVISION });
@@ -168,10 +223,18 @@ export async function createF002Runtime({ sourceRuntime, cursorSecret, consumerR
   const requests = new F002RequestService(repository, { resolver: consumerResolver, expansion });
   const requestExecutor = consumerResolver ? new F002RequestExecutionService({ repository, requests, members: sourceRuntime.configuration.members, resolveActor,
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) }) : null;
-  const executor = new F002ExecutionService({ repository, worker, members: sourceRuntime.configuration.members, resolveActor,
+  const executor = new F002ExecutionService({ repository, worker, publication, members: sourceRuntime.configuration.members, resolveActor,
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) });
-  const services = { repository, admission, publication, queries, materials, requests, replays, replayExecutor, worker, executor, requestExecutor, profile, structuredProfile, boundedProfile };
-  return { services, start: async () => { await executor.start(); await replayExecutor.start(); if (requestExecutor) await requestExecutor.start(); }, close: async () => { if (requestExecutor) await requestExecutor.close(); await replayExecutor.close(); await executor.close(); }, deterministicFactsHandler: createF002HttpHandler({
+  const services = { repository, admission, publication, queries, materials, requests, replays, replayExecutor, worker, executor, requestExecutor, profile, structuredProfile, boundedProfile, technicalProfile };
+  return { services, start: async () => { await executor.start(); await replayExecutor.start(); if (requestExecutor) await requestExecutor.start(); }, close: async () => {
+    // Fence every queue immediately, then drain them all even if a sibling
+    // cleanup fails. One long request must not leave scope polling admitted.
+    const drains = [requestExecutor, replayExecutor, executor].filter(Boolean).map(service => {
+      try { return service.close(); } catch (error) { return Promise.reject(error); }
+    });
+    const failure = (await Promise.allSettled(drains)).find(result => result.status === "rejected");
+    if (failure) throw failure.reason;
+  }, deterministicFactsHandler: createF002HttpHandler({
     services,
     authenticate: sourceRepository.identityService ? () => { throw new F002Error("F002_AUTHENTICATION_REQUIRED", "请先登录当前工作区", { status: 401 }); }
       : sourceTruthAuthenticator(sourceRuntime.configuration.members),

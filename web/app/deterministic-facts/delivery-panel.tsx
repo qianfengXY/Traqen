@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { DeterministicFactsClient, FactsClientError, isDefiniteWriteRejection } from "./client.ts";
 import { SourceTruthClient } from "../source-truth/client.ts";
 import type { FrozenVersion, Page } from "../source-truth/types.ts";
@@ -10,7 +10,7 @@ import { useOperationJournal } from "./use-operation-journal.ts";
 import type { OperationEnvelope, PendingOperation } from "./operations.ts";
 import { isEvidenceShortcut } from "./keyboard.ts";
 import { extractionScopes, type ExtractionKind } from "./delivery-input.ts";
-import { currentScopeCheck, storeScopeCheck, scopeExplanation, defaultProfileId, type ScopeCheck, type ScopeChecks } from "./delivery-state.ts";
+import { currentScopeCheck, storeScopeCheck, scopeExplanation, defaultProfileId, isAutomaticAnalysis, type ScopeCheck, type ScopeChecks } from "./delivery-state.ts";
 
 const short = (id: string) => `${id.slice(0, 12)}…`;
 
@@ -29,6 +29,33 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
   const [error, setError] = useState<Error | null>(null), [checks, setChecks] = useState<ScopeChecks>({});
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
+  const selectedRunId = selectedRun?.id;
+  // The overview lists active work only. Keep following the newly created run
+  // until its terminal receipt arrives, even when it disappears from that list.
+  useEffect(() => {
+    if (!selectedRunId) return;
+    const controller = new AbortController();
+    const signal = client.signal ? AbortSignal.any([client.signal, controller.signal]) : controller.signal;
+    const bound = client.withSignal(signal);
+    let reading = false, finished = false;
+    const observe = async () => {
+      if (reading || finished || signal.aborted) return;
+      reading = true;
+      try {
+        const { run } = await bound.request<{ run: Run }>(`/runs/${selectedRunId}`);
+        if (signal.aborted) return;
+        setSelectedRun(run);
+        finished = run.scopes.every(scope => !["QUEUED", "RUNNING", "READY_TO_SEAL"].includes(scope.status));
+      } catch (error) {
+        if (signal.aborted) return;
+        if (error instanceof FactsClientError && [401, 403].includes(error.status)) onAccessLost(error);
+        else setError(error instanceof Error ? error : new Error("任务状态读取未完成"));
+      } finally { reading = false; }
+    };
+    void observe();
+    const timer = window.setInterval(() => void observe(), 3000);
+    return () => { clearInterval(timer); controller.abort(); };
+  }, [client, selectedRunId, onAccessLost]);
   const report = (error: unknown) => {
     if (client.signal?.aborted) return;
     if (error instanceof FactsClientError && [401, 403].includes(error.status)) onAccessLost(error);
@@ -106,29 +133,29 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     finally { if (!client.signal?.aborted) setBusy(false); }
   };
   const displayedRuns = selectedRun && !runs.some(run => run.id === selectedRun.id) ? [selectedRun, ...runs] : runs;
-  return <div className="f002-delivery"><section className="f002-panel"><h2>新建技术提取</h2><p>仅选择 F001 已冻结 Bundle 与精确 Receipt；资格在服务端再次核验。未接收合格来源不能绕过。</p>
+  return <div className="f002-delivery"><section className="f002-panel"><h2>新建分析</h2><p>选择来源快照和材料范围，使用程序分析对象、条件、调用与数据关联。完成后自动校验并提供结果，不能确定的部分会列出限制。</p>
     {!writable && <p className="f002-notice">当前成员只读，可查历史；不能启动、重试、取消或封存。</p>}
     {(error || readError || journal.error) && <p role="alert">{(error ?? readError ?? journal.error)?.message}</p>}<p role="status">{notice}</p>{pending && <div className="f002-notice"><b>提交结果待对账</b><p>{pending.purpose} · 操作键 {pending.operationId}</p><button className="button" disabled={busy} onClick={() => void reconcile()}>查询同次操作</button><p>未确认前禁止新增写操作；不能把网络丢响应当作任务失败。</p></div>}
     <div className="f002-form-grid"><label>冻结来源<select aria-label="冻结来源" value={sourceId} disabled={busy || !!pending} onChange={event => saveDraft({ sourceId: event.target.value, components: [] })}><option value="">选择精确来源版本</option>{sources?.items.map(item => <option key={item.id} value={item.id}>{short(item.id)} · {item.latestReceipt?.status ?? "无 Receipt"}</option>)}</select></label><label>不可变能力配置<select aria-label="不可变能力配置" value={profileId} disabled={busy || !!pending} onChange={event => saveDraft({ profileId: event.target.value })}><option value="">选择服务端配置</option>{profiles.map(profile => <option key={profile.id} value={profile.id} disabled={!profile.startable}>{profile.name ?? short(profile.id)} · {profile.capabilityIds.join(" / ")}</option>)}</select></label></div>
     {sources?.nextCursor && <button className="button" onClick={() => void sourceClient.request<Page<FrozenVersion>>(`/history/bundles?limit=50&cursor=${encodeURIComponent(sources.nextCursor!)}`).then(page => { if (!client.signal?.aborted) sourceResource.update(current => ({ items: [...current.items, ...page.items], nextCursor: page.nextCursor })); }).catch(report)}>加载更多来源版本</button>}
-    {source && <fieldset disabled={busy || !!pending}><legend>选定冻结组件；不读取本机路径或分支</legend>{source.components.map(component => <label key={component.id}><input type="checkbox" checked={components.includes(component.id)} onChange={event => saveDraft({ components: event.target.checked ? [...components, component.id] : components.filter(id => id !== component.id) })} />{component.sourceId} · {component.kind} · {short(component.id)}</label>)}<label><input type="checkbox" checked={separate} onChange={event => saveDraft({ separate: event.target.checked })} />每个组件作为可独立封存的范围</label></fieldset>}
+    {source && <fieldset disabled={busy || !!pending}><legend>选择材料组件；不会读取本机路径或移动分支</legend>{source.components.map(component => <label key={component.id}><input type="checkbox" checked={components.includes(component.id)} onChange={event => saveDraft({ components: event.target.checked ? [...components, component.id] : components.filter(id => id !== component.id) })} />{component.sourceId} · {component.kind} · {short(component.id)}</label>)}<label><input type="checkbox" checked={separate} onChange={event => saveDraft({ separate: event.target.checked })} />每个组件独立生成分析结果</label></fieldset>}
     {source && <details><summary>按目录或文件缩小提取范围</summary><p>大仓库可以先核验一个目录或文件，再扩大范围。路径属于所选冻结组件，不读取本机目录，也不改变来源版本。</p><label>提取范围<select aria-label="提取范围" disabled={busy || !!pending} value={scopeKind} onChange={event => saveDraft({ scopeKind: event.target.value as ExtractionKind })}><option value="COMPONENT">所选组件</option><option value="DIRECTORY">一个目录</option><option value="ENTRY">一个文件</option></select></label>{scopeKind !== "COMPONENT" && <label>冻结组件内的相对路径<input aria-label="冻结组件内的相对路径" disabled={busy || !!pending} value={scopePath} placeholder={scopeKind === "DIRECTORY" ? "src" : "src/index.js"} onChange={event => saveDraft({ scopePath: event.target.value })} /></label>}{selectionsError && <p role="alert">{selectionsError}</p>}</details>}
     <button className="button primary" disabled={commandsBlocked || !source?.latestReceipt || !components.length || !profileId || !!selectionsError} onClick={() => {
       if (source?.latestReceipt) void send("/runs", { source: { bundleId: source.id, receiptId: source.latestReceipt.id }, profileId,
         scopes: extractionScopes(components, separate, scopeKind, scopePath) }, "技术提取");
-    }}>按固定输入开始提取</button></section>
-    <section className="f002-panel"><h2>活动范围与真实恢复状态</h2><p>只显示最近至多 100 个活动运行；查询指定运行可恢复更早记录。A 已封存不要求 B 完成。</p>
+    }}>开始分析</button>{!isAutomaticAnalysis(profiles.find(profile => profile.id === profileId)) && <p className="f002-notice">当前选择的是历史配置，仅用于兼容原有提取和封存流程；新分析建议使用技术分析配置。</p>}</section>
+    <section className="f002-panel"><h2>分析任务</h2><p>每个范围独立处理，已完成的结果不等待其他范围。失败和未完成工作不会显示为成功。</p>
       <label>按运行 ID 回查<input onKeyDown={event => { if (isEvidenceShortcut(event.nativeEvent, ["Enter"])) { const id = event.currentTarget.value.trim(); if (/^[A-Za-z0-9_-]{1,128}$/.test(id)) void client.request<{ run: Run }>(`/runs/${id}`).then(value => { if (!client.signal?.aborted) setSelectedRun(value.run); }).catch(report); } }} placeholder="输入持久 Run ID 后按 Enter" /></label>
-      {displayedRuns.map(run => <article key={run.id}><h3>运行 {run.id}</h3>{run.scopes.map(scope => <div className="f002-scope" key={scope.scopeId}><b>{scope.label ?? short(scope.scopeId)}</b><span>{scope.status} · revision {scope.revision}</span><code>{scope.diagnostic?.code ?? "无额外诊断"}</code>
-        <p>{scopeExplanation(scope, currentScopeCheck(checks, run.id, scope))}</p>
-        {scope.graphVersionId && <button className="button" onClick={() => onVersion(scope.graphVersionId!)}>查看独立封存版本</button>}
-        {scope.requestOwned ? <p>此范围由取证请求持久拥有，通用入口不能重试、取消或封存。</p> : <div className="f002-actions"><button className="button" disabled={busy} onClick={() => void check(run.id, scope)}>查看封存条件</button>
+      {displayedRuns.map(run => <article key={run.id}><h3>运行 {run.id}</h3>{run.scopes.map(scope => <div className="f002-scope" key={scope.scopeId}><b>{scope.label ?? short(scope.scopeId)}</b><span>{({ QUEUED: "等待分析", RUNNING: "分析中", READY_TO_SEAL: "正在校验", SEALED: "结果已发布", FAILED_RETRYABLE: "分析失败", BLOCKED: "任务受阻", CANCELLED: "已取消" } as Record<string, string>)[scope.status] ?? "状态待核实"}</span>{scope.diagnostic?.code && <code>{scope.diagnostic.code}</code>}
+        <p>{scopeExplanation(scope, currentScopeCheck(checks, run.id, scope), profiles.find(profile => profile.id === run.profileId))}</p>
+        {scope.graphVersionId && <button className="button" onClick={() => onVersion(scope.graphVersionId!)}>查看分析结果</button>}
+        {scope.requestOwned ? <p>此范围属于业务调查的补证请求，请返回原调查管理。</p> : <div className="f002-actions">{!isAutomaticAnalysis(profiles.find(profile => profile.id === run.profileId)) && <button className="button" disabled={busy} onClick={() => void check(run.id, scope)}>查看封存条件</button>}
           {scope.status === "FAILED_RETRYABLE" && <button className="button" disabled={commandsBlocked} onClick={() => void send(`/runs/${run.id}/retry`, { scopeId: scope.scopeId, revision: scope.revision }, "范围重试")}>重试原范围</button>}
           {["QUEUED", "RUNNING", "READY_TO_SEAL", "FAILED_RETRYABLE", "BLOCKED"].includes(scope.status) && <button className="button" disabled={commandsBlocked} onClick={() => { if (window.confirm("取消此范围会围栏阻止迟到 worker 发布；其他范围和已封存历史不变。")) void send(`/runs/${run.id}/cancel`, { scopeId: scope.scopeId, revision: scope.revision }, "范围取消"); }}>取消此范围</button>}
-          {scope.status === "READY_TO_SEAL" && <button className="button primary" disabled={commandsBlocked || !currentScopeCheck(checks, run.id, scope)?.ready} onClick={() => void send(`/runs/${run.id}/scopes/${scope.scopeId}/seal`, { revision: scope.revision }, "独立范围封存")}>封存此范围</button>}</div>}
+          {scope.status === "READY_TO_SEAL" && !isAutomaticAnalysis(profiles.find(profile => profile.id === run.profileId)) && <button className="button primary" disabled={commandsBlocked || !currentScopeCheck(checks, run.id, scope)?.ready} onClick={() => void send(`/runs/${run.id}/scopes/${scope.scopeId}/seal`, { revision: scope.revision }, "独立范围封存")}>封存此范围</button>}</div>}
         {currentScopeCheck(checks, run.id, scope) && <details><summary>原始封存检查与工作项计数</summary><pre>{JSON.stringify(currentScopeCheck(checks, run.id, scope), null, 2)}</pre></details>}</div>)}</article>)}
       {!displayedRuns.length && <p>当前未读到活动运行；不代表历史事实集或材料不存在。</p>}</section>
-    <section className="f002-panel"><h2>版本与五部分交付</h2>{versions.map(version => <button className="f002-ref" key={version.graphVersionId} aria-current={versionId === version.graphVersionId ? "true" : undefined} onClick={() => onVersion(version.graphVersionId)}>{version.publishedAt} · {short(version.graphVersionId)}<small>来源 {short(version.bundleId)} · 独立范围 {short(version.scopeId)}</small></button>)}
+    <section className="f002-panel"><h2>分析结果</h2>{versions.map(version => <button className="f002-ref" key={version.graphVersionId} aria-current={versionId === version.graphVersionId ? "true" : undefined} onClick={() => onVersion(version.graphVersionId)}>{version.publishedAt} · {short(version.graphVersionId)}<small>来源 {short(version.bundleId)} · 独立范围 {short(version.scopeId)}</small></button>)}
       {manifest && <><dl className="f002-counts">{Object.entries(manifest.counts).map(([kind, count]) => <div key={kind}><dt>{kind}</dt><dd>{count}</dd></div>)}</dl><details><summary>固定规则、分片摘要与封存闭包</summary><pre>{JSON.stringify(manifest, null, 2)}</pre></details><div className="f002-actions"><button className="button" disabled={busy} onClick={() => void exportVersion()}>导出五部分交付</button><button className="button" disabled={commandsBlocked} onClick={() => void send(`/versions/${versionId}/replays`, {}, "固定规则重放")}>启动真实重放</button></div></>}
       <h3>独立重放回执</h3>{replays.map(replay => <div key={replay.id}><code>{replay.id}</code><p>{replay.status} · candidateDigest {replay.candidateDigest ?? "尚未形成"}</p><button className="button" onClick={() => void client.request<{ replay: Replay }>(`/replays/${replay.id}`).then(value => { if (!client.signal?.aborted) replayResource.update(current => current.map(item => item.id === replay.id ? value.replay : item)); }).catch(report)}>刷新固定重放状态</button>{["RUNNING", "QUEUED"].includes(replay.status) && <button className="button" disabled={commandsBlocked} onClick={() => void send(`/replays/${replay.id}/cancel`, { revision: replay.revision }, "取消重放")}>取消重放</button>}</div>)}</section>
   </div>;

@@ -1,0 +1,29 @@
+{
+  "baseline": "644609b5fbe10727977308becaf301c77abdf51c",
+  "files": [
+    ["src/auth/service.js", "4f370f6eb286ef1202f505ede925b54c2c9d7035a9ae49ba8bccb3a873e77129"],
+    ["src/auth/core.js", "55601728ce12e0ff40b8fe33334ef8bfa29aaf8f16814949778157e4a8011899"],
+    ["src/auth/accounts.js", "a8fb54a9a032b29dc09f7fb6bca001b29685e31bc3cc89ed0b721bfa4f20d4b6"],
+    ["src/auth/spaces.js", "76088ebef7a6cfb10c271ad3d6edc0b284b983fc57ad8eb1e1f55b67998c8790"],
+    ["src/auth/operations.js", "875c5161bd5b737e98d64c38e55fa6eaf340d38d7c5808b8bbc8fe6b3957e254"],
+    ["src/auth/repository.js", "99f85e7e6ae66be039fa6a1771fcd911f402f7c90c131497f79b9053c62366c6"],
+    ["src/auth/errors.js", "26a5371ca05e7c70a40fbe29b6f3f240b28e6afc2e34e9801e64352b50b8e5b6"],
+    ["src/auth/context.js", "3c2bdbcb8881939ea4848ef776032bb93eae52acba8b48eae20451074d468aea"],
+    ["src/auth/authorized-store.js", "fcaaa90d1b1c3b71ffca376bdf7ab5fa294d7d51837181b7fe272417d8f46228"],
+    ["src/auth/recovery-fence.js", "e03d500b35fc671c22e3b2c30c94d839441ff07a36caeff7ab84e4dc98e02f06"],
+    ["src/source-truth/admission-service.js", "74ca6da40cbcba2c192ccd2dbf0c2389beb0024c39a3f5242d51ea49930bddf6"],
+    ["src/source-truth/query-service.js", "644a67fc84f2ef2068024f04adf914109d790eb72894d505656591a1063c6558"],
+    ["src/source-truth/material-reading.js", "220a7c848e4267c5707884fbe21be2a4ddb4ab30ab52cc71f44e094c2d8b20b5"],
+    ["src/source-truth/material-repository.js", "dd4a4e4be98f737604df712b080456e52df88f43608cc718d40de4749788dd61"],
+    ["src/source-truth/repository.js", "38f38be249b56d18a871981d024489ffa3293c96f5b3a597aac63c8664a268b4"],
+    ["src/source-truth/identity.js", "535621ef34eedc759675dec28ef0c1b23b461cb0462cabd68fe6543b0bf41eca"],
+    ["src/source-truth/policy.js", "e0fb3d8dcea743b86fb210e2a4d6cf9a5eab4941742e512aa942ddb078218e37"],
+    ["src/source-truth/publication-service.js", "b0e5f9ffaf77ebe1686311084f62dd855daa1400785d815051d3654f8fafcfd0"],
+    ["src/source-truth/candidate-service.js", "31df5c44361bdcc8b08932d1169ae69d156a0620b2c6b2ffcb287f502329b333"],
+    ["src/source-truth/http-handler.js", "00de81386fe9b284ffe2d52521fee211d7a654803073486ef335f75cbda8c5ad"],
+    ["docs/design/F001-workspace-source-truth/README.md", "fc1965951e0d665eb08e3958a2239008e6c9ca87f3969900002d30bcd71bb745"],
+    ["docs/design/F008-unified-login-space-permissions/README.md", "cdc91a9c62f9414a376ee269cc23b0f464d330f7566ee42d7e00a792578c9399"],
+    ["test/auth-service.test.js", "3ff5cf2f8a69a77a4bd543ccd9e5e330adca2d23794f816b9810544f9c79d370"],
+    ["test/source-truth-admission.test.js", "536746b24bc9ad6a88644121cfca480c866468677253b05635660d3c5b57b181"]
+  ]
+}

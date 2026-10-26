@@ -12,6 +12,21 @@ test("a fresh extraction selects the recommended startable bounded profile inste
   assert.equal(defaultProfileId([]), "");
 });
 
+test("new analysis prefers a startable automatic technical profile without rewriting a retained historical profile", () => {
+  const profiles = [{ id: "bounded", recommended: true, startable: true },
+    { id: "unavailable", recommended: true, startable: false, extractionLimits: { automaticPublication: "closed-scope-v1" } },
+    { id: "technical", recommended: true, startable: true, extractionLimits: { automaticPublication: "closed-scope-v1" } }];
+  assert.equal(defaultProfileId(profiles), "technical");
+});
+
+test("automatic analysis explains pending validation, failure and readable output without asking for a manual seal", () => {
+  const profile = { extractionLimits: { automaticPublication: "closed-scope-v1" } };
+  assert.match(scopeExplanation(scope, undefined, profile), /自动.*校验/);
+  assert.doesNotMatch(scopeExplanation(scope, ready, profile), /点击|封存此范围|查看封存条件/);
+  assert.match(scopeExplanation({ ...scope, status: "SEALED", graphVersionId: "v1" }, undefined, profile), /查看分析结果/);
+  assert.match(scopeExplanation({ ...scope, status: "BLOCKED" }, undefined, profile), /未发布.*诊断/);
+});
+
 test("a checked scope in one run never authorizes or displays its result in another run with the same deterministic scope id", () => {
   const checks = storeScopeCheck({}, "run-one", scope.scopeId, ready);
   assert.deepEqual(currentScopeCheck(checks, "run-one", scope), ready);

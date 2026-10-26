@@ -6,6 +6,7 @@ import { exportFactSet } from "./export.js";
 import { F002Error } from "./errors.js";
 import { SourceTruthError } from "../source-truth/errors.js";
 import { AuthError } from "../auth/errors.js";
+import { F003Error } from "../business-knowledge/errors.js";
 
 const responseWorkspace = new WeakMap();
 
@@ -33,7 +34,9 @@ async function body(request, maximum = 1024 * 1024) {
 
 function failure(response, error, requestId) {
   if (response.headersSent) { response.destroy(); return; }
-  const known = error instanceof F002Error || error instanceof SourceTruthError || error instanceof AuthError;
+  // The actual consumer can refuse an individual investigation/result. These
+  // typed, public denials retain their status; arbitrary resolver failures do not.
+  const known = error instanceof F002Error || error instanceof SourceTruthError || error instanceof AuthError || error instanceof F003Error;
   json(response, known ? error.status : 500, { error: { code: known ? error.code : "F002_INTERNAL_ERROR",
     message: known ? error.message : "技术证据服务暂时不可用", requestId } }, requestId);
 }

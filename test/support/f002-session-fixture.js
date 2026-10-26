@@ -42,6 +42,6 @@ export async function sessionEvidenceFixture({ port = 6225, origin = "http://127
     deterministicFactsHandler: facts.deterministicFactsHandler });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
   await facts.start();
-  return { source, facts, metadata: { bundleId: frozen.bundle.id, receiptId: frozen.receipt.id, profileId: facts.services.structuredProfile.id, originalDigest: source.digest },
+  return { source, facts, metadata: { bundleId: frozen.bundle.id, receiptId: frozen.receipt.id, profileId: facts.services.technicalProfile.id, originalDigest: source.digest },
     async close() { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await facts.close(); for (const cleanup of cleanups.reverse()) await cleanup(); } };
 }

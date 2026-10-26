@@ -91,12 +91,17 @@ async function initializeFacts() {
   }
 }
 
-server.listen(port, host, () => {
+try {
   sourceRuntime?.start();
-  void deterministicFactsRuntime?.start();
+  await deterministicFactsRuntime?.start();
+  await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); });
   const address = server.address();
   process.stdout.write(`Traqen API listening on http://${host}:${address.port}\n`);
-});
+} catch (error) {
+  try { await deterministicFactsRuntime?.close(); }
+  finally { try { await sourceRuntime?.close(); } finally { await database.close(); } }
+  throw error;
+}
 
 let shuttingDown = false;
 async function shutdown(signal) {
@@ -104,10 +109,11 @@ async function shutdown(signal) {
   shuttingDown = true;
   const closed = new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   server.closeAllConnections();
-  await deterministicFactsRuntime?.close();
-  await sourceRuntime?.close();
-  await closed;
-  await database.close();
+  try { await deterministicFactsRuntime?.close(); }
+  finally {
+    try { await sourceRuntime?.close(); }
+    finally { try { await closed; } finally { await database.close(); } }
+  }
   process.stdout.write(`Traqen API stopped after ${signal}\n`);
 }
 

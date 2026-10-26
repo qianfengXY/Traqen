@@ -19,6 +19,8 @@ import { reportPredicates, verifyReports } from "./report-verification.js";
 import { verifyEndpointContracts } from "./endpoint-verification.js";
 import { verifyJavaBindings } from "./java-binding-verification.js";
 import { containsPrivateKey } from "./sensitive-content.js";
+import { technicalOnlyKinds, technicalPredicateDefinitions } from "./technical-vocabulary.js";
+import { verifyTechnicalEvidence } from "./technical-verification.js";
 
 const identifier = /^[a-f0-9]{64}$/;
 const utf8Compare = (left, right) => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
@@ -91,6 +93,8 @@ function validateRecord(record, { workspaceId, bundleId, profile = null }) {
   } else if (record.kind === "OBJECT") {
     checked(payload.objectId === record.id && typeof payload.materialId === "string" && typeof payload.kind === "string" && typeof payload.name === "string", "F002_RECORD_SCHEMA_INVALID", "对象记录缺少身份字段");
     hex(payload.materialId); anchor(payload.anchor);
+    if (profile && technicalOnlyKinds.includes(payload.kind)) checked(profile.extractionLimits?.programLogic === "bounded-syntax-v1"
+      && profile.ruleVersions?.includes("program-logic@1"), "F002_RECORD_RULE_INVALID", "历史配置不提供新程序逻辑对象");
     if (Object.hasOwn(payload, "parentId")) hex(payload.parentId, "F002_RECORD_REFERENCE_INVALID");
     exactIdentity(record.id, createObjectId({ materialId: payload.materialId, objectKind: payload.kind, anchor: payload.anchor }));
   } else if (record.kind === "EVIDENCE") {
@@ -117,7 +121,10 @@ function validateRecord(record, { workspaceId, bundleId, profile = null }) {
       const capability = payload.ruleRef.id.slice("f002-".length);
       checked(profile.ruleVersions?.includes(`${capability}@${payload.ruleRef.version}`), "F002_RECORD_RULE_INVALID", "事实规则不属于当前能力配置");
       if (["contains", "declares", "imports"].includes(payload.predicate)) checked(payload.ruleRef.version === "2"
-        && (["javascript", "java", "markdown", "json"].includes(capability) || (payload.predicate === "contains" && (capability === "properties" || (capability === "junit-xml" && profile.extractionLimits?.testReports === "literal-reports-v1")))), "F002_RECORD_RULE_INVALID", "结构事实不能挂到未提供该能力的旧规则");
+        && (["javascript", "java", "markdown", "json"].includes(capability) || (payload.predicate === "contains" && (capability === "properties" || (capability === "typescript" && profile.extractionLimits?.programLogic === "bounded-syntax-v1") || (capability === "junit-xml" && profile.extractionLimits?.testReports === "literal-reports-v1")))), "F002_RECORD_RULE_INVALID", "结构事实不能挂到未提供该能力的旧规则");
+      if (technicalPredicateDefinitions.has(payload.predicate)) checked(payload.ruleRef.version === "1"
+        && (["program-logic", "sql"].includes(capability)) && profile.extractionLimits?.programLogic === "bounded-syntax-v1"
+        && (payload.basis !== "DERIVED" || payload.premiseFactIds.length > 0), "F002_RECORD_RULE_INVALID", "程序逻辑事实缺少固定能力或推导前提");
       if (["type", "literalValue", "declaresParameter"].includes(payload.predicate)) checked(payload.ruleRef.version === "2"
         && (capability === "json" || (capability === "properties" && payload.predicate !== "declaresParameter")
           || (capability === "markdown" && payload.predicate === "literalValue" && profile.extractionLimits?.documentSyntax === "static-document-v1")
@@ -386,6 +393,7 @@ function validateClosure(records, { profile = null, bundleId = null } = {}) {
     }
   }
   const visiting = new Set();
+  if (profile?.extractionLimits?.programLogic === "bounded-syntax-v1") verifyTechnicalEvidence({ objects, facts, evidence, materials, profile });
   if (profile?.extractionLimits?.springMappings === "ast-literals-v1") verifySpringMappings({ objects, facts, evidence, materials, profile });
   if (profile?.extractionLimits?.testAssets === "framework-declarations-v1") verifyTestAssets({ objects, facts, evidence, materials, profile });
   if (profile?.extractionLimits?.testReports === "literal-reports-v1") verifyReports({ objects, facts, evidence, materials, gaps: byKind.get("GAP"), profile, bundleId });

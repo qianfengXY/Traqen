@@ -14,7 +14,7 @@ import { EvidenceTransport } from "./transport.ts";
 import "./workbench.css";
 
 const short = (id?: string | null) => id ? `${id.slice(0, 12)}…` : "未绑定";
-const tabLabels = { objects: "对象与事实", relations: "关系", coverage: "覆盖与缺口", delivery: "版本与交付" };
+const tabLabels = { objects: "对象与事实", relations: "关系", coverage: "覆盖与缺口", delivery: "分析任务" };
 
 export function DeterministicFactsWorkbench({ apiBase, apiToken, workspaceId, workspaceName }: {
   apiBase: string; apiToken: string; workspaceId: string; workspaceName: string;
@@ -96,7 +96,7 @@ function EvidenceSession({ apiBase, token, workspaceId, workspaceName }: { apiBa
         {error && <p className="f002-notice" role="alert">⚠ 最新状态读取未完成：{error.message}。保留上次可信阅读定位，不允许据此取得新写权限。</p>}
         {context.tab === "delivery" ? access ? <DeliveryPanel key={`${workspaceId}:${access.actor.actorId}:${context.graphVersionId ?? "none"}`} client={clients.facts} sourceClient={clients.sources} actorId={access.actor.actorId} workspaceId={workspaceId} writable={access.role === "MAINTAIN" && !error} profiles={overview.profiles} versions={overview.versions} runs={overview.activeRuns} versionId={context.graphVersionId} onVersion={chooseVersion} refresh={refresh} onAccessLost={accessLost} /> : <section className="f002-panel" role="status">正在复验操作成员身份；未发送写操作。</section>
           : sourceMismatch ? <section className="f002-panel" role="alert"><h2>固定来源与事实集不匹配</h2><p>保留原引用，不用另一来源的材料补齐。请回原工作核对，或明确选择需要浏览的事实集。</p></section>
-          : !context.graphVersionId ? <section className="f002-panel"><h2>尚无已封存事实集</h2><p>冻结来源不会自动触发提取，未封存的记录也不能作为可读历史。可到版本与交付按合格来源启动。</p><button className="button primary" onClick={() => navigate({ ...context, tab: "delivery" })}>查看来源与提取任务</button></section>
+          : !context.graphVersionId ? <section className="f002-panel"><h2>尚无分析结果</h2><p>选择来源快照即可开始技术分析，完成后直接查看对象、关联及原文依据，无需手动封存。</p><button className="button primary" onClick={() => navigate({ ...context, tab: "delivery" })}>新建分析</button></section>
           : !access ? <section className="f002-panel" role="status">正在复验当前成员；尚未恢复本地阅读偏好。</section>
           : context.tab === "coverage" ? <CoverageView key={`${access.actor.actorId}:${context.graphVersionId}`} actorId={access.actor.actorId} client={clients.facts} context={context} navigate={navigate} accessLost={accessLost} />
           : <RecordBrowser key={`${access.actor.actorId}:${context.graphVersionId}`} actorId={access.actor.actorId} client={clients.facts} context={context} navigate={navigate} accessLost={accessLost} />}

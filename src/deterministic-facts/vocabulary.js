@@ -1,4 +1,5 @@
 import { canonicalDigest } from "./identity.js";
+import { technicalOnlyKinds, technicalPredicateDefinitions } from "./technical-vocabulary.js";
 
 const recordKinds = [
   { kind: "MATERIAL", meaning: "冻结来源中的可寻址材料；即使未提取事实也保留。" },
@@ -9,12 +10,13 @@ const recordKinds = [
 ];
 
 const jsonKinds = ["JSON_OBJECT", "JSON_ARRAY", "JSON_VALUE", "OPENAPI_OPERATION", "OPENAPI_PARAMETER", "OPENAPI_RESPONSE", "TEST_RESULT"];
-const reportKinds = ["JUNIT_SUITE"];
+const reportKinds = ["JUNIT_SUITE", ...technicalOnlyKinds];
 const documentKinds = ["DOCUMENT_PARAGRAPH", "DOCUMENT_LINK", "DOCUMENT_IMAGE"];
 const expressKinds = ["EXPRESS_ROUTER", "EXPRESS_MOUNT"];
 const javaKinds = ["JAVA_PACKAGE", "JAVA_PARAMETER", "JAVA_FIELD", "JAVA_ANNOTATION", "JAVA_CALL"];
 const testKinds = ["TEST_CASE", "TEST_ASSERTION"];
 export const predicateDefinitions = new Map([
+  ...technicalPredicateDefinitions,
   ["contains", { meaning: "解析器证明的同材料直接结构父子关系；不证明业务归属或运行时包含。", form: "RELATION", domain: ["MATERIAL", "FUNCTION", "JAVASCRIPT_CLASS", "JAVA_TYPE", "JAVA_METHOD", "JAVA_CONSTRUCTOR", "DOCUMENT_SECTION", ...javaKinds, ...expressKinds, ...documentKinds, ...jsonKinds, ...testKinds, ...reportKinds], range: ["FUNCTION", "JAVASCRIPT_CLASS", "JAVASCRIPT_CALL", "JAVA_TYPE", "JAVA_METHOD", "JAVA_CONSTRUCTOR", "DOCUMENT_SECTION", "IMPORT", "ROUTE", "CONFIG_KEY", ...javaKinds, ...expressKinds, ...documentKinds, ...jsonKinds, ...testKinds, ...reportKinds] }],
   ["declares", { meaning: "语法结构中直接声明的符号绑定；不证明实例化、可达或执行。", form: "RELATION", domain: ["MATERIAL", "FUNCTION", "JAVASCRIPT_CLASS", "JAVA_TYPE", "JAVA_METHOD", "JAVA_CONSTRUCTOR"], range: ["FUNCTION", "JAVASCRIPT_CLASS", "JAVA_TYPE", "JAVA_METHOD", "JAVA_CONSTRUCTOR", "JAVA_FIELD"] }],
   ["imports", { meaning: "源码显式写出的导入声明；目标为声明对象，不证明目标已加载或链接成功。", form: "RELATION", domain: ["MATERIAL"], range: ["IMPORT"] }],
@@ -79,6 +81,7 @@ const prohibitions = [
 function compare(left, right) { return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")); }
 
 export function vocabularyFor({ profile, records }) {
+  const supportedKinds = kinds => kinds?.filter(kind => profile.extractionLimits?.programLogic === "bounded-syntax-v1" || !technicalOnlyKinds.includes(kind));
   const predicates = [...new Set(records.filter((record) => record.kind === "FACT").map((record) => record.payload.predicate))]
     .sort(compare)
     .map((predicate) => {
@@ -86,8 +89,8 @@ export function vocabularyFor({ profile, records }) {
       return definition ? {
         predicate,
         form: definition.form,
-        domain: definition.domain ?? null,
-        ...(definition.range ? { range: definition.range } : {}),
+        domain: supportedKinds(definition.domain) ?? null,
+        ...(definition.range ? { range: supportedKinds(definition.range) } : {}),
         ...(definition.valueDatatypes ? { valueDatatypes: definition.valueDatatypes } : {}),
         meaning: definition.meaning,
       } : { predicate, meaning: "服务器规则产生的受限技术断言；不得外推未列出的语义。" };

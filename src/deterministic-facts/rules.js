@@ -4,11 +4,13 @@ const supported = [
   "inventory@1", "javascript@1", "java@1", "markdown@1", "json@1", "yaml@1", "properties@1", "junit-xml@1",
   "image-metadata@1", "evidence@1", "gaps@1", "policy@1",
   "javascript@2", "java@2", "markdown@2", "json@2", "properties@2", "junit-xml@2",
+  "typescript@2", "sql@1", "program-logic@1",
 ];
 
 const capabilityByMaterialKind = new Map([
   ["JAVASCRIPT", "javascript"], ["JAVA", "java"], ["MARKDOWN", "markdown"], ["JSON", "json"],
   ["YAML", "yaml"], ["PROPERTIES", "properties"], ["JUNIT_XML", "junit-xml"], ["IMAGE", "image-metadata"],
+  ["TYPESCRIPT", "typescript"], ["SQL", "sql"],
 ]);
 
 function capabilityForMaterialKind(materialKind) {

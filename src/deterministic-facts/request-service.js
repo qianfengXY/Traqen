@@ -290,7 +290,7 @@ export class F002RequestService {
     investigationReference(investigationId, baseVersionId);
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async tx => {
       requireF002(this.resolver, "F002_CONSUMER_UNAVAILABLE", "调查消费方尚未接通，不能核对调查边界", { status: 503 });
-      const binding = normalizedBinding(await this.resolver.resolve(actor, workspaceId, investigationId),
+      const binding = normalizedBinding(await this.resolver.resolve(actor, workspaceId, investigationId, { tx }),
         { investigationId, baseVersionId, factRefs: [], materialRefs: [], requestedCapabilities: [] }, workspaceId);
       requireF002([binding.budget.maxMaterials, binding.budget.maxBytes, binding.budget.maxRuleApplications, binding.budget.maximumAttempts].every(Number.isSafeInteger),
         "F002_CONSUMER_REJECTED", "调查允许边界超出准确计量范围", { status: 403 });
@@ -325,7 +325,7 @@ export class F002RequestService {
         const row = (await tx.query("SELECT * FROM f002_request WHERE workspace_id=$1 AND id=$2", [workspaceId, cursor])).rows[0];
         requireF002(row && row.investigation_id === investigationId && row.base_version_id === baseVersionId,
           "F002_PAGE_INVALID", "分页定位不属于原调查与基准", { status: 422 });
-        await this.#authorizeRead(actor, workspaceId, row);
+        await this.#authorizeRead(actor, workspaceId, row, { tx });
       }
       const permitted = [];
       let after = cursor ?? "";
@@ -339,7 +339,7 @@ export class F002RequestService {
         [workspaceId, investigationId, baseVersionId, after])).rows;
         for (const row of rows) {
           after = row.id;
-          try { await this.#authorizeRead(actor, workspaceId, row); }
+          try { await this.#authorizeRead(actor, workspaceId, row, { tx }); }
           catch (error) { if (error instanceof F002Error && error.code === "F002_CONSUMER_REJECTED") continue; throw error; }
           permitted.push(requestSummary(row));
           if (permitted.length > limit) return { items: permitted.slice(0, limit), nextCursor: permitted[limit - 1].id };
@@ -380,6 +380,18 @@ export class F002RequestService {
     });
   }
 
+  // Scheduler readiness is not a claim or a new authorization grant. A real
+  // consumer may still be recovering its expired lease after process loss.
+  // Leave that accepted request durable/runnable instead of claiming it and
+  // recording a permanent execution failure before the consumer has resumed.
+  async assertConsumerAvailable(actor, workspaceId, requestId) {
+    return this.repository.withAuthorizedWorkspace(actor, workspaceId, async tx => {
+      const row = (await tx.query("SELECT investigation_id FROM f002_request WHERE workspace_id=$1 AND id=$2", [workspaceId, requestId])).rows[0];
+      requireF002(row && this.resolver, "F002_CONSUMER_UNAVAILABLE", "调查消费方尚未就绪", { status: 503 });
+      await this.resolver.resolve(actor, workspaceId, row.investigation_id, { tx });
+    });
+  }
+
   async execute(actor, workspaceId, requestId, { workerId, leaseMs = 60_000 } = {}) {
     requireF002(typeof requestId === "string" && /^[A-Za-z0-9-]{1,128}$/.test(requestId)
       && typeof workerId === "string" && workerId.length > 0 && Number.isInteger(leaseMs) && leaseMs >= 1_000 && leaseMs <= 60_000,
@@ -398,8 +410,8 @@ export class F002RequestService {
     try {
       const request = normalizedRequest(claimed.request_input);
       ({ binding } = await this.#resolveBinding(actor, workspaceId, request, claimed.binding_digest));
-      const assertRequestActive = async () => {
-        const current = await this.#resolveBinding(actor, workspaceId, request, claimed.binding_digest);
+      const assertRequestActive = async (options = {}) => {
+        const current = await this.#resolveBinding(actor, workspaceId, request, claimed.binding_digest, options);
         assertBudgetDeadline(current.binding);
         return current.binding;
       };
@@ -480,7 +492,7 @@ export class F002RequestService {
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => {
       const row = (await tx.query("SELECT * FROM f002_request WHERE workspace_id=$1 AND id=$2", [workspaceId, requestId])).rows[0];
       requireF002(row, "F002_REQUEST_NOT_FOUND", "取证请求不存在", { status: 404 });
-      await this.#authorizeRead(actor, workspaceId, row);
+      await this.#authorizeRead(actor, workspaceId, row, { tx });
       return publicRequest(row);
     });
   }
@@ -493,7 +505,7 @@ export class F002RequestService {
       requireF002(rows.length <= 1, "F002_OPERATION_CONFLICT", "操作键对应多个取证请求回执", { status: 409 });
       const row = rows[0];
       if (!row) return null;
-      await this.#authorizeRead(actor, workspaceId, row);
+      await this.#authorizeRead(actor, workspaceId, row, { tx });
       return publicRequest(row);
     });
   }
@@ -595,14 +607,14 @@ export class F002RequestService {
     await tx.query("UPDATE f002_request_budget_reservation SET status='RELEASED' WHERE request_id=$1", [row.id]);
   }
 
-  async #authorizeRead(actor, workspaceId, row) {
+  async #authorizeRead(actor, workspaceId, row, options = {}) {
     requireF002(this.resolver && typeof this.resolver.authorizeRead === "function", "F002_CONSUMER_UNAVAILABLE",
       "调查消费方尚未接通，不能读取无主取证结果", { status: 503 });
-    normalizedReadBinding(await this.resolver.authorizeRead(actor, workspaceId, row.investigation_id, row.id), row, workspaceId);
+    normalizedReadBinding(await this.resolver.authorizeRead(actor, workspaceId, row.investigation_id, row.id, options), row, workspaceId);
   }
 
-  async #resolveBinding(actor, workspaceId, request, expectedDigest = null) {
-    const binding = normalizedBinding(await this.resolver.resolve(actor, workspaceId, request.investigationId), request, workspaceId);
+  async #resolveBinding(actor, workspaceId, request, expectedDigest = null, options = {}) {
+    const binding = normalizedBinding(await this.resolver.resolve(actor, workspaceId, request.investigationId, options), request, workspaceId);
     const bindingDigest = canonicalDigest("CONSUMER_BINDING", binding);
     if (expectedDigest !== null) requireF002(bindingDigest === expectedDigest, "F002_CONSUMER_REJECTED", "调查授权或预算已变化，不能复用旧请求", { status: 403 });
     return { binding, bindingDigest };
@@ -623,24 +635,41 @@ export class F002RequestExecutionService {
     if (resolveActor !== null && typeof resolveActor !== "function") throw new TypeError("Invalid execution actor resolver");
     this.resolveActor = resolveActor ?? (actorId => this.members.get(actorId));
     this.workerId = workerId; this.leaseMs = leaseMs; this.pollIntervalMs = pollIntervalMs; this.maxConcurrent = maxConcurrent; this.timer = null; this.running = new Map();
+    this.closed = false; this.starting = null; this.closing = null;
   }
 
-  async start() { if (!this.timer) { this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs); this.timer.unref(); } await this.dispatch(); }
-  async close() { if (this.timer) clearInterval(this.timer); this.timer = null; await Promise.allSettled(this.running.values()); }
+  start() {
+    if (this.closed) return Promise.reject(new Error("F002 request execution service is closed"));
+    return this.starting ??= (async () => {
+      await this.dispatch({ waitForWork: false, propagateScanError: true });
+      if (!this.closed && !this.timer) { this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs); this.timer.unref(); }
+    })();
+  }
+  close() {
+    this.closed = true;
+    if (this.timer) clearInterval(this.timer); this.timer = null;
+    return this.closing ??= (async () => { await this.starting?.catch(() => {}); await Promise.allSettled(this.running.values()); })();
+  }
   async enqueue(request) { return this.#schedule({ workspaceId: request.workspaceId, requestId: request.id, actorId: request.actorId, status: request.status }); }
-  async dispatch() {
+  async dispatch({ waitForWork = true, propagateScanError = false } = {}) {
+    if (this.closed) return;
     let runnable;
     try { runnable = await this.repository.findRunnableRequests({ limit: this.maxConcurrent * 4 }); }
-    catch { return; } // Unclaimed durable work remains available to the next poll.
-    await Promise.all(runnable.map((request) => this.#schedule(request)));
+    catch (error) { if (propagateScanError) throw error; return; } // Timer failures leave unclaimed durable work untouched.
+    const tasks = runnable.map((request) => this.#schedule(request));
+    if (waitForWork) await Promise.all(tasks);
   }
   #schedule(request) {
-    if (!request?.workspaceId || !request?.requestId || !["QUEUED", "RUNNING"].includes(request.status)) return Promise.resolve();
+    if (this.closed || !request?.workspaceId || !request?.requestId || !["QUEUED", "RUNNING"].includes(request.status)) return Promise.resolve();
     const key = `${request.workspaceId}\u0000${request.requestId}`;
     if (this.running.has(key) || this.running.size >= this.maxConcurrent) return this.running.get(key) ?? Promise.resolve();
     const task = Promise.resolve().then(async () => {
       const actor = await this.resolveActor(request.actorId, request.workspaceId);
-      if (actor) await this.requests.execute(actor, request.workspaceId, request.requestId, { workerId: this.workerId, leaseMs: this.leaseMs });
+      if (!this.closed && actor) {
+        await this.requests.assertConsumerAvailable?.(actor, request.workspaceId, request.requestId);
+        if (this.closed) return;
+        await this.requests.execute(actor, request.workspaceId, request.requestId, { workerId: this.workerId, leaseMs: this.leaseMs });
+      }
     })
       .catch(() => {}).finally(() => this.running.delete(key));
     this.running.set(key, task); return task;
