@@ -16,12 +16,12 @@ import { createTraceabilityHttpServer } from "../../src/api/http-server.js";
 import { PostgresTraceabilityStore } from "../../src/storage/index.js";
 
 export const isolatedPassword = "owned-session-evidence1";
-export async function sessionEvidenceFixture({ port = 6225, origin = "http://127.0.0.1:6226" } = {}) {
+export async function sessionEvidenceFixture({ port = 6225, origin = "http://127.0.0.1:6226", additionalFiles = [] } = {}) {
   if (![6225, 6235].includes(port) || !/^http:\/\/127\.0\.0\.1:(6226|6236)$/.test(origin)) throw Error("Use owned session verification coordinates");
   const cleanups = [];
   const source = await candidateFixture({ after: cleanup => cleanups.push(cleanup) }, {
     entryPath: "evidence-sentinel.js", content: "export function EvidenceSentinelOct21() { return 42; }\n",
-    additionalFiles: [{ entryPath: "not-selected.js", content: "export function MustNotExtractOutsideScope() { return 7; }\n" }],
+    additionalFiles: [{ entryPath: "not-selected.js", content: "export function MustNotExtractOutsideScope() { return 7; }\n" }, ...additionalFiles],
   });
   const prepared = await source.candidates.prepare(source.context);
   await source.advance("RECONCILING", "REVIEW_REQUIRED");

@@ -9,9 +9,30 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { isolatedPostgres } from "./support/source-truth-postgres.js";
 import { readSourceTruthConfiguration } from "../src/source-truth/configuration.js";
+import { AuthService } from "../src/auth/service.js";
+import { AuthRepository } from "../src/auth/repository.js";
+import { contextualDatabase } from "../src/auth/database.js";
+import { request as httpRequest } from "node:http";
 
 const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 const credential = "f001-isolated-production-test-token";
+const publicOrigin = "https://source-truth.example.test";
+
+// The production listener sits behind HTTPS and validates its canonical Host.
+// Fetch deliberately replaces Host; use the native transport to exercise the
+// real loopback gateway contract without disabling the production host guard.
+async function gatewayRequest(url, { method = "GET", headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { method, headers }, response => {
+      const chunks = []; let bytes = 0;
+      response.on("data", chunk => { bytes += chunk.length; if (bytes > 1024 * 1024) request.destroy(new Error("Owned response exceeds test budget")); else chunks.push(chunk); });
+      response.on("error", reject);
+      response.on("end", () => resolve(new Response([204, 304].includes(response.statusCode) ? null : Buffer.concat(chunks), { status: response.statusCode, headers: response.headers })));
+    });
+    request.setTimeout(10000, () => request.destroy(new Error("Owned request timeout")));
+    request.on("error", reject); request.end();
+  });
+}
 
 test("B-09 private configuration accepts an explicit aggregate Git watermark and rejects malformed values", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "tq-f001-cache-configuration-"));
@@ -27,12 +48,13 @@ test("B-09 private configuration accepts an explicit aggregate Git watermark and
   }
 });
 
-async function production(t, cluster, database, configuration) {
+async function production(t, cluster, database, configuration, keyFile) {
   const uri = new URL(`postgresql://f001_test@localhost/${database.name}`);
   uri.searchParams.set("host", cluster.socket);
   const child = spawn(process.execPath, ["src/api/production-server.js"], { cwd: projectRoot,
     env: { PATH: "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC", HOST: "127.0.0.1", PORT: "0", POSTGRES_SSL: "disable",
-      DATABASE_URL: uri.href, API_BEARER_TOKEN: "f001-isolated-legacy-token", ANALYSIS_MODEL_STORE_PATH: "", SOURCE_TRUTH_CONFIG: configuration },
+      DATABASE_URL: uri.href, TRAQEN_AUTH_KEY_FILE: keyFile, TRAQEN_PUBLIC_ORIGIN: publicOrigin,
+      ANALYSIS_MODEL_STORE_PATH: "", SOURCE_TRUTH_CONFIG: configuration },
     stdio: ["ignore", "pipe", "pipe"] });
   const exited = once(child, "exit"); let output = "", errors = "";
   child.stderr.on("data", (chunk) => { errors = (errors + chunk).slice(-8000); });
@@ -59,6 +81,12 @@ test("B-05/07 production entry binds persistent Source Truth, private config and
   const keyFile = path.join(root, "active.key"), recoveryFile = path.join(root, "recovery.key");
   const secret = Buffer.alloc(32, 45);
   await writeFile(keyFile, secret, { mode: 0o600 }); await writeFile(recoveryFile, secret, { mode: 0o600 });
+  const identity = new AuthService({ repository: new AuthRepository(contextualDatabase(database.db)), key: secret });
+  const account = await identity.initialize({ login: "owner", displayName: "Isolated owner", password: "isolated-production-password1" });
+  await identity.migrate({ bindings: [{ principalId: "owner", accountId: account.id }], owners: [{ workspaceId: "workspace", accountId: account.id }],
+    grants: [], confirmed: true, requestedBy: "DEPLOYMENT" });
+  const session = await identity.login({ login: "owner", password: "isolated-production-password1" });
+  const headers = { host: new URL(publicOrigin).host, cookie: `__Host-traqen_session=${session.token}` };
   const configuration = path.join(root, "source-truth.json");
   const config = { version: 1, storage: { root: path.join(root, "source-truth"), keyVersion: "fixture-v1", keyFiles: { "fixture-v1": keyFile },
     recoveryKeyFiles: { "fixture-v1": recoveryFile }, recoveryOwner: "fixture-operator", minFreeBytes: "1048576" },
@@ -67,27 +95,27 @@ test("B-05/07 production entry binds persistent Source Truth, private config and
     origins: ["http://127.0.0.1:3188"], git: { targets: [] }, resources: { maxFileBytes: "1048576", maxTotalBytes: "16777216", maxEntries: 1000, maxChunkBytes: 4096, maxBatchEntries: 100 } };
   await writeFile(configuration, JSON.stringify(config), { mode: 0o600 });
   await t.test("protected native filesystem and real database open the authenticated Source Truth endpoint", async (st) => {
-    const running = await production(st, cluster, database, configuration);
+    const running = await production(st, cluster, database, configuration, keyFile);
     assert.ok(running.base, running.errors);
-    const response = await fetch(`${running.base}/v1/workspaces/workspace/source-truth`, { headers: { authorization: `Bearer ${credential}` } });
-    assert.equal(response.status, 200, "the production process must mount the persistent source handler, not return SOURCE_TRUTH_NOT_CONFIGURED");
+    const response = await gatewayRequest(`${running.base}/v1/workspaces/workspace/source-truth`, { headers });
+    assert.equal(response.status, 200, `the production process must mount the persistent source handler: ${response.status === 200 ? "OK" : JSON.stringify(await response.clone().json())}`);
     const data = await response.json();
     assert.equal(data.actor.actorId, "owner"); assert.equal(data.storage.ready, true);
     assert.equal(data.backup.status, "NOT_CONFIGURED");
     assert.equal(JSON.stringify(data).includes(root), false);
     assert.equal(JSON.stringify(data).includes(secret.toString("base64")), false);
-    const forbidden = await fetch(`${running.base}/v1/workspaces/workspace/source-truth`, { headers: { authorization: "Bearer f001-isolated-legacy-token" } });
+    const forbidden = await gatewayRequest(`${running.base}/v1/workspaces/workspace/source-truth`, { headers: { host: headers.host, authorization: `Bearer ${credential}` } });
     assert.equal(forbidden.status, 401);
-    const preflight = await fetch(`${running.base}/v1/workspaces/workspace/source-truth/draft`, { method: "OPTIONS", headers: {
-      origin: config.origins[0], "access-control-request-method": "PUT", "access-control-request-headers": "authorization,content-type" } });
+    const preflight = await gatewayRequest(`${running.base}/v1/workspaces/workspace/source-truth/draft`, { method: "OPTIONS", headers: {
+      ...headers, origin: config.origins[0], "access-control-request-method": "PUT", "access-control-request-headers": "content-type" } });
     assert.equal(preflight.headers.get("access-control-allow-origin"), config.origins[0], "the source-specific origin must work in a real browser, not only direct HTTP clients");
-    const unrelated = await fetch(`${running.base}/v1/workspaces`, { method: "OPTIONS", headers: { origin: config.origins[0] } });
+    const unrelated = await gatewayRequest(`${running.base}/v1/workspaces`, { method: "OPTIONS", headers: { ...headers, origin: config.origins[0] } });
     assert.equal(unrelated.headers.get("access-control-allow-origin"), null, "source origin permission does not widen unrelated legacy API CORS");
     running.child.kill("SIGTERM"); await running.exited;
   });
   await t.test("a world-readable configuration fails before opening an HTTP listener", async (st) => {
     await chmod(configuration, 0o644);
-    const stopped = await production(st, cluster, database, configuration);
+    const stopped = await production(st, cluster, database, configuration, keyFile);
     assert.equal(stopped.base, undefined, "unsafe configuration cannot be silently ignored by production startup");
     assert.notEqual(stopped.code, 0);
     assert.match(stopped.errors, /SOURCE_CONFIGURATION_PRIVATE_REQUIRED/);
