@@ -6,6 +6,8 @@ import {useKnowledgeRead} from './use-read.ts';
 import {MaterialList} from './graph-view.tsx';
 import {PublishedProjection} from './published-projection.tsx';
 import {ReadIssue} from './read-issue.tsx';
+import type {PublishedSeven} from './published-client.ts';
+import {UnassociatedCoverage} from './coverage-view.tsx';
 const names:Record<string,string>={NOT_RUN:'未运行',UNKNOWN:'可信依据未知',PASS:'通过',FAIL:'失败',ERROR:'执行错误',INCONCLUSIVE:'无法判定',CANCELLED:'已取消',SKIPPED:'已跳过'};
 type Execution=VerificationProjection&{objectKey:string;claimId:string;scopeId:string;mappingCurrent?:boolean;authorityApplies?:boolean};
 export function PublishedSevenQuestions({client,version,objectKey,onSelect,onMaterial,onAccessLost}:{client:BusinessKnowledgeClient;version:PublishedVersion;objectKey:string;onSelect:(key:string)=>void;onMaterial:(id:string)=>void;onAccessLost:(e:Error)=>void}){
@@ -16,7 +18,11 @@ export function PublishedSevenQuestions({client,version,objectKey,onSelect,onMat
   return <section aria-label="发布版本业务七问"><h3>业务七问</h3><p>读取选定发布版本及当前明确映射，不调用模型。原分析与后来的人类决定、可信执行相互独立。</p>
     {state.loading&&<p role="status">正在读取发布版本七问…</p>}{state.error&&<ReadIssue error={state.error} retry={state.retry}/>}
     {selected&&<PublishedProjection value={selected}/>}
-    {state.data?.sections.map((section,index)=>{
+    {state.data&&<PublishedSevenAnswers answer={state.data} onSelect={onSelect} onMaterial={onMaterial}/>}
+  </section>;
+}
+export function PublishedSevenAnswers({answer,onSelect,onMaterial}:{answer:Pick<PublishedSeven,'sections'>;onSelect:(key:string)=>void;onMaterial:(id:string)=>void}){
+  return <>{answer.sections.map((section,index)=>{
       const extra=section as typeof section&{executionTargets?:Execution[];environments?:unknown[]};
       return <section className="bk-answer" key={index}><h4>{index+1}. {section.question}</h4>
         {section.nodes?.map(n=><p key={n.key}><button className="bk-text-button" onClick={()=>onSelect(n.key)}>{n.name??n.key}</button>：{n.statement}</p>)}
@@ -27,10 +33,9 @@ export function PublishedSevenQuestions({client,version,objectKey,onSelect,onMat
         {section.environmentStatus&&<details><summary>明确记录的执行环境</summary><pre>{JSON.stringify(extra.environments??[],null,2)}</pre><p>原材料和静态测试资产不能证明实际部署或执行通过。</p></details>}
         {section.evidence?.map((c,i)=><blockquote key={i}><p>{c.quote}</p><button className="bk-text-button" onClick={()=>onMaterial(c.materialId)}>回查原文 · 行{c.startLine}–{c.endLine}</button></blockquote>)}
         {section.uncertainties&&<details><summary>前提与不确定性</summary><pre>{JSON.stringify(section.uncertainties,null,2)}</pre></details>}
-        {!!section.unassociatedMaterials?.length&&<p>尚有{section.unassociatedMaterials.length}份未关联材料；未据此推断调查完整。</p>}
+        {section.unassociatedMaterials&&<UnassociatedCoverage entries={section.unassociatedMaterials}/>}
       </section>;
-    })}
-  </section>;
+    })}</>;
 }
 function ExecutionTarget({target}:{target:Execution}){
   const status=['NOT_RUN','UNKNOWN'].includes(target.status)||target.history?.[0]?.trusted?target.status:'UNKNOWN';

@@ -7,6 +7,7 @@ import { materialPath, propositionState, shortId } from "./model.ts";
 import type { GraphMaterial, Investigation, SevenQuestions } from "./types.ts";
 import {AuthorityPanel} from "./authority-panel.tsx";
 import {ReadIssue} from "./read-issue.tsx";
+import {UnassociatedCoverage} from "./coverage-view.tsx";
 export {ReadIssue} from "./read-issue.tsx";
 
 export function TracePanel({ client, run, target, onSelect, onMaterial, onAccessLost, onClose, canControl=false }: {
@@ -60,7 +61,7 @@ export function SevenAnswers({ answer, onMaterial, onSelect }: { answer: SevenQu
     {section.environmentStatus && <p>原材料版本：{shortId(section.sourceBundleId ?? "")}；技术版本：{section.adoptedVersionIds?.map(shortId).join("、") || "未采用"}。分析材料不能证明实际运行环境。</p>}
     {section.evidence?.map((citation, i) => <blockquote key={i}><p>{citation.quote}</p><button className="bk-text-button" onClick={() => onMaterial(citation.materialId)}>查看原文 · 行{citation.startLine}–{citation.endLine}</button></blockquote>)}
     {section.uncertainties?.map(item => <div key={item.key}><p>{item.state === "ANALYSIS_ACCEPTED" ? "分析收录，仍受以下前提约束" : "待查解释"}</p><ul>{[...item.premises, ...item.uncertainties].map((text, i) => <li key={i}>{text}</li>)}</ul></div>)}
-    {!!section.unassociatedMaterials?.length && <p>仍有{section.unassociatedMaterials.length}份未关联材料，见覆盖视图；不能据此声称完整理解。</p>}
+    {section.unassociatedMaterials&&<UnassociatedCoverage entries={section.unassociatedMaterials}/>}
   </section>)}</div>;
 }
 function SevenQuestionPanel({ client, run, objectKey, onMaterial, onSelect, onAccessLost }: {

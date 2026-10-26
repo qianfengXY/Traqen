@@ -14,7 +14,18 @@ function ByteRanges({label,ranges}:{label:string;ranges:Ranges}) {
   return <div><p>{label} · {ranges.length}段</p><p className="bk-caption">{rangesLabel(ranges.slice(0,limit))}</p>
     {ranges.length>limit&&<button className="bk-text-button" onClick={()=>setLimit(v=>v+32)}>显示更多{label}</button>}</div>;
 }
+// Classify only explicit kinds. A missing material id or a zero byte count
+// cannot turn a FILE into directory metadata, and legacy kinds stay visible.
+export function UnassociatedCoverage({entries}:{entries:CoverageEntry[]}) {
+  if(!entries.length)return null;
+  const files=entries.filter(entry=>entry.kind==="FILE").length;
+  const directories=entries.filter(entry=>entry.kind==="DIRECTORY").length;
+  const unknown=entries.length-files-directories;
+  return <p>{files>0&&`未关联文件原文材料：${files}份；`}{directories>0&&`目录元数据：${directories}条（无文件正文）；`}
+    {unknown>0&&`未分类条目：${unknown}条（材料类型未知）；`}见覆盖视图；不能据此声称完整理解。</p>;
+}
 export function ModelTransport({entry}:{entry:CoverageEntry}) {
+  if(entry.kind==="DIRECTORY")return <p>不适用（目录元数据无文件正文片段）。</p>;
   const value=entry.modelInput;
   if(value===undefined)return <p>旧图谱未记录模型片段，传输情况未知。</p>;
   if(!value || !labels[value.status] || value.meaning!=="TRANSPORT_COVERAGE_NOT_SEMANTIC_COMPLETENESS"
@@ -29,10 +40,10 @@ export function CoverageView({entries,onMaterial}:{entries:CoverageEntry[];onMat
   const [limit,setLimit]=useState(40);
   return <section aria-label="材料覆盖明细"><h3>材料与覆盖</h3><p>采集、原文读取、模型片段传输和业务关联分别记录。运输完整不代表业务理解完整；已有分析关联不消除待处理片段。</p>
     <div className="bk-table-scroll"><table className="bk-coverage"><thead><tr><th>材料</th><th>采集状态</th><th>原文读取</th><th>模型片段传输</th><th>业务关联</th><th>原因与回查</th></tr></thead>
-      <tbody>{entries.slice(0,limit).map(entry=><tr key={entry.key}><td>{entry.path||"不可显示的路径"}</td><td>{String(entry.disposition??"未确认")}</td>
-        <td>{entry.sourceReadStatus==="READ"?"已读取原文":entry.sourceReadStatus==="UNREAD"?"尚未读取原文":"读取情况未知"}</td><td><ModelTransport entry={entry}/></td>
+      <tbody>{entries.slice(0,limit).map(entry=><tr key={entry.key}><td>{entry.path||"不可显示的路径"}<small className="bk-caption"> · {entry.kind==="DIRECTORY"?"目录元数据":entry.kind==="FILE"?"文件":"类型未分类"}</small></td><td>{String(entry.disposition??"未确认")}</td>
+        <td>{entry.kind==="DIRECTORY"?"不适用（目录无文件正文）":entry.sourceReadStatus==="READ"?"已读取原文":entry.sourceReadStatus==="UNREAD"?"尚未读取原文":"读取情况未知"}</td><td><ModelTransport entry={entry}/></td>
         <td>{entry.businessStatus==="ASSOCIATED"?"已有分析关联":entry.businessStatus==="UNASSOCIATED"?"尚未关联":"关联情况未知"}</td>
-        <td>{entry.investigationReason||String(entry.reasonCode??"未记录原因")}{entry.materialId&&<button className="bk-text-button" onClick={()=>onMaterial(entry.materialId!)}>查询已读原文与业务关联</button>}</td></tr>)}</tbody></table></div>
+        <td>{entry.investigationReason||String(entry.reasonCode??"未记录原因")}{entry.kind!=="DIRECTORY"&&entry.materialId&&<button className="bk-text-button" onClick={()=>onMaterial(entry.materialId!)}>查询已读原文与业务关联</button>}</td></tr>)}</tbody></table></div>
     {entries.length>limit&&<button className="button" onClick={()=>setLimit(v=>v+40)}>显示更多覆盖条目</button>}
   </section>;
 }
