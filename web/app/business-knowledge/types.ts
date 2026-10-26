@@ -1,0 +1,69 @@
+import type { ExecutionProfile } from "../product-foundation-client.ts";
+
+export type InvestigationState = "QUEUED" | "RUNNING" | "PAUSED" | "COMPLETED" | "FAILED" | "CANCELLED";
+export type Investigation = {
+  purpose?: string; questionContext?: import('./work-types.ts').QuestionBinding;
+  analysisContractVersion?: number;
+  implementationVersion?: unknown;
+  continuationBasis?: ContinuationBasis;
+  id: string; workspaceId: string; actorId: string; operationId: string; question: string;
+  revision: number; generation: number; state: InvestigationState; createdAt: string; updatedAt: string;
+  sourceInput: { sourceBundleSnapshotId: string; receiptId: string };
+  profile: ExecutionProfile; scope: { componentIds: string[] };
+  budget: { maxReadBytes: number; maxModelCalls: number; deadline: string };
+  supplementBudget: { maxMaterials: number; maxBytes: number; maxRuleApplications: number; maximumAttempts: number; deadline: string };
+  usage: { readBytes?: number; modelCalls?: number; [key: string]: unknown };
+  technicalVersionId: string | null; adoptedVersionIds: string[];
+  latestGraph?: { generation: number; digest: string; id: string };
+  lastFailure?: { code: string; generation: number; phase?: string; taskKey?: string; slotId?: string } | null;
+  workerId: string | null; leaseUntil: string | null;
+};
+export type ContinuationBasis = {
+  version: 1; purpose: "PREPUBLICATION_INCREMENTAL_ANALYSIS" | "PUBLISHED_WORK_CONTINUATION";
+  workspaceId: string; actorId: string; operationId: string; digest: string;
+  a: { investigationId: string; graphDigest: string; graphRevisionId: string | null;
+    sourceInput: Investigation["sourceInput"] & { workspaceId: string; inventoryDigest: string };
+    scope: Investigation["scope"]; adoptedVersionIds: string[]; analysisContractVersion: number | null;
+    implementationVersion: unknown; profile: ExecutionProfile; question: string;
+    inventoryDigest: string; technicalBinding: unknown[]; dependencyReviewDigest: string | null };
+  b: Pick<Investigation,"sourceInput"|"scope"|"adoptedVersionIds"|"profile"|"question"|"budget"|"supplementBudget"> & {
+    implementationVersion: unknown; inventoryDigest: string; technicalBinding: unknown[] };
+  source: { kind: "PRIVATE_ANALYSIS" | "PUBLISHED_WORK_SESSION"; investigationId: string; graphDigest: string;
+    graphRevisionId?: string; sessionId?: string; sessionVersion?: number; changeSetDigest?: string };
+};
+export type StartInvestigation = Pick<Investigation, "operationId" | "question" | "scope" | "budget" | "supplementBudget" | "technicalVersionId"> & {
+  reference: { bundleId: string; receiptId: string }; expectedProfileId: string;
+};
+export type InvestigationEvent = { sequence: string | number; event_type: string; payload: unknown; actor_id: string; occurred_at: string };
+export type GraphView = "BUSINESS" | "IMPLEMENTATION" | "COVERAGE";
+export type Citation = { materialId: string; startLine: number; endLine: number; quote: string };
+export type Proposition = {
+  id: string; key: string; kind?: string; name?: string; statement?: string; scope: string;
+  sourceKey?: string; targetKey?: string; predicate?: string;
+  state: string; authority: string; evidence: Citation[]; technicalRefs: string[]; uncertainties: string[];
+  verification: { rationale?: string; premises?: string[]; unresolvedConflicts?: string[]; support?: string } | null;
+};
+export type GraphMaterial = { id: string; receiptId: string | null; kind: string; assetType: string;
+  sourceMaterial: { id: string; workspaceId: string; bundleId: string; componentId: string; pathBytes: string; contentDigest: string } };
+export type CoverageEntry = { key: string; materialId: string | null; path: string; kind: string; componentId: string;
+  businessStatus: string; investigationReason?: string; sourceReadStatus?: "READ"|"UNREAD";
+  modelInput?: { status:"UNKNOWN"|"NOT_SUPPLIED"|"PARTIALLY_SUPPLIED"|"FULLY_SUPPLIED";meaning:string;suppliedByteRanges:[number,number][];pendingByteRanges:[number,number][] };
+  [key: string]: unknown };
+export type GraphIdentity = { graphId: string; graphDigest: string; investigationId: string; sourceBundleId: string;
+  profileId: string; adoptedVersionIds: string[]; published: boolean };
+export type BusinessGraph = GraphIdentity & { view: GraphView; nodes: Proposition[]; edges: Proposition[];
+  materials: GraphMaterial[]; coverage: CoverageEntry[]; uncertaintyCount: number };
+export type Trace = Omit<BusinessGraph, "view" | "uncertaintyCount"> & { direction: "BUSINESS_TO_MATERIAL" | "MATERIAL_TO_BUSINESS" };
+export type AnswerSection = { question: string; nodes?: Proposition[]; materials?: GraphMaterial[]; relations?: Proposition[];
+  testAssets?: GraphMaterial[]; evidence?: Citation[]; executionStatus?: string; environmentStatus?: string;
+  sourceBundleId?: string; adoptedVersionIds?: string[];
+  uncertainties?: { key: string; state: string; uncertainties: string[]; premises: string[] }[];
+  unassociatedMaterials?: CoverageEntry[] };
+export type SevenQuestions = GraphIdentity & { authority: "DERIVED_VIEW"; key: string; sections: AnswerSection[] };
+export type GraphFilter = { view: GraphView; text?: string; kind?: string; includeUncertain?: boolean; onlyHumanConfirmed?: boolean };
+export type PublicationBinding = { workspaceId: string; investigationId: string; graphDigest: string;
+  sourceInput: Investigation["sourceInput"]; profileId: string; adoptedVersionIds: string[]; implementationVersion?: unknown };
+export type PublicationHead = { projectId: string; graphRevisionId: string; version: number; updatedAt: string };
+export type PublicationReadiness = { status: "READY" | "BLOCKED"; canPublish: boolean; binding: PublicationBinding;
+  missing: { code: string; [key: string]: unknown }[]; currentHead: PublicationHead | null; policy: unknown;
+  evidenceRefs: { quality: string | null; recovery: string | null; backupId: string | null } };

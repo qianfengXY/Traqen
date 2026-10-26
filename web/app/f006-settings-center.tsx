@@ -70,6 +70,19 @@ type Props = {
 const ADAPTERS = ["CODEX", "CLAUDE", "GEMINI", "KIMI"] as const;
 const OAUTH_ADAPTERS = ["CODEX", "CLAUDE"] as const;
 
+// Node timers clamp larger delays to 1 ms. This form must not silently round
+// a fractional millisecond or create a timeout the existing executor cannot use.
+function modelTimeoutMs(seconds: string): number | null {
+  if (!/^\d{1,10}(?:\.\d{1,3})?$/.test(seconds)) return null;
+  const [whole, fraction = ""] = seconds.split(".");
+  const value = BigInt(whole) * BigInt(1000) + BigInt(fraction.padEnd(3, "0"));
+  return value >= BigInt(1) && value <= BigInt(2147483647) ? Number(value) : null;
+}
+
+function savedTimeoutSeconds(model: GlobalModelProfile): string {
+  return Number.isSafeInteger(model.timeoutMs) && model.timeoutMs! > 0 ? String(model.timeoutMs! / 1000) : "";
+}
+
 function typedKey(kind: "SKILL" | "MCP", normalizedName: string) {
   return `${kind}:${normalizedName}`;
 }
@@ -122,6 +135,7 @@ export function F006SettingsCenter(props: Props) {
   const [modelAdapter, setModelAdapter] = useState<(typeof ADAPTERS)[number]>("CODEX");
   const [modelValue, setModelValue] = useState("gpt-5.6-sol");
   const [modelReasoningEffort, setModelReasoningEffort] = useState<"minimal" | "low" | "medium" | "high" | "xhigh">("medium");
+  const [modelTimeoutSeconds, setModelTimeoutSeconds] = useState("120");
   const [capabilityName, setCapabilityName] = useState("");
   const [capabilityDescription, setCapabilityDescription] = useState("");
   const [skillVerified, setSkillVerified] = useState(false);
@@ -236,6 +250,8 @@ export function F006SettingsCenter(props: Props) {
   }
 
   async function addModel() {
+    const timeoutMs = modelTimeoutMs(modelTimeoutSeconds);
+    if (props.working || props.canGlobalConfig === false || timeoutMs === null) return;
     const id = modelId.trim() || createId("cli-model");
     const created = await props.onSaveCliModel({
       profileId: id,
@@ -244,9 +260,10 @@ export function F006SettingsCenter(props: Props) {
       cliAdapter: modelAdapter,
       model: modelValue.trim(),
       reasoningEffort: modelAdapter === "CODEX" ? modelReasoningEffort : undefined,
+      timeoutMs,
     });
     if (created) {
-      setModelName(""); setModelId(""); setModelValue(modelAdapter === "CODEX" ? "gpt-5.6-sol" : ""); setModelReasoningEffort("medium");
+      setModelName(""); setModelId(""); setModelValue(modelAdapter === "CODEX" ? "gpt-5.6-sol" : ""); setModelReasoningEffort("medium"); setModelTimeoutSeconds("120");
     }
   }
 
@@ -322,7 +339,7 @@ export function F006SettingsCenter(props: Props) {
       </nav>
       <div className="f006-global-content">
         {globalPage === "accounts" && <GlobalAccounts {...props} accountName={accountName} setAccountName={setAccountName} accountId={accountId} setAccountId={setAccountId} authMethod={authMethod} setAuthMethod={setAuthMethod} adapter={accountAdapter} setAdapter={setAccountAdapter} secretRefId={secretRefId} setSecretRefId={setSecretRefId} onAdd={() => void addAccount()} />}
-        {globalPage === "models" && <GlobalModels {...props} modelName={modelName} setModelName={setModelName} modelId={modelId} setModelId={setModelId} accountId={modelAccountId} setAccountId={setModelAccountId} adapter={modelAdapter} setAdapter={setModelAdapter} modelValue={modelValue} setModelValue={setModelValue} reasoningEffort={modelReasoningEffort} setReasoningEffort={setModelReasoningEffort} onAdd={() => void addModel()} />}
+        {globalPage === "models" && <GlobalModels {...props} modelName={modelName} setModelName={setModelName} modelId={modelId} setModelId={setModelId} accountId={modelAccountId} setAccountId={setModelAccountId} adapter={modelAdapter} setAdapter={setModelAdapter} modelValue={modelValue} setModelValue={setModelValue} reasoningEffort={modelReasoningEffort} setReasoningEffort={setModelReasoningEffort} timeoutSeconds={modelTimeoutSeconds} setTimeoutSeconds={setModelTimeoutSeconds} onAdd={() => void addModel()} />}
         {globalPage === "skills" && <div className="f006-info-note"><label className="f006-check-row"><input type="checkbox" checked={skillVerified} onChange={(event) => setSkillVerified(event.currentTarget.checked)} /><span>{props.t("我已确认此 Skill 使用下方已挂载执行器", "I confirmed this Skill uses the mounted executor selected below")}</span><small>{props.t("服务端会验证执行器映射后再签署并授予 Agent。", "The server verifies the executor mapping before sealing it for Agent grants.")}</small></label></div>}
         {(globalPage === "skills" || globalPage === "mcp") && <GlobalCapabilities {...props} createDisabled={props.working || (globalPage === "skills" && (!skillVerified || !selectedGlobalSkill))} kind={globalPage === "skills" ? "SKILL" : "MCP"} name={capabilityName} setName={setCapabilityName} description={capabilityDescription} setDescription={setCapabilityDescription} skillKey={globalSkillKey} setSkillKey={setGlobalSkillKey} onAdd={() => void addGlobalCapability(globalPage === "skills" ? "SKILL" : "MCP")} onLifecycle={(target) => void requestLifecycle(target)} />}
       </div>
@@ -365,10 +382,13 @@ function GlobalModels(props: Props & {
   setModelValue: (value: string) => void;
   reasoningEffort: "minimal" | "low" | "medium" | "high" | "xhigh";
   setReasoningEffort: (value: "minimal" | "low" | "medium" | "high" | "xhigh") => void;
+  timeoutSeconds: string;
+  setTimeoutSeconds: (value: string) => void;
   onAdd: () => void;
 }) {
   const activeAccounts = props.accounts.filter((account) => account.lifecycle === "ACTIVE" && (account.authMethod !== "OAUTH" || account.oauthStatus === "AUTHENTICATED"));
   const cliModels = props.models.filter((model) => model.transport === "CLI");
+  const timeoutValid = modelTimeoutMs(props.timeoutSeconds) !== null;
   const selectAdapter = (adapter: (typeof ADAPTERS)[number]) => {
     props.setAdapter(adapter);
     if (adapter === "CODEX" && !props.modelValue.trim()) props.setModelValue("gpt-5.6-sol");
@@ -388,7 +408,8 @@ function GlobalModels(props: Props & {
       <label>{props.adapter === "CODEX" ? props.t("Codex 模型 ID", "Codex model ID") : props.t("模型 ID", "Model ID")}<input value={props.modelValue} onChange={(event) => props.setModelValue(event.currentTarget.value)} placeholder={props.adapter === "CODEX" ? "gpt-5.6-sol" : "provider model ID"} list={props.adapter === "CODEX" ? "f006-codex-model-presets" : undefined} /><small>{props.adapter === "CODEX" ? props.t("可选择 Sol、Terra、Luna，或直接输入你账户可用的精确 Codex 模型 ID。", "Choose Sol, Terra, or Luna—or type the exact Codex model ID available to your account.") : props.t("请填写这个 CLI 支持的精确模型 ID。", "Enter the exact model ID supported by this CLI.")}</small></label>
       {props.adapter === "CODEX" && <datalist id="f006-codex-model-presets"><option value="gpt-5.6-sol">Sol</option><option value="gpt-5.6-terra">Terra</option><option value="gpt-5.6-luna">Luna</option></datalist>}
       {props.adapter === "CODEX" && <label>{props.t("推理档位", "Reasoning effort")}<select value={props.reasoningEffort} onChange={(event) => props.setReasoningEffort(event.currentTarget.value as "minimal" | "low" | "medium" | "high" | "xhigh")}><option value="minimal">{props.t("极速 · minimal", "Fastest · minimal")}</option><option value="low">{props.t("快速 · low", "Fast · low")}</option><option value="medium">{props.t("均衡 · medium", "Balanced · medium")}</option><option value="high">{props.t("深入 · high", "Deep · high")}</option><option value="xhigh">{props.t("极深 · xhigh", "Deepest · xhigh")}</option></select><small>{props.t("将以 Codex 配置项 model_reasoning_effort 执行；档位越高通常推理越深入、耗时越长。", "Executed as Codex model_reasoning_effort; higher effort generally reasons more deeply and takes longer.")}</small></label>}
-      <button className="button primary" disabled={props.working || !props.accountId || !props.modelValue.trim()} onClick={props.onAdd}>{props.t("保存 CLI 模型", "Save CLI model")}</button>
+      <label>{props.t("单次调用时限（秒）", "Call timeout (seconds)")}<input inputMode="decimal" maxLength={20} value={props.timeoutSeconds} onChange={(event) => props.setTimeoutSeconds(event.currentTarget.value)} aria-invalid={!timeoutValid} /><small>{props.t("默认120秒，精确到毫秒（0.001–2147483.647秒）。仅用于新保存的模型，不会延长调查总期限。", "Defaults to 120 seconds, precise to milliseconds (0.001–2147483.647 s). Applies to the newly saved model, not the investigation deadline.")}</small>{!timeoutValid && <small className="f006-error" role="alert">{props.t("请输入范围内的秒数，最多三位小数；不会四舍五入。", "Enter seconds in range with at most three decimal places; values are never rounded.")}</small>}</label>
+      <button className="button primary" disabled={props.working || !props.accountId || !props.modelValue.trim() || !timeoutValid} onClick={props.onAdd}>{props.t("保存 CLI 模型", "Save CLI model")}</button>
     </section>
     <section className="f006-list-card">
       <div className="f006-list-head"><div><p className="eyebrow">Global models</p><h2>{props.t("模型可用性", "Model readiness")}</h2></div><span>{cliModels.length}</span></div>
@@ -404,10 +425,11 @@ function GlobalModels(props: Props & {
           props.setAdapter(recoveryAdapter);
           props.setModelValue("");
           props.setReasoningEffort("medium");
+          props.setTimeoutSeconds(savedTimeoutSeconds(model));
         };
         return <article className="f006-resource-row" key={model.id}>
           <div className="f006-resource-icon">⌘</div>
-          <div><strong>{model.displayName}</strong><small>{model.cliAdapter ?? "CLI"} · {model.accountId ?? "未关联账号"} · {model.model ?? props.t("旧版默认模型（未固定）", "Legacy default (un-pinned)")}{model.cliAdapter === "CODEX" && ` · ${model.reasoningEffort ?? props.t("旧版默认档位", "legacy default effort")}`}</small><p>{!pinned ? props.t("固定模型后才能验证；请创建固定模型副本。", "Pin a model ID before verification; create a pinned replacement.") : model.readiness === "READY" ? props.t("可供 Agent 选择", "Available to Agents") : props.t("验证后才会进入 Agent 选择器", "Verify before it appears in Agent selectors")}</p></div>
+          <div><strong>{model.displayName}</strong><small>{model.cliAdapter ?? "CLI"} · {model.accountId ?? "未关联账号"} · {model.model ?? props.t("旧版默认模型（未固定）", "Legacy default (un-pinned)")}{model.cliAdapter === "CODEX" && ` · ${model.reasoningEffort ?? props.t("旧版默认档位", "legacy default effort")}`}</small><small>{savedTimeoutSeconds(model) ? props.t(`单次调用时限：${savedTimeoutSeconds(model)}秒`, `Call timeout: ${savedTimeoutSeconds(model)} s`) : props.t("单次调用时限未知", "Call timeout unknown")}</small><p>{!pinned ? props.t("固定模型后才能验证；请创建固定模型副本。", "Pin a model ID before verification; create a pinned replacement.") : model.readiness === "READY" ? props.t("可供 Agent 选择", "Available to Agents") : props.t("验证后才会进入 Agent 选择器", "Verify before it appears in Agent selectors")}</p></div>
           <div className={`f006-status ${pinned && model.readiness === "READY" ? "success" : "warning"}`}>{pinned ? model.readiness : "UNPINNED"}</div>
           <button className="button" disabled={props.working || model.lifecycle !== "ACTIVE" || !pinned} onClick={() => props.onVerifyModel(model.profileId)}>{props.t("验证", "Verify")}</button>
           {!pinned && <button className="button" disabled={props.working} onClick={createPinnedReplacement}>{props.t("创建固定模型副本", "Create pinned replacement")}</button>}

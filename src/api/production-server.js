@@ -1,7 +1,7 @@
 import pg from "pg";
 import { authRuntime, privateFile } from "../auth/runtime.js";
 import { createHmac } from "node:crypto";
-import { createF002Runtime } from "../deterministic-facts/runtime.js";
+import { createKnowledgeRuntime } from "./knowledge-bootstrap.js";
 import { contextualDatabase } from "../auth/database.js";
 import { authorizedStore } from "../auth/authorized-store.js";
 import { authContext } from "../auth/context.js";
@@ -70,20 +70,19 @@ try {
   await database.close();
   throw new Error(`${error.code ?? "SOURCE_CONFIGURATION_INVALID"}: 来源快照部署条件未通过校验；未开放服务`);
 }
-let deterministicFactsRuntime;
-await initializeFacts();
+let knowledgeRuntime;
+await initializeKnowledge();
 const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, auth: identity.http, sourceTruthHandler: sourceRuntime?.sourceTruthHandler,
   sourceTruthAllowedOrigins: sourceConfiguration?.origins,
-  deterministicFactsHandler: deterministicFactsRuntime?.deterministicFactsHandler,
-  deterministicFactsAllowedOrigins: sourceConfiguration?.origins });
+  ...knowledgeRuntime?.httpOptions });
 
-async function initializeFacts() {
+async function initializeKnowledge() {
   if (!sourceRuntime) return null;
   try {
     const key = await privateFile(process.env.TRAQEN_AUTH_KEY_FILE, { maximum: 32 });
     const cursorSecret = createHmac("sha256", key).update("Traqen.F002.Cursor.v1").digest("hex");
-    deterministicFactsRuntime = await createF002Runtime({ sourceRuntime, cursorSecret });
-    return deterministicFactsRuntime;
+    knowledgeRuntime = await createKnowledgeRuntime({ sourceRuntime, application, cursorSecret });
+    return knowledgeRuntime;
   } catch (error) {
     await sourceRuntime.close().catch(() => {});
     await database.close().catch(() => {});
@@ -93,12 +92,12 @@ async function initializeFacts() {
 
 try {
   sourceRuntime?.start();
-  await deterministicFactsRuntime?.start();
+  await knowledgeRuntime?.start();
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, host, resolve); });
   const address = server.address();
   process.stdout.write(`Traqen API listening on http://${host}:${address.port}\n`);
 } catch (error) {
-  try { await deterministicFactsRuntime?.close(); }
+  try { await knowledgeRuntime?.close(); }
   finally { try { await sourceRuntime?.close(); } finally { await database.close(); } }
   throw error;
 }
@@ -109,7 +108,7 @@ async function shutdown(signal) {
   shuttingDown = true;
   const closed = new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   server.closeAllConnections();
-  try { await deterministicFactsRuntime?.close(); }
+  try { await knowledgeRuntime?.close(); }
   finally {
     try { await sourceRuntime?.close(); }
     finally { try { await closed; } finally { await database.close(); } }

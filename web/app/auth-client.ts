@@ -26,7 +26,13 @@ export const setReviewRole = (value: string) => {
 
 // A request is attempted once. Recovery only performs fresh reads: writes, uploads
 // and publication cannot safely be replayed after authentication or network loss.
-export async function sessionFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+export function notifySessionLoss(error: { code?: unknown } | null | undefined) {
+  if (typeof window !== "undefined" && typeof error?.code === "string" && ["AUTH_REQUIRED", "AUTH_SESSION_EXPIRED", "AUTH_SESSION_REVOKED", "AUTH_ACCOUNT_DISABLED"].includes(error.code)) {
+    window.dispatchEvent(new CustomEvent("traqen:session-lost", { detail: error }));
+  }
+}
+
+export async function sessionFetch(input: RequestInfo | URL, init: RequestInit = {}, { inspectUnauthorized = true } = {}) {
   const headers = new Headers(init.headers);
   headers.delete("authorization");
   headers.delete("x-traqen-api-token");
@@ -38,17 +44,14 @@ export async function sessionFetch(input: RequestInfo | URL, init: RequestInit =
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (response.status === 401 && !String(input).includes("/v1/auth/session") && typeof window !== "undefined") {
+  // Bounded callers own the first and only error-body consumer and notify
+  // through the same classifier. Existing callers retain their old contract.
+  if (inspectUnauthorized && response.status === 401 && !String(input).includes("/v1/auth/session") && typeof window !== "undefined") {
     const result = await response
       .clone()
       .json()
       .catch(() => null);
-    if (
-      ["AUTH_REQUIRED", "AUTH_SESSION_EXPIRED", "AUTH_SESSION_REVOKED", "AUTH_ACCOUNT_DISABLED"].includes(
-        result?.error?.code,
-      )
-    )
-      window.dispatchEvent(new CustomEvent("traqen:session-lost", { detail: result.error }));
+    notifySessionLoss(result?.error);
   }
   return response;
 }

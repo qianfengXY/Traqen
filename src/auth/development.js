@@ -12,7 +12,7 @@ import { authContext } from "./context.js";
 import { createIsolatedDevelopmentApplication } from "../api/development-bootstrap.js";
 import { demand } from "./errors.js";
 import { readSourceTruthConfiguration, createSourceTruthRuntime } from "../source-truth/configuration.js";
-import { createF002Runtime } from "../deterministic-facts/runtime.js";
+import { createKnowledgeRuntime } from "../api/knowledge-bootstrap.js";
 export async function openDevelopmentIdentity(env = process.env) {
   demand(env.TRAQEN_AUTH_DEVELOPMENT === "true", "AUTH_CONFIGURATION_INVALID", "必须显式启用隔离开发模式", 503);
   const root = path.resolve(env.TRAQEN_AUTH_DEVELOPMENT_DATA ?? ".traqen-dev/identity");
@@ -65,7 +65,7 @@ export async function authenticatedDevelopmentApplication(env = process.env) {
     ANALYSIS_MODEL_STORE_PATH: path.join(runtime.root, "models.json"),
     ANALYSIS_MODEL_PROFILES_JSON: "[]",
   };
-  let configured, sourceRuntime, deterministicFactsRuntime;
+  let configured, sourceRuntime, knowledgeRuntime;
   try {
     configured = await authContext.run({ system: true }, () =>
       createIsolatedDevelopmentApplication({
@@ -87,19 +87,19 @@ export async function authenticatedDevelopmentApplication(env = process.env) {
         ssl: false, host: "127.0.0.1", identityService: runtime.identity.service });
       const key = await privateFile(runtime.keyFile, { maximum: 32 });
       const cursorSecret = createHmac("sha256", key).update("Traqen.F002.Cursor.v1").digest("hex");
-      deterministicFactsRuntime = await createF002Runtime({ sourceRuntime, cursorSecret });
+      knowledgeRuntime = await createKnowledgeRuntime({ sourceRuntime, application: configured.application, cursorSecret });
     }
   } catch (error) {
-    try { await deterministicFactsRuntime?.close(); }
+    try { await knowledgeRuntime?.close(); }
     finally { try { await sourceRuntime?.close(); } finally { await runtime.database.close(); } }
     throw error;
   }
   bootstrap.active = false;
   let closing;
-  return { ...configured, ...runtime, sourceRuntime, deterministicFactsRuntime,
-    async start() { sourceRuntime?.start(); await deterministicFactsRuntime?.start(); },
+  return { ...configured, ...runtime, sourceRuntime, knowledgeRuntime, deterministicFactsRuntime: knowledgeRuntime?.facts,
+    async start() { sourceRuntime?.start(); await knowledgeRuntime?.start(); },
     close() { return closing ??= (async () => {
-      try { await deterministicFactsRuntime?.close(); }
+      try { await knowledgeRuntime?.close(); }
       finally { try { await sourceRuntime?.close(); } finally { await runtime.database.close(); } }
     })(); },
   };

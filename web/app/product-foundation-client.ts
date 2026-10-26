@@ -12,6 +12,7 @@ export type GlobalModelProfile = {
   endpoint?: string;
   model?: string;
   reasoningEffort?: "minimal" | "low" | "medium" | "high" | "xhigh" | null;
+  timeoutMs?: number | null;
   cliAdapter?: "CODEX" | "CLAUDE" | "GEMINI" | "KIMI";
   executablePath?: string;
   credentialHandleId?: string;

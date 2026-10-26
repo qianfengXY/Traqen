@@ -278,6 +278,8 @@ export function createTraceabilityHttpHandler({
   sourceTruthAllowedOrigins = [],
   deterministicFactsHandler = null,
   deterministicFactsAllowedOrigins = [],
+  businessKnowledgeHandler = null,
+  businessKnowledgeAllowedOrigins = [],
   auth = null,
   onInternalError = null,
 }) {
@@ -288,6 +290,7 @@ export function createTraceabilityHttpHandler({
   const allowedOrigins = normalizeCorsOrigins(corsAllowedOrigins);
   const sourceOrigins = normalizeCorsOrigins(sourceTruthAllowedOrigins);
   const factsOrigins = normalizeCorsOrigins(deterministicFactsAllowedOrigins);
+  const businessOrigins = normalizeCorsOrigins(businessKnowledgeAllowedOrigins);
 
   const handler = async function traceabilityHttpHandler(request, response) {
     const id = requestId(request);
@@ -295,7 +298,8 @@ export function createTraceabilityHttpHandler({
       const url = new URL(request.url, "http://localhost");
       const sourceRequest = /^\/v1\/workspaces\/[^/]+\/source-truth(?:\/|$)/.test(url.pathname);
       const factsRequest = /^\/v1\/workspaces\/[^/]+\/deterministic-facts(?:\/|$)/.test(url.pathname);
-      applyCors(request, response, sourceRequest ? sourceOrigins : factsRequest ? factsOrigins : allowedOrigins);
+      const businessRequest = /^\/v1\/workspaces\/[^/]+\/business-knowledge(?:\/|$)/.test(url.pathname);
+      applyCors(request, response, sourceRequest ? sourceOrigins : factsRequest ? factsOrigins : businessRequest ? businessOrigins : allowedOrigins);
 
       if (request.method === "OPTIONS") {
         response.writeHead(204, { "cache-control": "no-store", "x-request-id": id });
@@ -318,6 +322,11 @@ export function createTraceabilityHttpHandler({
       if (factsRequest) {
         if (!deterministicFactsHandler) throw new HttpError(503, "F002_NOT_CONFIGURED", "技术证据持久化服务尚未安全配置");
         if (await deterministicFactsHandler(request, response, id)) return;
+      }
+
+      if (businessRequest) {
+        if (!businessKnowledgeHandler) throw new HttpError(503, "F003_NOT_CONFIGURED", "业务调查持久化服务尚未安全配置");
+        if (await businessKnowledgeHandler(request, response, id)) return;
       }
 
       if (!auth && apiBearerToken !== null) {

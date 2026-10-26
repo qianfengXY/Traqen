@@ -11,6 +11,15 @@ import {
   requirePositiveInteger,
 } from "./model.js";
 
+// Shared read-only decision projection; expiration never appends or mutates
+// human authority, and does not revive an older decision automatically.
+export function authorityFromDecision(decision, now = new Date()) {
+  const mapping = { CONFIRMED: "CONFIRMED", EXCEPTION_RECORDED: "EXCEPTION_RECORDED", REJECTED: "REJECTED",
+    DEPRECATED: "DEPRECATED", INSUFFICIENT_EVIDENCE: "UNREVIEWED", DEFERRED: "UNREVIEWED" };
+  if (decision?.validUntil && Date.parse(decision.validUntil) <= now.getTime()) return "DEPRECATED";
+  return decision ? mapping[decision.type] ?? "UNREVIEWED" : "UNREVIEWED";
+}
+
 function optionalString(value, fieldName) {
   if (value === undefined || value === null) return null;
   return requireNonEmptyString(value, fieldName);
