@@ -1,8 +1,9 @@
-/* F005: one desktop composition. Scaling never changes the content or density. */
-.desktop-frame { width: min(100%, calc(1440px * var(--desktop-scale, 1))); height: calc(900px * var(--desktop-scale, 1)); margin: 0 auto; }
-.f005-shell { width: 1440px; max-width: 100%; height: 900px; min-height: 0; grid-template-columns: 224px minmax(0, 1fr); transform: scale(var(--desktop-scale, 1)); transform-origin: top left; font-size: 13px; }
+/* The readable desktop scale is independent of layout: the logical canvas
+   fills the actual window, including non-reference aspect ratios. */
+.desktop-frame { width: 100%; height: 100dvh; margin: 0; }
+.app-shell.f005-shell { display: grid; width: calc(100% / var(--desktop-scale, 1)); max-width: none; height: calc(100dvh / var(--desktop-scale, 1)); min-height: 0; grid-template-columns: 224px minmax(0, 1fr); transform: scale(var(--desktop-scale, 1)); transform-origin: top left; font-size: 13px; }
 .f005-shell [hidden] { display: none !important; }
-.f005-shell .sidebar { height: 900px; min-height: 0; padding: 28px 16px 20px; gap: 28px; position: relative; top: auto; border-color: var(--line); }
+.f005-shell .sidebar { height: 100%; min-height: 0; padding: 28px 16px 20px; gap: 28px; position: relative; top: auto; border-color: var(--line); }
 .f005-shell .brand { padding: 0 12px; font-size: 22px; letter-spacing: -.8px; }
 .f005-shell .brand-mark { background: var(--ink); color: var(--panel); box-shadow: none; width: 30px; height: 30px; border-radius: 9px; }
 .f005-shell .workspace-block { display: grid; gap: 8px; }
@@ -18,7 +19,7 @@
 .f005-shell .nav-button.active svg { color: var(--accent); }
 .sidebar-bottom { margin-top: auto; }
 .f005-shell .sidebar-note { font-size: 11px; line-height: 1.65; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 12px 0; margin-top: 16px; }
-.f005-shell .main { padding: 0; min-width: 0; height: 900px; overflow-y: auto; overscroll-behavior: contain; }
+.f005-shell .main { padding: 0; min-width: 0; min-height: 0; height: 100%; overflow: auto; overscroll-behavior: contain; }
 .f005-shell .topbar { min-height: 66px; margin: 0; padding: 12px 32px; border-bottom: 1px solid var(--line); background: var(--paper); gap: 16px; flex-wrap: wrap; }
 .f005-shell .breadcrumb { display: flex; gap: 10px; align-items: center; min-width: 0; }
 .f005-shell .breadcrumb > span { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -27,6 +28,7 @@
 .f005-shell .mode-badge { display: none; } /* Graph identity belongs to its page, not a universal source identity. */
 .f005-shell .identity-chip { font-size: 11px; color: var(--muted); }
 .f005-shell .language-switch, .f005-shell .theme-switch, .f005-shell .theme-switch select { background: var(--panel); color: var(--ink); border-color: var(--line); }
+.f005-shell .theme-switch { display: inline-flex; }
 .f005-shell #product-content { padding: 32px; outline: none; }
 .f005-shell h1, .f005-shell .f006-heading h1 { font-size: 32px; line-height: 40px; font-weight: 650; letter-spacing: 0; }
 .f005-shell h2 { line-height: 28px; }
@@ -52,6 +54,8 @@
 .f005-shell .st-workbench { padding: 0 0 32px; max-width: none; }
 .f005-shell .st-heading { margin: 0 0 24px; }
 .f005-shell .st-heading p { margin-top: 8px; }
+.f005-shell .st-workbench p { max-inline-size: 76ch; }
+.f005-shell .st-table-scroll table:has(th:nth-child(6)) { min-inline-size: 48rem; }
 .f005-shell .st-auth { margin: 0 0 20px; }
 .f005-shell .st-grid { grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; }
 .f005-shell .st-metro { padding: 20px 24px; margin-bottom: 24px; }
@@ -79,24 +83,25 @@
 .f005-shell .workspace-connection .connection-notice { margin: 16px 0; }
 :root[data-theme=dark] .f005-shell :is(.empty-state, .metric-card, .language-switch, .onboarding-form, .diagnostic-drawer, .f006-section, .f006-scope-card) { background: var(--panel); color: var(--ink); border-color: var(--line); }
 :root[data-theme=dark] .f005-shell pre { background: var(--code-bg); color: var(--ink); }
-@media (max-width: 1439px), (max-height: 899px) {
-  .desktop-frame { width: 100%; height: auto; }
-  .f005-shell { width: 100%; height: 100dvh; }
-  .f005-shell .sidebar, .f005-shell .main { height: 100dvh; }
-}
 @media (max-width: 1100px) {
   .f005-shell .st-grid { grid-template-columns: minmax(0, 1fr); }
   .f005-shell .st-side { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .f005-shell .topbar, .f005-shell #product-content { padding: 24px; }
 }
-@media (max-width: 760px) {
-  .f005-shell { display: block; height: auto; }
-  .f005-shell .sidebar { height: auto; padding: 16px; gap: 16px; }
-  .f005-shell .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .sidebar-bottom { margin-top: 0; }
-  .f005-shell .main { height: auto; overflow: visible; }
+@media (max-width: 860px) {
+  .app-shell.f005-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  /* Keep the work surface in the first viewport even during browser zoom.
+     Navigation and account actions remain reachable in their own scrollport. */
+  .f005-shell .sidebar { height: auto; max-height: 40dvh; padding: 12px; gap: 12px; flex-direction: row; flex-wrap: wrap; align-items: center; border-right: 0; border-bottom: 1px solid var(--line); }
+  .f005-shell .brand { padding: 0; font-size: 18px; }
+  .f005-shell .workspace-block { flex: 1 1 200px; min-width: 0; max-width: 100%; }
+  .f005-shell .nav { display: flex; flex: 1 0 100%; min-width: 0; max-width: 100%; overflow-x: auto; padding: 6px; }
+  .f005-shell .nav-button { flex: 0 0 auto; width: auto; min-height: 44px; padding: 10px 12px; }
+  .f005-shell .sidebar-bottom { margin-top: 0; display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: center; gap: 12px; min-width: 0; }
+  .f005-shell .sidebar-bottom > * { min-width: 0; max-width: 100%; }
   .f005-shell .st-side { grid-template-columns: minmax(0, 1fr); }
   .f005-shell .st-heading, .f005-shell .st-metro-head { flex-direction: column; }
   .f005-shell .topbar, .f005-shell #product-content { padding: 20px; }
+  .f005-shell .theme-switch select { min-height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) { .f005-shell *, .f005-shell *::before, .f005-shell *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
