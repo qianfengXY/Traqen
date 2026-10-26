@@ -75,16 +75,26 @@ async function versionVocabulary(tx, workspaceId, graphVersionId, profile) {
 }
 
 export class F002QueryService {
-  constructor(repository, { cursorSecret } = {}) {
+  constructor(repository, { cursorSecret, preferredProfileId = null } = {}) {
     if (!repository?.withAuthorizedWorkspace) throw new TypeError("F002 queries require an authorized repository");
     if (typeof cursorSecret !== "string" || Buffer.byteLength(cursorSecret, "utf8") < 16) throw new TypeError("F002 queries require a cursor secret of at least 16 bytes");
     this.repository = repository;
     this.cursorSecret = Buffer.from(cursorSecret, "utf8");
+    this.preferredProfileId = preferredProfileId;
   }
 
   async profiles(actor, workspaceId) {
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => (await tx.query("SELECT payload,startable FROM f002_profile ORDER BY id")).rows
-      .map((row) => ({ ...row.payload, startable: row.startable })));
+      .map((row) => {
+        const profile = { ...row.payload };
+        // Recommendation is a current navigation projection, not a rewrite of
+        // the immutable historical execution profile or its start permission.
+        // Stored payload metadata cannot supply this server-owned projection.
+        delete profile.recommended;
+        return { ...profile, startable: row.startable,
+          ...(this.preferredProfileId && row.payload.extractionLimits?.automaticPublication === "closed-scope-v1"
+            ? { recommended: row.payload.id === this.preferredProfileId } : {}) };
+      }));
   }
 
   async versions(actor, workspaceId) {

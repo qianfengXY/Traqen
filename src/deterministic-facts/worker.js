@@ -6,14 +6,15 @@ import { assembleCanonicalOutput } from "./output-assembly.js";
 import { F002PublicationService } from "./publication-service.js";
 import { capabilityForMaterialKind } from "./rules.js";
 import { loadFrozenMaterials } from "./source-materials.js";
-import { createParserDeadline } from "./parser-deadline.js";
+import { createParserDeadline, safeParserTimeoutDetails } from "./parser-deadline.js";
 import { maintainLease } from "./lease.js";
 
 function workerParse(input, { timeoutMs, onProgress = null, signal = null }) {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted();
     if (onProgress !== null && typeof onProgress !== "function") throw new TypeError("parser progress observer must be a function");
-    let settled = false, deadline, parser;
+    const started = performance.now();
+    let settled = false, deadline, parser, lastReceived = null;
     const finish = (callback, value) => {
       if (settled) return;
       settled = true;
@@ -25,15 +26,21 @@ function workerParse(input, { timeoutMs, onProgress = null, signal = null }) {
     const aborted = () => finish(reject, signal.reason);
     signal?.addEventListener("abort", aborted, { once: true });
     deadline = createParserDeadline({ materialCount: input.materials.length, timeoutMs,
-      onTimeout: reason => finish(reject, new F002Error("F002_PARSE_TIMEOUT", reason === "wall" ? "解析超过固定总运行预算" : "解析工作单元超过固定运行预算", { status: 503 })) });
+      onTimeout: (reason, details) => finish(reject, new F002Error("F002_PARSE_TIMEOUT", reason === "wall" ? "解析超过固定总运行预算" : "解析工作单元超过固定运行预算",
+        { status: 503, details: { parser: { ...details, ...(lastReceived ? { lastReceived } : {}) } } })) });
     try { parser = new Worker(new URL("./parser-worker.js", import.meta.url)); }
     catch (error) { finish(reject, error); return; }
     parser.once("error", (error) => finish(reject, error));
     parser.once("exit", () => { if (!settled) finish(reject, new F002Error("F002_PARSE_RUNTIME_FAILURE", "解析进程未返回完整结果", { status: 503 })); });
     parser.on("message", (message) => {
       if (message?.type === "PROGRESS") {
+        // These are separate clocks: the parent observes delivery, the worker
+        // measures its last completed generator step (wall and, if available,
+        // thread CPU). Neither explains a slow in-flight step by itself.
+        lastReceived = { phase: message.progress?.phase, completed: message.progress?.completed, total: message.progress?.total,
+          receivedElapsedMs: Math.ceil(performance.now() - started), worker: message.timing };
         if (deadline.progress(message.progress) && onProgress) {
-          try { onProgress(message.progress); } catch (error) { finish(reject, error); }
+          try { onProgress(message.progress, { receivedElapsedMs: lastReceived.receivedElapsedMs, worker: message.timing }); } catch (error) { finish(reject, error); }
         }
       } else if (message?.type === "RESULT") {
         if (deadline.complete()) finish(resolve, message.result);
@@ -95,7 +102,11 @@ function scopeItemsForMaterials({ workspaceId, bundleId, profile, sourceMaterial
       if (capabilityId === "policy") {
         return { materialId, capabilityId, status: "NOT_APPLICABLE", recordIds: [], gapIds: [], diagnostic: { code: "F002_POLICY_READ_TIME" } };
       }
-      if (capabilityId !== applicable) return { materialId, capabilityId, status: "NOT_APPLICABLE", recordIds: [], gapIds: [] };
+      const logicApplicable = capabilityId === "program-logic" && profile.extractionLimits?.programLogic === "bounded-syntax-v1"
+        && ["JAVASCRIPT", "TYPESCRIPT", "JAVA"].includes(material.kind);
+      const sqlApplicable = capabilityId === "sql" && profile.extractionLimits?.staticSql === "literal-statements-v1"
+        && ["JAVASCRIPT", "TYPESCRIPT", "JAVA", "SQL"].includes(material.kind);
+      if (capabilityId !== applicable && !logicApplicable && !sqlApplicable) return { materialId, capabilityId, status: "NOT_APPLICABLE", recordIds: [], gapIds: [] };
       return {
         materialId,
         capabilityId,
@@ -164,6 +175,8 @@ export class F002Worker {
     } catch (error) {
       if (error instanceof F002Error && ["F002_STALE_SCOPE_WORKER", "F002_SCOPE_PENDING"].includes(error.code)) throw error;
       const diagnostic = { code: error instanceof F002Error ? error.code : "F002_PARSE_RUNTIME_FAILURE", category: "RUNTIME_FAILURE" };
+      const parser = safeParserTimeoutDetails(error);
+      if (parser) diagnostic.parser = parser;
       await this.repository.failScope(actor, { workspaceId, runId, scopeId, generation: claimed.generation, diagnostic });
       return { status: "FAILED_RETRYABLE", diagnostic };
     } finally {

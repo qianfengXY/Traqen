@@ -9,7 +9,7 @@ export type FactRecord = { kind: string; id: string; payload: {
 export type RecordDetail = { record: FactRecord; references: (FactRecord & { role: string })[] };
 export type RecordPage = { items: FactRecord[]; nextCursor: string | null };
 export type Profile = { id: string; name?: string | null; startable: boolean; recommended?: boolean; capabilityIds: string[]; ruleVersions: string[]; configDigest?: string;
-  extractionLimits: { maxBytes: number; maxRecords: number; scopeRecordBudget?: string }; redactionPolicyRevision: string };
+  extractionLimits: { maxBytes: number; maxRecords: number; scopeRecordBudget?: string; automaticPublication?: string }; redactionPolicyRevision: string };
 export type FactVersion = { graphVersionId: string; runId: string; scopeId: string; profileId: string; bundleId: string; recordDigest: string; publishedAt: string };
 export type Scope = { scopeId: string; label: string | null; status: string; revision: number; graphVersionId?: string | null; requestOwned?: boolean; diagnostic?: { code?: string } | null };
 export type Run = { id: string; profileId: string; sourceInput: { bundleId: string; receiptId: string }; scopes: Scope[]; status?: string; createdAt: string };

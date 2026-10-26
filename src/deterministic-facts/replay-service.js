@@ -8,6 +8,7 @@ import { assembleCanonicalOutput } from "./output-assembly.js";
 import { installedF002Rules } from "./rules.js";
 import { loadFrozenMaterials } from "./source-materials.js";
 import { normalizeCanonicalRecords } from "./verification.js";
+import { safeParserTimeoutDetails } from "./parser-deadline.js";
 
 const terminalStates = new Set(["MATCH", "DIFFERENT", "FAILED", "CANCELLED"]);
 const runnableStates = new Set(["QUEUED", "RUNNING"]);
@@ -28,7 +29,8 @@ function versionId(value) {
 }
 
 function diagnostic(error) {
-  return { code: error instanceof F002Error ? error.code : "F002_REPLAY_RUNTIME_FAILURE" };
+  const parser = safeParserTimeoutDetails(error);
+  return { code: error instanceof F002Error ? error.code : "F002_REPLAY_RUNTIME_FAILURE", ...(parser ? { parser } : {}) };
 }
 
 function rowResult(row) {
@@ -235,27 +237,40 @@ export class F002ReplayExecutionService {
     this.resolveActor = resolveActor ?? (actorId => this.members.get(actorId));
     this.workerId = workerId; this.leaseMs = leaseMs; this.pollIntervalMs = pollIntervalMs; this.maxConcurrent = maxConcurrent;
     this.timer = null; this.running = new Map();
+    this.closed = false; this.starting = null; this.closing = null;
   }
 
-  async start() { if (!this.timer) { this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs); this.timer.unref(); } await this.dispatch(); }
-  async close() { if (this.timer) clearInterval(this.timer); this.timer = null; await Promise.allSettled(this.running.values()); }
+  start() {
+    if (this.closed) return Promise.reject(new Error("F002 replay execution service is closed"));
+    return this.starting ??= (async () => {
+      await this.dispatch({ waitForWork: false, propagateScanError: true });
+      if (!this.closed && !this.timer) { this.timer = setInterval(() => { void this.dispatch(); }, this.pollIntervalMs); this.timer.unref(); }
+    })();
+  }
+  close() {
+    this.closed = true;
+    if (this.timer) clearInterval(this.timer); this.timer = null;
+    return this.closing ??= (async () => { await this.starting?.catch(() => {}); await Promise.allSettled(this.running.values()); })();
+  }
   async enqueue(replay) { return this.#schedule(replay); }
-  async dispatch() {
+  async dispatch({ waitForWork = true, propagateScanError = false } = {}) {
+    if (this.closed) return;
     let runnable;
     // No job has been claimed if the scan fails. Leave its durable state
     // untouched and allow the next bounded poll to recover it.
     try { runnable = await this.replays.findRunnable({ limit: this.maxConcurrent * 4 }); }
-    catch { return; }
-    await Promise.all(runnable.map((replay) => this.#schedule(replay)));
+    catch (error) { if (propagateScanError) throw error; return; }
+    const tasks = runnable.map((replay) => this.#schedule(replay));
+    if (waitForWork) await Promise.all(tasks);
   }
 
   #schedule(replay) {
-    if (!replay?.workspaceId || !replay?.replayId || !runnableStates.has(replay.status)) return Promise.resolve();
+    if (this.closed || !replay?.workspaceId || !replay?.replayId || !runnableStates.has(replay.status)) return Promise.resolve();
     const key = `${replay.workspaceId}\u0000${replay.replayId}`;
     if (this.running.has(key) || this.running.size >= this.maxConcurrent) return this.running.get(key) ?? Promise.resolve();
     const task = Promise.resolve().then(async () => {
       const actor = await this.resolveActor(replay.actorId, replay.workspaceId);
-      if (actor) await this.replays.execute(actor, replay.workspaceId, replay.replayId, { workerId: this.workerId, leaseMs: this.leaseMs });
+      if (!this.closed && actor) await this.replays.execute(actor, replay.workspaceId, replay.replayId, { workerId: this.workerId, leaseMs: this.leaseMs });
     })
       .catch(() => {}).finally(() => this.running.delete(key));
     this.running.set(key, task);

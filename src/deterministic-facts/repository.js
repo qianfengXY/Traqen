@@ -155,10 +155,12 @@ export class F002Repository {
     requireF002(Number.isInteger(limit) && limit >= 1 && limit <= 128, "F002_EXECUTOR_LIMIT_INVALID", "执行器批量大小无效", { status: 422 });
     const { rows } = await this.database.query(`SELECT scope.workspace_id,scope.run_id,scope.scope_id,scope.status,run.actor_id
       FROM f002_scope scope JOIN f002_run run ON run.workspace_id=scope.workspace_id AND run.id=scope.run_id
+      JOIN f002_profile profile ON profile.id=run.profile_id
       WHERE NOT EXISTS (SELECT 1 FROM f002_request request
           WHERE request.workspace_id=scope.workspace_id AND request.derived_run_id=scope.run_id AND request.derived_scope_id=scope.scope_id)
         AND (scope.status='QUEUED'
          OR (scope.status='RUNNING' AND scope.lease_until<=clock_timestamp())
+         OR (scope.status='READY_TO_SEAL' AND profile.payload->'extractionLimits'->>'automaticPublication'='closed-scope-v1')
         )
       ORDER BY scope.updated_at,scope.workspace_id,scope.run_id,scope.scope_id LIMIT $1`, [limit]);
     return rows.map((row) => ({ workspaceId: row.workspace_id, runId: row.run_id, scopeId: row.scope_id, actorId: row.actor_id, status: row.status }));
@@ -308,6 +310,23 @@ export class F002Repository {
       requireF002(rows.length === 1, "F002_STALE_SCOPE_WORKER", "执行权或任务状态已变化");
       await this.#event(tx, workspaceId, runId, scopeId, actor.actorId, "SCOPE_FAILED_RETRYABLE", diagnostic);
       return scopeRow(rows[0]);
+    }, { maintain: true });
+  }
+
+  async blockAutomaticPublication(actor, workspaceId, runId, scopeId, { revision, code }) {
+    requireF002(Number.isInteger(revision) && revision > 0 && typeof code === "string" && /^F002_[A-Z_]+$/.test(code),
+      "F002_FAILURE_INVALID", "自动发布诊断无效", { status: 422 });
+    return this.#withWorkspace(actor, workspaceId, async tx => {
+      await this.#assertScopeNotRequestOwned(tx, workspaceId, runId, scopeId);
+      const row = (await tx.query(`UPDATE f002_scope scope SET status='BLOCKED',revision=scope.revision+1,
+          diagnostic=$5,updated_at=clock_timestamp()
+        FROM f002_run run JOIN f002_profile profile ON profile.id=run.profile_id
+        WHERE scope.workspace_id=$1 AND scope.run_id=$2 AND scope.scope_id=$3 AND scope.status='READY_TO_SEAL' AND scope.revision=$4
+          AND run.workspace_id=scope.workspace_id AND run.id=scope.run_id
+          AND profile.payload->'extractionLimits'->>'automaticPublication'='closed-scope-v1' RETURNING scope.*`,
+      [workspaceId, runId, scopeId, revision, JSON.stringify({ code, stage: "AUTOMATIC_PUBLICATION" })])).rows[0];
+      if (row) await this.#event(tx, workspaceId, runId, scopeId, actor.actorId, "AUTOMATIC_PUBLICATION_BLOCKED", { code });
+      return row ? scopeRow(row) : null;
     }, { maintain: true });
   }
 
