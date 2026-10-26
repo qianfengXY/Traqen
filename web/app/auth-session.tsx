@@ -3,7 +3,6 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 import { subscribeProductRoute } from "./product-navigation";
 import { authCall, prepareLogin, setSessionProof, type AuthSession, IdentityError } from "./auth-client";
 import { ThemeSwitcher } from "./components/ui/theme-switcher";
-import { desktopScale } from "./product-navigation";
 import "./auth.css";
 
 type IdentityContext = { session: AuthSession; refresh: () => Promise<void>; logout: () => Promise<void> };
@@ -151,7 +150,6 @@ function AuthenticationScreen({
   const destinationSearch = useSyncExternalStore(subscribeProductRoute, () => window.location.search, () => "");
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [scale, setScale] = useState(1),
     [passwordDone, setPasswordDone] = useState(false);
   const [credential, setCredential] = useState<string | null>(null);
   useEffect(() => {
@@ -163,12 +161,6 @@ function AuthenticationScreen({
       }
     }, 0);
     return () => clearTimeout(timer);
-  }, []);
-  useEffect(() => {
-    const resize = () => setScale(desktopScale(innerWidth, innerHeight));
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
   }, []);
   const run = async (work: () => Promise<void>) => {
     if (busy) return;
@@ -222,7 +214,7 @@ function AuthenticationScreen({
                 ? "正在检查登录状态"
                 : "欢迎回到 Traqen";
   return (
-    <div className="auth-frame" style={{ "--desktop-scale": scale } as React.CSSProperties}>
+    <div className="auth-frame">
       <main className="auth-canvas">
         <header className="auth-top">
           <span className="brand">
