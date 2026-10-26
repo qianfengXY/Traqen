@@ -131,7 +131,7 @@ export function stageInput(input) {
 // One Main call remains one fixed-budget call. All originals stay in the
 // canonical store; atomic items which cannot enter this bounded verification
 // packet remain pending/UNKNOWN rather than disappearing from the graph.
-export function analysisStagePacket(input,rawMaterials=[]) {
+export function analysisStagePacket(input,rawMaterials=[],{priorityKeys=[]}={}) {
   if(input.phase!=='VERIFY')return {input:stageInput(input),omitted:[]};
   if(input.taskReports||input.pendingResponsibilities) {
     input={...input};
@@ -143,7 +143,7 @@ export function analysisStagePacket(input,rawMaterials=[]) {
     }
   }
   const all=[...(input.candidates??[]),...(input.relations??[])],byKey=new Map(all.map(p=>[p.key,p])),candidateKeys=new Set((input.candidates??[]).map(p=>p.key));
-  const invalid=analysisExcludedKeys(input.relations??[],input.invalidProposalKeys??[]),retained=[],omitted=[];
+  const invalid=analysisExcludedKeys(input.relations??[],input.invalidProposalKeys??[]);
   const isolatedKeys=all.filter(p=>invalid.has(p.key)).map(p=>p.key);
   const project=items=>{
     const keys=new Set(items.map(p=>p.key)),endpoints=[];
@@ -170,14 +170,51 @@ export function analysisStagePacket(input,rawMaterials=[]) {
         isolatedItems:{count:isolatedKeys.length,digest:digest(isolatedKeys),scope:'SERVER_SIDE_INVALID_ORIGINALS_NOT_SEMANTIC_INPUT'},
         totalProposals:all.length,suppliedProposals:items.length,scope:'BOUNDED_SUBSET_PENDING_IS_NOT_ACCEPTED'}};
   };
-  // Invalid originals remain in the durable proposal/guard audit. Neither
-  // their text nor their Fact roots participate in Main's semantic budget.
-  for(const p of all.filter(p=>!invalid.has(p.key))) {
-    const proposed=project([...retained,p]);
-    if(jsonBytes(proposed)<=analysisInputBytes)retained.push(p);
-    else omitted.push({key:p.key,reason:'MODEL_INPUT_BYTE_BUDGET'});
+  // Canonical alternating lanes prevent either proposal category from using
+  // the whole envelope first. A relation is reviewed WITH its business
+  // endpoints, not just routing aliases which cannot receive their own vote.
+  const ordered=all.filter(p=>!invalid.has(p.key)).sort((a,b)=>a.key.localeCompare(b.key));
+  const priority=new Set(priorityKeys),closure=p=>[...new Map([p,...(candidateKeys.has(p.key)?[]:
+    [p.sourceKey,p.targetKey].filter(k=>candidateKeys.has(k)).map(k=>byKey.get(k)))].map(p=>[p.key,p])).values()];
+  const units=[];
+  for(const preferred of [true,false]) {
+    const candidates=ordered.filter(p=>candidateKeys.has(p.key)&&priority.has(p.key)===preferred);
+    const relations=ordered.filter(p=>!candidateKeys.has(p.key)&&priority.has(p.key)===preferred);
+    for(let i=0;i<Math.max(candidates.length,relations.length);i++) {
+      if(candidates[i])units.push(closure(candidates[i]));
+      if(relations[i])units.push(closure(relations[i]));
+    }
   }
-  return {input:project(retained),omitted};
+  let retained=[];const complete=new Set(),deferred=[];
+  const union=(a,b)=>[...new Map([...a,...b].map(p=>[p.key,p])).values()];
+  const intact=(packet,keys)=>!packet.evidenceContext.missingEvidence.some(g=>keys.has(g.key));
+  for(const unit of units) {
+    if(unit.every(p=>complete.has(p.key)))continue;
+    const alone=project(unit),keys=new Set(unit.map(p=>p.key));
+    if(!intact(alone,keys)){deferred.push(unit);continue;}
+    if(jsonBytes(alone)>analysisInputBytes)continue;
+    let next=union(retained,unit),packet=project(next);
+    if(jsonBytes(packet)>analysisInputBytes||!intact(packet,new Set([...complete,...keys]))) {
+      // Only the first feasible relation may exchange independent objects.
+      // Otherwise a single large first object could starve even a relationship
+      // which fits alone. Later relations never evict an already reviewed one.
+      if(unit.some(p=>!candidateKeys.has(p.key))&&retained.every(p=>candidateKeys.has(p.key))) {
+        next=[...retained];
+        do {next.pop();packet=project(union(next,unit));}
+        while(next.length&&(jsonBytes(packet)>analysisInputBytes||!intact(packet,new Set([...next,...unit].map(p=>p.key)))));
+        next=union(next,unit);
+      } else continue;
+    }
+    retained=next;complete.clear();for(const p of retained)complete.add(p.key);
+  }
+  // Missing/oversized raw or technical premises are still UNKNOWN audit
+  // inputs if space remains, and cannot evict a complete independent branch.
+  for(const unit of deferred) {
+    const next=union(retained,unit),packet=project(next);
+    if(jsonBytes(packet)<=analysisInputBytes&&intact(packet,complete))retained=next;
+  }
+  const supplied=new Set(retained.map(p=>p.key));
+  return {input:project(retained),omitted:ordered.filter(p=>!supplied.has(p.key)).map(p=>({key:p.key,reason:'MODEL_INPUT_BYTE_BUDGET'}))};
 }
 
 export const questionStageContractVersion=4;

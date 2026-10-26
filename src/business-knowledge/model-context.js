@@ -1,7 +1,7 @@
 // Pure model projections. Frozen F001 material identity and complete read
 // checkpoints remain unchanged; these are not newly admitted source objects.
 export const originalContextBytes = 64 * 1024;
-export const analysisContractVersion = 12;
+export const analysisContractVersion = 13;
 const bytes = text => Buffer.byteLength(text, "utf8");
 
 function fragment(material, start, end) {

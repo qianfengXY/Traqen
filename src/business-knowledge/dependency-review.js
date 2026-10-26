@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {parse} from 'acorn';
 import {canonicalEncode,structureDigest} from '../source-truth/identity.js';
+import {analysisContractVersion} from './model-context.js';
 
 export const dependencyContractVersion=1;
 export const dependencyDigest=v=>createHash('sha256').update(canonicalEncode(v)).digest('hex');
@@ -223,7 +224,7 @@ export function rebindContinuation({basis,graph,index,materials,run}) {
   const review=graph.dependencyReview,dispositions=[],candidates=[],relations=[],originalProposals=[],proofs=[];
   const fallback=reason=>({mode:'FULL_B_FALLBACK',basisDigest:basis.digest,reasons:[reason],dispositions:
     [...graph.candidates,...graph.relations].map(p=>({sourceKey:p.key,status:'RECHECK',reasons:[reason]})),candidates,relations,originalProposals,proofs});
-  if(review?.version!==dependencyContractVersion||basis.a.analysisContractVersion!==12)return fallback('LEGACY_OR_UNPROVED_A');
+  if(review?.version!==dependencyContractVersion||basis.a.analysisContractVersion!==analysisContractVersion)return fallback('LEGACY_OR_UNPROVED_A');
   if(!same(basis.b.adoptedVersionIds,run.adoptedVersionIds))return fallback('B_ADOPTION_CHANGED');
   const {digest,...body}=review;
   if(digest!==dependencyDigest(body))return fallback('DEPENDENCY_PROOF_CORRUPT');

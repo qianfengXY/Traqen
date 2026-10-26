@@ -40,8 +40,10 @@ test('actual admitted A/B binds byte-equal new ids and fails closed on mapping/r
   }
   const wrongRaw=structuredClone(materials);wrongRaw.find(m=>m.id===health.id).text="export function health() { return 'bad'; }\n";
   assert.equal(check(data,evidence.graph,evidence.basis,wrongRaw).candidates.length,0);
-  const legacy=structuredClone(evidence.basis);legacy.a.analysisContractVersion=11;
-  assert.equal(check(data,evidence.graph,legacy).mode,'FULL_B_FALLBACK');
+  for(const version of [11,12]) {
+    const legacy=structuredClone(evidence.basis);legacy.a.analysisContractVersion=version;
+    assert.equal(check(data,evidence.graph,legacy).mode,'FULL_B_FALLBACK');
+  }
   assert.ok(positive.dispositions.find(d=>d.sourceKey===a.graph.candidates.find(c=>c.name==='checkout').key).reasons.includes('AFFECTED_DEPENDENCY'),
     'caller omitted the condition citation: reverse impact comes from actual F002 cross-asset premises');
   assert.ok(positive.dispositions.find(d=>d.sourceKey===a.graph.relations[0].key).reasons.includes('RELATION_OWN_CONDITIONS_REQUIRE_RECHECK'));

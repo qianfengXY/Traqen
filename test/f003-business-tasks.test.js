@@ -149,7 +149,7 @@ test('F003 missing/v9/v10 legacy contract preserves graph/material/event reads, 
   const f=await investigationFixture(t),calls=[],run=await f.service.start(owner,w,f.request);
   await new InvestigationWorker({investigations:f.service,invokeModel:executor(f,calls)}).run(owner,w,run.id,{workerId:'completed'});
   const graph=await f.service.graph(owner,w,run.id),events=await f.service.events(owner,w,run.id);
-  for(const version of [null,9,10,11]) {
+  for(const version of [null,9,10,11,12]) {
     await f.db.query("UPDATE f003_investigation SET payload=CASE WHEN $2::integer IS NULL THEN payload-'analysisContractVersion' ELSE jsonb_set(payload,'{analysisContractVersion}',to_jsonb($2::integer)) END WHERE id=$1",[run.id,version]);
     const before=await f.service.get(owner,w,run.id);
     assert.deepEqual(await f.service.graph(owner,w,run.id),graph);

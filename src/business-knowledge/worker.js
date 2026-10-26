@@ -76,9 +76,9 @@ export class InvestigationWorker {
         await service.checkpoint(actor, workspaceId, id, { generation, key, payload: { binding, ...value } });
         if (value.process) process.push(value.process); return value.data;
       };
-      const invoke = async (key, slotId, unprojected, prepared=false) => {
+      const invoke = async (key, slotId, unprojected, prepared=false, priorityKeys=[]) => {
         const projected=key==='plan'&&cached.get(key)?.input?{input:cached.get(key).input,omitted:[]}
-          :prepared?{input:unprojected,omitted:[]}:analysisStagePacket(unprojected,allMaterials);
+          :prepared?{input:unprojected,omitted:[]}:analysisStagePacket(unprojected,allMaterials,{priorityKeys});
         const packet=await stage(`input-${key}`,async()=>({data:projected})),input=packet.input;
         requireF003(key==='plan'||hash(input)===hash(projected.input),'F003_CHECKPOINT_INPUT_CHANGED',
           '当前任务与已冻结发送输入不同；不能借同阶段名替换证据');
@@ -355,6 +355,11 @@ export class InvestigationWorker {
       const verifyContext = originalEvidenceContext([...consolidated.candidates, ...consolidated.relations], materials);
       const invalidCanonicalKeys = new Set(buildBusinessGraph({ ...graphInput, candidates: consolidated.candidates,
         relations: consolidated.relations, reviews: [] }).quarantine.map(p => p.key));
+      // Carry actual supplied Main propositions through aliases. Reordering
+      // canonical keys must not give VERIFY an unrelated subset while the
+      // consolidation omissions still correctly remain unreviewable.
+      const canonicalBySource=new Map(consolidated.consolidation.sourceToCanonical.map(m=>[m.sourceKey,m.canonicalKey]));
+      const verificationPriority=[...consolidationKeys].map(k=>canonicalBySource.get(k)??k);
       const verification = await invoke("verification", run.profile.mainAgentSlot.id, { phase: "VERIFY", stage: "EVIDENCE_VERIFICATION", question: run.question,
         ...(continuation?{historicalRecheck:historicalRecheckContext(continuation,reused,index)}:{}),
         candidates: consolidated.candidates, relations: consolidated.relations, consolidation: consolidated.consolidation,
@@ -367,7 +372,7 @@ export class InvestigationWorker {
             applicabilityEvidence:[candidateContract.evidence[0]],counterexampleEvidence:[candidateContract.evidence[0]],
             unresolvedDependencies:['missing conditions, callers, exceptions or dynamic premises; never claim completeness from unchanged source'],
             rationale:'For a positive local hypothesis, explain actual applicability and examined counterexamples. This is NOT a dependency-completeness certificate.'} }],
-          rules: ["Check the canonical proposition against all original members and actual evidence.", "Do not introduce unverified new merges; retain any unresolved conflict."] } });
+          rules: ["Check the canonical proposition against all original members and actual evidence.", "Do not introduce unverified new merges; retain any unresolved conflict."] } },false,verificationPriority);
       requireF003(array(verification.reviews, 4000) && array(verification.mergeSuggestions ?? []) && array(verification.conflictGroups ?? []),
         "F003_MODEL_OUTPUT_INVALID", "Main必须保留有界核查、归并及冲突结果");
       const verificationPacket=packets.get('verification');

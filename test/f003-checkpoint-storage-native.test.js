@@ -11,6 +11,7 @@ import {SourceAdmissionService} from '../src/source-truth/admission-service.js';
 import {InvestigationService} from '../src/business-knowledge/investigation-service.js';
 import {F003PublicationService} from '../src/business-knowledge/publication-service.js';
 import {resolveF003ImplementationVersion} from '../src/business-knowledge/implementation-version.js';
+import {analysisContractVersion} from '../src/business-knowledge/model-context.js';
 import {createF003HttpHandler} from '../src/business-knowledge/http-handler.js';
 import {queryBusinessGraph,traceBusinessGraph} from '../src/business-knowledge/queries.js';
 
@@ -25,7 +26,7 @@ test('F003 native aggregate checkpoint and nonempty directed graph survive fresh
     await f.worker.run(owner,'workspace',f.run.id,{workerId:'native-large'});
     const graph=await f.service.graph(owner,'workspace',f.run.id),history=await f.service.checkpoints(owner,'workspace',f.run.id),events=await f.service.events(owner,'workspace',f.run.id),run=await f.service.get(owner,'workspace',f.run.id);
     assert.ok(Buffer.byteLength(JSON.stringify(graph))>2*1024*1024);assert.equal(graph.candidates.length,160);assert.equal(graph.relations.length,140);
-    assert.deepEqual(run.implementationVersion,implementation);assert.equal(run.analysisContractVersion,12);
+    assert.deepEqual(run.implementationVersion,implementation);assert.equal(run.analysisContractVersion,analysisContractVersion);
     const business=queryBusinessGraph(graph,{includeUncertain:true}),forward=traceBusinessGraph(graph,{key:graph.candidates[0].key}),reverse=traceBusinessGraph(graph,{materialId:graph.materials[0].id});
     assert.ok(business.edges.length>0);assert.ok(forward.edges.length>0);assert.equal(reverse.nodes.length,160);
     const physical=(await f.db.query('SELECT payload FROM f003_checkpoint WHERE investigation_id=$1',[f.run.id])).rows;

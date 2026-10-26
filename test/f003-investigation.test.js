@@ -11,6 +11,7 @@ import { F002Worker } from "../src/deterministic-facts/worker.js";
 import { F002PublicationService } from "../src/deterministic-facts/publication-service.js";
 import { F002RequestService, F002RequestDerivationService } from "../src/deterministic-facts/request-service.js";
 import { createProfileId } from "../src/deterministic-facts/identity.js";
+import { analysisContractVersion } from '../src/business-knowledge/model-context.js';
 
 const profile = { id: "profile-v1", workspaceId: "workspace", mainAgentSlot: { id: "main", role: "MAIN", modelProfileRevisionId: "model-v1", mcpGrants: [] },
   childAgentSlots: [{ id: "child-1", role: "CHILD", modelProfileRevisionId: "model-v1", mcpGrants: [] }],
@@ -162,7 +163,7 @@ test("F003 explicit technical adoption requires a real supplement receipt and in
   assert.deepEqual((await f.service.get(owner, "workspace", run.id)).adoptedVersionIds, [f.versionId], "supplement completion alone does not adopt");
   // The historical record has a REAL completed NEW_VERSION receipt, so a
   // denial cannot be attributed to forged/nonexistent evidence instead.
-  for(const state of ['PAUSED','QUEUED'])for(const version of [null,9,10,11]) {
+  for(const state of ['PAUSED','QUEUED'])for(const version of [null,9,10,11,12]) {
     await f.db.query(`UPDATE f003_investigation SET state=$2,payload=CASE WHEN $3::integer IS NULL THEN payload-'analysisContractVersion'
       ELSE jsonb_set(payload,'{analysisContractVersion}',to_jsonb($3::integer)) END WHERE id=$1`,[run.id,state,version]);
     const old=await f.service.get(owner,'workspace',run.id),events=await f.service.events(owner,'workspace',run.id);
@@ -172,7 +173,7 @@ test("F003 explicit technical adoption requires a real supplement receipt and in
     assert.deepEqual(await f.service.events(owner,'workspace',run.id),events);
     assert.equal((await f.service.start(owner,'workspace',{...f.request,technicalVersionId:f.versionId})).id,run.id);
   }
-  await f.db.query("UPDATE f003_investigation SET state='RUNNING',payload=jsonb_set(payload,'{analysisContractVersion}','12') WHERE id=$1",[run.id]);
+  await f.db.query("UPDATE f003_investigation SET state='RUNNING',payload=jsonb_set(payload,'{analysisContractVersion}',$2::jsonb) WHERE id=$1",[run.id,JSON.stringify(analysisContractVersion)]);
   const adopted = await f.service.adoptTechnicalVersion(owner, "workspace", run.id, { requestId: request.id,
     versionId: result.result.graphVersionId, expectedRevision: (await f.service.get(owner, "workspace", run.id)).revision });
   assert(adopted.adoptedVersionIds.includes(result.result.graphVersionId));
