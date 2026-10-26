@@ -8,6 +8,7 @@ import {PublishedProjection} from './published-projection.tsx';
 import {ReadIssue} from './read-issue.tsx';
 import type {PublishedSeven} from './published-client.ts';
 import {UnassociatedCoverage} from './coverage-view.tsx';
+import {TestAssociationNotice} from './test-association.tsx';
 const names:Record<string,string>={NOT_RUN:'未运行',UNKNOWN:'可信依据未知',PASS:'通过',FAIL:'失败',ERROR:'执行错误',INCONCLUSIVE:'无法判定',CANCELLED:'已取消',SKIPPED:'已跳过'};
 type Execution=VerificationProjection&{objectKey:string;claimId:string;scopeId:string;mappingCurrent?:boolean;authorityApplies?:boolean};
 export function PublishedSevenQuestions({client,version,objectKey,onSelect,onMaterial,onAccessLost}:{client:BusinessKnowledgeClient;version:PublishedVersion;objectKey:string;onSelect:(key:string)=>void;onMaterial:(id:string)=>void;onAccessLost:(e:Error)=>void}){
@@ -28,6 +29,7 @@ export function PublishedSevenAnswers({answer,onSelect,onMaterial}:{answer:Pick<
         {section.nodes?.map(n=><p key={n.key}><button className="bk-text-button" onClick={()=>onSelect(n.key)}>{n.name??n.key}</button>：{n.statement}</p>)}
         {section.relations?.map(r=><p key={r.key}><button className="bk-text-button" onClick={()=>onSelect(r.key)}>{r.predicate}</button> · {r.scope}</p>)}
         {(section.materials||section.testAssets)&&<MaterialList materials={section.materials??section.testAssets??[]} onMaterial={onMaterial}/>}
+        <TestAssociationNotice section={section}/>
         {section.executionStatus&&<><p>此对象／关系的当前执行：{names[section.executionStatus]??'未知'}。只对应其精确测试方案、版本、快照与环境；邻接对象的通过不替代此处证据。</p>
           {extra.executionTargets?.map((target,i)=><ExecutionTarget key={i} target={target}/>)}</>}
         {section.environmentStatus&&<details><summary>明确记录的执行环境</summary><pre>{JSON.stringify(extra.environments??[],null,2)}</pre><p>原材料和静态测试资产不能证明实际部署或执行通过。</p></details>}

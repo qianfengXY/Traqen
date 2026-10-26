@@ -57,13 +57,20 @@ export function traceBusinessGraph(graph, { key = null, materialId = null } = {}
 export function businessSevenQuestions(graph, key) {
   const trace = traceBusinessGraph(graph, { key }), objects = trace.nodes;
   const select = kinds => objects.filter(n => kinds.includes(n.kind));
+  const testIds = new Set(graph.materials.filter(m => m.assetType === "TEST_ASSET").map(m => m.id));
+  const byKey = new Map(graph.candidates.map(n => [n.key, n]));
+  const citesTest = record => record.evidence.some(e => testIds.has(e.materialId));
+  // Classify each relationship by its own test participation. A neighbouring
+  // test asset, or CHECK/VERIFY in a production predicate, is not such a link.
+  const testRelations = trace.edges.filter(edge => citesTest(edge) || [edge.sourceKey, edge.targetKey].some(endpoint =>
+    testIds.has(endpoint) || (byKey.has(endpoint) && citesTest(byKey.get(endpoint)))));
   const sections = [
     { question: "功能做什么", nodes: select(["FUNCTION", "PROCESS"]) },
     { question: "规则、角色、状态和例外是什么", nodes: select(["RULE", "ROLE", "STATE", "EXCEPTION"]) },
     { question: "由哪些工程资产实现", materials: trace.materials, relations: trace.edges },
     { question: "涉及哪些业务数据", nodes: select(["BUSINESS_OBJECT"]) },
     { question: "哪些测试检查哪些规则", testAssets: trace.materials.filter(m => m.assetType === "TEST_ASSET"),
-      relations: trace.edges.filter(e => /TEST|CHECK|ASSERT|VERIFY/.test(e.predicate)), executionStatus: "NO_LINKED_EXECUTION_RECORD" },
+      relations: testRelations, executionStatus: "NO_LINKED_EXECUTION_RECORD" },
     { question: "对应什么版本和环境", sourceBundleId: graph.sourceBundleId, adoptedVersionIds: graph.adoptedVersionIds, environmentStatus: "NOT_ESTABLISHED_BY_SOURCE_ANALYSIS" },
     { question: "当前判断有哪些依据与缺口", evidence: [...objects, ...trace.edges].flatMap(n => n.evidence),
       uncertainties: [...objects, ...trace.edges].map(n => ({ key: n.key, state: n.state, uncertainties: n.uncertainties, premises: n.verification?.premises ?? [] })),

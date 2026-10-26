@@ -8,6 +8,7 @@ import type { GraphMaterial, Investigation, SevenQuestions } from "./types.ts";
 import {AuthorityPanel} from "./authority-panel.tsx";
 import {ReadIssue} from "./read-issue.tsx";
 import {UnassociatedCoverage} from "./coverage-view.tsx";
+import {TestAssociationNotice} from "./test-association.tsx";
 export {ReadIssue} from "./read-issue.tsx";
 
 export function TracePanel({ client, run, target, onSelect, onMaterial, onAccessLost, onClose, canControl=false }: {
@@ -57,6 +58,7 @@ export function SevenAnswers({ answer, onMaterial, onSelect }: { answer: SevenQu
     {section.nodes?.length === 0 && <p>当前依据内未知，未补造结论。</p>}
     {(section.materials || section.testAssets) && <MaterialList materials={section.materials ?? section.testAssets ?? []} onMaterial={onMaterial} />}
     {section.relations?.map(relation => <p key={relation.key}>{relation.predicate} · {relation.scope} · {propositionState(relation)}</p>)}
+    <TestAssociationNotice section={section}/>
     {section.executionStatus && <p className="bk-warning">原分析答卷未关联真实执行记录。发布版本的显式映射与当前可信执行另列，不改写这份原答卷；测试资产或断言存在，不等于测试已通过。</p>}
     {section.environmentStatus && <p>原材料版本：{shortId(section.sourceBundleId ?? "")}；技术版本：{section.adoptedVersionIds?.map(shortId).join("、") || "未采用"}。分析材料不能证明实际运行环境。</p>}
     {section.evidence?.map((citation, i) => <blockquote key={i}><p>{citation.quote}</p><button className="bk-text-button" onClick={() => onMaterial(citation.materialId)}>查看原文 · 行{citation.startLine}–{citation.endLine}</button></blockquote>)}
