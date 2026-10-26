@@ -85,11 +85,16 @@ export class F002QueryService {
 
   async profiles(actor, workspaceId) {
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => (await tx.query("SELECT payload,startable FROM f002_profile ORDER BY id")).rows
-      .map((row) => ({ ...row.payload, startable: row.startable,
+      .map((row) => {
+        const profile = { ...row.payload };
         // Recommendation is a current navigation projection, not a rewrite of
         // the immutable historical execution profile or its start permission.
-        ...(this.preferredProfileId && row.payload.extractionLimits?.automaticPublication === "closed-scope-v1"
-          ? { recommended: row.payload.id === this.preferredProfileId } : {}) })));
+        // Stored payload metadata cannot supply this server-owned projection.
+        delete profile.recommended;
+        return { ...profile, startable: row.startable,
+          ...(this.preferredProfileId && row.payload.extractionLimits?.automaticPublication === "closed-scope-v1"
+            ? { recommended: row.payload.id === this.preferredProfileId } : {}) };
+      }));
   }
 
   async versions(actor, workspaceId) {
