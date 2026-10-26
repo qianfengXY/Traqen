@@ -41,23 +41,46 @@ async function* walk(root, relative = "") {
   }
 }
 
-export function measurements() {
+const samplingPhases = new Set(["standalone", "initialization", "generate-files", "capture-and-freeze-A-D1",
+  "Git-B-reuses-D1", "directory-D2-full-enumeration-incremental-bytes", "source-offline-database-and-storage-reopen"]);
+const samplingCodes = new Set(["PS_EXEC_FAILED", "PS_OUTPUT_INVALID", "RSS_ATTRIBUTION_INVALID", "LSOF_EXEC_FAILED",
+  "LSOF_ATTRIBUTION_INVALID", "LSOF_MISSING_LIVE_PROCESS", "PID_PROBE_FAILED"]);
+const samplingErrnos = new Set(["EACCES", "EPERM", "ENOENT", "ESRCH", "EIO", "EAGAIN", "ENOMEM", "ENOBUFS",
+  "EMFILE", "ENFILE", "ETIMEDOUT", "ERR_CHILD_PROCESS_STDIO_MAXBUFFER"]);
+const samplingErrorDetailLimit = 32;
+const samplingFailure = (code) => Object.assign(new Error(code), { samplingCode: code });
+
+// The injected operations are only a deterministic test seam. Defaults still
+// inspect the real owned tree; neither diagnostics nor failed samples qualify it.
+export function measurements({ execute = exec, probePid = (pid) => process.kill(pid, 0), phase = () => "standalone" } = {}) {
   const result = { sampleCount: 0, peakObservedNodeRssBytes: 0, peakObservedProcessTreeRssBytes: 0,
     peakObservedProcessTreeFileDescriptors: 0, samplingErrors: 0, exitedDuringSample: 0, intervalMs: 1000,
+    samplingErrorDetailLimit, samplingErrorDetails: [], samplingErrorDetailsDropped: 0,
     peakRssProcesses: [], latestRssProcesses: [], latestProcessTreeRssBytes: 0 };
   let pending, stopped = false;
   const sample = () => {
     if (pending) return pending;
+    let stage = "ps-exec", affectedPid = process.pid;
+    const phaseName = phase();
+    const samplePhase = samplingPhases.has(phaseName) ? phaseName : "unknown";
     pending = (async () => {
       result.peakObservedNodeRssBytes = Math.max(result.peakObservedNodeRssBytes, process.memoryUsage().rss);
-      const listing = exec("/bin/ps", ["-axo", "pid=,ppid=,rss=,comm="], { maxBuffer: 1024 * 1024 });
+      const listing = execute("/bin/ps", ["-axo", "pid=,ppid=,rss=,comm="], { maxBuffer: 1024 * 1024 });
       const output = (await listing).stdout;
+      stage = "ps-parse";
       const processes = output.trim().split("\n").map((line) => {
         const match = line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/);
-        assert.ok(match, "process RSS attribution must parse completely");
+        if (!match) throw samplingFailure("PS_OUTPUT_INVALID");
         return { pid: Number(match[1]), ppid: Number(match[2]), rssBytes: Number(match[3]) * 1024,
           executable: path.basename(match[4]) }; // No arguments or environment values.
       });
+      stage = "ownership";
+      if (new Set(processes.map(({ pid }) => pid)).size !== processes.length || !processes.some(({ pid }) => pid === process.pid)
+        || processes.some(({ pid, ppid, rssBytes }) => !Number.isSafeInteger(pid) || pid <= 0 || !Number.isSafeInteger(ppid)
+          || ppid < 0 || !Number.isSafeInteger(rssBytes) || rssBytes < 0)
+        || !Number.isSafeInteger(listing.child?.pid) || listing.child.pid <= 0 || listing.child.pid === process.pid) {
+        throw samplingFailure("RSS_ATTRIBUTION_INVALID");
+      }
       const owned = new Set([process.pid]);
       for (let size = -1; size !== owned.size;) { size = owned.size; for (const { pid, ppid } of processes) if (owned.has(ppid)) owned.add(pid); }
       owned.delete(listing.child.pid); // The sampler's ps child has already exited.
@@ -68,20 +91,41 @@ export function measurements() {
         result.peakRssProcesses = result.latestRssProcesses;
       }
       let files;
-      try { files = await exec("/usr/sbin/lsof", ["-a", "-p", [...owned].join(","), "-Ff"], { maxBuffer: 1024 * 1024 }); }
+      stage = "lsof-exec";
+      try { files = await execute("/usr/sbin/lsof", ["-a", "-p", [...owned].join(","), "-Ff"], { maxBuffer: 1024 * 1024 }); }
       catch (error) {
-        assert.equal(error.code, 1); assert.equal(error.stderr, "");
-        const observed = new Set(error.stdout.split("\n").filter((line) => /^p\d+$/.test(line)).map((line) => Number(line.slice(1))));
-        assert.ok(observed.has(process.pid));
-        for (const pid of owned) if (!observed.has(pid)) {
-          assert.throws(() => process.kill(pid, 0), { code: "ESRCH" }, "a live unreadable process makes the measurement incomplete");
-          result.exitedDuringSample++;
-        }
+        if (error.code !== 1 || error.stderr !== "" || typeof error.stdout !== "string") throw error;
         files = error;
+      }
+      stage = "lsof-coverage";
+      const observed = new Set(files.stdout.split("\n").filter((line) => /^p\d+$/.test(line)).map((line) => Number(line.slice(1))));
+      if (!observed.has(process.pid) || [...observed].some((pid) => !owned.has(pid))) throw samplingFailure("LSOF_ATTRIBUTION_INVALID");
+      // Exit 0 is not evidence of complete coverage. Missing *live* children
+      // remain failures; only ESRCH proves a child exited between the two tools.
+      for (const pid of owned) if (!observed.has(pid)) {
+        affectedPid = pid; stage = "pid-probe";
+        try { probePid(pid); }
+        catch (error) {
+          if (error.code !== "ESRCH") throw error;
+          result.exitedDuringSample++; continue;
+        }
+        stage = "lsof-coverage";
+        throw samplingFailure("LSOF_MISSING_LIVE_PROCESS");
       }
       result.peakObservedProcessTreeFileDescriptors = Math.max(result.peakObservedProcessTreeFileDescriptors, files.stdout.split("\n").filter((line) => /^f\d/.test(line)).length);
       result.sampleCount++;
-    })().catch(() => { result.samplingErrors++; }).finally(() => { pending = null; });
+    })().catch((error) => {
+      result.samplingErrors++;
+      if (result.samplingErrorDetails.length >= samplingErrorDetailLimit) { result.samplingErrorDetailsDropped++; return; }
+      const code = samplingCodes.has(error.samplingCode) ? error.samplingCode
+        : ({ "ps-exec": "PS_EXEC_FAILED", "lsof-exec": "LSOF_EXEC_FAILED", "pid-probe": "PID_PROBE_FAILED" })[stage] ?? "SAMPLING_FAILED";
+      // Deliberately never serialize message/stack/stdout/stderr/arguments/env.
+      // Even error.code/signal are untrusted strings, so use closed vocabularies.
+      result.samplingErrorDetails.push({ code, stage, phase: samplePhase, at: new Date().toISOString(), rootPid: process.pid, pid: affectedPid,
+        ...(samplingErrnos.has(error.code) ? { errno: error.code } : {}),
+        ...(Number.isInteger(error.code) && error.code >= 0 && error.code <= 255 ? { exitCode: error.code } : {}),
+        ...(/^SIG(?:ABRT|ALRM|BUS|FPE|HUP|ILL|INT|KILL|PIPE|QUIT|SEGV|TERM|TRAP)$/.test(error.signal) ? { signal: error.signal } : {}) });
+    }).finally(() => { pending = null; });
     return pending;
   };
   const timer = setInterval(sample, 1000); timer.unref();
@@ -94,8 +138,8 @@ export function measurements() {
 export async function sourceTruthPilot({ filesPerSource, postgresBin, maxTreeRssBytes, maxTreeFileDescriptors, onProgress = () => {} }) {
   assert.ok(Number.isSafeInteger(filesPerSource) && filesPerSource >= 10 && filesPerSource <= 50000);
   assert.ok(Number.isSafeInteger(maxTreeRssBytes) && maxTreeRssBytes > 0 && Number.isSafeInteger(maxTreeFileDescriptors) && maxTreeFileDescriptors > 0);
-  const cleanups = [], t = { after: (fn) => cleanups.push(fn) }, measured = measurements(), phases = [];
   let activePhase = "initialization";
+  const cleanups = [], t = { after: (fn) => cleanups.push(fn) }, measured = measurements({ phase: () => activePhase }), phases = [];
   const pulse = setInterval(() => onProgress({ phase: activePhase, state: "RUNNING", ...measured.result }), 10000); pulse.unref();
   const stage = async (name, work) => {
     activePhase = name;
@@ -243,9 +287,9 @@ export async function sourceTruthPilot({ filesPerSource, postgresBin, maxTreeRss
       }
     });
     await measured.stop();
+    onProgress({ phase: "resource-measurements", ...measured.result });
     assert.equal(measured.result.samplingErrors, 0, "a failed measurement is not a zero resource result");
     assert.ok(measured.result.sampleCount > 0);
-    onProgress({ phase: "resource-measurements", ...measured.result });
     assert.ok(measured.result.peakObservedProcessTreeRssBytes <= maxTreeRssBytes, `process-tree sampled RSS ${measured.result.peakObservedProcessTreeRssBytes} exceeds supplied budget ${maxTreeRssBytes}`);
     assert.ok(measured.result.peakObservedProcessTreeFileDescriptors <= maxTreeFileDescriptors, `process-tree sampled descriptors ${measured.result.peakObservedProcessTreeFileDescriptors} exceed supplied budget ${maxTreeFileDescriptors}`);
     assert.ok(resourceCounters.peakWriters <= 4 && resourceCounters.peakReaders <= 16 && resourceCounters.nativeGitPeakProcesses <= 2);
