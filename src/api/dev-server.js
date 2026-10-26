@@ -17,10 +17,7 @@ if (!['127.0.0.1','::1','localhost'].includes(host)) throw new Error('The develo
 const runtime = await authenticatedDevelopmentApplication({...process.env,TRAQEN_AUTH_DEVELOPMENT:'true'});
 const { application, corsAllowedOrigins } = runtime;
 const server = createTraceabilityHttpServer({ application, corsAllowedOrigins, auth: runtime.identity.http,
- sourceTruthHandler: runtime.sourceRuntime?.sourceTruthHandler,
- sourceTruthAllowedOrigins: runtime.sourceRuntime?.configuration.origins,
- deterministicFactsHandler: runtime.deterministicFactsRuntime?.deterministicFactsHandler,
- deterministicFactsAllowedOrigins: runtime.sourceRuntime?.configuration.origins,
+ ...runtime.knowledgeRuntime?.httpOptions,
  onInternalError:(error,requestId)=>process.stderr.write(JSON.stringify({requestId,type:error.constructor.name,code:error.code,constraint:error.constraint,frames:error.stack?.split('\n').slice(1,5)})+'\n') });
 
 try {

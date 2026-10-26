@@ -1,0 +1,152 @@
+{
+  "scope": "PUBLIC_SOURCE_ONLY_ORIGINAL_FIXED_CASE_NOT_PRIVATE_REFERENCE_OR_MODEL_OUTPUT",
+  "baseline": "644609b5fbe10727977308becaf301c77abdf51c",
+  "files": [
+    {
+      "path": "src/auth/service.js",
+      "sha256": "4f370f6eb286ef1202f505ede925b54c2c9d7035a9ae49ba8bccb3a873e77129",
+      "gitBlob": "327691de8dd32a558df50b3ff83ffd070ede2c21",
+      "sizeBytes": 107
+    },
+    {
+      "path": "src/auth/core.js",
+      "sha256": "55601728ce12e0ff40b8fe33334ef8bfa29aaf8f16814949778157e4a8011899",
+      "gitBlob": "05c9f924d513a44eca024f7eb400fada831eda05",
+      "sizeBytes": 3582
+    },
+    {
+      "path": "src/auth/accounts.js",
+      "sha256": "a8fb54a9a032b29dc09f7fb6bca001b29685e31bc3cc89ed0b721bfa4f20d4b6",
+      "gitBlob": "b5a29e998c87dfc8769dbacfeb7fcb103b610fa1",
+      "sizeBytes": 13548
+    },
+    {
+      "path": "src/auth/spaces.js",
+      "sha256": "76088ebef7a6cfb10c271ad3d6edc0b284b983fc57ad8eb1e1f55b67998c8790",
+      "gitBlob": "8f2e60af39dc36f3d6fd4997fcdbb409110a19a4",
+      "sizeBytes": 25108
+    },
+    {
+      "path": "src/auth/operations.js",
+      "sha256": "875c5161bd5b737e98d64c38e55fa6eaf340d38d7c5808b8bbc8fe6b3957e254",
+      "gitBlob": "fb564be7862c98654b61d2240102ec42066a1c3b",
+      "sizeBytes": 16640
+    },
+    {
+      "path": "src/auth/repository.js",
+      "sha256": "99f85e7e6ae66be039fa6a1771fcd911f402f7c90c131497f79b9053c62366c6",
+      "gitBlob": "59d37d83ba317ea979838bc259823a37e350b4ca",
+      "sizeBytes": 2740
+    },
+    {
+      "path": "src/auth/errors.js",
+      "sha256": "26a5371ca05e7c70a40fbe29b6f3f240b28e6afc2e34e9801e64352b50b8e5b6",
+      "gitBlob": "6adeb07b5b4b022c1d10fc3919af842df8358ac9",
+      "sizeBytes": 312
+    },
+    {
+      "path": "src/auth/context.js",
+      "sha256": "3c2bdbcb8881939ea4848ef776032bb93eae52acba8b48eae20451074d468aea",
+      "gitBlob": "1b46003dd638f6fb5d0f7f7c92b967ec3b5a84ef",
+      "sizeBytes": 167
+    },
+    {
+      "path": "src/auth/authorized-store.js",
+      "sha256": "fcaaa90d1b1c3b71ffca376bdf7ab5fa294d7d51837181b7fe272417d8f46228",
+      "gitBlob": "ca0484527af44095c72f00658fa7e71078518bf7",
+      "sizeBytes": 4391
+    },
+    {
+      "path": "src/auth/recovery-fence.js",
+      "sha256": "e03d500b35fc671c22e3b2c30c94d839441ff07a36caeff7ab84e4dc98e02f06",
+      "gitBlob": "fda6e3f077bb8e7cc6707c03216ef53e7f168ce3",
+      "sizeBytes": 959
+    },
+    {
+      "path": "src/source-truth/admission-service.js",
+      "sha256": "74ca6da40cbcba2c192ccd2dbf0c2389beb0024c39a3f5242d51ea49930bddf6",
+      "gitBlob": "bf76485b6218cb725f0bd32dfb7ce80d5bbbd799",
+      "sizeBytes": 15721
+    },
+    {
+      "path": "src/source-truth/query-service.js",
+      "sha256": "644a67fc84f2ef2068024f04adf914109d790eb72894d505656591a1063c6558",
+      "gitBlob": "df91358b695ab76e3a205084667ba9565251703d",
+      "sizeBytes": 16278
+    },
+    {
+      "path": "src/source-truth/material-reading.js",
+      "sha256": "220a7c848e4267c5707884fbe21be2a4ddb4ab30ab52cc71f44e094c2d8b20b5",
+      "gitBlob": "a735bfd07ca1cb866a0d475e93270498ae925bf7",
+      "sizeBytes": 3568
+    },
+    {
+      "path": "src/source-truth/material-repository.js",
+      "sha256": "dd4a4e4be98f737604df712b080456e52df88f43608cc718d40de4749788dd61",
+      "gitBlob": "39e0a245836918f56f7d3695d09ff65f773306a0",
+      "sizeBytes": 16500
+    },
+    {
+      "path": "src/source-truth/repository.js",
+      "sha256": "38f38be249b56d18a871981d024489ffa3293c96f5b3a597aac63c8664a268b4",
+      "gitBlob": "29df4d1223e1ce8c7e1b589c9a61a80612f6d370",
+      "sizeBytes": 16973
+    },
+    {
+      "path": "src/source-truth/identity.js",
+      "sha256": "535621ef34eedc759675dec28ef0c1b23b461cb0462cabd68fe6543b0bf41eca",
+      "gitBlob": "2a1d9851e78e505c6b2cc02d8899fe61b402b251",
+      "sizeBytes": 7476
+    },
+    {
+      "path": "src/source-truth/policy.js",
+      "sha256": "e0fb3d8dcea743b86fb210e2a4d6cf9a5eab4941742e512aa942ddb078218e37",
+      "gitBlob": "42bc965003280d5a7156d015795ab636d0a3579a",
+      "sizeBytes": 5104
+    },
+    {
+      "path": "src/source-truth/publication-service.js",
+      "sha256": "b0e5f9ffaf77ebe1686311084f62dd855daa1400785d815051d3654f8fafcfd0",
+      "gitBlob": "819332d2623d896ce9f04ec931d3ecad55e37f7c",
+      "sizeBytes": 10449
+    },
+    {
+      "path": "src/source-truth/candidate-service.js",
+      "sha256": "31df5c44361bdcc8b08932d1169ae69d156a0620b2c6b2ffcb287f502329b333",
+      "gitBlob": "9eeec299d2056072ca719bf447fd7bf25c7ee64b",
+      "sizeBytes": 12540
+    },
+    {
+      "path": "src/source-truth/http-handler.js",
+      "sha256": "00de81386fe9b284ffe2d52521fee211d7a654803073486ef335f75cbda8c5ad",
+      "gitBlob": "841e791ea2ec97645977d3a0c8ad232ec2e13b54",
+      "sizeBytes": 13245
+    },
+    {
+      "path": "docs/design/F001-workspace-source-truth/README.md",
+      "sha256": "fc1965951e0d665eb08e3958a2239008e6c9ca87f3969900002d30bcd71bb745",
+      "gitBlob": "e5fdb2a32dd47f34e461b4d88184bcf6c2acf1df",
+      "sizeBytes": 123866
+    },
+    {
+      "path": "docs/design/F008-unified-login-space-permissions/README.md",
+      "sha256": "cdc91a9c62f9414a376ee269cc23b0f464d330f7566ee42d7e00a792578c9399",
+      "gitBlob": "b6fbdfec1fab21ffc6a13bcbd9a67b07772d9d88",
+      "sizeBytes": 63777
+    },
+    {
+      "path": "test/auth-service.test.js",
+      "sha256": "3ff5cf2f8a69a77a4bd543ccd9e5e330adca2d23794f816b9810544f9c79d370",
+      "gitBlob": "4c407996c2bac5f8fdc06c48da1f1170a501659c",
+      "sizeBytes": 12317
+    },
+    {
+      "path": "test/source-truth-admission.test.js",
+      "sha256": "536746b24bc9ad6a88644121cfca480c866468677253b05635660d3c5b57b181",
+      "gitBlob": "024821ca87a28304c1cf38ec4b7dbce240a94cff",
+      "sizeBytes": 17977
+    }
+  ],
+  "newRealModelPermission": false,
+  "purpose": "Check whether proposed dependency proof language can actually apply to original accepted public business scope; do not prune, substitute files, change denominators or manufacture eligibility."
+}

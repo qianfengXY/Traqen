@@ -48,12 +48,13 @@ test("B-09 private configuration accepts an explicit aggregate Git watermark and
   }
 });
 
-async function production(t, cluster, database, configuration, keyFile) {
+async function production(t, cluster, database, configuration, keyFile, { development = false } = {}) {
   const uri = new URL(`postgresql://f001_test@localhost/${database.name}`);
   uri.searchParams.set("host", cluster.socket);
-  const child = spawn(process.execPath, ["src/api/production-server.js"], { cwd: projectRoot,
+  const child = spawn(process.execPath, [development ? "src/api/dev-server.js" : "src/api/production-server.js"], { cwd: projectRoot,
     env: { PATH: "/usr/bin:/bin", LC_ALL: "C", TZ: "UTC", HOST: "127.0.0.1", PORT: "0", POSTGRES_SSL: "disable",
-      DATABASE_URL: uri.href, TRAQEN_AUTH_KEY_FILE: keyFile, TRAQEN_PUBLIC_ORIGIN: publicOrigin,
+      DATABASE_URL: uri.href, TRAQEN_AUTH_KEY_FILE: keyFile, TRAQEN_PUBLIC_ORIGIN: development ? "http://127.0.0.1:6236" : publicOrigin,
+      TRAQEN_AUTH_DEVELOPMENT_DATA: path.join(path.dirname(keyFile), "isolated-development"),
       ANALYSIS_MODEL_STORE_PATH: "", SOURCE_TRUTH_CONFIG: configuration },
     stdio: ["ignore", "pipe", "pipe"] });
   const exited = once(child, "exit"); let output = "", errors = "";
@@ -63,7 +64,7 @@ async function production(t, cluster, database, configuration, keyFile) {
     const timer = setTimeout(() => reject(new Error("Isolated production startup timed out")), 15000);
     child.stdout.on("data", (chunk) => {
       output = (output + chunk).slice(-8000);
-      const found = /Traqen API listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(output);
+      const found = /Traqen (?:development )?API listening on (http:\/\/127\.0\.0\.1:\d+)/.exec(output);
       if (found) { clearTimeout(timer); resolve({ base: found[1], child, exited }); }
     });
     child.once("exit", (code) => { clearTimeout(timer); resolve({ code, errors }); });
@@ -104,13 +105,36 @@ test("B-05/07 production entry binds persistent Source Truth, private config and
     assert.equal(data.backup.status, "NOT_CONFIGURED");
     assert.equal(JSON.stringify(data).includes(root), false);
     assert.equal(JSON.stringify(data).includes(secret.toString("base64")), false);
+    const business = await gatewayRequest(`${running.base}/v1/workspaces/workspace/business-knowledge`, { headers });
+    assert.equal(business.status, 200, "the real production listener must mount F003 behind current F008 identity");
+    assert.deepEqual((await business.json()).investigations, []);
+    const wrongHost = await gatewayRequest(`${running.base}/v1/workspaces/workspace/business-knowledge`, { headers: { ...headers, host: "wrong.test" } });
+    assert.equal(wrongHost.status, 403); assert.equal((await wrongHost.json()).error.code, "AUTH_HOST_REJECTED");
+    const facts = await gatewayRequest(`${running.base}/v1/workspaces/workspace/deterministic-facts`, { headers });
+    assert.equal(facts.status, 200);
+    assert.equal((await facts.json()).consumer.configured, true, "production F002 must use the actual persistent F003 resolver");
+    const legacyBusiness = await gatewayRequest(`${running.base}/v1/workspaces/workspace/business-knowledge`, { headers: { host: headers.host, authorization: `Bearer ${credential}` } });
+    assert.equal(legacyBusiness.status, 401);
     const forbidden = await gatewayRequest(`${running.base}/v1/workspaces/workspace/source-truth`, { headers: { host: headers.host, authorization: `Bearer ${credential}` } });
     assert.equal(forbidden.status, 401);
     const preflight = await gatewayRequest(`${running.base}/v1/workspaces/workspace/source-truth/draft`, { method: "OPTIONS", headers: {
       ...headers, origin: config.origins[0], "access-control-request-method": "PUT", "access-control-request-headers": "content-type" } });
     assert.equal(preflight.headers.get("access-control-allow-origin"), config.origins[0], "the source-specific origin must work in a real browser, not only direct HTTP clients");
+    const businessPreflight = await gatewayRequest(`${running.base}/v1/workspaces/workspace/business-knowledge`, { method: "OPTIONS", headers: { ...headers, origin: config.origins[0] } });
+    assert.equal(businessPreflight.headers.get("access-control-allow-origin"), config.origins[0]);
     const unrelated = await gatewayRequest(`${running.base}/v1/workspaces`, { method: "OPTIONS", headers: { ...headers, origin: config.origins[0] } });
     assert.equal(unrelated.headers.get("access-control-allow-origin"), null, "source origin permission does not widen unrelated legacy API CORS");
+    running.child.kill("SIGTERM"); await running.exited;
+  });
+  await t.test("the explicit native development entry shares F001, F006 and current identity with the same knowledge assembly", async st => {
+    const running = await production(st, cluster, database, configuration, keyFile, { development: true });
+    assert.ok(running.base, running.errors);
+    const headers = { host: "127.0.0.1:6236", cookie: `traqen_dev_session=${session.token}` };
+    for (const route of ["source-truth", "deterministic-facts", "business-knowledge"]) {
+      const response = await gatewayRequest(`${running.base}/v1/workspaces/workspace/${route}`, { headers });
+      assert.equal(response.status, 200, `development must mount ${route} using the same explicit native data store`);
+      if (route === "deterministic-facts") assert.equal((await response.json()).consumer.configured, true);
+    }
     running.child.kill("SIGTERM"); await running.exited;
   });
   await t.test("a world-readable configuration fails before opening an HTTP listener", async (st) => {

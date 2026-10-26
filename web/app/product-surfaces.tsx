@@ -41,9 +41,28 @@ import type {
   ResolvedGraphEvidence,
 } from "./understanding-graph-client";
 import type { Workspace } from "./workspace-client";
+import { productHref } from "./product-navigation";
 
 export type T = (zh: string, en: string) => string;
 export type GraphArtifact = CurrentUnderstandingGraph["graphArtifact"];
+
+// The shared current head can refer to a legacy understanding revision or an
+// F003 publication. A missing legacy mode is not evidence of either type.
+export function publishedHeadIdentity(current: CurrentUnderstandingGraph | null, workspaceId: string) {
+  if (!current) return null;
+  const {head,revision}=current;
+  if (!head || !revision || head.projectId!==workspaceId || revision.projectId!==workspaceId
+    || head.graphRevisionId!==revision.id || revision.status!=='PUBLISHED'
+    || !Number.isSafeInteger(head.version) || head.version<1 || typeof revision.id!=='string') return null;
+  const kind=(revision as GraphRevision&{kind?:unknown}).kind;
+  const business=kind==='BUSINESS_KNOWLEDGE';
+  const legacy=kind===undefined&&['FULL','INCREMENTAL'].includes(revision.mode);
+  if (!business&&!legacy) return null;
+  const query=new URLSearchParams(productHref('graph',workspaceId).slice(2));
+  if(business){query.set('knowledge','published');query.set('publishedRevision',revision.id);}
+  else{query.set('view','legacy');query.set('revision',revision.id);}
+  return {type:business?'business':'legacy',label:`${business?'BUSINESS_KNOWLEDGE':revision.mode} · r${head.version}`,href:`/?${query}`};
+}
 
 export const UNDERSTANDING_STAGES = [
   "SOURCE_SCAN",
@@ -171,6 +190,7 @@ export function WorkspaceOverview({
   configValid: boolean;
   onNavigate: (view: string) => void;
 }) {
+  const published=publishedHeadIdentity(current,workspace.id);
   const nextView =
     job && !["COMPLETED", "FAILED", "CANCELLED"].includes(job.status)
       ? "workspace"
@@ -178,8 +198,8 @@ export function WorkspaceOverview({
         ? "review"
         : impactCount > 0
           ? "impact"
-          : current
-            ? "feature"
+          : published
+            ? published.type==='business'?'graph':'feature'
             : "workspace";
   return (
     <>
@@ -193,31 +213,32 @@ export function WorkspaceOverview({
               "Continue the most important analysis, review, or impact action from the current published state.",
             )}
           </p>
-          <button
+          {nextView==='graph'&&published?<a className="button primary" href={published.href}>{t("继续下一项工作", "Continue next action")} →</a>:<button
             className="button primary"
             onClick={() => onNavigate(nextView)}
           >
             {t("继续下一项工作", "Continue next action")} →
-          </button>
+          </button>}
         </div>
-        <div className={`trust-card hero-card ${current ? "" : "unavailable"}`}>
+        <div className={`trust-card hero-card ${published ? "" : "unavailable"}`}>
           <div className="trust-status">
-            <span className={`status-light ${current ? "" : "warn"}`} />
+            <span className={`status-light ${published ? "" : "warn"}`} />
             Published Head
           </div>
           <strong>
-            {current
+            {published&&current
               ? `Revision ${current.head.version}`
-              : t("尚未发布", "Not published")}
+              : current?t("发布类型或版本绑定未知", "Unknown publication type or version binding"):t("尚未发布", "Not published")}
           </strong>
           <p>
-            {current
+            {published&&current
               ? shortId(current.revision.id)
-              : t(
+              : current?t("保留服务端原记录，不按缺失字段猜测旧模式或最新图谱。", "Retain server records without guessing a legacy mode or latest graph."):t(
                   "运行并通过评估后，服务端将原子发布首个版本。",
                   "The server atomically publishes the first revision after a successful evaluated run.",
                 )}
           </p>
+          {published&&<a className="button" href={published.href}>{published.type==='business'?t("打开精确发布知识", "Open exact published knowledge"):t("打开精确旧版图谱", "Open exact legacy graph")}</a>}
         </div>
       </section>
       <section
@@ -269,13 +290,13 @@ export function WorkspaceOverview({
         </header>
         <div className="activity-list">
           <div>
-            <span className="activity-icon published">✓</span>
+            <span className={`activity-icon ${published ? 'published' : ''}`}>{published ? '✓' : '?'}</span>
             <p>
               <b>CurrentGraphHead</b>
               <small>
-                {current
-                  ? `${current.revision.mode} · ${new Date(current.head.updatedAt).toLocaleString()}`
-                  : t("等待首次发布", "Waiting for first publication")}
+                {published&&current
+                  ? `${published.label} · ${Number.isFinite(Date.parse(current.head.updatedAt))?new Date(current.head.updatedAt).toLocaleString():t('更新时间未知','Update time unknown')}`
+                  : current?t("发布类型或版本绑定未知", "Unknown publication type or version binding"):t("等待首次发布", "Waiting for first publication")}
               </small>
             </p>
           </div>

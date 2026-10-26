@@ -82,6 +82,10 @@ async function migratedDatabase() {
     "0046_f002_replay_lifecycle",
     "0047_f002_request_budget_lifecycle",
     "0048_f002_request_scope_index",
+    "0049_f003_investigations",
+    "0050_f003_publication",
+    "0051_f003_authority_bindings",
+    "0052_f003_knowledge_continuity",
   ]);
   return database;
 }
@@ -523,6 +527,7 @@ test("core PostgreSQL migration applies once and exposes all required tables", a
     "source_slice_worker_credential_use",
     "source_truth_gap_acceptance",
     "source_truth_confirmation_gap_acceptance",
+    "f003_authority_binding_set",
   ]) {
     assert.ok(tables.has(table), `missing table: ${table}`);
   }

@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { authContext } from "../auth/context.js";
 
 import {
   createClaim,
   createClaimScope,
+  authorityFromDecision,
   createBusinessProcessModel,
   createDecisionReviewCase,
   createDecisionReviewEvent,
@@ -484,19 +486,6 @@ function currentReference(value, currentId) {
   return value === undefined || value === "__CURRENT__" ? currentId : value;
 }
 
-function authorityFromDecision(decision, now = new Date()) {
-  const mapping = {
-    CONFIRMED: "CONFIRMED",
-    EXCEPTION_RECORDED: "EXCEPTION_RECORDED",
-    REJECTED: "REJECTED",
-    DEPRECATED: "DEPRECATED",
-    INSUFFICIENT_EVIDENCE: "UNREVIEWED",
-    DEFERRED: "UNREVIEWED",
-  };
-  if (decision?.validUntil && Date.parse(decision.validUntil) <= now.getTime()) return "DEPRECATED";
-  return decision ? mapping[decision.type] ?? "UNREVIEWED" : "UNREVIEWED";
-}
-
 function implementationFromFacts(facts) {
   const mapping = {
     ENDPOINT: "endpoints",
@@ -891,6 +880,7 @@ export class TraceabilityApplication {
       endpoint: profile.endpoint,
       model: profile.model,
       reasoningEffort: profile.reasoningEffort ?? null,
+      timeoutMs: profile.timeoutMs,
       cliAdapter: profile.cliAdapter,
       executablePath: profile.executablePath,
       credentialHandleId: profile.credentialHandleId,
@@ -1005,7 +995,7 @@ export class TraceabilityApplication {
     return this.#globalModelProfile(configured);
   }
 
-  async verifyGlobalModelProfile(profileId) {
+  async verifyGlobalModelProfile(profileId, { taskPolicy = null } = {}) {
     await this.#syncGlobalModelLifecycles();
     const current = await this.getGlobalModelProfile(profileId);
     if (!current) return null;
@@ -1014,12 +1004,12 @@ export class TraceabilityApplication {
     }
     if (current.transport === 'CLI' && current.accountId) await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
     await this.#store.mutateGlobalModelProfile(profileId, current.revision, async () => (
-      this.verifyAnalysisModelProfile(profileId, { persist: false })
+      this.verifyAnalysisModelProfile(profileId, { persist: false, taskPolicy })
     ));
     return this.getGlobalModelProfile(profileId);
   }
 
-  async verifyGlobalCliModel(profileId) {
+  async verifyGlobalCliModel(profileId, options = {}) {
     const current = await this.getGlobalModelProfile(profileId);
     if (!current || current.transport !== "CLI" || !current.accountId) {
       throw new TypeError("F006 can verify only account-backed CLI model profiles");
@@ -1028,7 +1018,7 @@ export class TraceabilityApplication {
       throw new TypeError("F006 CLI model profiles must pin a non-empty model before verification");
     }
     await this.#resolveF006CliEnvironment({ accountId: current.accountId, cliAdapter: current.cliAdapter });
-    return this.verifyGlobalModelProfile(profileId);
+    return this.verifyGlobalModelProfile(profileId, options);
   }
 
   getGlobalModelUsage(profileId) {
@@ -1219,6 +1209,57 @@ export class TraceabilityApplication {
     const grants = await this.#workspaceFoundation.issueSecretGrants(workspaceId, profileRevisionId, input);
     if (grants) this.#analysisModelRegistry?.registerIssuedSecretGrants(grants);
     return grants;
+  }
+
+  // Internal F003 port, deliberately absent from generic HTTP dispatch. Its
+  // authority comes from the durable investigation service, never a supplied
+  // profile/run id. Recover the original actor and recheck current Workspace
+  // permission for every F006/account read, without fabricating a legacy job.
+  createBusinessKnowledgeExecutionVerifier() {
+    // Trusted service-to-service closure. No HTTP argument can supply a key,
+    // trusted issuer, runner identity or an execution success flag.
+    return async (projectId, bundle) => {
+      try {
+        const normalized = createExecutionEvidenceBundle(bundle);
+        if (canonicalJson(normalized.execution) !== canonicalJson(bundle.execution)
+          || !bundle.evidence.every(item => item.integrity === "VERIFIED")) return false;
+        const secret = await this.#runnerKeyResolver(bundle?.execution?.runner?.id, projectId);
+        return typeof secret === "string" && secret.length > 0
+          && verifyExecutionEvidenceAttestation(projectId, { ...normalized, attestation: bundle.attestation }, secret);
+      } catch { return false; }
+    };
+  }
+
+  createBusinessKnowledgeModelExecutor(investigations) {
+    if (!investigations?.reserveModelCall || !investigations?.beginModelCall || !investigations?.finishModelCall) throw new TypeError("F003 durable investigation service required");
+    return async ({ actor, workspaceId, investigationId, generation, slotId, taskKey, input, signal }) => {
+      const reservation = await investigations.reserveModelCall(actor, workspaceId, investigationId, { generation, slotId, taskKey, phase: input.phase });
+      return authContext.run({ actorId: actor.actorId, workspaceId, operation: "READ" }, async () => {
+        try {
+          await this.#syncGlobalModelLifecycles({ readOnly: true });
+          for (const grant of reservation.slot.skillGrants ?? []) {
+            const entry = reservation.profile.entries.find(e => e.kind === "SKILL" && e.logicalName === grant.normalizedName);
+            if (!entry || !this.#isMountedWorkspaceSkill(entry.manifest)) throw new TypeError("F003 authorized Skill executor is unavailable");
+          }
+          const adapter = this.#analysisModelRegistry?.resolve(reservation.slot.modelProfileRevisionId, {
+            workspaceId, profileId: reservation.profile.id, analysisRunId: investigationId, slotId,
+          });
+          if (typeof adapter?.businessKnowledge !== "function") throw new TypeError("F003 configured CLI model is unavailable");
+          await investigations.beginModelCall(actor, workspaceId, investigationId, { generation, reservationId: reservation.id });
+          signal?.throwIfAborted();
+          const result = await adapter.businessKnowledge(input, { signal });
+          signal?.throwIfAborted();
+          const terminal = await investigations.finishModelCall(actor, workspaceId, investigationId,
+            { generation, reservationId: reservation.id, outcome: "SUCCEEDED" });
+          if (terminal.outcome !== "SUCCEEDED") throw Object.assign(new Error("F003 model result belongs to an inactive generation"), { code: "F003_STALE_WORKER" });
+          return { result, reservationId: reservation.id };
+        } catch (error) {
+          await investigations.finishModelCall(actor, workspaceId, investigationId,
+            { generation, reservationId: reservation.id, outcome: signal?.aborted ? "ABORTED" : "FAILED", code: error?.code }).catch(() => {});
+          throw error;
+        }
+      });
+    };
   }
 
   async createWorkspaceAnalysisBatch(workspaceId, input) {

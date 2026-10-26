@@ -5,6 +5,8 @@ export const pageRoutes = {
   review: "review", impact: "impact", templates: "templates", settings: "settings",
 } as const;
 export type ProductView = keyof typeof pageRoutes | "not-found";
+export const accessViewFromRoute = (search: string) => ["overview", "settings"].includes(readProductRoute(search).view)
+  ? new URLSearchParams(search).get("view") : null;
 
 export function readProductRoute(search: string): { view: ProductView; workspaceId: string | null } {
   const params = new URLSearchParams(search);
@@ -23,7 +25,8 @@ export function productHref(view: ProductView, workspaceId: string | null, sourc
 export function writeProductRoute(view: ProductView, workspaceId: string | null, replace = false) {
   let href = productHref(view, workspaceId);
   const prior = readProductRoute(location.search);
-  if (prior.workspaceId === workspaceId && ["graph", "feature"].includes(prior.view) && ["graph", "feature"].includes(view)) {
+  if (prior.workspaceId === workspaceId && ["graph", "feature"].includes(prior.view) && ["graph", "feature"].includes(view)
+    && !(prior.view === "graph" && new URLSearchParams(location.search).has("runId"))) {
     const next = new URL(href, location.origin), params = new URLSearchParams(location.search);
     for (const key of ["revision", "objectId"]) if (params.has(key)) next.searchParams.set(key, params.get(key)!);
     href = next.pathname + next.search;

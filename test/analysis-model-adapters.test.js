@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
+import { stat } from "node:fs/promises";
 import test from "node:test";
 
 import { AllowlistedCliModelAdapter, AnalysisModelConnectionError, AnalysisModelRegistry, OpenAICompatibleAnalysisModelAdapter, configuredAnalysisModels, probeCliOAuthStatus } from "../src/analysis/index.js";
@@ -13,6 +14,7 @@ function cliSpawn(result, calls) {
     child.pid = 99999999;
     child.stdout = new PassThrough();
     child.stderr = new PassThrough();
+    child.stdin = new PassThrough();
     child.kill = () => { child.killed = true; };
     queueMicrotask(() => {
       const resolved = typeof result === "function" ? result({ executable, args, options }) : result;
@@ -62,6 +64,57 @@ test("allowlisted CLI models pass untrusted prompts as one argv value without a 
     outputContract: { assignments: "array of bounded workspace analysis assignments" },
   });
   assert.equal(calls[0].args.filter((value) => value.includes("touch")).length, 1);
+});
+
+test("F003 CLI reasoning has no ambient tools, MCP, rules or project cwd and uses bounded stdin", async () => {
+  for (const cliAdapter of ["CODEX", "CLAUDE"]) {
+    const calls = [];
+    let prompt = "";
+    const spawnImpl = (executable, args, options) => {
+      const child = cliSpawn({ stdout: '{}\n' }, calls)(executable, args, options);
+      child.stdin.on("data", chunk => { prompt += chunk.toString(); });
+      return child;
+    };
+    const adapter = new AllowlistedCliModelAdapter({ id: "F003-CLI", cliAdapter, model: "pinned-model", spawnImpl });
+    assert.deepEqual(await adapter.businessKnowledge({ phase: "INVESTIGATE", materials: [{ text: "$(cat live-source)" }] }), {});
+    const { args, options } = calls[0];
+    assert.equal(options.shell, false);
+    assert.notEqual(options.cwd, process.cwd());
+    await assert.rejects(stat(options.cwd), { code: "ENOENT" }, "private scratch is released after the bounded call");
+    assert.equal(args.some(value => value.includes("live-source")), false);
+    assert.equal(JSON.parse(prompt).task, "business-knowledge");
+    assert.equal(JSON.parse(prompt).input.phase, "INVESTIGATE");
+    if (cliAdapter === "CODEX") {
+      assert.ok(args.includes("--ignore-user-config"));
+      assert.ok(args.includes("--ignore-rules"));
+      assert.ok(args.includes("--ephemeral"));
+      assert.ok(args.includes('mcp_servers={}'));
+      assert.ok(args.includes('web_search="disabled"'));
+      assert.equal(args.includes("tools.view_image=false"), false, "installed CLI ignores this historical config key");
+      assert.ok(args.includes('approval_policy="never"'));
+      for (const feature of ["shell_tool", "multi_agent", "apps", "plugins", "hooks", "browser_use", "computer_use", "view_image", "code_mode_host"]) {
+        assert.ok(args.some((arg, i) => arg === "--disable" && args[i + 1] === feature));
+      }
+    } else {
+      assert.ok(args.some((arg, i) => arg === "--tools" && args[i + 1] === ""));
+      assert.ok(args.includes("--strict-mcp-config"));
+      assert.ok(args.some((arg, i) => arg === "--setting-sources" && args[i + 1] === ""));
+      assert.ok(args.includes("--disable-slash-commands"));
+      assert.ok(args.includes("--no-session-persistence"));
+    }
+  }
+});
+
+test("F003 rejects unknown phases, oversized inputs and CLI tool boundaries not yet established", async () => {
+  const calls = [];
+  const adapter = new AllowlistedCliModelAdapter({ id: "F003-CLI", cliAdapter: "CODEX", model: "pinned", spawnImpl: cliSpawn({ stdout: "{}" }, calls) });
+  await assert.rejects(adapter.businessKnowledge({ phase: "EXECUTE_SHELL" }), /phase/);
+  await assert.rejects(adapter.businessKnowledge({ phase: "PLAN", text: "a".repeat(2 * 1024 * 1024) }), /bounded/);
+  for (const cliAdapter of ["GEMINI", "KIMI"]) {
+    const unsupported = new AllowlistedCliModelAdapter({ id: cliAdapter, cliAdapter, model: "pinned", spawnImpl: cliSpawn({ stdout: "{}" }, calls) });
+    await assert.rejects(unsupported.businessKnowledge({ phase: "PLAN" }), { code: "F003_CLI_ISOLATION_UNAVAILABLE" });
+  }
+  assert.equal(calls.length, 0);
 });
 
 test("Codex CLI profiles pin both their model and reasoning effort in argv", async () => {
