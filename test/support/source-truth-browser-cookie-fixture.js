@@ -1,9 +1,8 @@
 // Current F008 password/Cookie boundary, native isolated PostgreSQL and owned
 // HTTPS Git. Seed accounts/projects only: NO draft, run, candidate or publication.
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { request as httpRequest } from 'node:http';
 import { isolatedPostgres } from './source-truth-postgres.js';
@@ -21,10 +20,13 @@ import { AuthHttp } from '../../src/auth/http.js';
 import { createConfiguredApplication } from '../../src/api/application-bootstrap.js';
 import { createTraceabilityHttpServer } from '../../src/api/http-server.js';
 import { PostgresTraceabilityStore } from '../../src/storage/index.js';
+import { sourceTruthTestRoot, sourceTruthTestEnvironment } from './source-truth-test-paths.js';
 export const cookieFixturePassword = 'owned-eight-station-password1';
 export const directoryVersions = {
     D1: { 'README.md': 'directory version D1\n', 'unchanged.txt': 'unchanged bytes\n', 'deleted.txt': 'explicitly deleted in D2\n', 'zero.txt': '', 'deep/copy.txt': 'unchanged bytes\n' },
     D2: { 'README.md': 'directory version D2\n', 'unchanged.txt': 'unchanged bytes\n', 'added.txt': 'new D2 bytes\n', 'zero.txt': '', 'deep/copy.txt': 'unchanged bytes\n' },
+    ZERO: { 'zero.txt': '' },
+    EMPTY: {},
 };
 export function cookieFixtureOrigin(value) {
     const url = new URL(value), port = Number(url.port);
@@ -75,7 +77,7 @@ export function fixtureCookieClient(apiBase, webOrigin) {
             return result;
         } };
 }
-export async function cookieBrowserFixture(t, { webOrigin, apiPort = 0 } = {}) {
+export async function cookieBrowserFixture(t, { webOrigin, apiPort = 0, parent } = {}) {
     webOrigin = cookieFixtureOrigin(webOrigin);
     if (!Number.isInteger(apiPort) || apiPort < 0 || apiPort > 65535 || apiPort && ([3003, 3004, 3100, 3188, 5432, 6398, 6399, Number(new URL(webOrigin).port)].includes(apiPort) || apiPort < 1024))
         throw Error('An owned non-production API port is required');
@@ -112,10 +114,11 @@ export async function cookieBrowserFixture(t, { webOrigin, apiPort = 0 } = {}) {
     };
     t.after(close);
     try {
-        cluster = await isolatedPostgres(register);
+        const root = await sourceTruthTestRoot('tq-f001-cookie-browser', parent), env = await sourceTruthTestEnvironment(root);
+        cluster = await isolatedPostgres(register, { parent: root });
         const initial = await cluster.createDatabase();
         let db = initial.db;
-        const names = { git: 'Cookie Git', directory: 'Cookie Directory', combined: 'Cookie Combined' };
+        const names = { git: 'Cookie Git', directory: 'Cookie Directory', combined: 'Cookie Combined', emptyGit: 'Cookie Empty Git', firstEmptyGit: 'Cookie First Empty Git', emptyDirectory: 'Cookie Empty Directory' };
         for (const [id, name] of Object.entries(names)) {
             await db.query("INSERT INTO project(id,tenant_id,name) VALUES($1,'tenant',$2)", [id, name]);
             await initial.repository.provision(id, { tenantId: 'tenant', grants: [{ actorId: 'owner', role: 'MAINTAIN' }, { actorId: 'reader', role: 'READ' }] });
@@ -123,13 +126,13 @@ export async function cookieBrowserFixture(t, { webOrigin, apiPort = 0 } = {}) {
         const source = await gitFixture({ after: fn => { let done = false; sourceStop = async () => { if (!done) {
                 done = true;
                 await fn();
-            } }; cleanups.push(sourceStop); } });
+            } }; cleanups.push(sourceStop); } }, { parent: root });
         await writeFile(path.join(source.work, 'external.bin'), `version https://git-lfs.github.com/spec/v1\noid sha256:${'a'.repeat(64)}\nsize 12\n`);
         await source.git('add', '.');
         await source.git('commit', '-m', 'bounded external material gap');
         await source.git('push', path.join(source.root, 'repo.git'), 'main');
         const gapCommit = await source.git('rev-parse', 'HEAD');
-        const root = await mkdtemp(path.join(tmpdir(), 'tq-f001-cookie-browser-')), key = Buffer.alloc(32, 79), blobKey = Buffer.alloc(32, 29), gitReads = [], blobWrites = [], directoryManifests = {};
+        const key = Buffer.alloc(32, 79), blobKey = Buffer.alloc(32, 29), gitReads = [], blobWrites = [], directoryManifests = {};
         for (const [version, files] of Object.entries(directoryVersions)) {
             const rows = [];
             for (const [entryPath, content] of Object.entries(files)) {
@@ -191,14 +194,14 @@ export async function cookieBrowserFixture(t, { webOrigin, apiPort = 0 } = {}) {
                 receipts: await rows('SELECT id,bundle_id,payload FROM source_truth_receipt WHERE workspace_id=$1 ORDER BY issued_at,id'),
                 events: await rows('SELECT run_id,event_type,payload FROM source_truth_event WHERE workspace_id=$1 ORDER BY sequence') };
         };
-        return { root, names, source, gapCommit, apiBase, webOrigin, accounts, audit, client, gitReads, blobWrites, directoryManifests,
+        return { root, env, names, source, gapCommit, apiBase, webOrigin, accounts, audit, client, gitReads, blobWrites, directoryManifests,
             get runtime() { return current; },
             async read(workspace, route = '', login = 'owner') { assert.ok(Object.hasOwn(names, workspace)); const response = await (await client(login)).request(`/v1/workspaces/${workspace}/source-truth${route}`); assert.equal(response.status, 200, `fixture audit read ${route}`); return response.json(); },
             async restart() { const port = current.server.address().port; await stop(); await cluster.restart(); db = cluster.pool(initial.name); await start(port); clients.clear(); },
             stopSources: () => sourceStop(),
             async setAccess(workspace, login, roles) { assert.ok(Object.hasOwn(names, workspace) && Object.hasOwn(accounts, login)); const admin = await current.identity.login({ login: 'admin', password: cookieFixturePassword }); return current.identity.grant(admin.token, workspace, { accountId: accounts[login].id, roles }); },
             async revokeOtherOwnerSessions() { const session = await current.identity.login({ login: 'owner', password: cookieFixturePassword }); await current.identity.revokeSession(session.token, 'others'); clients.delete('owner'); },
-            async resources() { return { pid: process.pid, apiBase, webOrigin, postgresRoot: cluster.root, postgresPid: Number((await readFile(path.join(cluster.data, 'postmaster.pid'), 'utf8')).split('\n')[0]), sourceOrigin: source.origin, storageRoot: root }; }, close };
+            async resources() { return { pid: process.pid, apiBase, webOrigin, postgresRoot: cluster.root, postgresData: cluster.data, postgresSocket: cluster.socket, postgresPid: Number((await readFile(path.join(cluster.data, 'postmaster.pid'), 'utf8')).split('\n')[0]), sourceOrigin: source.origin, storageRoot: root, childEnvironment: env }; }, close };
     }
     catch (error) {
         await close();

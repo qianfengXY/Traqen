@@ -86,6 +86,8 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
   const sequence = useRef(0), hydrated = useRef(false), inFlight = useRef(false);
   const historyCursor = useRef<{ bundles: string | null; runs: string | null }>({ bundles: null, runs: null });
   const directory = useRef<DirectoryHandle | null>(null), transferController = useRef<AbortController | null>(null);
+  const directoryGeneration = useRef(0);
+  const clearDirectory = useCallback(() => { directoryGeneration.current++; directory.current = null; setDirectoryName(null); }, []);
   const readController = useRef<AbortController | null>(null);
   const rail = useRef<HTMLOListElement | null>(null);
   const reportFailure = useCallback((error: Error) => {
@@ -98,11 +100,11 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
       setOverview(null); setDetail(null); setFrozen(null); setLatestVersion(null);
       setVersions({ items: [], nextCursor: null }); setRuns({ items: [], nextCursor: null });
       setBaselineVersion(null); setForm(emptyInput); setEditing(false); setInputStage(null);
-      setDirectoryName(null); directory.current = null; setProgress(null); setTransferring(false);
+      clearDirectory(); setProgress(null); setTransferring(false);
       setBusy(false); setNotice(""); setConfirmationChecked(false); setGapsAccepted(false); setAcceptedCount("0");
       hydrated.current = false; historyCursor.current = { bundles: null, runs: null };
     }
-  }, [client]);
+  }, [client, clearDirectory]);
   useEffect(() => {
     onDirtyChange?.(editing && JSON.stringify(form) !== JSON.stringify(overview?.draft?.input ?? emptyInput));
     return () => onDirtyChange?.(false);
@@ -124,7 +126,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
     const controller = client.beginSession();
     readController.current = controller;
     const stop = observeSourceReads(refresh, { signal: controller.signal, onError: reportFailure });
-    return () => { stop(); controller.abort(); transferController.current?.abort(); };
+    return () => { directoryGeneration.current++; directory.current = null; stop(); controller.abort(); transferController.current?.abort(); };
   }, [refresh, client, reportFailure, readRevision]);
   useEffect(() => {
     if (position.runId) void refresh().catch(reportFailure);
@@ -170,9 +172,15 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
     else void attempt(refresh);
   };
   const chooseDirectory = async () => {
+    clearDirectory();
+    const generation = directoryGeneration.current;
     const picker = (window as Window & { showDirectoryPicker?: (options: { mode: "read" }) => Promise<DirectoryHandle> }).showDirectoryPicker;
     if (!picker) { setError(new Error("当前浏览器不能完整枚举目录。请使用支持目录访问 API 的安全上下文；不能用遗漏空目录的文件列表冒充完整目录。")); return null; }
-    try { const handle = await picker({ mode: "read" }); directory.current = handle; setDirectoryName(handle.name ?? "已选择目录"); return handle; }
+    try {
+      const handle = await picker.call(window, { mode: "read" });
+      if (generation !== directoryGeneration.current || client.signal?.aborted) return null;
+      directory.current = handle; setDirectoryName(handle.name ?? "已选择目录"); return handle;
+    }
     catch (error) { if ((error as Error).name !== "AbortError") setError(error as Error); return null; }
   };
   const sendDirectory = async (runId: string, input: DraftInput, handle: DirectoryHandle) => {
@@ -191,9 +199,10 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
     } catch (error) {
       if (localController.signal.aborted && !client.signal?.aborted) setNotice("本机传输已暂停。服务端任务和已验证检查点保留；重新选择相同目录即可继续。");
       else throw error;
-    } finally { transferController.current = null; if (!client.signal?.aborted) setTransferring(false); await store.discard(); }
+    } finally { clearDirectory(); transferController.current = null; if (!client.signal?.aborted) setTransferring(false); await store.discard(); }
   };
   const newDraft = (base?: FrozenVersion) => {
+    clearDirectory();
     if (base) { setForm(draftFromVersion(base)); setBaselineVersion(base); }
     writeWorkPosition({runId:"NEW",bundleId:null,receiptId:null}); setDetail(null); setEditing(true); setInputStage(base ? 2 : 1); setSelectedStation(null); setVersionId(null); setFrozen(null); setShowVersion(false); setOverviewTab("versions"); setReviewAgain(false); setConfirmationChecked(false);
   };
@@ -270,7 +279,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
       </section>
       <div className="st-grid"><section className={`st-panel st-current ${journey.tone}`}><div className="st-card-head"><div><p className="st-eyebrow">第 {journey.selected} / 8 站</p><h2>{sourceStations[journey.selected - 1]}</h2></div>{journey.preview && <span className="st-badge muted">{journey.selected < journey.current ? "历史回看" : "未来预览"} · 只读</span>}</div><p className="st-muted">{copies[journey.selected - 1]}</p>
         {journey.preview && <p className="st-callout">这是节点说明及已有记录，不改变真实进度。上一步：{sourceStations[journey.selected - 2] ?? "旅程开始"}；下一步：{sourceStations[journey.selected] ?? "包已冻结，旅程结束"}。</p>}
-        {journey.selected <= 2 ? <SourceForm input={run?.input ?? form} versions={baselineVersion && !versions.items.some((version) => version.id === baselineVersion.id) ? [baselineVersion, ...versions.items] : versions.items} stage={journey.selected as 1 | 2} disabled={busy || journey.preview || !canEdit} gitEnabled={overview.policy.gitEnabled} onChange={(input) => { setForm(input); setEditing(true); setInputStage(journey.current as 1 | 2); }} onPickDirectory={() => void chooseDirectory()} directoryName={directoryName} /> : <>
+        {journey.selected <= 2 ? <SourceForm input={run?.input ?? form} versions={baselineVersion && !versions.items.some((version) => version.id === baselineVersion.id) ? [baselineVersion, ...versions.items] : versions.items} stage={journey.selected as 1 | 2} disabled={busy || journey.preview || !canEdit} gitEnabled={overview.policy.gitEnabled} onChange={(input) => { clearDirectory(); setForm(input); setEditing(true); setInputStage(journey.current as 1 | 2); }} onPickDirectory={() => void chooseDirectory()} directoryName={directoryName} /> : <>
           <CoverageMetrics coverage={detail?.sources.every(source => source.enumerationClosed) ? combinedFileCoverage(detail.sources) : null} />
           <p className="st-muted">目录 {detail?.candidate?.directoryCount ?? "尚未闭合"} · 逻辑字节 {detail?.candidate?.knownBytes ?? run?.progress.knownBytes ?? "—"} · Gap {detail?.candidate?.gapCount ?? "未对账"}（与文件覆盖分开）</p>
           {detail?.sources.map((source) => <article className="st-source-line" key={source.sourceId}><strong>{source.kind === "GIT" ? "Git" : "目录"} · {source.mode === "REUSE" ? "沿用精确组件" : "本版更新"}</strong><dl><dt>来源</dt><dd>{source.sourceId}</dd><dt>{source.kind === "GIT" ? "精确 commit" : "目录版本身份"}</dt><dd>{source.nativeIdentity?.commit ?? (source.manifestId ? `manifest:${source.manifestId}` : "完整枚举尚未闭合")}</dd><dt>采集范围</dt><dd>{source.kind === "GIT" ? source.scope?.root ? `${source.scope.root}（不是全仓库）` : "全仓库" : "完整所选目录"}</dd><dt>待处置条目</dt><dd>{source.summary.pendingCount}</dd></dl>

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, mkdtemp, readdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { tmpdir, platform, release } from "node:os";
+import { platform, release } from "node:os";
 import path from "node:path";
 import { isolatedPostgres } from "./source-truth-postgres.js";
 import { gitFixture } from "./source-truth-git-fixture.js";
+import { sourceTruthTestRoot } from "./source-truth-test-paths.js";
 import { owner, reader } from "./source-truth-database.js";
 import { sourceTruthServices } from "../../src/source-truth/services.js";
 import { SourceTruthRepository } from "../../src/source-truth/repository.js";
@@ -149,9 +150,9 @@ export async function sourceTruthPilot({ filesPerSource, postgresBin, maxTreeRss
     return value;
   };
   try {
-    const cluster = await isolatedPostgres(t, { binaries: postgresBin }), database = await cluster.createDatabase();
-    const gitSource = await gitFixture(t);
-    const root = await mkdtemp(path.join(tmpdir(), "tq-f001-pilot-"));
+    const root = await sourceTruthTestRoot("tq-f001-pilot");
+    const cluster = await isolatedPostgres(t, { binaries: postgresBin, parent: root }), database = await cluster.createDatabase();
+    const gitSource = await gitFixture(t, { parent: root });
     const directory = path.join(root, "selected-directory"); await mkdir(directory, { mode: 0o700 });
     await stage("generate-files", async () => {
       await generate(gitSource.work, filesPerSource - 2, "git"); // Git fixture already has two real files.
