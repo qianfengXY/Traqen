@@ -188,7 +188,6 @@ export class F002Worker {
       const completedItems = scopeItemsForMaterials({ workspaceId, bundleId: run.sourceInput.bundleId, profile, sourceMaterials, result: completedResult, records });
       await recordBatches(this.repository, actor, { workspaceId, runId, scopeId, generation: claimed.generation, items: completedItems });
       lease.assertActive();
-      await persist({ phase: "READY", completed: sourceMaterials.length, total: sourceMaterials.length }); await flush();
       return await this.repository.readyToSeal(actor, { workspaceId, runId, scopeId, generation: claimed.generation });
     } catch (error) {
       await progressWrites;

@@ -187,3 +187,12 @@ test("F002 return navigation preserves exact entry/focus/position without redire
   assert.equal(model.readEvidenceReturnLocation("?page=graph&workspace=w", "w"), null);
   assert.throws(() => model.readEvidenceReturnLocation("?evidenceReturn=1&page=graph&workspace=w&scrollTop=NaN", "w"));
 });
+
+test("unsealed navigation round-trips explicit source/run/scope/revision without a formal factset", () => {
+ const preview={runId:"owned-run",scopeId:"c".repeat(64),revision:3};
+ const context={workspaceId:"workspace",tab:"relations",step:3,runId:preview.runId,preview,sourceVersionId:"b".repeat(64),kind:"FACT",recordId:"a".repeat(64)};
+ const href=evidenceHref(context);assert.equal(new URL(href,"http://localhost").searchParams.has("factset"),false);
+ assert.deepEqual(readEvidenceLocation(href.split("?")[1]),context);
+ assert.throws(()=>evidenceHref({...context,graphVersionId:"d".repeat(64)}),/未封存/);
+ assert.throws(()=>evidenceHref({...context,sourceVersionId:undefined}),/未封存/);
+});

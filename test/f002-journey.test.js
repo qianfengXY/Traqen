@@ -79,3 +79,19 @@ test('HTTP preview metadata retains its actual source binding before readers mou
  assert.equal(response.status,200);const data=await response.json();assert.equal(data.manifest.graphVersionId,undefined);
  assert.deepEqual(data.manifest.preview,{runId:run.id,scopeId,revision:3,source:run.sourceInput});
 });
+test('preview after retry reads the same retained canonical closure that explicit publication will seal',async t=>{
+ const {repository,queries,run,scopeId}=await fixture(t);
+ const materials=[{componentId,pathBytes:Buffer.from('recover.js').toString('base64url'),bytes:Buffer.from('export function recovered(){return true}'),mediaType:'text/plain'}];
+ const originalReady=repository.readyToSeal.bind(repository);let failOnce=true;
+ repository.readyToSeal=(...args)=>{if(failOnce){failOnce=false;throw Error('owned ready-boundary fault');}return originalReady(...args);};
+ const worker=new F002Worker(repository);await worker.run(owner,'workspace',run.id,scopeId,{workerId:'retry-worker',leaseMs:60000,materials});
+ const failed=(await repository.getRun(owner,'workspace',run.id)).scopes[0];assert.equal(failed.status,'FAILED_RETRYABLE');
+ assert.notEqual((await repository.scopeProgress(owner,'workspace',run.id,scopeId)).latest.phase,'READY','a failed readiness transition is not a ready result');
+ await repository.retryScope(owner,'workspace',run.id,scopeId,{revision:failed.revision,operationId:'retry-journey'});
+ await worker.run(owner,'workspace',run.id,scopeId,{workerId:'retry-worker',leaseMs:60000,materials});
+ const ready=(await repository.getRun(owner,'workspace',run.id)).scopes[0];assert.equal(ready.status,'READY_TO_SEAL');assert.equal(ready.generation,2);
+ const records=await queries.preview(owner,'workspace',{runId:run.id,scopeId,revision:ready.revision},q=>q.records());
+ assert.ok(records.items.some(r=>r.kind==='FACT'),'retained verified records must remain readable before seal');
+ const sealed=await new F002PublicationService(repository).publish(owner,'workspace',run.id,scopeId,{revision:ready.revision,operationId:'seal-after-retry'});
+ assert.deepEqual((await queries.records(owner,'workspace',sealed.graphVersionId)).items,records.items);
+});

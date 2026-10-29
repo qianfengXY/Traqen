@@ -271,6 +271,15 @@ export class F002Repository {
       const { rows } = await tx.query(`UPDATE f002_scope SET status='READY_TO_SEAL',revision=revision+1,lease_until=NULL,updated_at=clock_timestamp()
         WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 AND status='RUNNING' AND generation=$4 AND lease_until>clock_timestamp() RETURNING *`, [workspaceId, runId, scopeId, generation]);
       requireF002(rows.length === 1, "F002_STALE_SCOPE_WORKER", "范围执行权或状态已变化");
+      // READY is a committed lifecycle transition, not a parser prediction.
+      // Persist it in this same transaction so a failed update cannot claim it.
+      if (rows[0].progress?.latest?.generation === generation) {
+        const now = (await tx.query("SELECT clock_timestamp() AS now")).rows[0].now;
+        const latest = { ...rows[0].progress.latest, phase: "READY", updatedAt: new Date(now).toISOString() };
+        const progress = { latest, events: [...rows[0].progress.events.filter(item => item.phase !== "READY"), latest].slice(-16) };
+        await tx.query("UPDATE f002_scope SET progress=$4 WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3", [workspaceId, runId, scopeId, JSON.stringify(progress)]);
+        rows[0].progress = progress;
+      }
       await this.#event(tx, workspaceId, runId, scopeId, rows[0].worker_id, "SCOPE_READY_TO_SEAL", { generation });
       return scopeRow(rows[0]);
     }, { maintain: true });

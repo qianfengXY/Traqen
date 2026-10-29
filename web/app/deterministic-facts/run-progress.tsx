@@ -24,7 +24,7 @@ export function RunProgress({ client, runId, scope, accessLost }: { client: Dete
  const lastPath=latest?.path??snapshot?.events.findLast(unit=>unit.path)?.path;
  const stale=latest&&now-Date.parse(latest.updatedAt)>15000&&["QUEUED","RUNNING"].includes(scope.status);
  return <section className="f002-progress" aria-label="真实解析进度" aria-live="polite">
-  <h4>{scope.status==="QUEUED"?"等待执行":latest?phases[latest.phase]??latest.phase:"正在读取实际处理状态"}</h4>
+  <h4>{scope.status==="QUEUED"?"等待执行":scope.status==="FAILED_RETRYABLE"?"分析失败":scope.status==="CANCELLED"?"已取消":scope.status==="BLOCKED"?"处理受阻":scope.status==="SEALED"?"成果已封存":latest?phases[latest.phase]??latest.phase:"正在读取实际处理状态"}</h4>
   {error&&<p role="alert">进度读取未完成：{error.message}。未推断任务已停止。<button className="button" onClick={()=>{const c=new AbortController();void load(client.signal??c.signal);}}>重新读取进度</button></p>}
   {latest&&<><p>{latest.phase==="LOADING"?`已核对 ${latest.completed} 个材料条目${latest.total===null?"，范围总数尚在核对":` / 共 ${latest.total} 项`}`:material?`已处理材料条目 ${material.completed} / ${material.total}（含目录及不可解析项）`:"材料总数尚在核对"}</p>
    {latest.phase==="MATERIALS"&&latest.total!==null&&latest.total>0&&<progress aria-label="已处理材料条目" value={latest.completed} max={latest.total}/>}

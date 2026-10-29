@@ -115,8 +115,11 @@ export class F002QueryService {
   }
 
   #dataset(workspaceId, graphVersionId, prepared) {
-    return prepared ? { table: "f002_prepared_record", where: "workspace_id=$1 AND run_id=$2 AND scope_id=$3 AND generation=$4",
-      values: [workspaceId, prepared.binding.runId, prepared.binding.scopeId, prepared.row.generation] }
+    return prepared ? { table: "f002_prepared_record", where: "workspace_id=$1 AND run_id=$2 AND scope_id=$3",
+      // Recovery intentionally retains canonical rows whose content was
+      // checked by prepare(). Read the same fixed-run closure as publish(),
+      // under the locked READY scope/revision, not only newly inserted rows.
+      values: [workspaceId, prepared.binding.runId, prepared.binding.scopeId] }
       : { table: "f002_record", where: "workspace_id=$1 AND graph_version_id=$2", values: [workspaceId, graphVersionId] };
   }
 
@@ -270,9 +273,10 @@ export class F002QueryService {
     requireF002(Number.isInteger(depth) && depth >= 0 && depth <= 2 && Number.isInteger(limit) && limit >= 1 && limit <= 200,
       "F002_GRAPH_INVALID", "局部图参数无效", { status: 422 });
     return this.#authorized(actor, workspaceId, async (tx) => {
-      const records = await this.#resultRows(tx, workspaceId, graphVersionId, prepared);
-      const root = records.find(record => record.id === rootId);
+      const data = this.#dataset(workspaceId, graphVersionId, prepared);
+      const root = (await tx.query(`SELECT kind,id,payload FROM ${data.table} WHERE ${data.where} AND id=$${data.values.length + 1} LIMIT 1`, [...data.values, rootId])).rows[0];
       requireF002(root, "F002_RECORD_NOT_FOUND", "局部图根节点不存在", { status: 404 });
+      const records = await this.#resultRows(tx, workspaceId, graphVersionId, prepared);
       const relationRows = records.filter(record => record.kind === "FACT" && record.payload.kind === "RELATION").sort(recordOrder);
       const byKey = new Map(records.map((record) => [`${record.kind}\u0000${record.id}`, record]));
       const nodes = new Map([[`${root.kind}\u0000${root.id}`, root]]);

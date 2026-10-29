@@ -85,3 +85,14 @@ test("F002 transport resubscription creates a fresh signal and a refusal cannot 
   assert.equal(transport.getSnapshot(), null, "reconnecting a refused identity requires a new verified session, not a resubscribe");
   stopThird();
 });
+
+test("unsealed reader routes stay revision-bound across signal clones and cannot submit or export", async t => {
+  const binding={runId:"run-owned",scopeId:"c".repeat(64),revision:3}, key=`unsealed:${binding.runId}:${binding.scopeId}:3`, calls=[];
+  const reader=new DeterministicFactsClient("https://api", "", "workspace").withPreview(binding);
+  t.mock.method(globalThis,"fetch",async url=>{calls.push(url);return new Response(JSON.stringify({schemaVersion:1,items:[],nextCursor:null}),{headers:{"content-type":"application/json"}});});
+  await reader.withSignal(new AbortController().signal).request(`/versions/${key}/materials?limit=100`);
+  assert.match(calls[0],new RegExp(`/runs/run-owned/scopes/${binding.scopeId}/preview/3/materials\\?limit=100$`));
+  await assert.rejects(reader.request("/runs","POST",{}),{code:"F002_PREVIEW_READ_ONLY"});
+  await assert.rejects(reader.request(`/versions/${key}/export`),{code:"F002_PREVIEW_READ_ONLY"});
+  assert.throws(()=>reader.withPreview({...binding,runId:"../other"}),{code:"F002_PREVIEW_INVALID"});assert.equal(calls.length,1);
+});

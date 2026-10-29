@@ -132,6 +132,8 @@ try {
   const relation = before.find(r => r.kind === "FACT" && r.payload.predicate === "callsDeclaration"); assert.ok(relation);
   await page.locator(`[data-relation-select="${relation.id}"]`).click(); await selected(relation.id);
   await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).waitFor();
+  await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).scrollIntoViewIfNeeded();
+  await screenshot("journey-04-unsealed-graph.png");
   await page.locator('[data-extraction-rule]').filter({ hasText: relation.payload.ruleRef.id }).waitFor();
   const relationDetail = await json(client, `${previewBase}/records/FACT/${relation.id}`);
   const evidence = relationDetail.references.find(r => r.kind === "EVIDENCE" && r.payload.anchor.kind === "TEXT"); assert.ok(evidence);
@@ -276,6 +278,72 @@ try {
   assert.ok(report.originalReads.length >= 10); assert.deepEqual(report.pageErrors, []); assert.deepEqual(report.legacyRequestsDuringF2, []);
   assert.equal(report.writes.filter(w => w.pathname.endsWith("/runs")).length, 1);
   assert.equal(report.writes.filter(w => w.pathname.endsWith("/seal")).length, 1); assert.ok(report.writes.every(w => w.csrf && !w.bearer));
+  // A real database write fault at the existing ready transition exercises
+  // failed -> retry without replacing HTTP, parser output or worker execution.
+  // This constraint exists only in this newly owned, synthetic fixture DB.
+  const faultPool = fixture.pool();
+  const startSameInput = async () => {
+    await page.getByRole("navigation", { name: "技术分析五步旅程" }).getByRole("button").nth(0).click();
+    await page.waitForFunction(id => document.querySelector('select[aria-label="冻结来源"]')?.value === id, a.reference.bundleId);
+    assert.equal(await page.getByLabel("冻结来源", { exact: true }).inputValue(), a.reference.bundleId);
+    const response = page.waitForResponse(r => r.request().method() === "POST" && new URL(r.url()).pathname.endsWith("/deterministic-facts/runs"));
+    await page.getByRole("button", { name: "开始分析", exact: true }).click();
+    const accepted = await response; assert.equal(accepted.status(), 202); return (await accepted.json()).run;
+  };
+  try {
+    await faultPool.query("ALTER TABLE f002_scope ADD CONSTRAINT f002_journey_ready_fault CHECK (status <> 'READY_TO_SEAL') NOT VALID");
+    const failedRun = await startSameInput();
+    const failedRow = page.locator(".f002-delivery article").filter({ hasText: failedRun.id });
+    await failedRow.getByRole("button", { name: "重试原范围", exact: true }).waitFor({ timeout: 60000 });
+    const failed = (await json(client, `${factsPrefix}/runs/${failedRun.id}`)).run;
+    assert.equal(failed.scopes[0].status, "FAILED_RETRYABLE");
+    const failureProgress = (await json(client, `${factsPrefix}/runs/${failedRun.id}/scopes/${failed.scopes[0].scopeId}/progress`)).progress;
+    assert.notEqual(failureProgress.latest.phase, "READY");
+    await screenshot("journey-07-real-database-write-failure.png");
+    await faultPool.query("ALTER TABLE f002_scope DROP CONSTRAINT f002_journey_ready_fault");
+    const retried = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/runs/${failedRun.id}/retry`));
+    await failedRow.getByRole("button", { name: "重试原范围", exact: true }).click(); assert.equal((await retried).status(), 200);
+    await failedRow.getByRole("button", { name: "查看待检查成果", exact: true }).waitFor({ timeout: 60000 });
+    const recovered = (await json(client, `${factsPrefix}/runs/${failedRun.id}`)).run;
+    assert.equal(recovered.scopes[0].generation, 2); assert.equal(recovered.scopes[0].status, "READY_TO_SEAL");
+    const recoveredBase = `${factsPrefix}/runs/${failedRun.id}/scopes/${recovered.scopes[0].scopeId}/preview/${recovered.scopes[0].revision}`;
+    const recoveredRecords = await pages(client, `${recoveredBase}/records`);
+    assert.deepEqual(recoveredRecords, before, "retry retains the same fixed source/profile records, not an empty current-generation view");
+    await failedRow.getByRole("button", { name: "查看待检查成果", exact: true }).click();
+    await page.locator(`[data-directory-material="${opaque.id}"] > button`).click();
+    await page.locator('.f002-code [data-line="1"] > code').filter({ hasText: "OWNED_UNSUPPORTED_FORMAT_ORIGINAL_A" }).waitFor();
+    await screenshot("journey-08-retried-unsealed-original.png");
+    report.retry = { runId: failedRun.id, fault: "OWNED_DB_CHECK_CONSTRAINT_AT_READY_TRANSITION", failedRevision: failed.scopes[0].revision,
+      recoveredRevision: recovered.scopes[0].revision, generation: 2, sameRecordCount: recoveredRecords.length };
+  } finally {
+    try { await faultPool.query("ALTER TABLE f002_scope DROP CONSTRAINT IF EXISTS f002_journey_ready_fault"); }
+    finally { await faultPool.end(); }
+  }
+  const cancelledRun = await startSameInput();
+  let cancelledRow = page.locator(".f002-delivery article").filter({ hasText: cancelledRun.id });
+  await cancelledRow.getByRole("button", { name: "查看待检查成果", exact: true }).waitFor({ timeout: 60000 });
+  phase = "LEAVE";
+  await page.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "来源快照", exact: true }).click();
+  phase = "F002";
+  await page.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "技术证据", exact: true }).click();
+  await page.waitForFunction(id => document.querySelector('select[aria-label="冻结来源"]')?.value === id, a.reference.bundleId);
+  assert.equal(await page.getByLabel("冻结来源", { exact: true }).inputValue(), a.reference.bundleId);
+  await page.getByRole("navigation", { name: "技术分析五步旅程" }).getByRole("button").nth(1).click();
+  cancelledRow = page.locator(".f002-delivery article").filter({ hasText: cancelledRun.id });
+  await cancelledRow.getByRole("button", { name: "取消此范围", exact: true }).waitFor();
+  page.once("dialog", dialog => dialog.accept());
+  const cancelledAck = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/runs/${cancelledRun.id}/cancel`));
+  await cancelledRow.getByRole("button", { name: "取消此范围", exact: true }).click(); assert.equal((await cancelledAck).status(), 200);
+  await cancelledRow.getByText("已取消", { exact: true }).first().waitFor();
+  const cancelled = (await json(client, `${factsPrefix}/runs/${cancelledRun.id}`)).run;
+  assert.equal(cancelled.scopes[0].status, "CANCELLED"); assert.equal(cancelled.scopes[0].graphVersionId, null);
+  report.cancel = { runId: cancelledRun.id, revision: cancelled.scopes[0].revision, status: cancelled.scopes[0].status };
+  await page.getByLabel("全局主题配色", { exact: true }).selectOption("dark");
+  await screenshot("journey-09-dark-cancelled.png");
+  await page.getByLabel("全局主题配色", { exact: true }).selectOption("light");
+  report.checks.push("real-owned-DB-ready-failure-visible-retry-same-run-generation2-retained-preview-original-leave-return-no-resubmit-real-cancel-dark-theme");
+  assert.deepEqual(report.pageErrors, []); assert.ok(report.writes.every(w => w.csrf && !w.bearer));
+  assert.equal(report.writes.filter(w => w.pathname.endsWith("/runs")).length, 3);
   assert.deepEqual(report.errors, []); report.status = "ASSERTIONS_PASSED_CLEANUP_PENDING";
 } catch (e) {
   report.status = "FAILED"; report.errors.push(e.stack ?? e.message);

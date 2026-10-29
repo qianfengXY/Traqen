@@ -92,7 +92,7 @@ export class F002PublicationService {
     return this.repository.withAuthorizedWorkspace(actor, workspaceId, async (tx) => {
       const scope = (await tx.query("SELECT * FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3", [workspaceId, runId, scopeId])).rows[0];
       requireF002(scope, "F002_SCOPE_NOT_FOUND", "范围不存在", { status: 404 });
-      const items = (await tx.query(`SELECT status FROM f002_scope_item WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3`, [workspaceId, runId, scopeId])).rows;
+      const items = (await tx.query(`SELECT material_id,status FROM f002_scope_item WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3`, [workspaceId, runId, scopeId])).rows;
       const blockers = [];
       if (!items.length) blockers.push({ code: "F002_SCOPE_COVERAGE_INCOMPLETE", count: 0 });
       const nonterminal = items.filter((item) => !terminalItemStates.has(item.status));
@@ -103,10 +103,12 @@ export class F002PublicationService {
       if (scope.status === "READY_TO_SEAL" && blockers.length === 0) {
         const run = (await tx.query("SELECT source_input,profile_id FROM f002_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
         const profile = (await tx.query("SELECT payload FROM f002_profile WHERE id=$1", [run.profile_id])).rows[0]?.payload;
-        const records = (await tx.query("SELECT kind,id,payload FROM f002_prepared_record WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 AND generation=$4 ORDER BY kind,id", [workspaceId, runId, scopeId, scope.generation])).rows;
+        const records = (await tx.query("SELECT kind,id,payload FROM f002_prepared_record WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 ORDER BY kind,id", [workspaceId, runId, scopeId])).rows;
         try {
           requireF002(profile, "F002_PROFILE_UNAVAILABLE", "能力配置不存在", { status: 409 });
-          verifyPublication({ workspaceId, bundleId: run.source_input.bundleId, scopeId, profile, records });
+          const publication = verifyPublication({ workspaceId, bundleId: run.source_input.bundleId, scopeId, profile, records });
+          const materials = new Set(publication.records.filter(record => record.kind === "MATERIAL").map(record => record.id));
+          requireF002(items.every(item => materials.has(item.material_id)), "F002_SCOPE_COVERAGE_INCOMPLETE", "工作项缺少同一材料的成果记录", { status: 409 });
         } catch (error) {
           if (!(error instanceof F002Error)) throw error;
           blockers.push({ code: error.code });

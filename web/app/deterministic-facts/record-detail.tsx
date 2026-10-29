@@ -61,7 +61,7 @@ export function RecordDetailPanel({ client, context, select, accessLost, scrollT
       <dl><dt>{context.preview ? "未封存成果定位（非正式版本）" : "固定事实集版本"}</dt><dd className="f002-id">{context.preview ? `运行 ${context.preview.runId} / 范围 ${context.preview.scopeId} / 修订 ${context.preview.revision}` : context.graphVersionId}</dd><dt>来源与范围</dt><dd>工作区 {context.workspaceId} · 来源 {context.sourceVersionId ?? "由事实集清单绑定"}</dd>
         {detail.record.payload.kind === "RELATION" && <><dt>关系方向</dt><dd className="f002-id">{detail.record.payload.subjectId} → {detail.record.payload.targetId}</dd><dt>关系谓词</dt><dd>{detail.record.payload.predicate}</dd></>}
       </dl>
-      <button className="button" disabled={!!context.preview} onClick={() => void copy()}>复制完整引用</button><p role="status">{notice?.id === context.recordId ? notice.message : ""}</p>
+      <button className="button" disabled={!!context.preview} onClick={() => void copy()}>复制完整引用</button>{context.preview && <p>尚未封存；封存后才能复制正式版本引用。</p>}<p role="status">{notice?.id === context.recordId ? notice.message : ""}</p>
       {[{ label: "版本说明", resource: manifest }, { label: "限制清单", resource: gaps }, { label: "能力处置", resource: coverage }].map(({ label, resource }) => resource.error && <p role="alert" key={label}>{label}读取未完成：{resource.error.message}。不能按空结果解释。<button className="button" onClick={resource.retry}>重读{label}</button></p>)}
       <EvidenceExplanation context={context} detail={detail} manifest={manifest.data} gapPage={gaps.data} coverage={coverage.data} select={select} />
       <details><summary>核查固定记录原始字段</summary><pre>{JSON.stringify(detail.record.payload, null, 2)}</pre></details>

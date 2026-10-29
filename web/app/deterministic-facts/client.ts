@@ -39,8 +39,12 @@ export class DeterministicFactsClient {
     this.token = token; this.signal = signal;
   }
 
-  withSignal(signal: AbortSignal) { const next = new DeterministicFactsClient(this.apiBase, this.token, this.workspaceId, signal); next.preview = this.preview; return next; }
-  withPreview(preview: NonNullable<EvidenceLocation["preview"]>) { const next = this.withSignal(this.signal!); next.preview = preview; return next; }
+  withSignal(signal?: AbortSignal) { const next = new DeterministicFactsClient(this.apiBase, this.token, this.workspaceId, signal); next.preview = this.preview; return next; }
+  withPreview(preview: NonNullable<EvidenceLocation["preview"]>) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(preview.runId) || !digestPattern.test(preview.scopeId) || !Number.isSafeInteger(preview.revision) || preview.revision < 1)
+      throw new FactsClientError("未封存成果定位无效", "F002_PREVIEW_INVALID");
+    const next = this.withSignal(this.signal); next.preview = Object.freeze({ ...preview }); return next;
+  }
 
   private async response(route: string, method: string, body?: object): Promise<Response> {
     const signal = this.signal;
