@@ -49,9 +49,15 @@ test('F003 exact-fit PLAN1 plus actual Child1 plus two Main calls needs no manda
   const child = evidence.tasks.find(task=>task.role==='CHILD');
   assert.equal(child.status,'RETURN_RECORDED');
   assert.equal(child.objective,'哪些付款状态允许取消？');
-  assert.equal(child.obligations[0].status,'UNRESOLVED','missing obligation reports are not promoted by accepted candidates');
+  assert.equal(child.obligations[0].status,'UNRESOLVED','missing obligation reports remain unresolved without verification');
   assert.equal(child.propositions.length,2);
-  assert.ok(child.propositions.every(p=>p.state==='ANALYSIS_ACCEPTED'&&p.evidence[0].materialId));
+  const graph = await f.service.graph(owner,w,run.id);
+  const propositionIdentity = ({key,state,evidence})=>({key,state,evidence:evidence.map(({materialId,startLine,endLine})=>({materialId,startLine,endLine}))});
+  assert.equal(graph.candidates.length,2);
+  assert.deepEqual(child.propositions.map(propositionIdentity),graph.candidates.map(propositionIdentity));
+  assert.deepEqual(child.propositions.map(p=>p.state),['RETAINED_UNKNOWN','RETAINED_UNKNOWN']);
+  assert.ok(graph.candidates.every(p=>p.verification===null),'empty verification reviews do not accept candidates');
+  assert.ok(child.propositions.every(p=>p.evidence.length>0&&p.evidence.every(e=>e.readable&&graph.materials.some(m=>m.id===e.materialId))));
   assert.ok(child.sourceRanges.every(range=>range.readable));
   assert.equal(evidence.tasks.filter(task=>task.role==='MAIN').length,3);
   assert.deepEqual(await f.service.taskEvidence(owner,w,run.id,{expectedRevision:saved.revision,expectedGraphDigest:saved.latestGraph.digest}),evidence);
