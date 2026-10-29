@@ -141,7 +141,7 @@ export async function cookieBrowserFixture(t, { webOrigin, apiPort = 0, parent }
                 await writeFile(target, content, { flag: 'wx', mode: 0o600 });
                 rows.push({ path: entryPath, bytes: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex') });
             }
-            await mkdir(path.join(root, 'directories', version, 'empty'), { mode: 0o700 });
+            await mkdir(path.join(root, 'directories', version, 'empty'), { recursive: true, mode: 0o700 });
             directoryManifests[version] = rows;
         }
         const policy = capturePolicy({ gitTargets: source.targets });
