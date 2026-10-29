@@ -11,4 +11,6 @@ coverage/
 
 # Isolated local authentication development data, never production or repository content.
 .traqen-dev/
+# Deployment releases, private databases, credentials and recovery copies.
+/.traqen-runtime/
 *.tsbuildinfo

@@ -101,9 +101,17 @@ test("B-05 a project reached through a symlinked ancestor is still a forbidden s
   assert.deepEqual(await readdir(project), [], "reject before creating anything inside the forbidden repository");
 });
 
-test("B-05 protected deployment rejects unencrypted or permission-ignoring volumes despite encrypted blobs", async () => {
-  for (const [encrypted, permissionsEnforced] of [[false, true], [true, false]]) {
-    await assert.rejects(fixture({ requireProtectedVolume: true, volumeProbe: async () => ({ encrypted, permissionsEnforced, persistent: true, filesystemId: "fixture-volume", physicalStores: ["fixture-disk"] }) }), { code: "SOURCE_VOLUME_PROTECTION_REQUIRED" });
+test("MVP volume attributes do not prevent encrypted, authenticated blob storage", async () => {
+  for (const [encrypted, permissionsEnforced, persistent] of [[false, true, true], [true, false, true], [true, true, false], [false, false, false]]) {
+    const observed = { encrypted, permissionsEnforced, persistent, filesystemId: "fixture-volume", physicalStores: ["fixture-disk"] };
+    const { store, config } = await fixture({ requireProtectedVolume: true, volumeProbe: async () => observed });
+    const content = Buffer.from("synthetic-private-content");
+    const ref = { digest: digest(content), sizeBytes: String(content.length) };
+    await store.putBlob(scope, ref, Readable.from([content]));
+    const reopened = await SourceTruthBlobStore.open(config);
+    assert.deepEqual(await bytes(reopened.readBlob(scope, ref)), content);
+    assert.deepEqual(reopened.volumeProtection.evidence.encrypted, encrypted);
+    assert.equal(await reopened.verifyBlob({ ...scope, workspaceId: "other" }, ref), false);
   }
 });
 

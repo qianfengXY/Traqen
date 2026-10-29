@@ -56,12 +56,14 @@ export async function probeLocalVolume(root) {
 export async function verifyProtectedVolume(root, { probe = probeLocalVolume } = {}) {
   try {
     const result = await probe(root);
-    requireValue(result?.encrypted === true && result.permissionsEnforced === true && result.persistent === true
-      && typeof result.filesystemId === "string" && result.filesystemId.length > 0,
-    "SOURCE_VOLUME_PROTECTION_REQUIRED", "主卷必须启用静态加密、访问权限及持久化保护；加密 blob 不替代数据库和 Git 缓存保护", { status: 503 });
+    // Compatibility entry point: retain actual volume evidence for existing
+    // consumers, but MVP startup does not require encryption, ownership or APFS
+    // persistence attributes. Never manufacture positive protection claims.
+    requireValue(typeof result?.filesystemId === "string" && result.filesystemId.length > 0,
+    "SOURCE_VOLUME_PROBE_UNAVAILABLE", "无法核验部署存储卷标识", { status: 503 });
     return { ...result, checkedAt: new Date().toISOString() };
   } catch (error) {
     if (error instanceof SourceTruthError) throw error;
-    throw new SourceTruthError("SOURCE_VOLUME_PROBE_UNAVAILABLE", "无法核验部署卷保护，请恢复核验条件后重试", { status: 503, cause: error });
+    throw new SourceTruthError("SOURCE_VOLUME_PROBE_UNAVAILABLE", "无法核验部署存储卷标识，请恢复核验条件后重试", { status: 503, cause: error });
   }
 }
