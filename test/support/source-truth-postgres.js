@@ -50,7 +50,7 @@ export async function fixtureChildEnvironment(parent = process.env) {
     }
     environment[name] = value;
   }
-  for (const name of ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "WRANGLER_WRITE_LOGS", "WRANGLER_SEND_METRICS", "CLOUDFLARE_CF_FETCH_ENABLED"])
+  for (const name of ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "NODE_DISABLE_COMPILE_CACHE", "WRANGLER_WRITE_LOGS", "WRANGLER_SEND_METRICS", "CLOUDFLARE_CF_FETCH_ENABLED"])
     if (parent[name] !== undefined) environment[name] = parent[name];
   return environment;
 }

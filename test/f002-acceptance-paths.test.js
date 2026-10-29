@@ -23,12 +23,13 @@ async function fixture() {
 test("fixture children retain audited HOME TMP XDG and tool caches without inheriting unrelated application state", async () => {
   const { root, environment } = await fixture();
   const cache = environment.HOME, log = path.join(cache, "wrangler.log");
-  const inherited = await fixtureChildEnvironment({ ...environment, PATH: "/usr/bin:/bin", NODE_COMPILE_CACHE: cache,
+  const inherited = await fixtureChildEnvironment({ ...environment, PATH: "/usr/bin:/bin", NODE_COMPILE_CACHE: cache, NODE_DISABLE_COMPILE_CACHE: "1",
     MINIFLARE_REGISTRY_PATH: cache, PLAYWRIGHT_BROWSERS_PATH: cache, WRANGLER_LOG_PATH: log,
     SOURCE_TRUTH_CONFIG: "/sentinel-do-not-read", DATABASE_URL: "sentinel-do-not-connect" });
   assert.equal(inherited.HOME, environment.HOME); assert.equal(inherited.TEMP, root);
   assert.equal(inherited.XDG_CONFIG_HOME, environment.XDG_CONFIG_HOME);
   assert.equal(inherited.NODE_COMPILE_CACHE, cache); assert.equal(inherited.MINIFLARE_REGISTRY_PATH, cache);
+  assert.equal(inherited.NODE_DISABLE_COMPILE_CACHE, "1");
   assert.equal(inherited.PLAYWRIGHT_BROWSERS_PATH, cache); assert.equal(inherited.WRANGLER_LOG_PATH, log);
   assert.equal("SOURCE_TRUTH_CONFIG" in inherited, false); assert.equal("DATABASE_URL" in inherited, false);
 });
