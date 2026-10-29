@@ -1,29 +1,26 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { realpath } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { setTimeout } from "node:timers/promises";
 import pg from "pg";
 import { seedSourceDatabase } from "./source-truth-database.js";
-import { sourceTruthTestRoot, sourceTruthTestEnvironment } from "./source-truth-test-paths.js";
 
 const execute = promisify(execFile);
 
 // A new owned cluster per fixture. No DATABASE_URL, .env, TCP listener, service
 // registration or existing cluster is ever used. Its private directory is kept
 // for diagnosis; shutdown affects only the child process started here.
-export async function isolatedPostgres(t, { binaries = process.env.F001_TEST_PG_BIN, parent } = {}) {
+export async function isolatedPostgres(t, { binaries = process.env.F001_TEST_PG_BIN } = {}) {
   if (!binaries || !path.isAbsolute(binaries)) throw new Error("F001_TEST_PG_BIN must name an installed PostgreSQL bin directory");
   const bin = await realpath(binaries);
-  const root = await sourceTruthTestRoot("tq-f001-pg", parent);
-  // Keep the socket role short enough for macOS sockaddr_un, independent of
-  // the nesting/filename lengths of the retained evidence and data directory.
-  const data = path.join(root, "data"), socket = await sourceTruthTestRoot("s");
-  if (Buffer.byteLength(path.join(socket, ".s.PGSQL.5432")) >= (process.platform === "darwin" ? 104 : 108))
-    throw new Error("Project-local PostgreSQL socket pathname exceeds the native limit");
-  const env = { ...await sourceTruthTestEnvironment(root), PATH: `${bin}:/usr/bin:/bin` };
+  const root = await mkdtemp(path.join(await realpath(tmpdir()), "tq-f001-pg-"));
+  const data = path.join(root, "data"), socket = path.join(root, "socket");
+  await mkdir(socket, { mode: 0o700 });
+  const env = { PATH: `${bin}:/usr/bin:/bin`, LC_ALL: "C", TZ: "UTC" };
   await execute(path.join(bin, "initdb"), ["-D", data, "--username=f001_test", "--encoding=UTF8", "--no-locale", "--auth-local=trust", "--auth-host=reject"], { env, timeout: 30000, maxBuffer: 1024 * 1024 });
   const pools = new Set();
   const connection = (database = "postgres") => ({ host: socket, port: 5432, database, user: "f001_test", password: "", ssl: false,

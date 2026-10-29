@@ -97,9 +97,20 @@ try {
     await page.getByRole('button', { name: '从选中的冻结包创建新版本', exact: true }).click();
     await ui.station(2);
     await page.getByRole('combobox', { name: '本版处理', exact: true }).selectOption('UPDATE');
-    // A new version and a cancelled picker cannot reuse D1's old handle.
+    await page.getByRole('button', { name: '选择本机目录', exact: true }).waitFor();
+    // First select an actual handle in this new draft. Cancelling its replacement
+    // must clear that handle independently of the new-version reset above.
+    await ui.picker('D1', 'owned-cookie-stale-draft-choice');
+    await page.getByRole('button', { name: '选择本机目录', exact: true }).click();
+    await page.getByText('owned-cookie-stale-draft-choice', { exact: true }).waitFor();
+    await page.getByRole('combobox', { name: '本版处理', exact: true }).selectOption('REUSE');
+    await page.getByRole('combobox', { name: '本版处理', exact: true }).selectOption('UPDATE');
+    await page.getByRole('button', { name: '选择本机目录', exact: true }).waitFor();
+    await page.getByRole('button', { name: '选择本机目录', exact: true }).click();
+    await page.getByText('owned-cookie-stale-draft-choice', { exact: true }).waitFor();
     await page.evaluate(() => { window.showDirectoryPicker = async () => { throw new DOMException('cancelled', 'AbortError'); }; });
-    await page.getByRole('button', { name: /^(选择本机目录|重新选择目录)$/ }).click();
+    await page.getByRole('button', { name: '重新选择目录', exact: true }).click();
+    await page.getByRole('button', { name: '选择本机目录', exact: true }).waitFor();
     await Promise.all(pending);
     const beforeD2 = bytes('directory'), beforeD2Writes = f.blobWrites.length;
     await ui.start();

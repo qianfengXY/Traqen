@@ -181,7 +181,7 @@ function SourceWorkspaceSession({ apiBase, token, workspaceId, workspaceName, on
       if (generation !== directoryGeneration.current || client.signal?.aborted) return null;
       directory.current = handle; setDirectoryName(handle.name ?? "已选择目录"); return handle;
     }
-    catch (error) { if ((error as Error).name !== "AbortError") setError(error as Error); return null; }
+    catch (error) { if (generation === directoryGeneration.current && !client.signal?.aborted && (error as Error).name !== "AbortError") setError(error as Error); return null; }
   };
   const sendDirectory = async (runId: string, input: DraftInput, handle: DirectoryHandle) => {
     const source = input.sources.find((source) => source.kind === "DIRECTORY_UPLOAD" && source.mode === "UPDATE");

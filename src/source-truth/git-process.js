@@ -5,6 +5,7 @@ import { openGitCacheLock } from "./git-cache-capacity.js";
 import { decodeGitCacheFailure, MAX_GIT_CACHE_CONTROL_BYTES } from "./git-cache-diagnostic.js";
 
 const cacheCommand = fileURLToPath(new URL("./git-cache-command.js", import.meta.url));
+const inheritedPaths = ["HOME", "TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"];
 
 export class GitProcess {
   constructor({ executable = "/usr/bin/git", timeoutMs = 60000, maxPackBytes = 256 * 1024 * 1024, maxProcesses = 2 } = {}) {
@@ -32,6 +33,10 @@ export class GitProcess {
       const env = { PATH: "/usr/bin:/bin", LANG: "C", LC_ALL: "C", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null",
         GIT_CONFIG_SYSTEM: "/dev/null", GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/usr/bin/false", GIT_NO_LAZY_FETCH: "1",
         GIT_NO_REPLACE_OBJECTS: "1", GIT_CONFIG_COUNT: String(pairs.length) };
+      // Retain only caller-configured write locations. Never inherit arbitrary
+      // Git/Node options or invent a host home/temp/cache location.
+      for (const key of inheritedPaths) if (process.env[key] !== undefined) env[key] = process.env[key];
+      if (process.env.NODE_DISABLE_COMPILE_CACHE === "1") env.NODE_DISABLE_COMPILE_CACHE = "1";
       pairs.forEach(([key, value], i) => { env[`GIT_CONFIG_KEY_${i}`] = key; env[`GIT_CONFIG_VALUE_${i}`] = value; });
       // Fixed trusted wrapper: no source-controlled command is evaluated. POSIX
       // file-size limit is a per-file guard. Cache-wide admission/monitoring is

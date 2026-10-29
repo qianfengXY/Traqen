@@ -45,7 +45,7 @@ export async function sourceTruthTestRoot(prefix, parent) {
 export async function sourceTruthTestEnvironment(root) {
   await sourceTruthTestParent(root);
   const roles = { home: "home", temporary: "tmp", cache: "cache", config: "config", data: "data", state: "state",
-    npm: "npm-cache", compile: "compile-cache", downloads: "downloads", logs: "logs" };
+    npm: "npm-cache", runtime: "runtime", downloads: "downloads", logs: "logs" };
   const paths = {};
   for (const [role, relative] of Object.entries(roles)) {
     paths[role] = path.join(root, relative);
@@ -54,7 +54,7 @@ export async function sourceTruthTestEnvironment(root) {
   return Object.freeze({ PATH: "/usr/bin:/bin:/usr/sbin:/sbin", LANG: "C", LC_ALL: "C", TZ: "UTC",
     HOME: paths.home, TMPDIR: paths.temporary, TMP: paths.temporary, TEMP: paths.temporary,
     XDG_CACHE_HOME: paths.cache, XDG_CONFIG_HOME: paths.config, XDG_DATA_HOME: paths.data, XDG_STATE_HOME: paths.state,
-    npm_config_cache: paths.npm, NODE_COMPILE_CACHE: paths.compile,
+    XDG_RUNTIME_DIR: paths.runtime, npm_config_cache: paths.npm, NODE_DISABLE_COMPILE_CACHE: "1",
     WRANGLER_LOG_PATH: path.join(paths.logs, "wrangler.log"), MINIFLARE_REGISTRY_PATH: path.join(paths.cache, "miniflare-registry"),
     WRANGLER_SEND_METRICS: "false", CLOUDFLARE_CF_FETCH_ENABLED: "false" });
 }
