@@ -10,6 +10,7 @@ import {PublishedOriginal} from './published-original.tsx';
 import {ReadIssue} from './read-issue.tsx';
 import {openWork} from './work-route.ts';
 import {PublishedSevenQuestions} from './published-seven.tsx';
+import {propositionName} from './model.ts';
 
 export function PublishedExplorer({client,version,objectKey,materialId,onAccessLost}:{client:BusinessKnowledgeClient;version:PublishedVersion;objectKey:string;materialId?:string;onAccessLost:(e:Error)=>void}){
   const revision=version.publication.graphRevisionId;
@@ -25,7 +26,7 @@ export function PublishedExplorer({client,version,objectKey,materialId,onAccessL
     {filter.onlyHumanConfirmed&&<p className="bk-warning">只筛选当前有效的明确命题及范围；部分确认仍是部分。为显示关系而保留的端点不代表端点获得认可。</p>}
     {state.loading&&<p role="status">正在读取选定版本…</p>}{state.error&&<ReadIssue error={state.error} retry={state.retry}/>}
     {state.data&&<><GraphView graph={state.data} selectedKey={objectKey} onSelect={select} onMaterial={material}/>
-      {state.data.nodes.filter(n=>n.selectionRole==='ENDPOINT_CONTEXT_ONLY').map(n=><p key={n.key} className="bk-caption">{n.name}：仅为关系端点提供上下文，未作人工确认。</p>)}
+      {state.data.nodes.filter(n=>n.selectionRole==='ENDPOINT_CONTEXT_ONLY').map(n=><p key={n.key} className="bk-caption">{propositionName(n)}：仅为关系端点提供上下文，未作人工确认。</p>)}
     </>}
     {(objectKey||materialId)&&<PublishedTrace key={`${revision}:${objectKey}:${materialId??''}`} client={client} version={version} objectKey={objectKey} materialId={materialId} onAccessLost={onAccessLost} onSelect={select} onMaterial={material}/>}
   </section>;
@@ -38,7 +39,7 @@ function PublishedTrace({client,version,objectKey,materialId,onAccessLost,onSele
   return <section className="bk-panel" aria-label="发布依据追溯"><h3>{materialId?'原文与业务反查':'对象与关系依据'}</h3>
     {state.loading&&<p role="status">正在读取固定版本依据…</p>}{state.error&&<ReadIssue error={state.error} retry={state.retry}/>}
     {state.data&&<>{selected&&<><PropositionDetails record={selected} onMaterial={onMaterial}/><PublishedProjection value={selected}/></>}
-      {materialId&&<><h4>关联对象</h4>{state.data.nodes.map(n=><p key={n.key}><button className="bk-text-button" onClick={()=>onSelect(n.key)}>{n.name}</button></p>)}</>}
+      {materialId&&<><h4>关联对象</h4>{state.data.nodes.map(n=><p key={n.key}><button className="bk-text-button" onClick={()=>onSelect(n.key)}>{propositionName(n)}</button></p>)}</>}
       {!!state.data.edges.length&&<><h4>有向关系</h4>{state.data.edges.map(e=><details key={e.key}><summary>{e.predicate} · {e.scope}</summary><PropositionDetails record={e} onMaterial={onMaterial}/><button className="bk-text-button" onClick={()=>onSelect(e.key)}>查看这条关系的七问与当前状态</button></details>)}</>}
       <h4>关联原文</h4><MaterialList materials={state.data.materials} onMaterial={onMaterial}/>
       {objectKey&&!materialId&&<PublishedSevenQuestions client={client} version={version} objectKey={objectKey} onSelect={onSelect} onMaterial={onMaterial} onAccessLost={onAccessLost}/>}

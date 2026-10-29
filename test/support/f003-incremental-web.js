@@ -10,6 +10,13 @@ export function assertIncrementalWebContract(run) {
   const render=value=>renderComponent(InvestigationReadResult,{run:value,client:{workspaceId:run.workspaceId},apiBase:'/unused',
     view:'BUSINESS',objectKey:'',onAccessLost:()=>{},onRefresh:()=>{},onChanged:()=>{}});
   assert.equal(investigationKind(run).kind,'BUSINESS');
+  // Both known DTO contracts use this exact admitted continuation structure.
+  // Do not treat a future version or a string-coerced number as compatible.
+  for (const analysisContractVersion of [12, 13]) {
+    const compatible = {...run, analysisContractVersion};
+    assert.equal(investigationKind(compatible).kind, 'BUSINESS');
+    assert.ok(render(compatible).includes('调查状态与版本'));
+  }
   const html=render(run);
   assert.ok(html.includes('调查状态与版本'));assert.ok(html.includes('技术补证与明确采用'));
   assert.ok(!html.includes('运行类型未识别'));
@@ -30,7 +37,8 @@ export function assertIncrementalWebContract(run) {
     r=>{r.continuationBasis.b.budget.maxModelCalls++;rehash(r);},
     r=>{r.continuationBasis.b.profile.id='different';rehash(r);},
     r=>{r.questionContext={sessionId:'fake'};},
-    r=>{r.purpose='FUTURE_ANALYSIS';},r=>{delete r.purpose;},r=>{r.analysisContractVersion=11;}
+    r=>{r.purpose='FUTURE_ANALYSIS';},r=>{delete r.purpose;},r=>{r.analysisContractVersion=11;},
+    r=>{r.analysisContractVersion=14;},r=>{r.analysisContractVersion='13';}
   ];
   for(const [n,mutate] of changes.entries()) {
     const bad=structuredClone(run);mutate(bad);

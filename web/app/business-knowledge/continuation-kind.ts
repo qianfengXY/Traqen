@@ -14,7 +14,7 @@ export function continuationKindValid(run: Investigation): boolean {
   try {
     const c = run.continuationBasis;
     if (!c || c.version !== 1 || c.purpose !== run.purpose || run.questionContext !== undefined
-      || run.analysisContractVersion !== 12 || c.workspaceId !== run.workspaceId
+      || ![12, 13].includes(run.analysisContractVersion ?? -1) || c.workspaceId !== run.workspaceId
       || c.actorId !== run.actorId || c.operationId !== run.operationId
       || !workId(run.id) || !workId(c.actorId) || !workId(c.operationId) || !hash(c.digest)) return false;
     const { digest, ...body } = c;

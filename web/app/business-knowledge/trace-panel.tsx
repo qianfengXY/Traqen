@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { BusinessKnowledgeClient } from "./client.ts";
 import { useKnowledgeRead } from "./use-read.ts";
 import { MaterialList, PropositionDetails } from "./graph-view.tsx";
-import { materialPath, propositionState, shortId } from "./model.ts";
-import type { GraphMaterial, Investigation, SevenQuestions } from "./types.ts";
+import { materialPath, propositionName, propositionState, shortId } from "./model.ts";
+import type { GraphMaterial, Investigation, Proposition, SevenQuestions } from "./types.ts";
 import {AuthorityPanel} from "./authority-panel.tsx";
 import {ReadIssue} from "./read-issue.tsx";
 import {UnassociatedCoverage} from "./coverage-view.tsx";
@@ -30,16 +30,22 @@ export function TracePanel({ client, run, target, onSelect, onMaterial, onAccess
   return <dialog ref={dialog} className="bk-inspector-dialog" aria-label="业务依据追溯" onCancel={event => { event.preventDefault(); onClose(); }}><div className="bk-panel bk-inspector"><div className="bk-heading"><h2>{"key" in target ? "命题与依据" : "材料反查"}</h2><button className="button" onClick={onClose}>关闭追溯</button></div>
     {trace.loading && <p role="status">正在复验当前调查与依据…</p>}
     {trace.error && <ReadIssue error={trace.error} retry={trace.retry} />}
-    {trace.data && <>{selected && <><h3>{selected.name??selected.predicate}</h3><PropositionDetails record={selected} onMaterial={onMaterial} /><AuthorityPanel key={`${run.id}:${run.latestGraph?.digest}:${selected.key}`} client={client} run={run} objectKey={selected.key} canControl={canControl} onAccessLost={onAccessLost}/></>}
-      {"materialId" in target && <><h3>相关业务对象 · {trace.data.nodes.length}</h3>{trace.data.nodes.map(node => <p key={node.key}><button className="bk-text-button" onClick={() => onSelect(node.key)}>{node.name}</button> · {propositionState(node)}</p>)}{!trace.data.nodes.length && <p>材料已读，但没有关联业务对象；不推断不存在业务关系。</p>}</>}
+    {trace.data && <>{selected && <><h3>{propositionName(selected)}</h3><PropositionDetails record={selected} onMaterial={onMaterial} /><AuthorityPanel key={`${run.id}:${run.latestGraph?.digest}:${selected.key}`} client={client} run={run} objectKey={selected.key} canControl={canControl} onAccessLost={onAccessLost}/></>}
+      {"materialId" in target && <RelatedBusinessObjects nodes={trace.data.nodes} onSelect={onSelect} />}
       <h3>关联原文</h3><MaterialList materials={trace.data.materials} onMaterial={onMaterial} />
       {"materialId" in target && trace.data.materials.find(material => material.id === target.materialId) && <OriginalMaterial key={target.materialId}
         client={client} runId={run.id} material={trace.data.materials.find(material => material.id === target.materialId)!} onAccessLost={onAccessLost} />}
       {trace.data.edges.length > 0 && <section><h3>关系依据</h3>{trace.data.edges.map(edge => <details key={edge.key}><summary>{edge.predicate} · {propositionState(edge)}</summary><PropositionDetails record={edge} onMaterial={onMaterial} /></details>)}</section>}
-      {"key" in target && (trace.data.relation?<section><h3>关系端点与业务七问</h3><p>本关系的独立依据与权威映射如上；服务端七问以业务对象为单位。选择明确端点后读取其七问，不以端点决定代替关系决定。</p>{trace.data.nodes.map(node=><p key={node.key}><button className="bk-text-button" onClick={()=>onSelect(node.key)}>读取端点七问：{node.name}</button></p>)}</section>
+      {"key" in target && (trace.data.relation?<section><h3>关系端点与业务七问</h3><p>本关系的独立依据与权威映射如上；服务端七问以业务对象为单位。选择明确端点后读取其七问，不以端点决定代替关系决定。</p>{trace.data.nodes.map(node=><p key={node.key}><button className="bk-text-button" onClick={()=>onSelect(node.key)}>读取端点七问：{propositionName(node)}</button></p>)}</section>
         :<SevenQuestionPanel client={client} run={run} objectKey={target.key} onMaterial={onMaterial} onSelect={onSelect} onAccessLost={onAccessLost} />)}
     </>}
   </div></dialog>;
+}
+
+export function RelatedBusinessObjects({ nodes, onSelect }: { nodes: Proposition[]; onSelect: (key: string) => void }) {
+  return <><h3>相关业务对象 · {nodes.length}</h3>{nodes.map(node => <p key={node.key}>
+    <button className="bk-text-button" onClick={() => onSelect(node.key)}>{propositionName(node)}</button> · {propositionState(node)}
+  </p>)}{!nodes.length && <p>材料已读，但没有关联业务对象；不推断不存在业务关系。</p>}</>;
 }
 
 function OriginalMaterial({ client, runId, material, onAccessLost }: { client: BusinessKnowledgeClient; runId: string; material: GraphMaterial; onAccessLost: (error: Error) => void }) {
@@ -54,7 +60,7 @@ function OriginalMaterial({ client, runId, material, onAccessLost }: { client: B
 
 export function SevenAnswers({ answer, onMaterial, onSelect }: { answer: SevenQuestions; onMaterial: (id: string) => void; onSelect: (key: string) => void }) {
   return <div aria-label="图谱派生七问"><p>从此保存版本派生的查询答卷，不调用模型，不是人工确认。</p>{answer.sections.map((section, index) => <section className="bk-answer" key={index}><h4>{index + 1}. {section.question}</h4>
-    {section.nodes?.map(node => <p key={node.key}><button className="bk-text-button" onClick={() => onSelect(node.key)}>{node.name}</button>：{node.statement} <small>{propositionState(node)}</small></p>)}
+    {section.nodes?.map(node => <p key={node.key}><button className="bk-text-button" onClick={() => onSelect(node.key)}>{propositionName(node)}</button>：{node.statement} <small>{propositionState(node)}</small></p>)}
     {section.nodes?.length === 0 && <p>当前依据内未知，未补造结论。</p>}
     {(section.materials || section.testAssets) && <MaterialList materials={section.materials ?? section.testAssets ?? []} onMaterial={onMaterial} />}
     {section.relations?.map(relation => <p key={relation.key}>{relation.predicate} · {relation.scope} · {propositionState(relation)}</p>)}

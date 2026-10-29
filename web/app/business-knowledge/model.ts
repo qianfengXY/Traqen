@@ -32,6 +32,11 @@ export function propositionState(value: Pick<Proposition, "state" | "authority">
   return ({ ANALYSIS_ACCEPTED: "分析收录 · 非人工确认", HUMAN_REVIEW: "存在歧义 · 待人工处理", NEEDS_EVIDENCE: "缺少依据 · 待补证",
     RETAINED_UNKNOWN: "保留未知", QUARANTINED: "无效输出 · 已隔离" } as Record<string, string>)[value.state] ?? "状态待核实";
 }
+export function propositionName(value: Pick<Proposition, "state" | "name" | "predicate">) {
+  if (value.state === "QUARANTINED") return "无效输出 · 已隔离";
+  return typeof value.name === "string" && value.name.trim() ? value.name
+    : typeof value.predicate === "string" && value.predicate.trim() ? value.predicate : "未命名候选";
+}
 export const kindNames: Record<string, string> = { FUNCTION: "业务功能", RULE: "业务规则", ROLE: "业务角色", STATE: "业务状态",
   PROCESS: "业务流程", EXCEPTION: "业务异常", BUSINESS_OBJECT: "业务对象", DOCUMENT: "业务文档", CONFIG_DATA: "配置与数据", API_CODE: "接口与代码", TEST_ASSET: "测试资产", OTHER: "其他材料" };
 export type StartDraft = { question: string; bundle: FrozenVersion; componentIds: string[]; profileId: string; confirmedProfileId: string;
