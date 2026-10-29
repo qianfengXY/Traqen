@@ -10,6 +10,7 @@ export const acceptanceFilesA = Object.freeze({
   "test/legacy.test.js": "import test from 'node:test'; import assert from 'node:assert/strict'; test('legacy declaration', () => { assert.equal(1, 1); });\n",
   "reports/results.xml": '<testsuite name="Declared suite"><testcase name="conditional submit" classname="Orders" time="0.1"/></testsuite>\n',
   "docs/guide.md": "# Guide\r\n\r\n说明😀 first line\r\nsecond line\r\n\r\n## Details\r\n[Source](../src/orders.ts)\r\n\r\n[Ambiguous](#duplicate)\r\n# Duplicate\r\n# Duplicate\r\n",
+  "docs/opaque.custom": "OWNED_UNSUPPORTED_FORMAT_ORIGINAL_A\n",
 });
 export const acceptanceFilesB = Object.freeze({
   ...Object.fromEntries(Object.entries(acceptanceFilesA).filter(([name]) => name !== "test/legacy.test.js")),

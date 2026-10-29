@@ -4,25 +4,26 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
-import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { acceptanceNativeFixture } from "./f002-acceptance-native-fixture.js";
+import { fixtureChildEnvironment } from "./source-truth-postgres.js";
 import { cookieFixturePassword } from "./source-truth-browser-cookie-fixture.js";
 import { acceptanceFilesA } from "./f002-acceptance-assets.js";
 import { freezeGit, publishFacts, pages, json, factsPrefix, digest } from "./f002-acceptance-http.js";
 
 const [modulePath, executablePath] = process.argv.slice(2);
 assert.ok(path.isAbsolute(modulePath ?? "") && path.isAbsolute(executablePath ?? ""));
-const root = await mkdtemp(path.join(tmpdir(), "traqen-f002-acceptance-browser-"));
+const environment = await fixtureChildEnvironment();
+const root = await mkdtemp(path.join(environment.TMPDIR, "traqen-f002-acceptance-browser-"));
+const downloads = path.join(root, "downloads"); await mkdir(downloads, { mode: 0o700 });
 const project = fileURLToPath(new URL("../../", import.meta.url));
 const probe = createServer(); await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
 const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
 assert.ok(![3003, 3004, 3100, 3188, 6398, 6399].includes(port));
 const origin = `http://127.0.0.1:${port}`, cleanups = [], frontendLog = [];
-const environment = Object.fromEntries(["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "SHELL"].flatMap(key => process.env[key] === undefined ? [] : [[key, process.env[key]]]));
 const report = { scope: "REAL_COOKIE_NATIVE_PG_HTTP_GIT_TECHNICAL_UI_AB_NO_MODEL_VOLUME_MECHANISM_DOUBLE", status: "RUNNING", origin,
   checks: [], predicateTraversals: [], originalReads: [], pageErrors: [], errors: [], writes: [], legacyRequestsDuringF2: [], screenshots: [] };
 let fixture, frontend, frontendExit, browser, page, phase = "SETUP", ta, a;
@@ -52,7 +53,7 @@ try {
   while (true) { try { if ((await fetch(origin, { signal: AbortSignal.timeout(1000) })).ok) break; } catch {}
     assert.ok(frontend.exitCode === null && Date.now() < until, "owned frontend did not start"); await delay(100); }
   const { chromium } = await import(pathToFileURL(modulePath).href);
-  browser = await chromium.launch({ executablePath, headless: true, env: environment });
+  browser = await chromium.launch({ executablePath, headless: true, env: environment, downloadsPath: downloads });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   page = await context.newPage(); page.setDefaultTimeout(20000);
   page.on("pageerror", e => report.pageErrors.push(e.message));
@@ -121,8 +122,15 @@ try {
       assert.match(await page.locator(".f002-reading").innerText(), /脱敏副本/);
       assert.equal((await page.locator("body").innerText()).includes("OWNED_FIXTURE_SECRET_NEVER_INDEX"), false);
     } else assert.ok((await page.locator(".f002-reading .f002-code").innerText()).length > 0);
+    if (name === "docs/opaque.custom") {
+      const objects = new Set(ta.records.filter(r => r.kind === "OBJECT" && r.payload.materialId === material.id).map(r => r.id));
+      assert.equal(ta.records.some(r => r.kind === "FACT" && (objects.has(r.payload.subjectId) || objects.has(r.payload.targetId))), false);
+      assert.ok(ta.records.some(r => r.kind === "GAP" && r.payload.materialId === material.id && r.payload.code === "FORMAT_UNSUPPORTED"));
+      assert.equal(await page.locator('.f002-reading .f002-code [data-line="1"] > code').textContent(), acceptanceFilesA[name].trim());
+      report.checks.push("same-version-unsupported-no-Fact-material-remains-directory-readable-with-explicit-Gap");
+    }
   }
-  report.checks.push("all-ten-cross-asset-materials-readable-from-real-directory-with-sensitive-config-redacted");
+  report.checks.push("original-ten-plus-unsupported-material-readable-from-real-directory-with-sensitive-config-redacted");
   // Initial record requests are asynchronous: no pagination button before the
   // initial page resolves is not proof that all records have been loaded.
   await page.locator(".f002-records table").first().waitFor();

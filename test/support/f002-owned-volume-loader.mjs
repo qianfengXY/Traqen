@@ -10,7 +10,7 @@ const roots = JSON.parse(process.env.F002_TEST_OWNED_VOLUME_ROOTS ?? "[]").map(r
 const temporary = realpathSync(tmpdir());
 if (roots.length !== 2 || !roots.every(root => path.dirname(root) === temporary)
   || !roots.some(root => path.basename(root).startsWith("tq-f002-native-entry-"))
-  || !roots.some(root => path.basename(root).startsWith("tq-f001-pg-"))) throw Error("Exact owned fixture roots required");
+  || !roots.some(root => path.basename(root).startsWith("tq-f001-pg-") || /^_p[A-Za-z0-9]{6}$/.test(path.basename(root)))) throw Error("Exact owned fixture roots required");
 const target = new URL("../../src/source-truth/volume-protection.js", import.meta.url).href;
 const workerTarget = new URL("../../src/deterministic-facts/worker.js", import.meta.url).href;
 const barrier = process.env.F002_TEST_OWNED_WORKER_BARRIER;
