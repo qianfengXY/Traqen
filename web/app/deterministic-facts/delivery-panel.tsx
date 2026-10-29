@@ -34,6 +34,9 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
   const [error, setError] = useState<Error | null>(null), [checks, setChecks] = useState<ScopeChecks>({});
   const [selectedRun, setSelectedRun] = useState<Run | null>(null);
   const selectedRunId = initialRunId ?? selectedRun?.id ?? journal.draft.runId;
+  // A retry keeps its run id. Restart a terminal observer when the durable
+  // scope revision/status changes, rather than retaining its finished closure.
+  const followRevision = selectedRun?.scopes.map(scope => `${scope.scopeId}:${scope.revision}:${scope.status}`).join("|");
   const [reviewed, setReviewed] = useState("");
   useEffect(() => { if (selectedRun) onRunChange?.(selectedRun); }, [selectedRun, onRunChange]);
   // The overview lists active work only. Keep following the newly created run
@@ -61,7 +64,7 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     void observe();
     const timer = window.setInterval(() => void observe(), 3000);
     return () => { clearInterval(timer); controller.abort(); };
-  }, [client, selectedRunId, onAccessLost]);
+  }, [client, selectedRunId, followRevision, onAccessLost]);
   const report = (error: unknown) => {
     if (client.signal?.aborted) return;
     if (error instanceof FactsClientError && [401, 403].includes(error.status)) onAccessLost(error);

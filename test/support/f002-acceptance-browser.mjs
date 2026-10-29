@@ -316,11 +316,22 @@ try {
     report.retry = { runId: failedRun.id, fault: "OWNED_DB_CHECK_CONSTRAINT_AT_READY_TRANSITION", failedRevision: failed.scopes[0].revision,
       recoveredRevision: recovered.scopes[0].revision, generation: 2, sameRecordCount: recoveredRecords.length };
   } finally {
-    try { await faultPool.query("ALTER TABLE f002_scope DROP CONSTRAINT IF EXISTS f002_journey_ready_fault"); }
-    finally { await faultPool.end(); }
+    await faultPool.query("ALTER TABLE f002_scope DROP CONSTRAINT IF EXISTS f002_journey_ready_fault");
+    // isolatedPostgres owns this pool and closes it exactly once.
   }
+  // Delay real status reads, not responses or parser work, to verify honest
+  // no-update feedback even before the first progress snapshot arrives.
+  let delayProgressReads = true;
+  const stalledRead = async route => { if (delayProgressReads && route.request().method() === "GET") await delay(18000); await route.continue(); };
+  const stalledPatterns = ["**/deterministic-facts/runs/*", "**/deterministic-facts/runs/*/scopes/*/progress"];
+  for (const pattern of stalledPatterns) await page.route(pattern, stalledRead);
   const cancelledRun = await startSameInput();
   let cancelledRow = page.locator(".f002-delivery article").filter({ hasText: cancelledRun.id });
+  await cancelledRow.getByText("超过 15 秒未收到新的处理状态，仍在核查此运行；可以重读状态或取消，不会另建任务。", { exact: true }).waitFor({ timeout: 25000 });
+  await screenshot("journey-09-status-read-delay.png");
+  report.statusReadDelay = { kind: "REAL_NETWORK_READ_DELAY_NO_RESPONSE_REPLACEMENT", delayedMs: 18000, noFakePercentage: true };
+  delayProgressReads = false;
+  for (const pattern of stalledPatterns) await page.unroute(pattern, stalledRead);
   await cancelledRow.getByRole("button", { name: "查看待检查成果", exact: true }).waitFor({ timeout: 60000 });
   phase = "LEAVE";
   await page.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "来源快照", exact: true }).click();
@@ -338,6 +349,9 @@ try {
   const cancelled = (await json(client, `${factsPrefix}/runs/${cancelledRun.id}`)).run;
   assert.equal(cancelled.scopes[0].status, "CANCELLED"); assert.equal(cancelled.scopes[0].graphVersionId, null);
   report.cancel = { runId: cancelledRun.id, revision: cancelled.scopes[0].revision, status: cancelled.scopes[0].status };
+  await page.reload();
+  await page.locator(".f002-delivery article").filter({ hasText: cancelledRun.id }).getByText("已取消", { exact: true }).first().waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("run"), cancelledRun.id);
   await page.getByLabel("全局主题配色", { exact: true }).selectOption("dark");
   await screenshot("journey-09-dark-cancelled.png");
   await page.getByLabel("全局主题配色", { exact: true }).selectOption("light");
