@@ -106,10 +106,10 @@ try {
   const scope = stored.scopes[0], previewBase = `${factsPrefix}/runs/${run.id}/scopes/${scope.scopeId}/preview/${scope.revision}`;
   const before = await pages(client, `${previewBase}/records`);
   report.progress = (await json(client, `${factsPrefix}/runs/${run.id}/scopes/${scope.scopeId}/progress`)).progress;
-  assert.ok(report.progress.events.some(e => e.phase === "MATERIALS" && e.completed === 11 && e.total === 11));
+  assert.ok(report.progress.events.some(e => e.phase === "MATERIALS" && e.completed === a.inventory.length && e.total === a.inventory.length));
   assert.ok(report.progress.events.some(e => e.phase === "JAVASCRIPT_MODULES"));
   assert.equal(report.progress.latest.phase, "READY");
-  await row.getByText("已解析材料 11 / 11", { exact: true }).waitFor();
+  await row.getByText(`已处理材料条目 ${a.inventory.length} / ${a.inventory.length}（含目录及不可解析项）`, { exact: true }).waitFor();
   await screenshot("journey-03-real-progress.png");
   await page.reload();
   await page.locator(".f002-delivery article").filter({ hasText: run.id }).getByRole("button", { name: "查看待检查成果", exact: true }).waitFor();
