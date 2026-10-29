@@ -3,12 +3,11 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, realpath, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
-import { isolatedPostgres } from "./source-truth-postgres.js";
+import { isolatedPostgres, fixtureChildEnvironment } from "./source-truth-postgres.js";
 import { gitFixture } from "./source-truth-git-fixture.js";
 import { cookieFixtureOrigin, cookieFixturePassword, fixtureCookieClient } from "./source-truth-browser-cookie-fixture.js";
 import { AuthService } from "../../src/auth/service.js";
@@ -19,6 +18,7 @@ import { acceptanceFilesA, acceptanceFilesB } from "./f002-acceptance-assets.js"
 const project = fileURLToPath(new URL("../../", import.meta.url));
 export async function acceptanceNativeFixture(t, { origin } = {}) {
   origin = cookieFixtureOrigin(origin);
+  const cleanEnv = await fixtureChildEnvironment();
   const cleanups = [], registration = { after: fn => cleanups.push(fn) };
   let closed = false, child, exited, log = "", base, root, cluster, latestFiles = acceptanceFilesA;
   const children = [];
@@ -59,7 +59,7 @@ export async function acceptanceNativeFixture(t, { origin } = {}) {
       return source.git("rev-parse", "HEAD");
     }
     const commitA = await commitFiles(acceptanceFilesA, "public bounded acceptance A");
-    root = await mkdtemp(path.join(await realpath(tmpdir()), "tq-f002-native-entry-"));
+    root = await mkdtemp(path.join(cleanEnv.TMPDIR, "tq-f002-native-entry-"));
     const store = path.join(root, "source-store"), keys = path.join(root, "keys"), recovery = path.join(root, "recovery");
     for (const directory of [store, keys, recovery]) await mkdir(directory, { mode: 0o700 });
     await writeFile(path.join(store, "source-truth-store.json"), '{"format":"Traqen.SourceTruthStore","version":1}', { flag: "wx", mode: 0o600 });
@@ -81,7 +81,6 @@ export async function acceptanceNativeFixture(t, { origin } = {}) {
     const configFile = path.join(root, "source-config.json");
     await writeFile(configFile, JSON.stringify(configuration), { flag: "wx", mode: 0o600 });
     const databaseUrl = `postgresql://f001_test@localhost/${initial.name}?host=${encodeURIComponent(cluster.socket)}`;
-    const cleanEnv = Object.fromEntries(["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE"].flatMap(name => process.env[name] ? [[name, process.env[name]]] : []));
     async function start() {
       child = spawn(process.execPath, ["--import", fileURLToPath(new URL("./f002-owned-volume-loader.mjs", import.meta.url)), path.join(project, "src/api/dev-server.js")],
         { cwd: project, env: { ...cleanEnv, HOST: "127.0.0.1", PORT: "0", TRAQEN_AUTH_DEVELOPMENT: "true",

@@ -1,8 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, mkdir, realpath } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdtemp, mkdir, realpath, stat, lstat, readFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
 import { setTimeout } from "node:timers/promises";
@@ -11,16 +11,70 @@ import { seedSourceDatabase } from "./source-truth-database.js";
 
 const execute = promisify(execFile);
 
+// The operator prepares these existing directories inside the project's
+// .review-local/validation-runs before running a fixture. Never fill a missing
+// child HOME/temp/cache with the host account's defaults.
+export async function fixtureChildEnvironment(parent = process.env) {
+  const required = ["HOME", "TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR"];
+  const optional = ["NODE_COMPILE_CACHE", "PLAYWRIGHT_BROWSERS_PATH", "WRANGLER_LOG_PATH", "MINIFLARE_REGISTRY_PATH", "CHROME_LOG_FILE"];
+  // Resolve this repository's common directory, including linked worktrees.
+  // This is only pathname discovery, not a new source/HEAD admission system.
+  const checkout = fileURLToPath(new URL("../../", import.meta.url)), dotGit = path.join(checkout, ".git");
+  const metadata = await lstat(dotGit);
+  let common;
+  if (metadata.isDirectory()) common = await realpath(dotGit);
+  else {
+    if (!metadata.isFile()) throw new Error("Fixture checkout has no ordinary Git worktree metadata");
+    const match = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(await readFile(dotGit, "utf8"));
+    if (!match) throw new Error("Fixture checkout has no ordinary Git worktree metadata");
+    const admin = path.resolve(checkout, match[1]);
+    common = await realpath(path.resolve(admin, (await readFile(path.join(admin, "commondir"), "utf8")).trim()));
+  }
+  const root = path.join(path.dirname(common), ".review-local", "validation-runs");
+  if (parent.TMPDIR !== root || await realpath(root) !== root)
+    throw new Error("Fixture TMPDIR must be the canonical project .review-local/validation-runs directory");
+  const environment = {};
+  for (const name of [...required, ...optional]) {
+    const value = parent[name];
+    if (value === undefined && optional.includes(name)) continue;
+    if (!path.isAbsolute(value ?? "")) throw new Error(`Fixture ${name} must name an audited project path`);
+    const relative = path.relative(root, value);
+    if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw new Error(`Fixture ${name} is outside validation-runs`);
+    // A log file may not exist yet; its parent must already be canonical.
+    const file = name === "WRANGLER_LOG_PATH" || name === "CHROME_LOG_FILE";
+    const directory = file ? path.dirname(value) : value;
+    if (await realpath(directory) !== directory || !(await stat(directory)).isDirectory()) throw new Error(`Fixture ${name} has no canonical directory`);
+    if (file) {
+      try { if (await realpath(value) !== value || !(await stat(value)).isFile()) throw new Error(`Fixture ${name} is not a regular log file`); }
+      catch (error) { if (error.code !== "ENOENT") throw error; }
+    }
+    environment[name] = value;
+  }
+  for (const name of ["PATH", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "WRANGLER_WRITE_LOGS", "WRANGLER_SEND_METRICS", "CLOUDFLARE_CF_FETCH_ENABLED"])
+    if (parent[name] !== undefined) environment[name] = parent[name];
+  return environment;
+}
+
+export function fixturePostgresSocketPrefix(root) {
+  const prefix = path.join(root, "_p");
+  // mkdtemp adds six characters. Include the real socket basename and NUL.
+  if (Buffer.byteLength(path.join(`${prefix}XXXXXX`, "s", ".s.PGSQL.5432")) + 1 >= 104)
+    throw new Error("Project PostgreSQL socket filename exceeds the platform limit");
+  return prefix;
+}
+
 // A new owned cluster per fixture. No DATABASE_URL, .env, TCP listener, service
 // registration or existing cluster is ever used. Its private directory is kept
 // for diagnosis; shutdown affects only the child process started here.
-export async function isolatedPostgres(t, { binaries = process.env.F001_TEST_PG_BIN } = {}) {
+export async function isolatedPostgres(t, { binaries = process.env.F001_TEST_PG_BIN, environment = process.env } = {}) {
+  const inherited = await fixtureChildEnvironment(environment);
+  const prefix = fixturePostgresSocketPrefix(inherited.TMPDIR);
   if (!binaries || !path.isAbsolute(binaries)) throw new Error("F001_TEST_PG_BIN must name an installed PostgreSQL bin directory");
   const bin = await realpath(binaries);
-  const root = await mkdtemp(path.join(await realpath(tmpdir()), "tq-f001-pg-"));
-  const data = path.join(root, "data"), socket = path.join(root, "socket");
+  const root = await mkdtemp(prefix);
+  const data = path.join(root, "data"), socket = path.join(root, "s");
   await mkdir(socket, { mode: 0o700 });
-  const env = { PATH: `${bin}:/usr/bin:/bin`, LC_ALL: "C", TZ: "UTC" };
+  const env = { ...inherited, PATH: `${bin}:/usr/bin:/bin`, LC_ALL: "C", TZ: "UTC" };
   await execute(path.join(bin, "initdb"), ["-D", data, "--username=f001_test", "--encoding=UTF8", "--no-locale", "--auth-local=trust", "--auth-host=reject"], { env, timeout: 30000, maxBuffer: 1024 * 1024 });
   const pools = new Set();
   const connection = (database = "postgres") => ({ host: socket, port: 5432, database, user: "f001_test", password: "", ssl: false,
