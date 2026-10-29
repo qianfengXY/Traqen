@@ -48,7 +48,7 @@ function EvidenceSession({ apiBase, token, workspaceId, workspaceName }: { apiBa
  if(parsed.error||!context)return <section className="f002-panel"><h1>技术证据</h1><p role="alert">固定引用无效：{parsed.error?.message}。没有替换为其他材料或版本。</p></section>;
  const step=context.step??(context.graphVersionId||context.preview?(context.tab==="coverage"?4:context.tab==="delivery"?5:3):1);
  const current=overview?.versions.find(version=>version.graphVersionId===context.graphVersionId),latest=overview?.versions.at(-1);
- const chooseVersion=(graphVersionId:string)=>navigate({...context,...clearRecord,graphVersionId,preview:undefined,step:3,tab:"objects",sourceVersionId:overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.bundleId});
+ const chooseVersion=(graphVersionId:string)=>navigate({...context,...clearRecord,graphVersionId,runId:overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.runId??context.runId,preview:undefined,step:3,tab:"objects",sourceVersionId:overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.bundleId});
  const openPreview=(run:Run,scope:Scope,targetStep=3)=>navigate({...context,...clearRecord,graphVersionId:undefined,runId:run.id,preview:{runId:run.id,scopeId:scope.scopeId,revision:scope.revision},sourceVersionId:run.sourceInput.bundleId,step:targetStep,tab:targetStep===4?"coverage":"objects"});
  const ready=trackedRun?.scopes.find(s=>s.status==="READY_TO_SEAL");
  const openStep=(next:number)=>{

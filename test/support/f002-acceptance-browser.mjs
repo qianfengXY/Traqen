@@ -98,7 +98,7 @@ try {
   await screenshot("journey-02-submitting.png");
   const accepted = await ack; assert.equal(accepted.status(), 202);
   const run = (await accepted.json()).run;
-  await page.getByRole("heading", { name: "技术分析", exact: true }).waitFor();
+  await page.locator(".f002-delivery").getByRole("heading", { name: "技术分析", exact: true }).waitFor();
   const row = page.locator(".f002-delivery article").filter({ hasText: run.id });
   await row.getByRole("button", { name: "查看待检查成果", exact: true }).waitFor({ timeout: 60000 });
   const stored = (await json(client, `${factsPrefix}/runs/${run.id}`)).run;

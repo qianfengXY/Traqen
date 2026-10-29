@@ -17,8 +17,8 @@ export type FactsOverview = { profiles: Profile[]; versions: FactVersion[]; acti
 export type Coverage = { scopeId: string; declaredCapabilities: string[]; counts: Record<string, number>;
   totalItems?: number; nextCursor?: string | null;
   items: { materialId: string; capabilityId: string; status: string; recordIds: string[]; gapIds: string[]; diagnostic?: unknown }[] };
-export type Manifest = { graphVersionId: string; bundleId: string; runId: string; scopeId: string; profileId: string;
-  recordDigest: string; publishedAt: string; counts: Record<string, number>; rules: unknown; scope: unknown; shards: unknown; vocabulary: unknown; verification: unknown };
+export type Manifest = { graphVersionId?: string; preview?: { runId: string; scopeId: string; revision: number; source: { bundleId: string; receiptId: string } }; bundleId: string; runId: string; scopeId: string; profileId: string;
+  recordDigest?: string; publishedAt: string | null; counts: Record<string, number>; rules: unknown; scope: unknown; shards: unknown; vocabulary: unknown; verification: unknown };
 export type LocalGraph = { nodes: FactRecord[]; edges: { factId: string; subjectId: string; targetId: string; predicate: string; evidenceIds: string[] }[];
   truncated: boolean; root: { kind: string; id: string }; depth: number; limit: number };
 export type EvidenceRequest = { id: string; operationId: string; cancelOperationId?: string | null; investigationId: string; baseVersionId: string; revision: number; status: string;
