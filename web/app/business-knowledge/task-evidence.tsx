@@ -49,7 +49,7 @@ export function TaskEvidenceView({ value, onSelect, onMaterial }: { value: TaskE
       {task.obligations.map((o, i) => <p key={i}>{o.obligation ?? "义务未记录"}：{obligationNames[o.status] ?? "报告状态未知"} · {o.reason ?? "原因未记录"}</p>)}
       {task.crossTaskLeads.map((lead, i) => <p key={i}>跨任务线索：{lead.materialKey ?? "材料键未记录"} · {lead.reason ?? "原因未记录"}</p>)}
       <h4>本图谱候选去向</h4><p>候选核查去向与上面的义务报告分别保留；模型核查不等于独立质量验收。</p>{!task.propositions.length && <p>尚无可核实的同版命题关联；未用返回数量补造命题。</p>}
-      {task.propositions.map(p => <div key={p.key}><button className="bk-text-button" onClick={() => onSelect(p.key)}>{propositionName(p)}</button>
+      {task.propositions.map(p => <div key={p.key}><button className="bk-text-button" onClick={() => onSelect(p.key)}>{propositionName({state:p.state,name:p.name ?? undefined})}</button>
         {" · "}{propositionState({state:p.state,authority:"AGENT_ANALYSIS"})}
         {p.mappingStatuses.map(status => <p key={status}>{mappingNames[status] ?? "归并状态未识别"}</p>)}
         {p.evidence.map((e, i) => <p key={i}>{e.readable && e.materialId ? <button className="bk-text-button" onClick={() => onMaterial(e.materialId!)}>回查返回依据 · 行{e.startLine ?? "未记录"}–{e.endLine ?? "未记录"}</button>
