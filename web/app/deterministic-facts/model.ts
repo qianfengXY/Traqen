@@ -27,7 +27,7 @@ function validate(context: EvidenceLocation) {
   if (!locator(context.workspaceId) || !evidenceTabs.includes(context.tab)) throw new Error("证据工作区或页签定位无效");
   if (context.step !== undefined && (!Number.isInteger(context.step) || context.step < 1 || context.step > 5)) throw new Error("分析步骤无效");
   if (context.runId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(context.runId)) throw new Error("运行定位无效");
-  if (context.preview && (context.graphVersionId || !/^[A-Za-z0-9_-]{1,128}$/.test(context.preview.runId) || !digest.test(context.preview.scopeId)
+  if (context.preview && (context.graphVersionId || !digest.test(context.sourceVersionId ?? "") || !/^[A-Za-z0-9_-]{1,128}$/.test(context.preview.runId) || !digest.test(context.preview.scopeId)
     || !Number.isSafeInteger(context.preview.revision) || context.preview.revision < 1)) throw new Error("未封存成果定位无效");
   if (context.graphVersionId !== undefined && !digest.test(context.graphVersionId)) throw new Error("必须引用精确事实集版本");
   if (context.sourceVersionId !== undefined && !digest.test(context.sourceVersionId)) throw new Error("来源版本定位无效");

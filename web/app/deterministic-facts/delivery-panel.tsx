@@ -20,7 +20,7 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
   step?: number; initialRunId?: string; onStarted?: (run: Run) => void; onRunChange?: (run: Run) => void;
   onPreview?: (run: Run, scope: Scope, step?: number) => void; onStep?: (step: number) => void;
   client: DeterministicFactsClient; sourceClient: SourceTruthClient; actorId: string; workspaceId: string; writable: boolean;
-  profiles: Profile[]; versions: FactVersion[]; runs: Run[]; versionId?: string; onVersion: (id: string) => void;
+  profiles: Profile[]; versions: FactVersion[]; runs: Run[]; versionId?: string; onVersion: (id: string, run?: Run) => void;
   refresh: () => Promise<void>; onAccessLost: (error: Error) => void;
 }) {
   const journal = useOperationJournal({ workspaceId, actorId, namespace: "delivery" });
@@ -96,7 +96,7 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     if (runId) {
       const updated = (await client.request<{ run: Run }>(`/runs/${runId}`)).run;
       setSelectedRun(updated);
-      if (operation.path.endsWith("/seal")) { const sealed = updated.scopes.find(scope => scope.graphVersionId); if (sealed?.graphVersionId) onVersion(sealed.graphVersionId); }
+      if (operation.path.endsWith("/seal")) { const sealed = updated.scopes.find(scope => scope.graphVersionId); if (sealed?.graphVersionId) onVersion(sealed.graphVersionId, updated); }
     }
     const replay = result.results.find(item => item.kind === "REPLAY")?.value as Replay | undefined;
     if (replay) replayResource.update(current => [...current.filter(item => item.id !== replay.id), replay]);

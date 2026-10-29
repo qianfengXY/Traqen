@@ -8,8 +8,9 @@ import { FactsClientError } from "./client.ts";
 import { evidenceHref, evidenceReturnHref, evidenceResultKey, readEvidenceLocation, type EvidenceLocation } from "./model.ts";
 import { RecordBrowser, CoverageView } from "./record-browser.tsx";
 import { DeliveryPanel } from "./delivery-panel.tsx";
+import { useEvidenceResource } from "./use-resource.ts";
 import { RequestPanel } from "./request-panel.tsx";
-import type { FactsOverview, Run, Scope } from "./types.ts";
+import type { FactsOverview, Manifest, Run, Scope } from "./types.ts";
 import { EvidenceTransport } from "./transport.ts";
 import "./workbench.css";
 
@@ -48,7 +49,7 @@ function EvidenceSession({ apiBase, token, workspaceId, workspaceName }: { apiBa
  if(parsed.error||!context)return <section className="f002-panel"><h1>技术证据</h1><p role="alert">固定引用无效：{parsed.error?.message}。没有替换为其他材料或版本。</p></section>;
  const step=context.step??(context.graphVersionId||context.preview?(context.tab==="coverage"?4:context.tab==="delivery"?5:3):1);
  const current=overview?.versions.find(version=>version.graphVersionId===context.graphVersionId),latest=overview?.versions.at(-1);
- const chooseVersion=(graphVersionId:string)=>navigate({...context,...clearRecord,graphVersionId,runId:overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.runId??context.runId,preview:undefined,step:3,tab:"objects",sourceVersionId:overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.bundleId});
+ const chooseVersion=(graphVersionId:string,run?:Run)=>navigate({...context,...clearRecord,graphVersionId,runId:run?.id??overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.runId??context.runId,preview:undefined,step:3,tab:"objects",sourceVersionId:run?.sourceInput.bundleId??overview?.versions.find(v=>v.graphVersionId===graphVersionId)?.bundleId});
  const openPreview=(run:Run,scope:Scope,targetStep=3)=>navigate({...context,...clearRecord,graphVersionId:undefined,runId:run.id,preview:{runId:run.id,scopeId:scope.scopeId,revision:scope.revision},sourceVersionId:run.sourceInput.bundleId,step:targetStep,tab:targetStep===4?"coverage":"objects"});
  const ready=trackedRun?.scopes.find(s=>s.status==="READY_TO_SEAL");
  const openStep=(next:number)=>{
@@ -73,11 +74,23 @@ function EvidenceSession({ apiBase, token, workspaceId, workspaceName }: { apiBa
     {access&&<DeliveryPanel key={`${workspaceId}:${access.actor.actorId}`} client={clients.facts} sourceClient={clients.sources} actorId={access.actor.actorId} workspaceId={workspaceId} writable={access.role==="MAINTAIN"&&!error} profiles={overview.profiles} versions={overview.versions} runs={overview.activeRuns} versionId={context.graphVersionId} onVersion={chooseVersion} refresh={refresh} onAccessLost={accessLost} step={step} initialRunId={context.runId} onRunChange={runChanged}
      onStarted={run=>navigate({...context,...clearRecord,runId:run.id,sourceVersionId:run.sourceInput.bundleId,graphVersionId:undefined,preview:undefined,step:2,tab:"delivery"})} onPreview={openPreview} onStep={openStep}/>}
     {[3,4].includes(step)&&(sourceMismatch?<section className="f002-panel" role="alert"><h2>固定来源与事实集不匹配</h2><p>保留原引用，不用另一来源补齐；请核对需要读取的版本。</p></section>:!resultKey?<section className="f002-panel"><h2>尚无可检查成果</h2><p>先选择材料并完成分析。正在运行的任务保留，可返回查看真实进度。</p><button className="button primary" onClick={()=>openStep(trackedRun?2:1)}>{trackedRun?"查看分析进度":"选择材料"}</button></section>:!access||!previewClient?<p role="status">正在复验当前成员…</p>:<>
-     <nav className="f002-tabs" aria-label="成果浏览">{step===3?<><button aria-current={context.tab!=="relations"?"page":undefined} onClick={()=>navigate({...context,tab:"objects"})}>对象与事实</button><button aria-current={context.tab==="relations"?"page":undefined} onClick={()=>navigate({...context,tab:"relations"})}>关系</button></>:null}</nav>
+     <PreviewGuard client={clients.facts} context={context} accessLost={accessLost} onTask={()=>openStep(2)}><nav className="f002-tabs" aria-label="成果浏览">{step===3?<><button aria-current={context.tab!=="relations"?"page":undefined} onClick={()=>navigate({...context,tab:"objects"})}>对象与事实</button><button aria-current={context.tab==="relations"?"page":undefined} onClick={()=>navigate({...context,tab:"relations"})}>关系</button></>:null}</nav>
      {step===4?<CoverageView key={`${access.actor.actorId}:${resultKey}`} actorId={access.actor.actorId} client={previewClient} context={context} navigate={navigate} accessLost={accessLost}/>:<RecordBrowser key={`${access.actor.actorId}:${resultKey}`} actorId={access.actor.actorId} client={previewClient} context={context} navigate={navigate} accessLost={accessLost}/>}
-     <div className="f002-actions f002-next"><button className="button primary" onClick={()=>openStep(step===3?4:5)}>{step===3?"继续检查覆盖与缺口":"继续封存与交付"}</button></div>
+     <div className="f002-actions f002-next"><button className="button primary" onClick={()=>openStep(step===3?4:5)}>{step===3?"继续检查覆盖与缺口":"继续封存与交付"}</button></div></PreviewGuard>
     </>)}
     {context.graphVersionId&&access&&!sourceMismatch&&step===5&&<RequestPanel key={`${access.actor.actorId}:${context.graphVersionId}`} client={clients.facts} context={context} actorId={access.actor.actorId} configured={overview.consumer.configured} writable={access.role==="MAINTAIN"&&!error} profiles={overview.profiles} navigate={navigate} onAccessLost={accessLost}/>}
    </>}
  </>;
+}
+
+function PreviewGuard({ client, context, accessLost, onTask, children }: { client: import("./client.ts").DeterministicFactsClient; context: EvidenceLocation; accessLost:(error:Error)=>void; onTask:()=>void; children:React.ReactNode }) {
+ const preview=context.preview;
+ const route=preview?`/runs/${preview.runId}/scopes/${preview.scopeId}/preview/${preview.revision}/manifest`:"";
+ const load=useCallback(async(bound:typeof client)=>route?(await bound.request<{manifest:Manifest}>(route)).manifest:null,[route]);
+ const metadata=useEvidenceResource(client,route,load,accessLost);
+ if(!preview)return children;
+ if(metadata.error)return <section className="f002-panel" role="alert">成果暂不可读：{metadata.error.message}<button className="button" onClick={metadata.retry}>复验成果</button><button className="button" onClick={onTask}>返回真实任务</button></section>;
+ if(!metadata.data)return <p role="status">正在核对未封存成果的运行、修订和来源…</p>;
+ if(metadata.data.preview?.source.bundleId!==context.sourceVersionId)return <section className="f002-panel" role="alert">成果来源与固定引用不匹配；没有读取另一来源的内容。<button className="button" onClick={onTask}>返回真实任务</button></section>;
+ return children;
 }
