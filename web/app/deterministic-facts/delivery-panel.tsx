@@ -16,8 +16,8 @@ import { RunProgress } from "./run-progress.tsx";
 
 const short = (id: string) => `${id.slice(0, 12)}…`;
 
-export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writable, profiles, versions, runs, versionId, onVersion, refresh, onAccessLost, step = 1, onStarted, onRunChange, onPreview, onStep, initialRunId }: {
-  step?: number; initialRunId?: string; onStarted?: (run: Run) => void; onRunChange?: (run: Run) => void;
+export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writable, profiles, versions, runs, versionId, onVersion, refresh, onAccessLost, step = 1, onRunSelected, onRunChange, onPreview, onStep, initialRunId }: {
+  step?: number; initialRunId?: string; onRunSelected?: (run: Run) => void; onRunChange?: (run: Run) => void;
   onPreview?: (run: Run, scope: Scope, step?: number) => void; onStep?: (step: number) => void;
   client: DeterministicFactsClient; sourceClient: SourceTruthClient; actorId: string; workspaceId: string; writable: boolean;
   profiles: Profile[]; versions: FactVersion[]; runs: Run[]; versionId?: string; onVersion: (id: string, run?: Run) => void;
@@ -70,6 +70,15 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     if (error instanceof FactsClientError && [401, 403].includes(error.status)) onAccessLost(error);
     else setError(error instanceof Error ? error : new Error("操作未确认"));
   };
+  const lookupRun = async (id: string) => {
+    const { run } = await client.request<{ run: Run }>(`/runs/${id}`);
+    if (client.signal?.aborted) return;
+    setSelectedRun(run);
+    // An explicit choice also replaces the navigation seed. Poll responses
+    // alone must not rewrite an explicit URL or another fixed result.
+    onRunSelected?.(run);
+    journal.saveDraft({ ...journal.draft, runId: run.id });
+  };
   const sourceLoad = useCallback(() => sourceClient.request<Page<FrozenVersion>>("/history/bundles?limit=50"), [sourceClient]);
   const sourceResource = useEvidenceResource(client, "source-bundles", sourceLoad, onAccessLost);
   const sources = sourceResource.data;
@@ -93,7 +102,7 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
     if (run && "scopes" in run) {
       const accepted = run as unknown as Run;
       journal.saveDraft({ ...journal.draft, runId: accepted.id });
-      setSelectedRun(accepted); if (operation.path === "/runs") onStarted?.(accepted);
+      setSelectedRun(accepted); if (operation.path === "/runs") onRunSelected?.(accepted);
     }
     const runId = /^\/runs\/([A-Za-z0-9_-]+)\//.exec(operation.path)?.[1];
     if (runId) {
@@ -164,7 +173,7 @@ export function DeliveryPanel({ client, sourceClient, actorId, workspaceId, writ
         scopes: extractionScopes(components, separate, scopeKind, scopePath) }, "技术提取");
     }}>{busy ? "正在提交分析…" : "开始分析"}</button>{disabledReason && <p className="f002-disabled-reason">{disabledReason}</p>}</section>
     <section className="f002-panel" hidden={![2,5].includes(step)}><p className="eyebrow">{step === 5 ? "步骤 5 · 固定交付" : "步骤 2 · 处理"}</p><h2>{step === 5 ? "检查并封存成果" : "技术分析"}</h2><p role="status">{notice}</p>{error && <p role="alert">{error.message}</p>}<p>每个范围独立处理，已完成的结果不等待其他范围。失败和未完成工作不会显示为成功。</p>
-      <details><summary>技术详情与运行回查</summary><label>按运行 ID 回查<input onKeyDown={event => { if (isEvidenceShortcut(event.nativeEvent, ["Enter"])) { const id = event.currentTarget.value.trim(); if (/^[A-Za-z0-9_-]{1,128}$/.test(id)) void client.request<{ run: Run }>(`/runs/${id}`).then(value => { if (!client.signal?.aborted) setSelectedRun(value.run); }).catch(report); } }} placeholder="输入持久 Run ID 后按 Enter" /></label></details>
+      <details><summary>技术详情与运行回查</summary><label>按运行 ID 回查<input onKeyDown={event => { if (isEvidenceShortcut(event.nativeEvent, ["Enter"])) { const id = event.currentTarget.value.trim(); if (/^[A-Za-z0-9_-]{1,128}$/.test(id)) void lookupRun(id).catch(report); } }} placeholder="输入持久 Run ID 后按 Enter" /></label></details>
       {displayedRuns.map(run => <article key={run.id}><h3>{run.sourceInput?.bundleId === sourceId ? "本次所选材料" : "已保存的分析任务"} · {new Date(run.createdAt).toLocaleString()}</h3><p>{sources?.items.find(item => item.id === run.sourceInput.bundleId)?.components.map(component => `${component.sourceId} · ${component.kind} · ${component.fileCount} 文件 / ${component.directoryCount} 目录`).join("；")}</p><details><summary>固定输入与运行标识</summary><p>运行 {run.id}</p><p>来源 {run.sourceInput?.bundleId} · 接收回执 {run.sourceInput?.receiptId} · 规则 {run.profileId}</p></details>{run.scopes.map((scope, index) => <div className="f002-scope" key={scope.scopeId}><b>{scope.label ?? `材料范围 ${index + 1}`}</b><span>{({ QUEUED: "等待分析", RUNNING: "分析中", READY_TO_SEAL: "结果待检查", SEALED: "已封存", FAILED_RETRYABLE: "分析失败", BLOCKED: "任务受阻", CANCELLED: "已取消" } as Record<string, string>)[scope.status] ?? "状态待核实"}</span>{scope.diagnostic?.code && <code>{scope.diagnostic.code}</code>}
         {[2,5].includes(step) && <RunProgress key={`${run.id}:${scope.scopeId}`} client={client} runId={run.id} scope={scope} accessLost={onAccessLost} />}<p>{scopeExplanation(scope, currentScopeCheck(checks, run.id, scope), profiles.find(profile => profile.id === run.profileId))}</p>
         {scope.status === "READY_TO_SEAL" && <div className="f002-actions"><button className="button primary" onClick={() => onPreview?.(run, scope)}>查看待检查成果</button><button className="button" onClick={() => { onPreview?.(run, scope, 4); }}>查看覆盖与缺口</button>{step !== 5 && <button className="button" onClick={() => onStep?.(5)}>前往封存与交付</button>}</div>}{scope.graphVersionId && <button className="button" onClick={() => onVersion(scope.graphVersionId!)}>查看分析结果</button>}

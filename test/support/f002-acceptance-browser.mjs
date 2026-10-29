@@ -142,9 +142,42 @@ try {
   await loadAll("加载更多关系");
   const relation = before.find(r => r.kind === "FACT" && r.payload.predicate === "callsDeclaration"); assert.ok(relation);
   await page.locator(`[data-relation-select="${relation.id}"]`).click(); await selected(relation.id);
-  await page.locator(`[data-edge-fact-id="${relation.id}"]`).waitFor();
-  await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).waitFor();
-  await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).scrollIntoViewIfNeeded();
+  const edge = page.locator(`[data-edge-fact-id="${relation.id}"]`);
+  await edge.waitFor({ state: "attached" });
+  const graph = page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true });
+  await graph.waitFor({ state: "visible" }); await graph.scrollIntoViewIfNeeded();
+  // A stroked horizontal/vertical SVG path can have a zero-area fill box.
+  // Playwright g.isVisible then rejects a genuinely painted line. Inspect
+  // the actual selected path, its paint and clipped geometry instead.
+  const observeEdge = () => edge.evaluate(element => {
+    const path = element.querySelector("path:not(.f002-edge-hit)"), svg = element.ownerSVGElement;
+    const style = getComputedStyle(path), matrix = path.getScreenCTM(), rect = path.getBoundingClientRect(), frame = svg.getBoundingClientRect();
+    const width = Number.parseFloat(style.strokeWidth), scale = Math.max(Math.hypot(matrix.a, matrix.b), Math.hypot(matrix.c, matrix.d));
+    const pad = width * scale / 2, length = path.getTotalLength();
+    let displayed = true;
+    for (let parent = path; parent; parent = parent.parentElement) {
+      const css = getComputedStyle(parent);
+      if (css.display === "none" || css.visibility !== "visible" || Number(css.opacity) === 0) displayed = false;
+    }
+    const painted = displayed && !["none", "transparent"].includes(style.stroke) && !/rgba\([^)]*,\s*0\)$/.test(style.stroke)
+      && Number(style.strokeOpacity) > 0 && width > 0 && Number.isFinite(length) && length > 0
+      && rect.right + pad > Math.max(frame.left, 0) && rect.left - pad < Math.min(frame.right, innerWidth)
+      && rect.bottom + pad > Math.max(frame.top, 0) && rect.top - pad < Math.min(frame.bottom, innerHeight);
+    return { factId: element.getAttribute("data-edge-fact-id"), selected: element.getAttribute("aria-pressed") === "true",
+      inVisibleGraph: svg.contains(element) && frame.width > 0 && frame.height > 0, painted, length, stroke: style.stroke, strokeWidth: width,
+      pathBounds: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, svgBounds: { x: frame.x, y: frame.y, width: frame.width, height: frame.height } };
+  });
+  const actualEdge = await observeEdge();
+  assert.equal(actualEdge.factId, relation.id); assert.equal(actualEdge.selected, true);
+  assert.equal(actualEdge.inVisibleGraph && actualEdge.painted, true);
+  // An oracle negative only: hide this real stroke temporarily, require its
+  // rejection, then restore it before recording any positive business proof.
+  const stroke = edge.locator("path:not(.f002-edge-hit)"), originalStyle = await stroke.getAttribute("style");
+  try { await stroke.evaluate(path => { path.style.visibility = "hidden"; }); assert.equal((await observeEdge()).painted, false); }
+  finally { await stroke.evaluate((path, value) => value === null ? path.removeAttribute("style") : path.setAttribute("style", value), originalStyle); }
+  assert.equal((await observeEdge()).painted, true);
+  report.graphEdge = { ...actualEdge, hiddenStrokeRejected: true };
+  await graph.screenshot({ path: path.join(root, "journey-04-painted-graph.png") }); report.screenshots.push("journey-04-painted-graph.png");
   await screenshot("journey-04-unsealed-graph.png");
   await page.locator('[data-extraction-rule]').filter({ hasText: relation.payload.ruleRef.id }).waitFor();
   const relationDetail = await json(client, `${previewBase}/records/FACT/${relation.id}`);
@@ -287,6 +320,40 @@ try {
   await page.locator(".f002-code").filter({ hasText: "legacy declaration" }).waitFor();
   await page.reload(); await page.locator(".f002-code").filter({ hasText: "legacy declaration" }).waitFor();
   report.checks.push("new-B-does-not-adopt-or-replace-A-gap-refresh-explicit-B-and-return-to-deleted-historical-A-original");
+  // Start from an explicit A deep link, then choose the already-real B run.
+  // Observe longer than the 3s poll and verify actual source/result identity.
+  const runLink = (runId, source) => `${origin}/?${new URLSearchParams({ page: "evidence", workspace: "workspace", tab: "delivery", step: "2", run: runId, source })}`;
+  await page.goto(runLink(run.id, a.reference.bundleId));
+  await page.locator(".f002-delivery article").filter({ hasText: run.id }).waitFor();
+  await page.getByText("技术详情与运行回查", { exact: true }).click();
+  const lookupReads = [], observeLookup = request => {
+    const url = new URL(request.url());
+    if (request.method() === "GET" && [run.id, tb.run.id].some(id => url.pathname.endsWith(`/runs/${id}`))) lookupReads.push(url.pathname);
+  };
+  page.on("request", observeLookup);
+  const lookupB = page.waitForResponse(response => response.request().method() === "GET" && new URL(response.url()).pathname.endsWith(`/runs/${tb.run.id}`));
+  await page.getByLabel("按运行 ID 回查", { exact: true }).fill(tb.run.id);
+  await page.getByLabel("按运行 ID 回查", { exact: true }).press("Enter"); assert.equal((await lookupB).status(), 200);
+  await delay(3500);
+  const lookedUpB = page.locator(".f002-delivery article").filter({ hasText: tb.run.id });
+  report.runLookup = { from: run.id, requested: tb.run.id, afterMs: 3500, reads: lookupReads,
+    bVisible: await lookedUpB.isVisible(), aVisible: await page.locator(".f002-delivery article").filter({ hasText: run.id }).isVisible(),
+    urlRun: new URL(page.url()).searchParams.get("run"), urlSource: new URL(page.url()).searchParams.get("source") };
+  page.off("request", observeLookup);
+  assert.equal(report.runLookup.bVisible, true); assert.equal(report.runLookup.aVisible, false);
+  assert.equal(report.runLookup.urlRun, tb.run.id); assert.equal(report.runLookup.urlSource, b.reference.bundleId);
+  await page.reload(); await page.locator(".f002-delivery article").filter({ hasText: tb.run.id }).waitFor();
+  await page.locator(".f002-delivery article").filter({ hasText: tb.run.id }).getByRole("button", { name: "查看分析结果", exact: true }).click();
+  await page.waitForURL(url => url.searchParams.get("factset") === tb.version);
+  await page.locator(`[data-directory-material="${added.id}"] > button`).click(); await selected(added.id);
+  await page.locator(".f002-code").filter({ hasText: "newlyAdded" }).waitFor();
+  await screenshot("journey-06-explicit-run-B-after-A.png");
+  await page.goto(runLink(run.id, a.reference.bundleId));
+  await page.locator(".f002-delivery article").filter({ hasText: run.id }).waitFor(); await delay(3500);
+  assert.equal(await page.locator(".f002-delivery article").filter({ hasText: run.id }).isVisible(), true);
+  assert.equal(await page.locator(".f002-delivery article").filter({ hasText: tb.run.id }).isVisible(), false);
+  report.runLookup.explicitUrlBackToA = true; report.runLookup.bVersion = tb.version;
+  report.checks.push("explicit-A-deeplink-lookup-B-survives-poll-refresh-reads-real-B-source-result-and-explicit-URL-A-still-wins");
   assert.ok(report.originalReads.length >= 10); assert.deepEqual(report.pageErrors, []); assert.deepEqual(report.legacyRequestsDuringF2, []);
   assert.equal(report.writes.filter(w => w.pathname.endsWith("/runs")).length, 1);
   assert.equal(report.writes.filter(w => w.pathname.endsWith("/seal")).length, 1); assert.ok(report.writes.every(w => w.csrf && !w.bearer));
