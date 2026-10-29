@@ -1,19 +1,18 @@
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import https from "node:https";
-import { fixtureChildEnvironment } from "./source-truth-postgres.js";
 
 const exec = promisify(execFile);
 export async function gitFixture(t, { maxOutputBytes = 1024 * 1024, transformResponse = null } = {}) {
-  const environment = await fixtureChildEnvironment();
-  const root = await mkdtemp(path.join(environment.TMPDIR, "traqen-source-git-test-"));
+  const root = await mkdtemp(path.join(tmpdir(), "traqen-source-git-test-"));
   const work = path.join(root, "author");
   await mkdir(work);
   // Fixture commits need their exit status, never the O(file-count) summary.
   // Keep the output bound rather than increasing it for a large source tree.
-  const git = async (...args) => (await exec("/usr/bin/git", args[0] === "commit" ? ["commit", "--quiet", ...args.slice(1)] : args, { cwd: work, maxBuffer: maxOutputBytes, env: { ...environment, PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" } })).stdout.trim();
+  const git = async (...args) => (await exec("/usr/bin/git", args[0] === "commit" ? ["commit", "--quiet", ...args.slice(1)] : args, { cwd: work, maxBuffer: maxOutputBytes, env: { PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: "/dev/null", GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" } })).stdout.trim();
   await git("init", "-b", "main");
   await writeFile(path.join(work, "README.md"), "fixture version A\n");
   await mkdir(path.join(work, "src"));
@@ -22,11 +21,11 @@ export async function gitFixture(t, { maxOutputBytes = 1024 * 1024, transformRes
   await git("commit", "-m", "A");
   const commitA = await git("rev-parse", "HEAD");
   await git("clone", "--bare", work, path.join(root, "repo.git"));
-  await exec("/opt/homebrew/bin/openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", path.join(root, "key.pem"), "-out", path.join(root, "ca.pem"), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost"], { maxBuffer: 100000, env: environment });
+  await exec("/opt/homebrew/bin/openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", path.join(root, "key.pem"), "-out", path.join(root, "ca.pem"), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost"], { maxBuffer: 100000 });
   const server = https.createServer({ key: await readFile(path.join(root, "key.pem")), cert: await readFile(path.join(root, "ca.pem")) }, (request, response) => {
     const url = new URL(request.url, "https://localhost");
     if (url.pathname.startsWith("/redirect")) { response.writeHead(302, { location: "https://127.0.0.1:1/secret" }); response.end(); return; }
-    const process = spawn("/usr/bin/git", ["http-backend"], { env: { ...environment, PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_PROJECT_ROOT: root,
+    const process = spawn("/usr/bin/git", ["http-backend"], { env: { PATH: "/usr/bin:/bin", GIT_CONFIG_NOSYSTEM: "1", GIT_PROJECT_ROOT: root,
       GIT_HTTP_EXPORT_ALL: "1", PATH_INFO: url.pathname, QUERY_STRING: url.search.slice(1), REQUEST_METHOD: request.method,
       CONTENT_TYPE: request.headers["content-type"] ?? "", HTTP_GIT_PROTOCOL: request.headers["git-protocol"] ?? "", REMOTE_ADDR: "127.0.0.1" }, stdio: ["pipe", "pipe", "ignore"] });
     request.pipe(process.stdin);
