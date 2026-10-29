@@ -58,7 +58,7 @@ export function cookieSourceControls(getPage, f, report, capture) {
         await page.getByRole('button', { name: '回到当前 · 第 7 站', exact: true }).click();
         report.stationViews.push({ workspace, label, states });
     };
-    const freeze = async (workspace, label, { gaps = false, loseResponse = false } = {}) => {
+    const freeze = async (workspace, label, { gaps = false, loseResponse = false, newBundle = true } = {}) => {
         const page = getPage();
         await station(7);
         const before = await f.audit(workspace);
@@ -100,9 +100,20 @@ export function cookieSourceControls(getPage, f, report, capture) {
             await page.getByRole('button', { name: '创建新版本', exact: true }).waitFor();
         }
         const after = await f.audit(workspace);
-        assert.equal(after.bundles.length, before.bundles.length + 1);
+        assert.equal(after.bundles.length, before.bundles.length + (newBundle ? 1 : 0));
         assert.equal(after.receipts.length, before.receipts.length + 1);
         const version = (await f.read(workspace, '/history/bundles?limit=50')).items[0];
+        const inventory = await f.read(workspace, `/bundles/${version.id}/inventory-history?receiptId=${version.latestReceipt.id}&limit=500`);
+        assert.equal(inventory.nextCursor, null, 'this deliberately small fixture must fit one complete inventory page');
+        assert.equal(inventory.items.length, Number(version.counts.fileCount) + Number(version.counts.directoryCount));
+        assert.equal(new Set(inventory.items.map(row => `${row.componentId}:${row.entry.pathBytes}`)).size, inventory.items.length);
+        assert.ok(inventory.items.every(row => ['VERIFIED', 'METADATA', 'EXTERNAL_GAP'].includes(row.disposition?.disposition)), 'every entry needs one terminal disposition');
+        if (version.components.length === 2) {
+            const sameName = inventory.items.filter(row => Buffer.from(row.entry.pathBytes, 'base64url').toString() === 'README.md');
+            assert.equal(sameName.length, 2);
+            assert.equal(new Set(sameName.map(row => row.componentId)).size, 2);
+        }
+        (report.inventoryChecks ??= []).push({ workspace, label, bundle: version.id, entries: inventory.items.length, exactlyOneDispositionPerLocator: true });
         assert.equal(after.runs.at(-1).status, 'SUCCEEDED');
         report.frozen.push({ workspace, label, run: detail.run.id, candidate: detail.candidate.id, bundle: version.id, receipt: version.latestReceipt.id, counts: version.counts, components: version.components, gapCount: version.latestReceipt.gapCount, expiresAt: version.latestReceipt.expiresAt, responseLossRecovered: loseResponse, events: after.events.filter(e => e.run_id === detail.run.id) });
         await capture(label + '-frozen');
