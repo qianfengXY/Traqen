@@ -143,6 +143,13 @@ export function createF003HttpHandler({ services, authenticate, allowedOrigins =
           const options = { view: url.searchParams.get("view") ?? "BUSINESS", key: url.searchParams.get("key"), text: url.searchParams.get("text") ?? "", kind: url.searchParams.get("kind"),
             includeUncertain: flag(url, "includeUncertain"), onlyHumanConfirmed: flag(url, "onlyHumanConfirmed") };
           send({ graph: queryBusinessGraph(await investigations.graph(actor, workspaceId, id), options) });
+        } else if (method === "GET" && tail === "task-evidence") {
+          query(url, ["expectedRevision", "expectedGraphDigest"]);
+          const revision = url.searchParams.get("expectedRevision"), graphDigest = url.searchParams.get("expectedGraphDigest");
+          requireF003(/^[1-9][0-9]*$/.test(revision ?? "") && graphDigest !== null,
+            "F003_INPUT_INVALID", "请明确任务证据的调查修订和图谱坐标", { status: 422 });
+          send({ taskEvidence: await investigations.taskEvidence(actor, workspaceId, id,
+            { expectedRevision: Number(revision), expectedGraphDigest: graphDigest === "" ? null : graphDigest }) });
         } else if (method === "GET" && tail === "trace") {
           query(url, ["key", "materialId"]); send({ trace: traceBusinessGraph(await investigations.graph(actor, workspaceId, id), { key: url.searchParams.get("key"), materialId: url.searchParams.get("materialId") }) });
         } else if (method === "GET" && tail === "seven-questions") {

@@ -43,6 +43,20 @@ test('F003 exact-fit PLAN1 plus actual Child1 plus two Main calls needs no manda
   assert.equal((await worker.run(owner,w,run.id,{workerId:'exact-fit'})).state,'COMPLETED');
   assert.equal((await f.service.get(owner,w,run.id)).usage.modelCalls,4);
   assert.deepEqual(calls.map(c=>c.input.stage??c.input.phase),['PLAN','INVESTIGATE','CONSOLIDATE_PROPOSALS','EVIDENCE_VERIFICATION']);
+  const saved = await f.service.get(owner,w,run.id), count = calls.length;
+  const evidence = await f.service.taskEvidence(owner,w,run.id,{expectedRevision:saved.revision,expectedGraphDigest:saved.latestGraph.digest});
+  assert.equal(evidence.snapshotKind,'SAVED_GRAPH');
+  const child = evidence.tasks.find(task=>task.role==='CHILD');
+  assert.equal(child.status,'RETURN_RECORDED');
+  assert.equal(child.objective,'哪些付款状态允许取消？');
+  assert.equal(child.obligations[0].status,'UNRESOLVED','missing obligation reports are not promoted by accepted candidates');
+  assert.equal(child.propositions.length,2);
+  assert.ok(child.propositions.every(p=>p.state==='ANALYSIS_ACCEPTED'&&p.evidence[0].materialId));
+  assert.ok(child.sourceRanges.every(range=>range.readable));
+  assert.equal(evidence.tasks.filter(task=>task.role==='MAIN').length,3);
+  assert.deepEqual(await f.service.taskEvidence(owner,w,run.id,{expectedRevision:saved.revision,expectedGraphDigest:saved.latestGraph.digest}),evidence);
+  assert.equal(calls.length,count,'refresh projects persisted records without invoking a model');
+  await assert.rejects(f.service.taskEvidence(owner,w,run.id,{expectedRevision:saved.revision,expectedGraphDigest:'0'.repeat(64)}),{code:'F003_TASK_EVIDENCE_CONFLICT'});
 });
 test('F003 preflight counts actual serialized fragments before any Child, retaining infeasible responsibilities',async t=>{
   const f=await investigationFixture(t,{content:'订单条件\n'.repeat(7000)}),calls=[];
@@ -63,6 +77,11 @@ test('F003 actual sent task identity, obligations and manifest survive known fai
   })});
   await assert.rejects(worker.run(owner,w,run.id,{workerId:'first'}),{code:'KNOWN_FAILURE'});
   const failed=await f.service.get(owner,w,run.id),before=await f.service.checkpoints(owner,w,run.id);
+  const unfinished=await f.service.taskEvidence(owner,w,run.id,{expectedRevision:failed.revision,expectedGraphDigest:null});
+  assert.equal(unfinished.snapshotKind,'CURRENT_CHECKPOINTS');
+  assert.equal(unfinished.runState,'FAILED');
+  assert.ok(unfinished.tasks.some(task=>task.role==='CHILD'&&task.status==='PENDING'));
+  assert.ok(unfinished.tasks.every(task=>task.propositions.length===0));
   await f.service.control(owner,w,run.id,{action:'RESUME',expectedRevision:failed.revision});
   await worker.run(owner,w,run.id,{workerId:'second'});
   assert.equal(calls.filter(c=>c.input.phase==='PLAN').length,1);

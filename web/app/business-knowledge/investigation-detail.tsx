@@ -14,6 +14,7 @@ import {PublicationPanel} from "./publication-panel.tsx";
 import type { GraphView as View, Investigation } from "./types.ts";
 import { investigationKind } from './investigation-kind.ts';
 import { InvestigationTypeNotice } from './investigation-type-notice.tsx';
+import { TaskEvidencePanel } from './task-evidence.tsx';
 
 export function InvestigationDetail({ client, apiBase, id, view, objectKey, onAccessLost, onChanged }: {
   client: BusinessKnowledgeClient; apiBase: string; id: string; view: View; objectKey: string;
@@ -71,6 +72,7 @@ function InvestigationContents({ client, apiBase, run, view, objectKey, onAccess
   return <><p className="bk-caption">{investigationKind(run).label}</p><RunStatus run={run} busy={busy || unconfirmed} canControl={canControl} onControl={action => void control(action)} />
     {access.error && <ReadIssue error={access.error} retry={access.retry} />}
     {commandError && <div className="bk-error" role="alert"><p>{commandError}。未自动重试写操作，请先读取当前调查。</p><button className="button" onClick={refresh}>重新读取调查状态</button></div>}
+    <TaskEvidencePanel client={client} run={run} onSelect={select} onMaterial={material} onAccessLost={onAccessLost} />
     <TechnicalAdoption key={`${run.id}:${run.revision}`} client={client} apiBase={apiBase} run={run} canControl={canControl && !busy && !unconfirmed} onAccessLost={onAccessLost} onChanged={changed} />
     {run.latestGraph ? <SavedGraph client={client} run={run} view={view} objectKey={objectKey} query={query} text={text} setText={setText}
       onSearch={() => setQuery(text)} uncertain={uncertain} setUncertain={setUncertain} human={human} setHuman={setHuman}

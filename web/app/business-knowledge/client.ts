@@ -1,6 +1,6 @@
 import { sessionFetch, notifySessionLoss } from "../auth-client.ts";
 import type { ExecutionProfile } from "../product-foundation-client.ts";
-import type { BusinessGraph, GraphFilter, GraphIdentity, GraphMaterial, Investigation, InvestigationEvent, PublicationBinding, PublicationHead, PublicationReadiness, SevenQuestions, StartInvestigation, Trace } from "./types.ts";
+import type { BusinessGraph, GraphFilter, GraphIdentity, GraphMaterial, Investigation, InvestigationEvent, PublicationBinding, PublicationHead, PublicationReadiness, SevenQuestions, StartInvestigation, TaskEvidence, Trace } from "./types.ts";
 import {authorityMatches,bindingMatches,mappedTargetsMatch,publicationMatches} from "./authority-types.ts";
 import type {AuthorityFixed,AuthorityResponse,BindingInput,BindingSet,Publication,PublishedVersion} from "./authority-types.ts";
 import {WorkSessionClient} from './work-client.ts';
@@ -146,6 +146,23 @@ export class BusinessKnowledgeClient {
   async events(id: string) {
     const result = await this.json<{ events: InvestigationEvent[] }>(`${this.base}/${segment(id)}/events`);
     if (!Array.isArray(result.events)) throw invalid(); return result.events;
+  }
+  async taskEvidence(run: Investigation) {
+    if (run.workspaceId !== this.workspaceId) throw invalid();
+    const query = new URLSearchParams({ expectedRevision: String(run.revision), expectedGraphDigest: run.latestGraph?.digest ?? "" });
+    const { taskEvidence: value } = await this.json<{ taskEvidence: TaskEvidence }>(`${this.base}/${segment(run.id)}/task-evidence?${query}`);
+    const expected = { workspaceId: this.workspaceId, investigationId: run.id, runRevision: run.revision, runGeneration: run.generation,
+      sourceBundleId: run.sourceInput.sourceBundleSnapshotId, receiptId: run.sourceInput.receiptId, profileId: run.profile.id,
+      graphDigest: run.latestGraph?.digest ?? null };
+    if (value?.version !== 1 || !value.binding || Object.entries(expected).some(([k, v]) => value.binding[k as keyof typeof expected] !== v)
+      || value.runState !== run.state || !["SAVED_GRAPH", "CURRENT_CHECKPOINTS", "UNAVAILABLE"].includes(value.snapshotKind)
+      || (value.snapshotKind === "SAVED_GRAPH" && (!run.latestGraph || value.snapshotGeneration !== run.latestGraph.generation))
+      || !Array.isArray(value.tasks) || !Array.isArray(value.pending) || !Array.isArray(value.missing)
+      || typeof value.manifestAvailable !== "boolean" || typeof value.pendingInventoryAvailable !== "boolean"
+      || value.tasks.some(t => !t || typeof t.taskKey !== "string" || !["RETURN_RECORDED", "PENDING"].includes(t.status)
+        || !Array.isArray(t.sourceRanges) || !Array.isArray(t.obligations) || !Array.isArray(t.propositions) || !Array.isArray(t.crossTaskLeads)
+        || t.propositions.some(p => !p || typeof p.key !== "string" || typeof p.state !== "string" || !Array.isArray(p.evidence) || !Array.isArray(p.mappingStatuses)))) throw invalid();
+    return value;
   }
   private graphResult<T extends { investigationId: string }>(value: T, id: string, expected?:FixedGraph) {
     if (!value || value.investigationId !== id || (expected&&Object.entries(expected).some(([key,wanted])=>value[key as keyof T]!==wanted))) throw invalid(); return value;

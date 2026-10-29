@@ -7,6 +7,7 @@ import { SourceSnapshotReader } from "../source-truth/admission-service.js";
 import { appendWorkRecord, readWorkRecord } from "./work-records.js";
 import { analysisContractVersion } from './model-context.js';
 import {checkpointRowBytes,checkpointChunkPrefix,readCheckpointDocument,writeCheckpointDocument} from './checkpoint-storage.js';
+import {projectTaskEvidence} from './task-evidence.js';
 import {intactBusinessGraph} from './semantic-graph.js';
 import {analysisDependencyRows,analysisInventory,deriveContinuationBasis,readAnalysisGraph,intactContinuationBasis,technicalBinding} from './continuation-basis.js';
 import {dependencyDigest} from './dependency-review.js';
@@ -287,6 +288,34 @@ export class InvestigationService {
       const graph=saved&&await readCheckpointDocument(tx,row,{generation:ref.generation,key:'graph',payload:saved});
       requireF003(graph && graph.digest === ref.digest, "F003_GRAPH_NOT_FOUND", "调查尚无完整分析图谱", { status: 404 });
       return graph;
+    });
+  }
+
+  taskEvidence(actor, workspaceId, id, { expectedRevision, expectedGraphDigest } = {}) {
+    requireF003(Number.isSafeInteger(expectedRevision) && expectedRevision > 0
+      && (expectedGraphDigest === null || /^[a-f0-9]{64}$/.test(expectedGraphDigest ?? "")),
+    "F003_INPUT_INVALID", "任务证据读取必须指定调查修订及精确图谱摘要或明确尚无图谱", { status: 422 });
+    return this.#with(actor, workspaceId, id, false, async (tx, row) => {
+      const ref = row.payload.latestGraph;
+      requireF003(row.revision === expectedRevision && (ref?.digest ?? null) === expectedGraphDigest,
+        "F003_TASK_EVIDENCE_CONFLICT", "调查或图谱已变化，请先刷新调查再读取任务证据");
+      const records = (await tx.query(`SELECT generation,checkpoint_key,payload FROM f003_checkpoint
+        WHERE workspace_id=$1 AND investigation_id=$2 AND
+        (checkpoint_key IN ('inventory','business-task-manifest','plan','consolidation','verification')
+          OR checkpoint_key LIKE 'child-%' OR checkpoint_key LIKE 'supplement-%'
+          OR (checkpoint_key='graph' AND generation=$3)) ORDER BY generation,checkpoint_key`,
+      [workspaceId, id, ref?.generation ?? null])).rows;
+      const checkpoints = [];
+      for (const r of records) checkpoints.push({ generation: r.generation, key: r.checkpoint_key,
+        payload: await readCheckpointDocument(tx, row, { generation: r.generation, key: r.checkpoint_key, payload: r.payload }) });
+      const graph = ref ? checkpoints.find(c => c.key === "graph" && c.generation === ref.generation)?.payload : null;
+      requireF003(!ref || (graph?.digest === ref.digest && graph.investigationId === id && graph.workspaceId === workspaceId
+        && graph.sourceBundleId === row.source_input.sourceBundleSnapshotId && graph.profileId === row.profile.id),
+      "F003_GRAPH_NOT_FOUND", "调查图谱不可核验，未替换为其他任务版本", { status: 404 });
+      const result = projectTaskEvidence(rowView(row), { graph, checkpoints });
+      requireF003(Buffer.byteLength(JSON.stringify(result)) <= 4 * 1024 * 1024,
+        "F003_TASK_EVIDENCE_LIMIT", "任务证据超过单次读取上限，未将截断清单记为完整", { status: 503 });
+      return result;
     });
   }
 

@@ -35,6 +35,24 @@ export type StartInvestigation = Pick<Investigation, "operationId" | "question" 
   reference: { bundleId: string; receiptId: string }; expectedProfileId: string;
 };
 export type InvestigationEvent = { sequence: string | number; event_type: string; payload: unknown; actor_id: string; occurred_at: string };
+export type TaskSourceRange = { materialId: string | null; path: string | null; byteStart: number | null; byteEnd: number | null;
+  startLine: number | null; endLine: number | null; readable: boolean };
+export type TaskEvidence = {
+  version: 1;
+  binding: { workspaceId: string; investigationId: string; runRevision: number; runGeneration: number;
+    sourceBundleId: string; receiptId: string; profileId: string; graphDigest: string | null };
+  runState: InvestigationState; snapshotKind: "SAVED_GRAPH" | "CURRENT_CHECKPOINTS" | "UNAVAILABLE";
+  snapshotGeneration: number | null; snapshotAdoptedVersionIds: string[]; manifestAvailable: boolean;
+  taskManifestDigest: string | null; pendingInventoryAvailable: boolean; missing: string[];
+  tasks: { taskKey: string; slotId: string | null; role: "MAIN" | "CHILD" | null; generation: number | null;
+    responsibilityId: string | null; objective: string | null; status: "RETURN_RECORDED" | "PENDING"; reportAvailable: boolean;
+    sourceRanges: TaskSourceRange[]; obligations: { obligation: string | null; status: string; reason: string | null }[];
+    crossTaskLeads: { materialKey: string | null; reason: string | null }[];
+    returnedCandidateCount: number | null; returnedRelationCount: number | null;
+    propositions: { key: string; name: string | null; state: string; mappingStatuses: string[];
+      evidence: { materialId: string | null; startLine: number | null; endLine: number | null; readable: boolean }[] }[] }[];
+  pending: { taskKey: string | null; materialKey: string | null; reason: string | null; sourceRanges: TaskSourceRange[] }[];
+};
 export type GraphView = "BUSINESS" | "IMPLEMENTATION" | "COVERAGE";
 export type Citation = { materialId: string; startLine: number; endLine: number; quote: string };
 export type Proposition = {

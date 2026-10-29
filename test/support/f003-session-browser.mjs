@@ -55,6 +55,28 @@ try{
  assert.equal(run.sourceInput.sourceBundleSnapshotId,fixture.reference.bundleId);assert.equal(run.profile.id,fixture.profile.id);assert.equal(run.technicalVersionId,null);
  await board.getByRole("heading",{name:"已保存分析",exact:true}).waitFor();
  await board.getByRole("button",{name:"查看查询订单状态",exact:true}).waitFor();
+ // Prepared actual-HTTP task evidence checks. This legacy entry is still
+ // path-blocked; shared730 must close its paths before anyone runs it.
+ const tasks=board.getByRole("region",{name:"调查任务与证据返回",exact:true});
+ await tasks.getByText("以下是已保存图谱的任务证据，不将当前运行进度倒写进历史图谱。",{exact:true}).waitFor();
+ await tasks.locator("summary").filter({hasText:/^Child/}).first().click();
+ await tasks.getByText(/义务未解决/).first().waitFor();
+ await tasks.getByRole("button",{name:"查询订单状态",exact:true}).first().click();
+ assert.equal(new URL(page.url()).searchParams.get("runId"),run.id);
+ assert.ok(new URL(page.url()).searchParams.get("objectId"));
+ await board.getByRole("button",{name:"关闭追溯",exact:true}).click();
+ await tasks.getByRole("button",{name:"orders.js",exact:true}).first().click();
+ await board.getByLabel("原文回查").locator("pre").getByText(/export function orderStatus/).waitFor();
+ await board.getByRole("button",{name:"关闭追溯",exact:true}).click();
+ const callsBeforeTaskRefresh=fixture.model.calls.length;
+ const taskRefresh=page.waitForResponse(r=>r.request().method()==="GET"&&new URL(r.url()).pathname.endsWith("/task-evidence"));
+ await tasks.getByRole("button",{name:"刷新任务证据",exact:true}).click();
+ const refreshedTaskResponse=await taskRefresh;assert.equal(refreshedTaskResponse.status(),200);
+ const refreshedTasks=(await refreshedTaskResponse.json()).taskEvidence;
+ assert.equal(refreshedTasks.binding.investigationId,run.id);
+ assert.equal(refreshedTasks.binding.graphDigest,new URL(refreshedTaskResponse.url()).searchParams.get("expectedGraphDigest"));
+ assert.equal(fixture.model.calls.length,callsBeforeTaskRefresh);
+ report.checks.push("actual-fixed-investigation-task-projection-original-proposition-key-and-read-only-refresh");
  await board.getByText(/业务图谱质量计量策略尚未确认/).waitFor({state:"attached"});
  assert.equal(await board.getByRole("button",{name:"发布业务版本",exact:true}).count(),0);
  assert.equal(new URL(page.url()).searchParams.get("runId"),run.id);

@@ -10,6 +10,26 @@ import {FactsClientError} from "../app/deterministic-facts/client.ts";
 const id = "fixed-investigation", workspace = "space / one";
 const envelope = body => new Response(JSON.stringify({ schemaVersion: 1, workspaceId: workspace, ...body }), { headers: { "content-type": "application/json" } });
 
+test("task evidence reads pin the current run/graph and reject a different revision instead of silently refreshing to latest",async t=>{
+  const run={id,workspaceId:workspace,revision:7,generation:3,state:"COMPLETED",profile:{id:"profile"},
+    sourceInput:{sourceBundleSnapshotId:"b".repeat(64),receiptId:"receipt"},latestGraph:{digest:"a".repeat(64),generation:2}};
+  const value={version:1,binding:{workspaceId:workspace,investigationId:id,runRevision:7,runGeneration:3,profileId:"profile",
+    sourceBundleId:run.sourceInput.sourceBundleSnapshotId,receiptId:"receipt",graphDigest:run.latestGraph.digest},runState:run.state,
+    snapshotKind:"SAVED_GRAPH",snapshotGeneration:2,tasks:[],pending:[],missing:[],manifestAvailable:false,pendingInventoryAvailable:false};
+  const requests=[];let result=value;
+  t.mock.method(globalThis,"fetch",async(url,options)=>{requests.push({url,options});return envelope({taskEvidence:result});});
+  const client=new BusinessKnowledgeClient("https://api.test",workspace);
+  assert.deepEqual(await client.taskEvidence(run),value);
+  assert.equal(requests[0].options.method,"GET");
+  assert.equal(new URL(requests[0].url).searchParams.get("expectedRevision"),"7");
+  assert.equal(new URL(requests[0].url).searchParams.get("expectedGraphDigest"),run.latestGraph.digest);
+  for(const change of [{runRevision:8},{graphDigest:"c".repeat(64)},{sourceBundleId:"d".repeat(64)},{investigationId:"other"},{receiptId:"foreign"}]){
+    result={...value,binding:{...value.binding,...change}};
+    await assert.rejects(client.taskEvidence(run),{code:"F003_RESPONSE_INVALID"});
+  }
+  assert.ok(requests.every(r=>r.options.method==="GET"&&r.options.body===undefined));
+});
+
 test("business graph reads use the current cookie, exact space/investigation and GET only", async t => {
   const calls = [];
   t.mock.method(globalThis, "fetch", async (url, options) => {
