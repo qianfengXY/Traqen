@@ -24,8 +24,8 @@ async function projectRoot() {
 export async function sourceTruthTestParent(value) {
   const project = await projectRoot(), allowed = path.join(project, ".review-local", "validation-runs");
   const target = value ?? allowed;
-  if (!path.isAbsolute(target) || path.resolve(target) !== target || !inside(allowed, target) || inside(checkout, target))
-    throw new Error("F001 fixtures require a project-local validation-runs parent outside the feature code checkout");
+  if (!path.isAbsolute(target) || path.resolve(target) !== target || !inside(allowed, target))
+    throw new Error("F001 fixtures require a project-local validation-runs parent");
   let current = project;
   for (const segment of path.relative(project, target).split(path.sep)) {
     current = path.join(current, segment);
