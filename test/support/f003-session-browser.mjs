@@ -1,27 +1,30 @@
 import assert from "node:assert/strict";
 import {spawn} from "node:child_process";
-import {mkdtemp,writeFile} from "node:fs/promises";
-import {tmpdir} from "node:os";
+import {mkdir,writeFile} from "node:fs/promises";
 import path from "node:path";
 import {fileURLToPath,pathToFileURL} from "node:url";
 import {randomUUID} from "node:crypto";
 import {createServer} from "node:net";
-import {isolatedPostgres} from "./source-truth-postgres.js";
+import {isolatedPostgres,fixtureChildEnvironment} from "./source-truth-postgres.js";
+import {sourceTruthTestRoot} from "./source-truth-test-paths.js";
 import {knowledgeServerFixture,syntheticPassword} from "./f002-f003-server-fixture.js";
 import {businessUiModelResponse} from "./f003-business-ui-model.js";
 
 const [modulePath,executablePath]=process.argv.slice(2);
 assert.ok(path.isAbsolute(modulePath??"")&&path.isAbsolute(executablePath??""));
+// The caller prepares the complete project-local environment; the existing
+// F001/F002 helpers reject missing or out-of-project paths before resources.
+const environment=await fixtureChildEnvironment();
+const directory=await sourceTruthTestRoot("traqen-f003-business-browser",environment.TMPDIR);
+const downloads=path.join(directory,"downloads");await mkdir(downloads,{mode:0o700});
 const probe=createServer();await new Promise(resolve=>probe.listen(0,"127.0.0.1",resolve));const webPort=probe.address().port;await new Promise(resolve=>probe.close(resolve));
 const root=fileURLToPath(new URL("../../",import.meta.url)),web=`http://127.0.0.1:${webPort}`;
-const directory=await mkdtemp(path.join(tmpdir(),"traqen-f003-business-browser-"));
-const environment=Object.fromEntries(["PATH","HOME","TMPDIR","LANG","LC_ALL","LC_CTYPE","SHELL"].flatMap(key=>process.env[key]===undefined?[]:[[key,process.env[key]]]));
 const report={scope:"SYNTHETIC_PASSWORD_F001_F006_F003_REAL_HTTP_AND_PERSISTENT_GRAPH_EXTERNAL_MODEL_PROCESS_DOUBLE",status:"RUNNING",checks:[],errors:[],writes:[],screenshots:[]};
 const cleanups=[],t={after:callback=>cleanups.push(callback)},logs=[];
 let front,browser,page,fixture;
 const timer=setTimeout(()=>{report.errors.push("Browser verification exceeded its bound");front?.kill("SIGTERM");void browser?.close();},240000);
 try{
- const cluster=await isolatedPostgres(t,{binaries:"/Users/skybowen/Library/Application Support/Traqen-F001/postgres/bin"});
+ const cluster=await isolatedPostgres(t,{environment});
  fixture=await knowledgeServerFixture(t,{port:0,webOrigin:web,database:()=>cluster.createDatabase(),modelResponse:businessUiModelResponse});
  fixture.model.release();await fixture.runtime.knowledge.start();
  front=spawn(process.execPath,[path.join(root,"web/node_modules/vinext/dist/cli.js"),"dev","--hostname","127.0.0.1","--port",String(webPort)],{
@@ -31,7 +34,7 @@ try{
  while(true){try{if((await fetch(web,{signal:AbortSignal.timeout(1000)})).ok)break;}catch{}
   assert.ok(front.exitCode===null&&Date.now()-started<40000,"Owned frontend failed to start");await new Promise(resolve=>setTimeout(resolve,100));}
  const {chromium}=await import(pathToFileURL(modulePath).href);
- browser=await chromium.launch({executablePath,headless:true,env:environment});
+ browser=await chromium.launch({executablePath,headless:true,env:environment,downloadsPath:downloads});
  const context=await browser.newContext({viewport:{width:1440,height:1000}});page=await context.newPage();page.setDefaultTimeout(25000);
  page.on("pageerror",error=>report.errors.push(error.message));
  page.on("request",request=>{const pathname=new URL(request.url()).pathname;if(pathname.includes("/business-knowledge")&&request.method()!=="GET")report.writes.push({pathname,method:request.method(),authorizationPresent:!!request.headers().authorization});});
@@ -55,8 +58,8 @@ try{
  assert.equal(run.sourceInput.sourceBundleSnapshotId,fixture.reference.bundleId);assert.equal(run.profile.id,fixture.profile.id);assert.equal(run.technicalVersionId,null);
  await board.getByRole("heading",{name:"已保存分析",exact:true}).waitFor();
  await board.getByRole("button",{name:"查看查询订单状态",exact:true}).waitFor();
- // Prepared actual-HTTP task evidence checks. This legacy entry is still
- // path-blocked; shared730 must close its paths before anyone runs it.
+ // Actual-HTTP task evidence checks, retaining the original proposition keys
+ // and controlled material reader rather than replacing business responses.
  const tasks=board.getByRole("region",{name:"调查任务与证据返回",exact:true});
  await tasks.getByText("以下是已保存图谱的任务证据，不将当前运行进度倒写进历史图谱。",{exact:true}).waitFor();
  await tasks.locator("summary").filter({hasText:/^Child/}).first().click();
@@ -160,7 +163,7 @@ try{
  if(front&&front.exitCode===null){front.kill("SIGTERM");await new Promise(resolve=>front.once("exit",resolve));}
  for(const cleanup of cleanups.reverse())await cleanup().catch(error=>report.errors.push(error.message));
  if(report.errors.length)report.status="FAILED";
- await writeFile(path.join(directory,"frontend.log"),logs.join(""),{flag:"wx"});await writeFile(path.join(directory,"summary.json"),JSON.stringify(report,null,2),{flag:"wx"});
+ await writeFile(path.join(directory,"frontend.log"),logs.join(""),{flag:"wx",mode:0o600});await writeFile(path.join(directory,"summary.json"),JSON.stringify(report,null,2),{flag:"wx",mode:0o600});
  console.log(JSON.stringify({...report,parentPath:`${directory}/`,childPath:"summary.json"}));
 }
 if(report.status!=="PASSED")process.exitCode=1;
