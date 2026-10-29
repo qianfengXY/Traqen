@@ -33,11 +33,22 @@ const deadline = setTimeout(() => { report.errors.push("bounded acceptance brows
 async function screenshot(name) { await page.screenshot({ path: path.join(root, name), fullPage: true }); report.screenshots.push(name); }
 async function selected(id) { await page.locator(".f002-detail > code.f002-id").filter({ hasText: id }).waitFor(); assert.equal(new URL(page.url()).searchParams.get("record"), id); }
 async function loadAll(label) {
+  const collection = { "加载下一页": "objects", "加载更多事实": "facts", "加载更多关系": "relations", "加载更多缺口": "gaps" }[label];
+  assert.ok(collection, "pagination must name an actual collection");
   for (let n = 0; n < 25; n++) {
     const button = page.getByRole("button", { name: label, exact: true });
     if (!await button.count()) return;
-    await button.click(); await delay(100);
-    if (await button.count()) await button.waitFor({ state: "visible" });
+    // A count/100ms/click loop can observe the previous page's button while
+    // its final response removes it. Join the actual cursor response instead.
+    const reply = page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return response.request().method() === "GET" && url.pathname.endsWith(`/${collection}`) && url.searchParams.has("cursor");
+    });
+    await button.click();
+    const response = await reply; assert.equal(response.status(), 200);
+    const result = await response.json();
+    if (!result.nextCursor) { await button.waitFor({ state: "detached" }); return; }
+    await page.waitForFunction(name => [...document.querySelectorAll("button")].some(button => button.textContent === name && !button.disabled), label);
   }
   assert.equal(await page.getByRole("button", { name: label, exact: true }).count(), 0, "small fixture pagination must finish");
 }
