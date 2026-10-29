@@ -131,6 +131,7 @@ try {
   await loadAll("加载更多关系");
   const relation = before.find(r => r.kind === "FACT" && r.payload.predicate === "callsDeclaration"); assert.ok(relation);
   await page.locator(`[data-relation-select="${relation.id}"]`).click(); await selected(relation.id);
+  await page.locator(`[data-edge-fact-id="${relation.id}"]`).waitFor();
   await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).waitFor();
   await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).scrollIntoViewIfNeeded();
   await screenshot("journey-04-unsealed-graph.png");
@@ -351,7 +352,11 @@ try {
   report.cancel = { runId: cancelledRun.id, revision: cancelled.scopes[0].revision, status: cancelled.scopes[0].status };
   await page.reload();
   await page.locator(".f002-delivery article").filter({ hasText: cancelledRun.id }).getByText("已取消", { exact: true }).first().waitFor();
-  assert.equal(new URL(page.url()).searchParams.get("run"), cancelledRun.id);
+  assert.match(await page.getByRole("navigation", { name: "技术分析五步旅程" }).locator('[aria-current="step"]').innerText(), /技术分析/);
+  const restoredCancelled = (await json(client, `${factsPrefix}/runs/${cancelledRun.id}`)).run;
+  assert.equal(restoredCancelled.sourceInput.bundleId, a.reference.bundleId);
+  assert.equal(restoredCancelled.scopes[0].status, "CANCELLED");
+  report.cancel.restored = { runId: restoredCancelled.id, sourceBundleId: restoredCancelled.sourceInput.bundleId, status: "CANCELLED", step: 2 };
   await page.getByLabel("全局主题配色", { exact: true }).selectOption("dark");
   await screenshot("journey-09-dark-cancelled.png");
   await page.getByLabel("全局主题配色", { exact: true }).selectOption("light");

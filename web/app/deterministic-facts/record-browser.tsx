@@ -87,7 +87,9 @@ export function RecordBrowser({ client, context, actorId, navigate, accessLost }
     navigate({ ...context, line: start, lineEnd: end, windowLine });
   };
   const select = (record: FactRecord, line?: number) => {
-    const graphRootId = context.tab === "relations" ? context.graphRootId ?? view.graphRootId ?? context.recordId ?? record.id : context.graphRootId;
+    // Without a fixed graph root, the newly selected relation is the focus;
+    // an unrelated material selected before entering this tab is not a root.
+    const graphRootId = context.tab === "relations" ? context.graphRootId ?? view.graphRootId ?? record.id : context.graphRootId;
     const anchor = sourceAnchorTextRange(record.payload.anchor);
     const start = line ?? anchor?.lineStart, end = start === undefined ? undefined : anchor?.lineEnd ?? start;
     view.update({ readingLine: start ?? 1, readingLineEnd: end ?? 1, readingWindowLine: start ?? 1, inspectorScrollTop: 0, ...(graphRootId ? { graphRootId } : {}) }, record.id, record.kind);
