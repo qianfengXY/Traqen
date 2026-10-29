@@ -60,8 +60,8 @@ export async function acceptanceNativeFixture(t, { origin } = {}) {
     }
     const commitA = await commitFiles(acceptanceFilesA, "public bounded acceptance A");
     root = await mkdtemp(path.join(cleanEnv.TMPDIR, "tq-f002-native-entry-"));
-    const store = path.join(root, "source-store"), keys = path.join(root, "keys"), recovery = path.join(root, "recovery");
-    for (const directory of [store, keys, recovery]) await mkdir(directory, { mode: 0o700 });
+    const store = path.join(root, "source-store"), keys = path.join(root, "keys"), recovery = path.join(root, "recovery"), workingDirectory = path.join(root, "cwd");
+    for (const directory of [store, keys, recovery, workingDirectory]) await mkdir(directory, { mode: 0o700 });
     await writeFile(path.join(store, "source-truth-store.json"), '{"format":"Traqen.SourceTruthStore","version":1}', { flag: "wx", mode: 0o600 });
     const key = Buffer.alloc(32, 83), keyFile = path.join(keys, "auth.key"), blobKey = path.join(keys, "blob.key"), recoveryKey = path.join(recovery, "blob.key");
     for (const [filename, bytes] of [[keyFile, key], [blobKey, Buffer.alloc(32, 29)], [recoveryKey, Buffer.alloc(32, 29)]]) await writeFile(filename, bytes, { flag: "wx", mode: 0o600 });
@@ -83,7 +83,7 @@ export async function acceptanceNativeFixture(t, { origin } = {}) {
     const databaseUrl = `postgresql://f001_test@localhost/${initial.name}?host=${encodeURIComponent(cluster.socket)}`;
     async function start() {
       child = spawn(process.execPath, ["--import", fileURLToPath(new URL("./f002-owned-volume-loader.mjs", import.meta.url)), path.join(project, "src/api/dev-server.js")],
-        { cwd: project, env: { ...cleanEnv, HOST: "127.0.0.1", PORT: "0", TRAQEN_AUTH_DEVELOPMENT: "true",
+        { cwd: workingDirectory, env: { ...cleanEnv, HOST: "127.0.0.1", PORT: "0", TRAQEN_AUTH_DEVELOPMENT: "true", TRAQEN_DEVELOPMENT_SOURCE_ROOT: project,
           TRAQEN_AUTH_DEVELOPMENT_DATA: path.join(root, "identity"), TRAQEN_AUTH_KEY_FILE: keyFile,
           TRAQEN_PUBLIC_ORIGIN: origin, SOURCE_TRUTH_CONFIG: configFile, DATABASE_URL: databaseUrl,
           F002_TEST_OWNED_VOLUME_ROOTS: JSON.stringify([root, cluster.root]) }, stdio: ["ignore", "pipe", "pipe"] });
@@ -100,7 +100,7 @@ export async function acceptanceNativeFixture(t, { origin } = {}) {
     }
     cleanups.push(() => writeFile(path.join(root, "api.log"), log, { mode: 0o600 }));
     await start();
-    return { root, source, cluster, origin, children, commitA,
+    return { root, source, cluster, origin, children, commitA, workingDirectory, sourceRoot: project,
       get base() { return base; }, get log() { return log; },
       pool: () => cluster.pool(initial.name),
       async client(login = "owner") { const client = fixtureCookieClient(base, origin); await client.login(login); return client; },
