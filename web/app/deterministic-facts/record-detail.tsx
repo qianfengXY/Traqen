@@ -1,5 +1,7 @@
 "use client";
 
+import { evidenceResultKey } from "./model.ts";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DeterministicFactsClient, FactsClientError } from "./client.ts";
 import { evidenceReference, type EvidenceLocation } from "./model.ts";
@@ -16,15 +18,15 @@ export function RecordDetailPanel({ client, context, select, accessLost, scrollT
   onClose: (top: number) => void; autoFocus: boolean;
   onEndpoint?: (fact: FactRecord, object: FactRecord) => void;
 }) {
-  const route = context.recordId && context.kind ? `/versions/${context.graphVersionId}/records/${context.kind}/${context.recordId}` : "";
+  const route = context.recordId && context.kind ? `/versions/${evidenceResultKey(context)}/records/${context.kind}/${context.recordId}` : "";
   const load = useCallback((bound: DeterministicFactsClient) => route ? bound.request<RecordDetail>(route) : Promise.resolve(null), [route]);
   const resource = useEvidenceResource(client, route, load, accessLost);
-  const versionRoute = context.recordId && context.graphVersionId ? `/versions/${context.graphVersionId}` : "";
+  const versionRoute = context.recordId && evidenceResultKey(context) ? `/versions/${evidenceResultKey(context)}` : "";
   const loadManifest = useCallback(async (bound: DeterministicFactsClient) => versionRoute ? (await bound.request<{ manifest: Manifest }>(`${versionRoute}/manifest`)).manifest : null, [versionRoute]);
   const loadGaps = useCallback((bound: DeterministicFactsClient) => versionRoute ? bound.request<RecordPage>(`${versionRoute}/gaps?limit=100`) : Promise.resolve(null), [versionRoute]);
   const coverageIds = [...new Set([resource.data?.record, ...(resource.data?.references ?? [])]
     .flatMap(record => record ? [record.kind === "MATERIAL" ? record.id : record.payload.materialId].filter((id): id is string => typeof id === "string") : []))].sort().join(",");
-  const loadCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, context.graphVersionId!, coverageIds ? coverageIds.split(",") : []), [context.graphVersionId, coverageIds]);
+  const loadCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, evidenceResultKey(context), coverageIds ? coverageIds.split(",") : []), [evidenceResultKey(context), coverageIds]);
   const manifest = useEvidenceResource(client, `${versionRoute}/manifest`, loadManifest, accessLost);
   const gaps = useEvidenceResource(client, `${versionRoute}/gaps?limit=100`, loadGaps, accessLost);
   const coverage = useEvidenceResource(client, `${versionRoute}/coverage?materialIds=${coverageIds}`, loadCoverage, accessLost);
@@ -40,9 +42,9 @@ export function RecordDetailPanel({ client, context, select, accessLost, scrollT
   }, [detail, manifest.data, gaps.data, coverage.data, scrollTop]);
   const close = () => onClose(panel.current?.scrollTop ?? scrollTop);
   const copy = async () => {
-    if (!detail || client.signal?.aborted || !context.graphVersionId) return;
+    if (!detail || client.signal?.aborted || !context.graphVersionId || context.preview) return;
     try {
-      await client.request(`/versions/${context.graphVersionId}/records/${detail.record.kind}/${detail.record.id}`);
+      await client.request(`/versions/${evidenceResultKey(context)}/records/${detail.record.kind}/${detail.record.id}`);
       client.signal?.throwIfAborted();
       await navigator.clipboard.writeText(evidenceReference(context.workspaceId, context.graphVersionId, detail.record.kind, detail.record.id));
       if (!client.signal?.aborted) setNotice({ id: detail.record.id, message: "已复制完整版本引用，不是原文内容。" });
@@ -56,10 +58,10 @@ export function RecordDetailPanel({ client, context, select, accessLost, scrollT
     <header><h2 ref={heading} tabIndex={-1} data-inspector-heading="true">依据与限制</h2><button className="button" aria-label="关闭依据面板" onClick={close}>关闭</button></header>
     {error ? <p role="alert">固定引用暂不可用：{error.message}。不会替换为最新版。</p> : !context.recordId ? <p>选择材料、对象或事实，查看原文位置、规则与前提。</p> : !detail ? <p role="status">正在读取固定记录…</p> : <>
       <h3>{title(detail.record)}</h3><code className="f002-id">{detail.record.id}</code><p>{detail.record.payload.basis === "DERIVED" ? "推导事实：须连同规则、前提与证据阅读。" : "技术记录或直接依据，不表示人工业务确认。"}</p>
-      <dl><dt>固定事实集版本</dt><dd className="f002-id">{context.graphVersionId}</dd><dt>来源与范围</dt><dd>工作区 {context.workspaceId} · 来源 {context.sourceVersionId ?? "由事实集清单绑定"}</dd>
+      <dl><dt>{context.preview ? "未封存成果定位（非正式版本）" : "固定事实集版本"}</dt><dd className="f002-id">{context.preview ? `运行 ${context.preview.runId} / 范围 ${context.preview.scopeId} / 修订 ${context.preview.revision}` : context.graphVersionId}</dd><dt>来源与范围</dt><dd>工作区 {context.workspaceId} · 来源 {context.sourceVersionId ?? "由事实集清单绑定"}</dd>
         {detail.record.payload.kind === "RELATION" && <><dt>关系方向</dt><dd className="f002-id">{detail.record.payload.subjectId} → {detail.record.payload.targetId}</dd><dt>关系谓词</dt><dd>{detail.record.payload.predicate}</dd></>}
       </dl>
-      <button className="button" onClick={() => void copy()}>复制完整引用</button><p role="status">{notice?.id === context.recordId ? notice.message : ""}</p>
+      <button className="button" disabled={!!context.preview} onClick={() => void copy()}>复制完整引用</button><p role="status">{notice?.id === context.recordId ? notice.message : ""}</p>
       {[{ label: "版本说明", resource: manifest }, { label: "限制清单", resource: gaps }, { label: "能力处置", resource: coverage }].map(({ label, resource }) => resource.error && <p role="alert" key={label}>{label}读取未完成：{resource.error.message}。不能按空结果解释。<button className="button" onClick={resource.retry}>重读{label}</button></p>)}
       <EvidenceExplanation context={context} detail={detail} manifest={manifest.data} gapPage={gaps.data} coverage={coverage.data} select={select} />
       <details><summary>核查固定记录原始字段</summary><pre>{JSON.stringify(detail.record.payload, null, 2)}</pre></details>

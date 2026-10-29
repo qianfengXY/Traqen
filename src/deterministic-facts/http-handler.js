@@ -148,6 +148,8 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
         if (requestExecutor) void requestExecutor.enqueue({ ...evidenceRequest, workspaceId, actorId: actor.actorId });
         json(response, 202, { request: evidenceRequest }, requestId);
       } else {
+        const previewMatch = /^runs\/([A-Za-z0-9_-]{1,128})\/scopes\/([a-f0-9]{64})\/preview\/([1-9][0-9]{0,8})(?:\/(.*))?$/.exec(route);
+        const preview = previewMatch ? { runId: previewMatch[1], scopeId: previewMatch[2], revision: Number(previewMatch[3]) } : null;
         const version = /^versions\/([a-f0-9]{64})(?:\/(.*))?$/.exec(route);
         const run = /^runs\/([^/]+)(?:\/(.*))?$/.exec(route);
         const requestMatch = /^requests\/([A-Za-z0-9-]{1,128})(?:\/(cancel))?$/.exec(route);
@@ -175,10 +177,13 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
           const input = await body(request); exactKeys(input, ["revision", "operationId"], "F002_REPLAY_INPUT_INVALID", "取消重放请求包含未定义字段");
           json(response, 200, { replay: await replays.cancel(actor, workspaceId, replayMatch[1], input) }, requestId);
         }
-        else if (version) {
-          const [, graphVersionId, tail = ""] = version;
-          if (request.method === "GET" && tail === "manifest") json(response, 200, { manifest: await queries.manifest(actor, workspaceId, graphVersionId) }, requestId);
-          else if (request.method === "GET" && tail === "export") {
+        else if (version || preview && request.method === "GET") {
+          const [, graphVersionId, tail = ""] = version ?? [null, preview.scopeId, previewMatch[4] ?? "manifest"];
+          const read = (name, ...args) => preview
+            ? queries.preview(actor, workspaceId, preview, async q => ({ ...await q[name](...args), preview: { ...preview } }))
+            : queries[name](actor, workspaceId, graphVersionId, ...args);
+          if (request.method === "GET" && tail === "manifest") json(response, 200, { manifest: await read("manifest") }, requestId);
+          else if (request.method === "GET" && tail === "export" && !preview) {
             const controller = new AbortController();
             const closed = () => controller.abort();
             response.once("close", closed);
@@ -192,25 +197,25 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
               response.end();
             } finally { response.off("close", closed); }
           }
-          else if (request.method === "GET" && tail === "coverage") json(response, 200, { coverage: await queries.coverage(actor, workspaceId, graphVersionId,
+          else if (request.method === "GET" && tail === "coverage") json(response, 200, { coverage: await read("coverage",
             { limit: limit(url), cursor: url.searchParams.get("cursor"), materialIds: url.searchParams.get("materialIds")?.split(",") ?? [] }) }, requestId);
-          else if (request.method === "GET" && tail === "records") json(response, 200, await queries.records(actor, workspaceId, graphVersionId, { kind: url.searchParams.get("kind"), limit: limit(url), cursor: url.searchParams.get("cursor") }), requestId);
+          else if (request.method === "GET" && tail === "records") json(response, 200, await read("records", { kind: url.searchParams.get("kind"), limit: limit(url), cursor: url.searchParams.get("cursor") }), requestId);
           else if (request.method === "GET" && ["materials", "objects", "facts", "relations", "gaps"].includes(tail)) {
-            json(response, 200, await queries.collection(actor, workspaceId, graphVersionId, tail, { limit: limit(url), cursor: url.searchParams.get("cursor"),
+            json(response, 200, await read("collection", tail, { limit: limit(url), cursor: url.searchParams.get("cursor"),
               query: url.searchParams.get("q") ?? "", materialIds: url.searchParams.get("materialIds")?.split(",") ?? [] }), requestId);
           }
-          else if (request.method === "GET" && tail === "vocabulary") json(response, 200, { vocabulary: await queries.vocabulary(actor, workspaceId, graphVersionId) }, requestId);
+          else if (request.method === "GET" && tail === "vocabulary") json(response, 200, { vocabulary: await read("vocabulary") }, requestId);
           else if (request.method === "GET" && tail === "graph") {
-            json(response, 200, { graph: await queries.graph(actor, workspaceId, graphVersionId, {
+            json(response, 200, { graph: await read("graph", {
               rootId: url.searchParams.get("rootId"), depth: boundedNumber(url, "depth", 1), limit: boundedNumber(url, "limit", 100),
             }) }, requestId);
           }
           else if (request.method === "GET" && /^records\/([A-Z_]{1,64})\/([a-f0-9]{64})$/.test(tail)) {
             const [, kind, recordId] = /^records\/([A-Z_]{1,64})\/([a-f0-9]{64})$/.exec(tail);
-            json(response, 200, await queries.record(actor, workspaceId, graphVersionId, kind, recordId), requestId);
+            json(response, 200, await read("record", kind, recordId), requestId);
           }
-          else if (request.method === "GET" && tail === "replays") json(response, 200, { replays: await replays.list(actor, workspaceId, graphVersionId) }, requestId);
-          else if (request.method === "POST" && tail === "replays") {
+          else if (request.method === "GET" && tail === "replays" && !preview) json(response, 200, { replays: await replays.list(actor, workspaceId, graphVersionId) }, requestId);
+          else if (request.method === "POST" && tail === "replays" && !preview) {
             const input = await body(request); exactKeys(input, ["operationId"], "F002_REPLAY_INPUT_INVALID", "重放不接受客户端记录或规则");
             const replay = await replays.submit(actor, workspaceId, graphVersionId, input);
             if (replayExecutor) void replayExecutor.enqueue({ ...replay, workspaceId, actorId: actor.actorId, replayId: replay.id });
@@ -219,7 +224,7 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
           else {
             const content = /^materials\/([a-f0-9]{64})\/content$/.exec(tail);
             if (request.method === "GET" && content) {
-              const result = await materials.read(actor, workspaceId, graphVersionId, content[1]);
+              const result = preview ? await materials.readPreview(actor, workspaceId, preview, content[1]) : await materials.read(actor, workspaceId, graphVersionId, content[1]);
               response.writeHead(200, { "content-type": result.mediaType, "content-length": result.bytes.length, "cache-control": "no-store", "x-content-type-options": "nosniff", "x-request-id": requestId,
                 "x-f002-readable-ref": result.readableRef, "x-f002-original-digest": result.originalDigest, "x-f002-display-digest": result.displayDigest,
                 ...(result.sourceMaterial ? { "x-source-material-ref": result.sourceMaterial.id,
@@ -230,7 +235,11 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
           }
         } else if (run) {
           const [, runId, tail = ""] = run;
-          if (request.method === "GET" && tail === "") json(response, 200, { run: await repository.getRun(actor, workspaceId, runId) }, requestId);
+          if (request.method === "GET" && /^scopes\/([a-f0-9]{64})\/progress$/.test(tail)) {
+            const scopeId = tail.split("/")[1];
+            json(response, 200, { progress: await repository.scopeProgress(actor, workspaceId, runId, scopeId) }, requestId);
+          }
+          else if (request.method === "GET" && tail === "") json(response, 200, { run: await repository.getRun(actor, workspaceId, runId) }, requestId);
           else if (request.method === "POST" && ["retry", "cancel"].includes(tail)) {
             const input = scopeOperationInput(await body(request), "F002_SCOPE_INPUT_INVALID");
             const scope = tail === "retry"

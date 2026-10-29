@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { transaction } from "../source-truth/repository.js";
 import { canonicalDigest, createProfileConfigDigest, createProfileId, createScopeId, normalizeScope } from "./identity.js";
 import { F002Error, requireF002 } from "./errors.js";
+import { parserPhases } from "./parser-deadline.js";
 import { installedF002Rules } from "./rules.js";
 
 const scopeStates = new Set(["QUEUED", "RUNNING", "READY_TO_SEAL", "SEALED", "FAILED_RETRYABLE", "BLOCKED", "CANCELLED"]);
@@ -22,7 +23,7 @@ function scopeRow(row) {
   if (!row) return null;
   return { scopeId: row.scope_id, label: row.label, selections: row.selections, status: row.status, generation: row.generation,
     revision: row.revision, workerId: row.worker_id, leaseUntil: iso(row.lease_until), sealOperationId: row.seal_operation_id,
-    graphVersionId: row.graph_version_id, diagnostic: row.diagnostic };
+    graphVersionId: row.graph_version_id, diagnostic: row.diagnostic, progress: row.progress ?? null };
 }
 
 function aggregate(scopes) {
@@ -197,7 +198,7 @@ export class F002Repository {
       } else {
         requireF002(requestId === null && requestGeneration === null, "F002_REQUEST_SCOPE_OWNED", "普通范围不能携带取证请求执行凭据", { status: 409 });
       }
-      const { rows } = await tx.query(`UPDATE f002_scope SET status='RUNNING',generation=generation+1,revision=revision+1,worker_id=$4,
+      const { rows } = await tx.query(`UPDATE f002_scope SET status='RUNNING',generation=generation+1,revision=revision+1,worker_id=$4,progress=NULL,
           lease_until=clock_timestamp()+($5::integer * interval '1 millisecond'),updated_at=clock_timestamp()
         WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3
           AND (status='QUEUED' OR (status='RUNNING' AND lease_until<=clock_timestamp())) RETURNING *`, [workspaceId, runId, scopeId, workerId, leaseMs]);
@@ -224,6 +225,42 @@ export class F002Repository {
       requireF002(rows.length === 1, "F002_STALE_SCOPE_WORKER", "执行权或任务状态已变化", { status: 409 });
       return scopeRow(rows[0]);
     }, { maintain: true });
+  }
+
+  async recordScopeProgress(actor, { workspaceId, runId, scopeId, generation, workerId, requestId = null, requestGeneration = null, progress }) {
+    const phases = ["LOADING", ...parserPhases, "ASSEMBLE", "VERIFY", "READY"];
+    requireF002(phases.includes(progress?.phase) && Number.isSafeInteger(progress.completed) && progress.completed >= 0
+      && progress.completed <= 200_000 && (progress.total === null || Number.isSafeInteger(progress.total) && progress.total >= progress.completed && progress.total <= 200_000)
+      && (progress.path === undefined || typeof progress.path === "string" && progress.path.length <= 4096),
+      "F002_PROGRESS_INVALID", "解析进度无效", { status: 422 });
+    return this.#withWorkspace(actor, workspaceId, async tx => {
+      const request = await this.#requestScopeOwner(tx, workspaceId, runId, scopeId);
+      requireF002(request ? requestId === request.id && requestGeneration === request.generation && request.state === "RUNNING" && request.lease_live
+        : requestId === null && requestGeneration === null, "F002_REQUEST_SCOPE_OWNED", "进度不能越过取证请求执行边界", { status: 409 });
+      const scope = (await tx.query(`SELECT progress FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3
+        AND generation=$4 AND worker_id=$5 AND status='RUNNING' AND lease_until>clock_timestamp() FOR UPDATE`,
+        [workspaceId, runId, scopeId, generation, workerId])).rows[0];
+      requireF002(scope, "F002_STALE_SCOPE_WORKER", "任务已停止或执行代次变化", { status: 409 });
+      const updatedAt = (await tx.query("SELECT clock_timestamp() AS now")).rows[0].now;
+      const latest = { phase: progress.phase, completed: progress.completed, total: progress.total, generation,
+        ...(progress.path === undefined ? {} : { path: progress.path }), updatedAt: new Date(updatedAt).toISOString() };
+      // At most one latest entry per actual phase, never a growing event log.
+      const events = [...(scope.progress?.events ?? []).filter(item => item.phase !== latest.phase), latest].slice(-16);
+      await tx.query("UPDATE f002_scope SET progress=$4,updated_at=clock_timestamp() WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3",
+        [workspaceId, runId, scopeId, JSON.stringify({ latest, events })]);
+    }, { maintain: true });
+  }
+
+  async scopeProgress(actor, workspaceId, runId, scopeId) {
+    return this.withAuthorizedWorkspace(actor, workspaceId, async tx => {
+      const scope = (await tx.query("SELECT * FROM f002_scope WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3", [workspaceId, runId, scopeId])).rows[0];
+      requireF002(scope, "F002_SCOPE_NOT_FOUND", "范围不存在", { status: 404 });
+      const rows = (await tx.query(`SELECT status,count(*)::integer AS n FROM f002_scope_item
+        WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 GROUP BY status`, [workspaceId, runId, scopeId])).rows;
+      const total = rows.reduce((n, row) => n + row.n, 0), pending = rows.filter(row => ["PENDING", "RUNNING"].includes(row.status)).reduce((n, row) => n + row.n, 0);
+      const current = scope.progress?.latest?.generation === scope.generation && scope.status !== "QUEUED" ? scope.progress : null;
+      return { scope: scopeRow(scope), latest: current?.latest ?? null, events: current?.events ?? [], workItems: { total, pending, completed: total - pending } };
+    });
   }
 
   async readyToSeal(actor, { workspaceId, runId, scopeId, generation }) {

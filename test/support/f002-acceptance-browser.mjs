@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:net";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
@@ -20,12 +20,13 @@ const environment = await fixtureChildEnvironment();
 const root = await mkdtemp(path.join(environment.TMPDIR, "traqen-f002-acceptance-browser-"));
 const downloads = path.join(root, "downloads"); await mkdir(downloads, { mode: 0o700 });
 const project = fileURLToPath(new URL("../../", import.meta.url));
+assert.ok((await realpath(project)).startsWith(environment.TMPDIR + path.sep), "browser compilation requires a validation-runs acceptance checkout");
 const probe = createServer(); await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
 const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
 assert.ok(![3003, 3004, 3100, 3188, 6398, 6399].includes(port));
 const origin = `http://127.0.0.1:${port}`, cleanups = [], frontendLog = [];
 const report = { scope: "REAL_COOKIE_NATIVE_PG_HTTP_GIT_TECHNICAL_UI_AB_NO_MODEL_VOLUME_MECHANISM_DOUBLE", status: "RUNNING", origin,
-  checks: [], predicateTraversals: [], originalReads: [], pageErrors: [], errors: [], writes: [], legacyRequestsDuringF2: [], screenshots: [] };
+  checks: [], predicateTraversals: [], originalReads: [], pageErrors: [], errors: [], writes: [], legacyRequestsDuringF2: [], screenshots: [], viewports: [], cleanupErrors: [] };
 let fixture, frontend, frontendExit, browser, page, phase = "SETUP", ta, a;
 const sourcesByVersion = new Map();
 const deadline = setTimeout(() => { report.errors.push("bounded acceptance browser deadline"); void browser?.close(); frontend?.kill("SIGTERM"); }, 300000);
@@ -53,8 +54,9 @@ try {
   while (true) { try { if ((await fetch(origin, { signal: AbortSignal.timeout(1000) })).ok) break; } catch {}
     assert.ok(frontend.exitCode === null && Date.now() < until, "owned frontend did not start"); await delay(100); }
   const { chromium } = await import(pathToFileURL(modulePath).href);
-  browser = await chromium.launch({ executablePath, headless: true, env: environment, downloadsPath: downloads });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  browser = await chromium.launchPersistentContext(path.join(root, "profile"), { executablePath, headless: true, env: environment, downloadsPath: downloads,
+    viewport: { width: 1440, height: 900 }, args: ["--disk-cache-dir=" + path.join(root, "disk-cache"), "--crash-dumps-dir=" + path.join(root, "crash-dumps")] });
+  const context = browser;
   page = await context.newPage(); page.setDefaultTimeout(20000);
   page.on("pageerror", e => report.pageErrors.push(e.message));
   page.on("request", req => {
@@ -78,25 +80,89 @@ try {
   await page.getByLabel("切换工作区", { exact: true }).selectOption("workspace");
   phase = "F002";
   await page.getByRole("navigation", { name: "主导航", exact: true }).getByRole("link", { name: "技术证据", exact: true }).click();
-  await page.getByRole("heading", { name: "尚无分析结果", exact: true }).waitFor();
-  await page.getByRole("link", { name: "分析任务", exact: true }).click();
+  await page.getByRole("heading", { name: "选择冻结材料", exact: true }).waitFor();
+  assert.equal(await page.getByRole("navigation", { name: "技术分析五步旅程" }).getByRole("button").count(), 5);
+  await screenshot("journey-01-select.png");
   await page.getByLabel("冻结来源", { exact: true }).selectOption(a.reference.bundleId);
   const profileId = await page.getByLabel("不可变能力配置", { exact: true }).inputValue();
+  const profiles = (await json(client, `${factsPrefix}/profiles`)).profiles;
+  assert.equal(profiles.find(p => p.id === profileId)?.name, "technical-review-v5");
   await page.locator(".f002-delivery fieldset").getByRole("checkbox").first().check();
+  // Observe real in-flight feedback without replacing the request or response.
+  await page.route("**/deterministic-facts/runs", async route => { await delay(1200); await route.continue(); });
   const ack = page.waitForResponse(res => res.request().method() === "POST" && new URL(res.url()).pathname.endsWith("/deterministic-facts/runs"));
-  await page.getByRole("button", { name: "开始分析", exact: true }).click(); const accepted = await ack; assert.equal(accepted.status(), 202);
+  await page.getByRole("button", { name: "开始分析", exact: true }).click();
+  await page.getByRole("button", { name: "正在提交分析…", exact: true }).waitFor();
+  assert.ok((await page.locator('.f002-delivery [role="status"]').allTextContents()).some(text => text.includes("正在提交")));
+  assert.equal(await page.getByText("提交结果待对账", { exact: true }).isVisible(), false);
+  await screenshot("journey-02-submitting.png");
+  const accepted = await ack; assert.equal(accepted.status(), 202);
   const run = (await accepted.json()).run;
-  const row = page.locator(".f002-delivery article").filter({ has: page.getByRole("heading", { name: `运行 ${run.id}`, exact: true }) });
-  await row.getByRole("button", { name: "查看分析结果", exact: true }).waitFor({ timeout: 60000 });
+  await page.getByRole("heading", { name: "技术分析", exact: true }).waitFor();
+  const row = page.locator(".f002-delivery article").filter({ hasText: run.id });
+  await row.getByRole("button", { name: "查看待检查成果", exact: true }).waitFor({ timeout: 60000 });
   const stored = (await json(client, `${factsPrefix}/runs/${run.id}`)).run;
-  ta = { version: stored.scopes[0].graphVersionId, records: await pages(client, `${factsPrefix}/versions/${stored.scopes[0].graphVersionId}/records`) };
-  sourcesByVersion.set(ta.version, a.reference);
-  report.a = { ...a.reference, runId: run.id, version: ta.version, profileId };
+  assert.equal(stored.scopes[0].status, "READY_TO_SEAL"); assert.equal(stored.scopes[0].graphVersionId, null);
+  const scope = stored.scopes[0], previewBase = `${factsPrefix}/runs/${run.id}/scopes/${scope.scopeId}/preview/${scope.revision}`;
+  const before = await pages(client, `${previewBase}/records`);
+  report.progress = (await json(client, `${factsPrefix}/runs/${run.id}/scopes/${scope.scopeId}/progress`)).progress;
+  assert.ok(report.progress.events.some(e => e.phase === "MATERIALS" && e.completed === 11 && e.total === 11));
+  assert.ok(report.progress.events.some(e => e.phase === "JAVASCRIPT_MODULES"));
+  assert.equal(report.progress.latest.phase, "READY");
+  await row.getByText("已解析材料 11 / 11", { exact: true }).waitFor();
+  await screenshot("journey-03-real-progress.png");
+  await page.reload();
+  await page.locator(".f002-delivery article").filter({ hasText: run.id }).getByRole("button", { name: "查看待检查成果", exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get("run"), run.id);
+  assert.equal(report.writes.filter(w => w.pathname.endsWith("/runs")).length, 1, "refresh never resubmits");
+  await page.locator(".f002-delivery article").filter({ hasText: run.id }).getByRole("button", { name: "查看待检查成果", exact: true }).click();
   assert.equal(new URL(page.url()).searchParams.has("factset"), false);
-  await row.getByRole("button", { name: "查看分析结果", exact: true }).click();
-  await page.getByRole("link", { name: "对象与事实", exact: true }).click();
+  const opaque = before.find(r => r.kind === "MATERIAL" && r.payload.displayPath === "docs/opaque.custom"); assert.ok(opaque);
+  await page.locator(`[data-directory-material="${opaque.id}"] > button`).click(); await selected(opaque.id);
+  await page.locator('.f002-code [data-line="1"] > code').filter({ hasText: "OWNED_UNSUPPORTED_FORMAT_ORIGINAL_A" }).waitFor();
+  const noFactIds = new Set(before.filter(r => r.kind === "OBJECT" && r.payload.materialId === opaque.id).map(r => r.id));
+  assert.equal(before.some(r => r.kind === "FACT" && noFactIds.has(r.payload.subjectId)), false);
+  await page.getByRole("button", { name: "关系", exact: true }).click();
+  await loadAll("加载更多关系");
+  const relation = before.find(r => r.kind === "FACT" && r.payload.predicate === "callsDeclaration"); assert.ok(relation);
+  await page.locator(`[data-relation-select="${relation.id}"]`).click(); await selected(relation.id);
+  await page.getByRole("group", { name: "局部关系图，节点与关系可用键盘选择", exact: true }).waitFor();
+  await page.locator('[data-extraction-rule]').filter({ hasText: relation.payload.ruleRef.id }).waitFor();
+  const relationDetail = await json(client, `${previewBase}/records/FACT/${relation.id}`);
+  const evidence = relationDetail.references.find(r => r.kind === "EVIDENCE" && r.payload.anchor.kind === "TEXT"); assert.ok(evidence);
+  await page.locator(".f002-detail .f002-ref").filter({ hasText: evidence.id.slice(0, 12) }).click(); await selected(evidence.id);
+  await page.locator(`.f002-code [data-line="${evidence.payload.anchor.lineStart}"].selected`).waitFor();
+  await screenshot("journey-04-unsealed-relation-original.png");
+  await page.getByRole("button", { name: "继续检查覆盖与缺口", exact: true }).click();
+  const unsupported = before.find(r => r.kind === "GAP" && r.payload.materialId === opaque.id && r.payload.code === "FORMAT_UNSUPPORTED"); assert.ok(unsupported);
+  await loadAll("加载更多缺口"); await page.locator(`[data-gap-id="${unsupported.id}"]`).getByRole("button").click(); await selected(unsupported.id);
+  await page.locator('[data-gap-explanation]').filter({ hasText: "FORMAT_UNSUPPORTED" }).waitFor();
+  await screenshot("journey-05-unsealed-gap.png");
+  for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
+    await page.setViewportSize(viewport);
+    const actual = await page.evaluate(() => ({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,scale:visualViewport.scale,scrollWidth:document.documentElement.scrollWidth}));
+    report.viewports.push(actual); assert.equal(actual.width, viewport.width); assert.equal(actual.scale, 1);
+    assert.ok(actual.scrollWidth <= actual.width + 1, "no document-wide horizontal overflow");
+    await screenshot(`journey-gap-${viewport.width}.png`);
+  }
+  await page.setViewportSize({width:1440,height:900});
+  await page.getByRole("button", { name: "继续封存与交付", exact: true }).click();
+  const sealRow = page.locator(".f002-delivery article").filter({ hasText: run.id });
+  assert.equal(await sealRow.getByRole("button", { name: "封存此范围", exact: true }).isDisabled(), true);
+  await sealRow.getByRole("button", { name: "查看封存条件", exact: true }).click();
+  await sealRow.getByLabel("我已检查本次事实、关联与缺口", { exact: true }).check();
+  const sealAck = page.waitForResponse(r => r.request().method() === "POST" && r.url().endsWith(`/scopes/${scope.scopeId}/seal`));
+  await sealRow.getByRole("button", { name: "封存此范围", exact: true }).click(); assert.equal((await sealAck).status(), 200);
+  await page.waitForURL(url => url.searchParams.has("factset"));
+  const sealed = (await json(client, `${factsPrefix}/runs/${run.id}`)).run;
+  ta = { version: sealed.scopes[0].graphVersionId, records: await pages(client, `${factsPrefix}/versions/${sealed.scopes[0].graphVersionId}/records`) };
+  assert.deepEqual(ta.records, before, "explicit seal publishes the exact inspected records");
+  sourcesByVersion.set(ta.version, a.reference);
+  report.a = { ...a.reference, runId: run.id, version: ta.version, profileId, previewRevision: scope.revision };
+  report.checks.push("five-stage-real-progress-refresh-same-run-unsealed-relation-original-unsupported-gap-explicit-seal-same-records");
+  await screenshot("journey-06-sealed.png");
+  await page.getByRole("button", { name: "对象与事实", exact: true }).click();
   await loadAll("加载下一页"); await loadAll("加载更多事实");
-  report.checks.push("ordinary-Cookie-navigation-exact-F001-choice-current-technical-profile-one-auto-sealed-COMPONENT-no-implicit-adoption");
 
   for (const name of Object.keys(acceptanceFilesA)) {
     const material = ta.records.find(r => r.kind === "MATERIAL" && r.payload.pathBytes === Buffer.from(name).toString("base64url")); assert.ok(material);
@@ -172,7 +238,7 @@ try {
   report.checks.push("twelve-actual-predicate-facts-premises-and-evidence-physical-line-traversals-not-source-hit-or-report-execution-promotion");
   await screenshot("cross-asset-original-1440.png");
 
-  await page.getByRole("link", { name: "覆盖与缺口", exact: true }).click();
+  await page.getByRole("navigation", { name: "技术分析五步旅程" }).getByRole("button").nth(3).click();
   for (const code of ["EXECUTION_BINDING_MISSING", "DOCUMENT_FRAGMENT_AMBIGUOUS"]) {
     const gap = ta.records.find(r => r.kind === "GAP" && r.payload.code === code); assert.ok(gap, code);
     await loadAll("加载更多缺口"); await page.locator(`[data-gap-id="${gap.id}"]`).getByRole("button").click(); await selected(gap.id);
@@ -187,8 +253,9 @@ try {
   assert.equal(new URL(page.url()).search, fixed, "new B cannot change selected A Gap/version");
   await page.reload(); await page.locator("[data-gap-explanation]").waitFor();
   assert.equal(new URL(page.url()).search, fixed);
+  await page.getByText("固定来源、规则与历史版本", { exact: true }).click();
   await page.getByLabel("选择固定事实集", { exact: true }).selectOption(tb.version);
-  await page.getByRole("link", { name: "对象与事实", exact: true }).click();
+  await page.getByRole("button", { name: "对象与事实", exact: true }).click();
   const bPaths = tb.records.filter(r => r.kind === "MATERIAL").map(r => r.payload.displayPath);
   assert.ok(bPaths.includes("src/added.ts")); assert.equal(bPaths.includes("test/legacy.test.js"), false);
   const added = tb.records.find(r => r.kind === "MATERIAL" && r.payload.displayPath === "src/added.ts");
@@ -202,15 +269,18 @@ try {
   await page.reload(); await page.locator(".f002-code").filter({ hasText: "legacy declaration" }).waitFor();
   report.checks.push("new-B-does-not-adopt-or-replace-A-gap-refresh-explicit-B-and-return-to-deleted-historical-A-original");
   assert.ok(report.originalReads.length >= 10); assert.deepEqual(report.pageErrors, []); assert.deepEqual(report.legacyRequestsDuringF2, []);
-  assert.equal(report.writes.length, 1); assert.ok(report.writes.every(w => w.csrf && !w.bearer));
-  assert.deepEqual(report.errors, []); report.status = "PASSED";
+  assert.equal(report.writes.filter(w => w.pathname.endsWith("/runs")).length, 1);
+  assert.equal(report.writes.filter(w => w.pathname.endsWith("/seal")).length, 1); assert.ok(report.writes.every(w => w.csrf && !w.bearer));
+  assert.deepEqual(report.errors, []); report.status = "ASSERTIONS_PASSED_CLEANUP_PENDING";
 } catch (e) {
   report.status = "FAILED"; report.errors.push(e.stack ?? e.message);
   if (page && !page.isClosed()) { report.failure = { url: page.url(), text: (await page.locator("body").innerText().catch(() => "unavailable")).slice(-24000) }; await screenshot("failure.png").catch(() => {}); }
 } finally {
-  clearTimeout(deadline); await browser?.close().catch(() => {});
+  clearTimeout(deadline); try { await browser?.close(); } catch (e) { report.cleanupErrors.push("browser: " + e.message); }
   if (frontend && frontend.exitCode === null) { frontend.kill("SIGTERM"); const kill = setTimeout(() => frontend.exitCode === null && frontend.kill("SIGKILL"), 10000); try { await frontendExit; } finally { clearTimeout(kill); } }
-  for (const cleanup of cleanups) try { await cleanup(); } catch (e) { report.status = "FAILED"; report.errors.push(e.message); }
+  for (const cleanup of cleanups) try { await cleanup(); } catch (e) { report.cleanupErrors.push(e.message); }
+  if (report.cleanupErrors.length) report.status = "FAILED";
+  else if (report.status === "ASSERTIONS_PASSED_CLEANUP_PENDING") report.status = "PASSED";
   report.frontendExit = frontend ? { code: frontend.exitCode, signal: frontend.signalCode } : null;
   await writeFile(path.join(root, "frontend.log"), frontendLog.join(""), { mode: 0o600 });
   await writeFile(path.join(root, "summary.json"), JSON.stringify(report, null, 2), { mode: 0o600 });

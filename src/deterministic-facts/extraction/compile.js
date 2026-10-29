@@ -155,7 +155,7 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
     throw new TypeError("compileDeterministicFacts requires a server rule registry");
   }
   ruleRegistry.assertProfile(profile);
-  const progress = (phase, completed) => ({ phase, completed, total: materials.length });
+  const progress = (phase, completed, material) => ({ phase, completed, total: materials.length, ...(material?.displayPath ? { path: material.displayPath } : {}) });
   yield progress("NORMALIZE", 0);
   const objects = [], evidence = [], facts = [], gaps = [], objectById = new Map(), materialByLocation = new Map(), linkCandidates = [], jsExports = [], jsImportedCalls = [];
   const structuredObjects = new Map(), evidenceIdsSeen = new Set(), factIdsSeen = new Set(), gapIdsSeen = new Set();
@@ -306,7 +306,7 @@ export function* compileDeterministicFactSteps({ workspaceId, bundleId, profile,
       if (!(error instanceof ScopeRecordLimit)) throw error;
       rollback(before);
       addGap(material, "records", "SCOPE_RECORD_LIMIT", null, { limit: recordLimit, policy: "atomic-material-v1" });
-    } finally { yield progress("MATERIALS", ++completed); }
+    } finally { yield progress("MATERIALS", ++completed, material); }
   }
   const relationshipPhases = ["DOCUMENT_LINKS", "JAVASCRIPT_MODULES", "JAVA_BINDINGS", "TEST_REFERENCES", "ENDPOINT_CONTRACTS"];
   let relationshipPhase = 0;

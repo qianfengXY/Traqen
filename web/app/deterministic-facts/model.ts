@@ -15,7 +15,7 @@ export type ReturnContext = {
   section?: string; scrollTop?: number; focusId?: string;
 };
 export type EvidenceLocation = {
-  workspaceId: string; graphVersionId?: string; tab: EvidenceTab; kind?: string; recordId?: string; line?: number; lineEnd?: number; windowLine?: number;
+  workspaceId: string; graphVersionId?: string; preview?: { runId: string; scopeId: string; revision: number }; runId?: string; step?: number; tab: EvidenceTab; kind?: string; recordId?: string; line?: number; lineEnd?: number; windowLine?: number;
   sourceVersionId?: string; businessGraphRevisionId?: string; returnTo?: ReturnContext;
   graphRootId?: string; relationReturn?: { factId: string; rootId: string; scrollTop: number };
 };
@@ -25,11 +25,15 @@ const locator = (value: unknown): value is string => typeof value === "string" &
 
 function validate(context: EvidenceLocation) {
   if (!locator(context.workspaceId) || !evidenceTabs.includes(context.tab)) throw new Error("证据工作区或页签定位无效");
+  if (context.step !== undefined && (!Number.isInteger(context.step) || context.step < 1 || context.step > 5)) throw new Error("分析步骤无效");
+  if (context.runId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(context.runId)) throw new Error("运行定位无效");
+  if (context.preview && (context.graphVersionId || !/^[A-Za-z0-9_-]{1,128}$/.test(context.preview.runId) || !digest.test(context.preview.scopeId)
+    || !Number.isSafeInteger(context.preview.revision) || context.preview.revision < 1)) throw new Error("未封存成果定位无效");
   if (context.graphVersionId !== undefined && !digest.test(context.graphVersionId)) throw new Error("必须引用精确事实集版本");
   if (context.sourceVersionId !== undefined && !digest.test(context.sourceVersionId)) throw new Error("来源版本定位无效");
   if (context.businessGraphRevisionId !== undefined && !locator(context.businessGraphRevisionId)) throw new Error("业务图修订定位无效");
   if (context.recordId !== undefined || context.kind !== undefined) {
-    if (!context.graphVersionId || !digest.test(context.recordId ?? "") || !/^[A-Z_]{1,64}$/.test(context.kind ?? "")) throw new Error("记录引用必须包含固定事实集、类型和 ID");
+    if (!(context.graphVersionId || context.preview) || !digest.test(context.recordId ?? "") || !/^[A-Z_]{1,64}$/.test(context.kind ?? "")) throw new Error("记录引用必须包含固定事实集、类型和 ID");
   }
   if (context.line !== undefined && (!Number.isInteger(context.line) || context.line < 1 || context.line > 10_000_000)) throw new Error("材料行定位无效");
   if (context.lineEnd !== undefined || context.windowLine !== undefined) {
@@ -37,8 +41,8 @@ function validate(context: EvidenceLocation) {
     boundedTextRange(context.line, context.lineEnd);
     if (context.windowLine !== undefined) boundedTextRange(context.windowLine);
   }
-  if (context.graphRootId !== undefined && (!context.graphVersionId || !digest.test(context.graphRootId))) throw new Error("关系图根定位无效");
-  if (context.relationReturn && (!context.graphVersionId || !digest.test(context.relationReturn.factId) || !digest.test(context.relationReturn.rootId)
+  if (context.graphRootId !== undefined && (!(context.graphVersionId || context.preview) || !digest.test(context.graphRootId))) throw new Error("关系图根定位无效");
+  if (context.relationReturn && (!(context.graphVersionId || context.preview) || !digest.test(context.relationReturn.factId) || !digest.test(context.relationReturn.rootId)
     || !Number.isFinite(context.relationReturn.scrollTop) || context.relationReturn.scrollTop < 0 || context.relationReturn.scrollTop > 10_000_000)) throw new Error("关系返回定位无效");
   const back = context.returnTo;
   if (back) {
@@ -53,6 +57,9 @@ export function evidenceHref(context: EvidenceLocation) {
   const params = new URLSearchParams({ page: "evidence", workspace: context.workspaceId, tab: context.tab });
   for (const [key, value] of [["factset", context.graphVersionId], ["source", context.sourceVersionId], ["businessGraph", context.businessGraphRevisionId],
     ["kind", context.kind], ["record", context.recordId], ["line", context.line], ["lineEnd", context.lineEnd], ["windowLine", context.windowLine], ["graphRoot", context.graphRootId]] as const) if (value !== undefined) params.set(key, String(value));
+  if (context.preview) { params.set("run", context.preview.runId); params.set("scope", context.preview.scopeId); params.set("revision", String(context.preview.revision)); }
+  else if (context.runId) params.set("run", context.runId);
+  if (context.step) params.set("step", String(context.step));
   if (context.relationReturn) {
     const { factId, rootId, scrollTop } = context.relationReturn;
     params.set("relationReturn", JSON.stringify({ factId, rootId, scrollTop }));
@@ -89,14 +96,25 @@ export function readEvidenceLocation(search: string): EvidenceLocation {
     const { page, workspaceId, objectId, graphRevisionId, section, scrollTop, focusId } = raw;
     result.returnTo = Object.fromEntries(Object.entries({ page, workspaceId, objectId, graphRevisionId, section, scrollTop, focusId }).filter(([, value]) => value !== undefined)) as ReturnContext;
   }
+  if (params.has("run")) result.runId = params.get("run")!;
+  if (params.has("scope") || params.has("revision")) {
+    if (!/^[1-9][0-9]{0,8}$/.test(params.get("revision") ?? "")) throw new Error("成果修订定位无效");
+    result.preview = { runId: params.get("run") ?? "", scopeId: params.get("scope") ?? "", revision: Number(params.get("revision")) };
+  }
+  if (params.has("step")) { if (!/^[1-5]$/.test(params.get("step") ?? "")) throw new Error("分析步骤无效"); result.step = Number(params.get("step")); }
   validate(result);
   return result;
+}
+
+// This is a UI/cache locator, never a published graphVersionId or an authority.
+export function evidenceResultKey(context: Pick<EvidenceLocation, "graphVersionId" | "preview">): string {
+  return context.preview ? `unsealed:${context.preview.runId}:${context.preview.scopeId}:${context.preview.revision}` : context.graphVersionId ?? "";
 }
 
 export function relationEndpointLocation(context: EvidenceLocation, relation: FactRecord, endpointId: string, scrollTop: number): EvidenceLocation {
   validate(context);
   if (relation.kind !== "FACT" || relation.payload.kind !== "RELATION" || ![relation.payload.subjectId, relation.payload.targetId].includes(endpointId)) throw new Error("关系端点定位无效");
-  const next: EvidenceLocation = { ...context, tab: "objects", kind: "OBJECT", recordId: endpointId, line: undefined, lineEnd: undefined, windowLine: undefined,
+  const next: EvidenceLocation = { ...context, step: context.step === undefined ? undefined : 3, tab: "objects", kind: "OBJECT", recordId: endpointId, line: undefined, lineEnd: undefined, windowLine: undefined,
     relationReturn: { factId: relation.id, rootId: context.graphRootId ?? relation.id, scrollTop } };
   validate(next); return next;
 }
@@ -104,7 +122,7 @@ export function relationEndpointLocation(context: EvidenceLocation, relation: Fa
 export function evidenceRelationReturn(context: EvidenceLocation): EvidenceLocation | null {
   validate(context);
   if (!context.relationReturn) return null;
-  return { ...context, tab: "relations", kind: "FACT", recordId: context.relationReturn.factId, graphRootId: context.relationReturn.rootId, line: undefined, lineEnd: undefined, windowLine: undefined };
+  return { ...context, step: context.step === undefined ? undefined : 3, tab: "relations", kind: "FACT", recordId: context.relationReturn.factId, graphRootId: context.relationReturn.rootId, line: undefined, lineEnd: undefined, windowLine: undefined };
 }
 
 export function evidenceReturnHref(context: EvidenceLocation) {

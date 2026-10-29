@@ -44,7 +44,9 @@ export async function freezeGit(client, fixture, commit, baselineBundleId = null
 }
 export async function publishFacts(client, frozen) {
   const profiles = (await json(client, `${factsPrefix}/profiles`)).profiles;
-  const profile = profiles.find(item => item.recommended === true);
+  // This helper deliberately exercises retained v4 automatic publication.
+  // New interactive analysis uses the separate explicit-seal profile.
+  const profile = profiles.find(item => item.name === "technical-v4" && item.extractionLimits.automaticPublication === "closed-scope-v1");
   assert.ok(profile && profile.extractionLimits.automaticPublication === "closed-scope-v1");
   const componentId = frozen.inventory.find(item => item.entry.kind === "FILE")?.componentId;
   assert.ok(componentId);

@@ -86,6 +86,7 @@ async function migratedDatabase() {
     "0050_f003_publication",
     "0051_f003_authority_bindings",
     "0052_f003_knowledge_continuity",
+    "0053_f002_scope_progress",
   ]);
   return database;
 }

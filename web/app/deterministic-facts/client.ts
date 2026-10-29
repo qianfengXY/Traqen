@@ -1,3 +1,4 @@
+import { evidenceResultKey, type EvidenceLocation } from "./model.ts";
 import { sessionFetch } from "../auth-client.ts";
 
 export class FactsClientError extends Error {
@@ -31,19 +32,27 @@ export class DeterministicFactsClient {
   private apiBase: string;
   private workspaceId: string;
   signal?: AbortSignal;
+  private preview?: EvidenceLocation["preview"];
   constructor(apiBase: string, token: string, workspaceId: string, signal?: AbortSignal) {
     this.base = `${apiBase.replace(/\/$/, "")}/v1/workspaces/${encodeURIComponent(workspaceId)}/deterministic-facts`;
     this.apiBase = apiBase; this.workspaceId = workspaceId;
     this.token = token; this.signal = signal;
   }
 
-  withSignal(signal: AbortSignal) { return new DeterministicFactsClient(this.apiBase, this.token, this.workspaceId, signal); }
+  withSignal(signal: AbortSignal) { const next = new DeterministicFactsClient(this.apiBase, this.token, this.workspaceId, signal); next.preview = this.preview; return next; }
+  withPreview(preview: NonNullable<EvidenceLocation["preview"]>) { const next = this.withSignal(this.signal!); next.preview = preview; return next; }
 
   private async response(route: string, method: string, body?: object): Promise<Response> {
     const signal = this.signal;
     signal?.throwIfAborted();
     if (route !== "" && (!route.startsWith("/") || route.startsWith("//") || /(?:^|\/)\.\.(?:\/|$)/.test(route))) {
       throw new FactsClientError("技术证据路由无效", "F002_ROUTE_INVALID");
+    }
+    if (this.preview) {
+      const prefix = `/versions/${evidenceResultKey({ preview: this.preview })}/`;
+      if (method !== "GET" || !route.startsWith(prefix) || /^(export|replays)(?:[?\/]|$)/.test(route.slice(prefix.length)))
+        throw new FactsClientError("未封存成果只能在当前修订内读取；正式引用及导出需先封存", "F002_PREVIEW_READ_ONLY");
+      route = `/runs/${this.preview.runId}/scopes/${this.preview.scopeId}/preview/${this.preview.revision}/${route.slice(prefix.length)}`;
     }
     let response: Response;
     try {
@@ -90,7 +99,7 @@ export class DeterministicFactsClient {
   }
 
   async material(graphVersionId: string, materialId: string): Promise<DisplayMaterial> {
-    if (!digestPattern.test(graphVersionId) || !digestPattern.test(materialId)) throw new FactsClientError("材料必须引用精确事实集和材料 ID", "F002_REFERENCE_INVALID");
+    if (!(digestPattern.test(graphVersionId) || this.preview && graphVersionId === evidenceResultKey({ preview: this.preview })) || !digestPattern.test(materialId)) throw new FactsClientError("材料必须引用精确事实集和材料 ID", "F002_REFERENCE_INVALID");
     const signal = this.signal;
     const response = await this.response(`/versions/${graphVersionId}/materials/${materialId}/content`, "GET");
     const mediaType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase() ?? "";

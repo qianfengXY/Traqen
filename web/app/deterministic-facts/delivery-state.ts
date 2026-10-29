@@ -4,8 +4,7 @@ export type ScopeCheck = { scope: Scope; ready: boolean; blockers: unknown[] };
 export type ScopeChecks = Record<string, ScopeCheck>;
 
 export const isAutomaticAnalysis = (profile?: Pick<Profile, "extractionLimits">): boolean => profile?.extractionLimits?.automaticPublication === "closed-scope-v1";
-export const defaultProfileId = (profiles: Profile[]): string => (profiles.find(profile => profile.startable && profile.recommended && isAutomaticAnalysis(profile))
-  ?? profiles.find(profile => profile.startable && profile.recommended)
+export const defaultProfileId = (profiles: Profile[]): string => (profiles.find(profile => profile.startable && profile.recommended)
   ?? profiles.find(profile => profile.startable))?.id ?? "";
 
 // Scope ids identify fixed input, not an execution. A later run may select the

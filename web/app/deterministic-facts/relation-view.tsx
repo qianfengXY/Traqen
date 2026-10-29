@@ -1,5 +1,7 @@
 "use client";
 
+import { evidenceResultKey } from "./model.ts";
+
 import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { DeterministicFactsClient } from "./client.ts";
 import { filterRelationFacts, projectEvidenceGraph, type EvidenceLocation } from "./model.ts";
@@ -17,7 +19,7 @@ export function RelationView({ client, context, view, relations, objects, materi
   openObject: (object: FactRecord) => void; accessLost: (error: Error) => void;
 }) {
   const rootId = context.graphRootId ?? view.graphRootId ?? context.recordId;
-  const route = rootId ? `/versions/${context.graphVersionId}/graph?rootId=${rootId}&depth=2&limit=40` : "";
+  const route = rootId ? `/versions/${evidenceResultKey(context)}/graph?rootId=${rootId}&depth=2&limit=40` : "";
   const load = useCallback(async (bound: DeterministicFactsClient) => route ? (await bound.request<{ graph: LocalGraph }>(route)).graph : null, [route]);
   const resource = useEvidenceResource(client, route, load, accessLost);
   const graph = resource.data;

@@ -29,7 +29,7 @@ function displayMediaType(mediaType, bytes) {
 }
 
 export class F002MaterialService {
-  constructor(repository, admission, { maxReadBytes = 8 * 1024 * 1024, policyRevision = CURRENT_DISPLAY_POLICY_REVISION } = {}) {
+  constructor(repository, admission, { maxReadBytes = 8 * 1024 * 1024, policyRevision = CURRENT_DISPLAY_POLICY_REVISION, queries = null } = {}) {
     if (!repository?.withAuthorizedWorkspace || !repository?.appendEvent) throw new TypeError("F002 material service requires an authorized repository");
     if (!admission || typeof admission.readMaterial !== "function") throw new TypeError("F002 material service requires F001 controlled material reads");
     if (!Number.isInteger(maxReadBytes) || maxReadBytes < 1 || maxReadBytes > 64 * 1024 * 1024) throw new TypeError("F002 maxReadBytes is invalid");
@@ -37,6 +37,7 @@ export class F002MaterialService {
     this.admission = admission;
     this.maxReadBytes = maxReadBytes;
     this.policyRevision = policyRevision;
+    this.queries = queries;
   }
 
   async read(actor, workspaceId, graphVersionId, materialId) {
@@ -52,8 +53,21 @@ export class F002MaterialService {
         "F002_MATERIAL_CORRUPT", "材料记录缺少受控读取定位", { status: 409 });
       return { runId: row.run_id, scopeId: row.scope_id, payload };
     });
-    const readableRef = canonicalDigest("READABLE_REF", { workspaceId, graphVersionId, materialId });
-    await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_INTENT", { graphVersionId, materialId, readableRef, policyRevision: this.policyRevision });
+    return this.#content(actor, workspaceId, material, materialId, { graphVersionId });
+  }
+
+  async readPreview(actor, workspaceId, binding, materialId) {
+    requireF002(this.queries, "F002_PREVIEW_UNAVAILABLE", "成果预览未配置", { status: 503 });
+    const readMaterial = () => this.queries.preview(actor, workspaceId, binding, q => q.record("MATERIAL", materialId));
+    const { record } = await readMaterial();
+    const result = await this.#content(actor, workspaceId, { runId: binding.runId, scopeId: binding.scopeId, payload: record.payload }, materialId, { preview: binding });
+    await readMaterial(); // Cancellation, retry or sealing during byte IO cannot relabel a stale preview.
+    return result;
+  }
+
+  async #content(actor, workspaceId, material, materialId, resultBinding) {
+    const readableRef = canonicalDigest("READABLE_REF", { workspaceId, ...resultBinding, materialId });
+    await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_INTENT", { ...resultBinding, materialId, readableRef, policyRevision: this.policyRevision });
     try {
       const source = await this.admission.readMaterial(actor, workspaceId, material.runId,
         { componentId: material.payload.componentId, pathBytes: material.payload.pathBytes }, { maxBytes: this.maxReadBytes });
@@ -69,14 +83,14 @@ export class F002MaterialService {
       mediaType = displayMediaType(mediaType, display.bytes);
       const displayDigest = digestBytes(display.bytes);
       await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_COMPLETED", {
-        graphVersionId, materialId, readableRef, originalDigest, displayDigest, redacted: display.redacted, policyRevision: this.policyRevision,
+        ...resultBinding, materialId, readableRef, originalDigest, displayDigest, redacted: display.redacted, policyRevision: this.policyRevision,
       });
       return { readableRef, mediaType, bytes: display.bytes, originalDigest, displayDigest, redacted: display.redacted,
         transform: display.transform, policyRevision: this.policyRevision, sourceMaterial: source.sourceMaterial, receiptId: source.receiptId };
     } catch (error) {
       if (error?.code === "SOURCE_READ_BUDGET_EXCEEDED") error = new F002Error("F002_READ_BUDGET_EXCEEDED", "材料内容超过受控读取上限", { status: 413 });
       await this.repository.appendEvent(actor, workspaceId, material.runId, material.scopeId, "READ_INTERRUPTED", {
-        graphVersionId, materialId, readableRef, code: error?.code ?? "F002_READ_FAILED", policyRevision: this.policyRevision,
+        ...resultBinding, materialId, readableRef, code: error?.code ?? "F002_READ_FAILED", policyRevision: this.policyRevision,
       }).catch(() => {});
       throw error;
     }

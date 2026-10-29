@@ -152,11 +152,26 @@ export class F002Worker {
     requireF002(!(this.admission && materials !== undefined), "F002_WORKER_INPUT_FORBIDDEN", "生产执行器只能从已准入来源读取材料", { status: 422 });
     const claimed = await this.repository.claimScope(actor, workspaceId, runId, scopeId, { workerId, leaseMs, requestId, requestGeneration });
     const lease = maintainScopeLease(this.repository, actor, { workspaceId, runId, scopeId, generation: claimed.generation, workerId, leaseMs, requestId, requestGeneration });
+    let progressWrites = Promise.resolve(), progressError = null, lastPhase = null, postedAt = 0;
+    const persist = progress => {
+      if (!this.repository.recordScopeProgress) return Promise.resolve();
+      const now = performance.now();
+      if (progress.phase === lastPhase && progress.completed !== progress.total && now - postedAt < 250) return progressWrites;
+      lastPhase = progress.phase; postedAt = now;
+      progressWrites = progressWrites.then(async () => {
+        if (progressError) return;
+        try { await this.repository.recordScopeProgress(actor, { workspaceId, runId, scopeId, generation: claimed.generation, workerId, requestId, requestGeneration, progress }); }
+        catch (error) { progressError = error; }
+      });
+      return progressWrites;
+    };
+    const flush = async () => { await progressWrites; if (progressError) throw progressError; lease.assertActive(); };
     try {
+      await persist({ phase: "LOADING", completed: 0, total: null }); await flush();
       const run = await this.repository.getRun(actor, workspaceId, runId);
       const profile = await this.repository.getProfile(actor, workspaceId, run.profileId);
       const scope = await this.repository.getScope(actor, workspaceId, runId, scopeId);
-      const sourceMaterials = materials ?? await loadFrozenMaterials(this.admission, actor, workspaceId, run, scope, profile, { signal: lease.signal });
+      const sourceMaterials = materials ?? await loadFrozenMaterials(this.admission, actor, workspaceId, run, scope, profile, { signal: lease.signal, onProgress: persist });
       lease.assertActive();
       const items = scopeItemsForMaterials({ workspaceId, bundleId: run.sourceInput.bundleId, profile, sourceMaterials });
       await recordBatches(this.repository, actor, { workspaceId, runId, scopeId, generation: claimed.generation, items });
@@ -164,15 +179,19 @@ export class F002Worker {
       // Native parser progress comes only from completed deterministic units,
       // with the same per-unit deadline plus an independent 20-minute ceiling.
       // Injected parsers without that protocol retain the original total bound.
-      const compiled = this.parse === workerParse ? await workerParse(input, { timeoutMs, signal: lease.signal }) : await boundedParse(this.parse, input, timeoutMs);
-      lease.assertActive();
+      const compiled = this.parse === workerParse ? await workerParse(input, { timeoutMs, signal: lease.signal, onProgress: progress => { void persist(progress); } }) : await boundedParse(this.parse, input, timeoutMs);
+      await flush();
+      await persist({ phase: "ASSEMBLE", completed: sourceMaterials.length, total: sourceMaterials.length }); await flush();
       const { result: completedResult, records } = await assembleCanonicalOutput({ admission: this.admission, actor, workspaceId, run, sourceMaterials, compiled, profile });
+      await persist({ phase: "VERIFY", completed: sourceMaterials.length, total: sourceMaterials.length }); await flush();
       await this.publication.prepare(actor, workspaceId, runId, scopeId, { generation: claimed.generation, records });
       const completedItems = scopeItemsForMaterials({ workspaceId, bundleId: run.sourceInput.bundleId, profile, sourceMaterials, result: completedResult, records });
       await recordBatches(this.repository, actor, { workspaceId, runId, scopeId, generation: claimed.generation, items: completedItems });
       lease.assertActive();
+      await persist({ phase: "READY", completed: sourceMaterials.length, total: sourceMaterials.length }); await flush();
       return await this.repository.readyToSeal(actor, { workspaceId, runId, scopeId, generation: claimed.generation });
     } catch (error) {
+      await progressWrites;
       if (error instanceof F002Error && ["F002_STALE_SCOPE_WORKER", "F002_SCOPE_PENDING"].includes(error.code)) throw error;
       const diagnostic = { code: error instanceof F002Error ? error.code : "F002_PARSE_RUNTIME_FAILURE", category: "RUNTIME_FAILURE" };
       const parser = safeParserTimeoutDetails(error);

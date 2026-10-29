@@ -12,11 +12,13 @@ test("a fresh extraction selects the recommended startable bounded profile inste
   assert.equal(defaultProfileId([]), "");
 });
 
-test("new analysis prefers a startable automatic technical profile without rewriting a retained historical profile", () => {
+test("new analysis prefers the recommended review profile while historical automatic explanation stays intact", () => {
   const profiles = [{ id: "bounded", recommended: true, startable: true },
     { id: "unavailable", recommended: true, startable: false, extractionLimits: { automaticPublication: "closed-scope-v1" } },
-    { id: "technical", recommended: true, startable: true, extractionLimits: { automaticPublication: "closed-scope-v1" } }];
-  assert.equal(defaultProfileId(profiles), "technical");
+    { id: "technical", recommended: false, startable: true, extractionLimits: { automaticPublication: "closed-scope-v1" } },
+    { id: "review", recommended: true, startable: true, name: "technical-review-v5" }];
+  profiles[0].recommended = false;
+  assert.equal(defaultProfileId(profiles), "review");
 });
 
 test("automatic analysis explains pending validation, failure and readable output without asking for a manual seal", () => {

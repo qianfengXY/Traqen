@@ -15,7 +15,7 @@ export const emptyEvidenceView = (): EvidenceView => ({ query: "", materialPathQ
 
 function storageKey(context: ViewIdentity) {
   if (!context.authorized || ![context.workspaceId, context.actorId].every(value => typeof value === "string" && value.length > 0 && value.length <= 256 && !/[\u0000-\u001f\u007f]/.test(value))
-    || !/^[a-f0-9]{64}$/.test(context.graphVersionId) || (context.recordId !== undefined && !/^[a-f0-9]{64}$/.test(context.recordId))) throw new Error("当前成员和固定版本尚未获得读取授权");
+    || !/^(?:[a-f0-9]{64}|unsealed:[A-Za-z0-9_-]{1,128}:[a-f0-9]{64}:[1-9][0-9]{0,8})$/.test(context.graphVersionId) || (context.recordId !== undefined && !/^[a-f0-9]{64}$/.test(context.recordId))) throw new Error("当前成员和固定版本尚未获得读取授权");
   if (context.recordKind !== undefined && (!context.recordId || !/^[A-Z_]{1,64}$/.test(context.recordKind))) throw new Error("记录类型或完整定位无效");
   if (context.graphRootId !== undefined && !/^[a-f0-9]{64}$/.test(context.graphRootId)) throw new Error("图根节点定位无效");
   return `traqen:f002:view:1:${JSON.stringify([context.workspaceId, context.actorId, context.graphVersionId])}`;

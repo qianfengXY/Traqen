@@ -100,6 +100,18 @@ export class F002PublicationService {
       if (scope.status !== "READY_TO_SEAL" && scope.status !== "SEALED" && !blockers.some((item) => item.code === "F002_SCOPE_PENDING")) {
         blockers.push({ code: "F002_SCOPE_NOT_READY", status: scope.status });
       }
+      if (scope.status === "READY_TO_SEAL" && blockers.length === 0) {
+        const run = (await tx.query("SELECT source_input,profile_id FROM f002_run WHERE workspace_id=$1 AND id=$2", [workspaceId, runId])).rows[0];
+        const profile = (await tx.query("SELECT payload FROM f002_profile WHERE id=$1", [run.profile_id])).rows[0]?.payload;
+        const records = (await tx.query("SELECT kind,id,payload FROM f002_prepared_record WHERE workspace_id=$1 AND run_id=$2 AND scope_id=$3 AND generation=$4 ORDER BY kind,id", [workspaceId, runId, scopeId, scope.generation])).rows;
+        try {
+          requireF002(profile, "F002_PROFILE_UNAVAILABLE", "能力配置不存在", { status: 409 });
+          verifyPublication({ workspaceId, bundleId: run.source_input.bundleId, scopeId, profile, records });
+        } catch (error) {
+          if (!(error instanceof F002Error)) throw error;
+          blockers.push({ code: error.code });
+        }
+      }
       return { scope: scopeResult(scope), ready: scope.status === "READY_TO_SEAL" && blockers.length === 0, blockers };
     });
   }

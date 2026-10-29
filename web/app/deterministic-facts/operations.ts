@@ -5,7 +5,7 @@ type Store = Pick<Storage, "getItem" | "setItem">;
 export type JournalContext = { workspaceId: string; actorId: string; baseVersionId?: string; targetRef?: string; workRef?: string; namespace: "delivery" | "request" };
 export type PendingOperation = { operationId: string; path: string; purpose: string; body: Record<string, unknown> };
 export type InputDraft = { investigationId?: string; question?: string; requestKind?: string; requestedCapabilities?: string[];
-  materialTargetId?: string; sourceId?: string; profileId?: string; components?: string[]; separate?: boolean; lookup?: string; scopeKind?: ExtractionKind; scopePath?: string };
+  materialTargetId?: string; sourceId?: string; profileId?: string; components?: string[]; separate?: boolean; lookup?: string; runId?: string; scopeKind?: ExtractionKind; scopePath?: string };
 export type OperationEnvelope = { operationId: string; results: { kind: string; value: Record<string, unknown> }[] };
 type Snapshot = { draft: InputDraft; pending: PendingOperation | null };
 const id = /^[A-Za-z0-9_-]{1,128}$/, digest = /^[a-f0-9]{64}$/;
@@ -23,7 +23,7 @@ function draftInput(value: unknown): InputDraft {
     if (!text(value.scopePath, 4096)) throw new Error("草稿范围路径无效");
     draft.scopePath = value.scopePath;
   }
-  for (const key of ["investigationId", "question", "sourceId", "profileId", "lookup"] as const) {
+  for (const key of ["investigationId", "question", "sourceId", "profileId", "lookup", "runId"] as const) {
     if (value[key] !== undefined) {
       if (!text(value[key], key === "question" ? 16_384 : 256)) throw new Error("草稿恢复字段无效");
       draft[key] = value[key];

@@ -1,5 +1,7 @@
 "use client";
 
+import { evidenceResultKey } from "./model.ts";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DeterministicFactsClient, FactsClientError } from "./client.ts";
 import { matchEvidenceRecords, filterEvidenceGaps, evidenceRelationReturn, relationEndpointLocation, type EvidenceLocation } from "./model.ts";
@@ -44,7 +46,7 @@ function RecordList({ records, selectedId, select, query = "" }: { records: Fact
 }
 
 export function RecordBrowser({ client, context, actorId, navigate, accessLost }: { client: DeterministicFactsClient; context: EvidenceLocation; actorId: string; navigate: (next: EvidenceLocation) => void; accessLost: (error: Error) => void }) {
-  const versionId = context.graphVersionId!;
+  const versionId = evidenceResultKey(context);
   const view = useEvidenceView({ workspaceId: context.workspaceId, graphVersionId: versionId, actorId, authorized: true, recordId: context.recordId, recordKind: context.kind, graphRootId: context.graphRootId });
   const materials = useRecords(client, versionId, "materials", accessLost, view.materialPathQuery);
   const records = useRecords(client, versionId, "objects", accessLost);
@@ -140,11 +142,11 @@ export function RecordBrowser({ client, context, actorId, navigate, accessLost }
 
 
 export function CoverageView({ client, context, actorId, navigate, accessLost }: { client: DeterministicFactsClient; context: EvidenceLocation; actorId: string; navigate: (next: EvidenceLocation) => void; accessLost: (error: Error) => void }) {
-  const gaps = useRecords(client, context.graphVersionId!, "gaps", accessLost);
+  const gaps = useRecords(client, evidenceResultKey(context), "gaps", accessLost);
   const [position, setPosition] = useState<{ versionId: string; cursor: string | null } | null>(null);
-  const cursor = position && position.versionId === context.graphVersionId ? position.cursor : null;
-  const setCursor = (next: string | null) => setPosition({ versionId: context.graphVersionId!, cursor: next });
-  const route = `/versions/${context.graphVersionId}/coverage?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+  const cursor = position && position.versionId === evidenceResultKey(context) ? position.cursor : null;
+  const setCursor = (next: string | null) => setPosition({ versionId: evidenceResultKey(context), cursor: next });
+  const route = `/versions/${evidenceResultKey(context)}/coverage?limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
   const load = useCallback(async (bound: DeterministicFactsClient) => (await bound.request<{ coverage: Coverage }>(route)).coverage, [route]);
   const resource = useEvidenceResource(client, route, load, accessLost);
   const coverage = resource.data, error = resource.error;
@@ -152,10 +154,10 @@ export function CoverageView({ client, context, actorId, navigate, accessLost }:
     ...(coverage?.items ?? []).map(item => item.materialId),
     ...(gaps.page?.items ?? []).flatMap(gap => typeof gap.payload.materialId === "string" ? [gap.payload.materialId] : []),
   ])].sort().join(",");
-  const loadMaterials = useCallback((bound: DeterministicFactsClient) => materialRecords(bound, context.graphVersionId!, referencedIds ? referencedIds.split(",") : []), [context.graphVersionId, referencedIds]);
-  const materialResource = useEvidenceResource(client, `${context.graphVersionId}/referenced-materials/${referencedIds}`, loadMaterials, accessLost);
+  const loadMaterials = useCallback((bound: DeterministicFactsClient) => materialRecords(bound, evidenceResultKey(context), referencedIds ? referencedIds.split(",") : []), [evidenceResultKey(context), referencedIds]);
+  const materialResource = useEvidenceResource(client, `${evidenceResultKey(context)}/referenced-materials/${referencedIds}`, loadMaterials, accessLost);
   const materials = { page: materialResource.data, error: materialResource.error, retry: materialResource.retry };
-  const view = useEvidenceView({ workspaceId: context.workspaceId, graphVersionId: context.graphVersionId!, actorId, authorized: true, recordId: context.recordId, recordKind: context.kind });
+  const view = useEvidenceView({ workspaceId: context.workspaceId, graphVersionId: evidenceResultKey(context), actorId, authorized: true, recordId: context.recordId, recordKind: context.kind });
   const { reopenRef, autoFocus, close, open } = useInspectorControls(view);
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -166,8 +168,8 @@ export function CoverageView({ client, context, actorId, navigate, accessLost }:
   const updateFilter = (patch: Partial<typeof filters>) => view.update({ gapFilters: { ...filters, ...patch }, gapScrollTop: 0 });
   const materialById = new Map((materials.page?.items ?? []).map(record => [record.id, record]));
   const gapMaterialIds = [...new Set((gaps.page?.items ?? []).flatMap(gap => typeof gap.payload.materialId === "string" ? [gap.payload.materialId] : []))].sort().join(",");
-  const loadGapCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, context.graphVersionId!, gapMaterialIds ? gapMaterialIds.split(",") : []), [context.graphVersionId, gapMaterialIds]);
-  const gapCoverage = useEvidenceResource(client, `${context.graphVersionId}/gap-coverage/${gapMaterialIds}`, loadGapCoverage, accessLost);
+  const loadGapCoverage = useCallback((bound: DeterministicFactsClient) => materialCoverage(bound, evidenceResultKey(context), gapMaterialIds ? gapMaterialIds.split(",") : []), [evidenceResultKey(context), gapMaterialIds]);
+  const gapCoverage = useEvidenceResource(client, `${evidenceResultKey(context)}/gap-coverage/${gapMaterialIds}`, loadGapCoverage, accessLost);
   const filtered = filterEvidenceGaps(gaps.page?.items ?? [], filters, materials.page?.items ?? [], gapCoverage.data);
   const codes = [...new Set([filters.code, ...(gaps.page?.items ?? []).map(gap => gap.payload.code)].filter(Boolean))];
   const materialTypes = [...new Set([filters.materialType, ...(materials.page?.items ?? []).map(material => material.payload.kind)].filter(Boolean))];

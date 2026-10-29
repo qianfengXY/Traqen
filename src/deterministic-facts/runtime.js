@@ -177,6 +177,15 @@ export function technicalF002Profile() {
   return { ...config, configDigest: createProfileConfigDigest(config), id: createProfileId(config), name: "technical-v4", startable: true, recommended: true };
 }
 
+// New interactive work retains the v4 parser/rule set; only its publication
+// workflow is a new immutable profile. Historical v4 and replay stay untouched.
+export function reviewF002Profile() {
+  const config = { ...technicalF002Profile(), version: "5", extractionLimits: { ...technicalF002Profile().extractionLimits } };
+  delete config.extractionLimits.automaticPublication;
+  for (const key of ["id", "configDigest", "name", "startable", "recommended"]) delete config[key];
+  return { ...config, configDigest: createProfileConfigDigest(config), id: createProfileId(config), name: "technical-review-v5", startable: true, recommended: true };
+}
+
 // F002 deliberately shares F001's authoritative pool, member authenticator,
 // source reader and browser origin allow-list. It owns only its new tables and
 // services; it neither opens a second source connection nor accepts a legacy
@@ -207,12 +216,14 @@ export async function createF002Runtime({ sourceRuntime, cursorSecret, consumerR
   await repository.registerProfile(boundedProfile);
   const technicalProfile = technicalF002Profile();
   await repository.registerProfile(technicalProfile);
+  const reviewProfile = reviewF002Profile();
+  await repository.registerProfile(reviewProfile);
   const admission = new F002AdmissionService(repository, sourceRuntime.services.admission);
   const publication = new F002PublicationService(repository);
-  const queries = new F002QueryService(repository, { cursorSecret, preferredProfileId: technicalProfile.id });
+  const queries = new F002QueryService(repository, { cursorSecret, preferredProfileId: reviewProfile.id });
   // Current READ policy is distinct from the sealed extraction profile. Old
   // canonical records/replay remain immutable while present-day disclosure is safe.
-  const materials = new F002MaterialService(repository, admission, { policyRevision: CURRENT_DISPLAY_POLICY_REVISION });
+  const materials = new F002MaterialService(repository, admission, { policyRevision: CURRENT_DISPLAY_POLICY_REVISION, queries });
   const replays = new F002ReplayService(repository, { admission });
   const replayExecutor = new F002ReplayExecutionService({ replays, members: sourceRuntime.configuration.members, resolveActor,
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) });
@@ -225,7 +236,7 @@ export async function createF002Runtime({ sourceRuntime, cursorSecret, consumerR
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) }) : null;
   const executor = new F002ExecutionService({ repository, worker, publication, members: sourceRuntime.configuration.members, resolveActor,
     maxConcurrent: Math.min(16, Math.max(1, sourceRuntime.configuration.resources?.workerConcurrency ?? 2)) });
-  const services = { repository, admission, publication, queries, materials, requests, replays, replayExecutor, worker, executor, requestExecutor, profile, structuredProfile, boundedProfile, technicalProfile };
+  const services = { repository, admission, publication, queries, materials, requests, replays, replayExecutor, worker, executor, requestExecutor, profile, structuredProfile, boundedProfile, technicalProfile, reviewProfile };
   return { services, start: async () => { await executor.start(); await replayExecutor.start(); if (requestExecutor) await requestExecutor.start(); }, close: async () => {
     // Fence every queue immediately, then drain them all even if a sibling
     // cleanup fails. One long request must not leave scope polling admitted.

@@ -25,7 +25,7 @@ function maximumMaterials(profile) {
 // F001 remains the only source-byte owner. Both initial processing and replay
 // use this one loader so their selector, digest, byte and availability rules
 // cannot drift apart.
-export async function loadFrozenMaterials(admission, actor, workspaceId, run, scope, profile, { signal } = {}) {
+export async function loadFrozenMaterials(admission, actor, workspaceId, run, scope, profile, { signal, onProgress = null } = {}) {
   const materials = [];
   const seen = new Set();
   let cursor = null;
@@ -41,6 +41,7 @@ export async function loadFrozenMaterials(admission, actor, workspaceId, run, sc
       requireF002(!seen.has(key), "F002_INVENTORY_DUPLICATE", "冻结材料清单包含重复条目", { status: 409 });
       seen.add(key);
       requireF002(materials.length < maxMaterials, "F002_SCOPE_MATERIAL_LIMIT", "范围材料数量超过固定解析上限", { status: 409 });
+      await onProgress?.({ phase: "LOADING", completed: materials.length, total: null, path: decodePathBytes(item.entry.pathBytes).toString("utf8") });
       const disposition = item.disposition ?? {};
       const common = { componentId: item.componentId, pathBytes: item.entry.pathBytes, mediaType: "application/octet-stream", contentDigest: disposition.digest ?? null };
       const declaredBytes = /^\d+$/.test(item.entry?.sizeBytes ?? "") ? BigInt(item.entry.sizeBytes) : null;
@@ -64,5 +65,6 @@ export async function loadFrozenMaterials(admission, actor, workspaceId, run, sc
     }
     cursor = page.nextCursor;
   } while (cursor);
+  await onProgress?.({ phase: "LOADING", completed: materials.length, total: materials.length });
   return materials;
 }
