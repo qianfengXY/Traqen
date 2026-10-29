@@ -105,11 +105,16 @@ try {
   assert.equal(stored.scopes[0].status, "READY_TO_SEAL"); assert.equal(stored.scopes[0].graphVersionId, null);
   const scope = stored.scopes[0], previewBase = `${factsPrefix}/runs/${run.id}/scopes/${scope.scopeId}/preview/${scope.revision}`;
   const before = await pages(client, `${previewBase}/records`);
+  assert.ok(scope.selections.every(selection => selection.kind === "COMPONENT"));
+  const selectedComponents = new Set(scope.selections.map(selection => selection.componentId));
+  const expectedEntries = a.inventory.filter(item => selectedComponents.has(item.componentId));
+  report.progressInput = { source: a.reference, componentIds: [...selectedComponents], inventoryEntries: expectedEntries.length,
+    files: expectedEntries.filter(item => item.entry.kind === "FILE").length, directories: expectedEntries.filter(item => item.entry.kind === "DIRECTORY").length };
   report.progress = (await json(client, `${factsPrefix}/runs/${run.id}/scopes/${scope.scopeId}/progress`)).progress;
-  assert.ok(report.progress.events.some(e => e.phase === "MATERIALS" && e.completed === a.inventory.length && e.total === a.inventory.length));
+  assert.ok(report.progress.events.some(e => e.phase === "MATERIALS" && e.completed === expectedEntries.length && e.total === expectedEntries.length));
   assert.ok(report.progress.events.some(e => e.phase === "JAVASCRIPT_MODULES"));
   assert.equal(report.progress.latest.phase, "READY");
-  await row.getByText(`已处理材料条目 ${a.inventory.length} / ${a.inventory.length}（含目录及不可解析项）`, { exact: true }).waitFor();
+  await row.getByText(`已处理材料条目 ${expectedEntries.length} / ${expectedEntries.length}（含目录及不可解析项）`, { exact: true }).waitFor();
   await screenshot("journey-03-real-progress.png");
   await page.reload();
   await page.locator(".f002-delivery article").filter({ hasText: run.id }).getByRole("button", { name: "查看待检查成果", exact: true }).waitFor();

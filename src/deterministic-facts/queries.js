@@ -98,6 +98,7 @@ export class F002QueryService {
       const key = canonicalDigest("UNSEALED_RESULT", { workspaceId, ...binding });
       const prepared = { tx, binding: { ...binding, source: row.source_input }, row };
       return read({
+        binding: prepared.binding,
         manifest: () => this.manifest(actor, workspaceId, key, prepared),
         collection: (name, options) => this.collection(actor, workspaceId, key, name, options, prepared),
         records: options => this.records(actor, workspaceId, key, options, prepared),

@@ -21,13 +21,14 @@ export function RunProgress({ client, runId, scope, accessLost }: { client: Dete
   void observe();const timer=window.setInterval(()=>{setNow(Date.now());if(["QUEUED","RUNNING"].includes(scope.status))void observe();},1000);
   return()=>{clearInterval(timer);controller.abort();};},[client,load,scope.status]);
  const latest=snapshot?.latest,material=snapshot?.events.find(e=>e.phase==="MATERIALS");
+ const lastPath=latest?.path??snapshot?.events.findLast(unit=>unit.path)?.path;
  const stale=latest&&now-Date.parse(latest.updatedAt)>15000&&["QUEUED","RUNNING"].includes(scope.status);
  return <section className="f002-progress" aria-label="真实解析进度" aria-live="polite">
   <h4>{scope.status==="QUEUED"?"等待执行":latest?phases[latest.phase]??latest.phase:"正在读取实际处理状态"}</h4>
   {error&&<p role="alert">进度读取未完成：{error.message}。未推断任务已停止。<button className="button" onClick={()=>{const c=new AbortController();void load(client.signal??c.signal);}}>重新读取进度</button></p>}
   {latest&&<><p>{latest.phase==="LOADING"?`已核对 ${latest.completed} 个材料条目${latest.total===null?"，范围总数尚在核对":` / 共 ${latest.total} 项`}`:material?`已处理材料条目 ${material.completed} / ${material.total}（含目录及不可解析项）`:"材料总数尚在核对"}</p>
    {latest.phase==="MATERIALS"&&latest.total!==null&&latest.total>0&&<progress aria-label="已处理材料条目" value={latest.completed} max={latest.total}/>}
-   {latest.path&&<p className="f002-current-file">最近实际处理：<code>{latest.path}</code></p>}
+   {lastPath&&<p className="f002-current-file">最近实际处理：<code>{lastPath}</code></p>}
    <p>最新进度：<time dateTime={latest.updatedAt}>{new Date(latest.updatedAt).toLocaleTimeString()}</time> · 已完成工作项 {snapshot?.workItems.completed} / {snapshot?.workItems.total}</p>
    {stale&&<p role="status">超过 15 秒未收到新的处理状态，仍在核查此运行；可以重读状态或取消，不会另建任务。</p>}
    <details><summary>本次实际处理阶段记录</summary><ol>{snapshot?.events.map(unit=><li key={unit.phase}>{phases[unit.phase]??unit.phase} · {unit.phase==="MATERIALS"||unit.phase==="LOADING"?`${unit.completed}${unit.total===null?"":` / ${unit.total}`} 个材料条目`:`已处理 ${unit.completed} 个材料条目，非此阶段百分比`} · <time>{new Date(unit.updatedAt).toLocaleTimeString()}</time></li>)}</ol></details>

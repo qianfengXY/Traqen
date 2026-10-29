@@ -180,7 +180,7 @@ export function createF002HttpHandler({ services, authenticate, allowedOrigins =
         else if (version || preview && request.method === "GET") {
           const [, graphVersionId, tail = ""] = version ?? [null, preview.scopeId, previewMatch[4] ?? "manifest"];
           const read = (name, ...args) => preview
-            ? queries.preview(actor, workspaceId, preview, async q => ({ ...await q[name](...args), preview: { ...preview } }))
+            ? queries.preview(actor, workspaceId, preview, async q => ({ ...await q[name](...args), preview: q.binding }))
             : queries[name](actor, workspaceId, graphVersionId, ...args);
           if (request.method === "GET" && tail === "manifest") json(response, 200, { manifest: await read("manifest") }, requestId);
           else if (request.method === "GET" && tail === "export" && !preview) {

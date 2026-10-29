@@ -67,3 +67,15 @@ test('late progress cannot overwrite cancellation, a retry generation or a forei
  const read=await repository.scopeProgress(owner,'workspace',run.id,scopeId);assert.equal(read.scope.status,'CANCELLED');assert.equal(read.latest.completed,0);
  await assert.rejects(repository.scopeProgress(owner,'workspace2',run.id,scopeId),{code:'SOURCE_FORBIDDEN'});
 });
+test('HTTP preview metadata retains its actual source binding before readers mount',async t=>{
+ const {createF002HttpHandler}=await import('../src/deterministic-facts/http-handler.js');
+ const {createTraceabilityHttpServer}=await import('../src/api/http-server.js');
+ const {repository,queries,run,scopeId}=await fixture(t);
+ await new F002Worker(repository).run(owner,'workspace',run.id,scopeId,{workerId:'http-preview',leaseMs:60000,materials:[{componentId,pathBytes:Buffer.from('source.js').toString('base64url'),bytes:Buffer.from('export const x=1'),mediaType:'text/plain'}]});
+ const handler=createF002HttpHandler({services:{repository,queries,admission:{},publication:{},materials:{},requests:{},replays:{}},authenticate:()=>owner});
+ const server=createTraceabilityHttpServer({application:{},deterministicFactsHandler:handler});await new Promise(r=>server.listen(0,'127.0.0.1',r));
+ t.after(()=>new Promise(r=>{server.close(r);server.closeAllConnections();}));
+ const response=await fetch(`http://127.0.0.1:${server.address().port}/v1/workspaces/workspace/deterministic-facts/runs/${run.id}/scopes/${scopeId}/preview/3/manifest`);
+ assert.equal(response.status,200);const data=await response.json();assert.equal(data.manifest.graphVersionId,undefined);
+ assert.deepEqual(data.manifest.preview,{runId:run.id,scopeId,revision:3,source:run.sourceInput});
+});
