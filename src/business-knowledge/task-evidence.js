@@ -12,7 +12,7 @@ export function projectTaskEvidence(run, { graph = null, checkpoints = [] } = {}
   const currentBinding = Number.isSafeInteger(run.analysisContractVersion) ? hash({ analysisContractVersion: run.analysisContractVersion, sourceInput: run.sourceInput,
     profileId: run.profile.id, adoptedVersionIds: run.adoptedVersionIds, continuationBasisDigest: run.continuationBasis?.digest ?? null }) : null;
   const triage = list(graph?.process).find(item => item.stage === "TRIAGE");
-  const current = checkpoints.filter(c => c.payload?.binding === currentBinding);
+  const current = currentBinding ? checkpoints.filter(c => c.payload?.binding === currentBinding) : [];
   const manifestRecord = graph
     ? checkpoints.find(c => c.key === "business-task-manifest" && c.payload?.data
       && triage?.taskManifestDigest === hash(c.payload.data))
@@ -20,7 +20,8 @@ export function projectTaskEvidence(run, { graph = null, checkpoints = [] } = {}
   const manifest = Array.isArray(manifestRecord?.payload.data?.tasks) ? manifestRecord.payload.data : null;
   // A saved graph must never borrow a later/current task description. Its exact
   // manifest digest, when recorded, selects the historical checkpoint instead.
-  const context = graph ? checkpoints.filter(c => manifestRecord && c.payload?.binding === manifestRecord.payload.binding) : current;
+  const context = graph ? checkpoints.filter(c => typeof manifestRecord?.payload.binding === "string"
+    && c.payload?.binding === manifestRecord.payload.binding) : current;
   const byKey = new Map(context.map(c => [c.key, c]));
   const inventory = graph ? list(graph.coverage) : list(byKey.get("inventory")?.payload.data);
   const inventoryByMaterial = new Map(inventory.map(m => [m.materialId, m]));

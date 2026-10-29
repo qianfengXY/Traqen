@@ -15,6 +15,9 @@ test("legacy missing fields remain missing, and a saved graph cannot borrow anot
   const before=structuredClone(source),value=projectTaskEvidence({...run,analysisContractVersion:undefined},{graph,checkpoints:[source]});
   assert.equal(value.manifestAvailable,false);assert.deepEqual(value.tasks,[]);assert.equal(value.pendingInventoryAvailable,false);
   assert.ok(!JSON.stringify(value).includes("MUST_NOT_BORROW"));assert.deepEqual(source,before);
+  const legacyCurrent=projectTaskEvidence({...run,analysisContractVersion:undefined,latestGraph:undefined},
+    {checkpoints:[{key:"plan",payload:{binding:null,process:{taskKey:"unbound"}}}]});
+  assert.equal(legacyCurrent.snapshotKind,"UNAVAILABLE");assert.deepEqual(legacyCurrent.tasks,[]);
 });
 
 test("exact manifest digest preserves completed-run pending work and maps original task proposals through consolidation",()=>{
