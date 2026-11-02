@@ -19,9 +19,9 @@ description_updated_at: 2026-08-30T06:44:00Z
 **Owner:** TBD
 **Depends on:** F001
 
-## Current functional design — V1.0
+## Current functional design — V1.1
 
-The operator authorized final-baseline publication on 2026-09-16 at 03:40 UTC. The normative design is [F002 Deterministic Facts: Functional Design Baseline V1.0 (Chinese)](../design/F002-deterministic-facts/README.md), using the checked F003-style panorama v4.
+The operator authorized final-baseline publication on 2026-09-16 at 03:40 UTC. The normative design is [F002 Deterministic Facts: Functional Design Baseline V1.1 (Chinese)](../design/F002-deterministic-facts/README.md), using the checked F003-style panorama v4.
 
 The baseline confirms six groups / 24 subfunctions, five logical deliverables, controlled material views, identity principles, the bidirectional F003 evidence-request / suspected-omission loop, and evidence-quality boundaries. An API tree is one projection, not the entire F002 product.
 
