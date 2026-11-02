@@ -20,7 +20,7 @@ This directory is organized as a feature lifecycle, not as a chronological pile 
 | ID | Active Feature document | Supporting design |
 |---|---|---|
 | F001 | [Workspace & Source Truth](features/F001-legacy-system-understanding.md) · [中文](features/F001-legacy-system-understanding.zh-CN.md) | [approved Design B](design/F001-workspace-source-truth/README.md) |
-| F002 | [Current design entry and historical spec](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | [Deterministic Facts: Functional Design V1.0 (normative Chinese)](design/F002-deterministic-facts/README.md) |
+| F002 | [Current design entry and historical spec](features/F002-feature-api-traceability.md) · [中文](features/F002-feature-api-traceability.zh-CN.md) | [Deterministic Facts: Functional Design V1.1 (normative Chinese)](design/F002-deterministic-facts/README.md) |
 | F003 | [Canonical Chinese functional and UX design](design/F003-traceability-graph/README.md) | Approved functional V2.0 plus exploratory UX v0.2; superseded spec and separate UX entry points removed. |
 | F004 | [Change Impact Analysis](features/F004-change-impact-analysis.md) · [中文](features/F004-change-impact-analysis.zh-CN.md) | product architecture |
 | F005 | [Layout and Navigation Design V1.1 (normative Chinese)](design/F005-layout-navigation/README.md) | Six destinations, uniform scaling and two themes; adds business answers, work sessions, four contribution routes and answer states, with seven visuals and [17 changes](design/F005-layout-navigation/CHANGES.md). Prototype limits remain explicit. |

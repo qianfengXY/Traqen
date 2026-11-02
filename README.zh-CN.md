@@ -131,7 +131,7 @@ Traqen 从以下七个基础问题组织业务理解，而不是从文件目录�
 | 功能 | 对共同愿景的贡献 | 当前设计入口与边界 |
 | --- | --- | --- |
 | F001 工作空间与来源快照 | 让结论有准确、可回查的材料基础 | [已确认设计](docs/design/F001-workspace-source-truth/README.md)；首期一个 Git 组件、一个目录组件或两者，显式创建版本；冻结不等于启动分析 |
-| F002 确定性事实层 | 提供可引用的技术事实、关系与缺口 | [功能设计 V1.0](docs/design/F002-deterministic-facts/README.md)；接口、首期提取能力及部分技术合同仍待定 |
+| F002 确定性事实层 | 提供可引用的技术事实、关系与缺口 | [功能设计 V1.1](docs/design/F002-deterministic-facts/README.md)；接口、首期提取能力及部分技术合同仍待定 |
 | F003 业务调查与追溯图谱 | 将原材料、技术事实、Agent 调查与人工判断组织成可共同使用的认识 | [功能 V2.0 与 UX](docs/design/F003-traceability-graph/README.md)；功能设计已发布，UX v0.2 仍待讨论；分析态不等于人工确认 |
 | F004 变更影响分析 | 找到可能受影响的业务与重验证范围 | [Feature Spec](docs/features/F004-change-impact-analysis.zh-CN.md)；首版提供建议，不自动阻止合并或部署 |
 | F005 整体布局与导航 | 让同一块业务的材料、解释与工作入口可理解、可操作 | [设计规范 V1.0](docs/design/F005-layout-navigation/README.md)；设计发布不代表所有页面已落地 |
